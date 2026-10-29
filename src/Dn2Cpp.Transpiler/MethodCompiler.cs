@@ -1398,11 +1398,12 @@ internal sealed partial class MethodCompiler : IEvalStack
                     static ps => ps is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }], allocates: true)
                     ?? throw new NotSupportedException("Named activation requires ObjectHandle(object)");
                 bool withArguments = _method.Signature.ParameterTypes.Length == 8;
-                string attributes = withArguments ? Cast(Pop(), "Dn2CppArrayRef*") : "nullptr";
+                bool withAttributes = _method.Signature.ParameterTypes.Length is 3 or 8;
+                string attributes = withAttributes ? Cast(Pop(), "Dn2CppArrayRef*") : "nullptr";
                 if (withArguments) Pop(); // Culture follows the existing non-parse DefaultBinder policy.
                 string arguments = withArguments ? Cast(Pop(), "Dn2CppArrayRef*") : "nullptr";
                 string binder = withArguments ? Cast(Pop(), "Dn2CppObject*") : "nullptr";
-                string flags = withArguments ? Cast(Pop(), "int32_t") : "20";
+                string flags = withArguments ? Cast(Pop(), "int32_t") : withAttributes ? "0x214" : "20";
                 string ignoreCase = withArguments ? Cast(Pop(), "int32_t") : "0";
                 var typeName = Pop();
                 var assemblyName = Pop();
@@ -1414,7 +1415,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 string type = NewTemp("Dn2CppType*");
                 Emit($"{type} = dn2cpp_assembly_get_type({assembly}, {Cast(typeName, "Dn2CppString*")}, 1, {ignoreCase});");
                 string instance = NewTemp("Dn2CppObject*");
-                if (withArguments)
+                if (withAttributes)
                 {
                     // CoreLib rejects activation attributes before entering binder selection.
                     Emit($"if ({attributes} != nullptr && ({attributes})->length > 0) dn2cpp_throw_platform_not_supported(\"Activation Attributes are not supported.\");");

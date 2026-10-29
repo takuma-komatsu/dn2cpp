@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (NamedActivationAttributesGuards.Run(args)) return;
+if (NamedActivationAttributesFixture.Run(args)) return;
 if (NamedActivationFlagsGuards.Run(args)) return;
 if (NamedActivationFlagsFixture.Run(args)) return;
 if (NamedActivationGuards.Run(args)) return;

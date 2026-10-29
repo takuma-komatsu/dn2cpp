@@ -1190,7 +1190,8 @@ internal static partial class CoreIntrinsics
             || signature.ReturnType is not { Kind: TypeKind.Class, Class: { FullName: "System.Runtime.Remoting.ObjectHandle", IsValueType: false } result }
             || result.Module != module) return false;
         var ps = signature.ParameterTypes;
-        if (ps is [{ IsString: true }, { IsString: true }]) return true;
+        if (ps is [{ IsString: true }, { IsString: true }]
+            or [{ IsString: true }, { IsString: true }, { Kind: TypeKind.SZArray, Element: { IsObject: true } }]) return true;
         return ps is [{ IsString: true }, { IsString: true },
                 { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean },
                 { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.BindingFlags",
@@ -1209,10 +1210,13 @@ internal static partial class CoreIntrinsics
             && token > 0 && (token >> 2) != 0 && (token & 3) != 3;
         if (blob.RemainingBytes < 6 || blob.ReadByte() != 0) return false;
         int count = blob.ReadByte();
-        if (count is not (2 or 8) || !Named(ref blob, 0x12)
+        if (count is not (2 or 3 or 8) || !Named(ref blob, 0x12)
             || blob.RemainingBytes < 2 || blob.ReadByte() != (byte)SignatureTypeCode.String
             || blob.ReadByte() != (byte)SignatureTypeCode.String) return false;
         if (count == 2) return blob.RemainingBytes == 0;
+        if (count == 3) return blob.RemainingBytes == 2
+            && blob.ReadByte() == (byte)SignatureTypeCode.SZArray
+            && blob.ReadByte() == (byte)SignatureTypeCode.Object;
         return blob.RemainingBytes > 0 && blob.ReadByte() == (byte)SignatureTypeCode.Boolean
             && Named(ref blob, 0x11) && Named(ref blob, 0x12)
             && blob.RemainingBytes >= 2 && blob.ReadByte() == (byte)SignatureTypeCode.SZArray

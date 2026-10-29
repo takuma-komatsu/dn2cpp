@@ -465,5 +465,7 @@ internal static class Program
         NamedActivationSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-named-flags") return;
         NamedActivationFlagsSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-named-attrs") return;
+        NamedActivationAttributesSubset.Program.Run();
     }
 }

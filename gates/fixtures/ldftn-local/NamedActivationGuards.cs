@@ -97,6 +97,7 @@ internal static class NamedActivationGuards
         // return the exact legitimate overload, not the new two-string adapter.
         var appModule = ((IEnumerable)Get(loaded, "Modules")).Cast<object>()
             .Single(m => (string)Get(m, "AssemblyName") == "NamedActivationGuardInput");
+        var threeHandle = realReader.GetTypeDefinition(ownerHandleReal).GetMethods().Single(h => realReader.GetString(realReader.GetMethodDefinition(h).Name) == "CreateInstance" && Convert.ToHexString(realReader.GetBlobBytes(realReader.GetMethodDefinition(h).Signature)).StartsWith("000312", StringComparison.Ordinal));
         var appReader = (MetadataReader)Get(appModule, "Reader");
         var context = Model("GenericContext").GetField("Empty", statics)!.GetValue(null)!;
         var seenOverloads = new HashSet<int>();
@@ -106,7 +107,7 @@ internal static class NamedActivationGuards
                 .Invoke(loaded, new object[] { appModule, h, context })!;
             int token = MetadataTokens.GetToken((MethodDefinitionHandle)Get(resolved, "Handle"));
             Check(ReferenceEquals(Get(resolved, "Module"), realModule) && expectedOverloadTokens.Contains(token), "neighbor-MemberRef-exact-CoreLib-identity");
-            Check((bool)predicate.Invoke(null, new[] { resolved })! == (token == MetadataTokens.GetToken(eightHandle)), "neighbor-MemberRef-exact-two-or-eight-adapter-policy");
+            Check((bool)predicate.Invoke(null, new[] { resolved })! == (token == MetadataTokens.GetToken(eightHandle) || token == MetadataTokens.GetToken(threeHandle)), "neighbor-MemberRef-exact-two-three-or-eight-adapter-policy");
             seenOverloads.Add(token);
             Console.WriteLine("named-activation-neighbor-MemberRef:" + token.ToString("X8", CultureInfo.InvariantCulture));
         }
@@ -116,7 +117,7 @@ internal static class NamedActivationGuards
         {
             var other = ((IDictionary)Get(realModule,"MethodMap"))[h];
             if (other is not null)
-                Check((bool)predicate.Invoke(null,new[]{other})! == (h == eightHandle),"other-overload-exact-eight-or-excluded");
+                Check((bool)predicate.Invoke(null,new[]{other})! == (h == eightHandle || h == threeHandle),"other-overload-exact-three-eight-or-excluded");
             else
                 Check(realReader.GetMethodDefinition(h).GetGenericParameters().Count != 0
                     && !raw(realReader.GetBlobReader(realReader.GetMethodDefinition(h).Signature)),"uninstantiated-generic-overload-excluded");

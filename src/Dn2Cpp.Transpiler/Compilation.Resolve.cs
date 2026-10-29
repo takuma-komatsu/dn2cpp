@@ -1687,9 +1687,9 @@ internal sealed partial class Compilation
         }
         if (name == "CreateInstance" && candidates.Any(CoreIntrinsics.IsActivatorNamed)
             && (CoreIntrinsics.BrActivatorNamed.Matches(resolved)
-                || (sig.ParameterTypes.Length is 2 or 8
+                || (sig.ParameterTypes.Length is 2 or 3 or 8
                     && sig.ReturnType is { Kind: TypeKind.Class, Class.FullName: "System.Runtime.Remoting.ObjectHandle" })
-                || sig.ParameterTypes.Length is 2 or 8 && sig.ParameterTypes[0].IsString))
+                || sig.ParameterTypes.Length is 2 or 3 or 8 && sig.ParameterTypes[0].IsString))
         {
             if (!CoreIntrinsics.IsActivatorNamedSignature(reader.GetBlobReader(mr.Signature))
                 || !CoreIntrinsics.IsActivatorNamedDecodedSignature(sig, resolved.Module)
@@ -1967,7 +1967,7 @@ internal sealed partial class Compilation
             var header = blob.ReadSignatureHeader();
             if (header.IsGeneric)
                 blob.ReadCompressedInteger();
-            if (blob.ReadCompressedInteger() is 2 or 8)
+            if (blob.ReadCompressedInteger() is 2 or 3 or 8)
             {
                 var named = ResolveMemberRefMethod(module, handle, callerCtx);
                 if (CoreIntrinsics.BrActivatorNamed.Matches(named))

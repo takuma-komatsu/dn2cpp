@@ -1717,3 +1717,8 @@ after assembly/type lookup but before binder selection. Nonnull binders remain
 unsupported; culture is evaluated but the existing non-parse DefaultBinder path
 does not consume it. This does not add caller-sensitive loading, custom binder
 execution or culture-dependent conversion.
+
+The exact three-argument named overload treats its object array as activation
+attributes, never constructor arguments. It uses the same validation and managed
+handle path with public parameterless defaults; nonempty attributes are rejected
+after type lookup and before selecting or invoking a constructor.

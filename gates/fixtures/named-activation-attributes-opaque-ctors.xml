@@ -1,0 +1,14 @@
+<linker>
+  <assembly fullname="SelfHostPrimSubset">
+    <type fullname="NamedActivationAttributesSubset.Probe" preserve="nothing">
+      <method signature="System.Void .ctor()" />
+      <method signature="System.Void .ctor(System.Int32)" />
+    </type>
+    <type fullname="NamedActivationAttributesSubset.OnlyInt" preserve="nothing">
+      <method signature="System.Void .ctor(System.Int32)" />
+    </type>
+    <type fullname="NamedActivationAttributesSubset.ThrowProbe" preserve="nothing">
+      <method signature="System.Void .ctor()" />
+    </type>
+  </assembly>
+</linker>
