@@ -336,6 +336,7 @@ internal enum InterceptEmitArm
     CoreClrDelegateVmConstructorBody,
     CoreClrTypeMaterializationBody,
     NullableReboxingBody,
+    ActivatorNamedBody,
     ActivatorDefaultBody,
     RuntimeTypeDefaultCtorBody,
     RuntimeTypeCreateInstanceOfTBody,
@@ -1161,6 +1162,42 @@ internal static partial class CoreIntrinsics
     public static readonly MethodDefIntercept BrRuntimeTypeDefaultCtor = new(
         InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeTypeDefaultCtorBody,
         typeGate: "System.RuntimeType", nameGate: "CreateInstanceDefaultCtor", extra: static m => IsRuntimeTypeDefaultCtor(m));
+
+    internal static bool IsActivatorNamed(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.Activator" || method.Name != "CreateInstance"
+            || method.DeclaringClass.Handle.IsNil || method.Handle.IsNil
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig | System.Reflection.MethodAttributes.RequireSecObject)
+            || method.Rva == 0 || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        var owner = method.Module.Reader.GetTypeDefinition(method.DeclaringClass.Handle);
+        if (!owner.GetDeclaringType().IsNil
+            || !method.Module.Reader.StringComparer.Equals(owner.Namespace, "System")
+            || !method.Module.Reader.StringComparer.Equals(owner.Name, "Activator")
+            || !IsActivatorNamedSignature(method.Module.Reader.GetBlobReader(
+                method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes is [{ IsString: true }, { IsString: true }]
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Runtime.Remoting.ObjectHandle", IsValueType: false } result }
+            && result.Module == method.Module;
+    }
+
+    internal static bool IsActivatorNamedSignature(BlobReader blob) =>
+        blob.RemainingBytes >= 6 && blob.ReadByte() == 0 && blob.ReadByte() == 2
+        && blob.ReadByte() == 0x12 && blob.TryReadCompressedInteger(out int result)
+        && result > 0 && (result >> 2) != 0 && (result & 3) != 3
+        && blob.RemainingBytes == 2 && blob.ReadByte() == (byte)SignatureTypeCode.String
+        && blob.ReadByte() == (byte)SignatureTypeCode.String;
+
+    public static readonly MethodDefIntercept BrActivatorNamed = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.ActivatorNamedBody,
+        typeGate: "System.Activator", nameGate: "CreateInstance", extra: static m => IsActivatorNamed(m));
 
     internal static bool IsActivatorDefault(MethodInfo method)
     {

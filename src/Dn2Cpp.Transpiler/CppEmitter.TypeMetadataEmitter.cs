@@ -3850,6 +3850,7 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(method)
                         || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(method)
                         || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(method)
+                        || CoreIntrinsics.BrActivatorNamed.Matches(method)
                         || CoreIntrinsics.BrActivatorDefault.Matches(method)));
 
         private void RenderMemberTables(ClassInfo cls)

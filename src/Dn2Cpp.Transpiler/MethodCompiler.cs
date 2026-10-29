@@ -1390,6 +1390,33 @@ internal sealed partial class MethodCompiler : IEvalStack
                     $"dn2cpp_activator_create_instance_default_ctor({Cast(type, "Dn2CppType*")}, {Cast(publicOnly, "int32_t")}, {Cast(wrap, "int32_t")})");
                 return true;
             }, "RuntimeType parameterless construction");
+        if (CoreIntrinsics.BrActivatorNamed.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                var handleClass = _method.Signature.ReturnType.Class!;
+                var ctor = Comp.ReachManagedMethod(handleClass, ".ctor",
+                    static ps => ps is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }], allocates: true)
+                    ?? throw new NotSupportedException("Named activation requires ObjectHandle(object)");
+                var typeName = Pop();
+                var assemblyName = Pop();
+                string assembly = NewTemp("const char*");
+                Emit($"if ({assemblyName.Expr} == nullptr) dn2cpp_throw_platform_not_supported(\"Named activation with a null assembly name requires caller-sensitive assembly resolution\");");
+                Emit($"{assembly} = dn2cpp_assembly_load({Cast(assemblyName, "Dn2CppString*")}, \"assemblyName\");");
+                Emit($"if ({typeName.Expr} == nullptr) dn2cpp_throw_argument_null_param(\"name\");");
+                Emit($"if ({typeName.Expr}->length == 0) dn2cpp_throw_argument_param(DN2CPP_SR_EMPTY_STRING, \"name\");");
+                string type = NewTemp("Dn2CppType*");
+                Emit($"{type} = dn2cpp_assembly_get_type({assembly}, {Cast(typeName, "Dn2CppString*")}, 1, 0);");
+                string instance = NewTemp("Dn2CppObject*");
+                Emit($"{instance} = dn2cpp_activator_create_instance({type});");
+                Emit($"if ({instance} == nullptr) return nullptr;");
+                string handle = NewTemp(handleClass.CppStructName + "*");
+                Emit($"{handle} = ({handleClass.CppStructName}*)dn2cpp_alloc(sizeof({handleClass.CppStructName}));");
+                Emit($"((Dn2CppObject*){handle})->type = &{handleClass.CppTypeInfoName};");
+                Emit($"{DirectCall(ctor, new List<string> { handle, instance })};");
+                PushEntry(new StackEntry(handle, StackKind.Ref, handleClass.CppStructName + "*",
+                    StaticType: _method.Signature.ReturnType));
+                return true;
+            }, "linked-name Activator construction");
         if (CoreIntrinsics.BrActivatorDefault.Matches(_method))
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
             {

@@ -123,6 +123,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(m)
             || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(m)
             || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(m)
+            || CoreIntrinsics.BrActivatorNamed.Matches(m)
             || CoreIntrinsics.BrActivatorDefault.Matches(m)
             || CoreIntrinsics.BrCoreClrDelegateVmConstructor.Matches(m)
             || CoreIntrinsics.BrMulticastAccessor.Matches(m)

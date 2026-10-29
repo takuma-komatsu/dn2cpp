@@ -1697,3 +1697,15 @@ loading occur before this helper and remain unchanged. This refusal also covers
 linked-name execution; it does not change base or custom virtual
 `Assembly.EntryPoint` behavior or fabricate a missing entrypoint. Throw-only
 NoAlloc admission follows the existing exception policy.
+
+### Linked-name activation
+
+The exact two-string `Activator.CreateInstance` overload resolves a nonnull
+assembly name through the linked registry before validating the type name. It
+uses existing type lookup and public parameterless activation, then constructs
+an ordinary managed `ObjectHandle`; a null instance produces a null handle.
+Null assembly names explicitly refuse caller-sensitive assembly resolution,
+rather than guessing an entry assembly. `AppDomain` keeps its earlier null-name
+validation. Linked-name matching and reflection/constructor retention limits
+remain unchanged; this is not a contextual loader or version-binding engine.
+The wrapper and instance are allocating operations for NoAlloc analysis.

@@ -494,6 +494,7 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(callee)
                     || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(callee)
                     || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(callee)
+                    || CoreIntrinsics.BrActivatorNamed.Matches(callee)
                     || CoreIntrinsics.BrActivatorDefault.Matches(callee))
                 {
                     EmitManagedCall(callee, isCallvirt);

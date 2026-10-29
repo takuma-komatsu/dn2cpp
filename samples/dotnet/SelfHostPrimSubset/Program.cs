@@ -461,5 +461,7 @@ internal static class Program
         AppContextExitSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-assembly-execution") return;
         AssemblyExecutionSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-named-activation") return;
+        NamedActivationSubset.Program.Run();
     }
 }

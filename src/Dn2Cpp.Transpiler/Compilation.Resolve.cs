@@ -109,6 +109,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(mi)
                     || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(mi)
                     || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(mi)
+                    || CoreIntrinsics.BrActivatorNamed.Matches(mi)
                     || CoreIntrinsics.BrActivatorDefault.Matches(mi))
                     return mi;
                 // Intrinsic-mapped types are emitted inline, not transpiled, so
@@ -1684,6 +1685,19 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(resolved))
                 throw new NotSupportedException("RuntimeType default construction requires its exact MemberRef signature");
         }
+        if (name == "CreateInstance" && candidates.Any(CoreIntrinsics.IsActivatorNamed)
+            && (CoreIntrinsics.BrActivatorNamed.Matches(resolved)
+                || (sig.ParameterTypes.Length == 2
+                    && sig.ReturnType is { Kind: TypeKind.Class, Class.FullName: "System.Runtime.Remoting.ObjectHandle" })
+                || sig.ParameterTypes is [{ IsString: true }, _]))
+        {
+            if (!CoreIntrinsics.IsActivatorNamedSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ParameterTypes is not [{ IsString: true }, { IsString: true }]
+                || sig.ReturnType is not { Kind: TypeKind.Class, Class: { FullName: "System.Runtime.Remoting.ObjectHandle", IsValueType: false } result }
+                || result.Module != resolved.Module || !CoreIntrinsics.BrActivatorNamed.Matches(resolved))
+                throw new NotSupportedException("Named Activator construction requires its exact MemberRef signature");
+        }
         if (name == "CreateInstance" && candidates.Any(CoreIntrinsics.IsActivatorDefault)
             && !sig.ParameterTypes[0].IsString && sig.ParameterTypes[1].Kind != TypeKind.SZArray)
         {
@@ -1948,6 +1962,19 @@ internal sealed partial class Compilation
             var factory = ResolveMemberRefMethod(module, handle, callerCtx);
             if (CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(factory))
                 return factory;
+        }
+        if (full == "System.Activator" && reader.StringComparer.Equals(mr.Name, "CreateInstance"))
+        {
+            var blob = reader.GetBlobReader(mr.Signature);
+            var header = blob.ReadSignatureHeader();
+            if (header.IsGeneric)
+                blob.ReadCompressedInteger();
+            if (blob.ReadCompressedInteger() == 2)
+            {
+                var named = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.BrActivatorNamed.Matches(named))
+                    return named;
+            }
         }
         if (full == "System.Activator" && reader.StringComparer.Equals(mr.Name, "CreateInstance")
             && CoreIntrinsics.IsActivatorDefaultSignature(reader.GetBlobReader(mr.Signature)))

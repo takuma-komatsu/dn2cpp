@@ -1,0 +1,10 @@
+<linker>
+  <assembly fullname="SelfHostPrimSubset">
+    <type fullname="NamedActivationSubset.PublicTarget" preserve="nothing">
+      <method signature="System.Void .ctor()" />
+    </type>
+    <type fullname="NamedActivationSubset.ThrowingTarget" preserve="nothing">
+      <method signature="System.Void .ctor()" />
+    </type>
+  </assembly>
+</linker>
