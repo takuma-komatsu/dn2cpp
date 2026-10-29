@@ -782,6 +782,20 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsActivatorFrom(callee))
+        {
+            var typeName = Pop();
+            var assemblyFile = Pop();
+            // Preserve evaluated arguments without reading either string payload.
+            Emit($"(void)({assemblyFile.Expr});");
+            Emit($"(void)({typeName.Expr});");
+            Emit("dn2cpp_throw_platform_not_supported(\"Assembly.LoadFrom is not available in AOT-compiled code (no assembly loading)\");");
+            var result = callee.Signature.ReturnType;
+            Push(StackKind.Ref, CppTypes.Of(result), "nullptr"); // unreachable stack shape
+            Top = Top with { StaticType = result };
+            return;
+        }
+
         if (CoreIntrinsics.IsAppDomainExecuteAssembly(callee))
         {
             var arguments = Pop();

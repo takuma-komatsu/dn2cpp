@@ -1520,6 +1520,14 @@ internal sealed partial class Compilation
                 || member.Module != resolved.Module || !CoreIntrinsics.BrCustomAttributeDataMember.Matches(resolved))
                 throw new NotSupportedException("CustomAttributeData member query requires its exact MemberRef signature");
         }
+        if (name == "CreateInstanceFrom" && candidates.Any(CoreIntrinsics.IsActivatorFrom)
+            && sig.ParameterTypes.Length == 2)
+        {
+            if (!CoreIntrinsics.IsActivatorFromSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsActivatorFromDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsActivatorFrom(resolved))
+                throw new NotSupportedException("Activator path activation requires its exact MemberRef signature");
+        }
         if (name == "ExecuteAssembly" && candidates.Any(CoreIntrinsics.IsAppDomainExecuteAssembly)
             && (CoreIntrinsics.IsAppDomainExecuteAssembly(resolved)
                 || (sig.Header.RawValue == 0 && sig.ParameterTypes.Length == 2)
@@ -1843,6 +1851,19 @@ internal sealed partial class Compilation
                     return factory;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.Activator" && reader.StringComparer.Equals(mr.Name, "CreateInstanceFrom"))
+        {
+            var blob = reader.GetBlobReader(mr.Signature);
+            var header = blob.ReadSignatureHeader();
+            if (header.IsGeneric)
+                blob.ReadCompressedInteger();
+            if (blob.ReadCompressedInteger() == 2)
+            {
+                var activation = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.IsActivatorFrom(activation))
+                    return activation;
+            }
         }
         if (full == "System.AppDomain" && reader.StringComparer.Equals(mr.Name, "ExecuteAssembly"))
         {

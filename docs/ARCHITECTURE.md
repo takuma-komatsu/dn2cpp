@@ -1722,3 +1722,10 @@ The exact three-argument named overload treats its object array as activation
 attributes, never constructor arguments. It uses the same validation and managed
 handle path with public parameterless defaults; nonempty attributes are rejected
 after type lookup and before selecting or invoking a constructor.
+
+The exact two-string `Activator.CreateInstanceFrom` retained adapter stops at the
+existing unconditional `Assembly.LoadFrom` AOT capability refusal. Both argument
+expressions are evaluated normally, but neither string payload is inspected and
+no target or `ObjectHandle` is allocated. Null/empty path validation is therefore
+not CLR parity; linked-name activation remains a separate supported capability.
+The typed unreachable return preserves the managed `ObjectHandle` ABI.
