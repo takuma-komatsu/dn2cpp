@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (AssemblyExecutionGuards.Run(args)) return;
+if (AssemblyExecutionFixture.Run(args)) return;
 if (AppContextExitGuards.Run(args)) return;
 if (AppContextExitFixture.Run(args)) return;
 if (FunctionPointerArgumentsGuards.Run(args)) return;

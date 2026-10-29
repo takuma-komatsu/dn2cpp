@@ -1685,3 +1685,15 @@ observation refusals remain unchanged. This boundary does not provide public
 `ProcessExit` or `AssemblyLoadContext.Unloading` delivery. Throw-only NoAlloc
 admission follows the existing exception policy, not a physical allocation-free
 exception guarantee.
+
+### Retained private assembly execution
+
+The exact private CoreLib `AppDomain.ExecuteAssembly(Assembly, string[])` helper
+checks its assembly for null, then throws `PlatformNotSupportedException`:
+linked assembly identity does not provide exact entrypoint execution metadata.
+Arguments are evaluated normally, but the boundary reads no assembly or argument
+payload and invokes no entrypoint. Public name/path validation and assembly
+loading occur before this helper and remain unchanged. This refusal also covers
+linked-name execution; it does not change base or custom virtual
+`Assembly.EntryPoint` behavior or fabricate a missing entrypoint. Throw-only
+NoAlloc admission follows the existing exception policy.

@@ -459,5 +459,7 @@ internal static class Program
         FunctionPointerArgumentsSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-appcontext-exit") return;
         AppContextExitSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-assembly-execution") return;
+        AssemblyExecutionSubset.Program.Run();
     }
 }

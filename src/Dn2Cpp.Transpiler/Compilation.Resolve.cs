@@ -1519,6 +1519,20 @@ internal sealed partial class Compilation
                 || member.Module != resolved.Module || !CoreIntrinsics.BrCustomAttributeDataMember.Matches(resolved))
                 throw new NotSupportedException("CustomAttributeData member query requires its exact MemberRef signature");
         }
+        if (name == "ExecuteAssembly" && candidates.Any(CoreIntrinsics.IsAppDomainExecuteAssembly)
+            && (CoreIntrinsics.IsAppDomainExecuteAssembly(resolved)
+                || (sig.Header.RawValue == 0 && sig.ParameterTypes.Length == 2)
+                || sig.ParameterTypes is [{ Kind: TypeKind.Class, Class.FullName: "System.Reflection.Assembly" }, _]))
+        {
+            if (!CoreIntrinsics.IsAppDomainExecuteAssemblySignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }
+                || sig.ParameterTypes is not [
+                    { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.Assembly", IsValueType: false } assembly },
+                    { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String } }]
+                || assembly.Module != resolved.Module || !CoreIntrinsics.IsAppDomainExecuteAssembly(resolved))
+                throw new NotSupportedException("AppDomain assembly execution requires its exact MemberRef signature");
+        }
         if (name == "OnProcessExit" && candidates.Any(CoreIntrinsics.IsAppContextOnProcessExit))
         {
             if (!CoreIntrinsics.IsAppContextOnProcessExitSignature(reader.GetBlobReader(mr.Signature))
@@ -1817,6 +1831,12 @@ internal sealed partial class Compilation
                     return factory;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.AppDomain" && reader.StringComparer.Equals(mr.Name, "ExecuteAssembly"))
+        {
+            var execute = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsAppDomainExecuteAssembly(execute))
+                return execute;
         }
         if (full == "System.AppContext" && reader.StringComparer.Equals(mr.Name, "OnProcessExit"))
         {

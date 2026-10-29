@@ -649,6 +649,7 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleGetModule(mi)
             || IsRuntimeTypeHandleInstantiation(mi)
             || IsRuntimeTypeHandleInterfaces(mi)
+            || IsAppDomainExecuteAssembly(mi)
             || IsAppContextOnProcessExit(mi)
             || IsRuntimeTypeHandleFunctionPointerArguments(mi)
             || IsRuntimeTypeHandleFields(mi)
@@ -2095,6 +2096,41 @@ internal static partial class CoreIntrinsics
             && signature.ParameterTypes.Length == 0
             && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 };
     }
+
+    internal static bool IsAppDomainExecuteAssembly(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.AppDomain" || method.Name != "ExecuteAssembly"
+            || method.DeclaringClass.Handle.IsNil || method.Handle.IsNil
+            || method.Attributes != (System.Reflection.MethodAttributes.Private | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        var owner = method.Module.Reader.GetTypeDefinition(method.DeclaringClass.Handle);
+        if (!owner.GetDeclaringType().IsNil
+            || !method.Module.Reader.StringComparer.Equals(owner.Namespace, "System")
+            || !method.Module.Reader.StringComparer.Equals(owner.Name, "AppDomain")
+            || !IsAppDomainExecuteAssemblySignature(method.Module.Reader.GetBlobReader(
+                method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }
+            && signature.ParameterTypes is [
+                { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.Assembly", IsValueType: false } assembly },
+                { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String } }]
+            && assembly.Module == method.Module;
+    }
+
+    internal static bool IsAppDomainExecuteAssemblySignature(BlobReader blob) =>
+        blob.RemainingBytes >= 7 && blob.ReadByte() == 0 && blob.ReadByte() == 2
+        && blob.ReadByte() == (byte)SignatureTypeCode.Int32 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int assembly) && assembly > 0
+        && (assembly >> 2) != 0 && (assembly & 3) != 3
+        && blob.RemainingBytes == 2 && blob.ReadByte() == (byte)SignatureTypeCode.SZArray
+        && blob.ReadByte() == (byte)SignatureTypeCode.String;
 
     // CoreCLR shutdown orchestration is not a native process-exit registration.
     internal static bool IsAppContextOnProcessExit(MethodInfo method)

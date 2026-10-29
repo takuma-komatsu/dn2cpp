@@ -782,6 +782,18 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsAppDomainExecuteAssembly(callee))
+        {
+            var arguments = Pop();
+            var assembly = Pop();
+            // Argument expressions still run; the unsupported helper never reads their payloads.
+            Emit($"(void)({arguments.Expr});");
+            Emit($"if ({Cast(assembly, "const char*")} == nullptr) dn2cpp_throw_null_reference();");
+            Emit("dn2cpp_throw_platform_not_supported(\"AppDomain assembly entrypoint execution is not supported\");");
+            Push(StackKind.I4, "int32_t", "0"); // unreachable stack shape
+            return;
+        }
+
         if (CoreIntrinsics.IsAppContextOnProcessExit(callee))
         {
             Emit("dn2cpp_throw_platform_not_supported(\"AppContext process-exit orchestration is not supported\");");
