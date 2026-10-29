@@ -23,6 +23,9 @@
 # Former gates: datetime, datetime-now, datetime-parse, datetime-format,
 # datetime-tz, datetimeoffset.
 source "$(dirname "$0")/_common.sh"
+source "$(dirname "$0")/_abbreviated-day.sh"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_abbreviated-day.sh gates/fixtures/abbreviated-day samples/dotnet/DateTimeOps/AbbreviatedDaySubset.cs gates/fixtures/ldftn-local/AbbreviatedDayFixture.cs gates/fixtures/ldftn-local/AbbreviatedDayGuards.cs gates/fixtures/ldftn-local/RuntimeTypeDefaultCtorFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|abbreviated-day:invariant,raw,diet,reflection-only,minimal,NoAlloc-rejection|abbreviated-day-negatives:${DN2CPP_ABBREVIATED_DAY_NEGATIVES:-return byref address-return address-byref}"
 
 # Constructors, arithmetic, offset parsing and microseconds preserve fault fields.
 gate_extra_asserts() {
@@ -93,6 +96,13 @@ gate_extra_asserts() {
             gate_output compare "$native" "$expected"
         done
     fi
+    gate_capture_ok "$out/day-before" run_bounded "./$out/DateTimeOps$EXE_EXT" before-abbreviated-day
+    gate_capture_ok "$out/day-full" run_bounded "./$out/DateTimeOps$EXE_EXT"
+    gate_output select "$out/day-full.stdout" "$out/day-prefix.stdout" --before '== Abbreviated invariant day names ==' --policy crlf
+    gate_output compare "$out/day-prefix.stdout" "$out/day-before.stdout"
+    gate_output witness "$out/day-full.stdout" '== Abbreviated invariant day names ==' 'abbreviated-day-array-copy-neighbor:True' 'abbreviated-day-separator-clone-neighbor:True' --count 1 --policy crlf
+    abbreviated_day_focused_gate "$out/abbreviated-day"
+
 }
 
 corelib_diff_gate DateTimeOps

@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (AbbreviatedDayFixture.Run(args)) return;
+if (AbbreviatedDayGuards.Run(args)) return;
 if (Gen2CallbackFixture.Run(args)) return;
 if (Gen2CallbackInterpreterFixture.Run(args)) return;
 if (Gen2CallbackNegativeFixture.Run(args)) return;

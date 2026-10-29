@@ -3828,6 +3828,7 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsActivatorFrom(method)
                         || CoreIntrinsics.IsDefaultPrincipalAccessor(method)
                         || CoreIntrinsics.IsAppDomainExecuteAssembly(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedDayName(method)
                         || CoreIntrinsics.IsAppContextOnProcessExit(method)
                         || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(method)
                         || CoreIntrinsics.IsRuntimeTypeHandleFields(method)

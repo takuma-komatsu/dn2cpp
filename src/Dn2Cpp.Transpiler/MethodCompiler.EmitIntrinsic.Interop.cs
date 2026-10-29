@@ -436,6 +436,40 @@ internal sealed partial class MethodCompiler
     /// runtime plumbing, so there is nothing worth falling through to.</para></summary>
     private void EmitRuntimePrimitive(MethodInfo callee)
     {
+        if (CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedDayName(callee))
+        {
+            string day = NewTemp("int32_t");
+            Emit($"{day} = {Cast(Pop(), "int32_t")};");
+            string self = NewTemp("Dn2CppObject*");
+            Emit($"{self} = {Cast(Pop(), "Dn2CppObject*")};");
+            Emit($"dn2cpp_null_check({self});");
+            string range = Comp.SrResourceText(callee.Module, "ArgumentOutOfRange_Range")
+                ?? throw new NotSupportedException("Abbreviated day names require CoreLib's range resource");
+            range = range.Replace("{0}", "Sunday").Replace("{1}", "Saturday");
+            Comp.NoteTypeIdentityClosure(callee.Signature.ParameterTypes[0], keepSeed: false);
+            string ti = TypeInfoExpr(callee.Signature.ParameterTypes[0])
+                ?? throw new NotSupportedException("Abbreviated day names require DayOfWeek type metadata");
+            Emit($"if ((uint32_t){day} > 6u) {{");
+            string actual = NewTemp("Dn2CppObject*");
+            Emit($"    {actual} = dn2cpp_box({ti}, &{day}, sizeof({day}));");
+            string actualText = NewTemp("Dn2CppString*");
+            Emit($"    {actualText} = dn2cpp_format_int({day}, 4, nullptr);");
+            Emit($"    DN2CPP_WEB_GC_LIVENESS({actual});");
+            Emit($"    dn2cpp_throw_argument_out_of_range_actual(\"{CppLiteralBody(range)}\", \"dayofweek\", {actual}, {actualText});");
+            Emit("}");
+            // DTFI names follow the existing invariant policy. Literal roots avoid
+            // allocating a fresh seven-element array to return one name.
+            string result = NewTemp("Dn2CppString*");
+            string[] names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+            Emit($"switch ({day}) {{");
+            for (int i = 0; i < names.Length; i++)
+                Emit($"case {i}: {result} = {Literals.GetOrAdd(names[i])}; break;");
+            Emit($"default: {result} = nullptr; break;");
+            Emit("}");
+            Push(StackKind.Ref, "Dn2CppString*", result);
+            return;
+        }
+
         if (CoreIntrinsics.IsGen2GcCallbackRefusal(callee))
         {
             // Both arguments and the receiver were already evaluated. Never touch

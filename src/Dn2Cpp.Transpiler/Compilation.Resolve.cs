@@ -1558,6 +1558,13 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsGen2GcCallbackRefusal(resolved))
                 throw new NotSupportedException("Gen2GcCallback requires its exact MemberRef signature");
         }
+        if (name == "GetAbbreviatedDayName" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedDayName))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedDayNameSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedDayNameDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedDayName(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo abbreviated day name requires its exact MemberRef signature");
+        }
         if (name == "OnProcessExit" && candidates.Any(CoreIntrinsics.IsAppContextOnProcessExit))
         {
             if (!CoreIntrinsics.IsAppContextOnProcessExitSignature(reader.GetBlobReader(mr.Signature))
@@ -1892,6 +1899,12 @@ internal sealed partial class Compilation
             var execute = ResolveMemberRefMethod(module, handle, callerCtx);
             if (CoreIntrinsics.IsAppDomainExecuteAssembly(execute))
                 return execute;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "GetAbbreviatedDayName"))
+        {
+            var dayName = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedDayName(dayName))
+                return dayName;
         }
         if (full == "System.AppContext" && reader.StringComparer.Equals(mr.Name, "OnProcessExit"))
         {

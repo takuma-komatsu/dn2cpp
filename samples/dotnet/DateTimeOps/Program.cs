@@ -54,6 +54,9 @@ namespace DateTimeOps
             if (args.Length > 0 && args[0] == "before-daylight")
                 return;
             DateTimeDaylightSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-abbreviated-day")
+                return;
+            AbbreviatedDaySubset.Program.Run();
         }
     }
 }

@@ -1034,6 +1034,12 @@ its `GetFormat(Type)` implementation and accepts only a `NumberFormatInfo` resul
 other results fall back to the current culture. Allocation, identity conversion,
 and unrelated known-provider formatting do not retain unused provider bodies.
 
+DateTimeFormatInfo abbreviated weekday lookup follows the existing invariant
+name policy, not localized or user-modified name arrays. The exact public method
+uses rooted name literals, checks a null receiver before the day range, and
+preserves the boxed DayOfWeek value in range exceptions. Exceptional boxing
+remains subject to the conservative NoAlloc body classifier.
+
 Numeric culture data are frozen CLR/ICU snapshots in `runtime/core/intrinsics/`.
 Native binaries never discover or load the deployment host's ICU. Reference
 versions are explicit and checked by `gates/check-culture-reference.sh` in CI.
