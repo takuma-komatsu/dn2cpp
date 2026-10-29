@@ -165,6 +165,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsDateTimeFormatInfoEraName(m)
             || CoreIntrinsics.IsDateTimeFormatInfoInternalMonthName(m)
             || CoreIntrinsics.IsDateTimeFormatInfoCalendar(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoFormatFlags(m)
             || CoreIntrinsics.IsAppContextOnProcessExit(m)
             || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(m)
             || CoreIntrinsics.IsRuntimeTypeHandleFields(m)

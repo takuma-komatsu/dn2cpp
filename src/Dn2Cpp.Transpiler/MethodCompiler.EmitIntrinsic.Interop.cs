@@ -506,6 +506,18 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsDateTimeFormatInfoFormatFlags(callee))
+        {
+            DateTimeFormatReceiver();
+            // Invariant names contain no genitive differences, spaces or digit
+            // prefixes, and the invariant calendar has no Hebrew flags.
+            var result = callee.Signature.ReturnType;
+            Comp.NoteTypeIdentityClosure(result, keepSeed: false);
+            Push(StackKind.I4, "int32_t", "0");
+            Top = Top with { StaticType = result };
+            return;
+        }
+
         if (CoreIntrinsics.IsDateTimeFormatInfoCalendar(callee))
         {
             DateTimeFormatReceiver();

@@ -1586,6 +1586,13 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsDateTimeFormatInfoInternalMonthName(resolved))
                 throw new NotSupportedException("DateTimeFormatInfo internal month name requires its exact MemberRef signature");
         }
+        if (name == "get_FormatFlags" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoFormatFlags))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoFormatFlagsSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoFormatFlagsDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsDateTimeFormatInfoFormatFlags(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo FormatFlags requires its exact MemberRef signature");
+        }
         if (name == "get_Calendar" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoCalendar))
         {
             if (!CoreIntrinsics.IsDateTimeFormatInfoCalendarSignature(reader.GetBlobReader(mr.Signature))
@@ -1953,6 +1960,12 @@ internal sealed partial class Compilation
             var monthName = ResolveMemberRefMethod(module, handle, callerCtx);
             if (CoreIntrinsics.IsDateTimeFormatInfoInternalMonthName(monthName))
                 return monthName;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "get_FormatFlags"))
+        {
+            var formatFlags = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoFormatFlags(formatFlags))
+                return formatFlags;
         }
         if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "get_Calendar"))
         {

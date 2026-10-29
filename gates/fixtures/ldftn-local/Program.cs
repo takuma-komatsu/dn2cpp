@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (FormatFlagsFixture.Run(args)) return;
+if (FormatFlagsGuards.Run(args)) return;
 if (EraNameFixture.Run(args)) return;
 if (EraNameGuards.Run(args)) return;
 if (InternalMonthFixture.Run(args)) return;

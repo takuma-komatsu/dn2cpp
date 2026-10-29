@@ -1045,7 +1045,11 @@ fallback; invariant genitive names alias regular names, while the leap-year styl
 always selects full names even when abbreviation is requested. Exact full era-name
 lookup accepts invariant current era zero or era one and returns a rooted A.D.
 literal; invalid eras retain their original Int32 value and the era-specific
-exception message. It does not support localized eras or era abbreviations. DTFI Calendar access checks the receiver and
+exception message. It does not support localized eras or era abbreviations.
+The exact internal FormatFlags getter checks its receiver and returns the typed
+None enum derived from invariant name arrays and calendar conditions, without
+reading or writing the unmodeled cache field. Custom names and calendars are not
+modeled by this scalar policy. DTFI Calendar access checks the receiver and
 throws PlatformNotSupportedException: native DTFI allocations do not construct
 Calendar backing state. It never exposes that absent field as a successful null
 calendar, and does not add calendar identity, cloning or Hebrew-formatting support.
