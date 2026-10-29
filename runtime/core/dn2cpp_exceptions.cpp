@@ -1021,6 +1021,13 @@ void dn2cpp_throw_platform_not_supported(const char* message)
         dn2cpp_string_from_utf8(message, static_cast<int32_t>(std::strlen(message))), nullptr));
 }
 
+// A permanent capability boundary, independent of reflection preservation.
+void dn2cpp_require_allocation_supported(const Dn2CppTypeInfo* ti)
+{
+    if (ti != nullptr && (ti->reflection().activation & DN2CPP_TA_ALLOCATION_UNSUPPORTED) != 0)
+        dn2cpp_throw_platform_not_supported("Allocation of this runtime type is not supported");
+}
+
 // The DN2CPP_TF_LAYOUT_UNKNOWN guard. See the flag's doc in dn2cpp_core.h for why a
 // stamped 1 must not be answered and why the test is the bit rather than the number.
 void dn2cpp_require_layout(const Dn2CppTypeInfo* ti)

@@ -288,6 +288,7 @@ Dn2CppObject* dn2cpp_object_memberwise_clone(Dn2CppObject* obj)
     if (obj == nullptr)
         dn2cpp_throw_null_reference();
     const Dn2CppTypeInfo* t = obj->type;
+    dn2cpp_require_allocation_supported(t);
     if (t == &dn2cpp_string_type)
     {
         auto* s = reinterpret_cast<Dn2CppString*>(obj);

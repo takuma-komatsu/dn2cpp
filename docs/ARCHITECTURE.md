@@ -382,6 +382,15 @@ Core invariants:
   Existing layout size, alignment and overlap validation remains authoritative.
   Boolean, character, native-sized integer, floating, reference, pointer, nested
   value and inline-array fields are outside this explicit-layout subset.
+- **Unsupported allocation capability is independent of retention.** The sealed
+  CoreLib `Gen2GcCallback` type carries a permanent cold activation refusal bit,
+  including minimal type handles and trimmed/hot-update metadata. Reflective
+  construction, uninitialized allocation, clone and imported interpreter `newobj`
+  refuse before allocating the target or registering its finalizer; static `newobj`
+  remains a compile-time refusal. Retained constructors and finalizer have explicit
+  throwing bodies, never successful no-ops or silently null finalizer slots.
+  Existing `Register` policy remains unchanged; this does not implement Gen2 GC
+  notifications. The sealed-base loader restriction closes patch-defined inheritance.
 - **Non-generic CoreLib GCHandle equality uses its opaque handle-cell identity**,
   including comparer and structural-field paths. Copies compare equally; separate
   handles to the same target do not. Equality and hashing use the existing token

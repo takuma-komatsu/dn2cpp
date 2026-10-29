@@ -174,6 +174,7 @@
 # widens the call lands on the invmiss_ stub and raises the same exception.
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_hotupdate-signature-arguments.sh"
+source "$(dirname "$0")/_gen2-gate.sh"
 hotupdate_python=$(resolve_python) || gate_skip "no working Python 3 interpreter for import fixtures"
 
 OUT=artifacts/hotupdate-subset
@@ -382,7 +383,7 @@ grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
 # against the REAL net10.0 CoreLib, so which CoreLib that resolves to is an input
 # of this gate the same way it is of net10_bcl_diff_gate — a runtime bump must
 # not be served a green recorded against the previous one.
-if gate_cache_check "$OUT" "hotupdate-subset|abort-host:$DN2CPP_OS|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|patch-method-identities:private-rows/roundtrip/virtual-override/invoke/refusal-variant/metadata-v4|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/intrinsic-bcl/corelib/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:packed/native/register/stack/fields/field-address-refusal|carried-attribute-type-infos" \
+if gate_cache_check "$OUT" "hotupdate-subset|abort-host:$DN2CPP_OS|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|patch-method-identities:private-rows/roundtrip/virtual-override/invoke/refusal-variant/metadata-v4|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/intrinsic-bcl/corelib/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:packed/native/register/stack/fields/field-address-refusal|carried-attribute-type-infos|gen2-retained:raw,diet,reflection,register,stack,sealed,object-admission,malformed-ctor0-return-final-static,newobj-direct-noalloc-calli-rejection|gen2-counters:${DN2CPP_GEN2_ALLOC_COUNTERS:-0}" \
         "$base_app" "$patch_app" "$bad_app" "$badgvm_app" "$baditf_app" "$baddg_app" \
         "$concat_oracle_app" \
         "$signature_arguments_base" "$signature_arguments_patch" "$signature_arguments_address" gates/_hotupdate-signature-arguments.sh \
@@ -410,7 +411,8 @@ if gate_cache_check "$OUT" "hotupdate-subset|abort-host:$DN2CPP_OS|cli:$(_gate_c
         gates/fixtures/hotupdate-import-identity/mutate-native-rows.py \
         gates/fixtures/hotupdate-import-identity/set-bpi-version.py \
         gates/fixtures/hotupdate-import-identity/mutate-method-metadata.py \
-        gates/fixtures/hotupdate-import-identity/clear-aggregate-ctor-bodies.py; then
+        gates/fixtures/hotupdate-import-identity/clear-aggregate-ctor-bodies.py \
+        "${GEN2_GATE_INPUTS[@]}"; then
     gate_cache_hit_msg
     exit 0
 fi
@@ -2528,5 +2530,7 @@ echo "OK (renamed Object and Finalize refusals, loaded method identity and bodie
 # Provider imports retain the managed parameter/return/field ABI with loaded CoreLib.
 hotupdate_signature_argument_roundtrip "$signature_arguments_base" "$signature_arguments_patch" \
     "$OUT/signature-arguments" "$signature_arguments_address"
+
+gen2_retained_boundary_gate "$OUT/gen2-retained"
 
 gate_cache_commit

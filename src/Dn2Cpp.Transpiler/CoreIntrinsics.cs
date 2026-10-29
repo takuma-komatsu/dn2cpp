@@ -711,13 +711,10 @@ internal static partial class CoreIntrinsics
         // Utilities.GetMemoryPressure -> Low. Its real body reads GC.GetGCMemoryInfo — native GC
         // accounting dn2cpp does not model.
         "System.Buffers.Utilities" => name == "GetMemoryPressure",
-        // Gen2GcCallback: the WHOLE class, name ignored. Register(Func<bool>) is a no-op (Boehm
-        // has no gen2-notification hook, and pool trimming is QoS, not contract — parked buffers
-        // simply stay parked), the class is never instantiated because Register is the only thing
-        // that constructs it, and cutting it keeps its CriticalFinalizerObject/WeakGCHandle
-        // machinery out of the tree. Naming the CLASS rather than the one member routes every
-        // member into EmitRuntimePrimitive, where everything but Register hits the throw — so no
-        // other member can fall through to a body the cut deleted.
+        // Gen2GcCallback remains a whole-class cut: Register preserves the existing
+        // no-notification policy for ArrayPool/ThreadPool. Exact retained constructors
+        // and Finalize refuse; the type has a permanent preallocation capability fence.
+        // Unsupported sibling shapes still fail rather than reviving CLR callback IL.
         "System.Gen2GcCallback" => true,
         // Buffer's byte-granular surface -> dn2cpp_buffer_blockcopy / _bytelength /
         // _getbyte / _setbyte / std::memmove / std::memset. BlockCopy's and ByteLength's real

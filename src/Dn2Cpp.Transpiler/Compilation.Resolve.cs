@@ -1551,6 +1551,13 @@ internal sealed partial class Compilation
                 || assembly.Module != resolved.Module || !CoreIntrinsics.IsAppDomainExecuteAssembly(resolved))
                 throw new NotSupportedException("AppDomain assembly execution requires its exact MemberRef signature");
         }
+        if (name is ".ctor" or "Finalize" && candidates.Any(CoreIntrinsics.IsGen2GcCallbackRefusal))
+        {
+            if (!CoreIntrinsics.IsGen2GcCallbackSignature(reader.GetBlobReader(mr.Signature), name)
+                || !CoreIntrinsics.IsGen2GcCallbackDecodedSignature(sig, resolved.Module, name)
+                || !CoreIntrinsics.IsGen2GcCallbackRefusal(resolved))
+                throw new NotSupportedException("Gen2GcCallback requires its exact MemberRef signature");
+        }
         if (name == "OnProcessExit" && candidates.Any(CoreIntrinsics.IsAppContextOnProcessExit))
         {
             if (!CoreIntrinsics.IsAppContextOnProcessExitSignature(reader.GetBlobReader(mr.Signature))

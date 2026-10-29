@@ -1529,6 +1529,7 @@ internal sealed partial class CppEmitter
                     Interfaces = interfaces, InterfaceCount = interfaceCount,
                     ToStringFn = toString, HashFn = getHash, EqualsFn = equals, Flags = flags,
                     GenericDef = genericDef, GenericArgs = genericArgs, GenericArgCount = genericCount,
+                    Activation = CoreIntrinsics.IsGen2GcCallbackType(c) ? AllocationUnsupported : 0,
                 });
             }
         }
@@ -2586,7 +2587,7 @@ internal sealed partial class CppEmitter
             return bits;
         }
 
-        private const int OmittedPublicDefaultCtor = 0x1, OmittedNonPublicDefaultCtor = 0x2, Unallocated = 0x4;
+        private const int OmittedPublicDefaultCtor = 0x1, OmittedNonPublicDefaultCtor = 0x2, Unallocated = 0x4, AllocationUnsupported = 0x8;
 
         // Dn2CppTypeReflection::activation: the constructors without a row, and whether
         // reflection may make an instance of the type (for a struct, a box of it; for a
@@ -2594,6 +2595,10 @@ internal sealed partial class CppEmitter
         private int ActivationBits(ClassInfo cls)
         {
             int bits = OmittedCtorBits(cls);
+            // A permanent runtime capability refusal, independent of retention/hot-update.
+            if (CoreIntrinsics.IsGen2GcCallbackType(cls))
+                bits |= AllocationUnsupported; // DN2CPP_TA_ALLOCATION_UNSUPPORTED
+
             if (!_e._hotUpdateBase
                 && (cls.IsValueType ? _e.UnallocatedUserStruct(cls) : _e.UnallocatedUserClass(cls)) is not null)
                 bits |= Unallocated;

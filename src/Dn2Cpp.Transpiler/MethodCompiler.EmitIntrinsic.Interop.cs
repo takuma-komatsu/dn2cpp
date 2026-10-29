@@ -436,6 +436,16 @@ internal sealed partial class MethodCompiler
     /// runtime plumbing, so there is nothing worth falling through to.</para></summary>
     private void EmitRuntimePrimitive(MethodInfo callee)
     {
+        if (CoreIntrinsics.IsGen2GcCallbackRefusal(callee))
+        {
+            // Both arguments and the receiver were already evaluated. Never touch
+            // fields or construct a weak handle; allocation is fenced independently.
+            for (int i = 0; i < callee.Signature.ParameterTypes.Length + 1; i++)
+                Emit($"(void)({Pop().Expr});");
+            Emit("dn2cpp_throw_platform_not_supported(\"Gen2 GC notification objects are not supported\");");
+            return;
+        }
+
         if (CoreIntrinsics.IsCoreClrTypeMaterialization(callee))
         {
             EmitCoreClrTypeMaterialization(callee);
@@ -1615,10 +1625,10 @@ internal sealed partial class MethodCompiler
     /// heuristic consumes it, degrading trimming to time-based-only;</item>
     /// <item><c>Gen2GcCallback.Register(Func&lt;bool&gt;)</c> /
     /// <c>Register(Func&lt;object,bool&gt;, object)</c> → a no-op (drop the delegate).
-    /// Boehm has no gen2-notification hook; the only framework use is ArrayPool trim
-    /// scheduling, and pool trimming is QoS, not contract — parked buffers simply stay
-    /// parked. Cutting the class also keeps its CriticalFinalizerObject/WeakGCHandle
-    /// machinery out of the tree.</item>
+    /// Boehm has no gen2-notification hook. Existing ArrayPool and ThreadPool callers
+    /// keep this bounded policy; it is not a claim of Gen2 notification parity.
+    /// The separately retained constructors/finalizer refuse, and allocation is
+    /// prohibited before finalizer registration.</item>
     /// </list></summary>
     private bool TryEmitArrayPoolRuntimePrimitive(MethodInfo callee)
     {

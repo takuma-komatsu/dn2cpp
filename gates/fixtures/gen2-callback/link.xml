@@ -1,0 +1,8 @@
+<linker>
+  <assembly fullname="System.Private.CoreLib">
+    <type fullname="System.Gen2GcCallback" preserve="nothing">
+      <method name=".ctor" />
+      <method name="Finalize" />
+    </type>
+  </assembly>
+</linker>

@@ -2,6 +2,10 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (Gen2CallbackFixture.Run(args)) return;
+if (Gen2CallbackInterpreterFixture.Run(args)) return;
+if (Gen2CallbackNegativeFixture.Run(args)) return;
+if (Gen2CallbackGuards.Run(args)) return;
 if (IntegralUnionFixture.Run(args)) return;
 if (GCHandleEqualityGuards.Run(args)) return;
 if (StructuralPointerFixture.Run(args)) return;

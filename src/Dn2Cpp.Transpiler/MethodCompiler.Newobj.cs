@@ -2198,14 +2198,20 @@ internal sealed partial class MethodCompiler
             return;
         }
 
-        // A class the reachability cut deletes WHOLESALE (Gen2GcCallback; the compiled-Regex
+        // A class the reachability cut deletes WHOLESALE (the compiled-Regex
         // classes) has no .ctor body either, so a newobj of it would call a symbol nothing
         // emitted — the same C++ link error the call path rules out, arriving through the
         // other door. Both are dead today, which is precisely why opening a path to one must
         // fail here rather than at link time. The name-keyed families are unaffected:
         // ".ctor" is in none of their name sets.
+        // Gen2GcCallback has callable refusal bodies, but must still reject newobj
+        // BEFORE the generic path allocates and registers a finalizer.
         if (CoreIntrinsics.LoweredRuntimePrimitive(ctor.DeclaringClass.FullName, ctor.Name))
         {
+            if (CoreIntrinsics.IsGen2GcCallbackRefusal(ctor))
+                throw new NotSupportedException(
+                    $"{_method.DeclaringClass.FullName}.{_method.Name}: newobj System.Gen2GcCallback "
+                    + "— native allocation of Gen2 GC notification objects is not supported.");
             throw new NotSupportedException(
                 $"{_method.DeclaringClass.FullName}.{_method.Name}: newobj "
                 + $"{ctor.DeclaringClass.FullName} — the reachability cut deletes this class "

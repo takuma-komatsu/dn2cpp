@@ -1016,6 +1016,7 @@ Dn2CppObject* dn2cpp_get_uninitialized_object(Dn2CppType* t)
         dn2cpp_throw_platform_not_supported("Reflection: the constraint type has no runtime layout");
     if ((ti->flags & DN2CPP_TF_BYREFLIKE) != 0)
         dn2cpp_throw_not_supported_msg("Cannot create boxed ByRef-like values.");
+    dn2cpp_require_allocation_supported(ti);
     if (dn2cpp_unallocated(ti))
         dn2cpp_throw_unallocated(ti, dn2cpp_utf8_of(dn2cpp_type_tostring(ti)), "GetUninitializedObject");
     // An exception type floors at the exception prefix, not the bare header: an
@@ -8358,6 +8359,7 @@ static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodIn
     }
     if ((plan.flags & Dn2CppInvokePlan::kUnallocatedBox) != 0)
         dn2cpp_throw_invoke_unallocated_box(mi, plan, ti);
+    dn2cpp_require_allocation_supported(ti);
     bool isValue = (ti->flags & DN2CPP_TF_VALUETYPE) != 0;
     size_t sz = isValue ? sizeof(Dn2CppObject) + static_cast<size_t>(ti->instanceSize)
                         : static_cast<size_t>(ti->instanceSize);
