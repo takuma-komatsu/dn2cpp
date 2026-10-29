@@ -437,9 +437,20 @@ internal sealed partial class MethodCompiler
     private void EmitRuntimePrimitive(MethodInfo callee)
     {
         if (CoreIntrinsics.IsDateTimeFormatInfoDayName(callee)
-            || CoreIntrinsics.IsDateTimeFormatInfoMonthName(callee))
+            || CoreIntrinsics.IsDateTimeFormatInfoMonthName(callee)
+            || CoreIntrinsics.IsDateTimeFormatInfoInternalMonthName(callee))
         {
-            bool month = callee.Name is "GetAbbreviatedMonthName" or "GetMonthName";
+            bool internalMonth = CoreIntrinsics.IsDateTimeFormatInfoInternalMonthName(callee);
+            bool month = internalMonth || callee.Name is "GetAbbreviatedMonthName" or "GetMonthName";
+            string? abbreviated = null;
+            string? style = null;
+            if (internalMonth)
+            {
+                abbreviated = NewTemp("int32_t");
+                Emit($"{abbreviated} = {Cast(Pop(), "int32_t")};");
+                style = NewTemp("int32_t");
+                Emit($"{style} = {Cast(Pop(), "int32_t")};");
+            }
             string index = NewTemp("int32_t");
             Emit($"{index} = {Cast(Pop(), "int32_t")};");
             string self = NewTemp("Dn2CppObject*");
@@ -462,7 +473,7 @@ internal sealed partial class MethodCompiler
             // DTFI names follow the existing invariant policy. Literal roots avoid
             // allocating a fresh name array to return one name.
             string result = NewTemp("Dn2CppString*");
-            string[] names = callee.Name == "GetMonthName"
+            string[] names = internalMonth || callee.Name == "GetMonthName"
                 ? ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December", ""]
                 : month
                 ? ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", ""]
@@ -470,8 +481,16 @@ internal sealed partial class MethodCompiler
                 ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
                 : ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
             Emit($"switch ({index}) {{");
+            string[] shortMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", ""];
             for (int i = 0; i < names.Length; i++)
-                Emit($"case {i + (month ? 1 : 0)}: {result} = {Literals.GetOrAdd(names[i])}; break;");
+            {
+                string value = Literals.GetOrAdd(names[i]);
+                // Invariant genitive names alias regular names; leap-year names
+                // always alias full names, regardless of the abbreviation flag.
+                if (internalMonth)
+                    value = $"({style} != 2 && {abbreviated} != 0) ? {Literals.GetOrAdd(shortMonths[i])} : {value}";
+                Emit($"case {i + (month ? 1 : 0)}: {result} = {value}; break;");
+            }
             Emit($"default: {result} = nullptr; break;");
             Emit("}");
             Push(StackKind.Ref, "Dn2CppString*", result);

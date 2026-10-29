@@ -1232,6 +1232,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsGen2GcCallbackRegister(_method)
             || CoreIntrinsics.IsDateTimeFormatInfoDayName(_method)
             || CoreIntrinsics.IsDateTimeFormatInfoMonthName(_method)
+            || CoreIntrinsics.IsDateTimeFormatInfoInternalMonthName(_method)
             || CoreIntrinsics.IsDateTimeFormatInfoCalendar(_method)
             || CoreIntrinsics.IsAppContextOnProcessExit(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(_method)

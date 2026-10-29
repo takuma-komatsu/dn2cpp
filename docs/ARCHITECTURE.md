@@ -1036,11 +1036,13 @@ and unrelated known-provider formatting do not retain unused provider bodies.
 
 DateTimeFormatInfo full and abbreviated weekday and month lookup
 follow the existing invariant name policy, not localized or user-modified name
-arrays. The exact public methods use rooted name literals and check a null receiver
+arrays. The exact public methods and internal month selector use rooted name literals and check a null receiver
 before the range. Month indices are one-based, with an empty thirteenth name;
 range checks avoid signed overflow. Range exceptions preserve the original boxed
 DayOfWeek or Int32 argument. Exceptional boxing remains subject to the conservative
-NoAlloc body classifier. DTFI Calendar access checks the receiver and
+NoAlloc body classifier. The internal month selector preserves unknown-style
+fallback; invariant genitive names alias regular names, while the leap-year style
+always selects full names even when abbreviation is requested. DTFI Calendar access checks the receiver and
 throws PlatformNotSupportedException: native DTFI allocations do not construct
 Calendar backing state. It never exposes that absent field as a successful null
 calendar, and does not add calendar identity, cloning or Hebrew-formatting support.
