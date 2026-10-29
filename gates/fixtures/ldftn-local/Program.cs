@@ -2,6 +2,7 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (IntegralUnionFixture.Run(args)) return;
 if (GCHandleEqualityGuards.Run(args)) return;
 if (StructuralPointerFixture.Run(args)) return;
 if (DefaultPrincipalPublicSmokeFixture.Run(args)) return;

@@ -35,10 +35,11 @@
 # Former gates: dict, dict-api, dict-enum, dict-more, dict-string, hashset,
 # hashkey, sorted-collections, join-enumerable-subset,
 # ordinal-stringset-dedup-subset, struct-key-subset, valuetuple-key-dict-subset.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_gchandle-equality.sh gates/fixtures/gchandle-equality/check-generated.py gates/fixtures/ldftn-local/GCHandleEqualityGuards.cs gates/fixtures/structural-pointer/check-generated.py gates/_structural-pointer.sh gates/fixtures/structural-pointer-negative/PointerNegative.csproj gates/fixtures/structural-pointer-negative/Program.cs gates/fixtures/ldftn-local/StructuralPointerFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_integral-union.sh gates/fixtures/integral-union/check-generated.py gates/fixtures/ldftn-local/IntegralUnionFixture.cs gates/fixtures/integral-union-negative/IntegralUnionNegative.csproj gates/fixtures/integral-union-negative/Program.cs gates/_gchandle-equality.sh gates/fixtures/gchandle-equality/check-generated.py gates/fixtures/ldftn-local/GCHandleEqualityGuards.cs gates/fixtures/structural-pointer/check-generated.py gates/_structural-pointer.sh gates/fixtures/structural-pointer-negative/PointerNegative.csproj gates/fixtures/structural-pointer-negative/Program.cs gates/fixtures/ldftn-local/StructuralPointerFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_structural-pointer.sh"
 source "$(dirname "$0")/_gchandle-equality.sh"
+source "$(dirname "$0")/_integral-union.sh"
 
 # System.Collections.NonGeneric carries the non-generic SortedList (NonGenericSortedListSubset);
 # the generic collections come from System.Collections; System.Collections.Immutable
@@ -47,6 +48,7 @@ source "$(dirname "$0")/_gchandle-equality.sh"
 # Default order and equality preserve the earlier bucket and run the appended cases.
 gate_extra_asserts() {
     local out="$1" native before prefix line
+    python3 gates/fixtures/integral-union/check-generated.py "$out" --self-test
     python3 gates/fixtures/structural-pointer/check-generated.py "$out"
     python3 gates/fixtures/gchandle-equality/check-generated.py "$out"
     gate_capture_ok "$out/assert-native-1" run_bounded "./$out/DictCollections"
@@ -74,6 +76,10 @@ gate_extra_asserts() {
     gate_output select "$native" "$out/assert-gchandle-prefix.stdout" --before 'gchandle-equality-copy:True' --policy crlf
     gate_output compare "$out/assert-gchandle-prefix.stdout" "$out/assert-before-gchandle.stdout"
     gate_output witness "$native" 'gchandle-equality-checks:39' --count 1 --policy crlf
+    gate_capture_ok "$out/assert-before-integral-union" run_bounded dotnet "$_CG_APP" before-integral-union
+    gate_output select "$native" "$out/assert-integral-union-prefix.stdout" --before 'integral-union-mirror-equal:True' --policy crlf
+    gate_output compare "$out/assert-integral-union-prefix.stdout" "$out/assert-before-integral-union.stdout"
+    gate_output witness "$native" 'integral-union-checks:38' --count 1 --policy crlf
     for line in '== default comparison validation ==' \
         '== default equality mouths ==' \
         'default equality mouths end' \
@@ -97,3 +103,6 @@ build_gate_proj gates/fixtures/structural-pointer-negative/PointerNegative.cspro
 structural_pointer_negative_gate "artifacts/structural-pointer-negative-$CONFIG" "gates/fixtures/structural-pointer-negative/bin/$CONFIG/$TFM"
 
 gchandle_equality_guards_gate "artifacts/gchandle-equality-guards-$CONFIG"
+
+build_gate_proj gates/fixtures/integral-union-negative/IntegralUnionNegative.csproj
+integral_union_negative_gate "artifacts/integral-union-negative-$CONFIG" "gates/fixtures/integral-union-negative/bin/$CONFIG/$TFM"

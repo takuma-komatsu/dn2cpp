@@ -1383,8 +1383,8 @@ internal sealed partial class Compilation
     /// <summary>Whether a value type is shaped so that a field walk is even meaningful.
     /// The carve-outs, and why each one is one:
     /// <list type="bullet">
-    /// <item>explicit layout — overlapping fields are a union; walking them double-counts
-    /// the bytes, and .NET's own memcmp fast path declines such a type too;</item>
+    /// <item>explicit layout — only fixed-width integral fields have a supported
+    /// field walk; overlapping aliases contribute redundant but consistent values;</item>
     /// <item><c>[InlineArray(N)]</c> — the one declared field stands for N elements;</item>
     /// <item>ref struct — never boxed, and never a key;</item>
     /// <item>intrinsic-mapped (BOTH tests: the name table misses a closed generic
@@ -1395,10 +1395,32 @@ internal sealed partial class Compilation
     /// emit site (MethodCompiler) is what routes those to per-instantiation bodies.</item>
     /// </list></summary>
     private static bool SynthesizableShape(ClassInfo c) =>
-        c.IsValueType && !c.IsEnum && !c.IsByRefLike && !c.IsExplicitLayout
+        c.IsValueType && !c.IsEnum && !c.IsByRefLike
         && c.InlineArrayLength == 0
         && !CoreIntrinsics.IsIntrinsicType(c.FullName) && c.IntrinsicCppName is null
-        && !ContainsCanonPlaceholder(c);
+        && !ContainsCanonPlaceholder(c)
+        && (!c.IsExplicitLayout || HasIntegralExplicitFields(c));
+
+    private static bool HasIntegralExplicitFields(ClassInfo c)
+    {
+        bool any = false;
+        foreach (var field in StructuralFields(c))
+        {
+            if (field.ExplicitOffset < 0 || field.ByValArraySize >= 0)
+                return false;
+            var t = field.Type;
+            var code = t.Kind == TypeKind.Primitive ? t.Primitive
+                : t is { Kind: TypeKind.Class, Class: { IsEnum: true } e }
+                    ? e.EnumUnderlying : PrimitiveTypeCode.Void;
+            if (code is not (PrimitiveTypeCode.SByte or PrimitiveTypeCode.Byte
+                or PrimitiveTypeCode.Int16 or PrimitiveTypeCode.UInt16
+                or PrimitiveTypeCode.Int32 or PrimitiveTypeCode.UInt32
+                or PrimitiveTypeCode.Int64 or PrimitiveTypeCode.UInt64))
+                return false;
+            any = true;
+        }
+        return any;
+    }
 
     // The two abstract roots System.Enum / System.ValueType need no carve-out here, and
     // the invariant that keeps it that way lives one level up: BOTH are modeled as

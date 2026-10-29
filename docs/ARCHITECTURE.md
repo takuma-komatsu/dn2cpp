@@ -374,8 +374,14 @@ Core invariants:
   struct's raw bytes. The matching hash folds a pointer-sized unsigned address
   after widening to 64 bits; equal values hash equally, without promising CLR
   numeric hash parity or stability between processes. Function-pointer and byref
-  fields, explicit-layout unions and other unsupported structural layouts remain
-  excluded. This field rule does not admit general pointer keys or ordering.
+  fields and unsupported structural layouts remain excluded. This field rule does not admit general pointer keys or ordering.
+- **Explicit-layout structural equality is limited to fixed-width integer and
+  integer-backed enum fields.** Each field is copied from its declared offset into
+  scalar storage before comparison or hashing, avoiding inactive C++ union reads.
+  Overlapping aliases may contribute repeatedly; padding never contributes.
+  Existing layout size, alignment and overlap validation remains authoritative.
+  Boolean, character, native-sized integer, floating, reference, pointer, nested
+  value and inline-array fields are outside this explicit-layout subset.
 - **Non-generic CoreLib GCHandle equality uses its opaque handle-cell identity**,
   including comparer and structural-field paths. Copies compare equally; separate
   handles to the same target do not. Equality and hashing use the existing token

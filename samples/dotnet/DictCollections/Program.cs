@@ -47,6 +47,9 @@ namespace DictCollections
             if (args.Length > 0 && args[0] == "before-gchandle-equality")
                 return;
             GCHandleEqualitySubset.Program.__GateEntry();
+            if (args.Length > 0 && args[0] == "before-integral-union")
+                return;
+            IntegralUnionSubset.Program.__GateEntry();
         }
     }
 }

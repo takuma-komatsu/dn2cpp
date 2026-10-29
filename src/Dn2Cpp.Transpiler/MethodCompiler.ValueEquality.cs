@@ -9,9 +9,8 @@ namespace Dn2Cpp;
 /// <para>It matches .NET bit for bit because .NET takes its <c>memcmp</c> fast path only
 /// when the type has no GC pointers, no padding, no float/double and no field whose type
 /// overrides <c>Equals</c> — exactly the conditions under which memcmp and a field walk are
-/// the same function. The one shape where they genuinely part is an explicit-layout union,
-/// whose overlapping fields a walk double-counts; carved out by
-/// <c>Compilation.SynthesizableShape</c>.</para>
+/// the same function. Explicit integral layouts instead read each declared field's
+/// storage bytes, excluding padding; other explicit layouts remain unsupported.</para>
 ///
 /// <para><c>ValueType.Equals</c> boxes each field and calls the <b>Object-virtual</b>
 /// <c>Equals(object)</c> on it, NOT <c>IEquatable&lt;T&gt;.Equals(T)</c> — so a struct field
@@ -66,6 +65,13 @@ internal sealed partial class MethodCompiler
         string ct = cls.CppStructName;
         var recv = new StackEntry("a0", StackKind.Ptr, ct + "*");
         var other = new StackEntry("a1", StackKind.Struct, ct);
+        if (cls.IsExplicitLayout)
+        {
+            foreach (var f in Compilation.StructuralFields(cls))
+                Emit($"if (!({StructuralFieldEqualsExpr(cls, f, recv, other)})) return 0;");
+            Emit("return 1;");
+            return RenderWrapperBody("synthesized ValueType field-by-field equality");
+        }
         var terms = new List<string>();
         foreach (var f in Compilation.StructuralFields(cls))
             terms.Add(StructuralFieldEqualsExpr(cls, f, recv, other));
@@ -96,15 +102,25 @@ internal sealed partial class MethodCompiler
     private string StructuralFieldEqualsExpr(ClassInfo cls, FieldInfo f, StackEntry recv, StackEntry other)
     {
         var t = f.Type;
-        // The DECLARED spelling, not the site-resolved one: under a shared struct layout a
-        // reference field carries the canonical owner's erased Dn2CppObject*, and Cast is
-        // what reconciles the two (MethodCompiler.LayoutFieldType).
-        string decl = LayoutFieldType(cls, f);
-        var x = new StackEntry(FieldAccess(cls, f, recv), CppTypes.KindOf(t), decl);
-        var y = new StackEntry(FieldAccess(cls, f, other), CppTypes.KindOf(t), decl);
+        var x = StructuralFieldValue(cls, f, recv);
+        var y = StructuralFieldValue(cls, f, other);
         return StructuralEqualsExpr(t, x, y)
             ?? throw new NotSupportedException(
                 $"{cls.FullName}.{Method.Name}: field {f.Name} of type {t} has no structural equality");
+    }
+
+    private StackEntry StructuralFieldValue(ClassInfo cls, FieldInfo field, StackEntry owner)
+    {
+        // Preserve the declared spelling under a canonically shared outer layout.
+        string storage = LayoutFieldType(cls, field);
+        if (!cls.IsExplicitLayout)
+            return new StackEntry(FieldAccess(cls, field, owner), CppTypes.KindOf(field.Type), storage);
+        // Read only the admitted integral field, not an inactive C++ union member or padding.
+        // The existing layout emitter remains responsible for extent/alignment validation.
+        string address = owner.Kind == StackKind.Struct ? $"&({owner.Expr})" : owner.Expr;
+        string value = NewTemp(storage);
+        Emit($"std::memcpy(&{value}, (const uint8_t*)({address}) + {field.ExplicitOffset}, sizeof({storage}));");
+        return new StackEntry(value, CppTypes.KindOf(field.Type), storage);
     }
 
     /// <summary>The equality of two addressable lvalues of one type, under
@@ -172,7 +188,7 @@ internal sealed partial class MethodCompiler
     private string StructuralFieldHashExpr(ClassInfo cls, FieldInfo f, StackEntry recv)
     {
         var t = f.Type;
-        var x = new StackEntry(FieldAccess(cls, f, recv), CppTypes.KindOf(t), LayoutFieldType(cls, f));
+        var x = StructuralFieldValue(cls, f, recv);
         return StructuralHashExpr(t, x)
             ?? throw new NotSupportedException(
                 $"{cls.FullName}.{Method.Name}: field {f.Name} of type {t} has no structural hash");
