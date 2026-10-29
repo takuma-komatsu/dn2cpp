@@ -784,11 +784,12 @@ internal sealed partial class MethodCompiler
 
         if (CoreIntrinsics.IsActivatorFrom(callee))
         {
-            var typeName = Pop();
-            var assemblyFile = Pop();
-            // Preserve evaluated arguments without reading either string payload.
-            Emit($"(void)({assemblyFile.Expr});");
-            Emit($"(void)({typeName.Expr});");
+            var arguments = new StackEntry[callee.Signature.ParameterTypes.Length];
+            for (int i = arguments.Length - 1; i >= 0; i--)
+                arguments[i] = Pop();
+            // The loader fails before any path, type, flags or binder validation.
+            foreach (var argument in arguments)
+                Emit($"(void)({argument.Expr});");
             Emit("dn2cpp_throw_platform_not_supported(\"Assembly.LoadFrom is not available in AOT-compiled code (no assembly loading)\");");
             var result = callee.Signature.ReturnType;
             Push(StackKind.Ref, CppTypes.Of(result), "nullptr"); // unreachable stack shape

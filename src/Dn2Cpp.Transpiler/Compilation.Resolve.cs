@@ -1521,7 +1521,7 @@ internal sealed partial class Compilation
                 throw new NotSupportedException("CustomAttributeData member query requires its exact MemberRef signature");
         }
         if (name == "CreateInstanceFrom" && candidates.Any(CoreIntrinsics.IsActivatorFrom)
-            && sig.ParameterTypes.Length == 2)
+            && sig.ParameterTypes.Length is 2 or 8)
         {
             if (!CoreIntrinsics.IsActivatorFromSignature(reader.GetBlobReader(mr.Signature))
                 || !CoreIntrinsics.IsActivatorFromDecodedSignature(sig, resolved.Module)
@@ -1858,7 +1858,7 @@ internal sealed partial class Compilation
             var header = blob.ReadSignatureHeader();
             if (header.IsGeneric)
                 blob.ReadCompressedInteger();
-            if (blob.ReadCompressedInteger() == 2)
+            if (blob.ReadCompressedInteger() is 2 or 8)
             {
                 var activation = ResolveMemberRefMethod(module, handle, callerCtx);
                 if (CoreIntrinsics.IsActivatorFrom(activation))

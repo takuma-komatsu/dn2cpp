@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (PathActivationFlagsGuards.Run(args)) return;
+if (PathActivationFlagsFixture.Run(args)) return;
 if (PathActivationGuards.Run(args)) return;
 if (PathActivationFixture.Run(args)) return;
 if (NamedActivationAttributesGuards.Run(args)) return;
