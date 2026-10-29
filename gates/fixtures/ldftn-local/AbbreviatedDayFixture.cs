@@ -6,13 +6,20 @@ internal static class AbbreviatedDayFixture
 {
     public static bool Run(string[] args)
     {
+        bool full = args.Length > 0 && args[0].StartsWith("--full-day", StringComparison.Ordinal);
+        if (full)
+        {
+            args = (string[])args.Clone();
+            args[0] = "--abbreviated-day" + args[0].Substring("--full-day".Length);
+        }
+        string targetName = full ? "GetDayName" : "GetAbbreviatedDayName";
         bool negative = args.Length == 4 && args[0] == "--abbreviated-day-negative";
         if (!negative && (args.Length != 3 || !new[] { "--abbreviated-day", "--abbreviated-day-direct", "--abbreviated-day-reflection", "--abbreviated-day-noalloc", "--abbreviated-day-oracle", "--abbreviated-day-direct-oracle", "--abbreviated-day-reflection-oracle" }.Contains(args[0])))
             return false;
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
         using var core = AssemblyDefinition.ReadAssembly(args[2]);
-        var definition = core.MainModule.GetType("System.Globalization.DateTimeFormatInfo").Methods.Single(m => m.Name == "GetAbbreviatedDayName");
+        var definition = core.MainModule.GetType("System.Globalization.DateTimeFormatInfo").Methods.Single(m => m.Name == targetName);
         var day = core.MainModule.GetType("System.DayOfWeek");
         if ((int)definition.Attributes != 0x86 || definition.ImplAttributes != 0 || !definition.HasBody
             || definition.HasGenericParameters || definition.Parameters.Count != 1 || definition.ReturnType.MetadataType != MetadataType.String
@@ -21,7 +28,7 @@ internal static class AbbreviatedDayFixture
         string path = Path.GetFullPath(args[1]);
         using var app = AssemblyDefinition.ReadAssembly(path, new ReaderParameters { InMemory = true });
         var module = app.MainModule;
-        var program = module.GetType("AbbreviatedDaySubset.Program");
+        var program = module.GetType(full ? "FullDaySubset.Program" : "AbbreviatedDaySubset.Program");
         MethodDefinition Method(string name) => program.Methods.Single(m => m.Name == name);
         ILProcessor Body(string name)
         {

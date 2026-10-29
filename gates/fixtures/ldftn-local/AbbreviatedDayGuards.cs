@@ -32,7 +32,7 @@ internal static class AbbreviatedDayGuards
             var owner = core.MainModule.GetType("System.Globalization.DateTimeFormatInfo");
             var host = new Mono.Cecil.TypeDefinition("Guard", "References", Mono.Cecil.TypeAttributes.Public, empty.MainModule.TypeSystem.Object);
             empty.MainModule.Types.Add(host);
-            foreach (string name in new[] { "GetAbbreviatedDayName", "GetDayName", "get_AbbreviatedDayNames" })
+            foreach (string name in new[] { "GetAbbreviatedDayName", "GetDayName", "GetShortestDayName", "get_AbbreviatedDayNames", "get_DayNames" })
             {
                 var target = empty.MainModule.ImportReference(owner.Methods.Single(m => m.Name == name));
                 var stub = new Mono.Cecil.MethodDefinition(name, Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, empty.MainModule.TypeSystem.Void);
@@ -62,8 +62,8 @@ internal static class AbbreviatedDayGuards
         var targetHandle = reader.GetTypeDefinition(ownerHandle).GetMethods().Single(h => reader.GetString(reader.GetMethodDefinition(h).Name) == "GetAbbreviatedDayName");
         var actual = ((IDictionary)Get(module, "MethodMap"))[targetHandle]!;
         var ownerClass = Get(actual, "DeclaringClass");
-        var predicate = Model("CoreIntrinsics").GetMethod("IsDateTimeFormatInfoAbbreviatedDayName", statics)!;
-        var raw = Model("CoreIntrinsics").GetMethod("IsDateTimeFormatInfoAbbreviatedDayNameSignature", statics)!.CreateDelegate<RawPredicate>();
+        var predicate = Model("CoreIntrinsics").GetMethod("IsDateTimeFormatInfoDayName", statics)!;
+        var raw = Model("CoreIntrinsics").GetMethod("IsDateTimeFormatInfoDayNameSignature", statics)!.CreateDelegate<RawPredicate>();
         int checks = 0;
         void Check(bool result, string label)
         {
@@ -71,6 +71,12 @@ internal static class AbbreviatedDayGuards
             checks++;
         }
         Check((bool)predicate.Invoke(null, new[] { actual })!, "actual-CoreLib");
+        foreach (var h in reader.GetTypeDefinition(ownerHandle).GetMethods().Where(h => reader.GetString(reader.GetMethodDefinition(h).Name) is "GetDayName" or "GetShortestDayName" or "get_DayNames" or "get_AbbreviatedDayNames"))
+        {
+            var candidate = ((IDictionary)Get(module, "MethodMap"))[h]!;
+            string name = reader.GetString(reader.GetMethodDefinition(h).Name);
+            Check((bool)predicate.Invoke(null, new[] { candidate })! == (name == "GetDayName"), "actual-MethodDef-policy-" + name);
+        }
         Console.WriteLine("abbreviated-day-actual:" + MetadataTokens.GetToken(targetHandle).ToString("X8", CultureInfo.InvariantCulture));
         var appModule = ((IEnumerable)Get(loaded, "Modules")).Cast<object>().Single(m => (string)Get(m, "AssemblyName") == "AbbreviatedDayGuardInput");
         var appReader = (MetadataReader)Get(appModule, "Reader");
@@ -79,14 +85,14 @@ internal static class AbbreviatedDayGuards
         foreach (var h in appReader.MemberReferences)
         {
             string name = appReader.GetString(appReader.GetMemberReference(h).Name);
-            if (name is not ("GetAbbreviatedDayName" or "GetDayName" or "get_AbbreviatedDayNames")) continue;
+            if (name is not ("GetAbbreviatedDayName" or "GetDayName" or "GetShortestDayName" or "get_AbbreviatedDayNames" or "get_DayNames")) continue;
             var resolved = Model("Compilation").GetMethod("ResolveMemberRefMethod", instance)!.Invoke(loaded, new[] { appModule, (object)h, context })!;
             var expected = reader.GetTypeDefinition(ownerHandle).GetMethods().Single(x => reader.GetString(reader.GetMethodDefinition(x).Name) == name);
             Check(ReferenceEquals(Get(resolved, "Module"), module) && (MethodDefinitionHandle)Get(resolved, "Handle") == expected, "resolved-memberref-" + name);
-            Check((bool)predicate.Invoke(null, new[] { resolved })! == (name == "GetAbbreviatedDayName"), "exact-neighbor-policy-" + name);
+            Check((bool)predicate.Invoke(null, new[] { resolved })! == (name is "GetAbbreviatedDayName" or "GetDayName"), "exact-neighbor-policy-" + name);
             imports++;
         }
-        Check(imports == 3, "all-memberrefs");
+        Check(imports == 5, "all-memberrefs");
         void Reject(object value, string field, object next)
         {
             object saved = Get(value, field);
@@ -102,7 +108,7 @@ internal static class AbbreviatedDayGuards
         Reject(ownerClass, "GenericArity", 1);
         Reject(actual, "Handle", default(MethodDefinitionHandle));
         Reject(actual, "Rva", 0);
-        Reject(actual, "Name", "GetDayName");
+        Reject(actual, "Name", "GetShortestDayName");
         var attrs = (MethodAttributes)Get(actual, "Attributes");
         foreach (var flags in new[] { attrs | MethodAttributes.Static, attrs | MethodAttributes.Virtual,
             attrs | MethodAttributes.PinvokeImpl, MethodAttributes.Private | MethodAttributes.HideBySig })

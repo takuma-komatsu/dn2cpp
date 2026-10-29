@@ -436,7 +436,7 @@ internal sealed partial class MethodCompiler
     /// runtime plumbing, so there is nothing worth falling through to.</para></summary>
     private void EmitRuntimePrimitive(MethodInfo callee)
     {
-        if (CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedDayName(callee))
+        if (CoreIntrinsics.IsDateTimeFormatInfoDayName(callee))
         {
             string day = NewTemp("int32_t");
             Emit($"{day} = {Cast(Pop(), "int32_t")};");
@@ -444,11 +444,11 @@ internal sealed partial class MethodCompiler
             Emit($"{self} = {Cast(Pop(), "Dn2CppObject*")};");
             Emit($"dn2cpp_null_check({self});");
             string range = Comp.SrResourceText(callee.Module, "ArgumentOutOfRange_Range")
-                ?? throw new NotSupportedException("Abbreviated day names require CoreLib's range resource");
+                ?? throw new NotSupportedException("Day names require CoreLib's range resource");
             range = range.Replace("{0}", "Sunday").Replace("{1}", "Saturday");
             Comp.NoteTypeIdentityClosure(callee.Signature.ParameterTypes[0], keepSeed: false);
             string ti = TypeInfoExpr(callee.Signature.ParameterTypes[0])
-                ?? throw new NotSupportedException("Abbreviated day names require DayOfWeek type metadata");
+                ?? throw new NotSupportedException("Day names require DayOfWeek type metadata");
             Emit($"if ((uint32_t){day} > 6u) {{");
             string actual = NewTemp("Dn2CppObject*");
             Emit($"    {actual} = dn2cpp_box({ti}, &{day}, sizeof({day}));");
@@ -460,7 +460,9 @@ internal sealed partial class MethodCompiler
             // DTFI names follow the existing invariant policy. Literal roots avoid
             // allocating a fresh seven-element array to return one name.
             string result = NewTemp("Dn2CppString*");
-            string[] names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+            string[] names = callee.Name == "GetAbbreviatedDayName"
+                ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+                : ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
             Emit($"switch ({day}) {{");
             for (int i = 0; i < names.Length; i++)
                 Emit($"case {i}: {result} = {Literals.GetOrAdd(names[i])}; break;");

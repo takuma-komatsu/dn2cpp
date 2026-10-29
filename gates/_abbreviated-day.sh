@@ -1,33 +1,40 @@
 #!/usr/bin/env bash
 # Exact public invariant DTFI scalar day names, exception payload and callable routes.
-abbreviated_day_routes_gate() {
+_day_name_routes_gate() {
+    local family="$1"; shift
+    local assembly=AbbreviatedDay minimal=MinimalDay expected=Mon
+    case "$family" in
+        abbreviated) ;;
+        full) assembly=FullDay; minimal=MinimalFullDay; expected=Monday ;;
+        *) echo "invalid day-name test family" >&2; return 1 ;;
+    esac
     local root="$1" original="$2" mode="${3:-all}"
     shift 3
     local fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll"
-    local corelib input oracle axis out flag=--abbreviated-day oracle_flag=--abbreviated-day-oracle
+    local corelib input oracle axis out flag="--$family-day" oracle_flag="--$family-day-oracle"
     corelib=$(resolve_net10_corelib) || return $?
-    if [[ "$mode" != all ]]; then flag="--abbreviated-day-$mode"; oracle_flag="$flag-oracle"; fi
+    if [[ "$mode" != all ]]; then flag="--$family-day-$mode"; oracle_flag="$flag-oracle"; fi
     input="$root/input"; oracle="$root/oracle-input"
     mkdir -p "$input" "$oracle"
     cp -R "$original/." "$input/" || return $?
     cp -R "$original/." "$oracle/" || return $?
-    dotnet "$fixture" "$flag" "$input/AbbreviatedDay.dll" "$corelib" || return $?
-    dotnet "$fixture" "$oracle_flag" "$oracle/AbbreviatedDay.dll" "$corelib" || return $?
-    gate_capture_ok "$root/oracle" run_bounded dotnet "$oracle/AbbreviatedDay.dll" || return $?
+    dotnet "$fixture" "$flag" "$input/${assembly}.dll" "$corelib" || return $?
+    dotnet "$fixture" "$oracle_flag" "$oracle/${assembly}.dll" "$corelib" || return $?
+    gate_capture_ok "$root/oracle" run_bounded dotnet "$oracle/${assembly}.dll" || return $?
     for axis in raw diet; do
         out="$root/$axis"
         local flags=("$@") runner=()
         # The Metadata helper is opaque to reflection dataflow; retain only this method.
-        flags+=(--link-xml gates/fixtures/abbreviated-day/link.xml)
+        flags+=(--link-xml "gates/fixtures/$family-day/link.xml")
         [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-        invoke_cli "$input/AbbreviatedDay.dll" --auto-ref "${flags[@]}" -o "$out" || return $?
-        "$(resolve_python)" gates/fixtures/abbreviated-day/check-generated.py "$out" || return $?
+        invoke_cli "$input/${assembly}.dll" --auto-ref "${flags[@]}" -o "$out" || return $?
+        "$(resolve_python)" gates/fixtures/abbreviated-day/check-generated.py "$out" --name "$family" || return $?
         if [[ "${WASM:-0}" == 1 ]]; then
-            compile_console_wasm "$out" AbbreviatedDay || return $?
-            runner=(node "$out/AbbreviatedDay.js")
+            compile_console_wasm "$out" "$assembly" || return $?
+            runner=(node "$out/$assembly.js")
         else
-            compile_console "$out" AbbreviatedDay || return $?
-            runner=("$out/AbbreviatedDay$EXE_EXT")
+            compile_console "$out" "$assembly" || return $?
+            runner=("$out/$assembly$EXE_EXT")
         fi
         gate_capture_ok "$out/native" run_bounded "${runner[@]}" || return $?
         gate_output compare "$root/oracle.stdout" "$out/native.stdout" --policy crlf || return $?
@@ -40,47 +47,70 @@ abbreviated_day_routes_gate() {
     done
 }
 
-abbreviated_day_noalloc_gate() {
+abbreviated_day_routes_gate() { _day_name_routes_gate abbreviated "$@"; }
+full_day_routes_gate() { _day_name_routes_gate full "$@"; }
+
+_day_name_noalloc_gate() {
+    local family="$1"; shift
+    local assembly=AbbreviatedDay minimal=MinimalDay expected=Mon
+    case "$family" in
+        abbreviated) ;;
+        full) assembly=FullDay; minimal=MinimalFullDay; expected=Monday ;;
+        *) echo "invalid day-name test family" >&2; return 1 ;;
+    esac
     local root="$1" original="$2"
     shift 2
     local fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" corelib axis
     corelib=$(resolve_net10_corelib) || return $?
     mkdir -p "$root/input"
     cp -R "$original/." "$root/input/" || return $?
-    dotnet "$fixture" --abbreviated-day-noalloc "$root/input/AbbreviatedDay.dll" "$corelib" || return $?
+    dotnet "$fixture" "--$family-day-noalloc" "$root/input/${assembly}.dll" "$corelib" || return $?
     for axis in raw diet; do
         local flags=("$@") rc=0
         [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-        invoke_cli "$root/input/AbbreviatedDay.dll" --auto-ref "${flags[@]}" -o "$root/$axis" > "$root/$axis.log" 2>&1 || rc=$?
+        invoke_cli "$root/input/${assembly}.dll" --auto-ref "${flags[@]}" -o "$root/$axis" > "$root/$axis.log" 2>&1 || rc=$?
         printf '%s\n' "$rc" > "$root/$axis.status"
         [[ "$rc" == 2 ]] || { echo 'FAIL: NoAlloc leaf with enum exception boxing accepted' >&2; return 1; }
-        grep -Fq '[HotPath(NoAlloc)] closure of AbbreviatedDaySubset.Program::Direct allocates: AbbreviatedDaySubset.Program::Direct emits dn2cpp_box(' "$root/$axis.log" || return 1
+        grep -Fq "[HotPath(NoAlloc)] closure of ${assembly}Subset.Program::Direct allocates: ${assembly}Subset.Program::Direct emits dn2cpp_box(" "$root/$axis.log" || return 1
     done
 }
 
-abbreviated_day_minimal_gate() {
+abbreviated_day_noalloc_gate() { _day_name_noalloc_gate abbreviated "$@"; }
+full_day_noalloc_gate() { _day_name_noalloc_gate full "$@"; }
+
+_day_name_minimal_gate() {
+    local family="$1"; shift
+    local assembly=AbbreviatedDay minimal=MinimalDay expected=Mon
+    case "$family" in
+        abbreviated) ;;
+        full) assembly=FullDay; minimal=MinimalFullDay; expected=Monday ;;
+        *) echo "invalid day-name test family" >&2; return 1 ;;
+    esac
     local root="$1" original="$2"
     shift 2
     mkdir -p "$root"
-    gate_capture_ok "$root/oracle" run_bounded dotnet "$original/MinimalDay.dll" || return $?
-    gate_output witness "$root/oracle.stdout" 'Mon' --count 1 --policy crlf || return $?
+    gate_capture_ok "$root/oracle" run_bounded dotnet "$original/${minimal}.dll" || return $?
+    gate_output witness "$root/oracle.stdout" "$expected" --count 1 --policy crlf || return $?
     local axis
     for axis in raw diet; do
         local flags=("$@") out="$root/$axis" runner=()
         [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-        invoke_cli "$original/MinimalDay.dll" --auto-ref "${flags[@]}" -o "$out" || return $?
-        "$(resolve_python)" gates/fixtures/abbreviated-day/check-generated.py "$out" --minimal || return $?
+        invoke_cli "$original/${minimal}.dll" --auto-ref "${flags[@]}" -o "$out" || return $?
+        "$(resolve_python)" gates/fixtures/abbreviated-day/check-generated.py "$out" --name "$family" --minimal || return $?
         if [[ "${WASM:-0}" == 1 ]]; then
-            compile_console_wasm "$out" MinimalDay || return $?
-            runner=(node "$out/MinimalDay.js")
+            compile_console_wasm "$out" "$minimal" || return $?
+            runner=(node "$out/$minimal.js")
         else
-            compile_console "$out" MinimalDay || return $?
-            runner=("$out/MinimalDay$EXE_EXT")
+            compile_console "$out" "$minimal" || return $?
+            runner=("$out/$minimal$EXE_EXT")
         fi
         gate_capture_ok "$out/native" run_bounded "${runner[@]}" || return $?
         gate_output compare "$root/oracle.stdout" "$out/native.stdout" --policy crlf || return $?
     done
 }
+
+abbreviated_day_minimal_gate() { _day_name_minimal_gate abbreviated "$@"; }
+full_day_minimal_gate() { _day_name_minimal_gate full "$@"; }
 
 abbreviated_day_focused_gate() {
     local root="$1" fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" corelib model
@@ -100,21 +130,45 @@ abbreviated_day_focused_gate() {
 }
 
 # Malformed metadata is transpiled only, never executed on either runtime.
-abbreviated_day_negative_gate() {
+_day_name_negative_gate() {
+    local family="$1"; shift
+    local assembly=AbbreviatedDay minimal=MinimalDay expected=Mon
+    case "$family" in
+        abbreviated) ;;
+        full) assembly=FullDay; minimal=MinimalFullDay; expected=Monday ;;
+        *) echo "invalid day-name test family" >&2; return 1 ;;
+    esac
     local root="$1" original="$2" mode axis rc
     local fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" corelib
     corelib=$(resolve_net10_corelib) || return $?
     for mode in ${DN2CPP_ABBREVIATED_DAY_NEGATIVES:-return byref address-return address-byref}; do
         mkdir -p "$root/$mode/input"
         cp -R "$original/." "$root/$mode/input/" || return $?
-        dotnet "$fixture" --abbreviated-day-negative "$root/$mode/input/AbbreviatedDay.dll" "$corelib" "$mode" || return $?
+        dotnet "$fixture" "--$family-day-negative" "$root/$mode/input/${assembly}.dll" "$corelib" "$mode" || return $?
         for axis in raw diet; do
             local flags=(); rc=0
             [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-            invoke_cli "$root/$mode/input/AbbreviatedDay.dll" --auto-ref "${flags[@]}" -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
+            invoke_cli "$root/$mode/input/${assembly}.dll" --auto-ref "${flags[@]}" -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
             printf '%s\n' "$rc" > "$root/$mode/$axis.status"
             [[ "$rc" == 2 ]] || { echo "FAIL: malformed abbreviated-day $mode $axis admitted" >&2; return 1; }
-            grep -Fq 'DateTimeFormatInfo abbreviated day name requires its exact MemberRef signature' "$root/$mode/$axis.log" || return 1
+            grep -Fq 'DateTimeFormatInfo day name requires its exact MemberRef signature' "$root/$mode/$axis.log" || return 1
         done
     done
+}
+
+abbreviated_day_negative_gate() { _day_name_negative_gate abbreviated "$@"; }
+full_day_negative_gate() { _day_name_negative_gate full "$@"; }
+
+full_day_focused_gate() {
+    local root="$1" fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" corelib model
+    build_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj || return $?
+    build_proj gates/fixtures/full-day/FullDay.csproj || return $?
+    corelib=$(resolve_net10_corelib) || return $?
+    mkdir -p "$root"
+    model=$(mktemp -d "$root/model-XXXXXX") || return $?
+    gate_capture_ok "$model/guards" run_bounded dotnet "$fixture" --abbreviated-day-guards "$(dirname "$DN2CPP_CLI_DLL")/Dn2Cpp.Transpiler.dll" "$corelib" "$model/input.dll" || return $?
+    local app="gates/fixtures/full-day/bin/$CONFIG/$TFM"
+    full_day_routes_gate "$root/all" "$app" all || return $?
+    full_day_noalloc_gate "$root/noalloc" "$app" || return $?
+    full_day_negative_gate "$root/malformed" "$app" || return $?
 }

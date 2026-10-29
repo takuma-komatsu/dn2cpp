@@ -5,10 +5,10 @@ namespace Dn2Cpp;
 
 internal static partial class CoreIntrinsics
 {
-    internal static bool IsDateTimeFormatInfoAbbreviatedDayName(MethodInfo method)
+    internal static bool IsDateTimeFormatInfoDayName(MethodInfo method)
     {
         var cls = method.DeclaringClass;
-        if (method.Name != "GetAbbreviatedDayName" || cls.FullName != "System.Globalization.DateTimeFormatInfo"
+        if (method.Name is not ("GetAbbreviatedDayName" or "GetDayName") || cls.FullName != "System.Globalization.DateTimeFormatInfo"
             || method.Module.AssemblyName != "System.Private.CoreLib" || cls.Module != method.Module
             || cls.Handle.IsNil || method.Handle.IsNil || cls.IsValueType || cls.IsInterface
             || cls.GenericArity != 0 || cls.Context.TypeArgs.Length != 0
@@ -20,17 +20,17 @@ internal static partial class CoreIntrinsics
         return owner.GetDeclaringType().IsNil && owner.GetGenericParameters().Count == 0
             && reader.StringComparer.Equals(owner.Namespace, "System.Globalization")
             && reader.StringComparer.Equals(owner.Name, "DateTimeFormatInfo")
-            && IsDateTimeFormatInfoAbbreviatedDayNameSignature(reader.GetBlobReader(reader.GetMethodDefinition(method.Handle).Signature))
-            && IsDateTimeFormatInfoAbbreviatedDayNameDecodedSignature(method.Signature, method.Module);
+            && IsDateTimeFormatInfoDayNameSignature(reader.GetBlobReader(reader.GetMethodDefinition(method.Handle).Signature))
+            && IsDateTimeFormatInfoDayNameDecodedSignature(method.Signature, method.Module);
     }
 
-    internal static bool IsDateTimeFormatInfoAbbreviatedDayNameSignature(BlobReader blob) =>
+    internal static bool IsDateTimeFormatInfoDayNameSignature(BlobReader blob) =>
         blob.RemainingBytes >= 5 && blob.ReadByte() == 0x20 && blob.ReadByte() == 1
         && blob.ReadByte() == (byte)SignatureTypeCode.String && blob.ReadByte() == 0x11
         && blob.TryReadCompressedInteger(out int token) && token > 0 && (token >> 2) != 0
         && (token & 3) != 3 && blob.RemainingBytes == 0;
 
-    internal static bool IsDateTimeFormatInfoAbbreviatedDayNameDecodedSignature(MethodSignature<TypeDesc> signature, Module module)
+    internal static bool IsDateTimeFormatInfoDayNameDecodedSignature(MethodSignature<TypeDesc> signature, Module module)
     {
         if (signature.Header.RawValue != 0x20 || signature.GenericParameterCount != 0
             || signature.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String }

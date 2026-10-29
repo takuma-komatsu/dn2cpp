@@ -160,7 +160,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsAppDomainExecuteAssembly(m)
             || CoreIntrinsics.IsGen2GcCallbackRefusal(m)
             || CoreIntrinsics.IsGen2GcCallbackRegister(m)
-            || CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedDayName(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoDayName(m)
             || CoreIntrinsics.IsAppContextOnProcessExit(m)
             || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(m)
             || CoreIntrinsics.IsRuntimeTypeHandleFields(m)

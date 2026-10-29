@@ -1558,12 +1558,12 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsGen2GcCallbackRefusal(resolved))
                 throw new NotSupportedException("Gen2GcCallback requires its exact MemberRef signature");
         }
-        if (name == "GetAbbreviatedDayName" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedDayName))
+        if (name is "GetAbbreviatedDayName" or "GetDayName" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoDayName))
         {
-            if (!CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedDayNameSignature(reader.GetBlobReader(mr.Signature))
-                || !CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedDayNameDecodedSignature(sig, resolved.Module)
-                || !CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedDayName(resolved))
-                throw new NotSupportedException("DateTimeFormatInfo abbreviated day name requires its exact MemberRef signature");
+            if (!CoreIntrinsics.IsDateTimeFormatInfoDayNameSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoDayNameDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsDateTimeFormatInfoDayName(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo day name requires its exact MemberRef signature");
         }
         if (name == "OnProcessExit" && candidates.Any(CoreIntrinsics.IsAppContextOnProcessExit))
         {
@@ -1900,10 +1900,11 @@ internal sealed partial class Compilation
             if (CoreIntrinsics.IsAppDomainExecuteAssembly(execute))
                 return execute;
         }
-        if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "GetAbbreviatedDayName"))
+        if (full == "System.Globalization.DateTimeFormatInfo"
+            && (reader.StringComparer.Equals(mr.Name, "GetAbbreviatedDayName") || reader.StringComparer.Equals(mr.Name, "GetDayName")))
         {
             var dayName = ResolveMemberRefMethod(module, handle, callerCtx);
-            if (CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedDayName(dayName))
+            if (CoreIntrinsics.IsDateTimeFormatInfoDayName(dayName))
                 return dayName;
         }
         if (full == "System.AppContext" && reader.StringComparer.Equals(mr.Name, "OnProcessExit"))

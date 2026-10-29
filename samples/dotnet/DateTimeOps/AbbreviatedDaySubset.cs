@@ -2,19 +2,40 @@ using System;
 using System.Globalization;
 using System.Reflection;
 
+#if FULL_DAY
+namespace FullDaySubset;
+#else
 namespace AbbreviatedDaySubset;
+#endif
 
 internal static class Program
 {
     private delegate string Query(DateTimeFormatInfo info, DayOfWeek day);
+#if FULL_DAY
+    private const string Prefix = "full-day-";
+    private const string Header = "== Full invariant day names ==";
+#else
+    private const string Prefix = "abbreviated-day-";
+    private const string Header = "== Abbreviated invariant day names ==";
+#endif
     private static int checks;
     private static int trace;
 
+#if FULL_DAY
+    private static string Direct(DateTimeFormatInfo info, DayOfWeek day) => info.GetDayName(day);
+    private static string Pointer(DateTimeFormatInfo info, DayOfWeek day) => info.GetDayName(day);
+    private static Func<DayOfWeek, string> Address(DateTimeFormatInfo info) => info.GetDayName;
+#else
     private static string Direct(DateTimeFormatInfo info, DayOfWeek day) => info.GetAbbreviatedDayName(day);
     private static string Pointer(DateTimeFormatInfo info, DayOfWeek day) => info.GetAbbreviatedDayName(day);
     private static Func<DayOfWeek, string> Address(DateTimeFormatInfo info) => info.GetAbbreviatedDayName;
+#endif
     private static string DelegateRoute(DateTimeFormatInfo info, DayOfWeek day) => Address(info)(day);
+#if FULL_DAY
+    private static MethodInfo Metadata() => typeof(DateTimeFormatInfo).GetMethod(nameof(DateTimeFormatInfo.GetDayName))!;
+#else
     private static MethodInfo Metadata() => typeof(DateTimeFormatInfo).GetMethod(nameof(DateTimeFormatInfo.GetAbbreviatedDayName))!;
+#endif
     private static string Reflect(DateTimeFormatInfo info, DayOfWeek day) => (string)Metadata().Invoke(info, new object[] { day })!;
     private static DateTimeFormatInfo Receiver() { trace = trace * 10 + 1; return null!; }
     private static DayOfWeek Argument() { trace = trace * 10 + 2; return (DayOfWeek)7; }
@@ -22,7 +43,7 @@ internal static class Program
 
     private static void Check(string label, bool success)
     {
-        Console.WriteLine("abbreviated-day-" + label + ":" + success);
+        Console.WriteLine(Prefix + label + ":" + success);
         if (!success) throw new InvalidOperationException(label);
         checks++;
     }
@@ -36,7 +57,11 @@ internal static class Program
     private static void Validate(string route, Query query, bool reflection)
     {
         var invariant = DateTimeFormatInfo.InvariantInfo;
+#if FULL_DAY
+        string[] expected = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
+#else
         string[] expected = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+#endif
         for (int value = 0; value < 7; value++)
         {
             Check(route + "-" + value, query(invariant, (DayOfWeek)value) == expected[value]);
@@ -73,7 +98,7 @@ internal static class Program
     {
         PinCulture();
         Validate("reflect", Reflect, true);
-        Console.WriteLine("abbreviated-day-reflection-end");
+        Console.WriteLine(Prefix + "reflection-end");
     }
 
     public static void RunDirectChecks()
@@ -95,19 +120,26 @@ internal static class Program
     public static void Run()
     {
         PinCulture();
-        Console.WriteLine("== Abbreviated invariant day names ==");
+        Console.WriteLine(Header);
         RunDirectChecks();
         Validate("pointer", Pointer, false);
         ValidateNull(Pointer, "pointer-null-first");
         Validate("delegate", DelegateRoute, false);
         RunReflectionChecks();
+#if FULL_DAY
+        var names = DateTimeFormatInfo.InvariantInfo.AbbreviatedDayNames;
+        names[0] = "changed";
+        Check("array-copy-neighbor", Direct(DateTimeFormatInfo.InvariantInfo, DayOfWeek.Sunday) == "Sunday"
+            && DateTimeFormatInfo.InvariantInfo.AbbreviatedDayNames[0] == "Sun");
+#else
         var names = DateTimeFormatInfo.InvariantInfo.AbbreviatedDayNames;
         names[0] = "changed";
         Check("array-copy-neighbor", Direct(DateTimeFormatInfo.InvariantInfo, DayOfWeek.Sunday) == "Sun"
             && DateTimeFormatInfo.InvariantInfo.AbbreviatedDayNames[0] == "Sun");
+#endif
         var clone = (DateTimeFormatInfo)DateTimeFormatInfo.InvariantInfo.Clone();
         clone.DateSeparator = "~";
         Check("separator-clone-neighbor", clone.DateSeparator == "~" && DateTimeFormatInfo.InvariantInfo.DateSeparator == "/");
-        Console.WriteLine("abbreviated-day-end:" + checks);
+        Console.WriteLine(Prefix + "end:" + checks);
     }
 }

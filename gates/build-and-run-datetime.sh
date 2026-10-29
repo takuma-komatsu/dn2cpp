@@ -25,7 +25,8 @@
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_abbreviated-day.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_abbreviated-day.sh gates/fixtures/abbreviated-day samples/dotnet/DateTimeOps/AbbreviatedDaySubset.cs gates/fixtures/ldftn-local/AbbreviatedDayFixture.cs gates/fixtures/ldftn-local/AbbreviatedDayGuards.cs gates/fixtures/ldftn-local/RuntimeTypeDefaultCtorFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|abbreviated-day:invariant,raw,diet,reflection-only,minimal,NoAlloc-rejection|abbreviated-day-negatives:${DN2CPP_ABBREVIATED_DAY_NEGATIVES:-return byref address-return address-byref}"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/full-day/FullDay.csproj gates/fixtures/full-day/minimal/MinimalFullDay.csproj gates/fixtures/full-day/link.xml samples/dotnet/DateTimeOps/FullDayPublicSubset.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|abbreviated-day:invariant,raw,diet,reflection-only,minimal,NoAlloc-rejection|full-day:invariant,raw,diet,reflection-only,minimal,NoAlloc-rejection|day-name-modes:abbreviated,full|abbreviated-day-negatives:${DN2CPP_ABBREVIATED_DAY_NEGATIVES:-return byref address-return address-byref}"
 
 # Constructors, arithmetic, offset parsing and microseconds preserve fault fields.
 gate_extra_asserts() {
@@ -102,6 +103,11 @@ gate_extra_asserts() {
     gate_output compare "$out/day-prefix.stdout" "$out/day-before.stdout"
     gate_output witness "$out/day-full.stdout" '== Abbreviated invariant day names ==' 'abbreviated-day-array-copy-neighbor:True' 'abbreviated-day-separator-clone-neighbor:True' --count 1 --policy crlf
     abbreviated_day_focused_gate "$out/abbreviated-day"
+    gate_capture_ok "$out/full-day-before" run_bounded "./$out/DateTimeOps$EXE_EXT" before-full-day
+    gate_output select "$out/day-full.stdout" "$out/full-day-prefix.stdout" --before '== Full invariant day public neighbor ==' --policy crlf
+    gate_output compare "$out/full-day-prefix.stdout" "$out/full-day-before.stdout"
+    gate_output witness "$out/day-full.stdout" '== Full invariant day public neighbor ==' 'full-day-public-0:True' 'full-day-public-6:True' 'Full invariant day public neighbor end' --count 1 --policy crlf
+    full_day_focused_gate "$out/full-day"
 
 }
 
