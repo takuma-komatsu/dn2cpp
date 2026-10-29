@@ -130,6 +130,8 @@ internal sealed partial class MethodCompiler
             return $"((({x.Expr}).{hvF} ? 1 : 0) == (({y.Expr}).{hvF} ? 1 : 0)"
                  + $" && (!({x.Expr}).{hvF} || {inner}))";
         }
+        if (t is { Kind: TypeKind.Pointer, IsFunctionPointer: false })
+            return $"((uintptr_t)({x.Expr}) == (uintptr_t)({y.Expr}))";
         // Opaque pointer-backed handles compare by their whole representation; their
         // loaded CoreLib fields do not describe the emitted runtime payload.
         if (IntrinsicPointerValueType(t) is not null)
@@ -192,6 +194,12 @@ internal sealed partial class MethodCompiler
             return StructuralHashExpr(u, ux) is { } inner
                 ? $"((({x.Expr}).{hvF}) ? ({inner}) : 0)"
                 : null;
+        }
+        if (t is { Kind: TypeKind.Pointer, IsFunctionPointer: false })
+        {
+            // Widen before folding: uintptr_t can be 32 bits on Wasm.
+            string address = $"(uint64_t)(uintptr_t)({x.Expr})";
+            return $"(int32_t)(({address}) ^ (({address}) >> 32))";
         }
         // Keep the hash twin on the same raw-handle representation as equality.
         if (IntrinsicPointerValueType(t) is not null)

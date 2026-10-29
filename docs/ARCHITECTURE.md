@@ -369,6 +369,13 @@ Core invariants:
   This can retain bodies for types a search never selects. An unsupported value
   equality keeps its slot empty, and the runtime array-search guard reports
   `NotSupportedException` if that equality is actually needed.
+- **Structural value equality compares unmanaged data-pointer fields by address**,
+  including nested ordinary structs. It never reads pointees or compares the
+  struct's raw bytes. The matching hash folds a pointer-sized unsigned address
+  after widening to 64 bits; equal values hash equally, without promising CLR
+  numeric hash parity or stability between processes. Function-pointer and byref
+  fields, explicit-layout unions and other unsupported structural layouts remain
+  excluded. This field rule does not admit general pointer keys or ordering.
 
 ## 2. Modules and the core⇄target contract
 

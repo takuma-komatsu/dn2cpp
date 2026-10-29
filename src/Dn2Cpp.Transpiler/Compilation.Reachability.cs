@@ -1465,6 +1465,9 @@ internal sealed partial class Compilation
         // Nullable<U> — so the walk compares/hashes U, and it is U that has to be walkable.
         if (NullableUnderlying(t) is { } nu)
             return CanCompareStructuralField(nu, hash, visiting);
+        // Raw data-pointer fields have address identity, not pointee value semantics.
+        if (t is { Kind: TypeKind.Pointer, IsFunctionPointer: false })
+            return true;
         if (t.IsString)
             return true;
         if (t.Kind == TypeKind.Primitive && !t.IsObject)
@@ -1494,8 +1497,8 @@ internal sealed partial class Compilation
         if (t is { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false } fc })
             return (hash ? EffectiveGetHashCode(fc) : EffectiveEquals(fc)) is not null
                 || CanSynthesizeValueEquality(fc, hash, visiting);
-        // A pointer, a function pointer, a byref, a TypedReference, an unresolved
-        // placeholder: no value semantics to build one from.
+        // A function pointer, a byref, a TypedReference, an unresolved placeholder:
+        // no structural field semantics to build one from.
         return false;
     }
 

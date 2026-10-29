@@ -4,6 +4,7 @@
 # (SortedDictionary/SortedList/SortedSet), the non-generic System.Collections.SortedList,
 # and FrozenDictionary (FrozenDictSubset).
 # Diffed exactly vs real .NET.
+# Structural data-pointer fields preserve address equality and matching hashes.
 # Also covers string.Join/Concat over a concrete IEnumerable<T> that is neither an
 # array nor a List<T> backing — a SortedSet<T>, a SortedDictionary Keys/Values view,
 # a Queue<T> — where the intrinsic emits an interface-enumeration loop instead of
@@ -34,7 +35,9 @@
 # Former gates: dict, dict-api, dict-enum, dict-more, dict-string, hashset,
 # hashkey, sorted-collections, join-enumerable-subset,
 # ordinal-stringset-dedup-subset, struct-key-subset, valuetuple-key-dict-subset.
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/structural-pointer/check-generated.py gates/_structural-pointer.sh gates/fixtures/structural-pointer-negative/PointerNegative.csproj gates/fixtures/structural-pointer-negative/Program.cs gates/fixtures/ldftn-local/StructuralPointerFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
+source "$(dirname "$0")/_structural-pointer.sh"
 
 # System.Collections.NonGeneric carries the non-generic SortedList (NonGenericSortedListSubset);
 # the generic collections come from System.Collections; System.Collections.Immutable
@@ -43,6 +46,7 @@ source "$(dirname "$0")/_common.sh"
 # Default order and equality preserve the earlier bucket and run the appended cases.
 gate_extra_asserts() {
     local out="$1" native before prefix line
+    python3 gates/fixtures/structural-pointer/check-generated.py "$out"
     gate_capture_ok "$out/assert-native-1" run_bounded "./$out/DictCollections"
     native="$out/assert-native-1.stdout"
 
@@ -60,6 +64,10 @@ gate_extra_asserts() {
 
     gate_output select "$native" "$prefix" --before '== nullable default equality ==' --policy crlf
     gate_output compare "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-pointer" run_bounded dotnet "$_CG_APP" before-structural-pointer
+    gate_output select "$native" "$out/assert-pointer-prefix.stdout" --before 'structural-pointer-reader-same:True' --policy crlf
+    gate_output compare "$out/assert-pointer-prefix.stdout" "$out/assert-before-pointer.stdout"
+    gate_output witness "$native" 'structural-pointer-checks:39' --count 1 --policy crlf
     for line in '== default comparison validation ==' \
         '== default equality mouths ==' \
         'default equality mouths end' \
@@ -75,4 +83,9 @@ gate_extra_asserts() {
     done
 }
 
-corelib_diff_gate DictCollections System.Collections System.Collections.NonGeneric System.Collections.Immutable System.Linq
+corelib_diff_gate DictCollections System.Collections System.Collections.NonGeneric System.Collections.Immutable System.Linq System.Reflection.Metadata
+
+# Excluded structural shapes are metadata-only negative inputs, never executed.
+build_gate_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+build_gate_proj gates/fixtures/structural-pointer-negative/PointerNegative.csproj
+structural_pointer_negative_gate "artifacts/structural-pointer-negative-$CONFIG" "gates/fixtures/structural-pointer-negative/bin/$CONFIG/$TFM"

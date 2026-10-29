@@ -41,6 +41,9 @@ namespace DictCollections
             if (args.Length > 0 && args[0] == "before-nullable-equality")
                 return;
             NullableEqualitySubset.Program.__GateEntry();
+            if (args.Length > 0 && args[0] == "before-structural-pointer")
+                return;
+            StructuralPointerSubset.Program.__GateEntry();
         }
     }
 }
