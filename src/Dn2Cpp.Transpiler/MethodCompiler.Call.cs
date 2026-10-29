@@ -3544,6 +3544,14 @@ internal sealed partial class MethodCompiler
     internal static bool IsCancellationTokenValue(TypeDesc t) =>
         t is { Kind: TypeKind.Class, Class: { IsValueType: true, FullName: "System.Threading.CancellationToken" } };
 
+    // GCHandle's opaque cell is not described by its managed _handle field layout.
+    internal static bool IsGCHandleValue(TypeDesc t) =>
+        t is { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false,
+            FullName: "System.Runtime.InteropServices.GCHandle", GenericArity: 0,
+            IntrinsicCppName: "Dn2CppGCHandle" } c }
+        && c.Module.AssemblyName == "System.Private.CoreLib"
+        && c.Context.TypeArgs.Length == 0;
+
     private string EqualityHashExpr(TypeDesc keyType, StackEntry key)
     {
         if (keyType.IsCanonPlaceholder && !keyType.IsObject)
@@ -3556,6 +3564,12 @@ internal sealed partial class MethodCompiler
             return $"(int32_t)({Cast(key, "int32_t")})";
         if (IsCancellationTokenValue(keyType))
             return $"(int32_t)(uintptr_t)(({Cast(key, "Dn2CppCancelToken")}).source)";
+        if (IsGCHandleValue(keyType))
+        {
+            // Match the existing public GCHandle.GetHashCode token conversion.
+            string handle = $"(uint64_t)dn2cpp_gchandle_to_intptr({Cast(key, "Dn2CppGCHandle")})";
+            return $"(int32_t)(({handle}) ^ (({handle}) >> 32))";
+        }
         // A reference-type key (a record/class with value equality, System.Type for
         // a record's EqualityContract, or plain object identity) dispatches its
         // GetHashCode override via the type-info slot, else an identity hash.
@@ -3704,6 +3718,7 @@ internal sealed partial class MethodCompiler
             || IsReferenceKeyType(t)
             || IntrinsicValueTypeFn(t) is not null
             || IsCancellationTokenValue(t)
+            || IsGCHandleValue(t)
             || IntrinsicPointerValueType(t) is not null
             || (EqualityStructArm(t) is { } sc
                 && (Compilation.EffectiveTypedEquals(sc) is not null
@@ -3764,6 +3779,8 @@ internal sealed partial class MethodCompiler
         }
         if (IsCancellationTokenValue(keyType))
             return $"((({Cast(a, "Dn2CppCancelToken")}).source == ({Cast(b, "Dn2CppCancelToken")}).source) ? 1 : 0)";
+        if (IsGCHandleValue(keyType))
+            return $"(dn2cpp_gchandle_to_intptr({Cast(a, "Dn2CppGCHandle")}) == dn2cpp_gchandle_to_intptr({Cast(b, "Dn2CppGCHandle")}) ? 1 : 0)";
         // The closed element type decides whether GenericEqualityComparer<T> calls
         // IEquatable<T>.Equals. A shared body reads that type from its call-site
         // context; the receiver's runtime type may implement other instantiations.

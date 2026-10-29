@@ -376,6 +376,12 @@ Core invariants:
   numeric hash parity or stability between processes. Function-pointer and byref
   fields, explicit-layout unions and other unsupported structural layouts remain
   excluded. This field rule does not admit general pointer keys or ordering.
+- **Non-generic CoreLib GCHandle equality uses its opaque handle-cell identity**,
+  including comparer and structural-field paths. Copies compare equally; separate
+  handles to the same target do not. Equality and hashing use the existing token
+  conversion without reading the target or managed field layout. Hashing matches
+  the existing native GCHandle hash operation, not CLR numeric hash values.
+  Allocation, freeing, lifetime policy, generic handles and ordering are unchanged.
 
 ## 2. Modules and the core⇄target contract
 

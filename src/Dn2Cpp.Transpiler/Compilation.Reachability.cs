@@ -1483,9 +1483,9 @@ internal sealed partial class Compilation
         // helpers instead.
         if (MethodCompiler.IntrinsicValueTypeFn(t) is not null)
             return true;
-        // CancellationToken's emitted source pointer is its whole identity; its loaded
-        // fields and managed equality bodies are not emitted.
-        if (MethodCompiler.IsCancellationTokenValue(t))
+        // These opaque cell identities do not use their loaded managed field layout
+        // or equality bodies.
+        if (MethodCompiler.IsCancellationTokenValue(t) || MethodCompiler.IsGCHandleValue(t))
             return true;
         // Opaque pointer-backed handles compare and hash their entire representation;
         // their loaded managed fields do not describe the emitted runtime payload.
@@ -1665,6 +1665,7 @@ internal sealed partial class Compilation
         if (t is not { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false } fc }
             || MethodCompiler.IntrinsicValueTypeFn(t) is not null
             || MethodCompiler.IsCancellationTokenValue(t)
+            || MethodCompiler.IsGCHandleValue(t)
             || MethodCompiler.IntrinsicPointerValueType(t) is not null)
             return;
         // The Object-virtual override ValueType.Equals/GetHashCode would dispatch through

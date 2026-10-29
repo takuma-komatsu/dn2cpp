@@ -35,9 +35,10 @@
 # Former gates: dict, dict-api, dict-enum, dict-more, dict-string, hashset,
 # hashkey, sorted-collections, join-enumerable-subset,
 # ordinal-stringset-dedup-subset, struct-key-subset, valuetuple-key-dict-subset.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/structural-pointer/check-generated.py gates/_structural-pointer.sh gates/fixtures/structural-pointer-negative/PointerNegative.csproj gates/fixtures/structural-pointer-negative/Program.cs gates/fixtures/ldftn-local/StructuralPointerFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_gchandle-equality.sh gates/fixtures/gchandle-equality/check-generated.py gates/fixtures/ldftn-local/GCHandleEqualityGuards.cs gates/fixtures/structural-pointer/check-generated.py gates/_structural-pointer.sh gates/fixtures/structural-pointer-negative/PointerNegative.csproj gates/fixtures/structural-pointer-negative/Program.cs gates/fixtures/ldftn-local/StructuralPointerFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_structural-pointer.sh"
+source "$(dirname "$0")/_gchandle-equality.sh"
 
 # System.Collections.NonGeneric carries the non-generic SortedList (NonGenericSortedListSubset);
 # the generic collections come from System.Collections; System.Collections.Immutable
@@ -47,6 +48,7 @@ source "$(dirname "$0")/_structural-pointer.sh"
 gate_extra_asserts() {
     local out="$1" native before prefix line
     python3 gates/fixtures/structural-pointer/check-generated.py "$out"
+    python3 gates/fixtures/gchandle-equality/check-generated.py "$out"
     gate_capture_ok "$out/assert-native-1" run_bounded "./$out/DictCollections"
     native="$out/assert-native-1.stdout"
 
@@ -68,6 +70,10 @@ gate_extra_asserts() {
     gate_output select "$native" "$out/assert-pointer-prefix.stdout" --before 'structural-pointer-reader-same:True' --policy crlf
     gate_output compare "$out/assert-pointer-prefix.stdout" "$out/assert-before-pointer.stdout"
     gate_output witness "$native" 'structural-pointer-checks:39' --count 1 --policy crlf
+    gate_capture_ok "$out/assert-before-gchandle" run_bounded dotnet "$_CG_APP" before-gchandle-equality
+    gate_output select "$native" "$out/assert-gchandle-prefix.stdout" --before 'gchandle-equality-copy:True' --policy crlf
+    gate_output compare "$out/assert-gchandle-prefix.stdout" "$out/assert-before-gchandle.stdout"
+    gate_output witness "$native" 'gchandle-equality-checks:39' --count 1 --policy crlf
     for line in '== default comparison validation ==' \
         '== default equality mouths ==' \
         'default equality mouths end' \
@@ -89,3 +95,5 @@ corelib_diff_gate DictCollections System.Collections System.Collections.NonGener
 build_gate_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
 build_gate_proj gates/fixtures/structural-pointer-negative/PointerNegative.csproj
 structural_pointer_negative_gate "artifacts/structural-pointer-negative-$CONFIG" "gates/fixtures/structural-pointer-negative/bin/$CONFIG/$TFM"
+
+gchandle_equality_guards_gate "artifacts/gchandle-equality-guards-$CONFIG"

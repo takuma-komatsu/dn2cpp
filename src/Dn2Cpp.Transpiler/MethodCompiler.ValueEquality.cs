@@ -136,8 +136,8 @@ internal sealed partial class MethodCompiler
         // loaded CoreLib fields do not describe the emitted runtime payload.
         if (IntrinsicPointerValueType(t) is not null)
             return TryEqualityEqualsLValue(t, x, y);
-        // CancellationToken wraps its opaque identity in a one-field value struct.
-        if (IsCancellationTokenValue(t))
+        // These opaque struct payloads compare their runtime identity.
+        if (IsCancellationTokenValue(t) || IsGCHandleValue(t))
             return TryEqualityEqualsLValue(t, x, y);
         // A reference field runs its Object override even for itself or a null argument.
         if (IsReferenceKeyType(t))
@@ -204,8 +204,8 @@ internal sealed partial class MethodCompiler
         // Keep the hash twin on the same raw-handle representation as equality.
         if (IntrinsicPointerValueType(t) is not null)
             return EqualityHashExpr(t, x);
-        // Keep the struct-wrapped token on the same source identity as equality.
-        if (IsCancellationTokenValue(t))
+        // Keep opaque struct payloads on the same identity as equality.
+        if (IsCancellationTokenValue(t) || IsGCHandleValue(t))
             return EqualityHashExpr(t, x);
         // System.Enum-typed field: a boxed reference, not a value struct — see the equality
         // twin. Falls through to EqualityHashExpr, which routes it to
