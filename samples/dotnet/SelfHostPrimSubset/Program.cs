@@ -453,5 +453,7 @@ internal static class Program
         RuntimeFieldsSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-static-generic-variables") return;
         StaticGenericVariablesSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-utf8-name") return;
+        RuntimeUtf8NameSubset.Program.Run();
     }
 }

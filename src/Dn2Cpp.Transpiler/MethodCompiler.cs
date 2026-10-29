@@ -1229,6 +1229,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariables(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStatic(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleUtf8Name(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleConstraints(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleMakeCompound(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleMakeArray(_method)

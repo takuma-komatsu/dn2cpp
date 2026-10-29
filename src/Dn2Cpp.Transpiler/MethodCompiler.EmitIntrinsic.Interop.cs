@@ -458,6 +458,21 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsRuntimeTypeHandleUtf8Name(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            string message = Comp.SrResourceText(callee.Module, "Arg_InvalidHandle")
+                ?? throw new NotSupportedException("RuntimeTypeHandle UTF8-name validation requires CoreLib's Arg_InvalidHandle resource");
+            Emit($"dn2cpp_runtime_type_get_utf8_name({Cast(type, "Dn2CppType*")}, \"{CppLiteralBody(message)}\");");
+            var result = callee.Signature.ReturnType;
+            NoteLocalValueLayout(result);
+            string cpp = CppTypes.Of(result);
+            Push(CppTypes.KindOf(result), cpp, $"{cpp}{{}}"); // unreachable stack shape after noreturn
+            Top = Top with { StaticType = result };
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStatic(callee))
         {
             var type = Pop();

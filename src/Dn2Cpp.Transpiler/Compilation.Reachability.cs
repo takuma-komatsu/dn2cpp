@@ -158,6 +158,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(m)
             || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariables(m)
             || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStatic(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleUtf8Name(m)
             || CoreIntrinsics.IsRuntimeTypeHandleConstraints(m)
             || CoreIntrinsics.IsRuntimeTypeHandleMakeCompound(m)
             || CoreIntrinsics.IsRuntimeTypeHandleMakeArray(m)

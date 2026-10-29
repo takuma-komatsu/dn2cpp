@@ -744,6 +744,15 @@ before payload access. This native safety policy is not a private CLR null-call
 contract. The instance wrapper retains its checked default-handle validation,
 and open function-pointer construction keeps its existing refusal.
 
+The retained `RuntimeTypeHandle.GetUtf8Name(RuntimeType)` validates the canonical
+Type header before payload access. Null throws NullReferenceException; formal,
+signature and array types preserve the managed Arg_InvalidHandle ArgumentException
+with no parameter name. Ordinary types explicitly refuse unavailable CoreCLR
+metadata-name pointers. Native display names are not raw TypeDef simple-name
+provenance, so no borrowed pointer or successful MdUtf8String is fabricated. The
+real managed value-return ABI remains intact for calls, addresses and reflection;
+public naming and the raw GetUtf8NameInternal leaf keep their existing policies.
+
 The exact managed `RuntimeTypeHandle.GetConstraints()` wrapper reads the existing
 native formal-constraint metadata. Default handles and non-parameter handles keep
 their distinct validation. Zero constraints return null; nonempty results are

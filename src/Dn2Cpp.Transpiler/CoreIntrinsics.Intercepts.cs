@@ -653,6 +653,7 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleGenericVariableIndex(mi)
             || IsRuntimeTypeHandleContainsGenericVariables(mi)
             || IsRuntimeTypeHandleContainsGenericVariablesStatic(mi)
+            || IsRuntimeTypeHandleUtf8Name(mi)
             || IsRuntimeTypeHandleConstraints(mi)
             || IsRuntimeTypeHandleMakeCompound(mi)
             || IsRuntimeTypeHandleMakeArray(mi)
@@ -2092,6 +2093,37 @@ internal static partial class CoreIntrinsics
             && signature.ParameterTypes.Length == 0
             && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 };
     }
+
+    internal static bool IsRuntimeTypeHandleUtf8Name(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetUtf8Name"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.Handle.IsNil || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsRuntimeTypeHandleUtf8NameSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Class,
+                Class: { FullName: "System.MdUtf8String", IsValueType: true } result }
+            && result.Module == method.Module
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class,
+                Class: { FullName: "System.RuntimeType", IsValueType: false } type }]
+            && type.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeHandleUtf8NameSignature(BlobReader blob) =>
+        blob.RemainingBytes >= 6 && blob.ReadByte() == 0 && blob.ReadByte() == 1
+        && blob.ReadByte() == 0x11 && blob.TryReadCompressedInteger(out int result)
+        && result > 0 && (result >> 2) != 0 && (result & 3) != 3
+        && blob.RemainingBytes >= 2 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int type) && type > 0
+        && (type >> 2) != 0 && (type & 3) != 3 && blob.RemainingBytes == 0;
 
     internal static bool IsRuntimeTypeHandleContainsGenericVariablesStatic(MethodInfo method)
     {

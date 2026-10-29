@@ -765,6 +765,20 @@ Dn2CppArrayRef* dn2cpp_type_get_interfaces(Dn2CppType* t)
     return arr;
 }
 
+// Native display names do not establish stable raw TypeDef-name provenance.
+[[noreturn]] void dn2cpp_runtime_type_get_utf8_name(Dn2CppType* t, const char* invalidHandleMessage)
+{
+    if (t == nullptr)
+        dn2cpp_throw_null_reference();
+    if (t->type != &dn2cpp_type_type)
+        dn2cpp_throw_platform_not_supported("RuntimeTypeHandle.GetUtf8Name: custom Type is not supported");
+    const Dn2CppTypeInfo* ti = dn2cpp_type_require(t);
+    const int32_t kind = dn2cpp_signature_kind(ti);
+    if ((ti->flags & (DN2CPP_TF_GENERICPARAM | DN2CPP_TF_ARRAY)) != 0 || kind == 1 || kind == 2 || kind == 3)
+        dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type, invalidHandleMessage, nullptr);
+    dn2cpp_throw_platform_not_supported("RuntimeTypeHandle.GetUtf8Name requires CoreCLR metadata-name pointers. Use Type.Name instead.");
+}
+
 // This InternalCall accepts native canonical Type objects, never CoreCLR handles.
 int32_t dn2cpp_runtime_type_contains_generic_variables(Dn2CppType* t)
 {

@@ -2,6 +2,9 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (RuntimeUtf8NameNormalization.Run(args)) return;
+if (RuntimeUtf8NameGuards.Run(args)) return;
+if (RuntimeUtf8NameFixture.Run(args)) return;
 if (StaticGenericVariablesGuards.Run(args)) return;
 if (StaticGenericVariablesFixture.Run(args)) return;
 if (RuntimeFieldsGuards.Run(args)) return;

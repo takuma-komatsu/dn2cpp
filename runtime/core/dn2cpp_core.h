@@ -1859,6 +1859,7 @@ Dn2CppType* dn2cpp_type_make_generic(Dn2CppType* def, Dn2CppArrayRef* args);
 // Parse(Type, string[, ignoreCase]) and Type.GetEnumUnderlyingType work via a runtime
 // Type, complementing the generic Enum.*<T> inline lowering.
 Dn2CppArrayRef* dn2cpp_type_get_interfaces(Dn2CppType* t);
+[[noreturn]] void dn2cpp_runtime_type_get_utf8_name(Dn2CppType* t, const char* invalidHandleMessage);
 int32_t dn2cpp_runtime_type_contains_generic_variables(Dn2CppType* t);
 int32_t dn2cpp_runtime_type_get_fields(Dn2CppType* t, int32_t* count);
 Dn2CppArrayRef* dn2cpp_runtime_type_get_interfaces(Dn2CppType* t,
