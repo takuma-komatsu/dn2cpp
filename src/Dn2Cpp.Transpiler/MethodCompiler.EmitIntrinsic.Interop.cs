@@ -782,6 +782,12 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsAppContextOnProcessExit(callee))
+        {
+            Emit("dn2cpp_throw_platform_not_supported(\"AppContext process-exit orchestration is not supported\");");
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(callee))
         {
             var type = Pop();

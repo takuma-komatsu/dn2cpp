@@ -457,5 +457,7 @@ internal static class Program
         RuntimeUtf8NameSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-fnptr-arguments") return;
         FunctionPointerArgumentsSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-appcontext-exit") return;
+        AppContextExitSubset.Program.Run();
     }
 }

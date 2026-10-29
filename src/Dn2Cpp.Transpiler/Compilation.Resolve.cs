@@ -1519,6 +1519,14 @@ internal sealed partial class Compilation
                 || member.Module != resolved.Module || !CoreIntrinsics.BrCustomAttributeDataMember.Matches(resolved))
                 throw new NotSupportedException("CustomAttributeData member query requires its exact MemberRef signature");
         }
+        if (name == "OnProcessExit" && candidates.Any(CoreIntrinsics.IsAppContextOnProcessExit))
+        {
+            if (!CoreIntrinsics.IsAppContextOnProcessExitSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ParameterTypes.Length != 0 || !sig.ReturnType.IsVoid
+                || !CoreIntrinsics.IsAppContextOnProcessExit(resolved))
+                throw new NotSupportedException("AppContext process-exit hook requires its exact MemberRef signature");
+        }
         if (name == "GetUtf8Name" && candidates.Any(CoreIntrinsics.IsRuntimeTypeHandleUtf8Name))
         {
             if (!CoreIntrinsics.IsRuntimeTypeHandleUtf8NameSignature(reader.GetBlobReader(mr.Signature))
@@ -1809,6 +1817,12 @@ internal sealed partial class Compilation
                     return factory;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.AppContext" && reader.StringComparer.Equals(mr.Name, "OnProcessExit"))
+        {
+            var exit = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsAppContextOnProcessExit(exit))
+                return exit;
         }
         if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "ContainsGenericVariables"))
         {

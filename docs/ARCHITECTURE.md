@@ -1673,3 +1673,15 @@ NRE safety boundary only on the successful TypeDesc branch. Span's existing
 byref-like reflection Invoke refusal and raw marshaller/import policy remain
 unchanged. NoAlloc accepts this exception-only helper under the existing policy,
 not a promise that constructing an exception performs no allocation.
+
+### Retained private process-exit orchestration
+
+The exact managed CoreLib `AppContext.OnProcessExit()` hook throws
+`PlatformNotSupportedException` when invoked: CoreCLR load-context, listener and
+AppDomain shutdown orchestration is not a native runtime capability. Retaining
+this private body does not register it with native process exit. No partial
+callbacks run before refusal; existing native exit behavior and EventSource
+observation refusals remain unchanged. This boundary does not provide public
+`ProcessExit` or `AssemblyLoadContext.Unloading` delivery. Throw-only NoAlloc
+admission follows the existing exception policy, not a physical allocation-free
+exception guarantee.

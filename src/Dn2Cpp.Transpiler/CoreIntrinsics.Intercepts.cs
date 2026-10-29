@@ -649,6 +649,7 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleGetModule(mi)
             || IsRuntimeTypeHandleInstantiation(mi)
             || IsRuntimeTypeHandleInterfaces(mi)
+            || IsAppContextOnProcessExit(mi)
             || IsRuntimeTypeHandleFunctionPointerArguments(mi)
             || IsRuntimeTypeHandleFields(mi)
             || IsRuntimeTypeHandleGenericVariableIndex(mi)
@@ -2094,6 +2095,34 @@ internal static partial class CoreIntrinsics
             && signature.ParameterTypes.Length == 0
             && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 };
     }
+
+    // CoreCLR shutdown orchestration is not a native process-exit registration.
+    internal static bool IsAppContextOnProcessExit(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.AppContext" || method.Name != "OnProcessExit"
+            || method.DeclaringClass.Handle.IsNil || method.Handle.IsNil
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        var owner = method.Module.Reader.GetTypeDefinition(method.DeclaringClass.Handle);
+        if (!owner.GetDeclaringType().IsNil
+            || !method.Module.Reader.StringComparer.Equals(owner.Namespace, "System")
+            || !method.Module.Reader.StringComparer.Equals(owner.Name, "AppContext")
+            || !IsAppContextOnProcessExitSignature(method.Module.Reader.GetBlobReader(
+                method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0 && signature.ReturnType.IsVoid;
+    }
+
+    internal static bool IsAppContextOnProcessExitSignature(BlobReader blob) =>
+        blob.RemainingBytes == 3 && blob.ReadByte() == 0 && blob.ReadByte() == 0
+        && blob.ReadByte() == (byte)SignatureTypeCode.Void;
 
     internal static bool IsRuntimeTypeHandleUtf8Name(MethodInfo method)
     {
