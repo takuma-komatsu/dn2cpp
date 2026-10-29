@@ -1201,6 +1201,23 @@ Dn2CppType* dn2cpp_type_function_pointer_return(Dn2CppType* type)
     return dn2cpp_get_type_from_handle(dn2cpp_require_function_pointer(type)->children[0]);
 }
 
+// The cache wrapper includes the return type and owns a fresh precise Type[].
+Dn2CppArrayRef* dn2cpp_runtime_type_function_pointer_arguments(Dn2CppType* type,
+    const Dn2CppTypeInfo* typeArray)
+{
+    if (type == nullptr)
+        dn2cpp_throw_null_reference();
+    if (type->type != &dn2cpp_type_type)
+        dn2cpp_throw_platform_not_supported("RuntimeTypeHandle.GetArgumentTypesFromFunctionPointer: custom Type is not supported");
+    const auto* signature = dn2cpp_require_function_pointer(type);
+    auto* result = dn2cpp_newarr_ref(static_cast<int32_t>(signature->children.size()));
+    result->type = typeArray;
+    for (int32_t i = 0; i < result->length; i++)
+        dn2cpp_gc_store_ref(&result->data[i], reinterpret_cast<Dn2CppObject*>(
+            dn2cpp_get_type_from_handle(signature->children[i])));
+    return result;
+}
+
 Dn2CppArrayRef* dn2cpp_type_function_pointer_parameters(Dn2CppType* type)
 {
     const auto* signature = dn2cpp_require_function_pointer(type);

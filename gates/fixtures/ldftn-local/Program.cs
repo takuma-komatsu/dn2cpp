@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (FunctionPointerArgumentsGuards.Run(args)) return;
+if (FunctionPointerArgumentsFixture.Run(args)) return;
 if (RuntimeUtf8NameNormalization.Run(args)) return;
 if (RuntimeUtf8NameGuards.Run(args)) return;
 if (RuntimeUtf8NameFixture.Run(args)) return;

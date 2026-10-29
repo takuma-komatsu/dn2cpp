@@ -455,5 +455,7 @@ internal static class Program
         StaticGenericVariablesSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-utf8-name") return;
         RuntimeUtf8NameSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-fnptr-arguments") return;
+        FunctionPointerArgumentsSubset.Program.Run();
     }
 }

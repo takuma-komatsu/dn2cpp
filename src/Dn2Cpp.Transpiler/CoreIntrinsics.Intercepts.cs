@@ -649,6 +649,7 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleGetModule(mi)
             || IsRuntimeTypeHandleInstantiation(mi)
             || IsRuntimeTypeHandleInterfaces(mi)
+            || IsRuntimeTypeHandleFunctionPointerArguments(mi)
             || IsRuntimeTypeHandleFields(mi)
             || IsRuntimeTypeHandleGenericVariableIndex(mi)
             || IsRuntimeTypeHandleContainsGenericVariables(mi)
@@ -2328,6 +2329,38 @@ internal static partial class CoreIntrinsics
         && blob.TryReadCompressedInteger(out int span) && span > 0 && (span >> 2) != 0 && (span & 3) != 3
         && blob.RemainingBytes == 4 && blob.ReadByte() == 1 && blob.ReadByte() == 0x18
         && blob.ReadByte() == 0x10 && blob.ReadByte() == 0x08;
+
+    internal static bool IsRuntimeTypeHandleFunctionPointerArguments(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetArgumentTypesFromFunctionPointer"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.Handle.IsNil || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsRuntimeTypeHandleFunctionPointerArgumentsSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Class,
+                Class: { FullName: "System.Type", IsValueType: false } element } }
+            && element.Module == method.Module
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class,
+                Class: { FullName: "System.RuntimeType", IsValueType: false } type }]
+            && type.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeHandleFunctionPointerArgumentsSignature(BlobReader blob) =>
+        blob.RemainingBytes >= 7 && blob.ReadByte() == 0 && blob.ReadByte() == 1
+        && blob.ReadByte() == 0x1d && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int result) && result > 0
+        && (result >> 2) != 0 && (result & 3) != 3
+        && blob.RemainingBytes >= 2 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int parameter) && parameter > 0
+        && (parameter >> 2) != 0 && (parameter & 3) != 3 && blob.RemainingBytes == 0;
 
     internal static bool IsRuntimeTypeHandleInterfaces(MethodInfo method)
     {

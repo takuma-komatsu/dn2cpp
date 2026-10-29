@@ -1556,6 +1556,18 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsRuntimeTypeHandleFields(resolved))
                 throw new NotSupportedException("RuntimeTypeHandle fields query requires its exact MemberRef signature");
         }
+        if (name == "GetArgumentTypesFromFunctionPointer" && candidates.Any(CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments)
+            && (CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(resolved) || sig.ParameterTypes.Length == 1))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArgumentsSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Class,
+                    Class: { FullName: "System.Type", IsValueType: false } element } }
+                || element.Module != resolved.Module
+                || sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } type }]
+                || type.Module != resolved.Module || !CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(resolved))
+                throw new NotSupportedException("RuntimeTypeHandle function-pointer argument query requires its exact MemberRef signature");
+        }
         if (name == "GetInterfaces" && candidates.Any(CoreIntrinsics.IsRuntimeTypeHandleInterfaces)
             && (CoreIntrinsics.IsRuntimeTypeHandleInterfaces(resolved) || sig.ParameterTypes.Length == 1))
         {
@@ -1816,6 +1828,12 @@ internal sealed partial class Compilation
             var fields = ResolveMemberRefMethod(module, handle, callerCtx);
             if (CoreIntrinsics.IsRuntimeTypeHandleFields(fields))
                 return fields;
+        }
+        if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "GetArgumentTypesFromFunctionPointer"))
+        {
+            var arguments = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(arguments))
+                return arguments;
         }
         if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "GetInterfaces"))
         {

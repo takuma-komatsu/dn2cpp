@@ -744,6 +744,17 @@ before payload access. This native safety policy is not a private CLR null-call
 contract. The instance wrapper retains its checked default-handle validation,
 and open function-pointer construction keeps its existing refusal.
 
+The retained `RuntimeTypeHandle.GetArgumentTypesFromFunctionPointer(RuntimeType)`
+uses existing immutable native signature children to return a fresh precise Type[]:
+return type first, followed by parameters in order, with interned Type identities.
+The zero-parameter case still owns an array containing its return type. Public
+parameter/return helpers and managed cache storage keep their existing behavior.
+Null, custom headers and non-function-pointer input have explicit native safety
+policies (NullReferenceException, PlatformNotSupportedException and
+InvalidOperationException), not private CLR invalid-input parity. Canonical header
+validation precedes payload access; no function pointer is invoked and no new
+signature substitution or raw QCall capability is introduced.
+
 The retained `RuntimeTypeHandle.GetUtf8Name(RuntimeType)` validates the canonical
 Type header before payload access. Null throws NullReferenceException; formal,
 signature and array types preserve the managed Arg_InvalidHandle ArgumentException

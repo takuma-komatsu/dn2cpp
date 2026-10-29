@@ -1764,6 +1764,7 @@ int32_t dn2cpp_type_is_function_pointer(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_unmanaged_function_pointer(const Dn2CppTypeInfo* ti);
 Dn2CppType* dn2cpp_type_function_pointer_return(Dn2CppType* type);
 Dn2CppArrayRef* dn2cpp_type_function_pointer_parameters(Dn2CppType* type);
+Dn2CppArrayRef* dn2cpp_runtime_type_function_pointer_arguments(Dn2CppType* type, const Dn2CppTypeInfo* typeArray);
 Dn2CppArrayRef* dn2cpp_type_function_pointer_conventions(Dn2CppType* type);
 int32_t dn2cpp_type_is_pointer(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_by_ref(const Dn2CppTypeInfo* ti);
