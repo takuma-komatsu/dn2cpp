@@ -60,6 +60,9 @@ namespace DateTimeOps
             if (args.Length > 0 && args[0] == "before-full-day")
                 return;
             FullDayPublicSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-abbreviated-month")
+                return;
+            AbbreviatedMonthPublicSubset.Program.Run();
         }
     }
 }

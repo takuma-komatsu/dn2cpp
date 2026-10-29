@@ -24,9 +24,11 @@
 # datetime-tz, datetimeoffset.
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_abbreviated-day.sh"
+source "$(dirname "$0")/_abbreviated-month.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_abbreviated-day.sh gates/fixtures/abbreviated-day samples/dotnet/DateTimeOps/AbbreviatedDaySubset.cs gates/fixtures/ldftn-local/AbbreviatedDayFixture.cs gates/fixtures/ldftn-local/AbbreviatedDayGuards.cs gates/fixtures/ldftn-local/RuntimeTypeDefaultCtorFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/full-day/FullDay.csproj gates/fixtures/full-day/minimal/MinimalFullDay.csproj gates/fixtures/full-day/link.xml samples/dotnet/DateTimeOps/FullDayPublicSubset.cs"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|abbreviated-day:invariant,raw,diet,reflection-only,minimal,NoAlloc-rejection|full-day:invariant,raw,diet,reflection-only,minimal,NoAlloc-rejection|day-name-modes:abbreviated,full|abbreviated-day-negatives:${DN2CPP_ABBREVIATED_DAY_NEGATIVES:-return byref address-return address-byref}"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_abbreviated-month.sh gates/fixtures/abbreviated-month samples/dotnet/DateTimeOps/AbbreviatedMonthSubset.cs samples/dotnet/DateTimeOps/AbbreviatedMonthPublicSubset.cs gates/fixtures/ldftn-local/AbbreviatedMonthFixture.cs gates/fixtures/ldftn-local/AbbreviatedMonthGuards.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|abbreviated-day:invariant,raw,diet,reflection-only,minimal,NoAlloc-rejection|full-day:invariant,raw,diet,reflection-only,minimal,NoAlloc-rejection|abbreviated-month:exact-int32-scalar-v1|abbreviated-month-negatives:${DN2CPP_ABBREVIATED_MONTH_NEGATIVES:-return byref address-return address-byref}|day-name-modes:abbreviated,full|abbreviated-day-negatives:${DN2CPP_ABBREVIATED_DAY_NEGATIVES:-return byref address-return address-byref}"
 
 # Constructors, arithmetic, offset parsing and microseconds preserve fault fields.
 gate_extra_asserts() {
@@ -108,6 +110,11 @@ gate_extra_asserts() {
     gate_output compare "$out/full-day-prefix.stdout" "$out/full-day-before.stdout"
     gate_output witness "$out/day-full.stdout" '== Full invariant day public neighbor ==' 'full-day-public-0:True' 'full-day-public-6:True' 'Full invariant day public neighbor end' --count 1 --policy crlf
     full_day_focused_gate "$out/full-day"
+    gate_capture_ok "$out/month-before" run_bounded "./$out/DateTimeOps$EXE_EXT" before-abbreviated-month
+    gate_output select "$out/day-full.stdout" "$out/month-prefix.stdout" --before '== Abbreviated invariant month public neighbor ==' --policy crlf
+    gate_output compare "$out/month-prefix.stdout" "$out/month-before.stdout"
+    gate_output witness "$out/day-full.stdout" '== Abbreviated invariant month public neighbor ==' 'abbreviated-month-public-1:True' 'abbreviated-month-public-13:True' 'abbreviated-month-public-empty:True' 'Abbreviated invariant month public neighbor end' --count 1 --policy crlf
+    abbreviated_month_focused_gate "$out/abbreviated-month"
 
 }
 

@@ -1034,11 +1034,13 @@ its `GetFormat(Type)` implementation and accepts only a `NumberFormatInfo` resul
 other results fall back to the current culture. Allocation, identity conversion,
 and unrelated known-provider formatting do not retain unused provider bodies.
 
-DateTimeFormatInfo full and abbreviated weekday lookup follow the existing invariant
-name policy, not localized or user-modified name arrays. The exact public methods
-use rooted name literals, check a null receiver before the day range, and
-preserve the boxed DayOfWeek value in range exceptions. Exceptional boxing
-remains subject to the conservative NoAlloc body classifier.
+DateTimeFormatInfo full and abbreviated weekday lookup and abbreviated month lookup
+follow the existing invariant name policy, not localized or user-modified name
+arrays. The exact public methods use rooted name literals and check a null receiver
+before the range. Month indices are one-based, with an empty thirteenth name;
+range checks avoid signed overflow. Range exceptions preserve the original boxed
+DayOfWeek or Int32 argument. Exceptional boxing remains subject to the conservative
+NoAlloc body classifier.
 
 Numeric culture data are frozen CLR/ICU snapshots in `runtime/core/intrinsics/`.
 Native binaries never discover or load the deployment host's ICU. Reference
