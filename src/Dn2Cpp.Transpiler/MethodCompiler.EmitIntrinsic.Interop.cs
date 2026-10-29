@@ -518,6 +518,16 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears(callee))
+        {
+            DateTimeFormatReceiver();
+            // Only Japanese and Taiwan calendars force the special year rule;
+            // native DTFI uses the invariant Gregorian policy.
+            Push(StackKind.I4, "int32_t", "0");
+            Top = Top with { StaticType = callee.Signature.ReturnType };
+            return;
+        }
+
         if (CoreIntrinsics.IsDateTimeFormatInfoCalendar(callee))
         {
             DateTimeFormatReceiver();

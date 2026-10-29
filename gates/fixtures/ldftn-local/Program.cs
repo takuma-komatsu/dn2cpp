@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (ForceTwoDigitYearsFixture.Run(args)) return;
+if (ForceTwoDigitYearsGuards.Run(args)) return;
 if (FormatFlagsFixture.Run(args)) return;
 if (FormatFlagsGuards.Run(args)) return;
 if (EraNameFixture.Run(args)) return;
