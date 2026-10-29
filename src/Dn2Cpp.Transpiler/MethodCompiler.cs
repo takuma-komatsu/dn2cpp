@@ -1397,6 +1397,13 @@ internal sealed partial class MethodCompiler : IEvalStack
                 var ctor = Comp.ReachManagedMethod(handleClass, ".ctor",
                     static ps => ps is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }], allocates: true)
                     ?? throw new NotSupportedException("Named activation requires ObjectHandle(object)");
+                bool withArguments = _method.Signature.ParameterTypes.Length == 8;
+                string attributes = withArguments ? Cast(Pop(), "Dn2CppArrayRef*") : "nullptr";
+                if (withArguments) Pop(); // Culture follows the existing non-parse DefaultBinder policy.
+                string arguments = withArguments ? Cast(Pop(), "Dn2CppArrayRef*") : "nullptr";
+                string binder = withArguments ? Cast(Pop(), "Dn2CppObject*") : "nullptr";
+                string flags = withArguments ? Cast(Pop(), "int32_t") : "20";
+                string ignoreCase = withArguments ? Cast(Pop(), "int32_t") : "0";
                 var typeName = Pop();
                 var assemblyName = Pop();
                 string assembly = NewTemp("const char*");
@@ -1405,9 +1412,15 @@ internal sealed partial class MethodCompiler : IEvalStack
                 Emit($"if ({typeName.Expr} == nullptr) dn2cpp_throw_argument_null_param(\"name\");");
                 Emit($"if ({typeName.Expr}->length == 0) dn2cpp_throw_argument_param(DN2CPP_SR_EMPTY_STRING, \"name\");");
                 string type = NewTemp("Dn2CppType*");
-                Emit($"{type} = dn2cpp_assembly_get_type({assembly}, {Cast(typeName, "Dn2CppString*")}, 1, 0);");
+                Emit($"{type} = dn2cpp_assembly_get_type({assembly}, {Cast(typeName, "Dn2CppString*")}, 1, {ignoreCase});");
                 string instance = NewTemp("Dn2CppObject*");
-                Emit($"{instance} = dn2cpp_activator_create_instance({type});");
+                if (withArguments)
+                {
+                    // CoreLib rejects activation attributes before entering binder selection.
+                    Emit($"if ({attributes} != nullptr && ({attributes})->length > 0) dn2cpp_throw_platform_not_supported(\"Activation Attributes are not supported.\");");
+                    Emit($"{instance} = dn2cpp_activator_create_instance_args({type}, {arguments}, {flags}, {binder}, {attributes});");
+                }
+                else Emit($"{instance} = dn2cpp_activator_create_instance({type});");
                 Emit($"if ({instance} == nullptr) return nullptr;");
                 string handle = NewTemp(handleClass.CppStructName + "*");
                 Emit($"{handle} = ({handleClass.CppStructName}*)dn2cpp_alloc(sizeof({handleClass.CppStructName}));");

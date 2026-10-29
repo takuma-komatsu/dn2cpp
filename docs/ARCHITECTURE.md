@@ -1709,3 +1709,11 @@ rather than guessing an entry assembly. `AppDomain` keeps its earlier null-name
 validation. Linked-name matching and reflection/constructor retention limits
 remain unchanged; this is not a contextual loader or version-binding engine.
 The wrapper and instance are allocating operations for NoAlloc analysis.
+
+The exact eight-argument named overload uses the same linked-name path and
+managed handle, passing case matching, constructor flags and arguments to the
+existing bounded activation engine. Nonempty activation attributes are rejected
+after assembly/type lookup but before binder selection. Nonnull binders remain
+unsupported; culture is evaluated but the existing non-parse DefaultBinder path
+does not consume it. This does not add caller-sensitive loading, custom binder
+execution or culture-dependent conversion.

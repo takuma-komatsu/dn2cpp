@@ -1687,15 +1687,13 @@ internal sealed partial class Compilation
         }
         if (name == "CreateInstance" && candidates.Any(CoreIntrinsics.IsActivatorNamed)
             && (CoreIntrinsics.BrActivatorNamed.Matches(resolved)
-                || (sig.ParameterTypes.Length == 2
+                || (sig.ParameterTypes.Length is 2 or 8
                     && sig.ReturnType is { Kind: TypeKind.Class, Class.FullName: "System.Runtime.Remoting.ObjectHandle" })
-                || sig.ParameterTypes is [{ IsString: true }, _]))
+                || sig.ParameterTypes.Length is 2 or 8 && sig.ParameterTypes[0].IsString))
         {
             if (!CoreIntrinsics.IsActivatorNamedSignature(reader.GetBlobReader(mr.Signature))
-                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
-                || sig.ParameterTypes is not [{ IsString: true }, { IsString: true }]
-                || sig.ReturnType is not { Kind: TypeKind.Class, Class: { FullName: "System.Runtime.Remoting.ObjectHandle", IsValueType: false } result }
-                || result.Module != resolved.Module || !CoreIntrinsics.BrActivatorNamed.Matches(resolved))
+                || !CoreIntrinsics.IsActivatorNamedDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.BrActivatorNamed.Matches(resolved))
                 throw new NotSupportedException("Named Activator construction requires its exact MemberRef signature");
         }
         if (name == "CreateInstance" && candidates.Any(CoreIntrinsics.IsActivatorDefault)
@@ -1969,7 +1967,7 @@ internal sealed partial class Compilation
             var header = blob.ReadSignatureHeader();
             if (header.IsGeneric)
                 blob.ReadCompressedInteger();
-            if (blob.ReadCompressedInteger() == 2)
+            if (blob.ReadCompressedInteger() is 2 or 8)
             {
                 var named = ResolveMemberRefMethod(module, handle, callerCtx);
                 if (CoreIntrinsics.BrActivatorNamed.Matches(named))

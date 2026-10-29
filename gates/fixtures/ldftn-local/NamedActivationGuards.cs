@@ -82,6 +82,8 @@ internal static class NamedActivationGuards
             return realReader.GetString(t.Namespace)=="System" && realReader.GetString(t.Name)=="Activator" && t.GetDeclaringType().IsNil;
         });
         var actualHandle=realReader.GetTypeDefinition(ownerHandleReal).GetMethods().Single(h=>realReader.GetString(realReader.GetMethodDefinition(h).Name)=="CreateInstance" && Convert.ToHexString(realReader.GetBlobBytes(realReader.GetMethodDefinition(h).Signature)).StartsWith("000212",StringComparison.Ordinal) && Convert.ToHexString(realReader.GetBlobBytes(realReader.GetMethodDefinition(h).Signature)).EndsWith("0E0E",StringComparison.Ordinal));
+        var eightHandle=realReader.GetTypeDefinition(ownerHandleReal).GetMethods().Single(h=>realReader.GetString(realReader.GetMethodDefinition(h).Name)=="CreateInstance"
+            && Convert.ToHexString(realReader.GetBlobBytes(realReader.GetMethodDefinition(h).Signature)).StartsWith("000812",StringComparison.Ordinal));
         var actual=((IDictionary)Get(realModule,"MethodMap"))[actualHandle]!;
         Console.WriteLine("named-activation-actual-attributes=" + ((int)Get(actual,"Attributes")).ToString("X4") + ";raw=" + ((int)realReader.GetMethodDefinition(actualHandle).Attributes).ToString("X4") + ";impl=" + ((int)Get(actual,"ImplAttributes")).ToString("X4"));
         var actualSignature = Get(actual,"Signature");
@@ -104,7 +106,7 @@ internal static class NamedActivationGuards
                 .Invoke(loaded, new object[] { appModule, h, context })!;
             int token = MetadataTokens.GetToken((MethodDefinitionHandle)Get(resolved, "Handle"));
             Check(ReferenceEquals(Get(resolved, "Module"), realModule) && expectedOverloadTokens.Contains(token), "neighbor-MemberRef-exact-CoreLib-identity");
-            Check(!(bool)predicate.Invoke(null, new[] { resolved })!, "neighbor-MemberRef-not-two-string-adapter");
+            Check((bool)predicate.Invoke(null, new[] { resolved })! == (token == MetadataTokens.GetToken(eightHandle)), "neighbor-MemberRef-exact-two-or-eight-adapter-policy");
             seenOverloads.Add(token);
             Console.WriteLine("named-activation-neighbor-MemberRef:" + token.ToString("X8", CultureInfo.InvariantCulture));
         }
@@ -114,7 +116,7 @@ internal static class NamedActivationGuards
         {
             var other = ((IDictionary)Get(realModule,"MethodMap"))[h];
             if (other is not null)
-                Check(!(bool)predicate.Invoke(null,new[]{other})!,"other-overload-excluded");
+                Check((bool)predicate.Invoke(null,new[]{other})! == (h == eightHandle),"other-overload-exact-eight-or-excluded");
             else
                 Check(realReader.GetMethodDefinition(h).GetGenericParameters().Count != 0
                     && !raw(realReader.GetBlobReader(realReader.GetMethodDefinition(h).Signature)),"uninstantiated-generic-overload-excluded");

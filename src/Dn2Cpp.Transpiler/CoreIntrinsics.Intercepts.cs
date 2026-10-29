@@ -1181,19 +1181,45 @@ internal static partial class CoreIntrinsics
             || !IsActivatorNamedSignature(method.Module.Reader.GetBlobReader(
                 method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
             return false;
-        var signature = method.Signature;
-        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
-            && signature.ParameterTypes is [{ IsString: true }, { IsString: true }]
-            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Runtime.Remoting.ObjectHandle", IsValueType: false } result }
-            && result.Module == method.Module;
+        return IsActivatorNamedDecodedSignature(method.Signature, method.Module);
     }
 
-    internal static bool IsActivatorNamedSignature(BlobReader blob) =>
-        blob.RemainingBytes >= 6 && blob.ReadByte() == 0 && blob.ReadByte() == 2
-        && blob.ReadByte() == 0x12 && blob.TryReadCompressedInteger(out int result)
-        && result > 0 && (result >> 2) != 0 && (result & 3) != 3
-        && blob.RemainingBytes == 2 && blob.ReadByte() == (byte)SignatureTypeCode.String
-        && blob.ReadByte() == (byte)SignatureTypeCode.String;
+    internal static bool IsActivatorNamedDecodedSignature(MethodSignature<TypeDesc> signature, Module module)
+    {
+        if (signature.Header.RawValue != 0 || signature.GenericParameterCount != 0
+            || signature.ReturnType is not { Kind: TypeKind.Class, Class: { FullName: "System.Runtime.Remoting.ObjectHandle", IsValueType: false } result }
+            || result.Module != module) return false;
+        var ps = signature.ParameterTypes;
+        if (ps is [{ IsString: true }, { IsString: true }]) return true;
+        return ps is [{ IsString: true }, { IsString: true },
+                { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean },
+                { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.BindingFlags",
+                    IsEnum: true, EnumUnderlying: PrimitiveTypeCode.Int32 } flags },
+                { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.Binder", IsValueType: false } binder },
+                { Kind: TypeKind.SZArray, Element: { IsObject: true } },
+                { Kind: TypeKind.Class, Class: { FullName: "System.Globalization.CultureInfo", IsValueType: false } culture },
+                { Kind: TypeKind.SZArray, Element: { IsObject: true } }]
+            && flags.Module == module && binder.Module == module && culture.Module == module;
+    }
+
+    internal static bool IsActivatorNamedSignature(BlobReader blob)
+    {
+        static bool Named(ref BlobReader reader, byte marker) => reader.RemainingBytes > 1
+            && reader.ReadByte() == marker && reader.TryReadCompressedInteger(out int token)
+            && token > 0 && (token >> 2) != 0 && (token & 3) != 3;
+        if (blob.RemainingBytes < 6 || blob.ReadByte() != 0) return false;
+        int count = blob.ReadByte();
+        if (count is not (2 or 8) || !Named(ref blob, 0x12)
+            || blob.RemainingBytes < 2 || blob.ReadByte() != (byte)SignatureTypeCode.String
+            || blob.ReadByte() != (byte)SignatureTypeCode.String) return false;
+        if (count == 2) return blob.RemainingBytes == 0;
+        return blob.RemainingBytes > 0 && blob.ReadByte() == (byte)SignatureTypeCode.Boolean
+            && Named(ref blob, 0x11) && Named(ref blob, 0x12)
+            && blob.RemainingBytes >= 2 && blob.ReadByte() == (byte)SignatureTypeCode.SZArray
+            && blob.ReadByte() == (byte)SignatureTypeCode.Object && Named(ref blob, 0x12)
+            && blob.RemainingBytes == 2 && blob.ReadByte() == (byte)SignatureTypeCode.SZArray
+            && blob.ReadByte() == (byte)SignatureTypeCode.Object;
+    }
 
     public static readonly MethodDefIntercept BrActivatorNamed = new(
         InterceptCutKind.BodyReplace, InterceptEmitArm.ActivatorNamedBody,
