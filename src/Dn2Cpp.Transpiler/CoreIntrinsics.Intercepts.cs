@@ -658,6 +658,7 @@ internal static partial class CoreIntrinsics
             || IsDateTimeFormatInfoEraName(mi)
             || IsDateTimeFormatInfoInternalMonthName(mi)
             || IsDateTimeFormatInfoAllDateTimePatterns(mi)
+            || IsDateTimeFormatInfoMonthArray(mi)
             || IsDateTimeFormatInfoSpan(mi)
             || IsDateOnlyDeconstruct(mi)
             || IsDateTimeParserBoundary(mi)

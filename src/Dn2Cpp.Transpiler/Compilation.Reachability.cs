@@ -165,6 +165,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsDateTimeFormatInfoEraName(m)
             || CoreIntrinsics.IsDateTimeFormatInfoInternalMonthName(m)
             || CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatterns(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoMonthArray(m)
             || CoreIntrinsics.IsDateTimeFormatInfoSpan(m)
             || CoreIntrinsics.IsDateOnlyDeconstruct(m)
             || CoreIntrinsics.IsDateTimeParserBoundary(m)

@@ -8754,7 +8754,7 @@ bool dn2cpp_datetimeoffset_try_parse_exact_multi(Dn2CppString* s, Dn2CppArrayRef
 // The invariant DTFI's abbreviated month/day names (string[]), for the synthesized
 // CultureInfo.DateTimeFormat — see dn2cpp_system_datetime.cpp. arrType is the precise
 // string[] type-info so the getter's castclass to it succeeds.
-Dn2CppArrayRef* dn2cpp_dtfi_invariant_abbrev_month_names(const Dn2CppTypeInfo* arrType);
+Dn2CppArrayRef* dn2cpp_dtfi_invariant_month_names(const Dn2CppTypeInfo* arrType, bool abbreviated);
 Dn2CppArrayRef* dn2cpp_dtfi_invariant_abbrev_day_names(const Dn2CppTypeInfo* arrType);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse(Dn2CppString* s);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse_exact(Dn2CppString* s, Dn2CppString* fmt);

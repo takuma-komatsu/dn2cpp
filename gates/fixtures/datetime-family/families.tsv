@@ -18,3 +18,4 @@ dateonly-deconstruct	DateOnlyDeconstruct	DateOnlyDeconstructSubset	--dateonly-de
 year-month-adjustment	YearMonthAdjustment	YearMonthAdjustmentSubset	--year-month-adjustment
 datetime-trio	DateTimeTrio	DateTimeTrioSubset	--datetime-trio
 dtfi-parser-flags	DtfIParserFlags	DtfIParserFlagsSubset	--dtfi-parser-flags
+dtfi-name-arrays	DtfINameArrays	DtfINameArraysSubset	--dtfi-name-arrays

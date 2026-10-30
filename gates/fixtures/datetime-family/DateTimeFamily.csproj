@@ -20,5 +20,6 @@
     <ProjectReference Include="../year-month-adjustment/YearMonthAdjustment.csproj" />
     <ProjectReference Include="../datetime-trio/DateTimeTrio.csproj" />
     <ProjectReference Include="../dtfi-parser-flags/DtfIParserFlags.csproj" />
+    <ProjectReference Include="../dtfi-name-arrays/DtfINameArrays.csproj" />
   </ItemGroup>
 </Project>

@@ -1671,6 +1671,14 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsDateTimeFormatInfoSpan(resolved))
                 throw new NotSupportedException("DateTimeFormatInfo TChar accessor requires its exact MemberRef signature");
         }
+        if (CoreIntrinsics.IsDateTimeFormatInfoMonthArrayName(name) && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoMonthArray))
+        {
+            bool hasBoolean = name == "InternalGetGenitiveMonthNames";
+            if (!CoreIntrinsics.IsDateTimeFormatInfoMonthArraySignature(reader.GetBlobReader(mr.Signature), hasBoolean)
+                || !CoreIntrinsics.IsDateTimeFormatInfoMonthArrayDecodedSignature(sig, hasBoolean)
+                || !CoreIntrinsics.IsDateTimeFormatInfoMonthArray(resolved))
+                throw new NotSupportedException($"DateTimeFormatInfo {name} requires its exact MemberRef signature");
+        }
         if (name == "GetAllDateTimePatterns" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatterns))
         {
             if (!CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatternsSignature(reader.GetBlobReader(mr.Signature))
@@ -2099,6 +2107,11 @@ internal sealed partial class Compilation
             var deconstruct = ResolveMemberRefMethod(module, handle, callerCtx);
             if (CoreIntrinsics.IsDateOnlyDeconstruct(deconstruct))
                 return deconstruct;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo" && CoreIntrinsics.IsDateTimeFormatInfoMonthArrayName(reader.GetString(mr.Name)))
+        {
+            var names = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoMonthArray(names)) return names;
         }
         if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "GetAllDateTimePatterns"))
         {

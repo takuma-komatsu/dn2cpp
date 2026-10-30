@@ -1,0 +1,8 @@
+<linker>
+  <assembly fullname="System.Private.CoreLib">
+    <type fullname="System.Globalization.DateTimeFormatInfo">
+      <method name="InternalGetGenitiveMonthNames" />
+      <method name="InternalGetLeapYearMonthNames" />
+    </type>
+  </assembly>
+</linker>

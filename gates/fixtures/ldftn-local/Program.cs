@@ -2,6 +2,9 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (DtfINameArraysFixture.Run(args)) return;
+if (DtfINameArraysGuards.Run(args)) return;
+
 if (DtfIParserFlagsFixture.Run(args)) return;
 if (DtfIParserFlagsGuards.Run(args)) return;
 if (DateTimeTrioFixture.Run(args)) return;

@@ -479,27 +479,25 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd("A.D."));
                 return;
             }
-            // DTFI names follow the existing invariant policy. Literal roots avoid
-            // allocating a fresh name array to return one name.
+            if (month)
+            {
+                var element = TypeDesc.MakePrimitive(PrimitiveTypeCode.String);
+                Comp.NoteArrayElementType(element);
+                string shortNames = internalMonth ? $"({style} != 2 && {abbreviated} != 0)"
+                    : callee.Name == "GetAbbreviatedMonthName" ? "true" : "false";
+                string array = NewTemp("Dn2CppArrayRef*");
+                Emit($"{array} = dn2cpp_dtfi_invariant_month_names({PreciseArrayTypeInfoExpr(element)}, {shortNames});");
+                Push(StackKind.Ref, "Dn2CppString*", $"(Dn2CppString*){array}->data[{index} - 1]");
+                return;
+            }
+            // Day names retain their existing rooted-literal invariant policy.
             string result = NewTemp("Dn2CppString*");
-            string[] names = internalMonth || callee.Name == "GetMonthName"
-                ? ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December", ""]
-                : month
-                ? ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", ""]
-                : callee.Name == "GetAbbreviatedDayName"
+            string[] names = callee.Name == "GetAbbreviatedDayName"
                 ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
                 : ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
             Emit($"switch ({index}) {{");
-            string[] shortMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", ""];
             for (int i = 0; i < names.Length; i++)
-            {
-                string value = Literals.GetOrAdd(names[i]);
-                // Invariant genitive names alias regular names; leap-year names
-                // always alias full names, regardless of the abbreviation flag.
-                if (internalMonth)
-                    value = $"({style} != 2 && {abbreviated} != 0) ? {Literals.GetOrAdd(shortMonths[i])} : {value}";
-                Emit($"case {i + (month ? 1 : 0)}: {result} = {value}; break;");
-            }
+                Emit($"case {i}: {result} = {Literals.GetOrAdd(names[i])}; break;");
             Emit($"default: {result} = nullptr; break;");
             Emit("}");
             Push(StackKind.Ref, "Dn2CppString*", result);
@@ -573,6 +571,22 @@ internal sealed partial class MethodCompiler
                     Primitive: PrimitiveTypeCode.Char or PrimitiveTypeCode.Byte } element])
                 throw new NotSupportedException("DateTimeFormatInfo TChar accessor requires Char or Byte");
             EmitDateTimeFormatSpan(callee, element);
+            return;
+        }
+
+        if (CoreIntrinsics.IsDateTimeFormatInfoMonthArray(callee))
+        {
+            string abbreviated = callee.Name == "InternalGetGenitiveMonthNames"
+                ? Cast(Pop(), "int32_t")
+                : callee.Name.StartsWith("get_", StringComparison.Ordinal) ? "1" : "0";
+            DateTimeFormatReceiver();
+            var element = callee.Signature.ReturnType.Element!;
+            Comp.NoteArrayElementType(element);
+            string array = NewTemp("Dn2CppArrayRef*");
+            Emit($"{array} = dn2cpp_dtfi_invariant_month_names({PreciseArrayTypeInfoExpr(element)}, {abbreviated} != 0);");
+            Push(StackKind.Ref, "Dn2CppArrayRef*", callee.Name.StartsWith("get_", StringComparison.Ordinal)
+                ? $"dn2cpp_array_clone_ref({array})" : array);
+            Top = Top with { StaticType = callee.Signature.ReturnType };
             return;
         }
 

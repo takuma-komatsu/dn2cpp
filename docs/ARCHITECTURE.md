@@ -1034,18 +1034,32 @@ its `GetFormat(Type)` implementation and accepts only a `NumberFormatInfo` resul
 other results fall back to the current culture. Allocation, identity conversion,
 and unrelated known-provider formatting do not retain unused provider bodies.
 
-DateTimeFormatInfo full and abbreviated weekday and month lookup
-follow the existing invariant name policy, not localized or user-modified name
-arrays. The exact public methods and internal month selector use rooted name literals and check a null receiver
-before the range. Month indices are one-based, with an empty thirteenth name;
-range checks avoid signed overflow. Range exceptions preserve the original boxed
-DayOfWeek or Int32 argument. Exceptional boxing remains subject to the conservative
-NoAlloc body classifier. The internal month selector preserves unknown-style
-fallback; invariant genitive names alias regular names, while the leap-year style
-always selects full names even when abbreviation is requested. Exact full era-name
-lookup accepts invariant current era zero or era one and returns a rooted A.D.
-literal; invalid eras retain their original Int32 value and the era-specific
-exception message. It does not support localized eras or era abbreviations.
+DateTimeFormatInfo weekday lookup retains rooted invariant literals. Month lookup
+uses two shared, precise String[] backing arrays per array type identity: full
+ordinary/genitive/leap names alias one array, abbreviated ordinary/genitive names
+alias the other. The exact InternalGetGenitiveMonthNames and
+InternalGetLeapYearMonthNames adapters return the backing arrays; the existing
+public AbbreviatedMonthNames and AbbreviatedMonthGenitiveNames getters return
+fresh detached clones. GetMonthName, GetAbbreviatedMonthName and
+InternalGetMonthName read the selected backing element, so native private-array
+element mutations (including null and slot thirteen) are visible consistently
+across these seven methods and across receivers/Clone. Public setter reassignment,
+other name-array families and fully mutable culture/parser behavior remain outside
+this contract. In particular backing mutation does not recompute FormatFlags or
+parser token state. Tests restore mutated shared entries.
+
+The cache follows the existing precise-type keyed, mutex-protected pinned-root
+pattern; its scanned roots keep both arrays and their strings alive on native and
+Wasm. First use allocates and is classified accordingly; warm lookup reuses the
+arrays. Exact scalar methods check null receivers and overflow-safe one-based
+1..13 bounds before cache access. Initial slot thirteen is empty, but later private
+mutation is returned as stored. Range exceptions preserve the original boxed
+DayOfWeek or Int32 argument; existing conservative NoAlloc boxing refusals remain.
+The internal selector preserves unknown-style fallback and always selects full
+names for leap-year style, even when abbreviation is requested. Exact full era-name
+lookup accepts invariant current era zero or era one and returns rooted A.D.;
+invalid eras preserve their original Int32 and era-specific exception message.
+Localized eras and era abbreviations remain unsupported.
 The exact internal FormatFlags getter checks its receiver and returns the typed
 None enum derived from invariant name arrays and calendar conditions, without
 reading or writing the unmodeled cache field. Custom names and calendars are not

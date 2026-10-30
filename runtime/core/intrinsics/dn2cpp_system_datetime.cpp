@@ -15,6 +15,9 @@
 #include <cstdlib>
 #include <ctime>   // std::tm / std::time_t (broken-down time types)
 #include <chrono>
+#include <mutex>
+#include <unordered_map>
+#include <string>
 #include <type_traits> // make_unsigned, for the width-templated flags formatter
 
 // ===== System.TimeSpan / System.DateTime =====
@@ -832,24 +835,43 @@ Dn2CppString* dn2cpp_datetimeoffset_to_string(Dn2CppDateTimeOffset d)
     return dn2cpp_string_from_utf8(buf, n);
 }
 
-// The invariant DateTimeFormatInfo's abbreviated month / day names as string[], used to
-// pre-populate the synthesized invariant DTFI (CultureInfo.get_DateTimeFormat). dn2cpp does
-// not construct a DTFI's CultureData/Calendar, so the lazy name-array init would deref null;
-// seeding the fields with the invariant values (which is all the always-invariant culture's
-// DateTimeFormat ever holds) means that init is never reached. 13 month slots (the 13th
-// empty, matching .NET's calendar convention) and 7 day slots.
-// arrType is the caller's precise string[] type-info (ti_arr_String), so the getter's
-// castclass to it succeeds — a bare object[] (dn2cpp_newarr_ref) would fail that cast.
-Dn2CppArrayRef* dn2cpp_dtfi_invariant_abbrev_month_names(const Dn2CppTypeInfo* arrType)
+// Invariant CalendarData aliases full ordinary/genitive/leap names, and aliases
+// abbreviated ordinary/genitive names separately. Name setters remain unsupported.
+// Pool by precise String[] identity, as Array.Empty does. Map nodes are not GC
+// roots: pinned scanned cells own the arrays, including on Wasm.
+namespace
 {
-    static const char* const names[13] = {
-        "Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec",""};
-    Dn2CppArrayRef* a = dn2cpp_newarr_ref_t(13, arrType);
-    for (int32_t i = 0; i < 13; i++)
-        dn2cpp_gc_store_ref(&a->data[i], reinterpret_cast<Dn2CppObject*>(
-            dn2cpp_string_from_utf8(names[i], static_cast<int32_t>(std::strlen(names[i])))));
-    return a;
+struct Dn2CppMonthNamePool
+{
+    std::mutex mutex;
+    std::unordered_map<const Dn2CppTypeInfo*, Dn2CppArrayRef**> entries;
+};
 }
+
+Dn2CppArrayRef* dn2cpp_dtfi_invariant_month_names(const Dn2CppTypeInfo* arrType, bool abbreviated)
+{
+    static Dn2CppMonthNamePool& pool = dn2cpp_never_destroyed<Dn2CppMonthNamePool>();
+    std::lock_guard<std::mutex> lock(pool.mutex);
+    auto found = pool.entries.find(arrType);
+    if (found != pool.entries.end())
+        return found->second[abbreviated ? 1 : 0];
+    static const char16_t* const full[13] = {
+        u"January",u"February",u"March",u"April",u"May",u"June",u"July",u"August",u"September",u"October",u"November",u"December",u""};
+    static const char16_t* const shortNames[13] = {
+        u"Jan",u"Feb",u"Mar",u"Apr",u"May",u"Jun",u"Jul",u"Aug",u"Sep",u"Oct",u"Nov",u"Dec",u""};
+    auto** roots = static_cast<Dn2CppArrayRef**>(dn2cpp_alloc_pinned(2 * sizeof(Dn2CppArrayRef*)));
+    for (int variant = 0; variant < 2; ++variant)
+    {
+        dn2cpp_gc_store_ref(&roots[variant], dn2cpp_newarr_ref_t(13, arrType));
+        const char16_t* const* names = variant == 0 ? full : shortNames;
+        for (int32_t i = 0; i < 13; ++i)
+            dn2cpp_gc_store_ref(&roots[variant]->data[i], reinterpret_cast<Dn2CppObject*>(
+                dn2cpp_string_literal(names[i], static_cast<int32_t>(std::char_traits<char16_t>::length(names[i])))));
+    }
+    pool.entries.emplace(arrType, roots);
+    return roots[abbreviated ? 1 : 0];
+}
+
 Dn2CppArrayRef* dn2cpp_dtfi_invariant_abbrev_day_names(const Dn2CppTypeInfo* arrType)
 {
     static const char* const names[7] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
