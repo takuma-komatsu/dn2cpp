@@ -32,7 +32,7 @@ internal static class GeneralShortTimePatternGuards
             var owner = core.MainModule.GetType("System.Globalization.DateTimeFormatInfo");
             var host = new Mono.Cecil.TypeDefinition("Guard", "References", Mono.Cecil.TypeAttributes.Public, empty.MainModule.TypeSystem.Object);
             empty.MainModule.Types.Add(host);
-            foreach (string name in new[] { "get_GeneralShortTimePattern", "get_GeneralLongTimePattern", "get_DateTimeOffsetPattern", "get_ShortDatePattern" })
+            foreach (string name in new[] { "get_GeneralShortTimePattern", "get_GeneralLongTimePattern", "get_DateTimeOffsetPattern", "get_ShortDatePattern", "get_LongTimePattern" })
             {
                 var target = empty.MainModule.ImportReference(owner.Methods.Single(m => m.Name == name));
                 var stub = new Mono.Cecil.MethodDefinition(name, Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, empty.MainModule.TypeSystem.Void);
@@ -71,11 +71,11 @@ internal static class GeneralShortTimePatternGuards
             checks++;
         }
         Check((bool)predicate.Invoke(null, new[] { actual })!, "actual-CoreLib");
-        foreach (var h in reader.GetTypeDefinition(ownerHandle).GetMethods().Where(h => reader.GetString(reader.GetMethodDefinition(h).Name) is "get_GeneralLongTimePattern" or "get_DateTimeOffsetPattern" or "get_ShortDatePattern"))
+        foreach (var h in reader.GetTypeDefinition(ownerHandle).GetMethods().Where(h => reader.GetString(reader.GetMethodDefinition(h).Name) is "get_GeneralLongTimePattern" or "get_DateTimeOffsetPattern" or "get_ShortDatePattern" or "get_LongTimePattern"))
         {
             var candidate = ((IDictionary)Get(module, "MethodMap"))[h]!;
             string name = reader.GetString(reader.GetMethodDefinition(h).Name);
-            Check((bool)predicate.Invoke(null, new[] { candidate })! == (name == "get_GeneralLongTimePattern"), "actual-MethodDef-policy-" + name);
+            Check((bool)predicate.Invoke(null, new[] { candidate })! == (name is "get_GeneralLongTimePattern" or "get_DateTimeOffsetPattern"), "actual-MethodDef-policy-" + name);
         }
         Console.WriteLine("general-short-time-pattern-actual:" + MetadataTokens.GetToken(targetHandle).ToString("X8", CultureInfo.InvariantCulture));
         var appModule = ((IEnumerable)Get(loaded, "Modules")).Cast<object>().Single(m => (string)Get(m, "AssemblyName") == "GeneralShortTimePatternGuardInput");
@@ -85,14 +85,14 @@ internal static class GeneralShortTimePatternGuards
         foreach (var h in appReader.MemberReferences)
         {
             string name = appReader.GetString(appReader.GetMemberReference(h).Name);
-            if (name is not ("get_GeneralShortTimePattern" or "get_GeneralLongTimePattern" or "get_DateTimeOffsetPattern" or "get_ShortDatePattern")) continue;
+            if (name is not ("get_GeneralShortTimePattern" or "get_GeneralLongTimePattern" or "get_DateTimeOffsetPattern" or "get_ShortDatePattern" or "get_LongTimePattern")) continue;
             var resolved = Model("Compilation").GetMethod("ResolveMemberRefMethod", instance)!.Invoke(loaded, new[] { appModule, (object)h, context })!;
             var expected = reader.GetTypeDefinition(ownerHandle).GetMethods().Single(x => reader.GetString(reader.GetMethodDefinition(x).Name) == name);
             Check(ReferenceEquals(Get(resolved, "Module"), module) && (MethodDefinitionHandle)Get(resolved, "Handle") == expected, "resolved-memberref-" + name);
-            Check((bool)predicate.Invoke(null, new[] { resolved })! == (name is "get_GeneralShortTimePattern" or "get_GeneralLongTimePattern"), "exact-neighbor-policy-" + name);
+            Check((bool)predicate.Invoke(null, new[] { resolved })! == (name is "get_GeneralShortTimePattern" or "get_GeneralLongTimePattern" or "get_DateTimeOffsetPattern"), "exact-neighbor-policy-" + name);
             imports++;
         }
-        Check(imports == 4, "all-memberrefs");
+        Check(imports == 5, "all-memberrefs");
         void Reject(object value, string field, object next)
         {
             object saved = Get(value, field);

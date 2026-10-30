@@ -2,7 +2,9 @@ using System;
 using System.Globalization;
 using System.Reflection;
 
-#if LONG_PATTERN
+#if OFFSET_PATTERN
+namespace DateTimeOffsetPatternSubset;
+#elif LONG_PATTERN
 namespace GeneralLongTimePatternSubset;
 #else
 namespace GeneralShortTimePatternSubset;
@@ -12,7 +14,11 @@ internal static class Program
 {
     private delegate string Query(DateTimeFormatInfo receiver);
     private delegate string ClosedQuery();
-#if LONG_PATTERN
+#if OFFSET_PATTERN
+    private const string Prefix = "datetime-offset-pattern-";
+    private const string Title = "Invariant datetime offset pattern";
+    private const string Getter = "get_DateTimeOffsetPattern";
+#elif LONG_PATTERN
     private const string Prefix = "general-long-time-pattern-";
     private const string Title = "Invariant general long-time pattern";
     private const string Getter = "get_GeneralLongTimePattern";
@@ -21,7 +27,9 @@ internal static class Program
     private const string Title = "Invariant general short-time pattern";
     private const string Getter = "get_GeneralShortTimePattern";
 #endif
-#if LONG_PATTERN
+#if OFFSET_PATTERN
+    private static string ExpectedPattern() => "MM/dd/yyyy HH:mm:ss zzz";
+#elif LONG_PATTERN
     private static string ExpectedPattern() => "MM/dd/yyyy HH:mm:ss";
 #else
     private static string ExpectedPattern() => "MM/dd/yyyy HH:mm";
@@ -107,7 +115,9 @@ internal static class Program
         PinCulture();
         string value = Direct(DateTimeFormatInfo.InvariantInfo);
         // Character checks do not independently root the expected full literal.
-#if LONG_PATTERN
+#if OFFSET_PATTERN
+        bool correct = value.Length == 23
+#elif LONG_PATTERN
         bool correct = value.Length == 19
 #else
         bool correct = value.Length == 16
@@ -117,8 +127,11 @@ internal static class Program
             && value[6] == 'y' && value[7] == 'y' && value[8] == 'y' && value[9] == 'y'
             && value[10] == ' ' && value[11] == 'H' && value[12] == 'H'
             && value[13] == ':' && value[14] == 'm' && value[15] == 'm'
-#if LONG_PATTERN
+#if LONG_PATTERN || OFFSET_PATTERN
             && value[16] == ':' && value[17] == 's' && value[18] == 's'
+#endif
+#if OFFSET_PATTERN
+            && value[19] == ' ' && value[20] == 'z' && value[21] == 'z' && value[22] == 'z'
 #endif
             ;
         Console.WriteLine(Prefix + "minimal:" + correct);
@@ -142,7 +155,24 @@ internal static class Program
     public static void RunPublicOracle()
     {
         PinCulture();
-#if LONG_PATTERN
+#if OFFSET_PATTERN
+        var info = DateTimeFormatInfo.InvariantInfo;
+        var date = new DateTimeOffset(2024, 2, 3, 4, 5, 6, new TimeSpan(5, 30, 0));
+        Check("public-composition", info.ShortDatePattern + " " + info.LongTimePattern + " zzz" == "MM/dd/yyyy HH:mm:ss zzz");
+        Check("public-default", date.ToString(null, info) == "02/03/2024 04:05:06 +05:30");
+        var clone = (DateTimeFormatInfo)info.Clone();
+        clone.ShortDatePattern = "yyyy*MM*dd";
+        Check("outside-native-date-setter", date.ToString(null, clone) == "2024*02*03 04:05:06 +05:30");
+        clone.ShortDatePattern = info.ShortDatePattern;
+        string[] patterns = { "HH:mm:ss zzz", "HH:mm:ss 'z'", "HH:mm:ss \"z\"", "HH:mm:ss \\z", "HH:mm:ss %z", "HH:mm:ss z", "" };
+        string[] expected = { "04:05:06 +05:30", "04:05:06 z +05:30", "04:05:06 z +05:30", "04:05:06 z +05:30", "04:05:06 +5 +05:30", "04:05:06 +5", " +05:30" };
+        for (int index = 0; index < patterns.Length; index++)
+        {
+            clone.LongTimePattern = patterns[index];
+            Check("outside-native-time-setter-" + index, date.ToString(null, clone) == "02/03/2024 " + expected[index]);
+        }
+        Console.WriteLine("DateTimeOffset pattern public oracle end");
+#elif LONG_PATTERN
         var info = DateTimeFormatInfo.InvariantInfo;
         var date = new DateTime(2024, 2, 3, 4, 5, 6);
         Check("public-composition", info.ShortDatePattern + " " + info.LongTimePattern == "MM/dd/yyyy HH:mm:ss");

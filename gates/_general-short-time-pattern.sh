@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Two exact invariant composite-pattern getter families, no mutable-cache parity.
+# Exact invariant composite-pattern getters, no mutable-cache parity.
 _general_time_pattern_routes_gate() {
     local family="$1"; shift
     local assembly prefix title target
     case "$family" in
         short) assembly=GeneralShortTimePattern; prefix=general-short-time-pattern; title='Invariant general short-time pattern'; target=get_GeneralShortTimePattern ;;
         long) assembly=GeneralLongTimePattern; prefix=general-long-time-pattern; title='Invariant general long-time pattern'; target=get_GeneralLongTimePattern ;;
+        offset) assembly=DateTimeOffsetPattern; prefix=datetime-offset-pattern; title='Invariant datetime offset pattern'; target=get_DateTimeOffsetPattern ;;
         *) echo 'invalid general time pattern test family' >&2; return 1 ;;
     esac
     local root="$1" original="$2" mode="${3:-all}"; shift 3
@@ -20,6 +21,7 @@ _general_time_pattern_routes_gate() {
         out="$root/$axis"
         local flags=("$@") runner=() check=()
         [[ "$family" != long ]] || check+=(--long)
+        [[ "$family" != offset ]] || check+=(--offset)
         if [[ "$mode" == all || "$mode" == reflection ]]; then
             flags+=(--link-xml "gates/fixtures/$prefix/link.xml")
         fi
@@ -60,6 +62,7 @@ _general_time_pattern_routes_gate() {
 
 general_short_time_pattern_routes_gate() { _general_time_pattern_routes_gate short "$@"; }
 general_long_time_pattern_routes_gate() { _general_time_pattern_routes_gate long "$@"; }
+datetime_offset_pattern_routes_gate() { _general_time_pattern_routes_gate offset "$@"; }
 
 _general_time_pattern_negative_gate() {
     local family="$1"; shift
@@ -67,6 +70,7 @@ _general_time_pattern_negative_gate() {
     case "$family" in
         short) assembly=GeneralShortTimePattern; prefix=general-short-time-pattern; title='Invariant general short-time pattern'; target=get_GeneralShortTimePattern ;;
         long) assembly=GeneralLongTimePattern; prefix=general-long-time-pattern; title='Invariant general long-time pattern'; target=get_GeneralLongTimePattern ;;
+        offset) assembly=DateTimeOffsetPattern; prefix=datetime-offset-pattern; title='Invariant datetime offset pattern'; target=get_DateTimeOffsetPattern ;;
         *) echo 'invalid general time pattern test family' >&2; return 1 ;;
     esac
     local root="$1" original="$2" mode axis corelib
@@ -93,6 +97,7 @@ _general_time_pattern_negative_gate() {
 
 general_short_time_pattern_negative_gate() { _general_time_pattern_negative_gate short "$@"; }
 general_long_time_pattern_negative_gate() { _general_time_pattern_negative_gate long "$@"; }
+datetime_offset_pattern_negative_gate() { _general_time_pattern_negative_gate offset "$@"; }
 
 _general_time_pattern_focused_gate() {
     local family="$1"; shift
@@ -100,6 +105,7 @@ _general_time_pattern_focused_gate() {
     case "$family" in
         short) assembly=GeneralShortTimePattern; prefix=general-short-time-pattern; title='Invariant general short-time pattern'; target=get_GeneralShortTimePattern ;;
         long) assembly=GeneralLongTimePattern; prefix=general-long-time-pattern; title='Invariant general long-time pattern'; target=get_GeneralLongTimePattern ;;
+        offset) assembly=DateTimeOffsetPattern; prefix=datetime-offset-pattern; title='Invariant datetime offset pattern'; target=get_DateTimeOffsetPattern ;;
         *) echo 'invalid general time pattern test family' >&2; return 1 ;;
     esac
     local root="$1" fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" corelib model
@@ -117,3 +123,4 @@ _general_time_pattern_focused_gate() {
 
 general_short_time_pattern_focused_gate() { _general_time_pattern_focused_gate short "$@"; }
 general_long_time_pattern_focused_gate() { _general_time_pattern_focused_gate long "$@"; }
+datetime_offset_pattern_focused_gate() { _general_time_pattern_focused_gate offset "$@"; }

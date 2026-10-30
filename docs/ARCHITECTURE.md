@@ -1054,7 +1054,9 @@ checks its receiver and returns false from the invariant Gregorian policy, witho
 reading Calendar backing state. The Japanese/Taiwan special year rule is outside
 this domain. The exact GeneralShortTimePattern and GeneralLongTimePattern getters combine
 the existing invariant short-date and respective time patterns in rooted literals
-after checking their receivers. ShortDatePattern, ShortTimePattern and
+after checking their receivers. DateTimeOffsetPattern appends ` zzz` to the
+invariant short-date/long-time combination, which has no offset token. It does not
+model the CLR quote/escape-aware scan over mutable patterns. ShortDatePattern, ShortTimePattern and
 LongTimePattern setters remain unsupported; supporting them must revisit these
 adapters. CLR mutable patterns and per-instance cache identity
 are not modeled. DTFI Calendar access checks the receiver and

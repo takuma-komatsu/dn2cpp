@@ -532,8 +532,12 @@ internal sealed partial class MethodCompiler
         {
             DateTimeFormatReceiver();
             // Native date/time patterns are invariant; their setters remain unsupported.
-            string pattern = callee.Name == "get_GeneralLongTimePattern"
-                ? "MM/dd/yyyy HH:mm:ss" : "MM/dd/yyyy HH:mm";
+            string pattern = callee.Name switch
+            {
+                "get_DateTimeOffsetPattern" => "MM/dd/yyyy HH:mm:ss zzz",
+                "get_GeneralLongTimePattern" => "MM/dd/yyyy HH:mm:ss",
+                _ => "MM/dd/yyyy HH:mm"
+            };
             Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd(pattern));
             Top = Top with { StaticType = callee.Signature.ReturnType };
             return;

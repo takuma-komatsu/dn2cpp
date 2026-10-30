@@ -7,10 +7,12 @@ import re
 parser = argparse.ArgumentParser()
 parser.add_argument('output', type=pathlib.Path)
 parser.add_argument('--minimal', action='store_true')
-parser.add_argument('--long', action='store_true')
+family = parser.add_mutually_exclusive_group()
+family.add_argument('--long', action='store_true')
+family.add_argument('--offset', action='store_true')
 args = parser.parse_args()
-target = 'get_GeneralLongTimePattern' if args.long else 'get_GeneralShortTimePattern'
-expected = 'MM/dd/yyyy HH:mm:ss' if args.long else 'MM/dd/yyyy HH:mm'
+target = 'get_DateTimeOffsetPattern' if args.offset else 'get_GeneralLongTimePattern' if args.long else 'get_GeneralShortTimePattern'
+expected = 'MM/dd/yyyy HH:mm:ss zzz' if args.offset else 'MM/dd/yyyy HH:mm:ss' if args.long else 'MM/dd/yyyy HH:mm'
 sources = sorted(args.output.glob('generated*.cpp'))
 header = args.output / 'generated.h'
 if header.exists():

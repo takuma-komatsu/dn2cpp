@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable><DefineConstants>$(DefineConstants);OFFSET_PATTERN</DefineConstants></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../general-short-time-pattern/Entry.cs" Link="Entry.cs" />
+    <Compile Include="../general-short-time-pattern/GeneralShortTimePatternSubset.cs" Link="GeneralTimePatternSubset.cs" />
+  </ItemGroup>
+</Project>

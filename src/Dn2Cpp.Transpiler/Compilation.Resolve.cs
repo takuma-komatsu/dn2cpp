@@ -1600,7 +1600,7 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears(resolved))
                 throw new NotSupportedException("DateTimeFormatInfo HasForceTwoDigitYears requires its exact MemberRef signature");
         }
-        if ((name is "get_GeneralShortTimePattern" or "get_GeneralLongTimePattern") && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePattern))
+        if ((name is "get_GeneralShortTimePattern" or "get_GeneralLongTimePattern" or "get_DateTimeOffsetPattern") && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePattern))
         {
             if (!CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePatternSignature(reader.GetBlobReader(mr.Signature))
                 || !CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePatternDecodedSignature(sig)
@@ -1989,7 +1989,8 @@ internal sealed partial class Compilation
         }
         if (full == "System.Globalization.DateTimeFormatInfo"
             && (reader.StringComparer.Equals(mr.Name, "get_GeneralShortTimePattern")
-                || reader.StringComparer.Equals(mr.Name, "get_GeneralLongTimePattern")))
+                || reader.StringComparer.Equals(mr.Name, "get_GeneralLongTimePattern")
+                || reader.StringComparer.Equals(mr.Name, "get_DateTimeOffsetPattern")))
         {
             var generalShortTimePattern = ResolveMemberRefMethod(module, handle, callerCtx);
             if (CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePattern(generalShortTimePattern))
