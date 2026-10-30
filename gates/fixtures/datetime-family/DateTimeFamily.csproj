@@ -21,5 +21,6 @@
     <ProjectReference Include="../datetime-trio/DateTimeTrio.csproj" />
     <ProjectReference Include="../dtfi-parser-flags/DtfIParserFlags.csproj" />
     <ProjectReference Include="../dtfi-name-arrays/DtfINameArrays.csproj" />
+    <ProjectReference Include="../dtfi-compare-info/DtfICompareInfo.csproj" />
   </ItemGroup>
 </Project>

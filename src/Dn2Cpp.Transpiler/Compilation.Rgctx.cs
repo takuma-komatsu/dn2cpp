@@ -631,6 +631,7 @@ internal sealed partial class Compilation
         "dn2cpp_get_uninitialized_object(", // RuntimeHelpers.GetUninitializedObject
         "dn2cpp_template_",         // a template's kept-boxed unbox.any and box copy a value
         "dn2cpp_object_memberwise_clone(", // MemberwiseClone, Delegate.Clone
+        "dn2cpp_invariant_compare_info_", // a cold lookup allocates the rooted comparer
         "dn2cpp_dtfi_invariant_month_names(", // first cached month lookup allocates rooted backing arrays
         // String constructors and producers.
         "dn2cpp_string_from",       // every string-from-* constructor (chars/wcs/mbs/utf8/…)

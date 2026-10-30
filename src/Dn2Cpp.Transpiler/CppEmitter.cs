@@ -836,6 +836,7 @@ internal sealed partial class CppEmitter
         _definedBodySymbols = new HashSet<string>(compiledMethods.Count, StringComparer.Ordinal);
         foreach (var m in compiledMethods)
             _definedBodySymbols.Add(m.CppName);
+        _c.ValidateInvariantCompareInfoDispatch();
         AssertCalledBodiesEmitted();
         AssertNoAllocClosures(compiledMethods);
         Timing.Mark("compile-bodies");
@@ -1021,6 +1022,7 @@ internal sealed partial class CppEmitter
         _c.ComputeReflectionKeepSet();
         EmitTypeInfos(o);
         EmitReflectionTypeTokens(o);
+        _c.ValidateInvariantCompareInfoDispatch();
         // Every ti_ an emitted body named is now either defined by the type-info emission
         // just run or a genuine hole; assert the former before the C++ link finds the latter.
         AssertNamedTypeInfosDefined();
@@ -1034,6 +1036,7 @@ internal sealed partial class CppEmitter
         // The Console.Error managed-writer singleton accessor: after the type
         // infos (ti_ handles) and method forward decls (the ctor prototype) it references.
         EmitConsoleErrorWriterAccessor(o);
+        EmitInvariantCompareInfoFactories(o);
         // Hot-update base build: hash the canonical ABI contract over the emitted
         // classes (now final — bodies compiled, opaque fill done) into the base
         // binary, pre-emit the N2M vtable trampolines the patch loader installs
@@ -3088,6 +3091,8 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    dn2cpp_set_delegate_method_catalog({delegateMethods.Sym}, {delegateMethods.Count});");
         if (_dateTimeTryAddTicksRow is not null || _dateTimeTryCreateRow is not null || _dateTimeLocalConstructorRow is not null)
             sb.AppendLine($"    dn2cpp_set_datetime_parser_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeTryAddTicksRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeTryCreateRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeLocalConstructorRow ?? "nullptr"}));");
+        if (_cultureCompareInfoRow is { } cultureCompareInfoRow)
+            sb.AppendLine($"    dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({cultureCompareInfoRow}));");
         if (_dateOnlyDeconstructRow is { } dateOnlyRow)
             sb.AppendLine($"    dn2cpp_set_dateonly_deconstruct_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({dateOnlyRow}));");
         if (_memberNotFoundFactoryRow is { } factoryRow)
@@ -3798,6 +3803,7 @@ internal sealed partial class CppEmitter
     private (string Sym, int Count)? _delegateMethodCatalog;
     private string? _memberNotFoundFactoryRow;
     private string? _dateOnlyDeconstructRow;
+    private string? _cultureCompareInfoRow;
     private string? _dateTimeTryAddTicksRow;
     private string? _dateTimeTryCreateRow;
     private string? _dateTimeLocalConstructorRow;

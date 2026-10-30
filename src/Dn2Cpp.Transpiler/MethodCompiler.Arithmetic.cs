@@ -2163,6 +2163,7 @@ internal sealed partial class MethodCompiler
     /// CUT. Silent when neither answers: the real IL is transpiled as usual.</summary>
     private void NoteFtnTargetBody(MethodInfo target)
     {
+        _c.NoteInvariantCompareInfoDispatchDemand(target);
         if (CoreIntrinsics.IsIntrinsicType(target.DeclaringClass.FullName))
         {
             // The real-body members' canonical counterpart is never reached (see the

@@ -179,6 +179,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     // (an intrinsic lowering calling a different method than the site named)
     // can never mis-key a slot.
     private int _callSiteToken;
+    private int _callSiteOffset = -1;
 
     /// <summary>Whether the call instruction currently being translated is a
     /// <c>callvirt</c> (set at <see cref="TranslateCall"/> entry). Read by the
@@ -1241,6 +1242,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsDateTimeParserBoundary(_method)
             || CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(_method)
             || CoreIntrinsics.IsDateTimeFormatInfoCalendar(_method)
+            || CoreIntrinsics.IsInvariantCompareInfoGetter(_method)
             || CoreIntrinsics.IsDateTimeFormatInfoFormatFlags(_method)
             || CoreIntrinsics.IsDateTimeFormatInfoYearMonthAdjustment(_method)
             || CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears(_method)

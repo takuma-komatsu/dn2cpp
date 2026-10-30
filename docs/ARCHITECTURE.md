@@ -1034,6 +1034,26 @@ its `GetFormat(Type)` implementation and accepts only a `NumberFormatInfo` resul
 other results fall back to the current culture. Allocation, identity conversion,
 and unrelated known-provider formatting do not retain unused provider bodies.
 
+The exact DateTimeFormatInfo and CultureInfo CompareInfo getters share a genuine
+managed CompareInfo under the native invariant-comparison policy. A single linked
+typed factory initializes its actual name fields to the rooted empty string and
+publishes only the complete object through a mutex-protected scanned pinned root.
+It neither invokes the managed constructor/InitSort nor re-enters the CompareInfo
+type initializer. Ordinary type initialization and the real Name, Equals and
+GetHashCode bodies remain intact. Null receivers fail before cache access; cold
+allocation is conservatively classified even for warmed callers. This does not
+initialize ICU/NLS handles or add arbitrary linguistic comparison capabilities.
+
+Native CultureInfo values have a headerless representation distinct from managed
+subclasses. An exact getter virtual/address/reflection demand combined with an
+actually allocated descendant overriding that slot is diagnosed as unsupported,
+not silently redirected to the invariant base result. A directly proven native
+InvariantCulture producer and explicit nonvirtual base calls remain valid. Merely
+loading or preserving subtype/getter metadata does not establish dispatch demand.
+Opaque reflection conservatively considers available getter rows when invocation
+or delegate binding is used; it does not infer which runtime method is selected.
+No general CultureInfo subclass ABI or virtual-dispatch framework is introduced.
+
 DateTimeFormatInfo weekday lookup retains rooted invariant literals. Month lookup
 uses two shared, precise String[] backing arrays per array type identity: full
 ordinary/genitive/leap names alias one array, abbreviated ordinary/genitive names

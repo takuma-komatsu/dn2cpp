@@ -92,6 +92,7 @@ internal sealed partial class Compilation
                 // receiver (which folds to the dispatching runtime helper) finds it. Over-
                 // reaching on the non-virtual form is harmless.
                 ReachExceptionGetMessage(mi);
+                if (CoreIntrinsics.IsInvariantCompareInfoGetter(mi)) return mi;
                 if ((CoreIntrinsics.IsRuntimeTypeHandleCopy(mi) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(mi))
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(mi)
                     || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(mi)
@@ -1693,6 +1694,13 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(resolved))
                 throw new NotSupportedException("DateTimeFormatInfo Calendar setter requires its exact MemberRef signature");
         }
+        if (name == "get_CompareInfo" && candidates.Any(CoreIntrinsics.IsInvariantCompareInfoGetter))
+        {
+            if (!CoreIntrinsics.IsInvariantCompareInfoGetterSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsInvariantCompareInfoGetterDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsInvariantCompareInfoGetter(resolved))
+                throw new NotSupportedException("Invariant CompareInfo requires its exact MemberRef signature");
+        }
         if (name == "get_Calendar" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoCalendar))
         {
             if (!CoreIntrinsics.IsDateTimeFormatInfoCalendarSignature(reader.GetBlobReader(mr.Signature))
@@ -2125,6 +2133,12 @@ internal sealed partial class Compilation
             var calendar = ResolveMemberRefMethod(module, handle, callerCtx);
             if (CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(calendar))
                 return calendar;
+        }
+        if (full is "System.Globalization.DateTimeFormatInfo" or "System.Globalization.CultureInfo"
+            && reader.StringComparer.Equals(mr.Name, "get_CompareInfo"))
+        {
+            var compare = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsInvariantCompareInfoGetter(compare)) return compare;
         }
         if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "get_Calendar"))
         {

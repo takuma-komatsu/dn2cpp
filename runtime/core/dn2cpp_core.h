@@ -1414,7 +1414,9 @@ struct Dn2CppDelegateMethodCatalog
 void dn2cpp_set_delegate_method_catalog(const Dn2CppDelegateMethodCatalog* rows, int32_t count);
 // A retained managed Type factory is named-only metadata; its runtime type handle stays immutable.
 void dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
-// Exact retained DateOnly member; no general intrinsic-type metadata mutation.
+// Exact retained CultureInfo getter; no general intrinsic-type metadata mutation.
+void dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+// Exact retained DateOnly member.
 void dn2cpp_set_dateonly_deconstruct_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 void dn2cpp_set_datetime_parser_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> addTicks,
     Dn2CppMetadataHandle<Dn2CppMethodInfo> tryCreate, Dn2CppMetadataHandle<Dn2CppMethodInfo> localConstructor);

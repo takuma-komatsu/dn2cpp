@@ -901,12 +901,14 @@ internal sealed partial class Compilation
     /// values Invoke boxes. A generic method definition is not invocable.</summary>
     private void InvokeTarget(MethodInfo target, MethodInfo caller)
     {
+        NoteInvariantCompareInfoDispatchDemand(target);
         var cls = target.DeclaringClass;
         if (IsOpenGenericMethod(target) || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls)
             || _backend?.ShouldSkipMethodBody(cls, target) == true)
             return;
         _reflectionSelectionCount++;
-        if (CoreIntrinsics.IsDefaultPrincipalAccessor(target)
+        if (CoreIntrinsics.IsInvariantCompareInfoGetter(target)
+            || CoreIntrinsics.IsDefaultPrincipalAccessor(target)
             || CoreIntrinsics.IsCoreClrVirtualSlotCount(target)
             || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(target)
             || CoreIntrinsics.IsRuntimeTypeHandleIsGenericVariable(target)

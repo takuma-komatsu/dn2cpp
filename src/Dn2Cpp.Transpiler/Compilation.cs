@@ -4094,6 +4094,10 @@ internal sealed partial class Compilation
 
     public void NoteIntrinsicFtnTarget(MethodInfo m)
     {
+        if (CoreIntrinsics.IsInvariantCompareInfoGetter(m))
+        {
+            NoteInvariantCompareInfoFactory(m);
+        }
         if (CoreIntrinsics.IsCoreClrTypeCollectibilityImport(m))
         {
             NotePInvokeFtnTarget(m);

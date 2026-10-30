@@ -278,12 +278,6 @@ internal enum InterceptEmitArm
     /// prefix — so the emit mouth stays written out there rather than becoming a
     /// registry reference; this arm names it.</summary>
     EnumHasFlagBitTest,
-    /// <summary>CultureInfo.get_CompareInfo — a synthesized zero-initialized
-    /// CompareInfo (<c>MethodCompiler.EmitIntrinsic</c>, the Numbers arm). The scan
-    /// row's job is the other half: marking that CompareInfo allocated, because the
-    /// IL names no ctor to reach (the real one reads fields of the intrinsic-mapped
-    /// CultureInfo).</summary>
-    CultureCompareInfoSynth,
     /// <summary>An Object/ValueType-rooted Equals/GetHashCode — lowered to
     /// <c>dn2cpp_object_equals</c> / <c>dn2cpp_object_gethashcode</c>, which answer
     /// from the type-info slots. The scan row marks the dispatch used
@@ -664,6 +658,7 @@ internal static partial class CoreIntrinsics
             || IsDateTimeParserBoundary(mi)
             || IsDateTimeFormatInfoCalendarSetter(mi)
             || IsDateTimeFormatInfoCalendar(mi)
+            || IsInvariantCompareInfoGetter(mi)
             || IsDateTimeFormatInfoFormatFlags(mi)
             || IsDateTimeFormatInfoYearMonthAdjustment(mi)
             || IsDateTimeFormatInfoHasForceTwoDigitYears(mi)
@@ -3851,34 +3846,6 @@ internal static partial class CoreIntrinsics
         extra: static (_, n) => IsEnumHasFlagMemberName(n),
         scanEffect: InterceptScanEffect.EffectThenSkipResolve);
 
-    /// <summary>The CultureInfo.get_CompareInfo member name — the same shared-predicate
-    /// shape as <see cref="IsObjectEqualityMemberName"/> and
-    /// <see cref="IsEnumHasFlagMemberName"/>, and for the same reason.</summary>
-    public static bool IsCultureCompareInfoMemberName(string name) => name == "get_CompareInfo";
-
-    /// <summary>CultureInfo.get_CompareInfo — the emit synthesizes a zero-initialized
-    /// CompareInfo, so the scan marks that transpiled CompareInfo allocated and skips
-    /// resolution. There is no ctor to reach (the real one reads fields of the
-    /// intrinsic-mapped CultureInfo) and the invariant arms of its reachable members
-    /// read no instance state.
-    ///
-    /// <para>The cut here is belt-and-braces rather than load-bearing: CultureInfo is
-    /// intrinsic-mapped, so <c>ResolveCallTarget</c> answers null for both call forms
-    /// anyway (<see cref="MdIntrinsicType"/>). The row is CutKind.Cut because that is
-    /// what the scan does with the token — the reason it is also redundant belongs in a
-    /// comment, not in a weaker cut kind.</para>
-    ///
-    /// <para>Reached through both a MemberReference and a MethodDefinition mouth. The NAME
-    /// is the cheap half and the call site asks it FIRST — through
-    /// <see cref="IsCultureCompareInfoMemberName"/>, never by reading a gate field —
-    /// because obtaining the declaring-type name on the MethodDefinition mouth builds a
-    /// string.</para></summary>
-    public static readonly NameKeyedIntercept ScCultureCompareInfo = new(
-        InterceptCutKind.Cut, InterceptEmitArm.CultureCompareInfoSynth,
-        typeGate: "System.Globalization.CultureInfo",
-        extra: static (_, n) => IsCultureCompareInfoMemberName(n),
-        scanEffect: InterceptScanEffect.EffectThenSkipResolve);
-
     /// <summary>Every scan-arm row. A REGISTRY, not a chain, like the four tables above
     /// (<see cref="MethodDefIntercepts"/>, <see cref="MemberRefIntercepts"/>,
     /// <see cref="MethodSpecIntercepts"/>, <see cref="ConstrainedVirtualIntercepts"/>)
@@ -3895,7 +3862,6 @@ internal static partial class CoreIntrinsics
     [
         ScObjectEqualityDispatch,
         ScEnumHasFlag,
-        ScCultureCompareInfo,
     ];
 
     /// <summary>Whether a call token's member NAME obliges the reachability scan to go
@@ -3908,7 +3874,7 @@ internal static partial class CoreIntrinsics
     /// <para>(a) the names of every <see cref="ScanIntercepts"/> row — Equals and
     /// GetHashCode (<see cref="ScObjectEqualityDispatch"/>), HasFlag
     /// (<see cref="ScEnumHasFlag"/>), get_CompareInfo
-    /// (<see cref="ScCultureCompareInfo"/>); plus</para>
+    /// (the exact getter route); plus</para>
     /// <para>(b) RunClassConstructor — the MemberRef mouth of the RuntimeHelpers.
     /// RunClassConstructor reach effect (reach the ldtoken'd type's cctor body so the
     /// __ensure wrapper the emit intrinsic lowers the call to is not a nullptr no-op).

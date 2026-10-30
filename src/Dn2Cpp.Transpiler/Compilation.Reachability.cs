@@ -171,6 +171,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsDateTimeParserBoundary(m)
             || CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(m)
             || CoreIntrinsics.IsDateTimeFormatInfoCalendar(m)
+            || CoreIntrinsics.IsInvariantCompareInfoGetter(m)
             || CoreIntrinsics.IsDateTimeFormatInfoFormatFlags(m)
             || CoreIntrinsics.IsDateTimeFormatInfoYearMonthAdjustment(m)
             || CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears(m)
@@ -6331,40 +6332,6 @@ internal sealed partial class Compilation
                                         ReachBaseValueCall(m.DeclaringClass, oname);
                                 }
                             }
-                        }
-                        // CultureInfo.CompareInfo -> a synthesized zero-initialized
-                        // CompareInfo (see the MethodCompiler intrinsic in
-                        // EmitIntrinsic.Numbers): mark the transpiled CompareInfo
-                        // allocated so its type-info emits. There is no ctor to
-                        // reach — the real ctor reads fields of the intrinsic-mapped
-                        // CultureInfo — and the invariant arms its reachable members
-                        // run read no instance state. CultureInfo is intrinsic-mapped,
-                        // so ResolveCallTarget returns null for both call forms.
-                        // EffectThenSkipResolve. The row's own NAME half is asked first
-                        // — through the shared predicate, never by reading the row's gate
-                        // field as a value — and the parent only behind it: obtaining the
-                        // parent on the MethodDefinition mouth builds a string, and every
-                        // call token of every reachable body passes here.
-                        if (insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt
-                            && (handle.Kind switch
-                                {
-                                    HandleKind.MethodDefinition => module.Reader.GetString(
-                                        module.Reader.GetMethodDefinition((MethodDefinitionHandle)handle).Name),
-                                    // Reuses the name read above ("get_CompareInfo" is in
-                                    // its parent-gate set, so mrParent is in hand too).
-                                    HandleKind.MemberReference => mrName,
-                                    _ => null,
-                                }) is { } cmpName
-                            && CoreIntrinsics.IsCultureCompareInfoMemberName(cmpName)
-                            && CoreIntrinsics.ScCultureCompareInfo.Matches(
-                                handle.Kind == HandleKind.MemberReference
-                                    ? mrParent : CallTargetTypeName(module, handle),
-                                cmpName)
-                            && FindClassByFullName("System.Globalization.CompareInfo") is { } cmpInfoCls)
-                        {
-                            ReachAllocatedType(cmpInfoCls);
-                            constrained = null;
-                            continue;
                         }
                         var t = ResolveCallTarget(module, handle, m.Context);
                         // A bodyless P/Invoke with a registered managed native

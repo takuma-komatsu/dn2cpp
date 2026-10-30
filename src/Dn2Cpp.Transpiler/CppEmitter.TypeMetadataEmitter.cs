@@ -1944,6 +1944,7 @@ internal sealed partial class CppEmitter
             EmitDelegateMethodCatalog();
             EmitMemberNotFoundFactoryRow();
             EmitDateOnlyDeconstructRow();
+            EmitCultureCompareInfoRow();
             EmitDateTimeParserRows();
             _e.EmitArrayTypeInfos(_sb, _emittedEnums);
             _e.EmitMdArrayItfMap(_sb);
@@ -1966,6 +1967,27 @@ internal sealed partial class CppEmitter
             // the moment it returns (EmitTypeInfos keeps no field), so a census anywhere
             // later would report the pools as free rather than as big.
             Census();
+        }
+
+        // CultureInfo owns its runtime type-info. Attach only the exact retained getter.
+        private void EmitCultureCompareInfoRow()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.FullName != "System.Globalization.CultureInfo") continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsInvariantCompareInfoGetter(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "culturecompareinfotab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained CultureInfo.CompareInfo has no metadata row.");
+                    }
+                    _e._cultureCompareInfoRow = address;
+                    return;
+                }
+            }
         }
 
         // DateOnly owns its canonical type-info in the runtime. Expose only this
@@ -3656,6 +3678,7 @@ internal sealed partial class CppEmitter
                     invoker = "nullptr";
                 if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(m) && fnPtr != "nullptr")
                     invoker = "(void*)&dn2cpp_attrdata_constructor_invoker";
+                if (fnPtr != "nullptr") _c.NoteInvariantCompareInfoReflectionRow(m);
                 bool preservable = fnPtr == "nullptr" && !symbolic && _c.IsPreservableTemplateRow(m);
                 // The null-receiver run modes and a template level's
                 // DN2CPP_MTHA_NULLLOOKUP_* masks: only a CreateDelegate binding called
@@ -3888,6 +3911,7 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsDateTimeParserBoundary(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoCalendar(method)
+                        || CoreIntrinsics.IsInvariantCompareInfoGetter(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoFormatFlags(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoYearMonthAdjustment(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears(method)

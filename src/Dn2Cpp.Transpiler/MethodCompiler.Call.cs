@@ -362,6 +362,7 @@ internal sealed partial class MethodCompiler
     {
         // The raw call token, for rgctx slot keying (verified before use).
         _callSiteToken = insn.Token;
+        _callSiteOffset = insn.Offset;
         _callIsVirtual = isCallvirt;
         var handle = SRME.EntityHandle(insn.Token);
         EnsureCallCctorBefore(handle);
@@ -519,6 +520,11 @@ internal sealed partial class MethodCompiler
                 // EmitRuntimePrimitive is TOTAL over the predicate — it still selects on the
                 // shape, but an unmodeled shape leaves through a throw, never through
                 // EmitManagedCall.
+                if (CoreIntrinsics.IsInvariantCompareInfoGetter(callee))
+                {
+                    EmitManagedCall(callee, isCallvirt);
+                    return;
+                }
                 if (TryEmitMethodDefIntercept(CoreIntrinsics.MdRuntimePrimitive, callee))
                     return;
                 // Framework EventSource tracing guards: EventSource.IsEnabled() ->
@@ -1161,6 +1167,11 @@ internal sealed partial class MethodCompiler
                     // Runtime primitives referenced across assemblies need the same
                     // route as an intra-CoreLib MethodDef. NativeLibrary is the
                     // important case: a user resolver calls Load through a MemberRef.
+                    if (CoreIntrinsics.IsInvariantCompareInfoGetter(real))
+                    {
+                        EmitManagedCall(real, isCallvirt);
+                        return;
+                    }
                     if (TryEmitMethodDefIntercept(CoreIntrinsics.MdRuntimePrimitive, real))
                         return;
                     // The framework EventSource tracing guards, reached as a
@@ -1542,6 +1553,14 @@ internal sealed partial class MethodCompiler
 
     private void EmitManagedCall(MethodInfo callee, bool isCallvirt)
     {
+        if (CoreIntrinsics.IsInvariantCompareInfoGetter(callee))
+        {
+            if (isCallvirt && !_c.IsNativeInvariantCompareInfoReceiver(_method, _callSiteOffset, callee))
+                _c.NoteInvariantCompareInfoDispatchDemand(callee);
+            EmitRuntimePrimitive(callee);
+            return;
+        }
+
         // Target-specific call intrinsics (e.g. Godot shim methods) get first
         // refusal; the core emitter itself has no target knowledge.
         if (_intrinsics is not null && _intrinsics.TryEmitCall(this, callee, isCallvirt))
