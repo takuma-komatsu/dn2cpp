@@ -1600,12 +1600,12 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears(resolved))
                 throw new NotSupportedException("DateTimeFormatInfo HasForceTwoDigitYears requires its exact MemberRef signature");
         }
-        if (name == "get_GeneralShortTimePattern" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoGeneralShortTimePattern))
+        if ((name is "get_GeneralShortTimePattern" or "get_GeneralLongTimePattern") && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePattern))
         {
-            if (!CoreIntrinsics.IsDateTimeFormatInfoGeneralShortTimePatternSignature(reader.GetBlobReader(mr.Signature))
-                || !CoreIntrinsics.IsDateTimeFormatInfoGeneralShortTimePatternDecodedSignature(sig)
-                || !CoreIntrinsics.IsDateTimeFormatInfoGeneralShortTimePattern(resolved))
-                throw new NotSupportedException("DateTimeFormatInfo GeneralShortTimePattern requires its exact MemberRef signature");
+            if (!CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePatternSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePatternDecodedSignature(sig)
+                || !CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePattern(resolved))
+                throw new NotSupportedException($"DateTimeFormatInfo {name.Substring(4)} requires its exact MemberRef signature");
         }
         if (name == "get_Calendar" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoCalendar))
         {
@@ -1987,10 +1987,12 @@ internal sealed partial class Compilation
             if (CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears(forceTwoDigitYears))
                 return forceTwoDigitYears;
         }
-        if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "get_GeneralShortTimePattern"))
+        if (full == "System.Globalization.DateTimeFormatInfo"
+            && (reader.StringComparer.Equals(mr.Name, "get_GeneralShortTimePattern")
+                || reader.StringComparer.Equals(mr.Name, "get_GeneralLongTimePattern")))
         {
             var generalShortTimePattern = ResolveMemberRefMethod(module, handle, callerCtx);
-            if (CoreIntrinsics.IsDateTimeFormatInfoGeneralShortTimePattern(generalShortTimePattern))
+            if (CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePattern(generalShortTimePattern))
                 return generalShortTimePattern;
         }
         if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "get_Calendar"))

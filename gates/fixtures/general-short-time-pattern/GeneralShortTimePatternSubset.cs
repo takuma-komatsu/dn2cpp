@@ -2,18 +2,36 @@ using System;
 using System.Globalization;
 using System.Reflection;
 
+#if LONG_PATTERN
+namespace GeneralLongTimePatternSubset;
+#else
 namespace GeneralShortTimePatternSubset;
+#endif
 
 internal static class Program
 {
     private delegate string Query(DateTimeFormatInfo receiver);
     private delegate string ClosedQuery();
+#if LONG_PATTERN
+    private const string Prefix = "general-long-time-pattern-";
+    private const string Title = "Invariant general long-time pattern";
+    private const string Getter = "get_GeneralLongTimePattern";
+#else
+    private const string Prefix = "general-short-time-pattern-";
+    private const string Title = "Invariant general short-time pattern";
+    private const string Getter = "get_GeneralShortTimePattern";
+#endif
+#if LONG_PATTERN
+    private static string ExpectedPattern() => "MM/dd/yyyy HH:mm:ss";
+#else
+    private static string ExpectedPattern() => "MM/dd/yyyy HH:mm";
+#endif
     private static int trace;
     private static string Direct(DateTimeFormatInfo receiver) => throw new InvalidOperationException("native fixture required");
     private static string Pointer(DateTimeFormatInfo receiver) => throw new InvalidOperationException("native fixture required");
     private static ClosedQuery Address(DateTimeFormatInfo receiver) => throw new InvalidOperationException("native fixture required");
     private static string DelegateRoute(DateTimeFormatInfo receiver) => Address(receiver)();
-    private static MethodInfo Metadata() => typeof(DateTimeFormatInfo).GetMethod("get_GeneralShortTimePattern", BindingFlags.Instance | BindingFlags.NonPublic)!;
+    private static MethodInfo Metadata() => typeof(DateTimeFormatInfo).GetMethod(Getter, BindingFlags.Instance | BindingFlags.NonPublic)!;
     private static string Reflect(DateTimeFormatInfo receiver) => (string)Metadata().Invoke(receiver, null)!;
     private static DateTimeFormatInfo Receiver() { trace++; return null!; }
     private static DateTimeFormatInfo ThrowReceiver() { trace++; throw new FormatException("receiver producer"); }
@@ -26,7 +44,7 @@ internal static class Program
 
     private static void Check(string label, bool result)
     {
-        Console.WriteLine("general-short-time-pattern-" + label + ":" + result);
+        Console.WriteLine(Prefix + label + ":" + result);
         if (!result) throw new InvalidOperationException(label);
     }
 
@@ -35,7 +53,7 @@ internal static class Program
         foreach (var info in new[] { DateTimeFormatInfo.InvariantInfo, (DateTimeFormatInfo)DateTimeFormatInfo.InvariantInfo.Clone() })
         {
             string value = query(info);
-            Check(route + "-content", value == "MM/dd/yyyy HH:mm");
+            Check(route + "-content", value == ExpectedPattern());
             Check(route + "-actual-string", value.GetType() == typeof(string));
             // Native rooted identity only; not CLR per-instance cache/clone parity.
             Check(route + "-rooted-identity", ReferenceEquals(value, query(info)));
@@ -57,7 +75,7 @@ internal static class Program
         NullFirst(Direct, "direct");
         string kept = Direct(DateTimeFormatInfo.InvariantInfo);
         GC.Collect();
-        Check("rooted-after-collect", kept == "MM/dd/yyyy HH:mm"
+        Check("rooted-after-collect", kept == ExpectedPattern()
             && ReferenceEquals(kept, Direct(DateTimeFormatInfo.InvariantInfo)));
         trace = 0;
         bool observed = false;
@@ -69,7 +87,7 @@ internal static class Program
         try { _ = Direct(ThrowReceiver()); }
         catch (FormatException error) { observed = error.Message == "receiver producer"; }
         Check("receiver-throws", observed && trace == 1);
-        Console.WriteLine("general-short-time-pattern-direct-end");
+        Console.WriteLine(Prefix + "direct-end");
     }
 
     public static void RunReflectionChecks()
@@ -81,7 +99,7 @@ internal static class Program
         try { _ = Reflect(null!); }
         catch (Exception observed) { error = observed; }
         Check("reflection-null", error is TargetException);
-        Console.WriteLine("general-short-time-pattern-reflection-end");
+        Console.WriteLine(Prefix + "reflection-end");
     }
 
     public static void RunMinimal()
@@ -89,33 +107,56 @@ internal static class Program
         PinCulture();
         string value = Direct(DateTimeFormatInfo.InvariantInfo);
         // Character checks do not independently root the expected full literal.
+#if LONG_PATTERN
+        bool correct = value.Length == 19
+#else
         bool correct = value.Length == 16
+#endif
             && value[0] == 'M' && value[1] == 'M' && value[2] == '/'
             && value[3] == 'd' && value[4] == 'd' && value[5] == '/'
             && value[6] == 'y' && value[7] == 'y' && value[8] == 'y' && value[9] == 'y'
             && value[10] == ' ' && value[11] == 'H' && value[12] == 'H'
-            && value[13] == ':' && value[14] == 'm' && value[15] == 'm';
-        Console.WriteLine("general-short-time-pattern-minimal:" + correct);
+            && value[13] == ':' && value[14] == 'm' && value[15] == 'm'
+#if LONG_PATTERN
+            && value[16] == ':' && value[17] == 's' && value[18] == 's'
+#endif
+            ;
+        Console.WriteLine(Prefix + "minimal:" + correct);
         if (!correct) throw new InvalidOperationException("derived invariant composite pattern");
     }
 
     public static void Run()
     {
         PinCulture();
-        Console.WriteLine("== Invariant general short-time pattern ==");
+        Console.WriteLine("== " + Title + " ==");
         RunDirectChecks();
         Validate(Pointer, "calli");
         NullFirst(Pointer, "calli");
         Validate(DelegateRoute, "delegate");
         Check("delegate-return", Address(DateTimeFormatInfo.InvariantInfo).Method.ReturnType.FullName == "System.String");
         RunReflectionChecks();
-        Console.WriteLine("Invariant general short-time pattern end");
+        Console.WriteLine(Title + " end");
     }
 
     // Safe public content and mutable counterexamples; never invoke the private getter.
     public static void RunPublicOracle()
     {
         PinCulture();
+#if LONG_PATTERN
+        var info = DateTimeFormatInfo.InvariantInfo;
+        var date = new DateTime(2024, 2, 3, 4, 5, 6);
+        Check("public-composition", info.ShortDatePattern + " " + info.LongTimePattern == "MM/dd/yyyy HH:mm:ss");
+        Check("public-g", date.ToString("G", info) == "02/03/2024 04:05:06");
+        var clone = (DateTimeFormatInfo)info.Clone();
+        clone.ShortDatePattern = "yyyy*MM*dd";
+        Check("outside-native-date-setter", date.ToString("G", clone) == "2024*02*03 04:05:06");
+        clone.LongTimePattern = "HH~mm";
+        Check("outside-native-time-setter", date.ToString("G", clone) == "2024*02*03 04~05");
+        clone.ShortDatePattern = "";
+        clone.LongTimePattern = "";
+        Check("outside-native-empty-patterns", date.ToString("G", clone) == " ");
+        Console.WriteLine("General long-time pattern public oracle end");
+#else
         var info = DateTimeFormatInfo.InvariantInfo;
         var date = new DateTime(2024, 2, 3, 4, 5, 0);
         Check("public-composition", info.ShortDatePattern + " " + info.ShortTimePattern == "MM/dd/yyyy HH:mm");
@@ -129,5 +170,6 @@ internal static class Program
         clone.ShortTimePattern = "";
         Check("outside-native-empty-patterns", date.ToString("g", clone) == " ");
         Console.WriteLine("General short-time pattern public oracle end");
+#endif
     }
 }

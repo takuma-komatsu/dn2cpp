@@ -62,8 +62,8 @@ internal static class GeneralShortTimePatternGuards
         var targetHandle = reader.GetTypeDefinition(ownerHandle).GetMethods().Single(h => reader.GetString(reader.GetMethodDefinition(h).Name) == "get_GeneralShortTimePattern");
         var actual = ((IDictionary)Get(module, "MethodMap"))[targetHandle]!;
         var ownerClass = Get(actual, "DeclaringClass");
-        var predicate = Model("CoreIntrinsics").GetMethod("IsDateTimeFormatInfoGeneralShortTimePattern", statics)!;
-        var raw = Model("CoreIntrinsics").GetMethod("IsDateTimeFormatInfoGeneralShortTimePatternSignature", statics)!.CreateDelegate<RawPredicate>();
+        var predicate = Model("CoreIntrinsics").GetMethod("IsDateTimeFormatInfoGeneralTimePattern", statics)!;
+        var raw = Model("CoreIntrinsics").GetMethod("IsDateTimeFormatInfoGeneralTimePatternSignature", statics)!.CreateDelegate<RawPredicate>();
         int checks = 0;
         void Check(bool result, string label)
         {
@@ -75,7 +75,7 @@ internal static class GeneralShortTimePatternGuards
         {
             var candidate = ((IDictionary)Get(module, "MethodMap"))[h]!;
             string name = reader.GetString(reader.GetMethodDefinition(h).Name);
-            Check((bool)predicate.Invoke(null, new[] { candidate })! == false, "actual-MethodDef-policy-" + name);
+            Check((bool)predicate.Invoke(null, new[] { candidate })! == (name == "get_GeneralLongTimePattern"), "actual-MethodDef-policy-" + name);
         }
         Console.WriteLine("general-short-time-pattern-actual:" + MetadataTokens.GetToken(targetHandle).ToString("X8", CultureInfo.InvariantCulture));
         var appModule = ((IEnumerable)Get(loaded, "Modules")).Cast<object>().Single(m => (string)Get(m, "AssemblyName") == "GeneralShortTimePatternGuardInput");
@@ -89,7 +89,7 @@ internal static class GeneralShortTimePatternGuards
             var resolved = Model("Compilation").GetMethod("ResolveMemberRefMethod", instance)!.Invoke(loaded, new[] { appModule, (object)h, context })!;
             var expected = reader.GetTypeDefinition(ownerHandle).GetMethods().Single(x => reader.GetString(reader.GetMethodDefinition(x).Name) == name);
             Check(ReferenceEquals(Get(resolved, "Module"), module) && (MethodDefinitionHandle)Get(resolved, "Handle") == expected, "resolved-memberref-" + name);
-            Check((bool)predicate.Invoke(null, new[] { resolved })! == (name == "get_GeneralShortTimePattern"), "exact-neighbor-policy-" + name);
+            Check((bool)predicate.Invoke(null, new[] { resolved })! == (name is "get_GeneralShortTimePattern" or "get_GeneralLongTimePattern"), "exact-neighbor-policy-" + name);
             imports++;
         }
         Check(imports == 4, "all-memberrefs");

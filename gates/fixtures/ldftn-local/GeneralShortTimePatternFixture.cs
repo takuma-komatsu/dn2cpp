@@ -6,6 +6,13 @@ internal static class GeneralShortTimePatternFixture
 {
     public static bool Run(string[] args)
     {
+        bool longPattern = args.Length > 0 && args[0].StartsWith("--general-long-time-pattern", StringComparison.Ordinal);
+        if (longPattern)
+        {
+            args = (string[])args.Clone();
+            args[0] = "--general-short-time-pattern" + args[0].Substring("--general-long-time-pattern".Length);
+        }
+        string targetName = longPattern ? "get_GeneralLongTimePattern" : "get_GeneralShortTimePattern";
         bool negative = args.Length == 4 && args[0] == "--general-short-time-pattern-negative";
         if (!negative && (args.Length != 3 || !new[] { "--general-short-time-pattern", "--general-short-time-pattern-direct",
             "--general-short-time-pattern-reflection", "--general-short-time-pattern-minimal", "--general-short-time-pattern-noalloc", "--general-short-time-pattern-oracle" }.Contains(args[0])))
@@ -13,15 +20,15 @@ internal static class GeneralShortTimePatternFixture
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
         using var core = AssemblyDefinition.ReadAssembly(args[2]);
-        var definition = core.MainModule.GetType("System.Globalization.DateTimeFormatInfo").Methods.Single(m => m.Name == "get_GeneralShortTimePattern");
+        var definition = core.MainModule.GetType("System.Globalization.DateTimeFormatInfo").Methods.Single(m => m.Name == targetName);
         if ((int)definition.Attributes != 0x883 || definition.ImplAttributes != 0 || definition.RVA == 0
             || definition.HasGenericParameters || definition.Parameters.Count != 0
             || definition.ReturnType.MetadataType != MetadataType.String)
-            throw new InvalidOperationException("general short-time pattern declaration changed");
+            throw new InvalidOperationException("general time pattern declaration changed");
         string path = Path.GetFullPath(args[1]);
         using var app = AssemblyDefinition.ReadAssembly(path, new ReaderParameters { InMemory = true });
         var module = app.MainModule;
-        var program = module.GetType("GeneralShortTimePatternSubset.Program");
+        var program = module.GetType(longPattern ? "GeneralLongTimePatternSubset.Program" : "GeneralShortTimePatternSubset.Program");
         MethodDefinition Method(string name) => program.Methods.Single(m => m.Name == name);
         ILProcessor Body(string name)
         {
