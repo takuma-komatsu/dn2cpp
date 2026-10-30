@@ -81,8 +81,8 @@ internal static class YearMonthAdjustmentGuards
             checks++;
         }
         Check((bool)predicate.Invoke(null, new[] { actual })!, "actual-CoreLib");
-        var hasPredicate = Model("CoreIntrinsics").GetMethod("IsDateTimeFormatInfoHasYearMonthAdjustment", statics)!;
-        var hasRaw = Model("CoreIntrinsics").GetMethod("IsDateTimeFormatInfoHasYearMonthAdjustmentSignature", statics)!.CreateDelegate<RawPredicate>();
+        var hasPredicate = Model("CoreIntrinsics").GetMethod("IsDateTimeFormatInfoParserFlagGetter", statics)!;
+        var hasRaw = Model("CoreIntrinsics").GetMethod("IsDateTimeFormatInfoParserFlagGetterSignature", statics)!.CreateDelegate<RawPredicate>();
         var hasHandle = reader.GetTypeDefinition(ownerHandle).GetMethods().Single(h => reader.GetString(reader.GetMethodDefinition(h).Name) == "get_HasYearMonthAdjustment");
         var hasActual = ((IDictionary)Get(module, "MethodMap"))[hasHandle]!;
         Check((bool)hasPredicate.Invoke(null, new[] { hasActual })!, "actual-Has");

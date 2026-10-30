@@ -479,7 +479,7 @@ internal sealed partial class MethodCompiler
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
                 if ((CoreIntrinsics.IsRuntimeTypeHandleCopy(callee) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(callee))
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(callee)
-                    || CoreIntrinsics.IsDateTimeFormatInfoHasYearMonthAdjustment(callee)
+                    || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(callee)
                     || CoreIntrinsics.IsPrimitiveElementHelper(callee)
                     || CoreIntrinsics.IsMemberNotFoundExceptionFactory(callee)
                     || CoreIntrinsics.IsMemberMetadataDefinitionBase(callee)

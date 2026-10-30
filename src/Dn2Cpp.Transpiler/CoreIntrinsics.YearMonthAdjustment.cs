@@ -5,11 +5,14 @@ namespace Dn2Cpp;
 
 internal static partial class CoreIntrinsics
 {
-    internal static bool IsDateTimeFormatInfoHasYearMonthAdjustment(MethodInfo method) =>
+    internal static bool IsDateTimeFormatInfoParserFlagGetterName(string name) =>
+        name is "get_HasSpacesInMonthNames" or "get_HasSpacesInDayNames" or "get_HasYearMonthAdjustment";
+
+    internal static bool IsDateTimeFormatInfoParserFlagGetter(MethodInfo method) =>
         IsDateTimeFormatInfoAdjustmentOwner(method, getter: true)
-        && IsDateTimeFormatInfoHasYearMonthAdjustmentSignature(method.Module.Reader.GetBlobReader(
+        && IsDateTimeFormatInfoParserFlagGetterSignature(method.Module.Reader.GetBlobReader(
             method.Module.Reader.GetMethodDefinition(method.Handle).Signature))
-        && IsDateTimeFormatInfoHasYearMonthAdjustmentDecodedSignature(method.Signature);
+        && IsDateTimeFormatInfoParserFlagGetterDecodedSignature(method.Signature);
 
     internal static bool IsDateTimeFormatInfoYearMonthAdjustment(MethodInfo method) =>
         IsDateTimeFormatInfoAdjustmentOwner(method, getter: false)
@@ -20,7 +23,7 @@ internal static partial class CoreIntrinsics
     private static bool IsDateTimeFormatInfoAdjustmentOwner(MethodInfo method, bool getter)
     {
         var cls = method.DeclaringClass;
-        if (method.Name != (getter ? "get_HasYearMonthAdjustment" : "YearMonthAdjustment") || cls.FullName != "System.Globalization.DateTimeFormatInfo"
+        if ((getter ? !IsDateTimeFormatInfoParserFlagGetterName(method.Name) : method.Name != "YearMonthAdjustment") || cls.FullName != "System.Globalization.DateTimeFormatInfo"
             || method.Module.AssemblyName != "System.Private.CoreLib" || cls.Module != method.Module
             || cls.Handle.IsNil || method.Handle.IsNil || cls.IsValueType || cls.IsInterface
             || cls.GenericArity != 0 || cls.Context.TypeArgs.Length != 0
@@ -34,11 +37,11 @@ internal static partial class CoreIntrinsics
             && reader.StringComparer.Equals(owner.Name, "DateTimeFormatInfo");
     }
 
-    internal static bool IsDateTimeFormatInfoHasYearMonthAdjustmentSignature(BlobReader blob) =>
+    internal static bool IsDateTimeFormatInfoParserFlagGetterSignature(BlobReader blob) =>
         blob.RemainingBytes == 3 && blob.ReadByte() == 0x20 && blob.ReadByte() == 0
         && blob.ReadByte() == 0x02;
 
-    internal static bool IsDateTimeFormatInfoHasYearMonthAdjustmentDecodedSignature(MethodSignature<TypeDesc> signature) =>
+    internal static bool IsDateTimeFormatInfoParserFlagGetterDecodedSignature(MethodSignature<TypeDesc> signature) =>
         signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
         && signature.ParameterTypes.Length == 0
         && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean };

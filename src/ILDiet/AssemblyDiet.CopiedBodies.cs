@@ -34,13 +34,13 @@ internal sealed partial class AssemblyDiet
         || CoreIntrinsicTypeMaps.RuntimeInterfaceDispatch(Name(type)) is not null
         || CoreIntrinsicTypeMaps.IsDelegateBaseType(Name(type));
 
-    private static bool IsCopiedDateTimeFormatInfoHasYearMonthAdjustment(MethodDefinition method, string owner) =>
+    private static bool IsCopiedDateTimeFormatInfoParserFlagGetter(MethodDefinition method, string owner) =>
         method.Module.Assembly?.Name.Name == "System.Private.CoreLib"
         && owner == "System.Globalization.DateTimeFormatInfo"
         && method.DeclaringType.DeclaringType is null
         && !method.DeclaringType.IsValueType && !method.DeclaringType.IsInterface
         && !method.DeclaringType.HasGenericParameters
-        && method.Name == "get_HasYearMonthAdjustment"
+        && method.Name is "get_HasSpacesInMonthNames" or "get_HasSpacesInDayNames" or "get_HasYearMonthAdjustment"
         && method.Attributes == (MethodAttributes.Assembly | MethodAttributes.HideBySig | MethodAttributes.SpecialName)
         && method.ImplAttributes == MethodImplAttributes.IL
         && method.HasBody && method.Body.Instructions.Count != 0
@@ -312,7 +312,7 @@ internal sealed partial class AssemblyDiet
             traverse = false;
         else if (IsCopiedMemberMetadataDefinition(method, owner))
             traverse = owner == "System.Reflection.MemberInfo";
-        else if (IsCopiedDateTimeFormatInfoHasYearMonthAdjustment(method, owner)
+        else if (IsCopiedDateTimeFormatInfoParserFlagGetter(method, owner)
             || IsCopiedRuntimeTypeIntroducedMethodsFactory(method, owner)
             || IsCopiedRuntimeTypeHandleCopy(method, owner) || IsCopiedAmbiguousMatchExceptionFactory(method, owner)
             || IsCopiedMemberNotFoundExceptionFactory(method, owner) || IsCopiedPrimitiveElementHelper(method, owner))

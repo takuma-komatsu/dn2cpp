@@ -94,7 +94,7 @@ internal sealed partial class Compilation
                 ReachExceptionGetMessage(mi);
                 if ((CoreIntrinsics.IsRuntimeTypeHandleCopy(mi) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(mi))
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(mi)
-                    || CoreIntrinsics.IsDateTimeFormatInfoHasYearMonthAdjustment(mi)
+                    || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(mi)
                     || CoreIntrinsics.IsPrimitiveElementHelper(mi)
                     || CoreIntrinsics.IsMemberNotFoundExceptionFactory(mi)
                     || CoreIntrinsics.IsMemberMetadataDefinitionBase(mi)
@@ -1619,12 +1619,12 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsDateTimeFormatInfoYearMonthAdjustment(resolved))
                 throw new NotSupportedException("DateTimeFormatInfo YearMonthAdjustment requires its exact MemberRef signature");
         }
-        if (name == "get_HasYearMonthAdjustment" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoHasYearMonthAdjustment))
+        if (CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetterName(name) && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter))
         {
-            if (!CoreIntrinsics.IsDateTimeFormatInfoHasYearMonthAdjustmentSignature(reader.GetBlobReader(mr.Signature))
-                || !CoreIntrinsics.IsDateTimeFormatInfoHasYearMonthAdjustmentDecodedSignature(sig)
-                || !CoreIntrinsics.IsDateTimeFormatInfoHasYearMonthAdjustment(resolved))
-                throw new NotSupportedException("DateTimeFormatInfo get_HasYearMonthAdjustment requires its exact MemberRef signature");
+            if (!CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetterSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetterDecodedSignature(sig)
+                || !CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(resolved))
+                throw new NotSupportedException($"DateTimeFormatInfo {name} requires its exact MemberRef signature");
         }
         if (name == "get_HasForceTwoDigitYears" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears))
         {
@@ -2065,10 +2065,10 @@ internal sealed partial class Compilation
             if (CoreIntrinsics.IsDateTimeFormatInfoYearMonthAdjustment(adjustment))
                 return adjustment;
         }
-        if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "get_HasYearMonthAdjustment"))
+        if (full == "System.Globalization.DateTimeFormatInfo" && CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetterName(reader.GetString(mr.Name)))
         {
             var adjustment = ResolveMemberRefMethod(module, handle, callerCtx);
-            if (CoreIntrinsics.IsDateTimeFormatInfoHasYearMonthAdjustment(adjustment))
+            if (CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(adjustment))
                 return adjustment;
         }
         if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "get_HasForceTwoDigitYears"))

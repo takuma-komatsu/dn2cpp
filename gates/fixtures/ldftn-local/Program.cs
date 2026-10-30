@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (DtfIParserFlagsFixture.Run(args)) return;
+if (DtfIParserFlagsGuards.Run(args)) return;
 if (DateTimeTrioFixture.Run(args)) return;
 if (DateTimeTrioGuards.Run(args)) return;
 if (YearMonthAdjustmentFixture.Run(args)) return;

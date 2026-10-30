@@ -3853,7 +3853,7 @@ internal sealed partial class CppEmitter
                 || (_c.Reachable.Contains(method) || _c.KeepsUnreachedRow(method))
                     && ((CoreIntrinsics.IsRuntimeTypeHandleCopy(method) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(method))
                         || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(method)
-                        || CoreIntrinsics.IsDateTimeFormatInfoHasYearMonthAdjustment(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(method)
                         || CoreIntrinsics.IsPrimitiveElementHelper(method)
                         || CoreIntrinsics.IsMemberNotFoundExceptionFactory(method)
                         || CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(method)

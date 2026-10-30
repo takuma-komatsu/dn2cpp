@@ -17,3 +17,4 @@ datetime-tchar	DateTimeTChar	DateTimeTChar	--datetime-tchar
 dateonly-deconstruct	DateOnlyDeconstruct	DateOnlyDeconstructSubset	--dateonly-deconstruct
 year-month-adjustment	YearMonthAdjustment	YearMonthAdjustmentSubset	--year-month-adjustment
 datetime-trio	DateTimeTrio	DateTimeTrioSubset	--datetime-trio
+dtfi-parser-flags	DtfIParserFlags	DtfIParserFlagsSubset	--dtfi-parser-flags

@@ -1049,8 +1049,10 @@ exception message. It does not support localized eras or era abbreviations.
 The exact internal FormatFlags getter checks its receiver and returns the typed
 None enum derived from invariant name arrays and calendar conditions, without
 reading or writing the unmodeled cache field. Custom names and calendars are not
-modeled by this scalar policy. HasYearMonthAdjustment retains its field-free IL
-and derives false from those flags. The exact YearMonthAdjustment helper checks
+modeled by this scalar policy. The exact HasSpacesInMonthNames,
+HasSpacesInDayNames and HasYearMonthAdjustment getters retain their field-free
+IL, testing masks 4, 16 and 8 respectively. They derive false from those flags
+without replacing the bodies with constant-return intrinsics. The exact YearMonthAdjustment helper checks
 its receiver and returns true without reading or writing either integer reference:
 no Hebrew adjustment is required under the invariant policy. This result does not
 validate the supplied year or month and does not implement calendar-based parsing.
