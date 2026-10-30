@@ -1944,6 +1944,7 @@ internal sealed partial class CppEmitter
             EmitDelegateMethodCatalog();
             EmitMemberNotFoundFactoryRow();
             EmitDateOnlyDeconstructRow();
+            EmitDateTimeParserRows();
             _e.EmitArrayTypeInfos(_sb, _emittedEnums);
             _e.EmitMdArrayItfMap(_sb);
             _e.EmitArrayNongenericItfRows(_sb);
@@ -1985,6 +1986,30 @@ internal sealed partial class CppEmitter
                     }
                     _e._dateOnlyDeconstructRow = address;
                     return;
+                }
+            }
+        }
+
+        // The runtime owns DateTime's type-info; attach only exact retained rows.
+        private void EmitDateTimeParserRows()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.FullName != "System.DateTime") continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsDateTimeParserBoundary(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method },
+                            CoreIntrinsics.IsDateTimeTryAddTicks(method) ? "datetimeparseraddtab"
+                            : CoreIntrinsics.IsDateTimeTryCreate(method) ? "datetimeparsercreatetab" : "datetimeparserctortab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained DateTime parser member has no metadata row.");
+                    }
+                    if (CoreIntrinsics.IsDateTimeTryAddTicks(method)) _e._dateTimeTryAddTicksRow = address;
+                    else if (CoreIntrinsics.IsDateTimeTryCreate(method)) _e._dateTimeTryCreateRow = address;
+                    else _e._dateTimeLocalConstructorRow = address;
                 }
             }
         }
@@ -3859,6 +3884,7 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatterns(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoSpan(method)
                         || CoreIntrinsics.IsDateOnlyDeconstruct(method)
+                        || CoreIntrinsics.IsDateTimeParserBoundary(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoCalendar(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoFormatFlags(method)

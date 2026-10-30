@@ -1640,6 +1640,23 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePattern(resolved))
                 throw new NotSupportedException($"DateTimeFormatInfo {name.Substring(4)} requires its exact MemberRef signature");
         }
+        if (resolved.DeclaringClass.FullName == "System.DateTime" &&
+            (name is "TryAddTicks" or "TryCreate" || name == ".ctor" && CoreIntrinsics.IsPotentialDateTimeLocalConstructor(sig)))
+        {
+            bool exact = name switch
+            {
+                "TryAddTicks" => CoreIntrinsics.IsDateTimeTryAddTicks(resolved)
+                    && CoreIntrinsics.IsDateTimeTryAddTicksSignature(reader.GetBlobReader(mr.Signature))
+                    && CoreIntrinsics.IsDateTimeTryAddTicksDecodedSignature(sig, resolved.Module),
+                "TryCreate" => CoreIntrinsics.IsDateTimeTryCreate(resolved)
+                    && CoreIntrinsics.IsDateTimeTryCreateSignature(reader.GetBlobReader(mr.Signature))
+                    && CoreIntrinsics.IsDateTimeTryCreateDecodedSignature(sig, resolved.Module),
+                _ => CoreIntrinsics.IsDateTimeLocalConstructor(resolved)
+                    && CoreIntrinsics.IsDateTimeLocalConstructorSignature(reader.GetBlobReader(mr.Signature))
+                    && CoreIntrinsics.IsDateTimeLocalConstructorDecodedSignature(sig, resolved.Module)
+            };
+            if (!exact) throw new NotSupportedException($"DateTime {name} requires its exact MemberRef signature");
+        }
         if (name == "Deconstruct" && candidates.Any(CoreIntrinsics.IsDateOnlyDeconstruct))
         {
             if (!CoreIntrinsics.IsDateOnlyDeconstructSignature(reader.GetBlobReader(mr.Signature))
@@ -2068,6 +2085,14 @@ internal sealed partial class Compilation
             var generalShortTimePattern = ResolveMemberRefMethod(module, handle, callerCtx);
             if (CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePattern(generalShortTimePattern))
                 return generalShortTimePattern;
+        }
+        if (full == "System.DateTime" && (reader.StringComparer.Equals(mr.Name, "TryAddTicks")
+            || reader.StringComparer.Equals(mr.Name, "TryCreate")
+            || reader.StringComparer.Equals(mr.Name, ".ctor")
+                && CoreIntrinsics.IsPotentialDateTimeLocalConstructor(mr.DecodeMethodSignature(SigProvider, callerCtx))))
+        {
+            var parserMember = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeParserBoundary(parserMember)) return parserMember;
         }
         if (full == "System.DateOnly" && reader.StringComparer.Equals(mr.Name, "Deconstruct"))
         {

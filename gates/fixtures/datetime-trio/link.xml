@@ -1,0 +1,5 @@
+<linker><assembly fullname="System.Private.CoreLib"><type fullname="System.DateTime">
+  <method signature="System.Boolean TryAddTicks(System.Int64,System.DateTime&amp;)" />
+  <method signature="System.Boolean TryCreate(System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.DateTime&amp;)" />
+  <method signature="System.Void .ctor(System.Int64,System.DateTimeKind,System.Boolean)" />
+</type></assembly></linker>

@@ -67,6 +67,7 @@ datetime_family_aggregate_gate() {
         gate_capture_ok "$out/native" run_bounded "${runner[@]}" || return $?
         "$(resolve_python)" gates/fixtures/datetime-family/check-output.py "$out/native.stdout" "$out/sections" || return $?
         "$(resolve_python)" gates/fixtures/year-month-adjustment/check-output.py "$out/sections/YearMonthAdjustment.stdout" || return $?
+        "$(resolve_python)" gates/fixtures/datetime-trio/check-output.py "$out/sections/DateTimeTrio.stdout" || return $?
         for assembly in AbbreviatedDay FullDay AbbreviatedMonth FullMonth EraName DateOnlyDeconstruct; do
             gate_output compare "$root/oracles/$assembly/oracle.stdout" "$out/sections/$assembly.stdout" --policy crlf || return $?
         done
@@ -78,7 +79,7 @@ datetime_family_controls_gate() {
     corelib=$(resolve_net10_corelib) || return $?
     mkdir -p "$root"
     # Shared day/month/three-pattern guards already enumerate all exact target names.
-    for flag in abbreviated-day abbreviated-month dtfi-calendar dtfi-calendar-setter internal-month era-name format-flags force-two-digit-years general-short-time-pattern all-datetime-patterns dateonly-deconstruct datetime-tchar year-month-adjustment; do
+    for flag in abbreviated-day abbreviated-month dtfi-calendar dtfi-calendar-setter internal-month era-name format-flags force-two-digit-years general-short-time-pattern all-datetime-patterns dateonly-deconstruct datetime-tchar year-month-adjustment datetime-trio; do
         model=$(mktemp -d "$root/model-$flag-XXXXXX") || return $?
         gate_capture_ok "$model/guards" run_bounded dotnet "$fixture" "--$flag-guards" "$(dirname "$DN2CPP_CLI_DLL")/Dn2Cpp.Transpiler.dll" "$corelib" "$model/input.dll" || return $?
     done
@@ -94,6 +95,7 @@ datetime_family_controls_gate() {
         esac
     done < gates/fixtures/datetime-family/families.tsv
     datetime_tchar_closure_gate "$root/tchar-closure" "gates/fixtures/datetime-tchar/bin/$CONFIG/$TFM" || return $?
+    datetime_trio_oracle_gate "$root/datetime-trio-public" "gates/fixtures/datetime-trio/bin/$CONFIG/$TFM" || return $?
     all_datetime_patterns_zeroarg_gate "$root/zeroarg" "gates/fixtures/all-datetime-patterns/bin/$CONFIG/$TFM" || return $?
 }
 

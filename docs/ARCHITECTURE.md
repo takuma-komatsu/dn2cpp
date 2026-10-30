@@ -1092,6 +1092,18 @@ changing DateTime.GetDate. Only the exact retained Deconstruct row is exposed fo
 named reflection lookup on the runtime-owned DateOnly type; this does not admit
 the rest of DateOnly's reflection surface or promise GetMethods enumeration.
 
+The exact parser-facing DateTime arithmetic helpers reuse the existing Gregorian
+runtime. TryAddTicks snapshots its receiver, preserves the complete kind word on
+success and clears the result on range failure, including receiver/output aliasing.
+TryCreate clears its output before validating fields and does not accept leap
+seconds. The internal ticks/kind/ambiguous constructor validates ticks before
+accessing its destination, ignores the kind value as its managed body does, and
+preserves the ambiguous-local bit. These are bounded member contracts, not a
+claim that all DateTime parsing or calendar operations are supported. Exact
+retained rows support named lookup of these two methods and the internal
+constructor on the runtime-owned DateTime type. Other members and enumeration
+are not inferred from those rows.
+
 Numeric culture data are frozen CLR/ICU snapshots in `runtime/core/intrinsics/`.
 Native binaries never discover or load the deployment host's ICU. Reference
 versions are explicit and checked by `gates/check-culture-reference.sh` in CI.

@@ -4352,6 +4352,16 @@ void dn2cpp_set_dateonly_deconstruct_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> 
     g_dateonly_deconstruct_row = method;
 }
 
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_datetime_parser_rows[3];
+
+void dn2cpp_set_datetime_parser_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> addTicks,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> tryCreate, Dn2CppMetadataHandle<Dn2CppMethodInfo> localConstructor)
+{
+    g_datetime_parser_rows[0] = addTicks;
+    g_datetime_parser_rows[1] = tryCreate;
+    g_datetime_parser_rows[2] = localConstructor;
+}
+
 // The named-lookup hook: appends the rows a lookup on `queried` finds after the
 // emitted candidates, so dn2cpp_resolve_method_candidates lets an emitted override
 // hide the Object or ValueType member it overrides and reports an overload beside one
@@ -4375,6 +4385,9 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     const bool dateOnlyNamed = dateOnly != nullptr
         && dn2cpp_member_name_matches(dateOnly->name, name, bindingFlags, false);
     bool named = factoryNamed || dateOnlyNamed;
+    for (int32_t i = 0; i < 2 && !named; i++)
+        named = g_datetime_parser_rows[i] != nullptr
+            && dn2cpp_member_name_matches(g_datetime_parser_rows[i]->name, name, bindingFlags, false);
     for (int32_t k = 0; k < g_meta_member_count && !named; k++)
         named = dn2cpp_member_name_matches(g_meta_members[k].methodName, name, bindingFlags, false);
     if (!named)
@@ -4383,6 +4396,17 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     for (const Dn2CppTypeInfo* ti = queried; ti != nullptr; ti = dn2cpp_meta_next_level(ti))
     {
         bool inherited = (ti != queried);
+        for (int32_t i = 0; i < 2; i++)
+        {
+            const auto method = g_datetime_parser_rows[i];
+            if (method == nullptr) continue;
+            const auto row = method.operator->();
+            if (row->declaringType == ti && dn2cpp_member_name_matches(row->name, name, bindingFlags, false)
+                && dn2cpp_member_matches(row->attrs, bindingFlags, inherited)
+                && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
+                && (paramTypes == nullptr || dn2cpp_params_match_types(method, paramTypes, queried)))
+                cands.push_back(method);
+        }
         if (dateOnlyNamed)
         {
             const auto row = dateOnly.operator->();
@@ -8494,6 +8518,11 @@ Dn2CppMethodRef* dn2cpp_type_get_constructor_full(Dn2CppType* t, Dn2CppArrayRef*
             dn2cpp_throw_argument_null_param("types");
     dn2cpp_reflection_check_binder(binder);
     const Dn2CppTypeInfo* ti = t->typeInfo;
+    const auto localConstructor = g_datetime_parser_rows[2];
+    if (localConstructor != nullptr && localConstructor->declaringType == ti
+        && dn2cpp_member_matches(localConstructor->attrs, bindingFlags, false)
+        && dn2cpp_params_match_types(localConstructor, paramTypes, ti))
+        return dn2cpp_make_methodref(localConstructor, ti);
     const auto reflection = ti->reflection();
     for (int32_t i = 0; i < reflection.ctorCount; i++)
     {

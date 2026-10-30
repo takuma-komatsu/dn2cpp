@@ -1237,6 +1237,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatterns(_method)
             || CoreIntrinsics.IsDateTimeFormatInfoSpan(_method)
             || CoreIntrinsics.IsDateOnlyDeconstruct(_method)
+            || CoreIntrinsics.IsDateTimeParserBoundary(_method)
             || CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(_method)
             || CoreIntrinsics.IsDateTimeFormatInfoCalendar(_method)
             || CoreIntrinsics.IsDateTimeFormatInfoFormatFlags(_method)

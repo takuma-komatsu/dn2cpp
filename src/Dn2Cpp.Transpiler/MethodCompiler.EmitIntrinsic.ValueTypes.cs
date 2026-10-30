@@ -802,6 +802,8 @@ internal sealed partial class MethodCompiler
     /// integer ones; Calendar overloads are carve-outs (NotSupported).</summary>
     private string EmitDateTimeCtorExpr(MethodSignature<TypeDesc> sig)
     {
+        if (CoreIntrinsics.IsPotentialDateTimeLocalConstructor(sig))
+            throw new NotSupportedException("DateTime local constructor requires its exact metadata signature");
         var ps = sig.ParameterTypes;
         var args = new StackEntry[ps.Length];
         for (int i = ps.Length - 1; i >= 0; i--) args[i] = Pop();

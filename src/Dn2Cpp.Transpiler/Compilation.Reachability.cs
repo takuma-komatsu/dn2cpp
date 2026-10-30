@@ -167,6 +167,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatterns(m)
             || CoreIntrinsics.IsDateTimeFormatInfoSpan(m)
             || CoreIntrinsics.IsDateOnlyDeconstruct(m)
+            || CoreIntrinsics.IsDateTimeParserBoundary(m)
             || CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(m)
             || CoreIntrinsics.IsDateTimeFormatInfoCalendar(m)
             || CoreIntrinsics.IsDateTimeFormatInfoFormatFlags(m)

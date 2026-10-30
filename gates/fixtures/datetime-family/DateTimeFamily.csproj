@@ -18,5 +18,6 @@
     <ProjectReference Include="../datetime-tchar/DateTimeTChar.csproj" />
     <ProjectReference Include="../dateonly-deconstruct/DateOnlyDeconstruct.csproj" />
     <ProjectReference Include="../year-month-adjustment/YearMonthAdjustment.csproj" />
+    <ProjectReference Include="../datetime-trio/DateTimeTrio.csproj" />
   </ItemGroup>
 </Project>

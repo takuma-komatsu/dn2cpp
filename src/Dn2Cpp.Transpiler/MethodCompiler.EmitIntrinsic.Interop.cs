@@ -555,6 +555,12 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsDateTimeParserBoundary(callee))
+        {
+            EmitDateTimeParserBoundary(callee);
+            return;
+        }
+
         if (CoreIntrinsics.IsDateOnlyDeconstruct(callee))
         {
             EmitDateOnlyDeconstruct();

@@ -1416,6 +1416,8 @@ void dn2cpp_set_delegate_method_catalog(const Dn2CppDelegateMethodCatalog* rows,
 void dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 // Exact retained DateOnly member; no general intrinsic-type metadata mutation.
 void dn2cpp_set_dateonly_deconstruct_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+void dn2cpp_set_datetime_parser_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> addTicks,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> tryCreate, Dn2CppMetadataHandle<Dn2CppMethodInfo> localConstructor);
 Dn2CppObject* dn2cpp_delegate_object_virtual_invoker(void* fn, Dn2CppObject* receiver,
     Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
 
@@ -8659,6 +8661,9 @@ void dn2cpp_datetime_get_time_precise(Dn2CppDateTime a, int32_t* hour, int32_t* 
 // AddTicks is exact; Add*(double) truncates value*ticksPerUnit toward zero (no
 // millisecond rounding); AddMonths/AddYears clamp the day to the target month.
 Dn2CppDateTime dn2cpp_datetime_add_ticks(Dn2CppDateTime a, int64_t ticks, const char* paramName);
+int32_t dn2cpp_datetime_try_add_ticks(Dn2CppDateTime a, int64_t ticks, Dn2CppDateTime* result);
+int32_t dn2cpp_datetime_try_create(int32_t y, int32_t mo, int32_t d, int32_t h, int32_t mi, int32_t s, int32_t ms, Dn2CppDateTime* result);
+Dn2CppDateTime dn2cpp_datetime_local_from_ticks(int64_t ticks, int32_t ambiguous);
 Dn2CppDateTime dn2cpp_datetime_subtract_ticks(Dn2CppDateTime a, int64_t ticks, const char* paramName);
 Dn2CppDateTime dn2cpp_datetime_add_unit(Dn2CppDateTime a, double value, int64_t ticksPerUnit);
 Dn2CppDateTime dn2cpp_datetime_add_months(Dn2CppDateTime a, int32_t months);

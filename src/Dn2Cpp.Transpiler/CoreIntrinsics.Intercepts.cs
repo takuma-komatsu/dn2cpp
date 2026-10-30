@@ -660,6 +660,7 @@ internal static partial class CoreIntrinsics
             || IsDateTimeFormatInfoAllDateTimePatterns(mi)
             || IsDateTimeFormatInfoSpan(mi)
             || IsDateOnlyDeconstruct(mi)
+            || IsDateTimeParserBoundary(mi)
             || IsDateTimeFormatInfoCalendarSetter(mi)
             || IsDateTimeFormatInfoCalendar(mi)
             || IsDateTimeFormatInfoFormatFlags(mi)

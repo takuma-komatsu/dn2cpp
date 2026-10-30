@@ -1605,7 +1605,18 @@ internal sealed partial class MethodCompiler
         if (NewobjTypeName(handle) == "System.DateTime"
             && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition)
         {
-            Push(StackKind.Struct, "Dn2CppDateTime", EmitDateTimeCtorExpr(DecodeCtorSignature(handle)));
+            var signature = DecodeCtorSignature(handle);
+            if (CoreIntrinsics.IsPotentialDateTimeLocalConstructor(signature))
+            {
+                var localCtor = handle.Kind == HandleKind.MethodDefinition
+                    ? ResolveMethodDef((MethodDefinitionHandle)handle)
+                    : _c.ResolveMemberRefMethod(_module, (MemberReferenceHandle)handle, _method.Context);
+                if (!CoreIntrinsics.IsDateTimeLocalConstructor(localCtor))
+                    throw new NotSupportedException("DateTime local constructor requires its exact metadata signature");
+                Push(StackKind.Struct, "Dn2CppDateTime", EmitDateTimeLocalConstructorValue());
+                return;
+            }
+            Push(StackKind.Struct, "Dn2CppDateTime", EmitDateTimeCtorExpr(signature));
             return;
         }
         // A MemberRef from an app assembly but a MethodDef when the newobj sits in

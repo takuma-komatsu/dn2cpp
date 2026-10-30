@@ -272,6 +272,42 @@ Dn2CppDateTime dn2cpp_datetime_add_ticks(Dn2CppDateTime a, int64_t ticks, const 
         dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_DATE_ARITHMETIC, paramName);
     return dn2cpp_dt_word(static_cast<int64_t>(sum), static_cast<uint64_t>(a._dateData) >> 62);
 }
+int32_t dn2cpp_datetime_try_add_ticks(Dn2CppDateTime a, int64_t ticks, Dn2CppDateTime* result)
+{
+    uint64_t sum = static_cast<uint64_t>(a.ticks()) + static_cast<uint64_t>(ticks);
+    dn2cpp_null_check(result);
+    if (sum > static_cast<uint64_t>(DN2CPP_DT_MAX_TICKS))
+    {
+        *result = Dn2CppDateTime{};
+        return 0;
+    }
+    *result = dn2cpp_dt_word(static_cast<int64_t>(sum), static_cast<uint64_t>(a._dateData) >> 62);
+    return 1;
+}
+
+int32_t dn2cpp_datetime_try_create(int32_t y, int32_t mo, int32_t d, int32_t h,
+    int32_t mi, int32_t s, int32_t ms, Dn2CppDateTime* result)
+{
+    dn2cpp_null_check(result);
+    *result = Dn2CppDateTime{};
+    if (y < 1 || y > 9999 || mo < 1 || mo > 12 || d < 1
+        || static_cast<uint32_t>(h) >= 24 || static_cast<uint32_t>(mi) >= 60
+        || static_cast<uint32_t>(ms) >= 1000)
+        return 0;
+    if (d > dn2cpp_dt_days_in_month_checked(y, mo) || static_cast<uint32_t>(s) >= 60)
+        return 0;
+    *result = dn2cpp_datetime_ymdhmsms(y, mo, d, h, mi, s, ms, 0);
+    return 1;
+}
+
+Dn2CppDateTime dn2cpp_datetime_local_from_ticks(int64_t ticks, int32_t ambiguous)
+{
+    // The internal constructor ignores its kind argument and validates ticks
+    // before accessing destination storage. Preserve the ambiguous-local bit.
+    Dn2CppDateTime value = dn2cpp_datetime_from_ticks(ticks, 2);
+    return dn2cpp_dt_word(value.ticks(), ambiguous ? 3 : 2);
+}
+
 // Negating TimeSpan.MinValue must raise a range fault before signed arithmetic.
 Dn2CppDateTime dn2cpp_datetime_subtract_ticks(Dn2CppDateTime a, int64_t ticks, const char* paramName)
 {
