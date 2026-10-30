@@ -26,6 +26,7 @@ source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_abbreviated-day.sh"
 source "$(dirname "$0")/_abbreviated-month.sh"
 source "$(dirname "$0")/_dtfi-calendar.sh"
+source "$(dirname "$0")/_dtfi-calendar-setter.sh"
 source "$(dirname "$0")/_internal-month.sh"
 source "$(dirname "$0")/_era-name.sh"
 source "$(dirname "$0")/_format-flags.sh"
@@ -43,7 +44,8 @@ DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_force-two-digit-years
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_general-short-time-pattern.sh gates/fixtures/general-short-time-pattern gates/fixtures/ldftn-local/GeneralShortTimePatternFixture.cs gates/fixtures/ldftn-local/GeneralShortTimePatternGuards.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/general-long-time-pattern/GeneralLongTimePattern.csproj gates/fixtures/general-long-time-pattern/link.xml"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/datetime-offset-pattern/DateTimeOffsetPattern.csproj gates/fixtures/datetime-offset-pattern/link.xml"
-DN2CPP_GATE_EXTRA_CONTEXT="datetime-offset-pattern:exact-invariant-v1|${DN2CPP_GATE_EXTRA_CONTEXT:-}|abbreviated-day:invariant,raw,diet,reflection-only,minimal,NoAlloc-rejection|full-day:invariant,raw,diet,reflection-only,minimal,NoAlloc-rejection|abbreviated-month:exact-int32-scalar-v1|abbreviated-month-negatives:${DN2CPP_ABBREVIATED_MONTH_NEGATIVES:-return byref address-return address-byref}|month-name-modes:abbreviated,full|full-month:exact-int32-scalar-v1|dtfi-calendar:exact-null-first-refusal-v1|dtfi-calendar-negatives:${DN2CPP_DTFI_CALENDAR_NEGATIVES:-return byref address-return address-byref}|day-name-modes:abbreviated,full|abbreviated-day-negatives:${DN2CPP_ABBREVIATED_DAY_NEGATIVES:-return byref address-return address-byref}|internal-month:exact-invariant-selector,raw,diet,NoAlloc-rejection,negative:${DN2CPP_INTERNAL_MONTH_NEGATIVES:-default}|era-name:invariant,raw,diet,NoAlloc-rejection,negative:${DN2CPP_ERA_NAME_NEGATIVES:-default}|general-time-pattern-families:short,long,offset|general-short-time-pattern:exact-invariant-rooted-string,raw,diet,NoAlloc-leaf,negative:${DN2CPP_GENERAL_SHORT_TIME_PATTERN_NEGATIVES:-default}|force-two-digit-years:exact-invariant-boolean,raw,diet,NoAlloc-leaf,negative:${DN2CPP_FORCE_TWO_DIGIT_YEARS_NEGATIVES:-default}|format-flags:exact-invariant-enum,raw,diet,NoAlloc-leaf,negative:${DN2CPP_FORMAT_FLAGS_NEGATIVES:-default}"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_dtfi-calendar-setter.sh gates/fixtures/dtfi-calendar-setter gates/fixtures/ldftn-local/DtfICalendarSetterFixture.cs gates/fixtures/ldftn-local/DtfICalendarSetterGuards.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="calendar-setter:exact-void-readonly-null-refusal,negative:${DN2CPP_DTFI_CALENDAR_SETTER_NEGATIVES:-default}|datetime-offset-pattern:exact-invariant-v1|${DN2CPP_GATE_EXTRA_CONTEXT:-}|abbreviated-day:invariant,raw,diet,reflection-only,minimal,NoAlloc-rejection|full-day:invariant,raw,diet,reflection-only,minimal,NoAlloc-rejection|abbreviated-month:exact-int32-scalar-v1|abbreviated-month-negatives:${DN2CPP_ABBREVIATED_MONTH_NEGATIVES:-return byref address-return address-byref}|month-name-modes:abbreviated,full|full-month:exact-int32-scalar-v1|dtfi-calendar:exact-null-first-refusal-v1|dtfi-calendar-negatives:${DN2CPP_DTFI_CALENDAR_NEGATIVES:-return byref address-return address-byref}|day-name-modes:abbreviated,full|abbreviated-day-negatives:${DN2CPP_ABBREVIATED_DAY_NEGATIVES:-return byref address-return address-byref}|internal-month:exact-invariant-selector,raw,diet,NoAlloc-rejection,negative:${DN2CPP_INTERNAL_MONTH_NEGATIVES:-default}|era-name:invariant,raw,diet,NoAlloc-rejection,negative:${DN2CPP_ERA_NAME_NEGATIVES:-default}|general-time-pattern-families:short,long,offset|general-short-time-pattern:exact-invariant-rooted-string,raw,diet,NoAlloc-leaf,negative:${DN2CPP_GENERAL_SHORT_TIME_PATTERN_NEGATIVES:-default}|force-two-digit-years:exact-invariant-boolean,raw,diet,NoAlloc-leaf,negative:${DN2CPP_FORCE_TWO_DIGIT_YEARS_NEGATIVES:-default}|format-flags:exact-invariant-enum,raw,diet,NoAlloc-leaf,negative:${DN2CPP_FORMAT_FLAGS_NEGATIVES:-default}"
 
 # Constructors, arithmetic, offset parsing and microseconds preserve fault fields.
 gate_extra_asserts() {
@@ -135,6 +137,7 @@ gate_extra_asserts() {
     gate_output compare "$out/full-month-prefix.stdout" "$out/full-month-before.stdout"
     gate_output witness "$out/day-full.stdout" '== Full invariant month public neighbor ==' 'full-month-public-1:True' 'full-month-public-13:True' 'full-month-public-empty:True' 'Full invariant month public neighbor end' --count 1 --policy crlf
     full_month_focused_gate "$out/full-month"
+    dtfi_calendar_setter_focused_gate "$out/dtfi-calendar-setter" || return $?
     dtfi_calendar_focused_gate "$out/dtfi-calendar"
     internal_month_focused_gate "$out/internal-month"
     gate_capture_ok "$out/era-before" run_bounded "./$out/DateTimeOps$EXE_EXT" before-era-name

@@ -3832,6 +3832,7 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsDateTimeFormatInfoMonthName(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoEraName(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoInternalMonthName(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoCalendar(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoFormatFlags(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears(method)

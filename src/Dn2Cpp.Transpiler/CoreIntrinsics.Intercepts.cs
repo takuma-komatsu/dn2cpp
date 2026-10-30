@@ -657,6 +657,7 @@ internal static partial class CoreIntrinsics
             || IsDateTimeFormatInfoMonthName(mi)
             || IsDateTimeFormatInfoEraName(mi)
             || IsDateTimeFormatInfoInternalMonthName(mi)
+            || IsDateTimeFormatInfoCalendarSetter(mi)
             || IsDateTimeFormatInfoCalendar(mi)
             || IsDateTimeFormatInfoFormatFlags(mi)
             || IsDateTimeFormatInfoHasForceTwoDigitYears(mi)

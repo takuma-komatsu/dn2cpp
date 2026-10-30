@@ -1607,6 +1607,13 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePattern(resolved))
                 throw new NotSupportedException($"DateTimeFormatInfo {name.Substring(4)} requires its exact MemberRef signature");
         }
+        if (name == "set_Calendar" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoCalendarSetterSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoCalendarSetterDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo Calendar setter requires its exact MemberRef signature");
+        }
         if (name == "get_Calendar" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoCalendar))
         {
             if (!CoreIntrinsics.IsDateTimeFormatInfoCalendarSignature(reader.GetBlobReader(mr.Signature))
@@ -1995,6 +2002,12 @@ internal sealed partial class Compilation
             var generalShortTimePattern = ResolveMemberRefMethod(module, handle, callerCtx);
             if (CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePattern(generalShortTimePattern))
                 return generalShortTimePattern;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "set_Calendar"))
+        {
+            var calendar = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(calendar))
+                return calendar;
         }
         if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "get_Calendar"))
         {

@@ -164,6 +164,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsDateTimeFormatInfoMonthName(m)
             || CoreIntrinsics.IsDateTimeFormatInfoEraName(m)
             || CoreIntrinsics.IsDateTimeFormatInfoInternalMonthName(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(m)
             || CoreIntrinsics.IsDateTimeFormatInfoCalendar(m)
             || CoreIntrinsics.IsDateTimeFormatInfoFormatFlags(m)
             || CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears(m)

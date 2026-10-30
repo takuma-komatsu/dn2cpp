@@ -1063,6 +1063,10 @@ are not modeled. DTFI Calendar access checks the receiver and
 throws PlatformNotSupportedException: native DTFI allocations do not construct
 Calendar backing state. It never exposes that absent field as a successful null
 calendar, and does not add calendar identity, cloning or Hebrew-formatting support.
+The exact Calendar setter checks the receiver, native read-only state and null
+value in that order, then refuses nonnull changes without inspecting the Calendar
+object or changing state. Same-instance success cannot be modeled without a
+constructed backing calendar.
 
 Numeric culture data are frozen CLR/ICU snapshots in `runtime/core/intrinsics/`.
 Native binaries never discover or load the deployment host's ICU. Reference

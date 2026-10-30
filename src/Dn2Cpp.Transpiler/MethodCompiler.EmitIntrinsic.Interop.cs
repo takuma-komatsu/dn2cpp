@@ -543,6 +543,17 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(callee))
+        {
+            string calendar = Cast(Pop(), "Dn2CppObject*");
+            string receiver = DateTimeFormatReceiver();
+            Emit($"if ({receiver}->dn2cpp_read_only) dn2cpp_throw_invalid_operation_msg(\"Instance is read-only.\");");
+            Emit($"if ({calendar} == nullptr) dn2cpp_throw_argument_null_param(\"value\");");
+            // Native DTFI has no mutable Calendar backing state.
+            Emit("dn2cpp_throw_platform_not_supported(\"DateTimeFormatInfo.Calendar is not supported\");");
+            return;
+        }
+
         if (CoreIntrinsics.IsDateTimeFormatInfoCalendar(callee))
         {
             DateTimeFormatReceiver();

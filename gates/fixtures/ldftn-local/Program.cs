@@ -12,6 +12,8 @@ if (EraNameFixture.Run(args)) return;
 if (EraNameGuards.Run(args)) return;
 if (InternalMonthFixture.Run(args)) return;
 if (InternalMonthGuards.Run(args)) return;
+if (DtfICalendarSetterFixture.Run(args)) return;
+if (DtfICalendarSetterGuards.Run(args)) return;
 if (DtfICalendarFixture.Run(args)) return;
 if (DtfICalendarGuards.Run(args)) return;
 if (AbbreviatedMonthFixture.Run(args)) return;

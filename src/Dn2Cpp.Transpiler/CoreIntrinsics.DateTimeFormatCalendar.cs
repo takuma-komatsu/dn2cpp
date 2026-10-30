@@ -30,11 +30,14 @@ internal static partial class CoreIntrinsics
         && token > 0 && (token >> 2) != 0 && (token & 3) != 3 && blob.RemainingBytes == 0;
 
     internal static bool IsDateTimeFormatInfoCalendarDecodedSignature(MethodSignature<TypeDesc> signature, Module module)
+        => signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && IsDateTimeFormatInfoCalendarType(signature.ReturnType, module);
+
+    private static bool IsDateTimeFormatInfoCalendarType(TypeDesc type, Module module)
     {
-        if (signature.Header.RawValue != 0x20 || signature.GenericParameterCount != 0
-            || signature.ParameterTypes.Length != 0
-            || signature.ReturnType is not { Kind: TypeKind.Class, Class: { FullName: "System.Globalization.Calendar",
-                IsValueType: false, IsInterface: false } calendar }
+        if (type is not { Kind: TypeKind.Class, Class: { FullName: "System.Globalization.Calendar",
+                IsValueType: false, IsEnum: false, IsInterface: false } calendar }
             || calendar.Module != module || calendar.Handle.IsNil || calendar.GenericArity != 0
             || calendar.Context.TypeArgs.Length != 0)
             return false;
