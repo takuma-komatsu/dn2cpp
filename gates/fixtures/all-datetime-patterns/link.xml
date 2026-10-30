@@ -1,0 +1,1 @@
+<linker><assembly fullname="System.Private.CoreLib"><type fullname="System.Globalization.DateTimeFormatInfo"><method signature="System.String[] GetAllDateTimePatterns(System.Char)" /></type></assembly></linker>

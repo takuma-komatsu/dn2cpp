@@ -2,6 +2,14 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (DateOnlyDeconstructFixture.Run(args)) return;
+if (DateOnlyDeconstructGuards.Run(args)) return;
+if (DateTimeFamilyAggregateFixture.Run(args)) return;
+if (DateTimeTCharFixture.Run(args)) return;
+if (DateTimeTCharGuards.Run(args)) return;
+if (DateTimeFamilySeedFixture.Run(args)) return;
+if (AllDateTimePatternsFixture.Run(args)) return;
+if (AllDateTimePatternsGuards.Run(args)) return;
 if (GeneralShortTimePatternFixture.Run(args)) return;
 if (GeneralShortTimePatternGuards.Run(args)) return;
 if (ForceTwoDigitYearsFixture.Run(args)) return;

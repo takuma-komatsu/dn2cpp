@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../abbreviated-day/AbbreviatedDay.csproj" />
+    <ProjectReference Include="../full-day/FullDay.csproj" />
+    <ProjectReference Include="../abbreviated-month/AbbreviatedMonth.csproj" />
+    <ProjectReference Include="../full-month/FullMonth.csproj" />
+    <ProjectReference Include="../dtfi-calendar/DtfICalendar.csproj" />
+    <ProjectReference Include="../dtfi-calendar-setter/DtfICalendarSetter.csproj" />
+    <ProjectReference Include="../internal-month/InternalMonth.csproj" />
+    <ProjectReference Include="../era-name/EraName.csproj" />
+    <ProjectReference Include="../format-flags/FormatFlags.csproj" />
+    <ProjectReference Include="../force-two-digit-years/ForceTwoDigitYears.csproj" />
+    <ProjectReference Include="../general-short-time-pattern/GeneralShortTimePattern.csproj" />
+    <ProjectReference Include="../general-long-time-pattern/GeneralLongTimePattern.csproj" />
+    <ProjectReference Include="../datetime-offset-pattern/DateTimeOffsetPattern.csproj" />
+    <ProjectReference Include="../all-datetime-patterns/AllDateTimePatterns.csproj" />
+    <ProjectReference Include="../datetime-tchar/DateTimeTChar.csproj" />
+    <ProjectReference Include="../dateonly-deconstruct/DateOnlyDeconstruct.csproj" />
+  </ItemGroup>
+</Project>

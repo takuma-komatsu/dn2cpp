@@ -1,0 +1,1 @@
+<linker><assembly fullname="System.Private.CoreLib"><type fullname="System.DateOnly"><method signature="System.Void Deconstruct(System.Int32&amp;,System.Int32&amp;,System.Int32&amp;)" /></type></assembly></linker>

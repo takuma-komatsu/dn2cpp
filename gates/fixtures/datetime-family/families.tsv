@@ -1,0 +1,17 @@
+# folder	assembly	namespace	fixture flag
+abbreviated-day	AbbreviatedDay	AbbreviatedDaySubset	--abbreviated-day
+full-day	FullDay	FullDaySubset	--full-day
+abbreviated-month	AbbreviatedMonth	AbbreviatedMonthSubset	--abbreviated-month
+full-month	FullMonth	FullMonthSubset	--full-month
+dtfi-calendar	DtfICalendar	DtfICalendarSubset	--dtfi-calendar
+dtfi-calendar-setter	DtfICalendarSetter	DtfICalendarSetterSubset	--dtfi-calendar-setter
+internal-month	InternalMonth	InternalMonthSubset	--internal-month
+era-name	EraName	EraNameSubset	--era-name
+format-flags	FormatFlags	FormatFlagsSubset	--format-flags
+force-two-digit-years	ForceTwoDigitYears	ForceTwoDigitYearsSubset	--force-two-digit-years
+general-short-time-pattern	GeneralShortTimePattern	GeneralShortTimePatternSubset	--general-short-time-pattern
+general-long-time-pattern	GeneralLongTimePattern	GeneralLongTimePatternSubset	--general-long-time-pattern
+datetime-offset-pattern	DateTimeOffsetPattern	DateTimeOffsetPatternSubset	--datetime-offset-pattern
+all-datetime-patterns	AllDateTimePatterns	AllDateTimePatternsSubset	--all-datetime-patterns
+datetime-tchar	DateTimeTChar	DateTimeTChar	--datetime-tchar
+dateonly-deconstruct	DateOnlyDeconstruct	DateOnlyDeconstructSubset	--dateonly-deconstruct
