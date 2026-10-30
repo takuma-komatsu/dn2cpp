@@ -30,6 +30,7 @@ source "$(dirname "$0")/_internal-month.sh"
 source "$(dirname "$0")/_era-name.sh"
 source "$(dirname "$0")/_format-flags.sh"
 source "$(dirname "$0")/_force-two-digit-years.sh"
+source "$(dirname "$0")/_general-short-time-pattern.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_abbreviated-day.sh gates/fixtures/abbreviated-day samples/dotnet/DateTimeOps/AbbreviatedDaySubset.cs gates/fixtures/ldftn-local/AbbreviatedDayFixture.cs gates/fixtures/ldftn-local/AbbreviatedDayGuards.cs gates/fixtures/ldftn-local/RuntimeTypeDefaultCtorFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/full-day/FullDay.csproj gates/fixtures/full-day/minimal/MinimalFullDay.csproj gates/fixtures/full-day/link.xml samples/dotnet/DateTimeOps/FullDayPublicSubset.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_abbreviated-month.sh gates/fixtures/abbreviated-month samples/dotnet/DateTimeOps/AbbreviatedMonthSubset.cs samples/dotnet/DateTimeOps/AbbreviatedMonthPublicSubset.cs gates/fixtures/ldftn-local/AbbreviatedMonthFixture.cs gates/fixtures/ldftn-local/AbbreviatedMonthGuards.cs"
@@ -39,7 +40,8 @@ DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_internal-month.sh gat
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_era-name.sh gates/fixtures/era-name gates/fixtures/ldftn-local/EraNameFixture.cs gates/fixtures/ldftn-local/EraNameGuards.cs samples/dotnet/DateTimeOps/EraNamePublicSubset.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_format-flags.sh gates/fixtures/format-flags gates/fixtures/ldftn-local/FormatFlagsFixture.cs gates/fixtures/ldftn-local/FormatFlagsGuards.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_force-two-digit-years.sh gates/fixtures/force-two-digit-years gates/fixtures/ldftn-local/ForceTwoDigitYearsFixture.cs gates/fixtures/ldftn-local/ForceTwoDigitYearsGuards.cs"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|abbreviated-day:invariant,raw,diet,reflection-only,minimal,NoAlloc-rejection|full-day:invariant,raw,diet,reflection-only,minimal,NoAlloc-rejection|abbreviated-month:exact-int32-scalar-v1|abbreviated-month-negatives:${DN2CPP_ABBREVIATED_MONTH_NEGATIVES:-return byref address-return address-byref}|month-name-modes:abbreviated,full|full-month:exact-int32-scalar-v1|dtfi-calendar:exact-null-first-refusal-v1|dtfi-calendar-negatives:${DN2CPP_DTFI_CALENDAR_NEGATIVES:-return byref address-return address-byref}|day-name-modes:abbreviated,full|abbreviated-day-negatives:${DN2CPP_ABBREVIATED_DAY_NEGATIVES:-return byref address-return address-byref}|internal-month:exact-invariant-selector,raw,diet,NoAlloc-rejection,negative:${DN2CPP_INTERNAL_MONTH_NEGATIVES:-default}|era-name:invariant,raw,diet,NoAlloc-rejection,negative:${DN2CPP_ERA_NAME_NEGATIVES:-default}|force-two-digit-years:exact-invariant-boolean,raw,diet,NoAlloc-leaf,negative:${DN2CPP_FORCE_TWO_DIGIT_YEARS_NEGATIVES:-default}|format-flags:exact-invariant-enum,raw,diet,NoAlloc-leaf,negative:${DN2CPP_FORMAT_FLAGS_NEGATIVES:-default}"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_general-short-time-pattern.sh gates/fixtures/general-short-time-pattern gates/fixtures/ldftn-local/GeneralShortTimePatternFixture.cs gates/fixtures/ldftn-local/GeneralShortTimePatternGuards.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|abbreviated-day:invariant,raw,diet,reflection-only,minimal,NoAlloc-rejection|full-day:invariant,raw,diet,reflection-only,minimal,NoAlloc-rejection|abbreviated-month:exact-int32-scalar-v1|abbreviated-month-negatives:${DN2CPP_ABBREVIATED_MONTH_NEGATIVES:-return byref address-return address-byref}|month-name-modes:abbreviated,full|full-month:exact-int32-scalar-v1|dtfi-calendar:exact-null-first-refusal-v1|dtfi-calendar-negatives:${DN2CPP_DTFI_CALENDAR_NEGATIVES:-return byref address-return address-byref}|day-name-modes:abbreviated,full|abbreviated-day-negatives:${DN2CPP_ABBREVIATED_DAY_NEGATIVES:-return byref address-return address-byref}|internal-month:exact-invariant-selector,raw,diet,NoAlloc-rejection,negative:${DN2CPP_INTERNAL_MONTH_NEGATIVES:-default}|era-name:invariant,raw,diet,NoAlloc-rejection,negative:${DN2CPP_ERA_NAME_NEGATIVES:-default}|general-short-time-pattern:exact-invariant-rooted-string,raw,diet,NoAlloc-leaf,negative:${DN2CPP_GENERAL_SHORT_TIME_PATTERN_NEGATIVES:-default}|force-two-digit-years:exact-invariant-boolean,raw,diet,NoAlloc-leaf,negative:${DN2CPP_FORCE_TWO_DIGIT_YEARS_NEGATIVES:-default}|format-flags:exact-invariant-enum,raw,diet,NoAlloc-leaf,negative:${DN2CPP_FORMAT_FLAGS_NEGATIVES:-default}"
 
 # Constructors, arithmetic, offset parsing and microseconds preserve fault fields.
 gate_extra_asserts() {
@@ -140,6 +142,7 @@ gate_extra_asserts() {
     era_name_focused_gate "$out/era-name"
     format_flags_focused_gate "$out/format-flags"
     force_two_digit_years_focused_gate "$out/force-two-digit-years"
+    general_short_time_pattern_focused_gate "$out/general-short-time-pattern"
 
 }
 

@@ -660,6 +660,7 @@ internal static partial class CoreIntrinsics
             || IsDateTimeFormatInfoCalendar(mi)
             || IsDateTimeFormatInfoFormatFlags(mi)
             || IsDateTimeFormatInfoHasForceTwoDigitYears(mi)
+            || IsDateTimeFormatInfoGeneralShortTimePattern(mi)
             || IsAppContextOnProcessExit(mi)
             || IsRuntimeTypeHandleFunctionPointerArguments(mi)
             || IsRuntimeTypeHandleFields(mi)

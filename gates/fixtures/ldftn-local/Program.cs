@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (GeneralShortTimePatternFixture.Run(args)) return;
+if (GeneralShortTimePatternGuards.Run(args)) return;
 if (ForceTwoDigitYearsFixture.Run(args)) return;
 if (ForceTwoDigitYearsGuards.Run(args)) return;
 if (FormatFlagsFixture.Run(args)) return;

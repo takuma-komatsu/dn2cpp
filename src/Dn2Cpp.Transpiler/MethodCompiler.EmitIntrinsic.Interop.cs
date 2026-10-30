@@ -528,6 +528,15 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsDateTimeFormatInfoGeneralShortTimePattern(callee))
+        {
+            DateTimeFormatReceiver();
+            // Native short date/time patterns are invariant; their setters remain unsupported.
+            Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd("MM/dd/yyyy HH:mm"));
+            Top = Top with { StaticType = callee.Signature.ReturnType };
+            return;
+        }
+
         if (CoreIntrinsics.IsDateTimeFormatInfoCalendar(callee))
         {
             DateTimeFormatReceiver();

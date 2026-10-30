@@ -1600,6 +1600,13 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears(resolved))
                 throw new NotSupportedException("DateTimeFormatInfo HasForceTwoDigitYears requires its exact MemberRef signature");
         }
+        if (name == "get_GeneralShortTimePattern" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoGeneralShortTimePattern))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoGeneralShortTimePatternSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoGeneralShortTimePatternDecodedSignature(sig)
+                || !CoreIntrinsics.IsDateTimeFormatInfoGeneralShortTimePattern(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo GeneralShortTimePattern requires its exact MemberRef signature");
+        }
         if (name == "get_Calendar" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoCalendar))
         {
             if (!CoreIntrinsics.IsDateTimeFormatInfoCalendarSignature(reader.GetBlobReader(mr.Signature))
@@ -1979,6 +1986,12 @@ internal sealed partial class Compilation
             var forceTwoDigitYears = ResolveMemberRefMethod(module, handle, callerCtx);
             if (CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears(forceTwoDigitYears))
                 return forceTwoDigitYears;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "get_GeneralShortTimePattern"))
+        {
+            var generalShortTimePattern = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoGeneralShortTimePattern(generalShortTimePattern))
+                return generalShortTimePattern;
         }
         if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "get_Calendar"))
         {

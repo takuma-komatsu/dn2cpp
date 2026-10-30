@@ -3835,6 +3835,7 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsDateTimeFormatInfoCalendar(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoFormatFlags(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoGeneralShortTimePattern(method)
                         || CoreIntrinsics.IsAppContextOnProcessExit(method)
                         || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(method)
                         || CoreIntrinsics.IsRuntimeTypeHandleFields(method)

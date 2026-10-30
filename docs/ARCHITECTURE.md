@@ -1052,7 +1052,11 @@ reading or writing the unmodeled cache field. Custom names and calendars are not
 modeled by this scalar policy. The exact HasForceTwoDigitYears Boolean getter
 checks its receiver and returns false from the invariant Gregorian policy, without
 reading Calendar backing state. The Japanese/Taiwan special year rule is outside
-this domain. DTFI Calendar access checks the receiver and
+this domain. The exact GeneralShortTimePattern getter combines the existing
+invariant short-date/time patterns in a rooted literal after checking its receiver.
+ShortDatePattern and ShortTimePattern setters remain unsupported; supporting them
+must revisit this adapter. CLR mutable patterns and per-instance cache identity
+are not modeled. DTFI Calendar access checks the receiver and
 throws PlatformNotSupportedException: native DTFI allocations do not construct
 Calendar backing state. It never exposes that absent field as a successful null
 calendar, and does not add calendar identity, cloning or Hebrew-formatting support.
