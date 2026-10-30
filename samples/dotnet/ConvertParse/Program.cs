@@ -64,6 +64,9 @@ namespace ConvertParse
             if (args.Length > 0 && args[0] == "before-change-type-faults")
                 return;
             ConvertChangeTypeSubset.Program.RunFaults();
+            if (args.Length > 0 && args[0] == "before-int128-checked")
+                return;
+            Int128CheckedSubset.Program.__GateEntry();
         }
     }
 }

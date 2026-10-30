@@ -636,6 +636,16 @@ refuses the virtual helper, which can call arbitrary managed overrides.
 3. For value-type receivers see `DerefReceiver` (dereferences the `ldloca`
    pointer).
 
+`Int128.CreateChecked<T>` has a bounded closed adapter for signed and unsigned
+integer primitives, including Char and target-width native integers, plus Int128
+identity. Concrete calls, constrained `INumberBase<Int128>` calls and retained
+function targets share the exact CoreLib signature authority. The checked adapter
+validates the ordinary Int128 layout and writes its named UInt64 fields; signed
+sources sign-extend, unsigned sources zero-extend, and identity uses a typed value
+copy. It does not admit UInt128, floating-point or custom numeric conversions,
+open generic factories, or a general `TryConvert*` implementation. Existing
+truncating and primitive checked conversions retain their separate policies.
+
 **When does a method earn an intrinsic?** The default is to transpile the real
 BCL IL — Regex/Guid/Crypto coverage landed by removing transpile blockers, not by
 adding intrinsics. Add one only when:

@@ -106,6 +106,7 @@ all_datetime_patterns_negative_gate() {
 all_datetime_patterns_noalloc_gate() {
     local root="$1" original="$2"; shift 2
     local fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" corelib axis
+    local allocation_lines
     corelib=$(resolve_net10_corelib) || return $?
     mkdir -p "$root/input"
     cp -R "$original/." "$root/input/" || return $?
@@ -116,7 +117,8 @@ all_datetime_patterns_noalloc_gate() {
         invoke_cli "$root/input/AllDateTimePatterns.dll" --auto-ref "${flags[@]}" -o "$root/$axis-output" > "$root/$axis.log" 2>&1 || rc=$?
         printf '%s\n' "$rc" > "$root/$axis.status"
         [[ "$rc" == 2 ]] || return 1
-        grep -F '[HotPath(NoAlloc)] closure of AllDateTimePatternsSubset.Program::Direct allocates:' "$root/$axis.log" | grep -Fq 'emits dn2cpp_newarr_' || return 1
+        allocation_lines=$(grep -F '[HotPath(NoAlloc)] closure of AllDateTimePatternsSubset.Program::Direct allocates:' "$root/$axis.log") || return 1
+        grep -Fq 'emits dn2cpp_newarr_' <<<"$allocation_lines" || return 1
     done
 }
 

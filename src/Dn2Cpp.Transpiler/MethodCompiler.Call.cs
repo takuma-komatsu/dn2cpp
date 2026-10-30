@@ -714,6 +714,18 @@ internal sealed partial class MethodCompiler
                     TranslateAsyncGenericIntrinsic(_c.MethodSpecMethodName(_module, ms), (MethodSpecificationHandle)handle);
                     return;
                 }
+                if (_constrained is { Kind: TypeKind.Class, Class: { } checkedSelf }
+                    && CoreIntrinsics.IsInt128CheckedType(checkedSelf)
+                    && _c.MethodSpecMethodName(_module, ms) == "CreateChecked")
+                {
+                    var factory = _c.ResolveMethodSpec(_module, (MethodSpecificationHandle)handle, _method.Context);
+                    if (CoreIntrinsics.IsInt128CheckedInterface(factory))
+                    {
+                        EmitInt128Checked(_c.ResolveInt128CheckedInterface(factory, checkedSelf));
+                        _constrained = null;
+                        return;
+                    }
+                }
                 // TSelf.Create{Checked,Truncating,Saturating}<TOther> reached through
                 // the closed interface instantiation (INumberBase<TSelf>.Create*, a
                 // MemberRef whose parent is a TypeSpec — MethodSpecParentTypeName only

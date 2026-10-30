@@ -15,6 +15,14 @@ internal sealed partial class MethodCompiler
     /// <c>Array.Empty&lt;T&gt;</c>).</summary>
     private bool TryTokenFreeGenericIntrinsic(string declType, string name, TypeDesc[] methodArgs, MethodSpecificationHandle specification = default)
     {
+        if (declType == "System.Int128" && name == "CreateChecked")
+        {
+            var target = specification.IsNil ? _method : Comp.ResolveMethodSpec(Module, specification, Method.Context);
+            if (!CoreIntrinsics.IsInt128Checked(target))
+                throw new NotSupportedException("Int128.CreateChecked requires an exact closed integer or identity source");
+            EmitInt128Checked(target);
+            return true;
+        }
         if (declType == "System.Globalization.DateTimeFormatInfo"
             && CoreIntrinsics.IsDateTimeFormatInfoSpanName(name))
         {

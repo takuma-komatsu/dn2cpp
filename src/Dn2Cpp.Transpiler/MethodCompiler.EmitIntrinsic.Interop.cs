@@ -579,6 +579,12 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsInt128Checked(callee))
+        {
+            EmitInt128Checked(callee);
+            return;
+        }
+
         if (CoreIntrinsics.IsDateTimeFormatInfoSpan(callee))
         {
             if (callee.Context.MethodArgs is not [{ Kind: TypeKind.Primitive,

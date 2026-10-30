@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Consolidated Convert/Parse gate: Convert.To* surface, base conversions, Base64,
+# Checked Int128 integer widening and identity; consolidated Convert/Parse gate: Convert.To* surface, base conversions, Base64,
 # Convert from object, Convert.ChangeType (+ extended + UInt64 TypeCode), and
 # primitive Parse, including UTF-8 and span float parsing across fast, slow,
 # subnormal, and overflow paths. Also System.Uri basics (TryCreate/ctor + component
@@ -55,6 +55,19 @@ gate_extra_asserts() {
     local out="$1" native before prefix line
     # Primitive parse inputs contain NUL; parity is raw and witness needles are text-only.
     native="$out/native.stdout"
+    build_gate_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+    local fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll"
+    gate_capture_ok "$out/int128-guards" run_bounded dotnet "$fixture" --int128-checked-guards \
+        "$(dirname "$DN2CPP_CLI_DLL")/Dn2Cpp.Transpiler.dll" "$_CG_CORELIB" "$_CG_APP"
+    gate_capture_ok "$out/int128-il" run_bounded dotnet "$fixture" --int128-checked-fixture "$_CG_APP" "$_CG_CORELIB" all
+    python3 gates/fixtures/int128-checked/check-generated.py "$out"
+    gate_capture_ok "$out/assert-before-int128" run_bounded dotnet "$_CG_APP" before-int128-checked
+    gate_output select "$native" "$out/assert-prefix-int128.stdout" --before '== Int128 checked widening ==' --policy crlf
+    gate_output compare "$out/assert-prefix-int128.stdout" "$out/assert-before-int128.stdout"
+    gate_output byte-witness "$native" 'Int128 checked widening end' --count 1 --policy crlf
+    for line in route0-long-min route1-ulong-max route2-char-max route3-target-native-width route3-native-inputs route3-nint-min route3-nuint-max route3-nuint-highbit route3-identity-mixed route3-producer-throw primitive-overflow; do
+        gate_output byte-witness "$native" "int128-checked-$line:True" --count 1 --policy crlf || return $?
+    done
     gate_output status "$(cat "$out/native.status")" 0 || return 1
 
     gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-char-faults

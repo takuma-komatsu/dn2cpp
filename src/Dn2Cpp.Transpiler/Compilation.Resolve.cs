@@ -787,7 +787,42 @@ internal sealed partial class Compilation
                     throw new NotSupportedException("DateTimeFormatInfo TChar accessor requires its exact MethodSpec MemberRef signature");
             }
         }
+        if (resolved.Name == "CreateChecked"
+            && (CoreIntrinsics.IsInt128CheckedType(declClass) || CoreIntrinsics.IsInt128CheckedInterface(resolved)))
+        {
+            bool interfaceForm = declClass.IsInterface;
+            var target = interfaceForm ? declClass.Context.TypeArgs[0].Class! : declClass;
+            if (methodArgs is [var source] && CoreIntrinsics.IsInt128CheckedSource(source, target))
+            {
+                if (!(interfaceForm ? CoreIntrinsics.IsInt128CheckedInterface(resolved) : CoreIntrinsics.IsInt128Checked(resolved)))
+                    throw new NotSupportedException("Int128.CreateChecked requires its exact closed signature");
+                if (ms.Method.Kind == HandleKind.MemberReference)
+                {
+                    var reference = reader.GetMemberReference((MemberReferenceHandle)ms.Method);
+                    var signature = reference.DecodeMethodSignature(SigProvider,
+                        new GenericContext(declClass.Context.TypeArgs, methodArgs));
+                    if (!CoreIntrinsics.IsInt128CheckedSignature(reader.GetBlobReader(reference.Signature), interfaceForm)
+                        || !CoreIntrinsics.IsInt128CheckedDecodedSignature(signature, target, source))
+                        throw new NotSupportedException("Int128.CreateChecked requires its exact MethodSpec MemberRef signature");
+                }
+            }
+        }
         return resolved;
+    }
+
+    internal MethodInfo ResolveInt128CheckedInterface(MethodInfo method, ClassInfo target)
+    {
+        if (!CoreIntrinsics.IsInt128CheckedInterface(method)
+            || method.DeclaringClass.Context.TypeArgs[0].Class != target)
+            throw new NotSupportedException("Int128.CreateChecked requires its exact constrained interface signature");
+        foreach (var handle in target.Module.Reader.GetTypeDefinition(target.Handle).GetMethods())
+        {
+            var definition = target.Module.Reader.GetMethodDefinition(handle);
+            if (!target.Module.Reader.StringComparer.Equals(definition.Name, "CreateChecked")) continue;
+            var concrete = InstantiateMethodOnClass(target, target.Module, handle, method.Context.MethodArgs);
+            if (CoreIntrinsics.IsInt128Checked(concrete)) return concrete;
+        }
+        throw new NotSupportedException("Int128.CreateChecked concrete integer factory is unavailable");
     }
 
     /// <summary>Instantiates a generic-method template (<paramref name="templateHandle"/>,

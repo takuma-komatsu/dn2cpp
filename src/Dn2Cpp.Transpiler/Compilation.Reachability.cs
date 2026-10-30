@@ -167,6 +167,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatterns(m)
             || CoreIntrinsics.IsDateTimeFormatInfoMonthArray(m)
             || CoreIntrinsics.IsDateTimeFormatInfoSpan(m)
+            || CoreIntrinsics.IsInt128Checked(m)
             || CoreIntrinsics.IsDateOnlyDeconstruct(m)
             || CoreIntrinsics.IsDateTimeParserBoundary(m)
             || CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(m)
@@ -6430,6 +6431,14 @@ internal sealed partial class Compilation
                             && constrained is { Kind: TypeKind.Primitive, IsCanonPlaceholder: false }
                             && IsInterceptedReadBigEndian(t))
                         {
+                            constrained = null;
+                            continue;
+                        }
+                        if (t is not null && insn.OpCode == ILOpCode.Call
+                            && constrained is { Kind: TypeKind.Class, Class: { } checkedSelf }
+                            && CoreIntrinsics.IsInt128CheckedInterface(t))
+                        {
+                            ResolveInt128CheckedInterface(t, checkedSelf);
                             constrained = null;
                             continue;
                         }

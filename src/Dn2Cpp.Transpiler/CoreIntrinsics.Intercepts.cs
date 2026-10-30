@@ -654,6 +654,7 @@ internal static partial class CoreIntrinsics
             || IsDateTimeFormatInfoAllDateTimePatterns(mi)
             || IsDateTimeFormatInfoMonthArray(mi)
             || IsDateTimeFormatInfoSpan(mi)
+            || IsInt128Checked(mi)
             || IsDateOnlyDeconstruct(mi)
             || IsDateTimeParserBoundary(mi)
             || IsDateTimeFormatInfoCalendarSetter(mi)
@@ -3616,9 +3617,9 @@ internal static partial class CoreIntrinsics
     /// UInt128Converter parse paths reach via Newtonsoft/TypeDescriptor). Cut it; the
     /// route (TranslateGenericIntrinsic) lowers the widening — a sign/zero extension into
     /// {_lower, _upper} — inline for an integer-primitive source and loudly declines any
-    /// other TOther (no general Int128 generic-math engine). CreateChecked/CreateSaturating
-    /// are NOT cut: they are unreached, and widening into 128 bits never overflows anyway.
-    /// A STATIC method, so only the call-site pair reaches it.</summary>
+    /// other TOther (no general Int128 generic-math engine). Checked Int128 widening
+    /// uses the separate exact closed-method authority; this name-keyed row does
+    /// not admit checked or saturating conversions.</summary>
     public static readonly NameKeyedIntercept MsInt128CreateConversion = new(
         InterceptCutKind.Cut, InterceptEmitArm.GenericIntrinsic,
         extra: static (dt, n) =>

@@ -1206,6 +1206,10 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// Null when the method has no intrinsic lowering to synthesize from.</summary>
     internal string? CompileCoreIntrinsicWrapper()
     {
+        if (CoreIntrinsics.IsInt128Checked(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+                TryTokenFreeGenericIntrinsic(_method.DeclaringClass.FullName, _method.Name, _method.Context.MethodArgs),
+                "checked Int128 integer widening");
         // Intrinsic-owner address targets still replay the exact declaration guard.
         if (CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(_method)
             || CoreIntrinsics.IsCoreClrCanonicalTypeComparison(_method)
