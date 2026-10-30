@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (YearMonthAdjustmentFixture.Run(args)) return;
+if (YearMonthAdjustmentGuards.Run(args)) return;
 if (DateOnlyDeconstructFixture.Run(args)) return;
 if (DateOnlyDeconstructGuards.Run(args)) return;
 if (DateTimeFamilyAggregateFixture.Run(args)) return;

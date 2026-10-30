@@ -922,6 +922,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsRuntimeTypeHandleIsTypeDefinition(target)
             || CoreIntrinsics.IsCoreClrMethodSlotLookup(target)
             || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(target)
+            || CoreIntrinsics.IsDateTimeFormatInfoHasYearMonthAdjustment(target)
             || CoreIntrinsics.IsPrimitiveElementHelper(target)
             || CoreIntrinsics.IsMemberNotFoundExceptionFactory(target)
             || target.Rva != 0 && cls.IntrinsicCppName is null)

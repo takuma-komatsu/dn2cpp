@@ -518,6 +518,18 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsDateTimeFormatInfoYearMonthAdjustment(callee))
+        {
+            // The invariant FormatFlags has no Hebrew adjustment bit. Evaluate
+            // arguments, but never read or write either referenced integer.
+            for (int i = 0; i < 3; i++)
+                Emit($"(void)({Pop().Expr});");
+            DateTimeFormatReceiver();
+            Push(StackKind.I4, "int32_t", "1");
+            Top = Top with { StaticType = callee.Signature.ReturnType };
+            return;
+        }
+
         if (CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears(callee))
         {
             DateTimeFormatReceiver();

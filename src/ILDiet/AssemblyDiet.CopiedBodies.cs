@@ -34,6 +34,21 @@ internal sealed partial class AssemblyDiet
         || CoreIntrinsicTypeMaps.RuntimeInterfaceDispatch(Name(type)) is not null
         || CoreIntrinsicTypeMaps.IsDelegateBaseType(Name(type));
 
+    private static bool IsCopiedDateTimeFormatInfoHasYearMonthAdjustment(MethodDefinition method, string owner) =>
+        method.Module.Assembly?.Name.Name == "System.Private.CoreLib"
+        && owner == "System.Globalization.DateTimeFormatInfo"
+        && method.DeclaringType.DeclaringType is null
+        && !method.DeclaringType.IsValueType && !method.DeclaringType.IsInterface
+        && !method.DeclaringType.HasGenericParameters
+        && method.Name == "get_HasYearMonthAdjustment"
+        && method.Attributes == (MethodAttributes.Assembly | MethodAttributes.HideBySig | MethodAttributes.SpecialName)
+        && method.ImplAttributes == MethodImplAttributes.IL
+        && method.HasBody && method.Body.Instructions.Count != 0
+        && !method.IsPInvokeImpl && !method.HasPInvokeInfo
+        && method.HasThis && !method.ExplicitThis && method.CallingConvention == MethodCallingConvention.Default
+        && !method.HasGenericParameters && method.Parameters.Count == 0
+        && method.ReturnType is not TypeSpecification && method.ReturnType.MetadataType == MetadataType.Boolean;
+
     private static bool IsCopiedCoreClrDelegateVmConstructor(MethodDefinition method, string owner)
     {
         int arity = CoreIntrinsicTypeMaps.CoreClrDelegateVmConstructorArity(owner, method.Name);
@@ -297,7 +312,8 @@ internal sealed partial class AssemblyDiet
             traverse = false;
         else if (IsCopiedMemberMetadataDefinition(method, owner))
             traverse = owner == "System.Reflection.MemberInfo";
-        else if (IsCopiedRuntimeTypeIntroducedMethodsFactory(method, owner)
+        else if (IsCopiedDateTimeFormatInfoHasYearMonthAdjustment(method, owner)
+            || IsCopiedRuntimeTypeIntroducedMethodsFactory(method, owner)
             || IsCopiedRuntimeTypeHandleCopy(method, owner) || IsCopiedAmbiguousMatchExceptionFactory(method, owner)
             || IsCopiedMemberNotFoundExceptionFactory(method, owner) || IsCopiedPrimitiveElementHelper(method, owner))
             traverse = true;

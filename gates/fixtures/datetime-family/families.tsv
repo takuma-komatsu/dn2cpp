@@ -15,3 +15,4 @@ datetime-offset-pattern	DateTimeOffsetPattern	DateTimeOffsetPatternSubset	--date
 all-datetime-patterns	AllDateTimePatterns	AllDateTimePatternsSubset	--all-datetime-patterns
 datetime-tchar	DateTimeTChar	DateTimeTChar	--datetime-tchar
 dateonly-deconstruct	DateOnlyDeconstruct	DateOnlyDeconstructSubset	--dateonly-deconstruct
+year-month-adjustment	YearMonthAdjustment	YearMonthAdjustmentSubset	--year-month-adjustment

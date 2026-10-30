@@ -170,6 +170,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(m)
             || CoreIntrinsics.IsDateTimeFormatInfoCalendar(m)
             || CoreIntrinsics.IsDateTimeFormatInfoFormatFlags(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoYearMonthAdjustment(m)
             || CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears(m)
             || CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePattern(m)
             || CoreIntrinsics.IsAppContextOnProcessExit(m)
@@ -229,6 +230,7 @@ internal sealed partial class Compilation
         if (m.Rva == 0)
             return;
         if ((CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(m)) || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoHasYearMonthAdjustment(m)
             || CoreIntrinsics.IsPrimitiveElementHelper(m)
             || CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
             || CoreIntrinsics.IsMemberMetadataDefinitionBase(m)

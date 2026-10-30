@@ -8,7 +8,7 @@ _datetime_family_check_generated() {
     "$python" gates/fixtures/abbreviated-month/check-generated.py "$out" --name abbreviated || return $?
     "$python" gates/fixtures/abbreviated-month/check-generated.py "$out" --name full || return $?
     local family
-    for family in dtfi-calendar dtfi-calendar-setter internal-month era-name format-flags force-two-digit-years all-datetime-patterns dateonly-deconstruct; do
+    for family in dtfi-calendar dtfi-calendar-setter internal-month era-name format-flags force-two-digit-years all-datetime-patterns dateonly-deconstruct year-month-adjustment; do
         "$python" "gates/fixtures/$family/check-generated.py" "$out" || return $?
     done
     "$python" gates/fixtures/general-short-time-pattern/check-generated.py "$out" || return $?
@@ -66,6 +66,7 @@ datetime_family_aggregate_gate() {
         fi
         gate_capture_ok "$out/native" run_bounded "${runner[@]}" || return $?
         "$(resolve_python)" gates/fixtures/datetime-family/check-output.py "$out/native.stdout" "$out/sections" || return $?
+        "$(resolve_python)" gates/fixtures/year-month-adjustment/check-output.py "$out/sections/YearMonthAdjustment.stdout" || return $?
         for assembly in AbbreviatedDay FullDay AbbreviatedMonth FullMonth EraName DateOnlyDeconstruct; do
             gate_output compare "$root/oracles/$assembly/oracle.stdout" "$out/sections/$assembly.stdout" --policy crlf || return $?
         done
@@ -77,7 +78,7 @@ datetime_family_controls_gate() {
     corelib=$(resolve_net10_corelib) || return $?
     mkdir -p "$root"
     # Shared day/month/three-pattern guards already enumerate all exact target names.
-    for flag in abbreviated-day abbreviated-month dtfi-calendar dtfi-calendar-setter internal-month era-name format-flags force-two-digit-years general-short-time-pattern all-datetime-patterns dateonly-deconstruct datetime-tchar; do
+    for flag in abbreviated-day abbreviated-month dtfi-calendar dtfi-calendar-setter internal-month era-name format-flags force-two-digit-years general-short-time-pattern all-datetime-patterns dateonly-deconstruct datetime-tchar year-month-adjustment; do
         model=$(mktemp -d "$root/model-$flag-XXXXXX") || return $?
         gate_capture_ok "$model/guards" run_bounded dotnet "$fixture" "--$flag-guards" "$(dirname "$DN2CPP_CLI_DLL")/Dn2Cpp.Transpiler.dll" "$corelib" "$model/input.dll" || return $?
     done

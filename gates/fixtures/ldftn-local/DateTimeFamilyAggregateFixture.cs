@@ -32,6 +32,7 @@ internal static class DateTimeFamilyAggregateFixture
             ("AllDateTimePatterns", "AllDateTimePatternsSubset", "--all-datetime-patterns"),
             ("DateTimeTChar", "DateTimeTChar", "--datetime-tchar"),
             ("DateOnlyDeconstruct", "DateOnlyDeconstructSubset", "--dateonly-deconstruct"),
+            ("YearMonthAdjustment", "YearMonthAdjustmentSubset", "--year-month-adjustment"),
         };
         var receipts = new List<object>();
         foreach (var family in families)
@@ -54,6 +55,7 @@ internal static class DateTimeFamilyAggregateFixture
                 "--all-datetime-patterns" => AllDateTimePatternsFixture.Run(invocation),
                 "--datetime-tchar" => DateTimeTCharFixture.Run(invocation),
                 "--dateonly-deconstruct" => DateOnlyDeconstructFixture.Run(invocation),
+                "--year-month-adjustment" => YearMonthAdjustmentFixture.Run(invocation),
                 _ => false
             };
             if (!handled) throw new InvalidOperationException("unhandled aggregate family " + family.Flag);
