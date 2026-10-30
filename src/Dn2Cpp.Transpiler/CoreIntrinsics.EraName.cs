@@ -8,7 +8,7 @@ internal static partial class CoreIntrinsics
     internal static bool IsDateTimeFormatInfoEraName(MethodInfo method)
     {
         var cls = method.DeclaringClass;
-        if (method.Name != "GetEraName" || cls.FullName != "System.Globalization.DateTimeFormatInfo"
+        if (method.Name is not ("GetEraName" or "GetAbbreviatedEraName") || cls.FullName != "System.Globalization.DateTimeFormatInfo"
             || method.Module.AssemblyName != "System.Private.CoreLib" || cls.Module != method.Module
             || cls.Handle.IsNil || method.Handle.IsNil || cls.IsValueType || cls.IsInterface
             || cls.GenericArity != 0 || cls.Context.TypeArgs.Length != 0

@@ -9,6 +9,7 @@ internal static class Program
     private delegate string Query(DateTimeFormatInfo info, int era);
     private const string Prefix = "era-name-";
     private const string Header = "== Invariant era names ==";
+    private static string prefix = Prefix;
     private static int checks;
     private static int trace;
 
@@ -24,7 +25,7 @@ internal static class Program
 
     private static void Check(string label, bool success)
     {
-        Console.WriteLine(Prefix + label + ":" + success);
+        Console.WriteLine(prefix + label + ":" + success);
         if (!success) throw new InvalidOperationException(label);
         checks++;
     }
@@ -35,13 +36,13 @@ internal static class Program
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
     }
 
-    private static void Validate(string route, Query query, bool reflection)
+    private static void Validate(string route, Query query, bool reflection, bool abbreviated = false)
     {
         var invariant = DateTimeFormatInfo.InvariantInfo;
-        string[] expected = { "A.D.", "A.D." };
+        string expected = abbreviated ? "AD" : "A.D.";
         for (int value = 0; value <= 1; value++)
         {
-            Check(route + "-" + value, query(invariant, value) == expected[value]);
+            Check(route + "-" + value, query(invariant, value) == expected);
             Check(route + "-identity-" + value, ReferenceEquals(query(invariant, value), query(invariant, value)));
         }
         foreach (int value in new[] { -1, 2, int.MinValue, int.MaxValue })
@@ -83,7 +84,7 @@ internal static class Program
         try { Reflect(null!, 2); }
         catch (Exception error) { nullTarget = error; }
         Check("reflection-null-target", nullTarget is TargetException);
-        Console.WriteLine(Prefix + "reflection-end");
+        Console.WriteLine(prefix + "reflection-end");
     }
 
     public static void RunDirectChecks()
@@ -113,6 +114,8 @@ internal static class Program
     public static void Run()
     {
         PinCulture();
+        prefix = Prefix;
+        checks = 0;
         Console.WriteLine(Header);
         RunDirectChecks();
         Validate("pointer", Pointer, false);
@@ -122,6 +125,76 @@ internal static class Program
         var clone = (DateTimeFormatInfo)DateTimeFormatInfo.InvariantInfo.Clone();
         clone.DateSeparator = "~";
         Check("separator-clone-neighbor", clone.DateSeparator == "~" && DateTimeFormatInfo.InvariantInfo.DateSeparator == "/");
-        Console.WriteLine(Prefix + "end:" + checks);
+        Console.WriteLine(prefix + "end:" + checks);
+        RunAbbreviated();
     }
+
+    private static string DirectAbbreviated(DateTimeFormatInfo info, int era) => info.GetAbbreviatedEraName(era);
+    private static string VirtualAbbreviated(DateTimeFormatInfo info, int era) => info.GetAbbreviatedEraName(era);
+    private static string PointerAbbreviated(DateTimeFormatInfo info, int era) => info.GetAbbreviatedEraName(era);
+    private static Func<int, string> AddressAbbreviated(DateTimeFormatInfo info) => info.GetAbbreviatedEraName;
+    private static string DelegateAbbreviated(DateTimeFormatInfo info, int era) => AddressAbbreviated(info)(era);
+    private static MethodInfo MetadataAbbreviated() => typeof(DateTimeFormatInfo).GetMethod(nameof(DateTimeFormatInfo.GetAbbreviatedEraName))!;
+    private static string ReflectAbbreviated(DateTimeFormatInfo info, int era) => (string)MetadataAbbreviated().Invoke(info, new object[] { era })!;
+
+    private static void AbbreviatedMode()
+    {
+        PinCulture();
+        prefix = "abbreviated-era-name-";
+    }
+    public static void RunAbbreviatedDirectChecks()
+    {
+        AbbreviatedMode();
+        Validate("direct", DirectAbbreviated, false, true);
+        ValidateNull(DirectAbbreviated, "null-first");
+        trace = 0;
+        bool observed = false;
+        try { DirectAbbreviated(Receiver(), Argument()); }
+        catch (NullReferenceException) { observed = true; }
+        Check("producer-order", observed && trace == 12);
+        trace = 0;
+        try { DirectAbbreviated(Receiver(), ThrowArgument()); }
+        catch (FormatException error)
+        {
+            Check("producer-preempts-null", trace == 12 && error.Message == "era producer");
+            return;
+        }
+        throw new InvalidOperationException("throwing argument did not preempt receiver check");
+    }
+    public static void RunAbbreviatedReflectionChecks()
+    {
+        AbbreviatedMode();
+        Validate("reflect", ReflectAbbreviated, true, true);
+        bool observed = false;
+        try { ReflectAbbreviated(null!, 2); }
+        catch (TargetException) { observed = true; }
+        Check("reflection-null-target", observed);
+        Console.WriteLine(prefix + "reflection-end");
+    }
+    public static void RunAbbreviatedMinimal()
+    {
+        AbbreviatedMode();
+        string name = DirectAbbreviated(DateTimeFormatInfo.InvariantInfo, 0);
+        bool valid = name.Length == 2 && name[0] == (char)65 && name[1] == (char)68;
+        Console.WriteLine("abbreviated-era-name-minimal:" + valid);
+        if (!valid) throw new InvalidOperationException("abbreviated current era");
+    }
+    public static void RunAbbreviated()
+    {
+        AbbreviatedMode();
+        checks = 0;
+        Console.WriteLine("== Invariant abbreviated era names ==");
+        RunAbbreviatedDirectChecks();
+        Validate("callvirt", VirtualAbbreviated, false, true);
+        ValidateNull(VirtualAbbreviated, "callvirt-null-first");
+        Validate("pointer", PointerAbbreviated, false, true);
+        ValidateNull(PointerAbbreviated, "pointer-null-first");
+        Validate("delegate", DelegateAbbreviated, false, true);
+        RunAbbreviatedReflectionChecks();
+        var info = DateTimeFormatInfo.InvariantInfo;
+        Check("literal-identity", ReferenceEquals(DirectAbbreviated(info, 0), "AD") && ReferenceEquals(DirectAbbreviated(info, 0), DirectAbbreviated(info, 1)));
+        Check("return-abi", MetadataAbbreviated().ReturnType == typeof(string) && AddressAbbreviated(info).Method.ReturnType == typeof(string));
+        Console.WriteLine(prefix + "end:" + checks);
+    }
+
 }

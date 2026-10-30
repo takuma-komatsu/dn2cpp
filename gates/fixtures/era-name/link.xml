@@ -1,1 +1,8 @@
-<linker><assembly fullname="System.Private.CoreLib"><type fullname="System.Globalization.DateTimeFormatInfo"><method name="GetEraName" /></type></assembly></linker>
+<linker>
+  <assembly fullname="System.Private.CoreLib">
+    <type fullname="System.Globalization.DateTimeFormatInfo">
+      <method name="GetEraName" />
+      <method name="GetAbbreviatedEraName" />
+    </type>
+  </assembly>
+</linker>

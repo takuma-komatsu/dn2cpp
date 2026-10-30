@@ -476,7 +476,7 @@ internal sealed partial class MethodCompiler
             Emit("}");
             if (era)
             {
-                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd("A.D."));
+                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd(callee.Name == "GetAbbreviatedEraName" ? "AD" : "A.D."));
                 return;
             }
             if (month)

@@ -24,6 +24,7 @@ internal static class EraNameGuards
             if (value.GetType().GetField(name, instance) is { } field) field.SetValue(value, next);
             else value.GetType().GetProperty(name, instance)!.SetValue(value, next);
         }
+        string[] names = { "GetEraName", "GetAbbreviatedEraName", "GetMonthName", "GetEra", "get_EraNames", "get_AbbreviatedEraNames", "get_AbbreviatedEnglishEraNames" };
         string input = Path.GetFullPath(args[3]);
         if (File.Exists(input)) throw new InvalidOperationException("model app must be new");
         using (var empty = Mono.Cecil.AssemblyDefinition.CreateAssembly(new Mono.Cecil.AssemblyNameDefinition("EraNameGuardInput", new Version(1, 0)), "EraNameGuardInput", Mono.Cecil.ModuleKind.Dll))
@@ -32,14 +33,14 @@ internal static class EraNameGuards
             var owner = core.MainModule.GetType("System.Globalization.DateTimeFormatInfo");
             var host = new Mono.Cecil.TypeDefinition("Guard", "References", Mono.Cecil.TypeAttributes.Public, empty.MainModule.TypeSystem.Object);
             empty.MainModule.Types.Add(host);
-            foreach (string name in new[] { "GetEraName", "GetAbbreviatedEraName", "GetMonthName" })
+            foreach (string name in names)
             {
                 var target = empty.MainModule.ImportReference(owner.Methods.Single(m => m.Name == name));
                 var stub = new Mono.Cecil.MethodDefinition(name, Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, empty.MainModule.TypeSystem.Void);
                 host.Methods.Add(stub);
                 var il = stub.Body.GetILProcessor();
                 il.Emit(Mono.Cecil.Cil.OpCodes.Ldnull);
-                if (target.Parameters.Count != 0) il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_I4_0);
+                if (target.Parameters.Count != 0) il.Emit(target.Parameters[0].ParameterType.MetadataType == Mono.Cecil.MetadataType.String ? Mono.Cecil.Cil.OpCodes.Ldnull : Mono.Cecil.Cil.OpCodes.Ldc_I4_0);
                 il.Emit(Mono.Cecil.Cil.OpCodes.Call, target);
                 il.Emit(Mono.Cecil.Cil.OpCodes.Pop);
                 il.Emit(Mono.Cecil.Cil.OpCodes.Ret);
@@ -71,11 +72,20 @@ internal static class EraNameGuards
             checks++;
         }
         Check((bool)predicate.Invoke(null, new[] { actual })!, "actual-CoreLib");
-        foreach (var h in reader.GetTypeDefinition(ownerHandle).GetMethods().Where(h => reader.GetString(reader.GetMethodDefinition(h).Name) is "GetAbbreviatedEraName" or "GetMonthName"))
+        foreach (var h in reader.GetTypeDefinition(ownerHandle).GetMethods().Where(h => names.Contains(reader.GetString(reader.GetMethodDefinition(h).Name))))
         {
             var candidate = ((IDictionary)Get(module, "MethodMap"))[h]!;
             string name = reader.GetString(reader.GetMethodDefinition(h).Name);
-            Check((bool)predicate.Invoke(null, new[] { candidate })! == false, "actual-MethodDef-policy-" + name);
+            bool accepted = name is "GetEraName" or "GetAbbreviatedEraName";
+            Check((bool)predicate.Invoke(null, new[] { candidate })! == accepted, "actual-MethodDef-policy-" + name);
+            if (accepted)
+            {
+                Check(raw(reader.GetBlobReader(reader.GetMethodDefinition(h).Signature)), "actual-raw-" + name);
+                var decoded = Model("CoreIntrinsics").GetMethod("IsDateTimeFormatInfoEraNameDecodedSignature", statics)!;
+                Check((bool)decoded.Invoke(null, new[] { Get(candidate, "Signature"), module })!, "actual-decoded-" + name);
+                Check(MetadataTokens.GetToken(h) == (name == "GetEraName" ? 0x060033f7 : 0x060033f9), "actual-token-" + name);
+                Console.WriteLine("era-name-installed:" + name + ":" + MetadataTokens.GetToken(h).ToString("X8", CultureInfo.InvariantCulture));
+            }
         }
         Console.WriteLine("era-name-actual:" + MetadataTokens.GetToken(targetHandle).ToString("X8", CultureInfo.InvariantCulture));
         var appModule = ((IEnumerable)Get(loaded, "Modules")).Cast<object>().Single(m => (string)Get(m, "AssemblyName") == "EraNameGuardInput");
@@ -85,14 +95,14 @@ internal static class EraNameGuards
         foreach (var h in appReader.MemberReferences)
         {
             string name = appReader.GetString(appReader.GetMemberReference(h).Name);
-            if (name is not ("GetEraName" or "GetAbbreviatedEraName" or "GetMonthName")) continue;
+            if (!names.Contains(name)) continue;
             var resolved = Model("Compilation").GetMethod("ResolveMemberRefMethod", instance)!.Invoke(loaded, new[] { appModule, (object)h, context })!;
             var expected = reader.GetTypeDefinition(ownerHandle).GetMethods().Single(x => reader.GetString(reader.GetMethodDefinition(x).Name) == name);
             Check(ReferenceEquals(Get(resolved, "Module"), module) && (MethodDefinitionHandle)Get(resolved, "Handle") == expected, "resolved-memberref-" + name);
-            Check((bool)predicate.Invoke(null, new[] { resolved })! == (name == "GetEraName"), "exact-neighbor-policy-" + name);
+            Check((bool)predicate.Invoke(null, new[] { resolved })! == (name is "GetEraName" or "GetAbbreviatedEraName"), "exact-neighbor-policy-" + name);
             imports++;
         }
-        Check(imports == 3, "all-memberrefs");
+        Check(imports == names.Length, "all-memberrefs");
         void Reject(object value, string field, object next)
         {
             object saved = Get(value, field);
@@ -108,7 +118,7 @@ internal static class EraNameGuards
         Reject(ownerClass, "GenericArity", 1);
         Reject(actual, "Handle", default(MethodDefinitionHandle));
         Reject(actual, "Rva", 0);
-        Reject(actual, "Name", "GetAbbreviatedEraName");
+        Reject(actual, "Name", "GetEra");
         var attrs = (MethodAttributes)Get(actual, "Attributes");
         foreach (var flags in new[] { attrs | MethodAttributes.Static, attrs | MethodAttributes.Virtual,
             attrs | MethodAttributes.PinvokeImpl, MethodAttributes.Private | MethodAttributes.HideBySig })

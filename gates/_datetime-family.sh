@@ -11,6 +11,7 @@ _datetime_family_check_generated() {
     for family in dtfi-calendar dtfi-calendar-setter internal-month era-name format-flags force-two-digit-years all-datetime-patterns dateonly-deconstruct year-month-adjustment dtfi-parser-flags dtfi-name-arrays; do
         "$python" "gates/fixtures/$family/check-generated.py" "$out" || return $?
     done
+    "$python" gates/fixtures/era-name/check-generated.py "$out" --abbreviated || return $?
     "$python" gates/fixtures/general-short-time-pattern/check-generated.py "$out" || return $?
     "$python" gates/fixtures/general-short-time-pattern/check-generated.py "$out" --long || return $?
     "$python" gates/fixtures/general-short-time-pattern/check-generated.py "$out" --offset || return $?
@@ -96,6 +97,8 @@ datetime_family_controls_gate() {
                 "${stem}_noalloc_gate" "$root/noalloc/$folder" "$original" || return $? ;;
         esac
     done < gates/fixtures/datetime-family/families.tsv
+    abbreviated_era_name_noalloc_gate "$root/abbreviated-era-noalloc" "gates/fixtures/era-name/bin/$CONFIG/$TFM" || return $?
+    abbreviated_era_name_negative_gate "$root/abbreviated-era-malformed" "gates/fixtures/era-name/bin/$CONFIG/$TFM" || return $?
     datetime_tchar_closure_gate "$root/tchar-closure" "gates/fixtures/datetime-tchar/bin/$CONFIG/$TFM" || return $?
     datetime_trio_oracle_gate "$root/datetime-trio-public" "gates/fixtures/datetime-trio/bin/$CONFIG/$TFM" || return $?
     dtfi_parser_flags_oracle_gate "$root/dtfi-parser-flags-public" "gates/fixtures/dtfi-parser-flags/bin/$CONFIG/$TFM" || return $?

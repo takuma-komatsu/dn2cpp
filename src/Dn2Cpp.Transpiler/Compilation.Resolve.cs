@@ -1591,7 +1591,7 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsDateTimeFormatInfoMonthName(resolved))
                 throw new NotSupportedException("DateTimeFormatInfo month name requires its exact MemberRef signature");
         }
-        if (name == "GetEraName" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoEraName))
+        if ((name is "GetEraName" or "GetAbbreviatedEraName") && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoEraName))
         {
             if (!CoreIntrinsics.IsDateTimeFormatInfoEraNameSignature(reader.GetBlobReader(mr.Signature))
                 || !CoreIntrinsics.IsDateTimeFormatInfoEraNameDecodedSignature(sig, resolved.Module)
@@ -2049,7 +2049,8 @@ internal sealed partial class Compilation
             if (CoreIntrinsics.IsDateTimeFormatInfoMonthName(monthName))
                 return monthName;
         }
-        if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "GetEraName"))
+        if (full == "System.Globalization.DateTimeFormatInfo"
+            && (reader.StringComparer.Equals(mr.Name, "GetEraName") || reader.StringComparer.Equals(mr.Name, "GetAbbreviatedEraName")))
         {
             var eraName = ResolveMemberRefMethod(module, handle, callerCtx);
             if (CoreIntrinsics.IsDateTimeFormatInfoEraName(eraName))

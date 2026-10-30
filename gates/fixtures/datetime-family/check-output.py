@@ -31,7 +31,12 @@ def require(assembly, witnesses, count=1):
 
 # Public day/month outputs are also exactly compared with their untouched CLR oracles.
 require('EraName', ['== Invariant era names ==', 'era-name-pointer-range-2:True', 'era-name-delegate-range-2:True',
-    'era-name-reflect-range-2:True', 'era-name-producer-order:True', 'era-name-producer-preempts-null:True', 'era-name-end:48'])
+    'era-name-reflect-range-2:True', 'era-name-producer-order:True', 'era-name-producer-preempts-null:True', 'era-name-end:48',
+    '== Invariant abbreviated era names ==', 'abbreviated-era-name-callvirt-range-2:True',
+    'abbreviated-era-name-pointer-range-2:True', 'abbreviated-era-name-delegate-range-2:True',
+    'abbreviated-era-name-reflect-range-2:True', 'abbreviated-era-name-producer-order:True',
+    'abbreviated-era-name-producer-preempts-null:True', 'abbreviated-era-name-literal-identity:True',
+    'abbreviated-era-name-return-abi:True', 'abbreviated-era-name-end:61'])
 require('InternalMonth', ['Internal invariant month selector end', 'internal-month-producer-order:True', 'internal-month-producer-throw:True']
     + ['internal-month-' + route + '-names-2-True:True' for route in ['direct', 'calli', 'delegate', 'reflection']])
 require('DtfICalendar', ['dtfi-calendar-' + item + ':True' for item in [

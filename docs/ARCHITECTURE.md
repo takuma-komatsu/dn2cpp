@@ -1056,10 +1056,11 @@ arrays. Exact scalar methods check null receivers and overflow-safe one-based
 mutation is returned as stored. Range exceptions preserve the original boxed
 DayOfWeek or Int32 argument; existing conservative NoAlloc boxing refusals remain.
 The internal selector preserves unknown-style fallback and always selects full
-names for leap-year style, even when abbreviation is requested. Exact full era-name
-lookup accepts invariant current era zero or era one and returns rooted A.D.;
-invalid eras preserve their original Int32 and era-specific exception message.
-Localized eras and era abbreviations remain unsupported.
+names for leap-year style, even when abbreviation is requested. Exact full and abbreviated era-name
+lookups accept invariant current era zero or era one and return rooted A.D. and
+AD respectively; invalid eras preserve their original Int32 and era-specific
+exception message. This scalar policy does not expose cached era arrays or reverse
+era-name lookup, and does not model localized eras or mutable calendars.
 The exact internal FormatFlags getter checks its receiver and returns the typed
 None enum derived from invariant name arrays and calendar conditions, without
 reading or writing the unmodeled cache field. Custom names and calendars are not
