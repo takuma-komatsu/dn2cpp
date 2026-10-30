@@ -1369,6 +1369,12 @@ internal sealed partial class Compilation
             EnsureCompleted(cls); // members may be needed before the queue drains
         string name = reader.GetString(mr.Name);
         var sig = mr.DecodeMethodSignature(SigProvider, cls.Context);
+        if (name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(cls))
+        {
+            var conversion = ResolveVectorExplicit(cls, sig, reader.GetBlobReader(mr.Signature));
+            _memberRefMethodsBySpec[(module.Index, SRME.GetToken(handle), cls)] = conversion;
+            return conversion;
+        }
         int argc = sig.ParameterTypes.Length;
         // Name-indexed: same candidates in the same order as the full Methods
         // scan, and Signature (a decode on first read) is still consulted only for
@@ -1964,6 +1970,41 @@ internal sealed partial class Compilation
         else
             _memberRefMethodsBySpec[(module.Index, SRME.GetToken(handle), cls)] = resolved;
         return resolved;
+    }
+
+    private readonly Dictionary<(ClassInfo Owner, MethodDefinitionHandle Definition), MethodInfo> _vectorExplicitMethods = new();
+
+    private MethodInfo ResolveVectorExplicit(ClassInfo owner, MethodSignature<TypeDesc> signature, BlobReader reference)
+    {
+        if (signature.ReturnType is { Kind: TypeKind.Class, Class: { } result })
+            EnsureShape(result);
+        if (!CoreIntrinsics.IsVectorExplicitReference(reference)
+            || !CoreIntrinsics.IsVectorExplicitSignature(signature, owner))
+            throw new NotSupportedException("Vector<T>.op_Explicit requires its exact supported CoreLib reference");
+        // Intrinsic generic shells deliberately have no member catalog. Resolve only
+        // the requested conversion declaration without reopening their IL or metadata.
+        var reader = owner.Module.Reader;
+        foreach (var handle in reader.GetTypeDefinition(owner.Handle).GetMethods())
+        {
+            var definition = reader.GetMethodDefinition(handle);
+            if (!reader.StringComparer.Equals(definition.Name, "op_Explicit"))
+                continue;
+            var key = (owner, handle);
+            if (!_vectorExplicitMethods.TryGetValue(key, out var method))
+            {
+                method = new MethodInfo
+                {
+                    DeclaringClass = owner, Name = "op_Explicit", Handle = handle,
+                    Module = owner.Module, Context = owner.Context,
+                    Attributes = definition.Attributes, ImplAttributes = definition.ImplAttributes,
+                    Rva = definition.RelativeVirtualAddress, PInvoke = ReadPInvoke(owner.Module, definition),
+                };
+                _vectorExplicitMethods.Add(key, method);
+            }
+            if (CoreIntrinsics.IsVectorExplicit(method) && SameTypeArg(signature.ReturnType, method.Signature.ReturnType))
+                return method;
+        }
+        throw new NotSupportedException("Vector<T>.op_Explicit requires its exact supported CoreLib declaration");
     }
 
     private static bool RuntimeTypeAssignableFromMemberRefShape(MetadataReader reader, MemberReference member)

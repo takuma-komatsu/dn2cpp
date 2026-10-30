@@ -879,6 +879,14 @@ internal sealed partial class MethodCompiler
                         TranslateArrayMethodCall(parent, mr);
                         return;
                     }
+                    if (mrName == "op_Explicit" && parent is { Kind: TypeKind.Class, Class: { } vectorOwner }
+                        && CoreIntrinsics.IsVectorExplicitOwner(vectorOwner))
+                    {
+                        var conversion = _c.ResolveMemberRefMethod(_module, (MemberReferenceHandle)handle, _method.Context);
+                        if (TryEmitMethodDefIntercept(CoreIntrinsics.MdRuntimePrimitive, conversion))
+                            return;
+                        throw new NotSupportedException("Vector<T>.op_Explicit requires supported numeric elements");
+                    }
                     // A member on a generic Task-family async type (Task<T>,
                     // AsyncTaskMethodBuilder<T>, TaskAwaiter<T>) is emitted inline.
                     // Its signature's type params (!0) are closed by the parent's
@@ -1571,6 +1579,14 @@ internal sealed partial class MethodCompiler
 
     private void EmitManagedCall(MethodInfo callee, bool isCallvirt)
     {
+        if (callee.Name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(callee.DeclaringClass))
+        {
+            if (!CoreIntrinsics.IsVectorExplicit(callee))
+                throw new NotSupportedException("Vector<T>.op_Explicit requires its exact supported CoreLib declaration");
+            EmitVectorExplicit(callee);
+            return;
+        }
+
         if (CoreIntrinsics.IsInvariantCompareInfoGetter(callee))
         {
             if (isCallvirt && !_c.IsNativeInvariantCompareInfoReceiver(_method, _callSiteOffset, callee))

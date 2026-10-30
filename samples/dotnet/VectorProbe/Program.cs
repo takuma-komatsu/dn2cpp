@@ -11,7 +11,7 @@ namespace VectorProbe;
 // float Sum is avoided, being rounding-order dependent.
 internal static class Program
 {
-    private static void Main()
+    private static void Main(string[] args)
     {
         // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -203,6 +203,8 @@ internal static class Program
         VectorToStrings();
         // APPENDED LAST: the earlier gate output remains an unchanged prefix.
         VectorCopyTargets();
+        if (args.Length > 0 && args[0] == "before-explicit") return;
+        ExplicitReinterprets.Run();
     }
 
     private static void VectorCopyTargets()

@@ -2,6 +2,9 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (VectorBlockFixture.Run(args)) return;
+if (VectorExplicitGuards.Run(args)) return;
+if (VectorExplicitFixture.Run(args)) return;
 if (DecimalDivModGuards.Run(args)) return;
 if (DecimalDivModFixture.Run(args)) return;
 if (InterpolationHelpersGuards.Run(args)) return;

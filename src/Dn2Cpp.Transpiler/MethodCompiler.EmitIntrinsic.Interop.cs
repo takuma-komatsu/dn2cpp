@@ -573,6 +573,12 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsVectorExplicit(callee))
+        {
+            EmitVectorExplicit(callee);
+            return;
+        }
+
         if (CoreIntrinsics.IsDecimalDivMod(callee))
         {
             var value = Pop();

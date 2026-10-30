@@ -6,6 +6,16 @@ namespace Dn2Cpp;
 
 internal sealed partial class MethodCompiler
 {
+    private void EmitVectorExplicit(MethodInfo callee)
+    {
+        // All element closures share the same sixteen-byte value representation.
+        // Push spills immediately, preserving once-only evaluation and copy semantics.
+        var source = Pop();
+        Push(StackKind.Struct, "Dn2CppVectorT", source.Kind == StackKind.Ptr
+            ? $"(*(Dn2CppVectorT*)({source.Expr}))" : Cast(source, "Dn2CppVectorT"));
+        Top = Top with { StaticType = callee.Signature.ReturnType };
+    }
+
     // ---- portable SIMD vectors (software-emulated) ----
     //
     // The .NET portable-SIMD types (System.Runtime.Intrinsics.Vector64/128/256/512<T>
@@ -272,6 +282,33 @@ internal sealed partial class MethodCompiler
         // (broadcast / array / span) are a subset of these.
         bool EmitCreate()
         {
+            // Fixed-width Create(smallerVector) repeats the complete source block.
+            // It is not scalar broadcast, zero-extension, or a Vector<T> constructor.
+            if (ps.Length == 1 && VecCppName(ps[0]) is { } sourceCpp)
+            {
+                bool pair = (sourceCpp, vecCpp) is ("Dn2CppVector64", "Dn2CppVector128" or "Dn2CppVector256" or "Dn2CppVector512")
+                    or ("Dn2CppVector128", "Dn2CppVector256" or "Dn2CppVector512")
+                    or ("Dn2CppVector256", "Dn2CppVector512");
+                if (!pair || sig.Header.RawValue != 0x10 || sig.GenericParameterCount != 1
+                    || methodArgs is not [var argument] || !CoreIntrinsics.IsVectorNumericElement(argument)
+                    || !CoreIntrinsics.IsVectorNumericElement(elem) || argument.Primitive != elem.Primitive
+                    || VecElem(ps[0]) is not { } sourceElement || !CoreIntrinsics.IsVectorNumericElement(sourceElement)
+                    || sourceElement.Primitive != elem.Primitive
+                    || ps[0].Class!.Module != sig.ReturnType.Class!.Module
+                    || ps[0].Class!.Module.AssemblyName != "System.Private.CoreLib")
+                    throw new NotSupportedException("Vector Create repetition requires a supported same-element fixed-width generic overload");
+                var source = Pop();
+                string value = NewTemp(sourceCpp);
+                Emit($"{value} = {Val(source, sourceCpp)};");
+                for (int width = VecWidthBytes(sourceCpp) * 2; width <= n; width *= 2)
+                {
+                    string next = NewTemp(width == 16 ? "Dn2CppVector128" : width == 32 ? "Dn2CppVector256" : "Dn2CppVector512");
+                    Emit($"{next} = dn2cpp_vec_with_upper<{et}, {width}>(dn2cpp_vec_with_lower<{et}, {width}>(dn2cpp_vec_zero<{et}, {width}>(), {value}), {value});");
+                    value = next;
+                }
+                PushVec(value);
+                return true;
+            }
             // Hierarchical Create(lower, upper) of two half-width vectors.
             if (ps.Length == 2 && IsVec(ps[0]) && IsVec(ps[1]))
             {
@@ -593,7 +630,10 @@ internal sealed partial class MethodCompiler
                     Push(StackKind.Struct, outCpp, expr);
                     return true;
                 }
-                Push(StackKind.Struct, outCpp, $"dn2cpp_vec_get_lower<{et}, {srcW}>({Val(src, srcCpp)})");
+                string narrowed = Val(src, srcCpp);
+                for (int width = srcW; width > outW; width /= 2)
+                    narrowed = $"dn2cpp_vec_get_lower<{et}, {width}>({narrowed})";
+                Push(StackKind.Struct, outCpp, narrowed);
                 return true;
             }
 

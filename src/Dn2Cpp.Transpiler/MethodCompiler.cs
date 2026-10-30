@@ -683,6 +683,9 @@ internal sealed partial class MethodCompiler : IEvalStack
 
     public string Compile()
     {
+        if (_method.Name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(_method.DeclaringClass)
+            && !CoreIntrinsics.IsVectorExplicit(_method))
+            throw new NotSupportedException("Vector<T>.op_Explicit requires its exact supported CoreLib declaration");
         // Decode the HotPath bits for every reachable body here. The planning pass compiles
         // all of them before the emission phase arms its recording, so this guarantees
         // Compilation.NoAllocMethods (populated by IsHotPath's decode) is complete at
@@ -1206,6 +1209,9 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// Null when the method has no intrinsic lowering to synthesize from.</summary>
     internal string? CompileCoreIntrinsicWrapper()
     {
+        if (_method.Name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(_method.DeclaringClass)
+            && !CoreIntrinsics.IsVectorExplicit(_method))
+            throw new NotSupportedException("Vector<T>.op_Explicit requires its exact supported CoreLib declaration");
         if (CoreIntrinsics.BrPrimitiveBigMul.Matches(_method))
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
             {
@@ -1249,6 +1255,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsDateTimeFormatInfoMonthArray(_method)
             || CoreIntrinsics.IsDateTimeFormatInfoSpan(_method)
             || CoreIntrinsics.IsDecimalDivMod(_method)
+            || CoreIntrinsics.IsVectorExplicit(_method)
             || CoreIntrinsics.IsDateOnlyDeconstruct(_method)
             || CoreIntrinsics.IsDateTimeParserBoundary(_method)
             || CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(_method)

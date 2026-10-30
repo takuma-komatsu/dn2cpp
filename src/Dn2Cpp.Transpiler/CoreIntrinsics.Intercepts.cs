@@ -657,6 +657,7 @@ internal static partial class CoreIntrinsics
             || IsDateTimeFormatInfoSpan(mi)
             || IsInt128Checked(mi)
             || IsDecimalDivMod(mi)
+            || IsVectorExplicit(mi)
             || IsDateOnlyDeconstruct(mi)
             || IsDateTimeParserBoundary(mi)
             || IsDateTimeFormatInfoCalendarSetter(mi)
