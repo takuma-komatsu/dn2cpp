@@ -1708,6 +1708,13 @@ internal sealed partial class Compilation
             };
             if (!exact) throw new NotSupportedException($"DateTime {name} requires its exact MemberRef signature");
         }
+        if (name == "DecDivMod1E9" && candidates.Any(CoreIntrinsics.IsDecimalDivMod))
+        {
+            if (!CoreIntrinsics.IsDecimalDivModSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDecimalDivModDecodedSignature(sig, resolved.DeclaringClass)
+                || !CoreIntrinsics.IsDecimalDivMod(resolved))
+                throw new NotSupportedException("Decimal.DecDivMod1E9 requires its exact MemberRef signature");
+        }
         if (name == "Deconstruct" && candidates.Any(CoreIntrinsics.IsDateOnlyDeconstruct))
         {
             if (!CoreIntrinsics.IsDateOnlyDeconstructSignature(reader.GetBlobReader(mr.Signature))
@@ -2016,6 +2023,15 @@ internal sealed partial class Compilation
         if (mr.Parent.Kind is not (HandleKind.TypeReference or HandleKind.TypeDefinition))
             return null;
         string? full = MemberRefParentTypeName(module, handle);
+        if (full == "System.Decimal" && reader.StringComparer.Equals(mr.Name, "DecDivMod1E9"))
+        {
+            var divide = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDecimalDivMod(divide)
+                && CoreIntrinsics.IsDecimalDivModSignature(reader.GetBlobReader(mr.Signature))
+                && CoreIntrinsics.IsDecimalDivModDecodedSignature(mr.DecodeMethodSignature(SigProvider, callerCtx), divide.DeclaringClass))
+                return divide;
+            throw new NotSupportedException("Decimal.DecDivMod1E9 requires its exact CoreLib reference and declaration");
+        }
         if (CoreIntrinsicTypeMaps.IsPrimitiveBigMulOwner(full) && reader.StringComparer.Equals(mr.Name, "BigMul"))
         {
             var multiply = ResolveMemberRefMethod(module, handle, callerCtx);

@@ -573,6 +573,13 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsDecimalDivMod(callee))
+        {
+            var value = Pop();
+            Push(StackKind.I4, "int32_t", $"dn2cpp_decimal_divmod1e9({Cast(value, "Dn2CppDecimal*")})");
+            return;
+        }
+
         if (CoreIntrinsics.IsDateOnlyDeconstruct(callee))
         {
             EmitDateOnlyDeconstruct();

@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (DecimalDivModGuards.Run(args)) return;
+if (DecimalDivModFixture.Run(args)) return;
 if (InterpolationHelpersGuards.Run(args)) return;
 if (InterpolationHelpersFixture.Run(args)) return;
 if (DtfITokenizeGuards.Run(args)) return;

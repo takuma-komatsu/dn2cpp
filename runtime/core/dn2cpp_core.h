@@ -8235,6 +8235,9 @@ static_assert(Dn2CppDecimal{ dn2cpp_dec_flags(28, 1), 0, 1 }.scale() == 28
     && Dn2CppDecimal{ dn2cpp_dec_flags(28, 1), 0, 1 }.sign() == 1,
     "the accessors invert the packing");
 
+// Divides the coefficient in caller storage without changing the flags.
+uint32_t dn2cpp_decimal_divmod1e9(Dn2CppDecimal* value);
+
 // Constructors. `from_parts` is the .NET `Decimal(int lo, int mid, int hi, bool
 // isNegative, byte scale)` ctor (and the bit-pattern form); the rest are the
 // numeric implicit/explicit conversions into decimal.

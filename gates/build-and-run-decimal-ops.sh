@@ -33,7 +33,9 @@
 # InvariantGlobalization pins the oracle's culture, which is what makes the diff
 # host-independent. See the csproj.
 source "$(dirname "$0")/_common.sh"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-oa-currency|oa-currency-direct-and-delegate|decimal-scale-direct-and-delegate"
+source "$(dirname "$0")/decimal-divmod-probe.sh"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-oa-currency|oa-currency-direct-and-delegate|decimal-scale-direct-and-delegate|decimal-divmod-exact-ref-raw-diet|cli:$(_gate_cli_hash)"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/decimal-divmod-probe.sh gates/fixtures/decimal-divmod gates/fixtures/ldftn-local/DecimalDivModFixture.cs gates/fixtures/ldftn-local/DecimalDivModGuards.cs"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
@@ -76,6 +78,14 @@ gate_extra_asserts() {
         gate_output byte-witness "$native" "$line" --count 1 --policy crlf \
             || { echo "FAIL: decimal scale witness missing: $line" >&2; return 1; }
     done
+    gate_capture_ok "$out/assert-before-divmod" run_bounded dotnet "$_CG_APP" before-decimal-divmod || return 1
+    gate_output select "$native" "$out/assert-prefix-divmod.stdout" --before '== decimal coefficient divmod ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-divmod.stdout" "$out/assert-before-divmod.stdout" || return 1
+    for line in '== decimal coefficient divmod ==' 'divmod magnitude/sign/scale cases:1044' \
+        'divmod repeated:543950335' 'divmod repeated:0' 'decimal coefficient divmod end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
+    decimal_divmod_probe "$out" "$native" || return 1
 }
 
 corelib_diff_gate DecimalOps System.Linq System.Collections System.Runtime

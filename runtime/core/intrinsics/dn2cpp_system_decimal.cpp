@@ -212,6 +212,17 @@ static dec_u128 decbig_to_u128(const DecBig& b)
     return v;
 }
 
+// DecimalToNumber divides the coefficient in caller storage; sign and scale survive.
+uint32_t dn2cpp_decimal_divmod1e9(Dn2CppDecimal* value)
+{
+    DecBig magnitude = decbig_from_u128(dec_mant(*value));
+    uint32_t remainder = decbig_divmod_small(magnitude, 1000000000u);
+    dec_u128 quotient = decbig_to_u128(magnitude);
+    value->_hi32 = (uint32_t)(quotient >> 64);
+    value->_lo64 = (uint64_t)quotient;
+    return remainder;
+}
+
 // The only writers of _flags, here and in dec_set_sign: scale into bits 16..23, sign
 // into bit 31, every other bit zero. GetBits hands the word back verbatim and the memcpy
 // image is diffed against real .NET, so a stray bit would be a wire divergence.

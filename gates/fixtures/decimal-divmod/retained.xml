@@ -1,0 +1,7 @@
+<linker>
+  <assembly fullname="DecimalOps">
+    <type fullname="Dn2Cpp.DecimalDivModSubset">
+      <method name="RetainedOnly" />
+    </type>
+  </assembly>
+</linker>
