@@ -34,6 +34,57 @@ internal sealed partial class AssemblyDiet
         || CoreIntrinsicTypeMaps.RuntimeInterfaceDispatch(Name(type)) is not null
         || CoreIntrinsicTypeMaps.IsDelegateBaseType(Name(type));
 
+    private static bool IsCopiedPrimitiveBigMul(MethodDefinition method, string owner)
+    {
+        if (method.Name != "BigMul" || !CoreIntrinsicTypeMaps.IsPrimitiveBigMulOwner(owner)
+            || method.Module.Assembly?.Name.Name != "System.Private.CoreLib"
+            || method.DeclaringType.DeclaringType is not null || !method.DeclaringType.IsValueType
+            || method.DeclaringType.IsEnum || method.DeclaringType.HasGenericParameters
+            || method.Attributes != (MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig)
+            || method.ImplAttributes != MethodImplAttributes.IL || !method.HasBody
+            || method.HasThis || method.ExplicitThis || method.CallingConvention != MethodCallingConvention.Default
+            || method.HasGenericParameters || method.HasPInvokeInfo) return false;
+        var code = owner switch {
+            "System.Int32" => MetadataType.Int32, "System.UInt32" => MetadataType.UInt32,
+            "System.Int64" => MetadataType.Int64, "System.UInt64" => MetadataType.UInt64,
+            "System.IntPtr" => MetadataType.IntPtr, _ => MetadataType.UIntPtr };
+        bool native = owner is "System.IntPtr" or "System.UIntPtr";
+        if (method.Parameters.Count != (native ? 3 : 2)
+            || method.Parameters[0].ParameterType is TypeSpecification
+            || method.Parameters[1].ParameterType is TypeSpecification
+            || method.Parameters[0].ParameterType.MetadataType != code
+            || method.Parameters[1].ParameterType.MetadataType != code
+            || method.Parameters[0].ParameterType.FullName != owner
+            || method.Parameters[1].ParameterType.FullName != owner) return false;
+        if (native) return method.ReturnType.MetadataType == code && method.ReturnType.FullName == owner
+            && method.Parameters[2].Attributes == ParameterAttributes.Out
+            && method.Parameters[2].ParameterType is ByReferenceType byref
+            && byref.ElementType.MetadataType == code && byref.ElementType.FullName == owner;
+        string result = owner switch {
+            "System.Int32" => "System.Int64", "System.UInt32" => "System.UInt64",
+            "System.Int64" => "System.Int128", _ => "System.UInt128" };
+        if (method.ReturnType is TypeSpecification || method.ReturnType.FullName != result) return false;
+        if (owner is "System.Int32" or "System.UInt32") return method.ReturnType.MetadataType ==
+            (owner == "System.Int32" ? MetadataType.Int64 : MetadataType.UInt64);
+        if (method.ReturnType.MetadataType != MetadataType.ValueType) return false;
+        var definition = method.ReturnType.Resolve();
+        if (definition is null || definition.Module != method.Module || !definition.IsValueType
+            || definition.IsInterface || definition.IsEnum || definition.BaseType is not TypeDefinition baseType
+            || baseType.Module != method.Module || baseType.FullName != "System.ValueType"
+            || !definition.IsSequentialLayout || definition.DeclaringType is not null || definition.HasGenericParameters) return false;
+        int lower = 0, upper = 0;
+        foreach (var field in definition.Fields)
+        {
+            if (field.IsStatic) continue;
+            if (field.Attributes != (FieldAttributes.Private | FieldAttributes.InitOnly)
+                || field.FieldType.MetadataType != MetadataType.UInt64) return false;
+            if (field.Name == "_lower") lower++;
+            else if (field.Name == "_upper") upper++;
+            else return false;
+        }
+        return lower == 1 && upper == 1;
+    }
+
     private static bool IsCopiedDateTimeFormatInfoParserFlagGetter(MethodDefinition method, string owner) =>
         method.Module.Assembly?.Name.Name == "System.Private.CoreLib"
         && owner == "System.Globalization.DateTimeFormatInfo"
@@ -309,6 +360,8 @@ internal sealed partial class AssemblyDiet
             && CoreIntrinsicTypeMaps.IsDelegateValueMethod(owner, method.Name, method.IsStatic,
                 method.GenericParameters.Count, method.Parameters.Count, method.ReturnType.FullName,
                 method.Parameters.Count == 1 ? method.Parameters[0].ParameterType.FullName : null))
+            traverse = false;
+        else if (IsCopiedPrimitiveBigMul(method, owner))
             traverse = false;
         else if (IsCopiedMemberMetadataDefinition(method, owner))
             traverse = owner == "System.Reflection.MemberInfo";

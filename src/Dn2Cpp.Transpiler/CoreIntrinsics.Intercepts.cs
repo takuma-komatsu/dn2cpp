@@ -303,6 +303,7 @@ internal enum InterceptEmitArm
     /// re-asking the same two pure predicates the row's own <c>Extra</c> is built
     /// from — never a separate list.</summary>
     HttpShimBody,
+    PrimitiveBigMulBody,
     /// <summary>A synthesized System.Enum instance ToString/GetTypeCode body —
     /// <c>MethodCompiler.CompileEnumInstanceFormatBody</c>, emitted under the
     /// intercepted method's OWN symbol so EVERY mouth resolves to it: a direct
@@ -4101,6 +4102,12 @@ internal static partial class CoreIntrinsics
                 : sig.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 } ? "System.Int32" : null,
             sig.ParameterTypes.Length == 1 && sig.ParameterTypes[0].IsObject ? "System.Object" : null);
 
+    /// <summary>Primitive products share a callable replacement; native operands
+    /// must use target-width halves instead of host-specialized CoreLib IL.</summary>
+    public static readonly MethodDefIntercept BrPrimitiveBigMul = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.PrimitiveBigMulBody,
+        nameGate: "BigMul", extra: static m => IsPrimitiveBigMul(m));
+
     /// <summary>Reflection and Medium retention need callable value overrides, but
     /// their CoreCLR field-walking IL is incompatible with the uniform delegate layout.
     /// Reach keeps the declared method without scanning it; CppEmitter replays the
@@ -4312,6 +4319,11 @@ internal static partial class CoreIntrinsics
     {
         if (!RegistrySelfCheckEnabled)
             return;
+
+        CheckRow(nameof(BrPrimitiveBigMul), 0, BrPrimitiveBigMul.EmitArm,
+            BrPrimitiveBigMul.TypeGate, BrPrimitiveBigMul.NameGate);
+        if (BrPrimitiveBigMul.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Primitive BigMul must retain a callable target-width body");
 
         CheckRow(nameof(BrDelegateNamedConstructor), 0, BrDelegateNamedConstructor.EmitArm,
             BrDelegateNamedConstructor.TypeGate, BrDelegateNamedConstructor.NameGate);

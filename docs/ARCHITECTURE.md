@@ -636,6 +636,18 @@ refuses the virtual helper, which can call arbitrary managed overrides.
 3. For value-type receivers see `DerefReceiver` (dereferences the `ldloca`
    pointer).
 
+Primitive `BigMul` on Int32, UInt32, Int64, UInt64, IntPtr and UIntPtr retains
+an exact CoreLib callable replacement. Direct, address-taken and type-retained
+routes use that same body; native owners are not globally intrinsic. Fixed-width
+products reuse Math arithmetic and named Int128/UInt128 fields. Native products
+split at the target pointer width, restore unsigned native operands before
+widening and write only native-sized output storage. The host CoreLib native IL
+is not a target-independent implementation. Other signatures and the separate
+Int128/UInt128 full-width family are not intercepted. MathSubset's dedicated
+primitive lane executes these replacements on Wasm even when the ordinary
+floating-point bucket is omitted. Runtime-owned primitive reflection catalogs
+remain unchanged.
+
 `Int128.CreateChecked<T>` has a bounded closed adapter for signed and unsigned
 integer primitives, including Char and target-width native integers, plus Int128
 identity. Concrete calls, constrained `INumberBase<Int128>` calls and retained

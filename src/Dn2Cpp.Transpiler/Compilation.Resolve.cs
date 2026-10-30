@@ -85,6 +85,7 @@ internal sealed partial class Compilation
                 if (!module.MethodMap.TryGetValue(h, out var mi))
                     return null;
                 NoteObfuscationMethod(mi);
+                if (CoreIntrinsics.BrPrimitiveBigMul.Matches(mi)) return mi;
                 // System.Exception::get_Message is cut as intrinsic (below), but a call to
                 // it — even the non-virtual base.Message inside an override — means the
                 // used-virtual × allocated-type cross product must reach every allocated
@@ -2001,6 +2002,13 @@ internal sealed partial class Compilation
         if (mr.Parent.Kind is not (HandleKind.TypeReference or HandleKind.TypeDefinition))
             return null;
         string? full = MemberRefParentTypeName(module, handle);
+        if (CoreIntrinsicTypeMaps.IsPrimitiveBigMulOwner(full) && reader.StringComparer.Equals(mr.Name, "BigMul"))
+        {
+            var multiply = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsPrimitiveBigMulReference(multiply, mr.DecodeMethodSignature(SigProvider, callerCtx), reader.GetBlobReader(mr.Signature)))
+                return multiply;
+            throw new NotSupportedException("Primitive BigMul requires its exact CoreLib reference and declaration");
+        }
         if (CoreIntrinsicTypeMaps.IsDelegateBaseType(full) && reader.StringComparer.Equals(mr.Name, ".ctor"))
         {
             try

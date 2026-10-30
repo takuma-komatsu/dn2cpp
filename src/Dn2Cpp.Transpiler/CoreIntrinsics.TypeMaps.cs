@@ -30,6 +30,9 @@ internal static class CoreIntrinsicTypeMaps
         _ => null,
     };
 
+    public static bool IsPrimitiveBigMulOwner(string? owner) => owner is
+        "System.Int32" or "System.UInt32" or "System.Int64" or "System.UInt64" or "System.IntPtr" or "System.UIntPtr";
+
     public static bool IsInlineLoweredPrimitiveMember(string? fullTypeName, string name) =>
         (fullTypeName is "System.Byte" or "System.SByte" or "System.Int16" or "System.UInt16"
             && name is "ToString" or "Parse" or "TryParse" or "TryFormat")

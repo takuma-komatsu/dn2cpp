@@ -20,6 +20,8 @@ if (DateOnlyDeconstructGuards.Run(args)) return;
 if (DateTimeFamilyAggregateFixture.Run(args)) return;
 if (DateTimeTCharFixture.Run(args)) return;
 if (DateTimeTCharGuards.Run(args)) return;
+if (PrimitiveBigMulGuards.Run(args)) return;
+if (PrimitiveBigMulFixture.Run(args)) return;
 if (Int128CheckedGuards.Run(args)) return;
 if (Int128CheckedFixture.Run(args)) return;
 if (DateTimeFamilySeedFixture.Run(args)) return;

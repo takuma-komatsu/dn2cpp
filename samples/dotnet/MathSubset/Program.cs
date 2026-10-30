@@ -55,6 +55,9 @@ namespace MathSubset
             if (args.Length > 0 && args[0] == "before-mixed-bigmul")
                 return;
             Dn2Cpp.MathMixedBigMulSubset.Run();
+            if (args.Length > 0 && args[0] == "before-primitive-bigmul")
+                return;
+            Dn2Cpp.PrimitiveBigMulSubset.Run();
         }
     }
 }

@@ -113,6 +113,7 @@ internal sealed partial class Compilation
         }
         if (CoreIntrinsics.BrDelegateClone.Matches(m.DeclaringClass.FullName, m.Name)
             || CoreIntrinsics.BrDelegateValue.Matches(m)
+            || CoreIntrinsics.BrPrimitiveBigMul.Matches(m)
             || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(m)
             || CoreIntrinsics.BrNullableReboxing.Matches(m)
             || CoreIntrinsics.BrCustomAttributeDataMember.Matches(m)
