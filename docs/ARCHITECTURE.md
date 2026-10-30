@@ -1034,6 +1034,19 @@ its `GetFormat(Type)` implementation and accepts only a `NumberFormatInfo` resul
 other results fall back to the current culture. Allocation, identity conversion,
 and unrelated known-provider formatting do not retain unused provider bodies.
 
+The exact internal `DateTimeFormatInfo.Tokenize(TokenType, ref TokenType,
+ref int, ref __DTString)` is an explicit unsupported token-table parsing boundary.
+After caller argument evaluation it throws `PlatformNotSupportedException` without
+reading receiver/byref payloads or writing outputs/cursor state. It does not return
+`false` (which would mean a genuine token miss). Ordinary `callvirt` null checks
+remain at the call site; raw nonvirtual/calli entry, including null pointers, reaches
+the refusal without dereferencing them. This is a native capability policy, not
+CoreCLR's initial output-store or exception-order behavior. Existing reflection
+restrictions on byref-like parser arguments remain unchanged. Retaining this body
+can advance self-host compilation but does not make retained managed parser paths
+functional. Existing native public DateTime Parse/TryParse/Exact lowerings are
+unchanged; no token-table, calendar, CultureData or collation engine is added.
+
 The exact DateTimeFormatInfo and CultureInfo CompareInfo getters share a genuine
 managed CompareInfo under the native invariant-comparison policy. A single linked
 typed factory initializes its actual name fields to the rooted empty string and

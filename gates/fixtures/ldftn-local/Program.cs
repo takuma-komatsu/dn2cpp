@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (DtfITokenizeGuards.Run(args)) return;
+if (DtfITokenizeFixture.Run(args)) return;
 if (DtfICompareInfoFixture.Run(args)) return;
 if (DtfICompareInfoGuards.Run(args)) return;
 if (DtfINameArraysFixture.Run(args)) return;

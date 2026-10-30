@@ -8,7 +8,7 @@ _datetime_family_check_generated() {
     "$python" gates/fixtures/abbreviated-month/check-generated.py "$out" --name abbreviated || return $?
     "$python" gates/fixtures/abbreviated-month/check-generated.py "$out" --name full || return $?
     local family
-    for family in dtfi-calendar dtfi-calendar-setter internal-month era-name format-flags force-two-digit-years all-datetime-patterns dateonly-deconstruct year-month-adjustment dtfi-parser-flags dtfi-name-arrays dtfi-compare-info; do
+    for family in dtfi-calendar dtfi-calendar-setter internal-month era-name format-flags force-two-digit-years all-datetime-patterns dateonly-deconstruct year-month-adjustment dtfi-parser-flags dtfi-name-arrays dtfi-compare-info dtfi-tokenize; do
         "$python" "gates/fixtures/$family/check-generated.py" "$out" || return $?
     done
     "$python" gates/fixtures/era-name/check-generated.py "$out" --abbreviated || return $?
@@ -72,6 +72,7 @@ datetime_family_aggregate_gate() {
         "$(resolve_python)" gates/fixtures/dtfi-parser-flags/check-output.py "$out/sections/DtfIParserFlags.stdout" || return $?
         "$(resolve_python)" gates/fixtures/dtfi-name-arrays/check-output.py "$out/sections/DtfINameArrays.stdout" || return $?
         "$(resolve_python)" gates/fixtures/dtfi-compare-info/check-output.py "$out/sections/DtfICompareInfo.stdout" || return $?
+        "$(resolve_python)" gates/fixtures/dtfi-tokenize/check-output.py "$out/sections/DtfITokenize.stdout" || return $?
         for assembly in AbbreviatedDay FullDay AbbreviatedMonth FullMonth EraName DateOnlyDeconstruct; do
             gate_output compare "$root/oracles/$assembly/oracle.stdout" "$out/sections/$assembly.stdout" --policy crlf || return $?
         done
@@ -83,7 +84,7 @@ datetime_family_controls_gate() {
     corelib=$(resolve_net10_corelib) || return $?
     mkdir -p "$root"
     # Shared day/month/three-pattern guards already enumerate all exact target names.
-    for flag in abbreviated-day abbreviated-month dtfi-calendar dtfi-calendar-setter internal-month era-name format-flags force-two-digit-years general-short-time-pattern all-datetime-patterns dateonly-deconstruct datetime-tchar year-month-adjustment datetime-trio dtfi-parser-flags dtfi-name-arrays dtfi-compare-info; do
+    for flag in abbreviated-day abbreviated-month dtfi-calendar dtfi-calendar-setter internal-month era-name format-flags force-two-digit-years general-short-time-pattern all-datetime-patterns dateonly-deconstruct datetime-tchar year-month-adjustment datetime-trio dtfi-parser-flags dtfi-name-arrays dtfi-compare-info dtfi-tokenize; do
         model=$(mktemp -d "$root/model-$flag-XXXXXX") || return $?
         gate_capture_ok "$model/guards" run_bounded dotnet "$fixture" "--$flag-guards" "$(dirname "$DN2CPP_CLI_DLL")/Dn2Cpp.Transpiler.dll" "$corelib" "$model/input.dll" || return $?
     done
@@ -94,7 +95,7 @@ datetime_family_controls_gate() {
         original="gates/fixtures/$folder/bin/$CONFIG/$TFM"
         "${stem}_negative_gate" "$root/malformed/$folder" "$original" || return $?
         case "$folder" in
-            abbreviated-day|full-day|abbreviated-month|full-month|dtfi-calendar|internal-month|era-name|all-datetime-patterns|dtfi-name-arrays|dtfi-compare-info)
+            abbreviated-day|full-day|abbreviated-month|full-month|dtfi-calendar|internal-month|era-name|all-datetime-patterns|dtfi-name-arrays|dtfi-compare-info|dtfi-tokenize)
                 "${stem}_noalloc_gate" "$root/noalloc/$folder" "$original" || return $? ;;
         esac
     done < gates/fixtures/datetime-family/families.tsv
@@ -107,6 +108,7 @@ datetime_family_controls_gate() {
     dtfi_name_arrays_oracle_gate "$root/dtfi-name-arrays-public" "gates/fixtures/dtfi-name-arrays/bin/$CONFIG/$TFM" || return $?
     dtfi_compare_info_oracle_gate "$root/dtfi-compare-info-public" "gates/fixtures/dtfi-compare-info/bin/$CONFIG/$TFM" || return $?
     dtfi_compare_info_subclass_gate "$root/dtfi-compare-info-subclass" "gates/fixtures/dtfi-compare-info/bin/$CONFIG/$TFM" || return $?
+    dtfi_tokenize_oracle_gate "$root/dtfi-tokenize-public" "gates/fixtures/dtfi-tokenize/bin/$CONFIG/$TFM" || return $?
     all_datetime_patterns_zeroarg_gate "$root/zeroarg" "gates/fixtures/all-datetime-patterns/bin/$CONFIG/$TFM" || return $?
 }
 

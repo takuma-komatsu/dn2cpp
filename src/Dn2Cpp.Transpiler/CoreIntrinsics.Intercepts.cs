@@ -658,6 +658,7 @@ internal static partial class CoreIntrinsics
             || IsDateTimeParserBoundary(mi)
             || IsDateTimeFormatInfoCalendarSetter(mi)
             || IsDateTimeFormatInfoCalendar(mi)
+            || IsDateTimeFormatInfoTokenize(mi)
             || IsInvariantCompareInfoGetter(mi)
             || IsDateTimeFormatInfoFormatFlags(mi)
             || IsDateTimeFormatInfoYearMonthAdjustment(mi)

@@ -20,3 +20,4 @@ datetime-trio	DateTimeTrio	DateTimeTrioSubset	--datetime-trio
 dtfi-parser-flags	DtfIParserFlags	DtfIParserFlagsSubset	--dtfi-parser-flags
 dtfi-name-arrays	DtfINameArrays	DtfINameArraysSubset	--dtfi-name-arrays
 dtfi-compare-info	DtfICompareInfo	DtfICompareInfoSubset	--dtfi-compare-info
+dtfi-tokenize	DtfITokenize	DtfITokenizeSubset	--dtfi-tokenize

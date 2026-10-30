@@ -1687,6 +1687,13 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatterns(resolved))
                 throw new NotSupportedException("DateTimeFormatInfo GetAllDateTimePatterns(Char) requires its exact MemberRef signature");
         }
+        if (name == "Tokenize" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoTokenize))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoTokenizeSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoTokenizeDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsDateTimeFormatInfoTokenize(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo Tokenize requires its exact MemberRef signature");
+        }
         if (name == "set_Calendar" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter))
         {
             if (!CoreIntrinsics.IsDateTimeFormatInfoCalendarSetterSignature(reader.GetBlobReader(mr.Signature))
@@ -2127,6 +2134,11 @@ internal sealed partial class Compilation
             var calendar = ResolveMemberRefMethod(module, handle, callerCtx);
             if (CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatterns(calendar))
                 return calendar;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "Tokenize"))
+        {
+            var tokenize = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoTokenize(tokenize)) return tokenize;
         }
         if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "set_Calendar"))
         {

@@ -22,5 +22,6 @@
     <ProjectReference Include="../dtfi-parser-flags/DtfIParserFlags.csproj" />
     <ProjectReference Include="../dtfi-name-arrays/DtfINameArrays.csproj" />
     <ProjectReference Include="../dtfi-compare-info/DtfICompareInfo.csproj" />
+    <ProjectReference Include="../dtfi-tokenize/DtfITokenize.csproj" />
   </ItemGroup>
 </Project>

@@ -37,6 +37,7 @@ internal static class DateTimeFamilyAggregateFixture
             ("DtfIParserFlags", "DtfIParserFlagsSubset", "--dtfi-parser-flags"),
             ("DtfINameArrays", "DtfINameArraysSubset", "--dtfi-name-arrays"),
             ("DtfICompareInfo", "DtfICompareInfoSubset", "--dtfi-compare-info"),
+            ("DtfITokenize", "DtfITokenizeSubset", "--dtfi-tokenize"),
         };
         var receipts = new List<object>();
         foreach (var family in families)
@@ -64,6 +65,7 @@ internal static class DateTimeFamilyAggregateFixture
                 "--dtfi-parser-flags" => DtfIParserFlagsFixture.Run(invocation),
                 "--dtfi-name-arrays" => DtfINameArraysFixture.Run(invocation),
                 "--dtfi-compare-info" => DtfICompareInfoFixture.Run(invocation),
+                "--dtfi-tokenize" => DtfITokenizeFixture.Run(invocation),
                 _ => false
             };
             if (!handled) throw new InvalidOperationException("unhandled aggregate family " + family.Flag);

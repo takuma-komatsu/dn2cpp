@@ -610,6 +610,22 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsDateTimeFormatInfoTokenize(callee))
+        {
+            var arguments = new StackEntry[4];
+            for (int i = arguments.Length - 1; i >= 0; i--) arguments[i] = Pop();
+            string receiver = NewTemp(DateTimeFormatCppType());
+            Emit($"{receiver} = {Cast(Pop(), DateTimeFormatCppType())};");
+            // Preserve evaluation, but never inspect or initialize out/cursor storage.
+            foreach (var argument in arguments) Emit($"(void)({argument.Expr});");
+            // Intrinsic call sites bypass the normal managed-call guard. Raw
+            // calls/addressable bodies deliberately have no receiver-first policy.
+            if (_callIsVirtual) Emit($"dn2cpp_null_check({receiver});");
+            Emit("dn2cpp_throw_platform_not_supported(\"DateTimeFormatInfo token-table parsing is not supported\");");
+            Push(StackKind.I4, "int32_t", "0"); // unreachable Boolean stack shape
+            return;
+        }
+
         if (CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(callee))
         {
             string calendar = Cast(Pop(), "Dn2CppObject*");
