@@ -1330,6 +1330,17 @@ internal sealed partial class CppEmitter
                 catch (Exception e) when (!Compilation.IsMustEscape(e))
                 { /* no decodable property metadata — BuildPropTable yields no rows either */ }
             }
+            foreach (var cls in _e._referencedIntrinsicTis.ToList())
+            {
+                if (cls.FullName != "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler") continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!IsInterpolationHelperRow(method)) continue;
+                    NoteReflectedType(method.Signature.ReturnType);
+                    foreach (var parameter in method.Signature.ParameterTypes)
+                        NoteReflectedType(parameter);
+                }
+            }
             // EmitReferencedIntrinsicTypeInfos' generic-argument vectors: those rows are
             // outside the emit set, so the walk above never reaches them.
             foreach (var cls in _e._referencedIntrinsicTis)
@@ -1443,6 +1454,9 @@ internal sealed partial class CppEmitter
             }
             foreach (var c in _e._referencedIntrinsicTis)
             {
+                var helperRows = c.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
+                    ? c.Methods.Where(IsInterpolationHelperRow).ToList() : new List<MethodInfo>();
+                var helperTable = helperRows.Count == 0 ? null : BuildMemberTable(c, helperRows, "interpolationhelpertab");
                 bool isTask = _c.GenericDefFullName(c) == "System.Threading.Tasks.Task";
                 string interfaces = "nullptr";
                 int interfaceCount = 0;
@@ -1477,6 +1491,9 @@ internal sealed partial class CppEmitter
                     flagBits.Add("DN2CPP_TF_ABSTRACT");
                 if (c.IsSealed)
                     flagBits.Add("DN2CPP_TF_SEALED");
+                if (c.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
+                    && c.Methods.Any(CoreIntrinsics.IsInterpolationStaticHelper) && c.IsByRefLike)
+                    flagBits.Add("DN2CPP_TF_BYREFLIKE");
                 if (IsNestedType(c))
                     flagBits.Add("DN2CPP_TF_NESTED");
                 string flags = flagBits.Count == 0 ? "0" : string.Join(" | ", flagBits);
@@ -1529,6 +1546,7 @@ internal sealed partial class CppEmitter
                     Interfaces = interfaces, InterfaceCount = interfaceCount,
                     ToStringFn = toString, HashFn = getHash, EqualsFn = equals, Flags = flags,
                     GenericDef = genericDef, GenericArgs = genericArgs, GenericArgCount = genericCount,
+                    Methods = helperTable?.Expr ?? "nullptr", MethodCount = helperTable?.Count ?? 0,
                     Activation = CoreIntrinsics.IsGen2GcCallbackType(c) ? AllocationUnsupported : 0,
                 });
             }
@@ -3870,6 +3888,9 @@ internal sealed partial class CppEmitter
         // GetConstructors excludes methods, matching .NET's split.
         // Opaque owners expose only explicitly modeled member rows. Signature
         // discovery and table rendering must select the same catalog.
+        private bool IsInterpolationHelperRow(MethodInfo method) =>
+            CoreIntrinsics.IsInterpolationStaticHelper(method) && IsRetainedOpaqueMemberRow(method);
+
         private bool IsRetainedOpaqueMemberRow(MethodInfo method) =>
             _c.KeepsReflectionMetadata(method.DeclaringClass)
             && (_c.Reachable.Contains(method) && CoreIntrinsics.BrDelegateValue.Matches(method)
@@ -3877,6 +3898,7 @@ internal sealed partial class CppEmitter
                     && ((CoreIntrinsics.IsRuntimeTypeHandleCopy(method) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(method))
                         || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(method)
+                        || CoreIntrinsics.IsInterpolationStaticHelper(method)
                         || CoreIntrinsics.IsPrimitiveElementHelper(method)
                         || CoreIntrinsics.IsMemberNotFoundExceptionFactory(method)
                         || CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(method)

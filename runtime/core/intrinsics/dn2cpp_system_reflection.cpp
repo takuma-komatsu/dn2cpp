@@ -6084,6 +6084,10 @@ Dn2CppObject* dn2cpp_methodref_invoke(Dn2CppMethodRef* m, Dn2CppObject* obj, Dn2
         || dn2cpp_type_metadata_only(mi->declaringType))
         dn2cpp_throw_reflection_fault(&dn2cpp_invalid_operation_exception_type,
             dn2cpp_sr_message(DN2CPP_SR_UNBOUND_GENERIC, nullptr, 0), 0x80131509u);
+    // Invoke refuses methods declared on by-ref-like types, including statics.
+    // CreateDelegate uses the separate binding route and may call those statics.
+    if ((mi->declaringType->flags & DN2CPP_TF_BYREFLIKE) != 0)
+        dn2cpp_throw_invoke_not_supported(nullptr);
     return dn2cpp_invoke_mi(mi, obj, (args == nullptr) ? nullptr : args->data,
                             (args == nullptr) ? 0 : args->length, wrapExceptions, m->reflectedType);
 }

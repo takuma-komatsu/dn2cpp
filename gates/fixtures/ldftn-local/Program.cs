@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (InterpolationHelpersGuards.Run(args)) return;
+if (InterpolationHelpersFixture.Run(args)) return;
 if (DtfITokenizeGuards.Run(args)) return;
 if (DtfITokenizeFixture.Run(args)) return;
 if (DtfICompareInfoFixture.Run(args)) return;

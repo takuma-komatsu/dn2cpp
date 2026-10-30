@@ -925,6 +925,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsCoreClrMethodSlotLookup(target)
             || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(target)
             || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(target)
+            || CoreIntrinsics.IsInterpolationStaticHelper(target)
             || CoreIntrinsics.IsPrimitiveElementHelper(target)
             || CoreIntrinsics.IsMemberNotFoundExceptionFactory(target)
             || target.Rva != 0 && cls.IntrinsicCppName is null)

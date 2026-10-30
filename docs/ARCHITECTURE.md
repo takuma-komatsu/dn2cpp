@@ -648,6 +648,17 @@ primitive lane executes these replacements on Wasm even when the ordinary
 floating-point bucket is omitted. Runtime-owned primitive reflection catalogs
 remain unchanged.
 
+The genuine CoreLib `DefaultInterpolatedStringHandler.HasCustomFormatter` and
+`GetDefaultLength` static helpers keep their field-free managed bodies across
+calls, retention, reflection-bound delegates and function addresses. They do not expose the
+intrinsic handler's instance layout. Formatter detection preserves the exact
+CultureInfo type shortcut and otherwise asks `IFormatProvider.GetFormat` for
+ICustomFormatter, testing only whether the returned object is nonnull. It does
+not cast, cache the callback, or change existing handler/provider policies.
+The length helper preserves unchecked Int32 arithmetic before the signed floor.
+`MethodInfo.Invoke` refuses a by-ref-like declaring type before receiver or
+argument validation; this does not prohibit binding its static methods to delegates.
+
 `Int128.CreateChecked<T>` has a bounded closed adapter for signed and unsigned
 integer primitives, including Char and target-width native integers, plus Int128
 identity. Concrete calls, constrained `INumberBase<Int128>` calls and retained

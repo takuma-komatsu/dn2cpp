@@ -97,6 +97,7 @@ internal sealed partial class Compilation
                 if ((CoreIntrinsics.IsRuntimeTypeHandleCopy(mi) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(mi))
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(mi)
                     || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(mi)
+                    || CoreIntrinsics.IsInterpolationStaticHelper(mi)
                     || CoreIntrinsics.IsPrimitiveElementHelper(mi)
                     || CoreIntrinsics.IsMemberNotFoundExceptionFactory(mi)
                     || CoreIntrinsics.IsMemberMetadataDefinitionBase(mi)
@@ -476,6 +477,12 @@ internal sealed partial class Compilation
                 // Every cut below probes the same MemberReference's parent type
                 // name; read it once (a pure metadata read).
                 string? mrParent = MemberRefParentTypeName(module, (MemberReferenceHandle)handle);
+                if (mrParent == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
+                    && CoreIntrinsics.IsInterpolationStaticHelperName(mrName))
+                {
+                    var helper = ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
+                    if (CoreIntrinsics.IsInterpolationStaticHelper(helper)) return helper;
+                }
                 // Some cuts below need the OVERLOAD, not just the name — an intercept that
                 // lowers one overload of a method must not cut the edge to the others.
                 // Decode the signature at most once per token, and only once a cut whose
@@ -1656,6 +1663,13 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsDateTimeFormatInfoYearMonthAdjustment(resolved))
                 throw new NotSupportedException("DateTimeFormatInfo YearMonthAdjustment requires its exact MemberRef signature");
         }
+        if (CoreIntrinsics.IsInterpolationStaticHelperName(name) && candidates.Any(CoreIntrinsics.IsInterpolationStaticHelper))
+        {
+            if (!CoreIntrinsics.IsInterpolationStaticHelperSignature(name, reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsInterpolationStaticHelperDecodedSignature(name, sig, resolved.Module)
+                || !CoreIntrinsics.IsInterpolationStaticHelper(resolved))
+                throw new NotSupportedException($"DefaultInterpolatedStringHandler {name} requires its exact MemberRef signature");
+        }
         if (CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetterName(name) && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter))
         {
             if (!CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetterSignature(reader.GetBlobReader(mr.Signature))
@@ -2131,6 +2145,13 @@ internal sealed partial class Compilation
             var adjustment = ResolveMemberRefMethod(module, handle, callerCtx);
             if (CoreIntrinsics.IsDateTimeFormatInfoYearMonthAdjustment(adjustment))
                 return adjustment;
+        }
+        if (full == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
+            && CoreIntrinsics.IsInterpolationStaticHelperName(reader.GetString(mr.Name)))
+        {
+            var helper = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsInterpolationStaticHelper(helper))
+                return helper;
         }
         if (full == "System.Globalization.DateTimeFormatInfo" && CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetterName(reader.GetString(mr.Name)))
         {

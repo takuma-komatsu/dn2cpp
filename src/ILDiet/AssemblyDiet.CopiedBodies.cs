@@ -85,6 +85,30 @@ internal sealed partial class AssemblyDiet
         return lower == 1 && upper == 1;
     }
 
+    private static bool IsCopiedInterpolationStaticHelper(MethodDefinition method, string owner)
+    {
+        if (owner != "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
+            || method.Module.Assembly?.Name.Name != "System.Private.CoreLib"
+            || method.DeclaringType.DeclaringType is not null || !method.DeclaringType.IsValueType
+            || method.DeclaringType.IsEnum || method.DeclaringType.IsInterface || method.DeclaringType.HasGenericParameters
+            || method.Attributes != (MethodAttributes.Assembly | MethodAttributes.Static | MethodAttributes.HideBySig)
+            || method.ImplAttributes != MethodImplAttributes.AggressiveInlining
+            || !method.HasBody || method.Body.Instructions.Count == 0 || method.RVA == 0
+            || method.HasThis || method.ExplicitThis || method.CallingConvention != MethodCallingConvention.Default
+            || method.HasGenericParameters || method.IsPInvokeImpl || method.HasPInvokeInfo) return false;
+        if (method.Name == "GetDefaultLength")
+            return method.ReturnType is not TypeSpecification && method.ReturnType.MetadataType == MetadataType.Int32
+                && method.Parameters.Count == 2
+                && method.Parameters.All(p => p.ParameterType is not TypeSpecification && p.ParameterType.MetadataType == MetadataType.Int32);
+        if (method.Name != "HasCustomFormatter" || method.ReturnType is TypeSpecification
+            || method.ReturnType.MetadataType != MetadataType.Boolean || method.Parameters.Count != 1
+            || method.Parameters[0].ParameterType is TypeSpecification
+            || method.Parameters[0].ParameterType.MetadataType != MetadataType.Class) return false;
+        var provider = method.Parameters[0].ParameterType.Resolve();
+        return provider is not null && provider.Module == method.Module && provider.FullName == "System.IFormatProvider"
+            && provider.IsInterface && !provider.IsValueType && provider.DeclaringType is null && !provider.HasGenericParameters;
+    }
+
     private static bool IsCopiedDateTimeFormatInfoParserFlagGetter(MethodDefinition method, string owner) =>
         method.Module.Assembly?.Name.Name == "System.Private.CoreLib"
         && owner == "System.Globalization.DateTimeFormatInfo"
@@ -365,7 +389,8 @@ internal sealed partial class AssemblyDiet
             traverse = false;
         else if (IsCopiedMemberMetadataDefinition(method, owner))
             traverse = owner == "System.Reflection.MemberInfo";
-        else if (IsCopiedDateTimeFormatInfoParserFlagGetter(method, owner)
+        else if (IsCopiedInterpolationStaticHelper(method, owner)
+            || IsCopiedDateTimeFormatInfoParserFlagGetter(method, owner)
             || IsCopiedRuntimeTypeIntroducedMethodsFactory(method, owner)
             || IsCopiedRuntimeTypeHandleCopy(method, owner) || IsCopiedAmbiguousMatchExceptionFactory(method, owner)
             || IsCopiedMemberNotFoundExceptionFactory(method, owner) || IsCopiedPrimitiveElementHelper(method, owner))
