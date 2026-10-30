@@ -1943,6 +1943,7 @@ internal sealed partial class CppEmitter
             _slotStubs.Clear();
             EmitDelegateMethodCatalog();
             EmitMemberNotFoundFactoryRow();
+            EmitDateOnlyDeconstructRow();
             _e.EmitArrayTypeInfos(_sb, _emittedEnums);
             _e.EmitMdArrayItfMap(_sb);
             _e.EmitArrayNongenericItfRows(_sb);
@@ -1964,6 +1965,28 @@ internal sealed partial class CppEmitter
             // the moment it returns (EmitTypeInfos keeps no field), so a census anywhere
             // later would report the pools as free rather than as big.
             Census();
+        }
+
+        // DateOnly owns its canonical type-info in the runtime. Expose only this
+        // retained modeled member, never a duplicate type-info or its unmodeled surface.
+        private void EmitDateOnlyDeconstructRow()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.FullName != "System.DateOnly") continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsDateOnlyDeconstruct(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "dateonlydeconstructtab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained DateOnly.Deconstruct has no metadata row.");
+                    }
+                    _e._dateOnlyDeconstructRow = address;
+                    return;
+                }
+            }
         }
 
         private void EmitMemberNotFoundFactoryRow()
@@ -3832,6 +3855,9 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsDateTimeFormatInfoMonthName(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoEraName(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoInternalMonthName(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatterns(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoSpan(method)
+                        || CoreIntrinsics.IsDateOnlyDeconstruct(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoCalendar(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoFormatFlags(method)

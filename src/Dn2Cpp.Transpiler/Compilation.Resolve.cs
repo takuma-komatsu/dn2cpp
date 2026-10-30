@@ -767,7 +767,25 @@ internal sealed partial class Compilation
                 $"Generic method instantiation via {ms.Method.Kind} is not supported yet");
         }
 
-        return InstantiateMethodOnClass(declClass, defModule, templateHandle, methodArgs);
+        var resolved = InstantiateMethodOnClass(declClass, defModule, templateHandle, methodArgs);
+        if (declClass.FullName == "System.Globalization.DateTimeFormatInfo"
+            && defModule.AssemblyName == "System.Private.CoreLib"
+            && CoreIntrinsics.IsDateTimeFormatInfoSpanName(resolved.Name))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoSpan(resolved)
+                || methodArgs is not [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char or PrimitiveTypeCode.Byte }])
+                throw new NotSupportedException("DateTimeFormatInfo TChar accessor requires its exact Char or Byte signature");
+            if (ms.Method.Kind == HandleKind.MemberReference)
+            {
+                var reference = reader.GetMemberReference((MemberReferenceHandle)ms.Method);
+                var signature = reference.DecodeMethodSignature(SigProvider,
+                    new GenericContext(declClass.Context.TypeArgs, methodArgs));
+                if (!CoreIntrinsics.IsDateTimeFormatInfoSpanSignature(reader.GetBlobReader(reference.Signature))
+                    || !CoreIntrinsics.IsDateTimeFormatInfoSpanDecodedSignature(signature, defModule))
+                    throw new NotSupportedException("DateTimeFormatInfo TChar accessor requires its exact MethodSpec MemberRef signature");
+            }
+        }
+        return resolved;
     }
 
     /// <summary>Instantiates a generic-method template (<paramref name="templateHandle"/>,
@@ -1607,6 +1625,27 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePattern(resolved))
                 throw new NotSupportedException($"DateTimeFormatInfo {name.Substring(4)} requires its exact MemberRef signature");
         }
+        if (name == "Deconstruct" && candidates.Any(CoreIntrinsics.IsDateOnlyDeconstruct))
+        {
+            if (!CoreIntrinsics.IsDateOnlyDeconstructSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateOnlyDeconstructDecodedSignature(sig)
+                || !CoreIntrinsics.IsDateOnlyDeconstruct(resolved))
+                throw new NotSupportedException("DateOnly Deconstruct requires its exact MemberRef signature");
+        }
+        if (CoreIntrinsics.IsDateTimeFormatInfoSpanName(name) && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoSpan))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoSpanSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoSpanDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsDateTimeFormatInfoSpan(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo TChar accessor requires its exact MemberRef signature");
+        }
+        if (name == "GetAllDateTimePatterns" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatterns))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatternsSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatternsDecodedSignature(sig)
+                || !CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatterns(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo GetAllDateTimePatterns(Char) requires its exact MemberRef signature");
+        }
         if (name == "set_Calendar" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter))
         {
             if (!CoreIntrinsics.IsDateTimeFormatInfoCalendarSetterSignature(reader.GetBlobReader(mr.Signature))
@@ -2002,6 +2041,18 @@ internal sealed partial class Compilation
             var generalShortTimePattern = ResolveMemberRefMethod(module, handle, callerCtx);
             if (CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePattern(generalShortTimePattern))
                 return generalShortTimePattern;
+        }
+        if (full == "System.DateOnly" && reader.StringComparer.Equals(mr.Name, "Deconstruct"))
+        {
+            var deconstruct = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateOnlyDeconstruct(deconstruct))
+                return deconstruct;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "GetAllDateTimePatterns"))
+        {
+            var calendar = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatterns(calendar))
+                return calendar;
         }
         if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "set_Calendar"))
         {

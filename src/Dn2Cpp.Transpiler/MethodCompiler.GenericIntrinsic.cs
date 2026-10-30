@@ -15,6 +15,26 @@ internal sealed partial class MethodCompiler
     /// <c>Array.Empty&lt;T&gt;</c>).</summary>
     private bool TryTokenFreeGenericIntrinsic(string declType, string name, TypeDesc[] methodArgs, MethodSpecificationHandle specification = default)
     {
+        if (declType == "System.Globalization.DateTimeFormatInfo"
+            && CoreIntrinsics.IsDateTimeFormatInfoSpanName(name))
+        {
+            var target = specification.IsNil ? _method : Comp.ResolveMethodSpec(Module, specification, Method.Context);
+            if (!CoreIntrinsics.IsDateTimeFormatInfoSpan(target)
+                || methodArgs is not [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char or PrimitiveTypeCode.Byte }])
+                throw new NotSupportedException("DateTimeFormatInfo TChar accessor requires its exact Char or Byte signature");
+            if (!specification.IsNil)
+            {
+                var raw = Reader.GetMethodSpecification(specification).Method;
+                var blob = raw.Kind == HandleKind.MethodDefinition
+                    ? Reader.GetMethodDefinition((MethodDefinitionHandle)raw).Signature
+                    : Reader.GetMemberReference((MemberReferenceHandle)raw).Signature;
+                if (!CoreIntrinsics.IsDateTimeFormatInfoSpanSignature(Reader.GetBlobReader(blob))
+                    || !CoreIntrinsics.IsDateTimeFormatInfoSpanDecodedSignature(MethodSpecSig(specification, methodArgs), target.Module))
+                    throw new NotSupportedException("DateTimeFormatInfo TChar accessor requires its exact MethodSpec signature");
+            }
+            EmitDateTimeFormatSpan(target, methodArgs[0]);
+            return true;
+        }
         // Array.Empty<T> -> the per-element-type cached singleton (matches .NET's
         // EmptyArray<T>.Value: the same instance every call, no per-call allocation).
         if (declType == "System.Array" && name == "Empty")
@@ -2238,14 +2258,9 @@ internal sealed partial class MethodCompiler
             return;
         }
 
-        // NumberFormatInfo / DateTimeFormatInfo generic span accessors
-        // (NegativeSignTChar<TChar>() and siblings) — the TChar forms of the string
-        // properties, reached from the transpiled formatting subtrees (Number.FormatFloat
-        // behind Half.ToString for char, the Utf8Formatter path for byte). BOTH widths read
-        // the SAME modeled culture: the byte arm transcodes the very string the char arm
-        // spans, so a non-invariant provider prints its own separators in UTF-8 too.
-        // DateTimeFormatInfo remains invariant-only, matching its property intercepts.
-        if ((declType is "System.Globalization.NumberFormatInfo" or "System.Globalization.DateTimeFormatInfo")
+        // NumberFormatInfo generic span accessors keep their modeled culture.
+        // DateTimeFormatInfo uses the exact token-free arm shared with retained bodies.
+        if (declType == "System.Globalization.NumberFormatInfo"
             && name.EndsWith("TChar", StringComparison.Ordinal))
         {
             bool isByte = methodArgs is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte }];
@@ -2259,18 +2274,6 @@ internal sealed partial class MethodCompiler
             string spanCt = CppTypes.Of(nfiSig.ReturnType);
             string symSpan = NewTemp(spanCt);
             string strExpr;
-            if (declType == "System.Globalization.DateTimeFormatInfo")
-                strExpr = Literals.GetOrAdd(name switch
-                {
-                    "DecimalSeparatorTChar" => ".",
-                    "DateSeparatorTChar" => "/",
-                    "TimeSeparatorTChar" => ":",
-                    "AMDesignatorTChar" => "AM",
-                    "PMDesignatorTChar" => "PM",
-                    _ => throw new NotSupportedException(
-                        $"{Method.DeclaringClass.FullName}.{Method.Name}: {declType}::{name} has no mapping yet"),
-                });
-            else
             {
                 string nfiPtr = $"({Cast(recv, "const Dn2CppNumberFormatInfo*")})";
                 strExpr = name switch

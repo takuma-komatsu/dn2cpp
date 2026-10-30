@@ -1067,6 +1067,25 @@ The exact Calendar setter checks the receiver, native read-only state and null
 value in that order, then refuses nonnull changes without inspecting the Calendar
 object or changing state. Same-instance success cannot be modeled without a
 constructed backing calendar.
+The exact Char overload of GetAllDateTimePatterns returns fresh precise String[]
+arrays with the ordered invariant alternatives and date/time Cartesian products.
+Constant format arms do not read the receiver on raw calls; dependent arms check
+it, while callvirt retains its own null check. Invalid formats preserve the UTF-16
+character in ArgumentException(format). Pattern replacement APIs remain unsupported;
+this is not a mutable locale-pattern engine.
+The exact Char/Byte TChar accessors share their direct and retained-address
+lowering. DateSeparator reads the existing mutable separator; other modeled
+values retain the invariant policy. Char spans reference string character storage,
+and Byte spans use fresh GC-managed atomic UTF-8 storage, not a new cache or a
+promise of CLR buffer identity. Existing conservative/interior-pointer rooting
+and Wasm pointer spilling govern their lifetime.
+
+DateOnly.Deconstruct snapshots its receiver and preserves the installed public
+API's sequential output writes, including overlapping output references and null
+byref partial writes. Its implementation reuses date decomposition without
+changing DateTime.GetDate. Only the exact retained Deconstruct row is exposed for
+named reflection lookup on the runtime-owned DateOnly type; this does not admit
+the rest of DateOnly's reflection surface or promise GetMethods enumeration.
 
 Numeric culture data are frozen CLR/ICU snapshots in `runtime/core/intrinsics/`.
 Native binaries never discover or load the deployment host's ICU. Reference

@@ -3084,6 +3084,8 @@ internal sealed partial class CppEmitter
         sb.AppendLine($"    dn2cpp_set_attrdata_constructor_slot({_c.CustomAttributeDataConstructorSlot()});");
         if (_delegateMethodCatalog is { } delegateMethods)
             sb.AppendLine($"    dn2cpp_set_delegate_method_catalog({delegateMethods.Sym}, {delegateMethods.Count});");
+        if (_dateOnlyDeconstructRow is { } dateOnlyRow)
+            sb.AppendLine($"    dn2cpp_set_dateonly_deconstruct_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({dateOnlyRow}));");
         if (_memberNotFoundFactoryRow is { } factoryRow)
             sb.AppendLine($"    dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({factoryRow}));");
         if (_objectVirtualInheritance is { } objectVirtuals)
@@ -3791,6 +3793,7 @@ internal sealed partial class CppEmitter
     private (string Sym, int Count)? _objectVirtualInheritance;
     private (string Sym, int Count)? _delegateMethodCatalog;
     private string? _memberNotFoundFactoryRow;
+    private string? _dateOnlyDeconstructRow;
     private (string Sym, int Count)? _delegateInterfaceTargets;
 
     /// <summary>Records the base of each unbound reference-type runtime handle whose

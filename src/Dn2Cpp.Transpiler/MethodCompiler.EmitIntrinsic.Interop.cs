@@ -543,6 +543,27 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsDateOnlyDeconstruct(callee))
+        {
+            EmitDateOnlyDeconstruct();
+            return;
+        }
+
+        if (CoreIntrinsics.IsDateTimeFormatInfoSpan(callee))
+        {
+            if (callee.Context.MethodArgs is not [{ Kind: TypeKind.Primitive,
+                    Primitive: PrimitiveTypeCode.Char or PrimitiveTypeCode.Byte } element])
+                throw new NotSupportedException("DateTimeFormatInfo TChar accessor requires Char or Byte");
+            EmitDateTimeFormatSpan(callee, element);
+            return;
+        }
+
+        if (CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatterns(callee))
+        {
+            EmitAllDateTimePatterns(callee);
+            return;
+        }
+
         if (CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(callee))
         {
             string calendar = Cast(Pop(), "Dn2CppObject*");
