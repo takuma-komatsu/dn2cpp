@@ -6,6 +6,8 @@ vector_value_probe() {
     [ -z "${SCALAR:-}" ] || hardware=0
     gate_capture_ok "$out/value-oracle" run_bounded env DOTNET_EnableAVX=0 dotnet "$_CG_APP" vector-value-only || return 1
     python3 gates/fixtures/vector-value/compare-output.py "$out/value-oracle.stdout" || return 1
+    gate_capture_ok "$out/fixed-value-oracle" run_bounded env DOTNET_EnableAVX=0 dotnet "$_CG_APP" vector-fixed-value-only || return 1
+    python3 gates/fixtures/vector-fixed-value/compare-output.py "$out/fixed-value-oracle.stdout" || return 1
     gate_capture_ok "$out/unsupported-oracle" run_bounded env DOTNET_EnableAVX=0 dotnet "$_CG_APP" vector-unsupported-only || return 1
     python3 gates/fixtures/vector-unsupported/compare-output.py "$out/unsupported-oracle.stdout" || return 1
     python3 gates/fixtures/vector-value/compare-output.py "$out/oracle.stdout" --full || return 1
@@ -16,6 +18,7 @@ vector_value_probe() {
         gate_capture_ok "$out/value-$axis-emit" invoke_cli "$_CG_APP" -r "$_CG_CORELIB" --auto-ref \
             "${flags[@]}" -o "$emit" || return 1
         gate_capture_ok "$out/value-$axis-generated" python3 gates/fixtures/vector-value/check-generated.py "$emit" || return 1
+        gate_capture_ok "$out/value-$axis-fixed-generated" python3 gates/fixtures/vector-fixed-value/check-generated.py "$emit" || return 1
         gate_capture_ok "$out/value-$axis-unsupported-generated" python3 gates/fixtures/vector-unsupported/check-generated.py "$emit" || return 1
         gate_capture_ok "$out/value-$axis-unsupported-layouts" python3 gates/fixtures/vector-unsupported/check-layouts.py "$emit" --abi || return 1
         compile_console "$emit" VectorProbe || return 1
@@ -26,6 +29,10 @@ vector_value_probe() {
         gate_capture_ok "$out/value-$axis-full" run_bounded "./$emit/VectorProbe$EXE_EXT" || return 1
         gate_output compare "$out/value-$axis-full.stdout" "$out/oracle.stdout" --policy crlf || return 1
         python3 gates/fixtures/vector-value/compare-output.py "$out/value-$axis-full.stdout" --full || return 1
+        gate_capture_ok "$out/value-$axis-fixed-run" run_bounded "./$emit/VectorProbe$EXE_EXT" vector-fixed-value-only || return 1
+        gate_output compare "$out/value-$axis-fixed-run.stdout" "$out/fixed-value-oracle.stdout" --policy crlf || return 1
+        python3 gates/fixtures/vector-fixed-value/compare-output.py "$out/value-$axis-fixed-run.stdout" || return 1
+        [ "$(grep -Ec '^fixed vector actual four-width tuple interface callable ABI passed hw=(0|1) pointer=(4|8)$' "$out/value-$axis-fixed-run.stderr")" = 1 ] || return 1
         gate_capture_ok "$out/value-$axis-unsupported-run" run_bounded "./$emit/VectorProbe$EXE_EXT" vector-unsupported-only || return 1
         gate_capture_ok "$out/value-$axis-unsupported-compare" vector_unsupported_compare_target \
             "$out/value-$axis-unsupported-run.stdout" "$out/unsupported-oracle.stdout" \
@@ -34,6 +41,7 @@ vector_value_probe() {
     if [ -z "${SCALAR:-}" ]; then
         vector_value_metadata_probe "$out" || return 1
         vector_unsupported_metadata_probe "$out" || return 1
+        vector_fixed_value_metadata_probe "$out/fixed-metadata" || return 1
     fi
 }
 
@@ -51,6 +59,8 @@ vector_value_wasm_probe() (
     mkdir -p "$out"
     gate_capture_ok "$out/value-oracle" run_bounded env DOTNET_EnableAVX=0 dotnet "$_CG_APP" vector-value-only || return 1
     python3 gates/fixtures/vector-value/compare-output.py "$out/value-oracle.stdout" || return 1
+    gate_capture_ok "$out/fixed-value-oracle" run_bounded env DOTNET_EnableAVX=0 dotnet "$_CG_APP" vector-fixed-value-only || return 1
+    python3 gates/fixtures/vector-fixed-value/compare-output.py "$out/fixed-value-oracle.stdout" || return 1
     gate_capture_ok "$out/unsupported-oracle" run_bounded env DOTNET_EnableAVX=0 dotnet "$_CG_APP" vector-unsupported-only || return 1
     python3 gates/fixtures/vector-unsupported/compare-output.py "$out/unsupported-oracle.stdout" || return 1
     for axis in raw diet; do
@@ -60,6 +70,7 @@ vector_value_wasm_probe() (
         gate_capture_ok "$out/value-wasm-$axis-emit" invoke_cli "$_CG_APP" -r "$corelib" --auto-ref \
             "${flags[@]}" -o "$emit" || return 1
         gate_capture_ok "$out/value-wasm-$axis-generated" python3 gates/fixtures/vector-value/check-generated.py "$emit" || return 1
+        gate_capture_ok "$out/value-wasm-$axis-fixed-generated" python3 gates/fixtures/vector-fixed-value/check-generated.py "$emit" || return 1
         gate_capture_ok "$out/value-wasm-$axis-unsupported-generated" python3 gates/fixtures/vector-unsupported/check-generated.py "$emit" || return 1
         gate_capture_ok "$out/value-wasm-$axis-unsupported-layouts" python3 gates/fixtures/vector-unsupported/check-layouts.py "$emit" --abi || return 1
         compile_console_wasm "$emit" VectorProbe || return 1
@@ -68,6 +79,11 @@ vector_value_wasm_probe() (
         python3 gates/fixtures/vector-value/compare-output.py "$out/value-wasm-$axis-run.stdout" || return 1
         [ "$(grep -Ec '^vector value actual tuple equality/hash passed hw=(0|1) pointer=4$' "$out/value-wasm-$axis-run.stderr")" = 1 ] || return 1
         [ "$(grep -Ec '^vector value target pointer=4 nint-count=[0-9]+ independent-lanes=4$' "$out/value-wasm-$axis-run.stderr")" = 1 ] || return 1
+        gate_capture_ok "$out/value-wasm-$axis-fixed-run" run_bounded node "./$emit/VectorProbe.js" vector-fixed-value-only || return 1
+        gate_output compare "$out/value-wasm-$axis-fixed-run.stdout" "$out/fixed-value-oracle.stdout" --policy crlf || return 1
+        python3 gates/fixtures/vector-fixed-value/compare-output.py "$out/value-wasm-$axis-fixed-run.stdout" || return 1
+        [ "$(grep -Ec '^fixed vector actual four-width tuple interface callable ABI passed hw=(0|1) pointer=(4|8)$' "$out/value-wasm-$axis-fixed-run.stderr")" = 1 ] || return 1
+        [ "$(grep -Ec '^fixed vector target pointer=4 independent-native-lanes=2,4,8,16$' "$out/value-wasm-$axis-fixed-run.stderr")" = 1 ] || return 1
         gate_capture_ok "$out/value-wasm-$axis-unsupported-run" run_bounded node "./$emit/VectorProbe.js" vector-unsupported-only || return 1
         gate_capture_ok "$out/value-wasm-$axis-unsupported-compare" vector_unsupported_compare_target \
             "$out/value-wasm-$axis-unsupported-run.stdout" "$out/unsupported-oracle.stdout" \
@@ -95,7 +111,7 @@ vector_value_metadata_probe() {
                 "$compiler" "$_CG_CORELIB" "$out/context-spec-$owner-$member.dll" "$owner" "$member" || return 1
         done
     done
-    for mode in valid object-valid hash-valid constrained-equatable constrained-object constrained-hash boxed-valid; do
+    for mode in valid object-valid hash-valid constrained-equatable constrained-object constrained-hash boxed-valid fixed-owner; do
         input="$out/$mode.dll"
         gate_capture_ok "$out/$mode-generate" run_bounded dotnet "$fixture" generate "$mode" "$_CG_CORELIB" "$input" || return 1
         gate_capture_ok "$out/$mode-reference" run_bounded dotnet "$fixture" reference "$compiler" "$_CG_CORELIB" "$input" accept || return 1
@@ -115,7 +131,7 @@ vector_value_metadata_probe() {
         gate_capture "$out/$mode-reject" invoke_cli "$input" -r "$_CG_CORELIB" --no-ildiet -o "$out/$mode-emitted" || return 1
         vector_value_check_rejection "$mode" "$out/$mode-reject" || return 1
     done
-    for mode in bool char decimal int128 uint128 enum struct open fixed-owner foreign-owner; do
+    for mode in bool char decimal int128 uint128 enum struct open foreign-owner; do
         input="$out/scope-$mode.dll"
         gate_capture_ok "$out/scope-$mode-generate" run_bounded dotnet "$fixture" generate "$mode" "$_CG_CORELIB" "$input" || return 1
         gate_capture_ok "$out/scope-$mode-reference" run_bounded dotnet "$fixture" reference "$compiler" "$_CG_CORELIB" "$input" reject || return 1
@@ -125,7 +141,7 @@ vector_value_metadata_probe() {
 # Zero-argument MethodSpecs are invalid ECMA signatures. The SRM reflection scan
 # can reject them before the feature guard; this is not a managed runtime result.
 vector_value_check_rejection() {
-    local mode="$1" evidence="$2" status
+    local mode="$1" evidence="$2" status assembly="${3:-VectorValueGuardInput}"
     status=$(cat "$evidence.status")
     if { [ "$mode" = methodspec-zero ] || [ "$mode" = boxed-methodspec-zero ]; } && [ "$status" = 134 ]; then
         grep -Fx 'Unhandled exception. System.BadImageFormatException: Signature type sequence must have at least one element.' \
@@ -142,7 +158,7 @@ vector_value_check_rejection() {
         constrained-foreign-object) foreign_identity='System.Object' ;;
     esac
     if [ -n "$foreign_identity" ]; then
-        grep -F "input type '$foreign_identity' in assembly 'VectorValueGuardInput' conflicts with a CoreLib/runtime type identity" \
+        grep -F "input type '$foreign_identity' in assembly '$assembly' conflicts with a CoreLib/runtime type identity" \
             "$evidence.stderr" >/dev/null || return 1
         echo "vector value $mode: refused by input identity before family validator (2)"
         return 0

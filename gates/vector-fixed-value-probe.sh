@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Exact fixed-width vector value metadata admission and contextual cache guards.
+# Caller owns serial builds and supplies fresh output roots.
+vector_fixed_value_metadata_probe() {
+    local out="$1" width mode input route owner member
+    local fixture="${DN2CPP_FIXED_VECTOR_VALUE_FIXTURE_DLL:-gates/fixtures/vector-fixed-value/bin/$CONFIG/$TFM/FixedVectorValueFixture.dll}"
+    if [ -z "${DN2CPP_FIXED_VECTOR_VALUE_FIXTURE_DLL:-}" ]; then
+        build_gate_proj gates/fixtures/vector-fixed-value/FixedVectorValueFixture.csproj || return 1
+    fi
+    local compiler="${DN2CPP_FIXED_VECTOR_VALUE_COMPILER_DLL:-$(dirname "${DN2CPP_CLI_DLL:-src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}")/Dn2Cpp.Transpiler.dll}"
+    mkdir -p "$out" || return 1
+    for width in 64 128 256 512; do
+        local wout="$out/width-$width"
+        mkdir -p "$wout" || return 1
+        gate_capture_ok "$wout/guards" run_bounded dotnet "$fixture" "$width" guard "$compiler" "$_CG_CORELIB" "$wout/all.dll" || return 1
+        for route in direct boxed; do
+            gate_capture_ok "$wout/context-$route" run_bounded dotnet "$fixture" "$width" context "$compiler" "$_CG_CORELIB" "$wout/context-$route.dll" "$route" || return 1
+        done
+        for owner in var mvar; do
+            for member in typed hash; do
+                gate_capture_ok "$wout/context-spec-$owner-$member" run_bounded dotnet "$fixture" "$width" context-spec "$compiler" "$_CG_CORELIB" "$wout/context-spec-$owner-$member.dll" "$owner" "$member" direct || return 1
+            done
+            gate_capture_ok "$wout/context-spec-boxed-$owner" run_bounded dotnet "$fixture" "$width" context-spec "$compiler" "$_CG_CORELIB" "$wout/context-spec-boxed-$owner.dll" "$owner" typed boxed || return 1
+        done
+        for mode in valid object-valid hash-valid constrained-equatable constrained-object constrained-hash boxed-valid; do
+            input="$wout/$mode.dll"
+            gate_capture_ok "$wout/$mode-generate" run_bounded dotnet "$fixture" "$width" generate "$mode" "$_CG_CORELIB" "$input" || return 1
+            gate_capture_ok "$wout/$mode-reference" run_bounded dotnet "$fixture" "$width" reference "$compiler" "$_CG_CORELIB" "$input" accept || return 1
+        done
+        for mode in static explicit-this vararg generic byref-result return-modopt wrong-result \
+            byref-input modopt modreq wrong-closed wrong-width wrong-family wrong-input extra missing trailing owner-trailing \
+            methodspec methodspec-zero constrained-foreign-equatable constrained-wrong-equatable constrained-foreign-object \
+            boxed-modopt boxed-trailing boxed-owner-trailing boxed-methodspec boxed-methodspec-zero \
+            constrained-equatable-modopt constrained-equatable-trailing constrained-equatable-owner-trailing \
+            constrained-object-modopt constrained-object-trailing constrained-receiver-modopt constrained-receiver-trailing \
+            object-static object-explicit-this object-vararg object-generic object-byref-result object-return-modopt object-wrong-result \
+            hash-static hash-explicit-this hash-vararg hash-generic hash-byref-result hash-return-modopt hash-wrong-result; do
+            input="$wout/$mode.dll"
+            gate_capture_ok "$wout/$mode-generate" run_bounded dotnet "$fixture" "$width" generate "$mode" "$_CG_CORELIB" "$input" || return 1
+            gate_capture_ok "$wout/$mode-reference" run_bounded dotnet "$fixture" "$width" reference "$compiler" "$_CG_CORELIB" "$input" reject || return 1
+            gate_capture "$wout/$mode-reject" invoke_cli "$input" -r "$_CG_CORELIB" --no-ildiet -o "$wout/$mode-emitted" || return 1
+            vector_value_check_rejection "$mode" "$wout/$mode-reject" FixedVectorValueGuardInput || return 1
+        done
+        for mode in bool char decimal int128 uint128 enum struct open foreign-owner; do
+            input="$wout/scope-$mode.dll"
+            gate_capture_ok "$wout/scope-$mode-generate" run_bounded dotnet "$fixture" "$width" generate "$mode" "$_CG_CORELIB" "$input" || return 1
+            gate_capture_ok "$wout/scope-$mode-reference" run_bounded dotnet "$fixture" "$width" reference "$compiler" "$_CG_CORELIB" "$input" reject || return 1
+        done
+        gate_capture_ok "$wout/mixed-generate" run_bounded dotnet "$fixture" "$width" mixed-generate "$_CG_CORELIB" "$wout/mixed.dll" || return 1
+        gate_capture_ok "$wout/mixed-require" run_bounded dotnet "$fixture" "$width" mixed "$compiler" "$_CG_CORELIB" "$wout/mixed.dll" require || return 1
+    done
+}

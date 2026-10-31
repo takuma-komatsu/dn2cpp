@@ -11,7 +11,8 @@ internal static partial class CoreIntrinsics
         && IsVectorValueClass(owner);
 
     internal static bool IsVectorValueClass(ClassInfo owner) =>
-        IsVectorExplicitOwner(owner) && owner.IntrinsicCppName == "Dn2CppVectorT"
+        ((IsVectorExplicitOwner(owner) && owner.IntrinsicCppName == "Dn2CppVectorT")
+            || IsFixedVectorValueStorageClass(owner))
         && owner.IsValueType && !owner.IsEnum && !owner.IsInterface && owner.GenericArity == 1
         && owner.Context.TypeArgs is [var element] && IsVectorNumericElement(element);
 
@@ -19,7 +20,9 @@ internal static partial class CoreIntrinsics
     // escape into the older name-based vector dispatch.
     internal static bool IsVectorValueCandidate(ClassInfo owner, string name) =>
         name is "Equals" or "GetHashCode"
-        && (IsVectorExplicitOwner(owner) || owner.IntrinsicCppName == "Dn2CppVectorT");
+        && (IsVectorExplicitOwner(owner) || IsFixedVectorValueOwner(owner)
+            || owner.IntrinsicCppName is "Dn2CppVectorT" or "Dn2CppVector64" or "Dn2CppVector128"
+                or "Dn2CppVector256" or "Dn2CppVector512");
 
     internal static bool IsVectorValueSignature(MethodSignature<TypeDesc> signature, string name, ClassInfo owner)
     {
@@ -102,7 +105,8 @@ internal static partial class CoreIntrinsics
         var definition = reader.GetTypeDefinition(itf.Handle);
         return definition.GetDeclaringType().IsNil && definition.GetGenericParameters().Count == 1
             && reader.StringComparer.Equals(definition.Namespace, "System")
-            && reader.StringComparer.Equals(definition.Name, "IEquatable`1");
+            && reader.StringComparer.Equals(definition.Name, "IEquatable`1")
+            && (!IsFixedVectorValueOwner(vector) || IsVectorManagedEquatableConstraints(itf));
     }
 
     internal static bool IsVectorValueEquatableMethod(MethodInfo method) =>

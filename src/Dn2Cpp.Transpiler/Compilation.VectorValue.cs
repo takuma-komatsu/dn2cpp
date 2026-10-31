@@ -200,7 +200,7 @@ internal sealed partial class Compilation
             HandleKind.MemberReference => module.Reader.GetMemberReference((MemberReferenceHandle)specification.Method).Parent,
             _ => default(EntityHandle),
         };
-        if (VectorValueNamedOwner(module, parent)) throw VectorValueUnsupported();
+        if (VectorValueNamedOwner(module, parent, includeFixed: true)) throw VectorValueUnsupported();
         if (parent.Kind == HandleKind.TypeSpecification
             && ResolveTypeTokenForScan(module, parent, context) is { Kind: TypeKind.Class, Class: { } resolvedOwner }
             && CoreIntrinsics.IsVectorValueCandidate(resolvedOwner, MethodSpecMethodName(module, specification)!))
@@ -209,17 +209,18 @@ internal sealed partial class Compilation
             && parent.Kind == HandleKind.TypeSpecification
             && ResolveTypeTokenForScan(module, parent, context) is { Kind: TypeKind.Class, Class: { } itf }
             && itf.Context.TypeArgs is [{ Kind: TypeKind.Class, Class: { } vector }]
-            && CoreIntrinsics.IsVectorExplicitOwner(vector))
+            && (CoreIntrinsics.IsVectorExplicitOwner(vector) || CoreIntrinsics.IsFixedVectorValueOwner(vector)))
         {
             EnsureShape(vector);
             EnsureShape(itf);
             if (CoreIntrinsics.IsVectorValueCallableEquatable(itf, vector)
-                || CoreIntrinsics.IsVectorManagedEquatableCandidate(itf, vector))
+                || CoreIntrinsics.IsVectorManagedEquatableCandidate(itf, vector)
+                || CoreIntrinsics.IsFixedVectorValueEquatableCandidate(itf, vector))
                 throw VectorValueUnsupported();
         }
     }
 
-    internal static bool VectorValueNamedOwner(Module module, EntityHandle handle, bool includeFacade = false)
+    internal static bool VectorValueNamedOwner(Module module, EntityHandle handle, bool includeFacade = false, bool includeFixed = false)
     {
         var reader = module.Reader;
         if (handle.Kind == HandleKind.TypeSpecification)
@@ -247,14 +248,24 @@ internal sealed partial class Compilation
         if (handle.Kind == HandleKind.TypeDefinition)
         {
             var definition = reader.GetTypeDefinition((TypeDefinitionHandle)handle);
-            return reader.StringComparer.Equals(definition.Namespace, "System.Numerics")
+            return includeFixed && reader.StringComparer.Equals(definition.Namespace, "System.Runtime.Intrinsics")
+                && (reader.StringComparer.Equals(definition.Name, "Vector64`1")
+                    || reader.StringComparer.Equals(definition.Name, "Vector128`1")
+                    || reader.StringComparer.Equals(definition.Name, "Vector256`1")
+                    || reader.StringComparer.Equals(definition.Name, "Vector512`1"))
+                || reader.StringComparer.Equals(definition.Namespace, "System.Numerics")
                 && (reader.StringComparer.Equals(definition.Name, "Vector`1")
                     || includeFacade && reader.StringComparer.Equals(definition.Name, "Vector"));
         }
         if (handle.Kind == HandleKind.TypeReference)
         {
             var reference = reader.GetTypeReference((TypeReferenceHandle)handle);
-            return reader.StringComparer.Equals(reference.Namespace, "System.Numerics")
+            return includeFixed && reader.StringComparer.Equals(reference.Namespace, "System.Runtime.Intrinsics")
+                && (reader.StringComparer.Equals(reference.Name, "Vector64`1")
+                    || reader.StringComparer.Equals(reference.Name, "Vector128`1")
+                    || reader.StringComparer.Equals(reference.Name, "Vector256`1")
+                    || reader.StringComparer.Equals(reference.Name, "Vector512`1"))
+                || reader.StringComparer.Equals(reference.Namespace, "System.Numerics")
                 && (reader.StringComparer.Equals(reference.Name, "Vector`1")
                     || includeFacade && reader.StringComparer.Equals(reference.Name, "Vector"));
         }

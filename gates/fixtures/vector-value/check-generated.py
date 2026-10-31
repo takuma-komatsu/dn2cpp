@@ -34,7 +34,7 @@ adapters = set()
 bindings = set()
 for match in function.finditer(header_original):
     if 'Program_VectorValueAddressWrapper_' in match.group(2):
-        assert 'dn2cpp_vec_value_equals<double>' in match.group(0)
+        assert 'dn2cpp_vec_value_equals<double, 16>' in match.group(0)
         routes.add('wrapper-address')
 changes = []
 for path in sorted(out.glob('generated*.cpp')):
@@ -52,7 +52,7 @@ for path in sorted(out.glob('generated*.cpp')):
                 assert token in body, ('object/hash method-group binding', token)
             assert body.count('dn2cpp_box(&ti_System_Numerics_Vector_Double,') >= 3
             bindings.update(re.findall(r'&dgadapn_(Vector_1_Equals_\w+)', body))
-        if name.startswith('Vector_1_Equals_') and 'dn2cpp_vec_value_equals<double>' in body:
+        if name.startswith('Vector_1_Equals_') and 'dn2cpp_vec_value_equals<double, 16>' in body:
             assert 'std::memcpy' in body, 'boxed receiver must be copied to aligned storage'
             wrappers.add(name)
             kind = 6
@@ -62,7 +62,7 @@ for path in sorted(out.glob('generated*.cpp')):
             declaration, target_body = value_targets[target]
             if 'Dn2CppVectorT a0)' in match.group(1):
                 assert target + '(' in body and '__target + 1' in body
-                assert 'dn2cpp_vec_value_equals<double>' in target_body
+                assert 'dn2cpp_vec_value_equals<double, 16>' in target_body
                 adapters.add(target)
                 kind = 7
             else:
@@ -75,21 +75,21 @@ for path in sorted(out.glob('generated*.cpp')):
                 assert re.search(r'Vector_1_(?:op_Equality|U3CEqualsU3Eg__SoftwareFallback)\w*\(', target_body), ('managed adapter must reach real value body', target)
                 managed_payloads.add(value_type)
         if 'VectorValuePair_TisDouble_' in name:
-            for token in ('dn2cpp_vec_value_equals<double>', 'dn2cpp_vec_value_hash<double>',
-                          'dn2cpp_vec_value_object_equals<double>', 'dn2cpp_vec_equals_all<double, 16>',
+            for token in ('dn2cpp_vec_value_equals<double, 16>', 'dn2cpp_vec_value_hash<double, 16>',
+                          'dn2cpp_vec_value_object_equals<double, 16>', 'dn2cpp_vec_equals_all<double, 16>',
                           'dn2cpp_vec_equals<double, 16>', 'dn2cpp_object_equals_virtual'):
                 assert token in body, (name, token)
             routes.add('direct')
             kind = 2
-        if 'VectorValueConstrainedEquals_' in name and 'dn2cpp_vec_value_equals<double>' in body:
+        if 'VectorValueConstrainedEquals_' in name and 'dn2cpp_vec_value_equals<double, 16>' in body:
             routes.add('constrained-equality')
             kind = 3
-        if 'VectorValueConstrainedHash_' in name and 'dn2cpp_vec_value_hash<double>' in body:
+        if 'VectorValueConstrainedHash_' in name and 'dn2cpp_vec_value_hash<double, 16>' in body:
             routes.add('constrained-hash')
             kind = 4
-        if 'ValueTuple_2_Equals_' in name and 'dn2cpp_vec_value_equals<double>' in body:
+        if 'ValueTuple_2_Equals_' in name and 'dn2cpp_vec_value_equals<double, 16>' in body:
             kind = 0
-        if 'ValueTuple_2_GetHashCode_' in name and 'dn2cpp_vec_value_hash<double>' in body:
+        if 'ValueTuple_2_GetHashCode_' in name and 'dn2cpp_vec_value_hash<double, 16>' in body:
             kind = 1
         if kind is not None:
             seen.add(kind)
@@ -101,13 +101,13 @@ for path in sorted(out.glob('generated*.cpp')):
     changed = function.sub(instrument, original)
     def interface_counter(match):
         name, body = match.group(1), match.group(2)
-        assert 'dn2cpp_vec_value_equals<double>' in body
+        assert 'dn2cpp_vec_value_equals<double, 16>' in body
         assert '(const void*)&' + name in original
         assert 'vector_value_itfs_System_Numerics_Vector_Double' in original
         type_row = re.search(r'^const Dn2CppTypeInfo ti_System_Numerics_Vector_Double = .*$', original, re.M)
         assert type_row and all(token in type_row.group(0) for token in (
             'vector_value_itfs_System_Numerics_Vector_Double',
-            '&dn2cpp_vec_value_box_hash<double>', '&dn2cpp_vec_value_box_equals<double>'))
+            '&dn2cpp_vec_value_box_hash<double, 16>', '&dn2cpp_vec_value_box_equals<double, 16>'))
         seen.add(5)
         return match.group(0).replace('{', '{ dn2cpp_vector_value_witness(5);', 1)
     changed = re.sub(r'^static int32_t (vector_value_itf_System_Numerics_Vector_Double_\w+_equals)\([^\n]*\) \{([^\n]*)\}$',
@@ -123,8 +123,8 @@ assert seen == {0, 1, 2, 3, 4, 5, 6, 7}, ('actual tuple/direct/constrained helpe
 assert verified == 1, ('tuple witness caller', verified)
 assert routes == {'direct', 'constrained-equality', 'constrained-hash', 'wrapper-address'}, routes
 original = header_original
-assert 'dn2cpp_vec_value_box_equals<double>' in original or any(
-    'dn2cpp_vec_value_box_equals<double>' in p.read_text() for p in out.glob('generated*.cpp')), 'boxed double hook missing'
+assert 'dn2cpp_vec_value_box_equals<double, 16>' in original or any(
+    'dn2cpp_vec_value_box_equals<double, 16>' in p.read_text() for p in out.glob('generated*.cpp')), 'boxed double hook missing'
 backup = header.with_suffix('.h.vector-value-original')
 assert not backup.exists(), backup
 if check_only:

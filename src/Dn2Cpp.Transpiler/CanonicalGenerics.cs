@@ -217,10 +217,11 @@ internal sealed class CanonicalGenerics
         // satellites like Stack<SortedSet<T>.Node>, and only the recursive form makes
         // the grouped user's C++ pointer type name the same struct. Intrinsic generics
         // (Task-family, SIMD vectors) lower to runtime structs and stay put.
-        // An unsupported Numerics vector has ordinary managed storage. Replacing
+        // An unsupported vector has ordinary managed storage. Replacing
         // its enum argument with an integer placeholder would select a mapped vector.
         if (cls.GenericArity == 0 || cls.Context.TypeArgs.Length != cls.GenericArity
-            || cls.IntrinsicCppName is not null || CoreIntrinsics.IsVectorExplicitOwner(cls))
+            || cls.IntrinsicCppName is not null || CoreIntrinsics.IsVectorExplicitOwner(cls)
+            || CoreIntrinsics.IsFixedVectorValueOwner(cls))
             return t;
         var args = cls.Context.TypeArgs;
         var canon = new TypeDesc[args.Length];

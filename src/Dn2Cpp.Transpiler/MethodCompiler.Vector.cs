@@ -246,7 +246,7 @@ internal sealed partial class MethodCompiler
     {
         // Instance value methods require original metadata authority; no name-only
         // vector route may silently substitute numeric equality or object identity.
-        if (vecCpp == "Dn2CppVectorT" && name is "Equals" or "GetHashCode"
+        if (name is "Equals" or "GetHashCode"
             && (sig.Header.IsInstance || VecCppName(sig.ReturnType) is null))
             throw new NotSupportedException("Vector<T> value methods require an exact supported reference");
         string et = CppTypes.StorageOf(elem);   // the template element type T

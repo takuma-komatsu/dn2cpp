@@ -685,6 +685,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     public string Compile()
     {
         TaintCanonicalVectorOwner(_method.DeclaringClass);
+        TaintCanonicalFixedVectorValueOwner(_method.DeclaringClass, _method.Name);
         if (SharedTrial && IsNumericsVectorFacade(_method.DeclaringClass))
             foreach (var argument in _method.Context.MethodArgs)
                 TaintIfCanonical(argument, "numerics-vector-element");
@@ -3120,7 +3121,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                 var obj = Pop();
                 // A shared-layout member is declared with the owner's erased
                 // spelling; cast the load back to this site's real spelling.
-                string fldExpr = RuntimeValueFieldRead(cls, fld, obj) ?? FieldAccess(cls, fld, obj);
+                string fldExpr = FixedVectorFieldRead(cls, fld, obj)
+                    ?? RuntimeValueFieldRead(cls, fld, obj) ?? FieldAccess(cls, fld, obj);
                 if (LayoutFieldType(cls, fld) != CppTypes.FieldOf(fld))
                     fldExpr = $"(({CppTypes.Of(fld.Type)})({fldExpr}))";
                 Push(CppTypes.KindOf(fld.Type), CppTypes.Of(fld.Type), fldExpr);
@@ -3160,7 +3162,11 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // Store with the member's declared spelling — the owner's erased
                 // type when the declaring class shares its struct layout.
                 string storeType = LayoutFieldType(cls, fld);
-                if (obj.Kind == StackKind.Struct)
+                if (TryFixedVectorFieldStore(cls, fld, obj, val))
+                {
+                    if (obj.Kind == StackKind.Struct) break;
+                }
+                else if (obj.Kind == StackKind.Struct)
                 {
                     // stfld into a field of a by-value struct: write through the
                     // struct's addressable temp so a dup'd sibling (the object-
@@ -3169,7 +3175,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                     Emit($"{FieldAccess(cls, fld, obj with { Expr = StructLValue(obj) })} = {Cast(val, storeType)};");
                     break;
                 }
-                Emit($"{FieldAccess(cls, fld, obj)} = {Cast(val, storeType)};");
+                else
+                    Emit($"{FieldAccess(cls, fld, obj)} = {Cast(val, storeType)};");
                 if (fld.Type.ContainsGcReferences())
                 {
                     string barrier = obj.Kind == StackKind.Ref
@@ -3198,6 +3205,12 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // pointer type; cast it to this site's real spelling (same
                 // object width — the canonicalization is layout-preserving).
                 string wantPtr = CppTypes.FieldOf(fld) + "*";
+                if (NeedsFixedVectorFieldCopy(cls, fld))
+                {
+                    Push(StackKind.Ptr, wantPtr, $"(({wantPtr}){FixedVectorFieldAddress(cls, fld, obj)})");
+                    Top = Top with { StaticType = TypeDesc.MakeByRef(fld.Type) };
+                    break;
+                }
                 bool erasedMember = LayoutFieldType(cls, fld) != CppTypes.FieldOf(fld);
                 // ldflda of an [InlineArray] buffer's element field: the field is
                 // emitted as a C array, so decay to the first element's address —
@@ -3381,7 +3394,13 @@ internal sealed partial class MethodCompiler : IEvalStack
                 string mt = CppTypes.StorageOf(iot);
                 var p = Pop();
                 string zero = CppTypes.ZeroInitExpr(mt);
-                Emit($"*(({mt}*)({p.Expr})) = {zero};");
+                if (_c.ContainsFixedVectorStorage(iot))
+                {
+                    string value = NewTemp(mt);
+                    Emit($"{value} = {zero};");
+                    Emit($"std::memcpy((void*)({p.Expr}), &{value}, sizeof({value}));");
+                }
+                else Emit($"*(({mt}*)({p.Expr})) = {zero};");
                 break;
             }
             case ILOpCode.Ldobj:
@@ -3391,6 +3410,13 @@ internal sealed partial class MethodCompiler : IEvalStack
                 string ct = CppTypes.Of(t);
                 string mt = CppTypes.StorageOf(t);
                 var p = Pop();
+                if (_c.ContainsFixedVectorStorage(t))
+                {
+                    string value = NewTemp(ct);
+                    Emit($"std::memcpy(&{value}, (const void*)({p.Expr}), sizeof({value}));");
+                    Push(CppTypes.KindOf(t), ct, value);
+                    break;
+                }
                 Push(CppTypes.KindOf(t), ct,
                     CppTypes.KindOf(t) == StackKind.Ref && !IsHeaderlessWrapCpp(ct)
                         ? $"({ct})dn2cpp_byref_load_ref((const void*)({p.Expr}))"
@@ -3405,7 +3431,13 @@ internal sealed partial class MethodCompiler : IEvalStack
                 string mt = CppTypes.StorageOf(t);
                 var val = Pop();
                 var p = Pop();
-                Emit(mt == ct
+                if (_c.ContainsFixedVectorStorage(t))
+                {
+                    string value = NewTemp(mt);
+                    Emit($"{value} = {Cast(val, mt)};");
+                    Emit($"std::memcpy((void*)({p.Expr}), &{value}, sizeof({value}));");
+                }
+                else Emit(mt == ct
                     ? $"*(({ct}*)({p.Expr})) = {Cast(val, ct)};"
                     : $"*(({mt}*)({p.Expr})) = ({mt})({Cast(val, ct)});");
                 if (t.ContainsGcReferences())
@@ -3942,6 +3974,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // adapter path below — so `ldftn` of a closed predicate-combiner or
                 // comparison helper is supported, not just a plain MethodDefinition.
                 TaintCanonicalVectorOperation(SRME.EntityHandle(insn.Token));
+                TaintCanonicalFixedVectorValueOperation(SRME.EntityHandle(insn.Token));
                 var m = ResolveMethodHandle(SRME.EntityHandle(insn.Token), "ldftn");
                 // --trim-godot-classes, the emit-side ROUTE: a deferred registry
                 // lambda's body is never emitted, so its symbol must never be named
@@ -4055,6 +4088,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // delegate (e.g. the EnumerableSorter<T> comparison helpers) resolves to
                 // its vtable slot, rather than only a plain MethodDefinition.
                 TaintCanonicalVectorOperation(SRME.EntityHandle(insn.Token));
+                TaintCanonicalFixedVectorValueOperation(SRME.EntityHandle(insn.Token));
                 var m = ResolveMethodHandle(SRME.EntityHandle(insn.Token), "ldvirtftn");
                 if (Compilation.RuntimeNumericProviderConsumer(m))
                     _c.ReachFormatProviderGetFormat();

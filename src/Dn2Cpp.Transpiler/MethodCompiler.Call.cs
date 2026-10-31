@@ -366,6 +366,7 @@ internal sealed partial class MethodCompiler
         _callIsVirtual = isCallvirt;
         var handle = SRME.EntityHandle(insn.Token);
         TaintCanonicalVectorOperation(handle);
+        TaintCanonicalFixedVectorValueOperation(handle);
         if (_constrained?.Class is { } vectorReceiver) TaintCanonicalVectorOwner(vectorReceiver);
         EnsureCallCctorBefore(handle);
         // Enum.HasFlag(flag): both the receiver and the flag arrive as boxed Enum
@@ -3675,7 +3676,7 @@ internal sealed partial class MethodCompiler
         if (keyType is { Kind: TypeKind.Class, Class.IsEnum: true })
             return $"(int32_t)({Cast(key, "int32_t")})";
         if (CoreIntrinsics.IsVectorValueType(keyType))
-            return $"dn2cpp_vec_value_hash<{CppTypes.StorageOf(keyType.Class!.Context.TypeArgs[0])}>({Cast(key, "Dn2CppVectorT")})";
+            return $"dn2cpp_vec_value_hash<{CppTypes.StorageOf(keyType.Class!.Context.TypeArgs[0])}, {CoreIntrinsics.VectorValueWidth(keyType.Class)}>({Cast(key, keyType.Class.IntrinsicCppName!)})";
         if (IsCancellationTokenValue(keyType))
             return $"(int32_t)(uintptr_t)(({Cast(key, "Dn2CppCancelToken")}).source)";
         if (IsGCHandleValue(keyType))
@@ -3893,7 +3894,7 @@ internal sealed partial class MethodCompiler
             return $"(({Cast(a, ect)}) == ({Cast(b, ect)}) ? 1 : 0)";
         }
         if (CoreIntrinsics.IsVectorValueType(keyType))
-            return $"dn2cpp_vec_value_equals<{CppTypes.StorageOf(keyType.Class!.Context.TypeArgs[0])}>({Cast(a, "Dn2CppVectorT")}, {Cast(b, "Dn2CppVectorT")})";
+            return $"dn2cpp_vec_value_equals<{CppTypes.StorageOf(keyType.Class!.Context.TypeArgs[0])}, {CoreIntrinsics.VectorValueWidth(keyType.Class)}>({Cast(a, keyType.Class.IntrinsicCppName!)}, {Cast(b, keyType.Class.IntrinsicCppName!)})";
         if (IsCancellationTokenValue(keyType))
             return $"((({Cast(a, "Dn2CppCancelToken")}).source == ({Cast(b, "Dn2CppCancelToken")}).source) ? 1 : 0)";
         if (IsGCHandleValue(keyType))
@@ -4289,7 +4290,9 @@ internal sealed partial class MethodCompiler
             if (NullableLayout(c) is (_, var hasValue, _))
             {
                 string nullable = NewTemp(CppTypes.Of(c));
-                Emit($"{nullable} = {ConstrainedReceiverValue(c, receiver.Expr)};");
+                if (_c.ContainsFixedVectorStorage(c))
+                    Emit($"std::memcpy(&{nullable}, (const void*)({receiver.Expr}), sizeof({nullable}));");
+                else Emit($"{nullable} = {ConstrainedReceiverValue(c, receiver.Expr)};");
                 Emit($"if (!{nullable}.{hasValue}) dn2cpp_throw_null_reference();");
             }
             Push(StackKind.Ref, "Dn2CppType*", $"((void)({receiver.Expr}), dn2cpp_get_type_from_handle({ti}))");
@@ -4777,7 +4780,9 @@ internal sealed partial class MethodCompiler
                 $"{_method.DeclaringClass.FullName}.{_method.Name}: constrained call on {c} has no emitted type-info");
         string ct = CppTypes.Of(c);
         string tmp = NewTemp(ct);
-        Emit($"{tmp} = {ConstrainedReceiverValue(c, receiver.Expr)};");
+        if (_c.ContainsFixedVectorStorage(c))
+            Emit($"std::memcpy(&{tmp}, (const void*)({receiver.Expr}), sizeof({tmp}));");
+        else Emit($"{tmp} = {ConstrainedReceiverValue(c, receiver.Expr)};");
         return $"dn2cpp_box({ti}, &{tmp}, sizeof({ct}))";
     }
 

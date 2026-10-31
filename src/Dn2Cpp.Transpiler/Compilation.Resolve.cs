@@ -1380,12 +1380,16 @@ internal sealed partial class Compilation
         if (CoreIntrinsics.IsVectorManagedCountCandidate(cls, name))
             return ResolveVectorManagedCountReference(module, handle, callerCtx);
         if (name == "Equals" && cls.Context.TypeArgs is [{ Kind: TypeKind.Class, Class: { } vectorArgument }]
-            && CoreIntrinsics.IsVectorExplicitOwner(vectorArgument))
+            && (CoreIntrinsics.IsVectorExplicitOwner(vectorArgument) || CoreIntrinsics.IsFixedVectorValueOwner(vectorArgument)))
         {
             EnsureShape(vectorArgument);
             EnsureShape(cls);
+            // Canonical placeholders are speculative owners, not numeric admission.
+            // The fixed value trial taints before dispatch; concrete calls revalidate.
             if (CoreIntrinsics.IsVectorValueCallableEquatable(cls, vectorArgument)
-                || CoreIntrinsics.IsVectorManagedEquatableCandidate(cls, vectorArgument))
+                || CoreIntrinsics.IsVectorManagedEquatableCandidate(cls, vectorArgument)
+                || !ContainsCanonPlaceholder(vectorArgument)
+                    && CoreIntrinsics.IsFixedVectorValueEquatableCandidate(cls, vectorArgument))
                 ValidateVectorValueConstrained(module, handle, callerCtx, vectorArgument);
         }
         if (!typeRefParent

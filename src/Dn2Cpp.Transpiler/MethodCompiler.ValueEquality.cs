@@ -114,7 +114,7 @@ internal sealed partial class MethodCompiler
         // Preserve the declared spelling under a canonically shared outer layout.
         string storage = LayoutFieldType(cls, field);
         if (!cls.IsExplicitLayout)
-            return new StackEntry(FieldAccess(cls, field, owner), CppTypes.KindOf(field.Type), storage);
+            return new StackEntry(FixedVectorFieldRead(cls, field, owner) ?? FieldAccess(cls, field, owner), CppTypes.KindOf(field.Type), storage);
         // Read only the admitted integral field, not an inactive C++ union member or padding.
         // The existing layout emitter remains responsible for extent/alignment validation.
         string address = owner.Kind == StackKind.Struct ? $"&({owner.Expr})" : owner.Expr;

@@ -1263,8 +1263,9 @@ while constructing later message, parameter-name and boxed-value operands.
 
 #### Numeric vector value semantics
 
-Closed supported numeric `System.Numerics.Vector<T>` values share lane-value equality and
-hashing across direct calls, constrained calls, default comparers and boxed
+Closed supported numeric `System.Numerics.Vector<T>` and
+`System.Runtime.Intrinsics.Vector64/128/256/512<T>` values share lane-value
+equality and hashing across direct calls, constrained calls, default comparers and boxed
 object hooks. Typed `Equals` accepts paired NaNs and signed zeros; numeric
 operators, equality masks and reductions retain numeric floating comparison.
 Floating hashes reuse the scalar normalization policy. Lane count follows target
@@ -1275,8 +1276,11 @@ vector dispatch or context-insensitive reference caches. Box hooks check exact
 managed type identity before reading payloads; boxed `IEquatable` dispatch has
 its own exact interface adapter. A typed method-group delegate binds the exact
 intrinsic wrapper through the existing boxed-receiver adapter, not a nonexistent
-managed vtable slot. Unsupported closures and other vector families do not
-acquire numeric value semantics from a shared native representation.
+managed vtable slot. Unsupported closures do not acquire numeric value
+semantics from a shared native representation. Fixed families have independent
+owner identity and width authority; a native alias does not establish managed
+family identity. Runtime helpers, comparator casts and interface/delegate
+arguments carry the admitted width together.
 
 Box payloads need not meet an over-aligned value's native alignment.
 `unbox.any` copies into aligned storage after the existing type/null checks;
@@ -1285,6 +1289,24 @@ nullable copies use an underlying-value temporary before field assignment.
 and box hooks likewise copy payload bytes rather than forming aligned loads.
 The VectorProbe gates cover value/numeric distinctions, boxed identities,
 callable routes and alignment-sensitive tuple/nullable copies.
+Non-intrinsic field accesses in ordinary emitted fixed-vector-bearing containers
+use byte-offset copies through managed pointers, including companion fields. Field
+addresses remain aliases to original storage; boxed methods do not run on a
+detached receiver copy. Indirect value copies and constrained boxing likewise
+use aligned temporaries without changing receiver mutation or GC barriers.
+This storage rule does not admit unsupported elements as numeric values or
+change intrinsic vector half-field and arithmetic pointer lowering.
+
+Fixed vector owners and containing inline layouts preserve the boundary between
+unmapped and intrinsic storage during canonical substitution. A fixed value
+operation on canonical elements specializes through its own shared-trial taint;
+its placeholder is never admitted as a supported numeric element. Speculative
+boxed interface resolution defers concrete admission, and real caller contexts
+validate raw references before cache hits. Numeric-only operation bodies may
+therefore specialize, while ordinary scalar/enum sharing and compatible numeric
+layouts remain available. This policy does not extend the Numerics managed-body
+fallback to unsupported fixed closures or change numeric operators and hardware
+capability reporting.
 
 #### Unmapped vector value methods
 

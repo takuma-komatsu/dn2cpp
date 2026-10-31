@@ -3,6 +3,7 @@
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/vector-value-probe.sh"
 source "$(dirname "$0")/vector-unsupported-probe.sh"
+source "$(dirname "$0")/vector-fixed-value-probe.sh"
 
 dn2cpp_emsdk_resolve --no-bundled
 for tool in em++ emcmake node; do
@@ -18,7 +19,8 @@ ctx="vector-value-wasm|vector-unsupported-managed-storage-abi|fixed-vector-abi|A
 if gate_cache_check "$out" "$ctx" "$corelib" "$_CG_APP" \
     "${_CG_APP%.dll}.runtimeconfig.json" "${_CG_APP%.dll}.deps.json" \
     gates/vector-value-probe.sh gates/fixtures/vector-value \
-    gates/vector-unsupported-probe.sh gates/fixtures/vector-unsupported; then
+    gates/vector-unsupported-probe.sh gates/fixtures/vector-unsupported \
+    gates/vector-fixed-value-probe.sh gates/fixtures/vector-fixed-value; then
     gate_cache_hit_msg
 else
     vector_value_wasm_probe "$out"

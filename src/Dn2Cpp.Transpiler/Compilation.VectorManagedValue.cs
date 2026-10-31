@@ -72,7 +72,8 @@ internal sealed partial class Compilation
     {
         if (user == owner || !visited.Add((user, owner))) return true;
         if (user.Module != owner.Module || user.Handle != owner.Handle) return true;
-        if (CoreIntrinsics.IsVectorExplicitOwner(user) && CoreIntrinsics.IsVectorExplicitOwner(owner))
+        if ((CoreIntrinsics.IsVectorExplicitOwner(user) && CoreIntrinsics.IsVectorExplicitOwner(owner))
+            || (CoreIntrinsics.IsFixedVectorValueOwner(user) && CoreIntrinsics.IsFixedVectorValueOwner(owner)))
             return (user.IntrinsicCppName is null) == (owner.IntrinsicCppName is null);
         if (user.IntrinsicCppName is not null || owner.IntrinsicCppName is not null) return true;
         EnsureShape(user);

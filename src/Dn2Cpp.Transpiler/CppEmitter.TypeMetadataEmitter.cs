@@ -1511,9 +1511,11 @@ internal sealed partial class CppEmitter
                 string equals = "nullptr";
                 if (CoreIntrinsics.IsVectorValueType(TypeDesc.MakeClass(c)))
                 {
+                    int width = CoreIntrinsics.VectorValueWidth(c);
+                    string cpp = c.IntrinsicCppName!;
                     string element = CppTypes.StorageOf(c.Context.TypeArgs[0]);
-                    getHash = $"&dn2cpp_vec_value_box_hash<{element}>";
-                    equals = $"&dn2cpp_vec_value_box_equals<{element}>";
+                    getHash = $"&dn2cpp_vec_value_box_hash<{element}, {width}>";
+                    equals = $"&dn2cpp_vec_value_box_equals<{element}, {width}>";
                     var entries = new List<string>();
                     var aliases = new HashSet<ClassInfo>();
                     foreach (var itf in _e._emit.OrderBy(t => t.CppName, StringComparer.Ordinal))
@@ -1525,7 +1527,7 @@ internal sealed partial class CppEmitter
                         if (declaration.VtableSlot < 0)
                             throw new InvalidOperationException("Vector<T> IEquatable slot is unassigned");
                         string stem = $"vector_value_itf_{c.CppName}_{itf.CppName}";
-                        _sb.AppendLine($"static int32_t {stem}_equals({itf.CppStructName}* self, Dn2CppVectorT other) {{ Dn2CppVectorT value; std::memcpy(&value, (Dn2CppObject*)self + 1, sizeof(value)); return dn2cpp_vec_value_equals<{element}>(value, other); }}");
+                        _sb.AppendLine($"static int32_t {stem}_equals({itf.CppStructName}* self, {cpp} other) {{ {cpp} value; std::memcpy(&value, (Dn2CppObject*)self + 1, sizeof(value)); return dn2cpp_vec_value_equals<{element}, {width}>(value, other); }}");
                         var slots = Enumerable.Repeat("nullptr", declaration.VtableSlot + 1).ToArray();
                         slots[declaration.VtableSlot] = $"(const void*)&{stem}_equals";
                         _sb.AppendLine($"static const void* {stem}_slots[] = {{ {string.Join(", ", slots)} }};");
@@ -4297,7 +4299,9 @@ internal sealed partial class CppEmitter
                     // lines a record's Equals(object) is. `b->type == a->type` rather than a
                     // baked &ti_: identical here (the receiver IS this class), and it keeps
                     // the thunk independent of which type-info symbol it sits next to.
-                    _sb.AppendLine(ReferenceEquals(eq, synEq)
+                    _sb.AppendLine(ReferenceEquals(eq, synEq) && _c.ContainsFixedVectorStorage(TypeDesc.MakeClass(cls))
+                        ? $"static int32_t {thunk}(Dn2CppObject* a, Dn2CppObject* b) {{ if (!b || b->type != a->type) return 0; {cls.CppStructName} value; std::memcpy(&value, b + 1, sizeof(value)); return {eq.Emittable.CppName}(({cls.CppStructName}*)(a + 1), value); }}"
+                        : ReferenceEquals(eq, synEq)
                         ? $"static int32_t {thunk}(Dn2CppObject* a, Dn2CppObject* b) {{ return (b && b->type == a->type) ? {eq.Emittable.CppName}(({cls.CppStructName}*)(a + 1), *({cls.CppStructName}*)(b + 1)) : 0; }}"
                         : $"static int32_t {thunk}(Dn2CppObject* a, Dn2CppObject* b) {{ return {eq.Emittable.CppName}(({cls.CppStructName}*)(a + 1), b); }}");
                     equals = $"&{thunk}";
