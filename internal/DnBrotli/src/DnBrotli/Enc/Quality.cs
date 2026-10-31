@@ -1,4 +1,4 @@
-// Port of c/enc/quality.h (brotli v1.1.0): constants and formulas that affect
+// Port of c/enc/quality.h (brotli v1.2.1): constants and formulas that affect
 // speed-ratio trade-offs and thus define quality levels. Ported whole — the
 // q>=2 encoder paths depend on the q>=2 formulas.
 

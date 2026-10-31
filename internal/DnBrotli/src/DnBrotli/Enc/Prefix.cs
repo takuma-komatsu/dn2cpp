@@ -1,4 +1,4 @@
-// Port of c/enc/prefix.h (brotli v1.1.0) — the encoder-side prefix coding
+// Port of c/enc/prefix.h (brotli v1.2.1) — the encoder-side prefix coding
 // helpers (the decoder side lives in Dec/Prefix.cs).
 
 using System.Runtime.CompilerServices;

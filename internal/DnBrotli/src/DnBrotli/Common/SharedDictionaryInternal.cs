@@ -1,5 +1,5 @@
 // Port of c/common/shared_dictionary_internal.h and the lifetime functions of
-// c/common/shared_dictionary.c (brotli v1.1.0) — the minimal surface the
+// c/common/shared_dictionary.c (brotli v1.2.1) — the minimal surface the
 // decoder reaches through its embedded |dictionary| field.
 //
 // Scope (permanent deferral, mirrors the non-BROTLI_EXPERIMENTAL C build):

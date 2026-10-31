@@ -1,4 +1,4 @@
-// Port of c/enc/metablock.{h,c} + metablock_inc.h (brotli v1.1.0).
+// Port of c/enc/metablock.{h,c} + metablock_inc.h (brotli v1.2.1).
 //
 // Complete: MetaBlockSplit (metablock.h), BrotliInitDistanceParams, the
 // distance-parameter search of BrotliBuildMetaBlock (RecomputeDistancePrefixes
@@ -572,7 +572,7 @@ internal static unsafe class Metablock
             split->lengths[0] = (uint)self->block_size_;
             split->types[0] = 0;
             last_entropy[0] =
-                BitsEntropy(histograms[0].data_, self->alphabet_size_);
+                BrotliBitsEntropy(histograms[0].data_, self->alphabet_size_);
             last_entropy[1] = last_entropy[0];
             ++self->num_blocks_;
             ++split->num_types;
@@ -583,7 +583,7 @@ internal static unsafe class Metablock
         }
         else if (self->block_size_ > 0)
         {
-            double entropy = BitsEntropy(histograms[self->curr_histogram_ix_].data_,
+            double entropy = BrotliBitsEntropy(histograms[self->curr_histogram_ix_].data_,
                                          self->alphabet_size_);
             double* combined_entropy = stackalloc double[2];
             double* diff = stackalloc double[2];
@@ -594,7 +594,7 @@ internal static unsafe class Metablock
                 combined_histo[j] = histograms[self->curr_histogram_ix_];
                 HistogramAddHistogramLiteral(&combined_histo[j],
                     &histograms[last_histogram_ix]);
-                combined_entropy[j] = BitsEntropy(
+                combined_entropy[j] = BrotliBitsEntropy(
                     &combined_histo[j].data_[0], self->alphabet_size_);
                 diff[j] = combined_entropy[j] - entropy - last_entropy[j];
             }
@@ -728,7 +728,7 @@ internal static unsafe class Metablock
             split->lengths[0] = (uint)self->block_size_;
             split->types[0] = 0;
             last_entropy[0] =
-                BitsEntropy(histograms[0].data_, self->alphabet_size_);
+                BrotliBitsEntropy(histograms[0].data_, self->alphabet_size_);
             last_entropy[1] = last_entropy[0];
             ++self->num_blocks_;
             ++split->num_types;
@@ -739,7 +739,7 @@ internal static unsafe class Metablock
         }
         else if (self->block_size_ > 0)
         {
-            double entropy = BitsEntropy(histograms[self->curr_histogram_ix_].data_,
+            double entropy = BrotliBitsEntropy(histograms[self->curr_histogram_ix_].data_,
                                          self->alphabet_size_);
             double* combined_entropy = stackalloc double[2];
             double* diff = stackalloc double[2];
@@ -750,7 +750,7 @@ internal static unsafe class Metablock
                 combined_histo[j] = histograms[self->curr_histogram_ix_];
                 HistogramAddHistogramCommand(&combined_histo[j],
                     &histograms[last_histogram_ix]);
-                combined_entropy[j] = BitsEntropy(
+                combined_entropy[j] = BrotliBitsEntropy(
                     &combined_histo[j].data_[0], self->alphabet_size_);
                 diff[j] = combined_entropy[j] - entropy - last_entropy[j];
             }
@@ -882,7 +882,7 @@ internal static unsafe class Metablock
             split->lengths[0] = (uint)self->block_size_;
             split->types[0] = 0;
             last_entropy[0] =
-                BitsEntropy(histograms[0].data_, self->alphabet_size_);
+                BrotliBitsEntropy(histograms[0].data_, self->alphabet_size_);
             last_entropy[1] = last_entropy[0];
             ++self->num_blocks_;
             ++split->num_types;
@@ -893,7 +893,7 @@ internal static unsafe class Metablock
         }
         else if (self->block_size_ > 0)
         {
-            double entropy = BitsEntropy(histograms[self->curr_histogram_ix_].data_,
+            double entropy = BrotliBitsEntropy(histograms[self->curr_histogram_ix_].data_,
                                          self->alphabet_size_);
             double* combined_entropy = stackalloc double[2];
             double* diff = stackalloc double[2];
@@ -904,7 +904,7 @@ internal static unsafe class Metablock
                 combined_histo[j] = histograms[self->curr_histogram_ix_];
                 HistogramAddHistogramDistance(&combined_histo[j],
                     &histograms[last_histogram_ix]);
-                combined_entropy[j] = BitsEntropy(
+                combined_entropy[j] = BrotliBitsEntropy(
                     &combined_histo[j].data_[0], self->alphabet_size_);
                 diff[j] = combined_entropy[j] - entropy - last_entropy[j];
             }
@@ -1055,7 +1055,7 @@ internal static unsafe class Metablock
             for (i = 0; i < num_contexts; ++i)
             {
                 last_entropy[i] =
-                    BitsEntropy(histograms[i].data_, self->alphabet_size_);
+                    BrotliBitsEntropy(histograms[i].data_, self->alphabet_size_);
                 last_entropy[num_contexts + i] = last_entropy[i];
             }
             ++self->num_blocks_;
@@ -1085,7 +1085,7 @@ internal static unsafe class Metablock
             {
                 nuint curr_histo_ix = self->curr_histogram_ix_ + i;
                 nuint j;
-                entropy[i] = BitsEntropy(histograms[curr_histo_ix].data_,
+                entropy[i] = BrotliBitsEntropy(histograms[curr_histo_ix].data_,
                                          self->alphabet_size_);
                 for (j = 0; j < 2; ++j)
                 {
@@ -1094,7 +1094,7 @@ internal static unsafe class Metablock
                     combined_histo[jx] = histograms[curr_histo_ix];
                     HistogramAddHistogramLiteral(&combined_histo[jx],
                         &histograms[last_histogram_ix]);
-                    combined_entropy[jx] = BitsEntropy(
+                    combined_entropy[jx] = BrotliBitsEntropy(
                         &combined_histo[jx].data_[0], self->alphabet_size_);
                     diff[j] += combined_entropy[jx] - entropy[i] - last_entropy[jx];
                 }

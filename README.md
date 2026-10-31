@@ -1250,7 +1250,7 @@ Vendored third-party components keep their own licenses:
   [`LICENSE`](third_party/bdwgc-upstream/LICENSE))
 - `third_party/zlib/` — classic zlib 1.3.2, **zlib** license
   ([`third_party/zlib/LICENSE`](third_party/zlib/LICENSE))
-- `third_party/brotli/` — google/brotli 1.1.0, **MIT**
+- `third_party/brotli/` — google/brotli 1.2.1, **MIT**
   ([`third_party/brotli/LICENSE`](third_party/brotli/LICENSE))
 - `third_party/highway/` — Google Highway 1.4.0, **Apache License 2.0 /
   BSD 3-Clause**
@@ -1279,7 +1279,7 @@ upstream forces, which is not one licence for all three:
   zlib-ng / fast_zlib notices besides
   ([`internal/DnZlib/LICENSE`](internal/DnZlib/LICENSE),
   [`internal/DnZlib/THIRD-PARTY-NOTICES.txt`](internal/DnZlib/THIRD-PARTY-NOTICES.txt))
-- `internal/DnBrotli/` — a pure-C# brotli ported from google/brotli 1.1.0,
+- `internal/DnBrotli/` — a pure-C# brotli ported from google/brotli 1.2.1,
   whose upstream is MIT, so it ships under **MIT**
   ([`internal/DnBrotli/LICENSE`](internal/DnBrotli/LICENSE))
 - `internal/DnHttp/` — original dn2cpp code (a managed transport swap for

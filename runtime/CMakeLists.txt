@@ -518,7 +518,7 @@ else()
         list(APPEND _rt_export_targets dn2cpp_zlib)
     endif()
 
-    # Vendored brotli (the same version dotnet/runtime links), compiled in its
+    # Vendored brotli, compiled in its
     # normal multi-file c/{common,dec,enc} layout and warning-suppressed
     # (third-party source). Backs System.IO.Compression.Brotli's P/Invoke
     # surface directly: the [DllImport] entry points name raw brotli API

@@ -1,4 +1,4 @@
-// Port of c/enc/histogram.{h,c} (brotli v1.1.0) — the complete histogram_inc.h
+// Port of c/enc/histogram.{h,c} (brotli v1.2.1) — the complete histogram_inc.h
 // template instantiations (Literal / Command / Distance, expanded manually per
 // the house triple pattern) plus BrotliBuildHistogramsWithContext and its
 // BlockSplitIterator helpers from histogram.c. BlockSplit itself lives in

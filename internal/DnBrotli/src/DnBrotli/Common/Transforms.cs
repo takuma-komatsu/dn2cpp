@@ -1,4 +1,4 @@
-// Port of c/common/transform.{h,c} (brotli v1.1.0).
+// Port of c/common/transform.{h,c} (brotli v1.2.1).
 //
 // The RFC 7932 transform tables are hand-inlined below, matching the C
 // initializer layout. kPrefixSuffix and kTransformsData are RVA static data

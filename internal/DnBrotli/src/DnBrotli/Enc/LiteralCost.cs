@@ -1,4 +1,4 @@
-// Port of c/enc/literal_cost.{h,c} (brotli v1.1.0): literal cost model to
+// Port of c/enc/literal_cost.{h,c} (brotli v1.2.1): literal cost model to
 // allow backward reference replacement to be efficient. Reached from the
 // Zopfli cost model (backward_references_hq.c, q>=10); ported with the q4-q9
 // stage because it is a leaf of utf8_util. FP shapes are exact (PORTING.md).
@@ -129,9 +129,11 @@ internal static unsafe class LiteralCost
                    Perhaps because the entropy source is changing its properties
                    rapidly in the beginning of the file, perhaps because the beginning
                    of the data is a statistical "anomaly". */
-                if (i < 2000)
+                const nuint prologue_length = 2000;
+                const double multiplier = 0.35 / 2000;
+                if (i < prologue_length)
                 {
-                    lit_cost += 0.7 - ((double)(2000 - i) / 2000.0 * 0.35);
+                    lit_cost += 0.35 + multiplier * (double)i;
                 }
                 cost[i] = (float)lit_cost;
             }

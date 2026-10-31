@@ -115,6 +115,58 @@ public unsafe class DecoderCorrectnessTests
     public static IEnumerable<object[]> CorpusNames() => Corpus.Names();
 
     [Theory]
+    [InlineData(1, 0)]
+    [InlineData(64, 0)]
+    [InlineData(128, 64)]
+    public void InvalidBlockSwitchReportsFormatError(int inChunk, int trailingBytes)
+    {
+        byte[] fixture = DecoderDrivers.InvalidBlockSwitch;
+        byte[] input = new byte[fixture.Length + trailingBytes];
+        fixture.CopyTo(input, 0);
+        (BrotliDecoderResult result, BrotliDecoderErrorCode error, _) = Streaming(
+            input, inChunk, 65536);
+        Assert.Equal(BrotliDecoderResult.Error, result);
+        Assert.Equal(BrotliDecoderErrorCode.ErrorFormatBlockSwitch, error);
+    }
+
+    [Fact]
+    public void InvalidBlockSwitchWithAmpleOutputReportsFormatError()
+    {
+        byte[] input = DecoderDrivers.InvalidBlockSwitch;
+        const int blockSize = 1 << 24;
+        byte[] output = new byte[blockSize + 1];
+        BrotliDecoderState* state = RawBrotli.BrotliDecoderCreateInstance();
+        Assert.True(state != null);
+        try
+        {
+            fixed (byte* source = input)
+            fixed (byte* destination = output)
+            {
+                byte* nextIn = source;
+                byte* nextOut = destination;
+                nuint availableIn = (nuint)input.Length;
+                nuint availableOut = (nuint)output.Length;
+                nuint totalOut = 0;
+                Assert.Equal(BrotliDecoderResult.Error, RawBrotli.BrotliDecoderDecompressStream(
+                    state, &availableIn, &nextIn, &availableOut, &nextOut, &totalOut));
+                Assert.Equal(BrotliDecoderErrorCode.ErrorFormatBlockSwitch,
+                    RawBrotli.BrotliDecoderGetErrorCode(state));
+                Assert.Equal((nuint)blockSize, totalOut);
+                Assert.Equal((nuint)1, availableOut);
+
+                nuint decodedSize = (nuint)output.Length;
+                Assert.Equal(BrotliDecoderResult.Error, RawBrotli.BrotliDecoderDecompress(
+                    (nuint)input.Length, source, &decodedSize, destination));
+                Assert.Equal((nuint)blockSize, decodedSize);
+            }
+        }
+        finally
+        {
+            RawBrotli.BrotliDecoderDestroyInstance(state);
+        }
+    }
+
+    [Theory]
     [MemberData(nameof(CorpusNames))]
     public void OneShotDecodesBclOutputAcrossQualitiesAndWindows(string name)
     {
@@ -494,7 +546,7 @@ public unsafe class DecoderCorrectnessTests
     [Fact]
     public void VersionAndErrorStringsMatchC()
     {
-        Assert.Equal((1u << 24) | (1u << 12) | 0u, RawBrotli.BrotliDecoderVersion());
+        Assert.Equal((1u << 24) | (2u << 12) | 1u, RawBrotli.BrotliDecoderVersion());
 
         static string ErrorString(BrotliDecoderErrorCode c)
         {
@@ -510,7 +562,7 @@ public unsafe class DecoderCorrectnessTests
             ErrorString(BrotliDecoderErrorCode.ErrorFormatWindowBits));
         Assert.Equal("_ERROR_UNREACHABLE",
             ErrorString(BrotliDecoderErrorCode.ErrorUnreachable));
-        Assert.Equal("INVALID", ErrorString((BrotliDecoderErrorCode)(-17)));
+        Assert.Equal("_ERROR_FORMAT_BLOCK_SWITCH", ErrorString(BrotliDecoderErrorCode.ErrorFormatBlockSwitch));
         Assert.Equal("INVALID", ErrorString((BrotliDecoderErrorCode)(-99)));
     }
 

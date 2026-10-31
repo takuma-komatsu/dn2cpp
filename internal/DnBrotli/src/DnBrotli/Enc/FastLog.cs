@@ -1,4 +1,4 @@
-// Port of c/enc/fast_log.{h,c} (brotli v1.1.0).
+// Port of c/enc/fast_log.{h,c} (brotli v1.2.1).
 //
 // FP-shape note (PORTING.md): the C table is declared double but every
 // initializer literal carries an `f` suffix — each value is a FLOAT constant

@@ -16,6 +16,14 @@ internal readonly record struct DecodeStep(OperationStatus Status, int Consumed,
 /// </summary>
 internal static class DecoderDrivers
 {
+    // Node.js test/parallel/test-zlib-invalid-input.js, CVE-2026-111497:
+    // a single-type block must not switch after its implicit length is exhausted.
+    internal static byte[] InvalidBlockSwitch =>
+    [
+        0x20, 0x00, 0x10, 0x41, 0x41, 0x41, 0xFC, 0xFF, 0xFF, 0x07,
+        0x00, 0x22, 0x28, 0xF0, 0x0B, 0x60, 0xF7, 0xF4, 0x1F, 0x00, 0x00, 0x00,
+    ];
+
     private const int CanaryPad = 32;
     private const byte CanaryByte = 0xC5;
 

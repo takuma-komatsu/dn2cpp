@@ -1,4 +1,4 @@
-// Port of c/enc/static_dict.{h,c} (brotli v1.1.0): matching data against the
+// Port of c/enc/static_dict.{h,c} (brotli v1.2.1): matching data against the
 // static dictionary with the built-in transform set. Ported in full; the
 // BROTLI_EXPERIMENTAL has_words_heavy trie walk is compiled out in the
 // vendored build and stays out here (has_words_heavy is never set while the
@@ -10,6 +10,7 @@ using DnBrotli.Common;
 
 using static DnBrotli.Common.Platform;
 using static DnBrotli.Enc.FindMatchLength;
+using static DnBrotli.Enc.Hash;
 using static DnBrotli.Internal.Bits;
 
 namespace DnBrotli.Enc;
@@ -19,21 +20,8 @@ internal static unsafe class StaticDict
     internal const int BROTLI_MAX_STATIC_DICTIONARY_MATCH_LEN = 37;
     internal const uint kInvalidMatch = 0xFFFFFFF;
 
-    /* kDictNumBits / kDictHashMul32 from c/enc/static_dict_lut.h. */
-    internal const int kDictNumBits = 15;
-    internal const uint kDictHashMul32 = 0x1E35A7BD;
-
     private const byte BROTLI_TRANSFORM_UPPERCASE_FIRST =
         (byte)BrotliWordTransformType.BROTLI_TRANSFORM_UPPERCASE_FIRST;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static uint Hash(byte* data)
-    {
-        uint h = BROTLI_UNALIGNED_LOAD32LE(data) * kDictHashMul32;
-        /* The higher bits contain more mixture from the multiplication,
-           so we take our results from there. */
-        return h >> (32 - kDictNumBits);
-    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void AddMatch(nuint distance, nuint len, nuint len_code,
@@ -110,7 +98,7 @@ internal static unsafe class StaticDict
     {
         bool has_found_match = false;
         {
-            nuint offset = dictionary->buckets[Hash(data)];
+            nuint offset = dictionary->buckets[Hash15(data)];
             bool end = offset == 0;
             while (!end)
             {
@@ -490,7 +478,7 @@ internal static unsafe class StaticDict
         if (max_length >= 5 && (data[0] == ' ' || data[0] == '.'))
         {
             bool is_space = data[0] == ' ';
-            nuint offset = dictionary->buckets[Hash(&data[1])];
+            nuint offset = dictionary->buckets[Hash15(&data[1])];
             bool end = offset == 0;
             while (!end)
             {
@@ -622,7 +610,7 @@ internal static unsafe class StaticDict
                  (data[0] == 'e' || data[0] == 's' || data[0] == ',')) ||
                 (data[0] == 0xC2 && data[1] == 0xA0))
             {
-                nuint offset = dictionary->buckets[Hash(&data[2])];
+                nuint offset = dictionary->buckets[Hash15(&data[2])];
                 bool end = offset == 0;
                 while (!end)
                 {
@@ -658,7 +646,7 @@ internal static unsafe class StaticDict
                 (data[0] == '.' && data[1] == 'c' && data[2] == 'o' &&
                  data[3] == 'm' && data[4] == '/'))
             {
-                nuint offset = dictionary->buckets[Hash(&data[5])];
+                nuint offset = dictionary->buckets[Hash15(&data[5])];
                 bool end = offset == 0;
                 while (!end)
                 {

@@ -1,4 +1,4 @@
-// Port of c/enc/state.h (brotli v1.1.0).
+// Port of c/enc/state.h (brotli v1.2.1).
 //
 // The C `struct BrotliEncoderStateStruct` (typedef'd BrotliEncoderStateInternal,
 // #define'd BrotliEncoderState) is mirrored field-for-field as the unsafe

@@ -1,4 +1,4 @@
-// Port of c/enc/compress_fragment.{h,c} (brotli v1.1.0): fast one-pass
+// Port of c/enc/compress_fragment.{h,c} (brotli v1.2.1): fast one-pass
 // encoding of an input fragment (quality 0), independently from the input
 // history. Adapted in C from snappy's CompressFragment().
 //

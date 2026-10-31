@@ -1,4 +1,4 @@
-// Port of c/enc/write_bits.h (brotli v1.1.0).
+// Port of c/enc/write_bits.h (brotli v1.2.1).
 //
 // Only the BROTLI_LITTLE_ENDIAN branch is ported (PORTING.md: every dn2cpp
 // target is little-endian, asserted in Internal.Bits): a single unaligned

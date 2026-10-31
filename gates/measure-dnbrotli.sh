@@ -18,8 +18,7 @@
 # .NET — for zlib the two encoders' streams are equally "real"), the brotli
 # blobs are produced by the BCL (= native brotli) under managed .NET, so the
 # decompress rows measure decoding of real-world-encoder output rather than
-# DnBrotli's own stream (byte-identical to native v1.1.0 today, but that is
-# implementation-defined and nothing here relies on it). The same BCL-produced
+# DnBrotli's own stream. The same BCL-produced
 # bytes are what DnBrotli.Benchmarks' DecompressBenchmarks baseline decodes, so
 # the rows stay comparable. Because the driver therefore references the real
 # System.IO.Compression[.Brotli], the transpile pins net10.0 and passes those

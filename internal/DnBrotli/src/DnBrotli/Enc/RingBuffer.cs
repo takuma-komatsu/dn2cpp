@@ -1,4 +1,4 @@
-// Port of c/enc/ringbuffer.h (brotli v1.1.0): sliding window over the input.
+// Port of c/enc/ringbuffer.h (brotli v1.2.1): sliding window over the input.
 //
 // The C declares size_/mask_/tail_size_/total_size_ as `const uint32_t` and
 // writes them through casts in RingBufferSetup; here they are plain fields

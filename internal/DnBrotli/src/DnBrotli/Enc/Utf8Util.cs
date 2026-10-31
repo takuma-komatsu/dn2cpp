@@ -1,4 +1,4 @@
-// Port of c/enc/utf8_util.{h,c} (brotli v1.1.0): heuristics for deciding
+// Port of c/enc/utf8_util.{h,c} (brotli v1.2.1): heuristics for deciding
 // about the UTF8-ness of strings. Reachable from ChooseContextMode (q>=10)
 // and from the literal cost model (BrotliEstimateBitCostsForLiterals).
 
