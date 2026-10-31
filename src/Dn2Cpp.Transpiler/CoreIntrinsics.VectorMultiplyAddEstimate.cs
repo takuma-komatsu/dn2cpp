@@ -40,8 +40,8 @@ internal static partial class CoreIntrinsics
     internal static void ValidateVectorMultiplyAddEstimate(MethodInfo method)
     {
         if (method.Name == "MultiplyAddEstimate" && IsVectorEstimateOwnerName(method.DeclaringClass.FullName)
-            && !method.Handle.IsNil && method.Module.Reader.GetMethodDefinition(method.Handle).GetGenericParameters().Count == 0
-            && !IsVectorMultiplyAddEstimate(method))
+            && !method.Handle.IsNil
+            && !IsVectorMultiplyAddEstimate(method) && !IsGenericVectorEstimate(method))
             throw new NotSupportedException("Vector MultiplyAddEstimate requires its exact floating-point CoreLib declaration");
     }
 

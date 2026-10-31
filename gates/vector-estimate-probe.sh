@@ -53,7 +53,8 @@ vector_estimate_probe() {
             --native "$out/$axis-run.stdout" || return 1
         gate_output compare "$out/$axis-run.stderr" "$out/nohw.stderr" --policy crlf || return 1
     done
-    vector_estimate_authority_probe "$out/authority"
+    vector_estimate_authority_probe "$out/authority" || return 1
+    probe_generic_vector_estimate "$1"
 }
 
 vector_estimate_authority_probe() {
@@ -153,4 +154,41 @@ vector_estimate_authority_probe() {
     [ "$positives" -eq 19 ] && [ "$count" -eq 348 ] && [ "$upstream" -eq 3 ] || return 1
     printf 'vector-estimate-authority:accepted=%s:rejected=%s:upstream-parser-rejected=%s\n' "$positives" "$count" "$upstream" > "$out/summary.txt" || return 1
     cat "$out/summary.txt"
+}
+
+# Unsupported closed generic estimates retain the managed Count exception.
+probe_generic_vector_estimate() {
+    local root="$1" out axis emit
+    local fixture="${DN2CPP_GENERIC_VECTOR_ESTIMATE_FIXTURE_DLL:-${DN2CPP_VECTOR_ESTIMATE_FIXTURE_DLL:-gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll}}"
+    local compiler="${DN2CPP_GENERIC_VECTOR_ESTIMATE_COMPILER_DLL:-${DN2CPP_VECTOR_ESTIMATE_COMPILER_DLL:-$(dirname "${DN2CPP_CLI_DLL:-src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}")/Dn2Cpp.Transpiler.dll}}"
+    if [ -z "${DN2CPP_GENERIC_VECTOR_ESTIMATE_FIXTURE_DLL:-${DN2CPP_VECTOR_ESTIMATE_FIXTURE_DLL:-}}" ]; then
+        build_gate_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj || return 1
+    fi
+    mkdir -p "$root" || return 1
+    out=$(mktemp -d "$root/generic-estimate-XXXXXX") || return 1
+    gate_capture_ok "$out/guards" run_bounded dotnet "$fixture" --generic-vector-estimate-guards \
+        "$compiler" "$_CG_CORELIB" "$out/model.dll" || return 1
+    grep -E '^generic-vector-estimate-guards:checks=[1-9][0-9]*$' "$out/guards.stdout" >/dev/null || return 1
+    gate_capture_ok "$out/oracle" run_bounded dotnet "$fixture" --generic-vector-estimate-oracle || return 1
+    gate_output witness "$out/oracle.stdout" '123' --count 18 --policy crlf || return 1
+    gate_output witness "$out/oracle.stdout" 'System.NotSupportedException' --count 18 --policy crlf || return 1
+    [ "$(wc -l < "$out/oracle.stdout")" -eq 54 ] || return 1
+    gate_capture_ok "$out/generate" run_bounded dotnet "$fixture" --generic-vector-estimate-fixture \
+        "$out/runtime.dll" "$_CG_CORELIB" all-runtime || return 1
+    for axis in raw diet; do
+        emit=$(mktemp -d "$out/$axis-XXXXXX") || return 1
+        local flags=() runner=()
+        [ "$axis" != raw ] || flags+=(--no-ildiet)
+        gate_capture_ok "$out/$axis-emit" invoke_cli "$out/runtime.dll" -r "$_CG_CORELIB" --auto-ref "${flags[@]}" -o "$emit" || return 1
+        if [ "${WASM:-0}" = 1 ]; then
+            compile_console_wasm "$emit" GenericVectorEstimate || return 1
+            runner=(node "$emit/GenericVectorEstimate.js")
+        else
+            compile_console "$emit" GenericVectorEstimate || return 1
+            runner=("./$emit/GenericVectorEstimate$EXE_EXT")
+        fi
+        gate_capture_ok "$out/$axis-run" run_bounded "${runner[@]}" || return 1
+        gate_output compare "$out/$axis-run.stdout" "$out/oracle.stdout" --policy crlf || return 1
+        gate_output compare "$out/$axis-run.stderr" "$out/oracle.stderr" --policy crlf || return 1
+    done
 }

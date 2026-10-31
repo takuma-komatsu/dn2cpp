@@ -140,7 +140,7 @@ internal static class VectorEstimateGuards
             var after = ResolveReference(goodReference);
             Check(ReferenceEquals(before, after) && Accepted(after), "serialized-good-after");
         }
-        var rejectSpecification = Model("Compilation").GetMethod("RejectVectorEstimateMethodSpecification", instance)!;
+        var rejectSpecification = Model("Compilation").GetMethod("TryResolveGenericVectorEstimateSpec", instance)!;
         int specificationRows = appReader.GetTableRowCount(TableIndex.MethodSpec);
         Check(specificationRows == 3, "serialized-method-specification-count");
         var rawSpecifications = new List<string>();

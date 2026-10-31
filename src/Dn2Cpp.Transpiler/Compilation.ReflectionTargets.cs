@@ -906,6 +906,7 @@ internal sealed partial class Compilation
         if (IsOpenGenericMethod(target) || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls)
             || _backend?.ShouldSkipMethodBody(cls, target) == true)
             return;
+        CoreIntrinsics.ValidateVectorMultiplyAddEstimate(target);
         _reflectionSelectionCount++;
         if (CoreIntrinsics.IsInvariantCompareInfoGetter(target)
             || CoreIntrinsics.IsDefaultPrincipalAccessor(target)
@@ -931,6 +932,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsPrimitiveElementHelper(target)
             || CoreIntrinsics.IsKnownConstant(target)
             || CoreIntrinsics.IsVectorManagedThrowHelper(target)
+            || CoreIntrinsics.IsGenericVectorEstimate(target)
             || CoreIntrinsics.IsMemberNotFoundExceptionFactory(target)
             || target.Rva != 0 && cls.IntrinsicCppName is null)
         {

@@ -37,6 +37,18 @@ internal sealed partial class Compilation
         if (NotePreserveReach(m) && _scanned.Remove(m))
             _toScan.Enqueue(m);
         NoteObfuscationMethod(m);
+        CoreIntrinsics.ValidateVectorMultiplyAddEstimate(m);
+        if (CoreIntrinsics.IsGenericVectorEstimate(m))
+        {
+            var guard = ResolveGenericVectorEstimateGuard(m);
+            _intrinsicTypeTranspiled.Add(m);
+            if (AddReachable(m.EnsureSignature()))
+            {
+                _predTrace.TryAdd(m, _currentScan);
+                Reach(guard);
+            }
+            return;
+        }
         // A minted body (a value type's structural equality/hash) has no IL: scanning it
         // would ask the PE for a MethodBody at a row that does not exist. Its call edges
         // are not discovered, they are CONSTRUCTED — ReachSynthesizedValueEquality walks

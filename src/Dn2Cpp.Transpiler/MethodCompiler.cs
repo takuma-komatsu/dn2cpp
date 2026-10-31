@@ -685,7 +685,6 @@ internal sealed partial class MethodCompiler : IEvalStack
     public string Compile()
     {
         CoreIntrinsics.ValidateConcreteVectorElement(_method);
-        CoreIntrinsics.ValidateVectorMultiplyAddEstimate(_method);
         TaintCanonicalVectorOwner(_method.DeclaringClass);
         TaintCanonicalFixedVectorValueOwner(_method.DeclaringClass, _method.Name);
         if (SharedTrial && IsFixedVectorFacade(_method.DeclaringClass))
@@ -694,6 +693,9 @@ internal sealed partial class MethodCompiler : IEvalStack
         if (SharedTrial && IsNumericsVectorFacade(_method.DeclaringClass))
             foreach (var argument in _method.Context.MethodArgs)
                 TaintIfCanonical(argument, "numerics-vector-element");
+        CoreIntrinsics.ValidateVectorMultiplyAddEstimate(_method);
+        if (CoreIntrinsics.IsGenericVectorEstimate(_method))
+            return CompileGenericVectorEstimateGuard();
         if (CoreIntrinsics.IsVectorManagedCountCandidate(_method.DeclaringClass, _method.Name)
             && !CoreIntrinsics.IsVectorManagedCount(_method))
             throw new NotSupportedException("Vector<T>.Count requires an exact supported declaration");
@@ -1228,6 +1230,8 @@ internal sealed partial class MethodCompiler : IEvalStack
     {
         CoreIntrinsics.ValidateConcreteVectorElement(_method);
         CoreIntrinsics.ValidateVectorMultiplyAddEstimate(_method);
+        if (CoreIntrinsics.IsGenericVectorEstimate(_method))
+            return CompileGenericVectorEstimateGuard();
         if (_method.Name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(_method.DeclaringClass)
             && !CoreIntrinsics.IsVectorExplicit(_method))
             throw new NotSupportedException("Vector<T>.op_Explicit requires its exact supported CoreLib declaration");

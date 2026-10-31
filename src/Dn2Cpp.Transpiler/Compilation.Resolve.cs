@@ -328,7 +328,8 @@ internal sealed partial class Compilation
             }
             case HandleKind.MethodSpecification:
             {
-                RejectVectorEstimateMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
+                if (TryResolveGenericVectorEstimateSpec(module, (MethodSpecificationHandle)handle, ctx) is { } genericEstimate)
+                    return genericEstimate;
                 // A generic method on an intrinsic-mapped type (e.g. Unsafe.Add<T>)
                 // is emitted inline, not transpiled, so it is not a reachability
                 // edge. The spec's method is a MemberRef when the call
@@ -731,7 +732,8 @@ internal sealed partial class Compilation
     public MethodInfo ResolveMethodSpec(Module module, MethodSpecificationHandle handle, GenericContext callerCtx)
     {
         RejectVectorValueMethodSpecification(module, handle, callerCtx);
-        RejectVectorEstimateMethodSpecification(module, handle, callerCtx);
+        if (TryResolveGenericVectorEstimateSpec(module, handle, callerCtx) is { } genericEstimate)
+            return genericEstimate;
         var reader = module.Reader;
         var ms = reader.GetMethodSpecification(handle);
         var methodArgs = ms.DecodeSignature(SigProvider, callerCtx).ToArray();
@@ -864,13 +866,22 @@ internal sealed partial class Compilation
         ClassInfo declClass, Module defModule, MethodDefinitionHandle templateHandle, TypeDesc[] methodArgs)
     {
         var md = defModule.Reader.GetMethodDefinition(templateHandle);
+        ValidateGenericVectorEstimateInstantiation(declClass, defModule, templateHandle, methodArgs);
 
         // Key on the closed declaring class plus the method template and its args,
         // so Container<int>.Map<int> and Container<string>.Map<int> stay distinct.
         var byKey = MethodInstancesFor(defModule, templateHandle);
         var mkey = (declClass.CppName, methodArgs);
         if (byKey.TryGetValue(mkey, out var existing))
+        {
+            if (defModule.Reader.StringComparer.Equals(md.Name, "MultiplyAddEstimate")
+                && CoreIntrinsics.IsVectorEstimateOwnerName(declClass.FullName)
+                && (!CoreIntrinsics.IsGenericVectorEstimate(existing)
+                    || existing.DeclaringClass != declClass || existing.Module != defModule || existing.Handle != templateHandle
+                    || existing.Context.MethodArgs[0].Class != methodArgs[0].Class))
+                throw GenericVectorEstimateUnsupported();
             return existing;
+        }
 
         // The method dimension nests independently of the class dimension —
         // `M<T>() => M<List<T>>()` deepens its method arguments forever on a

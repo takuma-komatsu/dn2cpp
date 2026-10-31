@@ -6,27 +6,6 @@ internal sealed partial class Compilation
 {
     private readonly Dictionary<(ClassInfo Owner, MethodDefinitionHandle Definition), MethodInfo> _vectorEstimates = new();
 
-    internal void RejectVectorEstimateMethodSpecification(Module module, MethodSpecificationHandle handle, GenericContext context)
-    {
-        var specification = module.Reader.GetMethodSpecification(handle);
-        if (MethodSpecMethodName(module, specification) != "MultiplyAddEstimate") return;
-        var parent = specification.Method.Kind switch
-        {
-            HandleKind.MethodDefinition => module.Reader.GetMethodDefinition((MethodDefinitionHandle)specification.Method).GetDeclaringType(),
-            HandleKind.MemberReference => module.Reader.GetMemberReference((MemberReferenceHandle)specification.Method).Parent,
-            _ => default(EntityHandle),
-        };
-        if (parent.IsNil) return;
-        if (parent.Kind != HandleKind.TypeSpecification
-            && (MethodSpecParentTypeName(module, specification) is not { } name || !CoreIntrinsics.IsVectorEstimateOwnerName(name))) return;
-        // Context and wrappers discover candidates only; no MethodSpec is admitted.
-        var type = ResolveTypeTokenForScan(module, parent, context);
-        while (type?.Element is { } element) type = element;
-        if (type?.Class is { } owner && owner.Module.AssemblyName == "System.Private.CoreLib"
-            && CoreIntrinsics.IsVectorEstimateOwnerName(owner.FullName))
-            throw new NotSupportedException("Vector MultiplyAddEstimate does not support method specifications");
-    }
-
     internal MethodInfo? TryResolveVectorEstimateReference(Module module, MemberReferenceHandle handle, GenericContext context)
     {
         var reader = module.Reader;

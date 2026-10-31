@@ -711,7 +711,11 @@ internal sealed partial class MethodCompiler
             case HandleKind.MethodSpecification:
             {
                 _c.RejectVectorValueMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
-                _c.RejectVectorEstimateMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
+                if (_c.TryResolveGenericVectorEstimateSpec(_module, (MethodSpecificationHandle)handle, _method.Context) is { } genericEstimate)
+                {
+                    EmitManagedCall(genericEstimate, isCallvirt);
+                    return;
+                }
                 // A generic method on an intrinsic-mapped type (e.g. Unsafe.Add<T>)
                 // is emitted inline rather than transpiling its body. The
                 // spec's method is a MemberRef across assemblies and a MethodDef

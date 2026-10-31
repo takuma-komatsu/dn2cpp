@@ -114,6 +114,8 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", SimdHwAccelToken);
                 return;
             }
+            if (name == "MultiplyAddEstimate")
+                throw new NotSupportedException("Vector MultiplyAddEstimate requires its exact generic managed guard route");
             var vsig = MethodSpecSig(msh, methodArgs);
             if (TryVectorPrimary(vsig, out var vcpp, out var vw, out var velem))
             {
