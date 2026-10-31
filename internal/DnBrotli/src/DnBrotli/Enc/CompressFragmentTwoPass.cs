@@ -1,4 +1,4 @@
-// Port of c/enc/compress_fragment_two_pass.{h,c} (brotli v1.1.0): fast
+// Port of c/enc/compress_fragment_two_pass.{h,c} (brotli v1.2.1): fast
 // two-pass encoding of an input fragment (quality 1) — first pass collects
 // backward matches and literals into buffers, second pass emits them with
 // prefix codes built from the actual histograms.
@@ -619,7 +619,7 @@ internal static unsafe class CompressFragmentTwoPass
             {
                 ++s->lit_histo[input[i]];
             }
-            return BitsEntropy(s->lit_histo, 256) < max_total_bit_cost;
+            return BrotliBitsEntropy(s->lit_histo, 256) < max_total_bit_cost;
         }
     }
 

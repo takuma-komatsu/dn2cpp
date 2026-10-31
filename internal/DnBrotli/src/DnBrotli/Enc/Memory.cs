@@ -1,4 +1,4 @@
-// Port of c/enc/memory.{h,c} (brotli v1.1.0).
+// Port of c/enc/memory.{h,c} (brotli v1.2.1).
 //
 // The vendored C is built with the default BROTLI_ENCODER_EXIT_ON_OOM
 // configuration (neither BROTLI_ENCODER_CLEANUP_ON_OOM nor _EXIT_ON_OOM is

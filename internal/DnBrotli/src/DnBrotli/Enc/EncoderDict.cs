@@ -1,4 +1,4 @@
-// Port of c/enc/encoder_dict.{h,c} (brotli v1.1.0) — the RFC 7932 default
+// Port of c/enc/encoder_dict.{h,c} (brotli v1.2.1) — the RFC 7932 default
 // path plus the compound/contextual struct shapes.
 //
 // Ported: the full struct hierarchy (SharedEncoderDictionary ->
@@ -12,7 +12,7 @@
 // unreachable from the ported surface and deferred (the "DB-deferred"
 // exception family).
 //
-// The dictionary_hash.c and static_dict_lut.h data tables live in
+// The dictionary_hash_inc.h and static_dict_lut_inc.h data tables live in
 // DictionaryHash.g.cs / StaticDictLut.g.cs (little-endian blobs) and are
 // decoded once at static init into NativeMemory for pointer-stable access,
 // like the C statics (never freed).
@@ -160,13 +160,13 @@ internal static unsafe class EncoderDict
 
     /* ==================== static data (decoded from .g.cs blobs) ==================== */
 
-    /// <summary><c>kStaticDictionaryHashWords</c> (c/enc/dictionary_hash.c), 32768 entries.</summary>
+    /// <summary><c>kStaticDictionaryHashWords</c> (c/enc/dictionary_hash_inc.h), 32768 entries.</summary>
     internal static readonly ushort* kStaticDictionaryHashWords;
-    /// <summary><c>kStaticDictionaryHashLengths</c> (c/enc/dictionary_hash.c), 32768 entries.</summary>
+    /// <summary><c>kStaticDictionaryHashLengths</c> (c/enc/dictionary_hash_inc.h), 32768 entries.</summary>
     internal static readonly byte* kStaticDictionaryHashLengths;
-    /// <summary><c>kStaticDictionaryBuckets</c> (c/enc/static_dict_lut.h), 32768 entries.</summary>
+    /// <summary><c>kStaticDictionaryBuckets</c> (c/enc/static_dict_lut_inc.h), 32768 entries.</summary>
     internal static readonly ushort* kStaticDictionaryBuckets;
-    /// <summary><c>kStaticDictionaryWords</c> (c/enc/static_dict_lut.h), 31705 entries.</summary>
+    /// <summary><c>kStaticDictionaryWords</c> (c/enc/static_dict_lut_inc.h), 31705 entries.</summary>
     internal static readonly DictWord* kStaticDictionaryWords;
 
     static EncoderDict()

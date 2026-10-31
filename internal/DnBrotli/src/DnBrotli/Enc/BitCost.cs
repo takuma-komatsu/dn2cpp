@@ -1,13 +1,5 @@
-// Port of c/enc/bit_cost.{h,c} + bit_cost_inc.h (brotli v1.1.0): the
-// header-inline ShannonEntropy / BitsEntropy plus the FN(BrotliPopulationCost)
-// template, expanded manually for Literal / Command / Distance (the
-// Histogram.cs house triple pattern).
-//
-// FP-shape note: the C ShannonEntropy jumps into the middle of its two-way
-// unrolled loop for odd sizes; the unrolling never changes the order in which
-// elements 0..size-1 are accumulated, so the plain loop below performs the
-// bit-identical sequence of double operations. Every double expression in the
-// population-cost bodies keeps the exact C shape (PORTING.md).
+// Port of c/enc/bit_cost.{h,c} + bit_cost_inc.h (brotli v1.2.1).
+// The scalar entropy loop preserves the C unrolled loop's accumulation order.
 
 using System.Runtime.CompilerServices;
 
@@ -21,7 +13,7 @@ namespace DnBrotli.Enc;
 internal static unsafe class BitCost
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static double ShannonEntropy(uint* population, nuint size, nuint* total)
+    internal static double BrotliBitsEntropy(uint* population, nuint size)
     {
         nuint sum = 0;
         double retval = 0;
@@ -34,15 +26,6 @@ internal static unsafe class BitCost
             retval -= (double)p * FastLog2(p);
         }
         if (sum != 0) retval += (double)sum * FastLog2(sum);
-        *total = sum;
-        return retval;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static double BitsEntropy(uint* population, nuint size)
-    {
-        nuint sum;
-        double retval = ShannonEntropy(population, size, &sum);
         if (retval < (double)sum)
         {
             /* At least one bit per literal is needed. */
@@ -189,7 +172,7 @@ internal static unsafe class BitCost
             /* Add the estimated encoding cost of the code length code histogram. */
             bits += (double)(18 + 2 * max_depth);
             /* Add the entropy of the code length code histogram. */
-            bits += BitsEntropy(depth_histo, BROTLI_CODE_LENGTH_CODES);
+            bits += BrotliBitsEntropy(depth_histo, BROTLI_CODE_LENGTH_CODES);
         }
         return bits;
     }
@@ -325,7 +308,7 @@ internal static unsafe class BitCost
             /* Add the estimated encoding cost of the code length code histogram. */
             bits += (double)(18 + 2 * max_depth);
             /* Add the entropy of the code length code histogram. */
-            bits += BitsEntropy(depth_histo, BROTLI_CODE_LENGTH_CODES);
+            bits += BrotliBitsEntropy(depth_histo, BROTLI_CODE_LENGTH_CODES);
         }
         return bits;
     }
@@ -461,7 +444,7 @@ internal static unsafe class BitCost
             /* Add the estimated encoding cost of the code length code histogram. */
             bits += (double)(18 + 2 * max_depth);
             /* Add the entropy of the code length code histogram. */
-            bits += BitsEntropy(depth_histo, BROTLI_CODE_LENGTH_CODES);
+            bits += BrotliBitsEntropy(depth_histo, BROTLI_CODE_LENGTH_CODES);
         }
         return bits;
     }

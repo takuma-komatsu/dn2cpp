@@ -1,6 +1,6 @@
 # PORTING.md — how DnBrotli is ported from C
 
-Conventions for porting `third_party/brotli/` (v1.1.0, byte-identical vendor) to C#. The goal is
+Conventions for porting `third_party/brotli/` (v1.2.1, byte-identical vendor) to C#. The goal is
 **line-level diffability against the C source**: a reviewer holding `c/dec/decode.c` next to
 `Dec/DecoderEngine.cs` should walk them in lockstep. These rules bind every engine file; the thin
 public layers (`Brotli.cs`, `Streams/`) use normal BCL idioms instead.
@@ -50,6 +50,10 @@ behavior-affecting cleverness is a porting bug.
   and decoded once at static init into `NativeMemory` for pointer-stable hot-path access
   (`BinaryPrimitives.ReadUInt16LittleEndian` etc.). `StaticDataTests` asserts a SHA-256 per blob.
 - Small tables (≤ ~2 KiB) are hand-inlined next to their users, matching the C initializer layout.
+
+Regenerate the dictionary blobs from the vendored initializers with
+`python3 internal/DnBrotli/gen_tables.py` from the repository root. Use `--check`
+to verify that the checked-in blobs still match without rewriting them.
 
 ## Platform / intrinsics
 

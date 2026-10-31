@@ -1,7 +1,7 @@
 # DnBrotli
 
 A complete, from-scratch **Pure C# reimplementation of brotli** (RFC 7932), ported from
-**google/brotli v1.1.0** — the exact tree vendored at `third_party/brotli/` in this repository.
+**google/brotli v1.2.1** — the exact tree vendored at `third_party/brotli/` in this repository.
 No P/Invoke, no native dependencies, zero package references. The sibling project of
 [`internal/DnZlib/`](../DnZlib/README.md), sharing its concept and discipline:
 
@@ -21,10 +21,9 @@ No P/Invoke, no native dependencies, zero package references. The sibling projec
 
 Byte-identical output to the reference encoder is **not** a goal in principle (brotli's
 compressed encoding is implementation-defined) — determinism is: the same input produces the
-same output on every host and dn2cpp backend. In practice the encoder does match native brotli
-v1.1.0 byte for byte across the corpus, which `gates/build-and-run-compression-dnbrotli.sh`
-asserts end to end (exact diff vs real .NET, plus `nm` showing a `System.IO.Compression` with
-zero native codec symbols).
+same output on every host and dn2cpp backend. `gates/build-and-run-compression-dnbrotli.sh`
+compares round-trip results against real .NET and checks the symbol table to prove
+that the native codecs were replaced.
 
 ## Scope
 
@@ -35,6 +34,11 @@ the generic path with hashers H2–H6/H40–42, and the zopfli-style qualities 1
 
 Deferred as unreachable from the BCL's twelve P/Invoke symbols: large-window brotli
 (lgwin > 24), and shared/compound custom dictionaries.
+
+Hasher selection follows upstream's portable path. CPU-dependent H58/H68 selection
+is not used, so encoder output remains deterministic across runtimes and hosts.
+Static dictionary tables remain precomputed; upstream's optional runtime table
+initialization does not change their contents.
 
 ## Layout
 
@@ -54,14 +58,20 @@ bench/DnBrotli.Benchmarks/               BenchmarkDotNet suites + `-- quick` sto
 See [PORTING.md](PORTING.md) for the conventions every engine file follows — the port is written
 for line-level diffability against the C source.
 
+The compression gates require a .NET runtime with the Brotli security fix for
+their reference execution. `CompressionCore.csproj` requires .NET 10.0.14 or a
+newer patch, and the wrappers reject an older selected runtime before running
+the malformed-stream regression. See the
+[.NET security advisory](https://github.com/dotnet/runtime/security/advisories/GHSA-p3jp-9v83-76w9).
+
 ## Benchmarks
 
 Three comparison points, over ~1 MiB corpora (`text` = a closed 12-word synthetic vocabulary,
 `binary` = a deterministic pseudo-binary pattern, `source` = this repo's own concatenated `.cs`
 source; see `bench/DnBrotli.Benchmarks/BenchData.cs`). Every row runs both encoders at the
 **same quality and window** via the BCL's static `BrotliEncoder.TryCompress(quality, window)`
-overload, so the comparison is like-for-like — and since the compressed bytes are identical, so
-is the ratio, by construction. Numbers are machine-relative; re-derive rather than quote:
+overload, so the comparison uses matching settings. Compressed bytes and ratios can differ
+between encoder versions. Numbers are machine-relative; re-derive rather than quote:
 
 ```sh
 dotnet run -c Release --project bench/DnBrotli.Benchmarks -- quick    # stopwatch mode
@@ -93,5 +103,5 @@ per-byte loop, defeating constant folding.
 
 ## License
 
-MIT (see [LICENSE](LICENSE)); ported from google/brotli v1.1.0, whose MIT notice is retained in
+MIT (see [LICENSE](LICENSE)); ported from google/brotli v1.2.1, whose MIT notice is retained in
 [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt) and must accompany distributions.

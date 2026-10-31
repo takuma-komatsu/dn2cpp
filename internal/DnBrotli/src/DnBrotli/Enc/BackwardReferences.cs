@@ -1,4 +1,4 @@
-// Port of c/enc/backward_references.{h,c} (brotli v1.1.0): the greedy/lazy
+// Port of c/enc/backward_references.{h,c} (brotli v1.2.1): the greedy/lazy
 // match emission loop for qualities 2..9.
 //
 // The C expands backward_references_inc.h once per hasher (the N-prefix

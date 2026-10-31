@@ -1,4 +1,4 @@
-// Port of c/enc/block_splitter.{h,c} + block_splitter_inc.h (brotli v1.1.0) —
+// Port of c/enc/block_splitter.{h,c} + block_splitter_inc.h (brotli v1.2.1) —
 // block split point selection. The block_splitter_inc.h template
 // (InitialEntropyCodes / RandomSample / RefineEntropyCodes / FindBlocks /
 // RemapBlockIds / BuildBlockHistograms / ClusterBlocks / SplitByteVector) is
@@ -252,9 +252,11 @@ internal static unsafe class BlockSplitter
                 }
             }
             /* More blocks for the beginning. */
-            if (byte_ix < 2000)
+            const nuint prologue_length = 2000;
+            const double multiplier = 0.07 / 2000;
+            if (byte_ix < prologue_length)
             {
-                block_switch_cost *= 0.77 + 0.07 * (double)byte_ix / 2000;
+                block_switch_cost *= 0.77 + multiplier * (double)byte_ix;
             }
             for (k = 0; k < num_histograms; ++k)
             {
@@ -360,11 +362,11 @@ internal static unsafe class BlockSplitter
         const uint kInvalidIndex = uint.MaxValue;  /* BROTLI_UINT32_MAX */
         uint* new_index;
         nuint i;
-        uint* sizes = u32 + 0 * HISTOGRAMS_PER_BATCH;
-        uint* new_clusters = u32 + 1 * HISTOGRAMS_PER_BATCH;
-        uint* symbols = u32 + 2 * HISTOGRAMS_PER_BATCH;
-        uint* remap = u32 + 3 * HISTOGRAMS_PER_BATCH;
-        uint* block_lengths = u32 + 4 * HISTOGRAMS_PER_BATCH;
+        uint* sizes = u32 != null ? u32 + 0 * HISTOGRAMS_PER_BATCH : null;
+        uint* new_clusters = u32 != null ? u32 + 1 * HISTOGRAMS_PER_BATCH : null;
+        uint* symbols = u32 != null ? u32 + 2 * HISTOGRAMS_PER_BATCH : null;
+        uint* remap = u32 != null ? u32 + 3 * HISTOGRAMS_PER_BATCH : null;
+        uint* block_lengths = u32 != null ? u32 + 4 * HISTOGRAMS_PER_BATCH : null;
         /* TODO(eustas): move to arena? */
         HistogramLiteral* tmp = BROTLI_ALLOC<HistogramLiteral>(m, 2);
 
@@ -766,9 +768,11 @@ internal static unsafe class BlockSplitter
                 }
             }
             /* More blocks for the beginning. */
-            if (byte_ix < 2000)
+            const nuint prologue_length = 2000;
+            const double multiplier = 0.07 / 2000;
+            if (byte_ix < prologue_length)
             {
-                block_switch_cost *= 0.77 + 0.07 * (double)byte_ix / 2000;
+                block_switch_cost *= 0.77 + multiplier * (double)byte_ix;
             }
             for (k = 0; k < num_histograms; ++k)
             {
@@ -874,11 +878,11 @@ internal static unsafe class BlockSplitter
         const uint kInvalidIndex = uint.MaxValue;  /* BROTLI_UINT32_MAX */
         uint* new_index;
         nuint i;
-        uint* sizes = u32 + 0 * HISTOGRAMS_PER_BATCH;
-        uint* new_clusters = u32 + 1 * HISTOGRAMS_PER_BATCH;
-        uint* symbols = u32 + 2 * HISTOGRAMS_PER_BATCH;
-        uint* remap = u32 + 3 * HISTOGRAMS_PER_BATCH;
-        uint* block_lengths = u32 + 4 * HISTOGRAMS_PER_BATCH;
+        uint* sizes = u32 != null ? u32 + 0 * HISTOGRAMS_PER_BATCH : null;
+        uint* new_clusters = u32 != null ? u32 + 1 * HISTOGRAMS_PER_BATCH : null;
+        uint* symbols = u32 != null ? u32 + 2 * HISTOGRAMS_PER_BATCH : null;
+        uint* remap = u32 != null ? u32 + 3 * HISTOGRAMS_PER_BATCH : null;
+        uint* block_lengths = u32 != null ? u32 + 4 * HISTOGRAMS_PER_BATCH : null;
         /* TODO(eustas): move to arena? */
         HistogramCommand* tmp = BROTLI_ALLOC<HistogramCommand>(m, 2);
 
@@ -1276,9 +1280,11 @@ internal static unsafe class BlockSplitter
                 }
             }
             /* More blocks for the beginning. */
-            if (byte_ix < 2000)
+            const nuint prologue_length = 2000;
+            const double multiplier = 0.07 / 2000;
+            if (byte_ix < prologue_length)
             {
-                block_switch_cost *= 0.77 + 0.07 * (double)byte_ix / 2000;
+                block_switch_cost *= 0.77 + multiplier * (double)byte_ix;
             }
             for (k = 0; k < num_histograms; ++k)
             {
@@ -1384,11 +1390,11 @@ internal static unsafe class BlockSplitter
         const uint kInvalidIndex = uint.MaxValue;  /* BROTLI_UINT32_MAX */
         uint* new_index;
         nuint i;
-        uint* sizes = u32 + 0 * HISTOGRAMS_PER_BATCH;
-        uint* new_clusters = u32 + 1 * HISTOGRAMS_PER_BATCH;
-        uint* symbols = u32 + 2 * HISTOGRAMS_PER_BATCH;
-        uint* remap = u32 + 3 * HISTOGRAMS_PER_BATCH;
-        uint* block_lengths = u32 + 4 * HISTOGRAMS_PER_BATCH;
+        uint* sizes = u32 != null ? u32 + 0 * HISTOGRAMS_PER_BATCH : null;
+        uint* new_clusters = u32 != null ? u32 + 1 * HISTOGRAMS_PER_BATCH : null;
+        uint* symbols = u32 != null ? u32 + 2 * HISTOGRAMS_PER_BATCH : null;
+        uint* remap = u32 != null ? u32 + 3 * HISTOGRAMS_PER_BATCH : null;
+        uint* block_lengths = u32 != null ? u32 + 4 * HISTOGRAMS_PER_BATCH : null;
         /* TODO(eustas): move to arena? */
         HistogramDistance* tmp = BROTLI_ALLOC<HistogramDistance>(m, 2);
 

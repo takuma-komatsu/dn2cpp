@@ -21,6 +21,8 @@
 # compression-core/zip gates are. Distinct OUT dirs (artifacts/*dnzlib) so this
 # parallelizes with those gates.
 source "$(dirname "$0")/_common.sh"
+source gates/_compression-reference.sh
+compression_require_brotli_reference
 
 # dnzlib_diff_gate PROJECT REQUIRE_BROTLI BCL_ASSEMBLY_NAME...
 #   REQUIRE_BROTLI=1 also asserts the native Brotli path survived the swap.
@@ -82,6 +84,9 @@ dnzlib_diff_gate() {
     gate_capture_ok "$out/native" run_bounded "./$out/$project$EXE_EXT"
     gate_capture_ok "$out/oracle" run_bounded dotnet "$app"
     gate_output compare "$out/native.stdout" "$out/oracle.stdout"
+    if [ "$require_brotli" = 1 ]; then
+        compression_assert_brotli_security "$out"
+    fi
 
     echo "== 5/5 Asserting the zlib backend really swapped (nm) =="
     # Snapshot the symbol table once and grep the string (here-strings, no pipe):
