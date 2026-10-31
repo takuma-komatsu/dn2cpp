@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Checked Int128 integer widening and identity; consolidated Convert/Parse gate: Convert.To* surface, base conversions, Base64,
+# Checked Int128 and UInt128 integer widening and identity; consolidated Convert/Parse gate: Convert.To* surface, base conversions, Base64,
 # Convert from object, Convert.ChangeType (+ extended + UInt64 TypeCode), and
 # primitive Parse, including UTF-8 and span float parsing across fast, slow,
 # subnormal, and overflow paths. Also System.Uri basics (TryCreate/ctor + component
@@ -57,6 +57,19 @@ gate_extra_asserts() {
     native="$out/native.stdout"
     build_gate_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
     local fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll"
+    gate_capture_ok "$out/uint128-guards" run_bounded dotnet "$fixture" --uint128-checked-guards \
+        "$(dirname "$DN2CPP_CLI_DLL")/Dn2Cpp.Transpiler.dll" "$_CG_CORELIB" "$_CG_APP"
+    gate_capture_ok "$out/uint128-raw-guards" run_bounded dotnet "$fixture" --uint128-checked-raw-guards \
+        "$(dirname "$DN2CPP_CLI_DLL")/Dn2Cpp.Transpiler.dll"
+    gate_capture_ok "$out/uint128-il" run_bounded dotnet "$fixture" --uint128-checked-fixture "$_CG_APP" "$_CG_CORELIB" all
+    python3 gates/fixtures/uint128-checked/check-generated.py "$out"
+    gate_capture_ok "$out/assert-before-uint128" run_bounded dotnet "$_CG_APP" before-uint128-checked
+    gate_output select "$native" "$out/assert-prefix-uint128.stdout" --before '== UInt128 checked widening ==' --policy crlf
+    gate_output compare "$out/assert-prefix-uint128.stdout" "$out/assert-before-uint128.stdout"
+    gate_output byte-witness "$native" 'UInt128 checked widening end' --count 1 --policy crlf
+    for line in route0-long-negative route1-ulong-max route2-char-max route3-target-native-width route3-native-inputs route3-nuint-max route3-nuint-highbit route3-identity-mixed route3-negative-once route3-producer-throw; do
+        gate_output byte-witness "$native" "uint128-checked-$line:True" --count any --policy crlf || return $?
+    done
     gate_capture_ok "$out/int128-guards" run_bounded dotnet "$fixture" --int128-checked-guards \
         "$(dirname "$DN2CPP_CLI_DLL")/Dn2Cpp.Transpiler.dll" "$_CG_CORELIB" "$_CG_APP"
     gate_capture_ok "$out/int128-il" run_bounded dotnet "$fixture" --int128-checked-fixture "$_CG_APP" "$_CG_CORELIB" all

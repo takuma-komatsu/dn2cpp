@@ -676,6 +676,22 @@ copy. It does not admit UInt128, floating-point or custom numeric conversions,
 open generic factories, or a general `TryConvert*` implementation. Existing
 truncating and primitive checked conversions retain their separate policies.
 
+`UInt128.CreateChecked<T>` admits the corresponding finite integer source family
+and UInt128 identity, but no Int128 cross-conversion. Signed sources restore
+their declared width and throw managed overflow when negative, before writing
+either named UInt64 field. Successful widening zero-extends; identity preserves
+the full value. Direct, constrained and retained callable routes share exact
+signature and layout admission. Raw MethodSpec arguments and owner TypeSpecs
+reject modifiers, pinned wrappers and malformed spelling before decoded types
+can authorize replacement. The genuine `INumberBase.CreateChecked` owner must
+have exactly one declared and supplied type argument before ordinary dispatch.
+ILDiet consumes original retained method and TypeSpec signatures completely
+rather than normalizing trailing bytes away, including retained constrained
+operands whose original tokens Cecil otherwise erases. Native integers use
+target-width storage. Successful
+conversion allocates nothing; overflow retains the ordinary exception-only
+allocation policy. This adapter does not expand reflection discovery.
+
 **When does a method earn an intrinsic?** The default is to transpile the real
 BCL IL — Regex/Guid/Crypto coverage landed by removing transpile blockers, not by
 adding intrinsics. Add one only when:

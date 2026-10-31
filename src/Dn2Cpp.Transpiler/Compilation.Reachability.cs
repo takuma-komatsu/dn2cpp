@@ -169,6 +169,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsDateTimeFormatInfoMonthArray(m)
             || CoreIntrinsics.IsDateTimeFormatInfoSpan(m)
             || CoreIntrinsics.IsInt128Checked(m)
+            || CoreIntrinsics.IsUInt128Checked(m)
             || CoreIntrinsics.IsDateOnlyDeconstruct(m)
             || CoreIntrinsics.IsDateTimeParserBoundary(m)
             || CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(m)
@@ -6114,6 +6115,7 @@ internal sealed partial class Compilation
         // chain so a failure deep in the BCL points back at the app call site.
         // The pending `constrained.` prefix type for the next callvirt.
         TypeDesc? constrained = null;
+        EntityHandle constrainedHandle = default;
         // The struct boxed by the immediately-preceding instruction whose ToString the
         // box did not reach, pending a formatting call that would dispatch it.
         ClassInfo? boxedForFormat = null;
@@ -6160,6 +6162,7 @@ internal sealed partial class Compilation
                 switch (insn.OpCode)
                 {
                     case ILOpCode.Constrained:
+                        constrainedHandle = handle;
                         constrained = ResolveTypeTokenForScan(module, handle, m.Context);
                         continue;
                     case ILOpCode.Ldtoken:
@@ -6434,6 +6437,15 @@ internal sealed partial class Compilation
                             && constrained is { Kind: TypeKind.Primitive, IsCanonPlaceholder: false }
                             && IsInterceptedReadBigEndian(t))
                         {
+                            constrained = null;
+                            continue;
+                        }
+                        if (t is not null && insn.OpCode == ILOpCode.Call
+                            && constrained is { Kind: TypeKind.Class, Class: { } unsignedCheckedSelf }
+                            && CoreIntrinsics.IsUInt128CheckedInterface(t))
+                        {
+                            ValidateUInt128CheckedConstrained(module, constrainedHandle);
+                            ResolveUInt128CheckedInterface(t, unsignedCheckedSelf);
                             constrained = null;
                             continue;
                         }

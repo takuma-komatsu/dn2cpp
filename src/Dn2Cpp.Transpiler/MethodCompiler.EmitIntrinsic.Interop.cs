@@ -592,6 +592,12 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsUInt128Checked(callee))
+        {
+            EmitUInt128Checked(callee);
+            return;
+        }
+
         if (CoreIntrinsics.IsInt128Checked(callee))
         {
             EmitInt128Checked(callee);

@@ -153,6 +153,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     // reachability scanner computed the identical pass, so the offsets skipped
     // here were never scanned — emission and reachability stay in lockstep.
     private BranchLiveness? _liveness;
+    private EntityHandle _constrainedHandle;
     private TypeDesc? _constrained; // pending constrained. prefix for the next callvirt
     private bool _readonlyAddress;
 
@@ -1218,6 +1219,10 @@ internal sealed partial class MethodCompiler : IEvalStack
                 EmitPrimitiveBigMul(_method);
                 return true;
             }, "primitive full-width multiplication");
+        if (CoreIntrinsics.IsUInt128Checked(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+                TryTokenFreeGenericIntrinsic(_method.DeclaringClass.FullName, _method.Name, _method.Context.MethodArgs),
+                "checked UInt128 integer widening");
         if (CoreIntrinsics.IsInt128Checked(_method))
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
                 TryTokenFreeGenericIntrinsic(_method.DeclaringClass.FullName, _method.Name, _method.Context.MethodArgs),
@@ -4261,6 +4266,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             }
 
             case ILOpCode.Constrained:
+                _constrainedHandle = SRME.EntityHandle(insn.Token);
                 _constrained = ResolveTypeToken(insn.Token);
                 // A constrained dispatch takes the receiver by ADDRESS and may
                 // box it — value semantics the any-placeholder cannot carry.

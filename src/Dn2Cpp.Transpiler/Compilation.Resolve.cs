@@ -821,6 +821,7 @@ internal sealed partial class Compilation
                 }
             }
         }
+        ValidateUInt128CheckedSpec(module, ms, resolved);
         return resolved;
     }
 
