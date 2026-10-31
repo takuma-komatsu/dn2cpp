@@ -820,6 +820,7 @@ internal sealed partial class MethodCompiler
         // The raw ctor token, for rgctx slot keying (verified before use).
         _callSiteToken = insn.Token;
         var handle = SRME.EntityHandle(insn.Token);
+        TaintCanonicalVectorOperation(handle);
         if (handle.Kind == HandleKind.MemberReference)
         {
             var mr = _reader.GetMemberReference((MemberReferenceHandle)handle);

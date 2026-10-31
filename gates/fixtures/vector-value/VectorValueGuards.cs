@@ -54,6 +54,7 @@ internal static class VectorValueGuards
         var coreModule = modules.Single(x => (string)Get(x, "AssemblyName") == "System.Private.CoreLib");
         var reader = (MetadataReader)Get(app, "Reader");
         bool scopeOnly = new[] { "bool", "char", "decimal", "int128", "uint128", "enum", "struct", "open", "fixed-owner", "foreign-owner" }.Contains(inputMode);
+        bool managedScope = inputMode is "decimal" or "int128" or "uint128" or "enum" or "struct";
         var context = Model("GenericContext").GetField("Empty", statics)!.GetValue(null)!;
         var resolve = Model("Compilation").GetMethod("ResolveVectorValueReference", instance)!;
         var constrained = Model("Compilation").GetMethod("ValidateVectorValueConstrained", instance)!;
@@ -206,12 +207,20 @@ internal static class VectorValueGuards
                     else result = Invoke(loaded, Model("Compilation").GetMethod("ResolveMemberRefMethod", instance)!, app, handle, context);
                 }
                 else result = Invoke(loaded, scopeOnly ? resolve : Model("Compilation").GetMethod("ResolveMemberRefMethod", instance)!, app, handle, context);
+                if (!accept && managedScope)
+                {
+                    Check(!(bool)Invoke(null, predicate, result), "managed-closure-not-numeric");
+                    Check((bool)Invoke(null, Model("CoreIntrinsics").GetMethod("IsVectorValueCallableMethod", statics)!, result), "managed-closure-callable");
+                    Check((bool)Invoke(null, Model("CoreIntrinsics").GetMethod("IsVectorManagedValueClass", statics)!, Get(result, "DeclaringClass")), "managed-closure-unmapped-owner");
+                    Console.WriteLine("vector-value-reference numeric-scope=excluded managed-callable=accepted raw=" + raw);
+                    continue;
+                }
                 Check(accept, "malformed-reference-admitted token=" + MetadataTokens.GetToken(handle).ToString("X8") + " raw=" + raw);
                 Check((bool)Invoke(null, predicate, result)
                     || (bool)Invoke(null, Model("CoreIntrinsics").GetMethod("IsVectorValueEquatableMethod", statics)!, result), "resolved-exact-declaration"); accepted.Add(result);
                 Console.WriteLine("vector-value-reference accepted=" + MetadataTokens.GetToken(handle).ToString("X8") + " raw=" + raw);
             }
-            catch (NotSupportedException error) when (!accept && error.Message.Contains("Vector<T> value methods", StringComparison.Ordinal))
+            catch (NotSupportedException error) when (!accept && !managedScope && error.Message.Contains("Vector<T> value methods", StringComparison.Ordinal))
             { checks++; Console.WriteLine("vector-value-reference refused=feature-specific raw=" + raw); }
         }
         Check(references != 0, "references-present");

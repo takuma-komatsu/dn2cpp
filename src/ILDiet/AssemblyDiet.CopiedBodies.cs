@@ -239,6 +239,23 @@ internal sealed partial class AssemblyDiet
             method.Parameters.Count == 1 ? Shape(method.Parameters[0].ParameterType) : null);
     }
 
+    private static bool IsCopiedVectorManagedThrowHelper(MethodDefinition method, string owner)
+    {
+        if (owner != "System.ThrowHelper" || method.Name != "ThrowForUnsupportedNumericsVectorBaseType"
+            || method.Module.Assembly?.Name.Name != "System.Private.CoreLib"
+            || method.DeclaringType.DeclaringType is not null || method.DeclaringType.HasGenericParameters
+            || method.Attributes != (MethodAttributes.Assembly | MethodAttributes.Static | MethodAttributes.HideBySig)
+            || method.ImplAttributes != MethodImplAttributes.AggressiveInlining || !method.HasBody
+            || method.Body.Instructions.Count == 0 || method.RVA == 0 || method.HasThis || method.ExplicitThis
+            || method.CallingConvention != MethodCallingConvention.Generic || method.IsPInvokeImpl || method.HasPInvokeInfo
+            || method.GenericParameters.Count != 1 || method.Parameters.Count != 0
+            || method.ReturnType is TypeSpecification || method.ReturnType.MetadataType != MetadataType.Void)
+            return false;
+        var parameter = method.GenericParameters[0];
+        return parameter.Position == 0 && parameter.Owner == method
+            && parameter.Attributes == GenericParameterAttributes.NonVariant && parameter.Constraints.Count == 0;
+    }
+
     private static bool IsCopiedKnownConstant(MethodDefinition method, string owner)
     {
         if (method.Name != "IsKnownConstant" || owner != "System.Runtime.CompilerServices.RuntimeHelpers"
@@ -428,7 +445,7 @@ internal sealed partial class AssemblyDiet
             || IsCopiedRuntimeTypeIntroducedMethodsFactory(method, owner)
             || IsCopiedRuntimeTypeHandleCopy(method, owner) || IsCopiedAmbiguousMatchExceptionFactory(method, owner)
             || IsCopiedMemberNotFoundExceptionFactory(method, owner) || IsCopiedPrimitiveElementHelper(method, owner)
-            || IsCopiedKnownConstant(method, owner))
+            || IsCopiedKnownConstant(method, owner) || IsCopiedVectorManagedThrowHelper(method, owner))
             traverse = true;
         else if (owner is "System.Array" or "System.Delegate")
             traverse = CoreIntrinsicTypeMaps.IsRealBodyGeneric(owner, method.Name) || CopiedArrayRealBodyMember(method);

@@ -177,6 +177,12 @@ internal sealed partial class Compilation
         }
         if (ReferenceEquals(counterpart, m))
             return;
+        m.EnsureSignature();
+        if (!SameVectorSignatureStorage(m.Signature.ReturnType, counterpart.Signature.ReturnType))
+            return;
+        for (int i = 0; i < m.Signature.ParameterTypes.Length; i++)
+            if (!SameVectorSignatureStorage(m.Signature.ParameterTypes[i], counterpart.Signature.ParameterTypes[i]))
+                return;
         m.SharedOwner = counterpart;
         counterpart.AddSharedUser(m);
     }
@@ -2651,7 +2657,8 @@ internal sealed partial class Compilation
         user.SharedLinkVerified = true;
         EnsureCompleted(user);    // its vtable is half the comparison
         EnsureCompleted(owner);   // few: one per group, not one per instantiation
-        if (SameVtableShape(user, owner))
+        if (SameVtableShape(user, owner)
+            && SameVectorFieldStorage(user, owner))
             return;
         owner.RemoveSharedUser(user);
         user.SharedOwner = null;

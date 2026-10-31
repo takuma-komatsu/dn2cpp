@@ -684,8 +684,15 @@ internal sealed partial class MethodCompiler : IEvalStack
 
     public string Compile()
     {
+        TaintCanonicalVectorOwner(_method.DeclaringClass);
+        if (SharedTrial && IsNumericsVectorFacade(_method.DeclaringClass))
+            foreach (var argument in _method.Context.MethodArgs)
+                TaintIfCanonical(argument, "numerics-vector-element");
+        if (CoreIntrinsics.IsVectorManagedCountCandidate(_method.DeclaringClass, _method.Name)
+            && !CoreIntrinsics.IsVectorManagedCount(_method))
+            throw new NotSupportedException("Vector<T>.Count requires an exact supported declaration");
         if (CoreIntrinsics.IsVectorValueCandidate(_method.DeclaringClass, _method.Name)
-            && !CoreIntrinsics.IsVectorValueMethod(_method))
+            && !CoreIntrinsics.IsVectorValueCallableMethod(_method))
             throw new NotSupportedException("Vector<T> value methods require an exact supported declaration");
         if (_method.Name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(_method.DeclaringClass)
             && !CoreIntrinsics.IsVectorExplicit(_method))
@@ -3934,6 +3941,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // a call site resolves its target, then fed through the same delegate-
                 // adapter path below — so `ldftn` of a closed predicate-combiner or
                 // comparison helper is supported, not just a plain MethodDefinition.
+                TaintCanonicalVectorOperation(SRME.EntityHandle(insn.Token));
                 var m = ResolveMethodHandle(SRME.EntityHandle(insn.Token), "ldftn");
                 // --trim-godot-classes, the emit-side ROUTE: a deferred registry
                 // lambda's body is never emitted, so its symbol must never be named
@@ -4046,6 +4054,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // call site — so a virtual method group on a generic type bound to a
                 // delegate (e.g. the EnumerableSorter<T> comparison helpers) resolves to
                 // its vtable slot, rather than only a plain MethodDefinition.
+                TaintCanonicalVectorOperation(SRME.EntityHandle(insn.Token));
                 var m = ResolveMethodHandle(SRME.EntityHandle(insn.Token), "ldvirtftn");
                 if (Compilation.RuntimeNumericProviderConsumer(m))
                     _c.ReachFormatProviderGetFormat();
@@ -4154,6 +4163,19 @@ internal sealed partial class MethodCompiler : IEvalStack
                 {
                     // The final typed slot has no managed vtable on an intrinsic box.
                     // Reuse the exact method wrapper and boxed-receiver adapter.
+                    bindsLowering = true;
+                    NoteFtnTargetBody(m.Emittable);
+                    _c.NoteNamedBodySymbol(_method, m.Emittable);
+                    var adapter = new DelegateAdapter(m.Emittable, false, NfiErased: true);
+                    if (!_c.DelegateAdapters.Contains(adapter))
+                        _c.DelegateAdapters.Add(adapter);
+                    expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{adapter.CppName})";
+                }
+                else if (CoreIntrinsics.IsVectorManagedValueMethod(m) && m.Name == "Equals"
+                    && m.Signature.ParameterTypes[0].Class == m.DeclaringClass)
+                {
+                    // A managed value box has interface/object hooks, not an ordinary
+                    // vtable. This exact final slot binds its real body over the payload.
                     bindsLowering = true;
                     NoteFtnTargetBody(m.Emittable);
                     _c.NoteNamedBodySymbol(_method, m.Emittable);

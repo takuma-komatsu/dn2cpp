@@ -1698,9 +1698,8 @@ internal sealed partial class MethodCompiler
         // ThrowKeyNotFoundException<TKey>(TKey)). Same as the non-generic ones:
         // drop the args and raise a catchable managed trap — and, for the same reason as
         // there, `ThrowIf*` is excluded: a GUARD returns normally on the happy path, so
-        // trapping one drops the test. No generic guard exists on this type today, so the
-        // exclusion sends one to the loud unsupported-shape throw instead of miscompiling it
-        // (the non-generic twin's arm carries the full argument).
+        // trapping one drops the test. The exact unsupported-vector guard retains
+        // its managed body before reaching this sink-only route.
         if (declType == "System.ThrowHelper"
             && name.StartsWith("Throw") && !name.StartsWith("ThrowIf"))
         {

@@ -10,6 +10,13 @@ internal sealed partial class Compilation
 
     private MethodInfo VectorValueShell(ClassInfo owner, MethodDefinitionHandle handle)
     {
+        if (CoreIntrinsics.IsVectorManagedValueClass(owner))
+        {
+            EnsureCompleted(owner);
+            foreach (var declared in owner.Methods)
+                if (declared.Module == owner.Module && declared.Handle == handle) return declared;
+            throw VectorValueUnsupported();
+        }
         var key = (owner, handle);
         if (_vectorValueMethods.TryGetValue(key, out var existing)) return existing;
         var definition = owner.Module.Reader.GetMethodDefinition(handle);
@@ -26,15 +33,38 @@ internal sealed partial class Compilation
 
     private MethodInfo FindVectorValueMethod(ClassInfo owner, string name, bool typed)
     {
-        if (!CoreIntrinsics.IsVectorValueClass(owner)) throw VectorValueUnsupported();
+        if (!CoreIntrinsics.IsVectorValueCallableClass(owner)) throw VectorValueUnsupported();
         var reader = owner.Module.Reader;
         foreach (var handle in reader.GetTypeDefinition(owner.Handle).GetMethods())
         {
             if (!reader.StringComparer.Equals(reader.GetMethodDefinition(handle).Name, name)) continue;
             var method = VectorValueShell(owner, handle);
-            if (CoreIntrinsics.IsVectorValueMethod(method)
+            if (CoreIntrinsics.IsVectorValueCallableMethod(method)
                 && (name != "Equals" || (method.Signature.ParameterTypes[0].Class == owner) == typed))
                 return method;
+        }
+        throw VectorValueUnsupported();
+    }
+
+    internal MethodInfo ResolveVectorManagedCountReference(Module module, MemberReferenceHandle handle, GenericContext context)
+    {
+        var reader = module.Reader;
+        var reference = reader.GetMemberReference(handle);
+        if (!reader.StringComparer.Equals(reference.Name, "get_Count")
+            || reference.Parent.Kind != HandleKind.TypeSpecification
+            || ResolveTypeTokenForScan(module, reference.Parent, context) is not { Class: { } owner })
+            throw VectorValueUnsupported();
+        EnsureShape(owner);
+        if (!CoreIntrinsics.IsVectorManagedValueClass(owner)) throw VectorValueUnsupported();
+        var parent = reader.GetBlobReader(reader.GetTypeSpecification((TypeSpecificationHandle)reference.Parent).Signature);
+        if (!ReadVectorValueType(module, ref parent, context, owner) || parent.RemainingBytes != 0
+            || !CoreIntrinsics.IsVectorManagedCountSignature(reader.GetBlobReader(reference.Signature)))
+            throw VectorValueUnsupported();
+        foreach (var declaration in owner.Module.Reader.GetTypeDefinition(owner.Handle).GetMethods())
+        {
+            if (!owner.Module.Reader.StringComparer.Equals(owner.Module.Reader.GetMethodDefinition(declaration).Name, "get_Count")) continue;
+            var method = VectorValueShell(owner, declaration);
+            if (CoreIntrinsics.IsVectorManagedCount(method)) return method;
         }
         throw VectorValueUnsupported();
     }
@@ -48,7 +78,7 @@ internal sealed partial class Compilation
             || ResolveTypeTokenForScan(module, reference.Parent, context) is not { Class: { } owner })
             throw VectorValueUnsupported();
         EnsureShape(owner);
-        if (!CoreIntrinsics.IsVectorValueClass(owner)) throw VectorValueUnsupported();
+        if (!CoreIntrinsics.IsVectorValueCallableClass(owner)) throw VectorValueUnsupported();
         var parent = reader.GetBlobReader(reader.GetTypeSpecification((TypeSpecificationHandle)reference.Parent).Signature);
         if (!ReadVectorValueType(module, ref parent, context, owner) || parent.RemainingBytes != 0)
             throw VectorValueUnsupported();
@@ -64,7 +94,7 @@ internal sealed partial class Compilation
     internal void ValidateVectorValueReceiver(Module module, EntityHandle handle, GenericContext context, ClassInfo receiver)
     {
         EnsureShape(receiver);
-        if (!CoreIntrinsics.IsVectorValueClass(receiver) || handle.Kind != HandleKind.TypeSpecification)
+        if (!CoreIntrinsics.IsVectorValueCallableClass(receiver) || handle.Kind != HandleKind.TypeSpecification)
             throw VectorValueUnsupported();
         var blob = module.Reader.GetBlobReader(module.Reader.GetTypeSpecification((TypeSpecificationHandle)handle).Signature);
         if (!ReadVectorValueType(module, ref blob, context, receiver) || blob.RemainingBytes != 0)
@@ -74,7 +104,7 @@ internal sealed partial class Compilation
     internal MethodInfo ValidateVectorValueConstrained(Module module, EntityHandle handle,
         GenericContext context, ClassInfo receiver)
     {
-        if (!CoreIntrinsics.IsVectorValueClass(receiver)) throw VectorValueUnsupported();
+        if (!CoreIntrinsics.IsVectorValueCallableClass(receiver)) throw VectorValueUnsupported();
         if (handle.Kind == HandleKind.MethodSpecification) throw VectorValueUnsupported();
         var reader = module.Reader;
         string name;
@@ -107,7 +137,7 @@ internal sealed partial class Compilation
                 return referenced;
             }
             var method = VectorValueShell(receiver, (MethodDefinitionHandle)handle);
-            if (!CoreIntrinsics.IsVectorValueMethod(method)) throw VectorValueUnsupported();
+            if (!CoreIntrinsics.IsVectorValueCallableMethod(method)) throw VectorValueUnsupported();
             return method;
         }
         var ownerReader = identity.Value.Module.Reader;
@@ -121,7 +151,7 @@ internal sealed partial class Compilation
                 || ResolveTypeTokenForScan(module, parent, context) is not { Class: { } itf })
                 throw VectorValueUnsupported();
             EnsureShape(itf);
-            if (!CoreIntrinsics.IsVectorValueEquatable(itf, receiver)) throw VectorValueUnsupported();
+            if (!CoreIntrinsics.IsVectorValueCallableEquatable(itf, receiver)) throw VectorValueUnsupported();
             var ownerBlob = reader.GetBlobReader(reader.GetTypeSpecification((TypeSpecificationHandle)parent).Signature);
             var referenceContext = new GenericContext(itf.Context.TypeArgs, context.MethodArgs);
             if (!ReadVectorValueInstantiation(module, ref ownerBlob, itf, 0x12)
@@ -131,7 +161,7 @@ internal sealed partial class Compilation
             foreach (var declaration in ownerDefinition.GetMethods())
             {
                 if (!ownerReader.StringComparer.Equals(ownerReader.GetMethodDefinition(declaration).Name, "Equals")) continue;
-                if (CoreIntrinsics.IsVectorValueEquatableMethod(VectorValueShell(itf, declaration)))
+                if (CoreIntrinsics.IsVectorValueCallableEquatableMethod(VectorValueShell(itf, declaration)))
                     return FindVectorValueMethod(receiver, "Equals", true);
             }
             throw VectorValueUnsupported();
@@ -163,7 +193,7 @@ internal sealed partial class Compilation
     internal void RejectVectorValueMethodSpecification(Module module, MethodSpecificationHandle handle, GenericContext context)
     {
         var specification = module.Reader.GetMethodSpecification(handle);
-        if (MethodSpecMethodName(module, specification) is not ("Equals" or "GetHashCode")) return;
+        if (MethodSpecMethodName(module, specification) is not ("Equals" or "GetHashCode" or "get_Count")) return;
         var parent = specification.Method.Kind switch
         {
             HandleKind.MethodDefinition => module.Reader.GetMethodDefinition((MethodDefinitionHandle)specification.Method).GetDeclaringType(),
@@ -183,12 +213,13 @@ internal sealed partial class Compilation
         {
             EnsureShape(vector);
             EnsureShape(itf);
-            if (CoreIntrinsics.IsVectorValueEquatable(itf, vector))
+            if (CoreIntrinsics.IsVectorValueCallableEquatable(itf, vector)
+                || CoreIntrinsics.IsVectorManagedEquatableCandidate(itf, vector))
                 throw VectorValueUnsupported();
         }
     }
 
-    private static bool VectorValueNamedOwner(Module module, EntityHandle handle)
+    internal static bool VectorValueNamedOwner(Module module, EntityHandle handle, bool includeFacade = false)
     {
         var reader = module.Reader;
         if (handle.Kind == HandleKind.TypeSpecification)
@@ -217,13 +248,15 @@ internal sealed partial class Compilation
         {
             var definition = reader.GetTypeDefinition((TypeDefinitionHandle)handle);
             return reader.StringComparer.Equals(definition.Namespace, "System.Numerics")
-                && reader.StringComparer.Equals(definition.Name, "Vector`1");
+                && (reader.StringComparer.Equals(definition.Name, "Vector`1")
+                    || includeFacade && reader.StringComparer.Equals(definition.Name, "Vector"));
         }
         if (handle.Kind == HandleKind.TypeReference)
         {
             var reference = reader.GetTypeReference((TypeReferenceHandle)handle);
             return reader.StringComparer.Equals(reference.Namespace, "System.Numerics")
-                && reader.StringComparer.Equals(reference.Name, "Vector`1");
+                && (reader.StringComparer.Equals(reference.Name, "Vector`1")
+                    || includeFacade && reader.StringComparer.Equals(reference.Name, "Vector"));
         }
         return false;
     }
@@ -255,16 +288,29 @@ internal sealed partial class Compilation
             return true;
         }
         if (!ReadVectorValueInstantiation(module, ref blob, expected, 0x11) || blob.RemainingBytes == 0) return false;
-        code = blob.ReadByte();
-        var element = expected.Context.TypeArgs[0];
+        return ReadVectorValueElement(module, ref blob, context, expected.Context.TypeArgs[0]);
+    }
+
+    private bool ReadVectorValueElement(Module module, ref BlobReader blob, GenericContext context, TypeDesc element)
+    {
+        if (blob.RemainingBytes == 0) return false;
+        int code = blob.ReadByte();
         if (code is 0x13 or 0x1e)
         {
             if (!blob.TryReadCompressedInteger(out int index)) return false;
             var args = code == 0x13 ? context.TypeArgs : context.MethodArgs;
-            return index >= 0 && index < args.Length && CoreIntrinsics.IsVectorNumericElement(args[index])
+            return index >= 0 && index < args.Length
+                && (CoreIntrinsics.IsVectorNumericElement(args[index]) || CoreIntrinsics.IsVectorManagedValueElement(args[index]))
                 && SameTypeArg(args[index], element);
         }
-        return CoreIntrinsics.IsVectorNumericElement(element) && code == (int)element.Primitive;
+        if (CoreIntrinsics.IsVectorNumericElement(element)) return code == (int)element.Primitive;
+        if (!CoreIntrinsics.IsVectorManagedValueElement(element) || code != 0x11
+            || !blob.TryReadCompressedInteger(out int token) || token >> 2 == 0 || (token & 3) > 1)
+            return false;
+        EntityHandle handle = (token & 3) == 0
+            ? SRME.TypeDefinitionHandle(token >> 2) : SRME.TypeReferenceHandle(token >> 2);
+        var identity = TypeDefinitionOf(module, handle);
+        return identity is { } target && target.Module == element.Class!.Module && target.Handle == element.Class.Handle;
     }
 
     private bool ReadVectorValueInstantiation(Module module, ref BlobReader blob, ClassInfo expected, int kind)
@@ -280,5 +326,5 @@ internal sealed partial class Compilation
     }
 
     private static NotSupportedException VectorValueUnsupported() =>
-        new("Vector<T> value methods require an exact closed numeric CoreLib declaration and unmodified call signature");
+        new("Vector<T> value methods require an exact supported closed CoreLib declaration and unmodified call signature");
 }

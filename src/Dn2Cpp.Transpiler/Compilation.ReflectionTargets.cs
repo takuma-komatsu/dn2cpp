@@ -928,6 +928,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsInterpolationStaticHelper(target)
             || CoreIntrinsics.IsPrimitiveElementHelper(target)
             || CoreIntrinsics.IsKnownConstant(target)
+            || CoreIntrinsics.IsVectorManagedThrowHelper(target)
             || CoreIntrinsics.IsMemberNotFoundExceptionFactory(target)
             || target.Rva != 0 && cls.IntrinsicCppName is null)
         {

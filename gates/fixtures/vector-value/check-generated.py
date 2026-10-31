@@ -13,6 +13,19 @@ check_only = '--check-only' in sys.argv[2:]
 header = out / 'generated.h'
 header_original = header.read_text()
 function = re.compile(r'^([^\n;{}]+\b(\w+)\([^\n]*\))\n\{.*?^\}', re.M | re.S)
+# Resolve each adapter's actual target body before partitioning its ABI family.
+value_targets = {}
+for source_path in [header, *sorted(out.glob('generated*.cpp'))]:
+    for target_match in function.finditer(source_path.read_text()):
+        if target_match.group(2).startswith('Vector_1_Equals_'):
+            value_targets[target_match.group(2)] = (target_match.group(1), target_match.group(0))
+managed_payloads = set()
+expected_managed_payloads = {
+    't_System_Numerics_Vector_System_Decimal',
+    't_System_Numerics_Vector_VectorProbe_VectorUnsupportedEnum',
+    't_System_Numerics_Vector_VectorProbe_VectorUnsupportedStruct',
+    't_System_Numerics_Vector_VectorProbe_VectorUnsupportedRefStruct',
+}
 seen = set()
 verified = 0
 routes = set()
@@ -45,9 +58,22 @@ for path in sorted(out.glob('generated*.cpp')):
             kind = 6
         if name.startswith('dgadapn_Vector_1_Equals_'):
             target = name[len('dgadapn_'):]
-            assert target + '(' in body and '__target + 1' in body
-            adapters.add(target)
-            kind = 7
+            assert target in value_targets, ('adapter target body missing', target)
+            declaration, target_body = value_targets[target]
+            if 'Dn2CppVectorT a0)' in match.group(1):
+                assert target + '(' in body and '__target + 1' in body
+                assert 'dn2cpp_vec_value_equals<double>' in target_body
+                adapters.add(target)
+                kind = 7
+            else:
+                payload = re.fullmatch(r'int32_t ' + re.escape(name) + r'\(Dn2CppObject\* __target, (t_\w+) a0\)', match.group(1))
+                assert payload and payload[1] in expected_managed_payloads, ('unknown vector adapter ABI', name)
+                value_type = payload[1]
+                assert re.fullmatch(r'(?:DN2CPP_NOINLINE )?int32_t ' + re.escape(target) + r'\(' + re.escape(value_type) + r'\* a0, ' + re.escape(value_type) + r' a1\)', declaration), ('managed target payload ABI', declaration)
+                assert 'return ' + target + '((' + value_type + '*)(__target + 1), a0);' in body
+                assert 'dn2cpp_vec_value_' not in body + target_body
+                assert re.search(r'Vector_1_(?:op_Equality|U3CEqualsU3Eg__SoftwareFallback)\w*\(', target_body), ('managed adapter must reach real value body', target)
+                managed_payloads.add(value_type)
         if 'VectorValuePair_TisDouble_' in name:
             for token in ('dn2cpp_vec_value_equals<double>', 'dn2cpp_vec_value_hash<double>',
                           'dn2cpp_vec_value_object_equals<double>', 'dn2cpp_vec_equals_all<double, 16>',
@@ -92,6 +118,7 @@ for path in sorted(out.glob('generated*.cpp')):
         changes.append((path, backup, original, changed))
 header_changed = function.sub(instrument, header_original)
 assert wrappers and wrappers == adapters == bindings, ('typed intrinsic callable chain', wrappers, adapters, bindings)
+assert managed_payloads == expected_managed_payloads, ('managed callable payload coverage', managed_payloads)
 assert seen == {0, 1, 2, 3, 4, 5, 6, 7}, ('actual tuple/direct/constrained helpers missing', seen)
 assert verified == 1, ('tuple witness caller', verified)
 assert routes == {'direct', 'constrained-equality', 'constrained-hash', 'wrapper-address'}, routes

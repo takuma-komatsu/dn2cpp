@@ -241,6 +241,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsInterpolationStaticHelper(m)
             || CoreIntrinsics.IsPrimitiveElementHelper(m)
             || CoreIntrinsics.IsKnownConstant(m)
+            || CoreIntrinsics.IsVectorManagedThrowHelper(m)
             || CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
             || CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
             || CoreIntrinsics.IsCustomAttributeDataConstructorBase(m))
@@ -1887,6 +1888,11 @@ internal sealed partial class Compilation
         if (constrained.IsObject && !constrained.IsCanonPlaceholder
             && ConstrainedCalleeName(module, calleeHandle) == "CompareTo")
             NoteNonGenericIComparableUsed();
+        // A vector first encountered through an inline generic field can still be
+        // an unshaped shell; emission completes this same receiver before dispatch.
+        if (constrained is { Kind: TypeKind.Class, Class: { } vector }
+            && CoreIntrinsics.IsVectorManagedValueCandidateClass(vector))
+            EnsureShape(vector);
         if (constrained is not { Kind: TypeKind.Class, Class: { IsValueType: true } c })
             return;
         string name;

@@ -4124,6 +4124,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsInterpolationStaticHelper(m)
             || CoreIntrinsics.IsPrimitiveElementHelper(m)
             || CoreIntrinsics.IsKnownConstant(m)
+            || CoreIntrinsics.IsVectorManagedThrowHelper(m)
             || CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
             || CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
             || CoreIntrinsics.IsRealBodyGeneric(m.DeclaringClass.FullName, m.Name)

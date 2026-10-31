@@ -331,6 +331,8 @@ internal sealed partial class Compilation
                 // crosses assemblies and a MethodDef when it stays within one
                 // (e.g. corelib's Span<T> -> Unsafe.Add<T>).
                 var ms = module.Reader.GetMethodSpecification((MethodSpecificationHandle)handle);
+                if (TryResolveVectorManagedThrowSpec(module, (MethodSpecificationHandle)handle, ctx) is { } vectorGuard)
+                    return vectorGuard;
                 if (IsKnownConstantSpec(module, ms))
                     return ResolveMethodSpec(module, (MethodSpecificationHandle)handle, ctx);
                 // AsyncTaskMethodBuilder.Start<TSM> / .AwaitUnsafeOnCompleted are
@@ -822,6 +824,7 @@ internal sealed partial class Compilation
                 }
             }
         }
+        ValidateVectorManagedThrowSpec(module, ms, resolved, callerCtx);
         ValidateUInt128CheckedSpec(module, ms, resolved);
         return resolved;
     }
@@ -1374,12 +1377,15 @@ internal sealed partial class Compilation
         // which the general MemberRef cache deliberately does not include.
         if (CoreIntrinsics.IsVectorValueCandidate(cls, name))
             return ResolveVectorValueReference(module, handle, callerCtx);
+        if (CoreIntrinsics.IsVectorManagedCountCandidate(cls, name))
+            return ResolveVectorManagedCountReference(module, handle, callerCtx);
         if (name == "Equals" && cls.Context.TypeArgs is [{ Kind: TypeKind.Class, Class: { } vectorArgument }]
             && CoreIntrinsics.IsVectorExplicitOwner(vectorArgument))
         {
             EnsureShape(vectorArgument);
             EnsureShape(cls);
-            if (CoreIntrinsics.IsVectorValueEquatable(cls, vectorArgument))
+            if (CoreIntrinsics.IsVectorValueCallableEquatable(cls, vectorArgument)
+                || CoreIntrinsics.IsVectorManagedEquatableCandidate(cls, vectorArgument))
                 ValidateVectorValueConstrained(module, handle, callerCtx, vectorArgument);
         }
         if (!typeRefParent

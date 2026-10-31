@@ -6,6 +6,8 @@ vector_value_probe() {
     [ -z "${SCALAR:-}" ] || hardware=0
     gate_capture_ok "$out/value-oracle" run_bounded env DOTNET_EnableAVX=0 dotnet "$_CG_APP" vector-value-only || return 1
     python3 gates/fixtures/vector-value/compare-output.py "$out/value-oracle.stdout" || return 1
+    gate_capture_ok "$out/unsupported-oracle" run_bounded env DOTNET_EnableAVX=0 dotnet "$_CG_APP" vector-unsupported-only || return 1
+    python3 gates/fixtures/vector-unsupported/compare-output.py "$out/unsupported-oracle.stdout" || return 1
     python3 gates/fixtures/vector-value/compare-output.py "$out/oracle.stdout" --full || return 1
     for axis in raw diet; do
         emit=$(mktemp -d "$out/value-$axis-XXXXXX") || return 1
@@ -14,6 +16,8 @@ vector_value_probe() {
         gate_capture_ok "$out/value-$axis-emit" invoke_cli "$_CG_APP" -r "$_CG_CORELIB" --auto-ref \
             "${flags[@]}" -o "$emit" || return 1
         gate_capture_ok "$out/value-$axis-generated" python3 gates/fixtures/vector-value/check-generated.py "$emit" || return 1
+        gate_capture_ok "$out/value-$axis-unsupported-generated" python3 gates/fixtures/vector-unsupported/check-generated.py "$emit" || return 1
+        gate_capture_ok "$out/value-$axis-unsupported-layouts" python3 gates/fixtures/vector-unsupported/check-layouts.py "$emit" --abi || return 1
         compile_console "$emit" VectorProbe || return 1
         gate_capture_ok "$out/value-$axis-run" run_bounded "./$emit/VectorProbe$EXE_EXT" vector-value-only || return 1
         gate_output compare "$out/value-$axis-run.stdout" "$out/value-oracle.stdout" --policy crlf || return 1
@@ -22,9 +26,14 @@ vector_value_probe() {
         gate_capture_ok "$out/value-$axis-full" run_bounded "./$emit/VectorProbe$EXE_EXT" || return 1
         gate_output compare "$out/value-$axis-full.stdout" "$out/oracle.stdout" --policy crlf || return 1
         python3 gates/fixtures/vector-value/compare-output.py "$out/value-$axis-full.stdout" --full || return 1
+        gate_capture_ok "$out/value-$axis-unsupported-run" run_bounded "./$emit/VectorProbe$EXE_EXT" vector-unsupported-only || return 1
+        gate_capture_ok "$out/value-$axis-unsupported-compare" vector_unsupported_compare_target \
+            "$out/value-$axis-unsupported-run.stdout" "$out/unsupported-oracle.stdout" \
+            "$out/value-$axis-run.stderr" "$out/value-$axis-numeric-support-differences.json" || return 1
     done
     if [ -z "${SCALAR:-}" ]; then
         vector_value_metadata_probe "$out" || return 1
+        vector_unsupported_metadata_probe "$out" || return 1
     fi
 }
 
@@ -42,6 +51,8 @@ vector_value_wasm_probe() (
     mkdir -p "$out"
     gate_capture_ok "$out/value-oracle" run_bounded env DOTNET_EnableAVX=0 dotnet "$_CG_APP" vector-value-only || return 1
     python3 gates/fixtures/vector-value/compare-output.py "$out/value-oracle.stdout" || return 1
+    gate_capture_ok "$out/unsupported-oracle" run_bounded env DOTNET_EnableAVX=0 dotnet "$_CG_APP" vector-unsupported-only || return 1
+    python3 gates/fixtures/vector-unsupported/compare-output.py "$out/unsupported-oracle.stdout" || return 1
     for axis in raw diet; do
         emit=$(mktemp -d "$out/value-wasm-$axis-XXXXXX") || return 1
         local flags=()
@@ -49,12 +60,18 @@ vector_value_wasm_probe() (
         gate_capture_ok "$out/value-wasm-$axis-emit" invoke_cli "$_CG_APP" -r "$corelib" --auto-ref \
             "${flags[@]}" -o "$emit" || return 1
         gate_capture_ok "$out/value-wasm-$axis-generated" python3 gates/fixtures/vector-value/check-generated.py "$emit" || return 1
+        gate_capture_ok "$out/value-wasm-$axis-unsupported-generated" python3 gates/fixtures/vector-unsupported/check-generated.py "$emit" || return 1
+        gate_capture_ok "$out/value-wasm-$axis-unsupported-layouts" python3 gates/fixtures/vector-unsupported/check-layouts.py "$emit" --abi || return 1
         compile_console_wasm "$emit" VectorProbe || return 1
         gate_capture_ok "$out/value-wasm-$axis-run" run_bounded node "./$emit/VectorProbe.js" vector-value-only || return 1
         gate_output compare "$out/value-wasm-$axis-run.stdout" "$out/value-oracle.stdout" --policy crlf || return 1
         python3 gates/fixtures/vector-value/compare-output.py "$out/value-wasm-$axis-run.stdout" || return 1
         [ "$(grep -Ec '^vector value actual tuple equality/hash passed hw=(0|1) pointer=4$' "$out/value-wasm-$axis-run.stderr")" = 1 ] || return 1
         [ "$(grep -Ec '^vector value target pointer=4 nint-count=[0-9]+ independent-lanes=4$' "$out/value-wasm-$axis-run.stderr")" = 1 ] || return 1
+        gate_capture_ok "$out/value-wasm-$axis-unsupported-run" run_bounded node "./$emit/VectorProbe.js" vector-unsupported-only || return 1
+        gate_capture_ok "$out/value-wasm-$axis-unsupported-compare" vector_unsupported_compare_target \
+            "$out/value-wasm-$axis-unsupported-run.stdout" "$out/unsupported-oracle.stdout" \
+            "$out/value-wasm-$axis-run.stderr" "$out/value-wasm-$axis-numeric-support-differences.json" || return 1
     done
 )
 
@@ -130,6 +147,6 @@ vector_value_check_rejection() {
         echo "vector value $mode: refused by input identity before family validator (2)"
         return 0
     fi
-    grep -F 'Vector<T> value methods require an exact closed numeric CoreLib declaration and unmodified call signature' \
+    grep -F 'Vector<T> value methods require an exact supported closed CoreLib declaration and unmodified call signature' \
         "$evidence.stderr" >/dev/null || return 1
 }

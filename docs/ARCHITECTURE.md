@@ -1286,6 +1286,41 @@ and box hooks likewise copy payload bytes rather than forming aligned loads.
 The VectorProbe gates cover value/numeric distinctions, boxed identities,
 callable routes and alignment-sensitive tuple/nullable copies.
 
+#### Unmapped vector value methods
+
+Genuine unmapped `System.Numerics.Vector<T>` closures over nongeneric,
+non-byref-like value types retain their managed `Equals`, `GetHashCode` and
+`Count` bodies. This is not numeric-lane support. Object equality first checks
+the exact boxed type, returning false for null or a different type. Typed
+equality and hashing reach `Count` before accessing elements. Its exact generic
+unsupported-type guard retains real IL and uses the existing resource-bearing
+`NotSupportedException` sink; it is not an unconditional `ThrowHelper` sink.
+Constructor bodies retain their own argument-validation order.
+The retained unsupported `GetElementUnsafe` fallback is not a lane-access
+implementation: the value-method loops must reach throwing `Count` before
+entering their lane bodies. No arithmetic or reinterpretation support follows
+from retaining this family.
+
+The numeric intrinsic predicates and box/address adapters remain separate from
+managed-body admission. Raw declarations, receiver types and references are
+validated before normal managed dispatch, including the installed owner's and
+interface's distinct generic-parameter attributes. Reference, nullable,
+generic-struct and byref-like arguments are outside this bounded fallback;
+that exclusion does not assert that the unconstrained vector owner forbids all
+such instantiations. The existing Boolean and Char mappings are unchanged.
+
+An unmapped vector keeps its identity during canonical argument substitution.
+A containing type cannot share a canonical layout if an inline vector field
+would change between managed storage and the intrinsic representation. The
+check follows nested value storage and base storage, not arbitrary reference
+graphs. Canonical value arguments and generic-method return/value/byref
+signatures use the same storage boundary; ordinary enum and supported
+numeric-vector layouts can still share. Bodies performing Numerics vector
+operations on canonical element arguments specialize through shared-trial
+taint: an integer-width placeholder can also denote an unsupported enum. This
+conservatively specializes numeric-vector operation bodies too, without
+disabling ordinary scalar/enum sharing or changing constructor bodies.
+
 #### Platform ISA contract
 
 The `System.Runtime.Intrinsics.X86` / `.Arm` / `.Wasm` families are one

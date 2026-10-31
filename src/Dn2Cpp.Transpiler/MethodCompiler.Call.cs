@@ -365,6 +365,8 @@ internal sealed partial class MethodCompiler
         _callSiteOffset = insn.Offset;
         _callIsVirtual = isCallvirt;
         var handle = SRME.EntityHandle(insn.Token);
+        TaintCanonicalVectorOperation(handle);
+        if (_constrained?.Class is { } vectorReceiver) TaintCanonicalVectorOwner(vectorReceiver);
         EnsureCallCctorBefore(handle);
         // Enum.HasFlag(flag): both the receiver and the flag arrive as boxed Enum
         // values; the call is non-virtual (HasFlag is sealed on Enum). Test the bits
@@ -480,8 +482,13 @@ internal sealed partial class MethodCompiler
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
                 if (CoreIntrinsics.IsVectorValueCandidate(callee.DeclaringClass, callee.Name))
                 {
-                    EmitVectorValue(callee);
-                    return;
+                    if (!CoreIntrinsics.IsVectorValueCallableMethod(callee))
+                        throw new NotSupportedException("Vector<T> value methods require an exact supported declaration");
+                    if (CoreIntrinsics.IsVectorValueMethod(callee))
+                    {
+                        EmitVectorValue(callee);
+                        return;
+                    }
                 }
                 CoreIntrinsics.ValidateKnownConstantCallable(callee);
                 if (CoreIntrinsics.BrPrimitiveBigMul.Matches(callee))
@@ -705,6 +712,11 @@ internal sealed partial class MethodCompiler
                 // spec's method is a MemberRef across assemblies and a MethodDef
                 // within one (e.g. corelib's Span<T> -> Unsafe.Add<T>).
                 var ms = _reader.GetMethodSpecification((MethodSpecificationHandle)handle);
+                if (_c.TryResolveVectorManagedThrowSpec(_module, (MethodSpecificationHandle)handle, _method.Context) is { } vectorGuard)
+                {
+                    EmitManagedCall(vectorGuard, isCallvirt);
+                    return;
+                }
                 if (_c.IsKnownConstantSpec(_module, ms))
                 {
                     EmitManagedCall(_c.ResolveMethodSpec(_module, (MethodSpecificationHandle)handle, _method.Context), isCallvirt);
@@ -908,7 +920,7 @@ internal sealed partial class MethodCompiler
                     if (parent is { Kind: TypeKind.Class, Class: { } vectorValueOwner }
                         && CoreIntrinsics.IsVectorValueCandidate(vectorValueOwner, mrName))
                     {
-                        EmitVectorValue(_c.ResolveVectorValueReference(_module, (MemberReferenceHandle)handle, _method.Context));
+                        EmitManagedCall(_c.ResolveVectorValueReference(_module, (MemberReferenceHandle)handle, _method.Context), isCallvirt);
                         return;
                     }
                     if (mrName == "op_Explicit" && parent is { Kind: TypeKind.Class, Class: { } vectorOwner }
@@ -1611,10 +1623,18 @@ internal sealed partial class MethodCompiler
 
     private void EmitManagedCall(MethodInfo callee, bool isCallvirt)
     {
+        if (CoreIntrinsics.IsVectorManagedCountCandidate(callee.DeclaringClass, callee.Name)
+            && !CoreIntrinsics.IsVectorManagedCount(callee))
+            throw new NotSupportedException("Vector<T>.Count requires an exact supported declaration");
         if (CoreIntrinsics.IsVectorValueCandidate(callee.DeclaringClass, callee.Name))
         {
-            EmitVectorValue(callee);
-            return;
+            if (!CoreIntrinsics.IsVectorValueCallableMethod(callee))
+                throw new NotSupportedException("Vector<T> value methods require an exact supported declaration");
+            if (CoreIntrinsics.IsVectorValueMethod(callee))
+            {
+                EmitVectorValue(callee);
+                return;
+            }
         }
 
         if (callee.Name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(callee.DeclaringClass))
@@ -4247,8 +4267,12 @@ internal sealed partial class MethodCompiler
             && CoreIntrinsics.IsVectorValueCandidate(vector, name))
         {
             _c.ValidateVectorValueReceiver(_module, _constrainedHandle, _method.Context, vector);
-            EmitVectorValue(_c.ValidateVectorValueConstrained(_module, handle, _method.Context, vector));
-            return true;
+            var valueMethod = _c.ValidateVectorValueConstrained(_module, handle, _method.Context, vector);
+            if (CoreIntrinsics.IsVectorValueMethod(valueMethod))
+            {
+                EmitVectorValue(valueMethod);
+                return true;
+            }
         }
         // Object.GetType is not virtual, so no value type implements it: the call boxes
         // the receiver and reads the box's type, which is c itself — or, for a

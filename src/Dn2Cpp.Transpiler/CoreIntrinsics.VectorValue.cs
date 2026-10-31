@@ -36,10 +36,16 @@ internal static partial class CoreIntrinsics
                 || parameter is { Kind: TypeKind.Class, IsCanonPlaceholder: false, Class: { } argument } && argument == owner);
     }
 
-    internal static bool IsVectorValueMethod(MethodInfo method)
+    internal static bool IsVectorValueMethod(MethodInfo method) =>
+        IsVectorValueClass(method.DeclaringClass) && IsVectorValueDeclarationMethod(method);
+
+    internal static bool IsVectorValueCallableMethod(MethodInfo method) =>
+        IsVectorValueCallableClass(method.DeclaringClass) && IsVectorValueDeclarationMethod(method);
+
+    private static bool IsVectorValueDeclarationMethod(MethodInfo method)
     {
         var owner = method.DeclaringClass;
-        if (!IsVectorValueClass(owner) || !IsVectorValueCandidate(owner, method.Name)
+        if (!IsVectorValueCandidate(owner, method.Name)
             || !VectorValueDeclaration(method, owner) || !IsVectorValueSignature(method.Signature, method.Name, owner))
             return false;
         bool typed = method.Name == "Equals" && method.Signature.ParameterTypes[0].Kind == TypeKind.Class;
@@ -78,9 +84,16 @@ internal static partial class CoreIntrinsics
         && blob.ReadByte() == (name == "Equals" ? 0x02 : 0x08)
         && name is "Equals" or "GetHashCode";
 
-    internal static bool IsVectorValueEquatable(ClassInfo itf, ClassInfo vector)
+    internal static bool IsVectorValueEquatable(ClassInfo itf, ClassInfo vector) =>
+        IsVectorValueClass(vector) && IsVectorValueEquatableDeclaration(itf, vector);
+
+    internal static bool IsVectorValueCallableEquatable(ClassInfo itf, ClassInfo vector) =>
+        IsVectorValueCallableClass(vector) && IsVectorValueEquatableDeclaration(itf, vector)
+        && (IsVectorValueClass(vector) || IsVectorManagedEquatableConstraints(itf));
+
+    private static bool IsVectorValueEquatableDeclaration(ClassInfo itf, ClassInfo vector)
     {
-        if (!IsVectorValueClass(vector) || itf.Module != vector.Module || itf.Handle.IsNil
+        if (itf.Module != vector.Module || itf.Handle.IsNil
             || !itf.IsInterface || itf.IsValueType || itf.IsEnum || itf.GenericArity != 1
             || itf.Context.TypeArgs is not [{ Kind: TypeKind.Class, IsCanonPlaceholder: false, Class: { } argument }]
             || argument != vector)
@@ -92,11 +105,18 @@ internal static partial class CoreIntrinsics
             && reader.StringComparer.Equals(definition.Name, "IEquatable`1");
     }
 
-    internal static bool IsVectorValueEquatableMethod(MethodInfo method)
+    internal static bool IsVectorValueEquatableMethod(MethodInfo method) =>
+        IsVectorValueEquatableDeclarationMethod(method, false);
+
+    internal static bool IsVectorValueCallableEquatableMethod(MethodInfo method) =>
+        IsVectorValueEquatableDeclarationMethod(method, true);
+
+    private static bool IsVectorValueEquatableDeclarationMethod(MethodInfo method, bool managed)
     {
         var owner = method.DeclaringClass;
         if (owner.Context.TypeArgs is not [{ Class: { } vector }]
-            || !IsVectorValueEquatable(owner, vector) || method.Name != "Equals"
+            || !(managed ? IsVectorValueCallableEquatable(owner, vector) : IsVectorValueEquatable(owner, vector))
+            || method.Name != "Equals"
             || !VectorValueDeclaration(method, owner) || method.Rva != 0
             || method.Attributes != (MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.Virtual
                 | MethodAttributes.NewSlot | MethodAttributes.Abstract)

@@ -16,6 +16,11 @@ internal static partial class Program
         // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        if (args.Length > 0 && args[0] == "vector-unsupported-only")
+        {
+            VectorUnsupportedSemantics();
+            return;
+        }
         if (args.Length > 0 && args[0] == "vector-value-only")
         {
             VectorValueSemantics();
