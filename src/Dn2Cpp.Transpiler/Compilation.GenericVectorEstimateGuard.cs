@@ -112,13 +112,18 @@ internal sealed partial class Compilation
                 ? "ThrowForUnsupportedNumericsVectorBaseType" : "ThrowForUnsupportedIntrinsicsVector64BaseType")
             || guard.Context.MethodArgs[0].Class != count.DeclaringClass.Context.TypeArgs[0].Class)
             throw GenericVectorGuardUnsupported();
+        ValidateGenericVectorThrowGuard(guard, count.DeclaringClass);
+    }
+
+    private void ValidateGenericVectorThrowGuard(MethodInfo guard, ClassInfo vector)
+    {
         var il = GenericVectorGuardInstructions(guard);
         if (il.Count != 5 || il[0].OpCode != ILOpCode.Call
             || il[1].OpCode != ILOpCode.Brtrue_s || il[1].Operand != il[4].Offset
             || il[2].OpCode != ILOpCode.Ldc_i4_s
             || il[3].OpCode != ILOpCode.Call || il[4].OpCode != ILOpCode.Ret)
             throw GenericVectorGuardUnsupported();
-        ValidateGenericVectorUnsupportedGetter(guard, il[0].Token, count.DeclaringClass);
+        ValidateGenericVectorUnsupportedGetter(guard, il[0].Token, vector);
         var sinkToken = SRME.EntityHandle(il[3].Token);
         if (sinkToken.Kind != HandleKind.MethodDefinition) throw GenericVectorGuardUnsupported();
         var sink = ResolveMethodHandle(guard.Module, sinkToken, GenericContext.Empty);

@@ -2163,6 +2163,7 @@ internal sealed partial class CppEmitter
             && !CoreIntrinsics.IsKnownConstant(m)
             && !CoreIntrinsics.IsVectorManagedThrowHelper(m)
             && !CoreIntrinsics.IsGenericVectorEstimate(m)
+            && !CoreIntrinsics.IsGuardedVectorAs(m)
             && !CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
             && !CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
             && !CoreIntrinsics.IsCustomAttributeDataConstructorBase(m);
@@ -2749,6 +2750,7 @@ internal sealed partial class CppEmitter
                             && !CoreIntrinsics.IsKnownConstant(m)
                             && !CoreIntrinsics.IsVectorManagedThrowHelper(m)
                             && !CoreIntrinsics.IsGenericVectorEstimate(m)
+                            && !CoreIntrinsics.IsGuardedVectorAs(m)
                             && !CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
             && !CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
             && !CoreIntrinsics.IsCustomAttributeDataConstructorBase(m))

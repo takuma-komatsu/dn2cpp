@@ -3961,6 +3961,7 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsKnownConstant(method)
                         || CoreIntrinsics.IsVectorManagedThrowHelper(method)
                         || CoreIntrinsics.IsGenericVectorEstimate(method)
+                        || CoreIntrinsics.IsGuardedVectorAs(method)
                         || CoreIntrinsics.IsMemberNotFoundExceptionFactory(method)
                         || CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(method)
                         || CoreIntrinsics.IsCoreClrCanonicalTypeComparison(method)

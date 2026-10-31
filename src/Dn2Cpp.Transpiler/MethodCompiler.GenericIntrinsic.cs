@@ -124,6 +124,8 @@ internal sealed partial class MethodCompiler
                 throw new NotSupportedException(
                     $"{Method.DeclaringClass.FullName}.{Method.Name}: vector helper {declType}::{name}<{methodArgs.Length}> is not supported");
             }
+            if (declType == "System.Numerics.Vector" && name == "As")
+                throw new NotSupportedException("Vector.As requires its exact managed guard or numeric reinterpret route");
             // No software-vector operand/result: the element is non-primitive (e.g.
             // Vector<Int128>). The software-vector runtime is primitive-only, and such a
             // helper is only ever called on the SIMD branch the portable getter gates off

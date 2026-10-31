@@ -4095,6 +4095,7 @@ internal sealed partial class Compilation
     public void NoteIntrinsicFtnTarget(MethodInfo m)
     {
         CoreIntrinsics.ValidateVectorMultiplyAddEstimate(m);
+        CoreIntrinsics.ValidateVectorAsCallable(m);
         CoreIntrinsics.ValidateKnownConstantCallable(m);
         if (CoreIntrinsics.IsInvariantCompareInfoGetter(m))
         {
@@ -4128,6 +4129,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsKnownConstant(m)
             || CoreIntrinsics.IsVectorManagedThrowHelper(m)
             || CoreIntrinsics.IsGenericVectorEstimate(m)
+            || CoreIntrinsics.IsGuardedVectorAs(m)
             || CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
             || CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
             || CoreIntrinsics.IsRealBodyGeneric(m.DeclaringClass.FullName, m.Name)

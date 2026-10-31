@@ -483,6 +483,7 @@ internal sealed partial class MethodCompiler
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
                 CoreIntrinsics.ValidateConcreteVectorElement(callee);
                 CoreIntrinsics.ValidateVectorMultiplyAddEstimate(callee);
+                CoreIntrinsics.ValidateVectorAsCallable(callee);
                 if (CoreIntrinsics.IsVectorValueCandidate(callee.DeclaringClass, callee.Name))
                 {
                     if (!CoreIntrinsics.IsVectorValueCallableMethod(callee))
@@ -711,6 +712,11 @@ internal sealed partial class MethodCompiler
             case HandleKind.MethodSpecification:
             {
                 _c.RejectVectorValueMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
+                if (_c.TryResolveGuardedVectorAsSpec(_module, (MethodSpecificationHandle)handle, _method.Context) is { } vectorAs)
+                {
+                    EmitManagedCall(vectorAs, isCallvirt);
+                    return;
+                }
                 if (_c.TryResolveGenericVectorEstimateSpec(_module, (MethodSpecificationHandle)handle, _method.Context) is { } genericEstimate)
                 {
                     EmitManagedCall(genericEstimate, isCallvirt);
@@ -916,6 +922,7 @@ internal sealed partial class MethodCompiler
             }
             case HandleKind.MemberReference:
             {
+                _c.RejectBareVectorAsReference(_module, (MemberReferenceHandle)handle, _method.Context);
                 var mr = _reader.GetMemberReference((MemberReferenceHandle)handle);
                 string mrName = _reader.GetString(mr.Name);
                 if (_c.TryResolveVectorEstimateReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } vectorEstimate)
@@ -1659,6 +1666,8 @@ internal sealed partial class MethodCompiler
         CoreIntrinsics.ValidateConcreteVectorElement(callee);
 
         CoreIntrinsics.ValidateVectorMultiplyAddEstimate(callee);
+
+        CoreIntrinsics.ValidateVectorAsCallable(callee);
         if (CoreIntrinsics.IsVectorMultiplyAddEstimate(callee))
         {
             EmitVectorMultiplyAddEstimate(callee);

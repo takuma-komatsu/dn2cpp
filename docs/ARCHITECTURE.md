@@ -718,6 +718,21 @@ bounded divergence is independent of the native Highway setting; strict software
 CLR comparisons disable hardware intrinsics, while separate hardware-oracle
 results retain the differing exception text.
 
+`Vector.As<TFrom,TTo>` keeps a bounded callable guard when either element is an
+admitted unsupported managed value. Exact declarations, raw MethodSpecs and
+caller contexts bind both elements before cache reuse. A scan may defer exact
+scoped numeric-width placeholders without constructing a callable; call and
+address taint requires a concrete body before emission. Strict resolution still
+rejects placeholders and malformed signatures cannot use this deferral. The
+original body must call the source guard before the destination guard; both calls
+must target the same genuine helper with their original generic argument. Its resource-bearing
+throw and pure supported-element whitelist are validated. The first unsupported
+guard is retained; a preceding known-supported guard has no effects, and later
+conversion code cannot execute. No unsupported vector layout, bit reinterpret or
+synthetic default result is produced. Numeric-to-numeric reinterpretation keeps
+its existing path. Calls, stored addresses and retained callable bodies share
+this authority without expanding reflection discovery.
+
 **When does a method earn an intrinsic?** The default is to transpile the real
 BCL IL — Regex/Guid/Crypto coverage landed by removing transpile blockers, not by
 adding intrinsics. Add one only when:

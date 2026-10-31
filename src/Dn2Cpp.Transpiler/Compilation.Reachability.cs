@@ -38,6 +38,18 @@ internal sealed partial class Compilation
             _toScan.Enqueue(m);
         NoteObfuscationMethod(m);
         CoreIntrinsics.ValidateVectorMultiplyAddEstimate(m);
+        CoreIntrinsics.ValidateVectorAsCallable(m);
+        if (CoreIntrinsics.IsGuardedVectorAs(m))
+        {
+            var guards = ResolveGuardedVectorAsGuards(m);
+            _intrinsicTypeTranspiled.Add(m);
+            if (AddReachable(m.EnsureSignature()))
+            {
+                _predTrace.TryAdd(m, _currentScan);
+                foreach (var guard in guards) Reach(guard);
+            }
+            return;
+        }
         if (CoreIntrinsics.IsGenericVectorEstimate(m))
         {
             var guard = ResolveGenericVectorEstimateGuard(m);
