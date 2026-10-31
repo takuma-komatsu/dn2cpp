@@ -927,6 +927,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(target)
             || CoreIntrinsics.IsInterpolationStaticHelper(target)
             || CoreIntrinsics.IsPrimitiveElementHelper(target)
+            || CoreIntrinsics.IsKnownConstant(target)
             || CoreIntrinsics.IsMemberNotFoundExceptionFactory(target)
             || target.Rva != 0 && cls.IntrinsicCppName is null)
         {

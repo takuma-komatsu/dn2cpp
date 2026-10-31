@@ -2159,6 +2159,7 @@ internal sealed partial class CppEmitter
             && !CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(m)
             && !CoreIntrinsics.IsInterpolationStaticHelper(m)
             && !CoreIntrinsics.IsPrimitiveElementHelper(m)
+            && !CoreIntrinsics.IsKnownConstant(m)
             && !CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
             && !CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
             && !CoreIntrinsics.IsCustomAttributeDataConstructorBase(m);
@@ -2741,6 +2742,7 @@ internal sealed partial class CppEmitter
                             && !CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(m)
                             && !CoreIntrinsics.IsInterpolationStaticHelper(m)
                             && !CoreIntrinsics.IsPrimitiveElementHelper(m)
+                            && !CoreIntrinsics.IsKnownConstant(m)
                             && !CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
             && !CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
             && !CoreIntrinsics.IsCustomAttributeDataConstructorBase(m))

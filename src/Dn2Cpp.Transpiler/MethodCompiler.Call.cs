@@ -478,6 +478,7 @@ internal sealed partial class MethodCompiler
             case HandleKind.MethodDefinition:
             {
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
+                CoreIntrinsics.ValidateKnownConstantCallable(callee);
                 if (CoreIntrinsics.BrPrimitiveBigMul.Matches(callee))
                 {
                     EmitManagedCall(callee, isCallvirt);
@@ -488,6 +489,7 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(callee)
                     || CoreIntrinsics.IsInterpolationStaticHelper(callee)
                     || CoreIntrinsics.IsPrimitiveElementHelper(callee)
+                    || CoreIntrinsics.IsKnownConstant(callee)
                     || CoreIntrinsics.IsMemberNotFoundExceptionFactory(callee)
                     || CoreIntrinsics.IsMemberMetadataDefinitionBase(callee)
             || CoreIntrinsics.IsCustomAttributeDataConstructorBase(callee)
@@ -697,6 +699,11 @@ internal sealed partial class MethodCompiler
                 // spec's method is a MemberRef across assemblies and a MethodDef
                 // within one (e.g. corelib's Span<T> -> Unsafe.Add<T>).
                 var ms = _reader.GetMethodSpecification((MethodSpecificationHandle)handle);
+                if (_c.IsKnownConstantSpec(_module, ms))
+                {
+                    EmitManagedCall(_c.ResolveMethodSpec(_module, (MethodSpecificationHandle)handle, _method.Context), isCallvirt);
+                    return;
+                }
                 // AsyncTaskMethodBuilder.Start<TSM> /.AwaitUnsafeOnCompleted —
                 // generic (AsyncTaskMethodBuilder<T>) or non-generic (async Task)
                 // — are emitted inline.

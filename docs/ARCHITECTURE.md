@@ -6,6 +6,13 @@ see `README.md`, for working conventions `AGENTS.md`, for the open backlog
 
 ---
 
+The CoreLib `RuntimeHelpers.IsKnownConstant` family retains its exact managed
+fallbacks rather than claiming JIT constant knowledge. Declaration constraints,
+raw references and closed value arguments are checked before admitting those
+bodies on the mapped owner. Ordinary calls, addresses and retained reflection
+share the same bodies, preserving argument effects and exceptions. A false hint
+selects the caller's normal algorithm; it is not a claim that a value is mutable.
+
 ## 1. Pipeline
 
 ```

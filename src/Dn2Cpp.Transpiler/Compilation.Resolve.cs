@@ -85,6 +85,7 @@ internal sealed partial class Compilation
                 if (!module.MethodMap.TryGetValue(h, out var mi))
                     return null;
                 NoteObfuscationMethod(mi);
+                CoreIntrinsics.ValidateKnownConstantCallable(mi);
                 if (CoreIntrinsics.BrPrimitiveBigMul.Matches(mi)) return mi;
                 // System.Exception::get_Message is cut as intrinsic (below), but a call to
                 // it — even the non-virtual base.Message inside an override — means the
@@ -99,6 +100,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(mi)
                     || CoreIntrinsics.IsInterpolationStaticHelper(mi)
                     || CoreIntrinsics.IsPrimitiveElementHelper(mi)
+                    || CoreIntrinsics.IsKnownConstant(mi)
                     || CoreIntrinsics.IsMemberNotFoundExceptionFactory(mi)
                     || CoreIntrinsics.IsMemberMetadataDefinitionBase(mi)
             || CoreIntrinsics.IsCustomAttributeDataConstructorBase(mi)
@@ -329,6 +331,8 @@ internal sealed partial class Compilation
                 // crosses assemblies and a MethodDef when it stays within one
                 // (e.g. corelib's Span<T> -> Unsafe.Add<T>).
                 var ms = module.Reader.GetMethodSpecification((MethodSpecificationHandle)handle);
+                if (IsKnownConstantSpec(module, ms))
+                    return ResolveMethodSpec(module, (MethodSpecificationHandle)handle, ctx);
                 // AsyncTaskMethodBuilder.Start<TSM> / .AwaitUnsafeOnCompleted are
                 // emitted inline. Both drive TSM.MoveNext (Start synchronously,
                 // AwaitUnsafeOnCompleted by registering it as a continuation), so
@@ -778,6 +782,8 @@ internal sealed partial class Compilation
         }
 
         var resolved = InstantiateMethodOnClass(declClass, defModule, templateHandle, methodArgs);
+        if (CoreIntrinsics.IsKnownConstantName(declClass.FullName, resolved.Name))
+            ValidateKnownConstantSpec(module, ms, resolved, callerCtx);
         if (declClass.FullName == "System.Globalization.DateTimeFormatInfo"
             && defModule.AssemblyName == "System.Private.CoreLib"
             && CoreIntrinsics.IsDateTimeFormatInfoSpanName(resolved.Name))
@@ -1421,6 +1427,8 @@ internal sealed partial class Compilation
                     : candidates.FirstOrDefault(x => ParameterIdentityKey(x.Signature.ParameterTypes) == want) ?? candidates[0];
             }
         }
+        if (CoreIntrinsics.IsKnownConstantName(cls.FullName, name))
+            ValidateKnownConstantReference(module, mr, resolved, callerCtx);
         if (CoreIntrinsics.IsRuntimeTypeHandleGetAttributes(resolved)
             || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(resolved))
         {
@@ -2064,6 +2072,9 @@ internal sealed partial class Compilation
         if (mr.Parent.Kind is not (HandleKind.TypeReference or HandleKind.TypeDefinition))
             return null;
         string? full = MemberRefParentTypeName(module, handle);
+        if (reader.StringComparer.Equals(mr.Name, "IsKnownConstant")
+            && full == "System.Runtime.CompilerServices.RuntimeHelpers")
+            return CoreIntrinsics.ValidateKnownConstantCallable(ResolveMemberRefMethod(module, handle, callerCtx));
         if (full == "System.Decimal" && reader.StringComparer.Equals(mr.Name, "DecDivMod1E9"))
         {
             var divide = ResolveMemberRefMethod(module, handle, callerCtx);

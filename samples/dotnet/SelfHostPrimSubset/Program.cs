@@ -475,5 +475,7 @@ internal static class Program
         PathActivationAttributesSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-default-principal") return;
         DefaultPrincipalPublicSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-known-constant") return;
+        KnownConstantSubset.Program.Run();
     }
 }

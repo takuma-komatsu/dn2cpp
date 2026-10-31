@@ -239,6 +239,40 @@ internal sealed partial class AssemblyDiet
             method.Parameters.Count == 1 ? Shape(method.Parameters[0].ParameterType) : null);
     }
 
+    private static bool IsCopiedKnownConstant(MethodDefinition method, string owner)
+    {
+        if (method.Name != "IsKnownConstant" || owner != "System.Runtime.CompilerServices.RuntimeHelpers"
+            || method.Module.Assembly?.Name.Name != "System.Private.CoreLib") return false;
+        bool generic = method.GenericParameters.Count == 1;
+        bool signature = !method.HasThis && !method.ExplicitThis
+            && method.CallingConvention == (generic ? MethodCallingConvention.Generic : MethodCallingConvention.Default)
+            && method.ReturnType is not TypeSpecification && method.ReturnType.MetadataType == MetadataType.Boolean
+            && method.Parameters.Count == 1;
+        if (signature)
+        {
+            var parameter = method.Parameters[0].ParameterType;
+            signature = generic ? parameter == method.GenericParameters[0]
+                : parameter is not TypeSpecification && (parameter.MetadataType is MetadataType.Char or MetadataType.String
+                    || parameter is TypeDefinition { FullName: "System.Type" } type && type.Module == method.Module);
+        }
+        bool constraints = method.GenericParameters.Count == 0;
+        if (generic)
+        {
+            var parameter = method.GenericParameters[0];
+            constraints = parameter.Position == 0
+                && parameter.Attributes == (GenericParameterAttributes.NotNullableValueTypeConstraint
+                    | GenericParameterAttributes.DefaultConstructorConstraint)
+                && parameter.Constraints.Count == 1
+                && parameter.Constraints[0].ConstraintType is TypeDefinition { FullName: "System.ValueType" } type
+                && type.Module == method.Module;
+        }
+        return CoreIntrinsicTypeMaps.IsKnownConstantMethod(method.Module.Assembly?.Name.Name,
+            owner, method.Name,
+            method.Attributes == (MethodAttributes.Assembly | MethodAttributes.Static | MethodAttributes.HideBySig),
+            method.HasBody && method.ImplAttributes == MethodImplAttributes.IL && !method.HasPInvokeInfo,
+            signature, constraints);
+    }
+
     private static bool IsCopiedPrimitiveElementHelper(MethodDefinition method, string owner)
     {
         if (method.Module.Assembly?.Name.Name != "System.Private.CoreLib"
@@ -393,7 +427,8 @@ internal sealed partial class AssemblyDiet
             || IsCopiedDateTimeFormatInfoParserFlagGetter(method, owner)
             || IsCopiedRuntimeTypeIntroducedMethodsFactory(method, owner)
             || IsCopiedRuntimeTypeHandleCopy(method, owner) || IsCopiedAmbiguousMatchExceptionFactory(method, owner)
-            || IsCopiedMemberNotFoundExceptionFactory(method, owner) || IsCopiedPrimitiveElementHelper(method, owner))
+            || IsCopiedMemberNotFoundExceptionFactory(method, owner) || IsCopiedPrimitiveElementHelper(method, owner)
+            || IsCopiedKnownConstant(method, owner))
             traverse = true;
         else if (owner is "System.Array" or "System.Delegate")
             traverse = CoreIntrinsicTypeMaps.IsRealBodyGeneric(owner, method.Name) || CopiedArrayRealBodyMember(method);

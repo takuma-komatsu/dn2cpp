@@ -2,6 +2,9 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (KnownConstantFixture.Run(args)) return;
+if (KnownConstantGuards.Run(args)) return;
+if (KnownConstantRawGuards.Run(args)) return;
 if (VectorBlockFixture.Run(args)) return;
 if (VectorExplicitGuards.Run(args)) return;
 if (VectorExplicitFixture.Run(args)) return;

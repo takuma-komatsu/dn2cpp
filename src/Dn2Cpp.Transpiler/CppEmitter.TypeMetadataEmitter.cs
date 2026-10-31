@@ -3900,6 +3900,7 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(method)
                         || CoreIntrinsics.IsInterpolationStaticHelper(method)
                         || CoreIntrinsics.IsPrimitiveElementHelper(method)
+                        || CoreIntrinsics.IsKnownConstant(method)
                         || CoreIntrinsics.IsMemberNotFoundExceptionFactory(method)
                         || CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(method)
                         || CoreIntrinsics.IsCoreClrCanonicalTypeComparison(method)

@@ -4094,6 +4094,7 @@ internal sealed partial class Compilation
 
     public void NoteIntrinsicFtnTarget(MethodInfo m)
     {
+        CoreIntrinsics.ValidateKnownConstantCallable(m);
         if (CoreIntrinsics.IsInvariantCompareInfoGetter(m))
         {
             NoteInvariantCompareInfoFactory(m);
@@ -4122,6 +4123,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(m)
             || CoreIntrinsics.IsInterpolationStaticHelper(m)
             || CoreIntrinsics.IsPrimitiveElementHelper(m)
+            || CoreIntrinsics.IsKnownConstant(m)
             || CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
             || CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
             || CoreIntrinsics.IsRealBodyGeneric(m.DeclaringClass.FullName, m.Name)

@@ -142,6 +142,11 @@ internal static class CoreIntrinsicTypeMaps
         && managedBody && !pinvoke && parameterCount == 1
         && result == "System.ArgumentException" && parameter == "System.Reflection.MemberInfo";
 
+    public static bool IsKnownConstantMethod(string? assembly, string? owner, string name,
+        bool exactAttributes, bool managedBody, bool parameterIdentity, bool constraints) =>
+        assembly == "System.Private.CoreLib" && owner == "System.Runtime.CompilerServices.RuntimeHelpers"
+        && name == "IsKnownConstant" && exactAttributes && managedBody && parameterIdentity && constraints;
+
     public static bool IsPrimitiveElementHelperMethod(string? assembly, string? owner, string name,
         bool isAssembly, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
         int parameterCount, bool booleanResult, bool byteElementType) =>
