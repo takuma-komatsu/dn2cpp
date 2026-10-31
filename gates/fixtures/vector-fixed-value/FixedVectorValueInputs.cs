@@ -25,7 +25,7 @@ internal static class FixedVectorValueInputs
     public static void Generate(string mode, string corePath, string output)
     {
         string baseMode = Mutation(mode);
-        string[] modes = { "all", "valid", "static", "explicit-this", "vararg", "generic", "byref-result", "return-modopt", "wrong-result", "byref-input", "modopt", "modreq", "wrong-closed", "wrong-width", "wrong-family", "wrong-input", "extra", "missing", "trailing", "owner-trailing", "methodspec", "bool", "char", "decimal", "int128", "uint128", "enum", "struct", "open", "foreign-owner", "constrained-equatable", "constrained-object", "constrained-hash", "constrained-foreign-equatable", "constrained-wrong-equatable", "constrained-foreign-object", "constrained-receiver-modopt", "constrained-receiver-trailing", "methodspec-zero", "mvar-context", "context-spec-var", "context-spec-mvar" };
+        string[] modes = { "all", "valid", "static", "explicit-this", "vararg", "generic", "byref-result", "return-modopt", "wrong-result", "byref-input", "modopt", "modreq", "wrong-closed", "wrong-width", "wrong-family", "wrong-input", "extra", "missing", "trailing", "owner-trailing", "methodspec", "bool", "char", "decimal", "int128", "uint128", "enum", "struct", "open", "string", "nullable", "generic-struct", "byref-like", "foreign-owner", "constrained-equatable", "constrained-object", "constrained-hash", "constrained-foreign-equatable", "constrained-wrong-equatable", "constrained-foreign-object", "constrained-receiver-modopt", "constrained-receiver-trailing", "methodspec-zero", "mvar-context", "context-spec-var", "context-spec-mvar" };
         if (!modes.Contains(baseMode)) throw new ArgumentException("Unknown vector value mode: " + mode);
         if (File.Exists(output)) throw new InvalidOperationException("Refusing to replace fixture input: " + output);
         using var core = AssemblyDefinition.ReadAssembly(corePath);
@@ -47,12 +47,24 @@ internal static class FixedVectorValueInputs
             TypeReference element = m.ImportReference(core.MainModule.GetType("System." + elementName));
             string? unsupported = mutation switch { "bool" => "Boolean", "char" => "Char", "decimal" => "Decimal", "int128" => "Int128", "uint128" => "UInt128", _ => null };
             if (unsupported is not null) element = m.ImportReference(core.MainModule.GetType("System." + unsupported));
-            if (mutation is "enum" or "struct")
+            if (mutation is "enum" or "struct" or "byref-like")
             {
                 var custom = new CType("Guard", "Element", Mono.Cecil.TypeAttributes.Public | Mono.Cecil.TypeAttributes.Sealed,
                     m.ImportReference(core.MainModule.GetType(mutation == "enum" ? "System.Enum" : "System.ValueType")));
                 custom.Fields.Add(new FieldDefinition(mutation == "enum" ? "value__" : "Value", Mono.Cecil.FieldAttributes.Public, m.TypeSystem.Int32));
+                if (mutation == "byref-like")
+                    custom.CustomAttributes.Add(new Mono.Cecil.CustomAttribute(m.ImportReference(core.MainModule.GetType("System.Runtime.CompilerServices.IsByRefLikeAttribute")
+                        .Methods.Single(method => method.IsConstructor && method.Parameters.Count == 0))));
                 m.Types.Add(custom); element = custom;
+            }
+            if (mutation == "string") element = m.TypeSystem.String;
+            if (mutation == "nullable") element = Closed(m.ImportReference(core.MainModule.GetType("System.Nullable`1")), m.TypeSystem.Int32);
+            if (mutation == "generic-struct")
+            {
+                var custom = new CType("Guard", "GenericElement`1", Mono.Cecil.TypeAttributes.Public | Mono.Cecil.TypeAttributes.Sealed,
+                    m.ImportReference(core.MainModule.GetType("System.ValueType")));
+                custom.GenericParameters.Add(new GenericParameter("T", custom)); m.Types.Add(custom);
+                element = Closed(custom, m.TypeSystem.Int32);
             }
             var ownerDefinition = m.ImportReference(vector);
             if (mutation == "open") element = ownerDefinition.GenericParameters[0];

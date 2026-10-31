@@ -7,7 +7,8 @@ internal sealed partial class Compilation
     internal MethodInfo? TryResolveVectorManagedThrowSpec(Module module, MethodSpecificationHandle handle, GenericContext context)
     {
         var specification = module.Reader.GetMethodSpecification(handle);
-        if (MethodSpecMethodName(module, specification) != "ThrowForUnsupportedNumericsVectorBaseType"
+        if (MethodSpecMethodName(module, specification) is not ("ThrowForUnsupportedNumericsVectorBaseType"
+                or "ThrowForUnsupportedIntrinsicsVector64BaseType" or "ThrowForUnsupportedIntrinsicsVector128BaseType")
             || MethodSpecParentTypeName(module, specification) != "System.ThrowHelper") return null;
         var raw = module.Reader.GetBlobReader(specification.Signature);
         if (raw.RemainingBytes < 3 || raw.ReadByte() != 0x0a || raw.ReadByte() != 1
@@ -23,7 +24,8 @@ internal sealed partial class Compilation
     private void ValidateVectorManagedThrowSpec(Module module, MethodSpecification specification,
         MethodInfo target, GenericContext context)
     {
-        if (target.Name != "ThrowForUnsupportedNumericsVectorBaseType"
+        if (target.Name is not ("ThrowForUnsupportedNumericsVectorBaseType"
+                or "ThrowForUnsupportedIntrinsicsVector64BaseType" or "ThrowForUnsupportedIntrinsicsVector128BaseType")
             || target.DeclaringClass.FullName != "System.ThrowHelper"
             || target.Context.MethodArgs is not [var argument]) return;
         if (argument.Class is { } element) EnsureShape(element);

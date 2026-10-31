@@ -25,8 +25,8 @@ else if (args is ["context", var contextCompiler, var contextCore, var contextIn
     FixedVectorValueInputs.Generate(route == "boxed" ? "boxed-mvar-context" : "mvar-context", contextCore, contextInput);
     FixedVectorValueGuards.Run(contextCompiler, contextCore, contextInput, true, false, true);
 }
-else if (args is ["reference", var refCompiler, var refCore, var refInput, var expected] && expected is "accept" or "reject")
-    FixedVectorValueGuards.Run(refCompiler, refCore, refInput, expected == "accept", false);
+else if (args is ["reference", var refCompiler, var refCore, var refInput, var expected] && expected is "accept" or "reject" or "managed")
+    FixedVectorValueGuards.Run(refCompiler, refCore, refInput, expected == "accept", false, managedScope: expected == "managed");
 else if (args is ["mixed-generate", var mixedCore, var mixedOutput])
     FixedVectorMixed.Generate(mixedCore, mixedOutput);
 else if (args is ["mixed", var mixedCompiler, var mixedReadCore, var mixedInput, var mixedMode] && mixedMode is "observe" or "require")

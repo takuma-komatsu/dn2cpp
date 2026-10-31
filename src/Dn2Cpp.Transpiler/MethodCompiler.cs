@@ -686,6 +686,9 @@ internal sealed partial class MethodCompiler : IEvalStack
     {
         TaintCanonicalVectorOwner(_method.DeclaringClass);
         TaintCanonicalFixedVectorValueOwner(_method.DeclaringClass, _method.Name);
+        if (SharedTrial && IsFixedVectorFacade(_method.DeclaringClass))
+            foreach (var argument in _method.Context.MethodArgs)
+                TaintIfCanonical(argument, "fixed-vector-element");
         if (SharedTrial && IsNumericsVectorFacade(_method.DeclaringClass))
             foreach (var argument in _method.Context.MethodArgs)
                 TaintIfCanonical(argument, "numerics-vector-element");

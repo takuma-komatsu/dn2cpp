@@ -17,6 +17,11 @@ internal static class FixedVectorValueShapeProof
             return reader.StringComparer.Equals(type.Namespace, "System") && reader.StringComparer.Equals(type.Name, "Object");
         }).Select(h => Identity(reader, h)).ToArray();
         bool Modified(string shape, string qualifier, string inner) => objectIdentities.Any(id => shape == qualifier + "(" + id + "," + inner + ")");
+        string? element = mutation switch
+        {
+            "bool" => "02", "char" => "03", "string" => "0E", "nullable" => "System.Nullable`1", "generic-struct" => "def:Guard.GenericElement`1", "open" => "!0", "decimal" => "System.Decimal", "int128" => "System.Int128",
+            "uint128" => "System.UInt128", "enum" or "struct" or "byref-like" => "def:Guard.Element", _ => null
+        };
         var targetTokens = new HashSet<int>();
         int targets = 0;
         foreach (var handle in reader.MemberReferences)
@@ -85,18 +90,18 @@ internal static class FixedVectorValueShapeProof
             else if (mutation == "constrained-foreign-equatable") Require(owner.Contains("def:System.IEquatable`1", StringComparison.Ordinal), "foreign interface identity");
             else if (mutation is "context-spec-var" or "context-spec-mvar") Require(owner == (mutation == "context-spec-var" ? "!0" : "!!0"), "contextual parent preserved");
             else Require(owner.Contains("@System.Private.CoreLib", StringComparison.Ordinal), "genuine owner source module");
-            string? element = mutation switch
-            {
-                "bool" => "02", "char" => "03", "open" => "!0", "decimal" => "System.Decimal", "int128" => "System.Int128",
-                "uint128" => "System.UInt128", "enum" or "struct" => "def:Guard.Element", _ => null
-            };
-            if (element is not null) Require(element.Length == 2 || element == "!0"
+            if (element is not null && !mode.StartsWith("constrained-object-", StringComparison.Ordinal)) Require(element.Length == 2 || element == "!0"
                 ? owner.EndsWith(";" + element + ")", StringComparison.Ordinal)
                 : owner.Contains(element, StringComparison.Ordinal), "unsupported element preserved");
-            if (mutation is "enum" or "struct")
+            if (mutation is "enum" or "struct" or "byref-like")
             {
                 var elementDefinition = reader.TypeDefinitions.Select(reader.GetTypeDefinition).Single(t => reader.StringComparer.Equals(t.Name, "Element"));
                 Require(Identity(reader, elementDefinition.BaseType).Contains(mutation == "enum" ? "System.Enum@" : "System.ValueType@", StringComparison.Ordinal), "unsupported element kind");
+                if (mutation == "byref-like")
+                    Require(elementDefinition.GetCustomAttributes().Select(reader.GetCustomAttribute).Any(attribute =>
+                        attribute.Constructor.Kind == HandleKind.MemberReference
+                        && Identity(reader, reader.GetMemberReference((MemberReferenceHandle)attribute.Constructor).Parent)
+                            .Contains("System.Runtime.CompilerServices.IsByRefLikeAttribute@System.Private.CoreLib", StringComparison.Ordinal)), "serialized byref-like marker");
             }
             if (mutation == "constrained-wrong-equatable") Require(owner.Contains("System.IEquatable`1", StringComparison.Ordinal) && owner.EndsWith(";08))", StringComparison.Ordinal), "wrong closed interface argument");
         }
@@ -130,6 +135,9 @@ internal static class FixedVectorValueShapeProof
                 Require(ExactCall(MetadataTokens.GetToken(call)), "constrained call binds inspected reference/specification");
                 var blob = reader.GetBlobReader(reader.GetTypeSpecification((TypeSpecificationHandle)receiver).Signature);
                 string shape = Type(reader, ref blob);
+                if (element is not null) Require(element.Length == 2 || element == "!0"
+                    ? shape.EndsWith(";" + element + ")", StringComparison.Ordinal)
+                    : shape.Contains(element, StringComparison.Ordinal), "constrained receiver element preserved");
                 if (mutation == "constrained-receiver-modopt") Require(Modified(shape, "opt", "g(val(ref:" + FixedVectorValueInputs.OwnerName + "@System.Private.CoreLib);0D)"), "receiver modifier and exact element");
                 else Require(shape.StartsWith("g(val(ref:" + FixedVectorValueInputs.OwnerName + "@System.Private.CoreLib);", StringComparison.Ordinal), "receiver genuine Vector identity");
                 if (mutation == "constrained-receiver-trailing") Require(blob.RemainingBytes == 1 && blob.ReadByte() == 0x08, "receiver trailing byte");

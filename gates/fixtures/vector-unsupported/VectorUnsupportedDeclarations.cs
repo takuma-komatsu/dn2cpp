@@ -19,7 +19,7 @@ internal static class VectorUnsupportedDeclarations
             Check(parameter.Parent == parent && parameter.Index == 0 && parameter.Attributes == expectedAttributes && parameter.GetConstraints().Count == 0, label + " unconstrained parameter");
             Console.WriteLine($"vector-unsupported-declaration {label} parent={MetadataTokens.GetToken(parent):X8} index=0 flags={(int)parameter.Attributes:X4} constraints=0");
         }
-        var vector = Type("System.Numerics", "Vector`1");
+        var vector = Type(VectorUnsupportedFamily.Namespace, VectorUnsupportedFamily.TypeName);
         Parameter(reader.GetTypeDefinition(vector).GetGenericParameters(), vector, "Vector");
         var equatable = Type("System", "IEquatable`1");
         Parameter(reader.GetTypeDefinition(equatable).GetGenericParameters(), equatable, "IEquatable", (GenericParameterAttributes)0x20);
@@ -29,7 +29,7 @@ internal static class VectorUnsupportedDeclarations
             && count.ImplAttributes == MethodImplAttributes.IL && count.RelativeVirtualAddress != 0 && count.GetGenericParameters().Count == 0
             && Convert.ToHexString(reader.GetBlobBytes(count.Signature)) == "000008", "Count exact declaration");
         var helperType = Type("System", "ThrowHelper");
-        var helperHandle = reader.GetTypeDefinition(helperType).GetMethods().Single(h => reader.StringComparer.Equals(reader.GetMethodDefinition(h).Name, "ThrowForUnsupportedNumericsVectorBaseType"));
+        var helperHandle = reader.GetTypeDefinition(helperType).GetMethods().Single(h => reader.StringComparer.Equals(reader.GetMethodDefinition(h).Name, VectorUnsupportedFamily.HelperName));
         var helper = reader.GetMethodDefinition(helperHandle);
         Check(helper.Attributes == (MethodAttributes.Assembly | MethodAttributes.Static | MethodAttributes.HideBySig)
             && helper.ImplAttributes == MethodImplAttributes.AggressiveInlining && helper.RelativeVirtualAddress != 0
@@ -74,9 +74,9 @@ internal static class VectorUnsupportedDeclarations
         using var core = Mono.Cecil.AssemblyDefinition.ReadAssembly(source);
         // Re-emit IL into this private compiler-only copy; never rewrite the R2R input.
         core.MainModule.Attributes |= Mono.Cecil.ModuleAttributes.ILOnly;
-        var vector = core.MainModule.GetType("System.Numerics.Vector`1");
+        var vector = core.MainModule.GetType(VectorUnsupportedFamily.OwnerName);
         var itf = core.MainModule.GetType("System.IEquatable`1");
-        var helper = core.MainModule.GetType("System.ThrowHelper").Methods.Single(x => x.Name == "ThrowForUnsupportedNumericsVectorBaseType");
+        var helper = core.MainModule.GetType("System.ThrowHelper").Methods.Single(x => x.Name == VectorUnsupportedFamily.HelperName);
         var count = vector.Methods.Single(x => x.Name == "get_Count");
         Mono.Cecil.GenericParameter? parameter = mode.StartsWith("owner-") ? vector.GenericParameters.Single()
             : mode.StartsWith("interface-") ? itf.GenericParameters.Single()
@@ -119,8 +119,8 @@ internal static class VectorUnsupportedDeclarations
             var target = r.GetTypeDefinition(type).GetMethods().Single(h => r.StringComparer.Equals(r.GetMethodDefinition(h).Name, method));
             return Convert.ToHexString(r.GetBlobBytes(r.GetMethodDefinition(target).Signature));
         }
-        if (Signature("System", "ThrowHelper", "ThrowForUnsupportedNumericsVectorBaseType") != "10010001"
-            || Signature("System.Numerics", "Vector`1", "get_Count") != (mode == "count-instance" ? "200008" : "000008"))
+        if (Signature("System", "ThrowHelper", VectorUnsupportedFamily.HelperName) != "10010001"
+            || Signature(VectorUnsupportedFamily.Namespace, VectorUnsupportedFamily.TypeName, "get_Count") != (mode == "count-instance" ? "200008" : "000008"))
             throw new InvalidOperationException("Private copy Count/helper raw signature mismatch");
         Console.WriteLine($"vector-unsupported-private-copy mode={mode} source-sha256={sourceHash} source-unchanged=true output-sha256={Digest(output)} source-flags={(int)sourceFlags:X8} copy-flags={(int)pe.PEHeaders.CorHeader.Flags:X8} source-native-header-size={sourceNativeSize} copy-native-header-size=0 source-machine={(int)sourceMachine:X4} copy-machine={(int)pe.PEHeaders.CoffHeader.Machine:X4} source-pe-magic={(int)sourceMagic:X4} copy-pe-magic={(int)copyMagic:X4} pinned-r2r-header-normalization={normalizedReadyToRunHeader} assembly-identity-preserved=true strong-name-verification-not-claimed=true nondeployable=true runtime-equivalence-not-claimed=true compiler-only=true");
         if (mode == "baseline")
@@ -128,13 +128,13 @@ internal static class VectorUnsupportedDeclarations
             Verify(output);
             return;
         }
-        string typeName = mode.StartsWith("owner-") || mode.StartsWith("count-") ? "Vector`1" : mode.StartsWith("interface-") ? "IEquatable`1" : "ThrowHelper";
-        string typeNamespace = mode.StartsWith("owner-") || mode.StartsWith("count-") ? "System.Numerics" : "System";
+        string typeName = mode.StartsWith("owner-") || mode.StartsWith("count-") ? VectorUnsupportedFamily.TypeName : mode.StartsWith("interface-") ? "IEquatable`1" : "ThrowHelper";
+        string typeNamespace = mode.StartsWith("owner-") || mode.StartsWith("count-") ? VectorUnsupportedFamily.Namespace : "System";
         var typeHandle = r.TypeDefinitions.Single(h => r.GetTypeDefinition(h).GetDeclaringType().IsNil
             && r.StringComparer.Equals(r.GetTypeDefinition(h).Namespace, typeNamespace)
             && r.StringComparer.Equals(r.GetTypeDefinition(h).Name, typeName));
         var type = r.GetTypeDefinition(typeHandle);
-        var methodHandle = type.GetMethods().FirstOrDefault(h => r.StringComparer.Equals(r.GetMethodDefinition(h).Name, mode.StartsWith("count-") ? "get_Count" : "ThrowForUnsupportedNumericsVectorBaseType"));
+        var methodHandle = type.GetMethods().FirstOrDefault(h => r.StringComparer.Equals(r.GetMethodDefinition(h).Name, mode.StartsWith("count-") ? "get_Count" : VectorUnsupportedFamily.HelperName));
         if (mode.EndsWith("flags") || mode.EndsWith("constraint"))
         {
             var parameters = mode.StartsWith("helper-") ? r.GetMethodDefinition(methodHandle).GetGenericParameters() : type.GetGenericParameters();

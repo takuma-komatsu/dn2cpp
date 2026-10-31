@@ -122,17 +122,18 @@ internal static class FixedVectorMixed
             throw new InvalidOperationException("Mixed numeric and unsupported control inventory incomplete");
         var callable = Model("CoreIntrinsics").GetMethod("IsVectorValueCallableClass", members)!;
         bool firstGood = (bool)Call(null, numeric, numericOwner)!;
-        bool excluded = !(bool)Call(null, numeric, enumOwner)! && !(bool)Call(null, callable, enumOwner)!;
+        bool excluded = !(bool)Call(null, numeric, enumOwner)! && (bool)Call(null, callable, enumOwner)!;
         foreach (var unsupported in unsupportedOwners)
-            excluded &= !(bool)Call(null, numeric, unsupported)! && !(bool)Call(null, callable, unsupported)!;
+            excluded &= !(bool)Call(null, numeric, unsupported)! && (bool)Call(null, callable, unsupported)!
+                && (bool)Call(null, Model("CoreIntrinsics").GetMethod("IsFixedVectorManagedValueClass", members)!, unsupported)!;
         bool restoredGood = (bool)Call(null, numeric, numericOwner)!;
         var scalarInteger = Call(canonical, canonicalForm, numericElement)!;
         var scalarEnum = Call(canonical, canonicalForm, enumElement)!;
         bool scalarSharing = ReferenceEquals(scalarInteger, scalarEnum) && (bool)Get(scalarInteger, "IsCanonPlaceholder")!;
         bool controls = firstGood && excluded && restoredGood && numericIdentity && numericWrapperStorage && scalarSharing;
-        Console.WriteLine($"fixed-vector-mixed-controls numeric-first={firstGood} unsupported-noncallable={excluded} numeric-restored={restoredGood} numeric-vector-identity={numericIdentity} numeric-wrapper-storage={numericWrapperStorage} scalar-enum-sharing={scalarSharing} passed={controls}");
+        Console.WriteLine($"fixed-vector-mixed-controls numeric-first={firstGood} unsupported-managed-not-numeric={excluded} numeric-restored={restoredGood} numeric-vector-identity={numericIdentity} numeric-wrapper-storage={numericWrapperStorage} scalar-enum-sharing={scalarSharing} passed={controls}");
         Console.WriteLine($"fixed-vector-mixed width={FixedVectorValueInputs.Width} examined={examined} storage-or-admission-leaks={leaks} mode={(require ? "require" : "observe")}");
-        if (require && !controls) throw new InvalidOperationException("Mixed exact numeric/noncallable/sharing controls failed");
+        if (require && !controls) throw new InvalidOperationException("Mixed exact numeric/managed/sharing controls failed");
         if (require && leaks != 0) throw new InvalidOperationException("Unsupported fixed closure crosses numeric representation boundary");
     }
 }

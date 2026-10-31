@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Validate the fixed-value block and stream-compare a supplied old full prefix."""
 import argparse
+import subprocess
+import sys
 from pathlib import Path
 
 parser = argparse.ArgumentParser()
@@ -32,6 +34,10 @@ with args.output.open('rb') as stream:
     for expected in block:
         actual = stream.readline().replace(b'\r\n', b'\n')
         assert actual == expected, ('fixed value block differs', actual, expected)
-    assert stream.read(1) == b'', 'unexpected trailing output'
+    if args.full:
+        assert stream.readline().replace(b'\r\n', b'\n') == b'-- fixed vector unsupported semantics --\n', 'fixed unsupported block must immediately follow numeric block'
+        subprocess.run([sys.executable, str(Path(__file__).with_name('compare-managed-output.py')), str(args.output), '--full'], check=True)
+    else:
+        assert stream.read(1) == b'', 'unexpected trailing output'
 print('fixed vector value block and supplied historical prefix passed' if args.prefix
       else 'fixed vector full output suffix passed' if args.full else 'fixed vector focused value block passed')

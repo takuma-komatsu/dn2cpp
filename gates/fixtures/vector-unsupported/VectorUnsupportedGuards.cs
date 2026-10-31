@@ -172,9 +172,14 @@ internal static class VectorUnsupportedGuards
                 string predicate = guard ? "IsVectorManagedThrowHelper" : (string)Get(result, "Name") == "get_Count" ? "IsVectorManagedCount" : "IsVectorValueCallableMethod";
                 if (!guard && Predicate("IsVectorValueCallableEquatableMethod", result)) predicate = "IsVectorValueCallableEquatableMethod";
                 Check(Predicate(predicate, result), "exact-callable-declaration");
+                if (VectorUnsupportedFamily.Width != 0)
+                {
+                    if (guard) Check(Predicate("IsFixedVectorManagedThrowHelper", result), "separate-fixed-guard-family");
+                    else Check(Predicate("IsFixedVectorManagedValueClass", Get(result, "DeclaringClass")), "separate-fixed-managed-owner");
+                }
                 Check(!Predicate("IsVectorValueMethod", result), "not-numeric-lane-method");
                 var owner = Get(result, "DeclaringClass");
-                if (!guard && (string)Get(owner, "FullName") == "System.Numerics.Vector`1")
+                if (!guard && (string)Get(owner, "FullName") == VectorUnsupportedFamily.OwnerName)
                 {
                     Check(Predicate("IsVectorManagedValueClass", owner), "unmapped-owner");
                     Check(Get(owner, "IntrinsicCppName") is null, "not-intrinsic-mapped");
@@ -193,7 +198,7 @@ internal static class VectorUnsupportedGuards
                 Console.WriteLine($"vector-unsupported-reference mode={mode} accepted={MetadataTokens.GetToken(token):X8} numeric=false");
             }
             catch (NotSupportedException error) when (expected == "reject" && mode == "helper-extra"
-                && error.Message == "System.ThrowHelper: no generic method ThrowForUnsupportedNumericsVectorBaseType<1>/1")
+                && error.Message == $"System.ThrowHelper: no generic method {VectorUnsupportedFamily.HelperName}<1>/1")
             {
                 checks++;
                 Console.WriteLine($"vector-unsupported-reference mode={mode} refused=member-resolution-before-feature-validator feature-validator-executed=false classification=unresolved-member-signature");

@@ -1304,9 +1304,15 @@ its placeholder is never admitted as a supported numeric element. Speculative
 boxed interface resolution defers concrete admission, and real caller contexts
 validate raw references before cache hits. Numeric-only operation bodies may
 therefore specialize, while ordinary scalar/enum sharing and compatible numeric
-layouts remain available. This policy does not extend the Numerics managed-body
-fallback to unsupported fixed closures or change numeric operators and hardware
-capability reporting.
+layouts remain available. Genuine unmapped fixed closures over closed,
+non-generic, non-byref-like value elements use separately validated CoreLib
+value-method bodies, not numeric lane helpers. Their Count and unsupported-element guards retain the
+real managed exception path; object equality still checks the boxed type before
+calling typed equality. Fixed owner and facade operations taint canonical element
+trials so an unsupported enum cannot borrow a numeric guard or representation.
+Mapped unsupported primitives, reference elements and generic value elements
+remain outside this bounded managed-body policy. Numeric operators and hardware
+capability reporting retain their existing policies.
 
 #### Unmapped vector value methods
 

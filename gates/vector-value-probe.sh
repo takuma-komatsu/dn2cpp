@@ -8,6 +8,8 @@ vector_value_probe() {
     python3 gates/fixtures/vector-value/compare-output.py "$out/value-oracle.stdout" || return 1
     gate_capture_ok "$out/fixed-value-oracle" run_bounded env DOTNET_EnableAVX=0 dotnet "$_CG_APP" vector-fixed-value-only || return 1
     python3 gates/fixtures/vector-fixed-value/compare-output.py "$out/fixed-value-oracle.stdout" || return 1
+    gate_capture_ok "$out/fixed-managed-oracle" run_bounded env DOTNET_EnableAVX=0 dotnet "$_CG_APP" vector-fixed-unsupported-only || return 1
+    python3 gates/fixtures/vector-fixed-value/compare-managed-output.py "$out/fixed-managed-oracle.stdout" || return 1
     gate_capture_ok "$out/unsupported-oracle" run_bounded env DOTNET_EnableAVX=0 dotnet "$_CG_APP" vector-unsupported-only || return 1
     python3 gates/fixtures/vector-unsupported/compare-output.py "$out/unsupported-oracle.stdout" || return 1
     python3 gates/fixtures/vector-value/compare-output.py "$out/oracle.stdout" --full || return 1
@@ -19,6 +21,7 @@ vector_value_probe() {
             "${flags[@]}" -o "$emit" || return 1
         gate_capture_ok "$out/value-$axis-generated" python3 gates/fixtures/vector-value/check-generated.py "$emit" || return 1
         gate_capture_ok "$out/value-$axis-fixed-generated" python3 gates/fixtures/vector-fixed-value/check-generated.py "$emit" || return 1
+        gate_capture_ok "$out/value-$axis-fixed-managed-generated" python3 gates/fixtures/vector-fixed-value/check-managed-generated.py "$emit" || return 1
         gate_capture_ok "$out/value-$axis-unsupported-generated" python3 gates/fixtures/vector-unsupported/check-generated.py "$emit" || return 1
         gate_capture_ok "$out/value-$axis-unsupported-layouts" python3 gates/fixtures/vector-unsupported/check-layouts.py "$emit" --abi || return 1
         compile_console "$emit" VectorProbe || return 1
@@ -32,6 +35,9 @@ vector_value_probe() {
         gate_capture_ok "$out/value-$axis-fixed-run" run_bounded "./$emit/VectorProbe$EXE_EXT" vector-fixed-value-only || return 1
         gate_output compare "$out/value-$axis-fixed-run.stdout" "$out/fixed-value-oracle.stdout" --policy crlf || return 1
         python3 gates/fixtures/vector-fixed-value/compare-output.py "$out/value-$axis-fixed-run.stdout" || return 1
+        gate_capture_ok "$out/value-$axis-fixed-managed-run" run_bounded "./$emit/VectorProbe$EXE_EXT" vector-fixed-unsupported-only || return 1
+        gate_output compare "$out/value-$axis-fixed-managed-run.stdout" "$out/fixed-managed-oracle.stdout" --policy crlf || return 1
+        python3 gates/fixtures/vector-fixed-value/compare-managed-output.py "$out/value-$axis-fixed-managed-run.stdout" || return 1
         [ "$(grep -Ec '^fixed vector actual four-width tuple interface callable ABI passed hw=(0|1) pointer=(4|8)$' "$out/value-$axis-fixed-run.stderr")" = 1 ] || return 1
         gate_capture_ok "$out/value-$axis-unsupported-run" run_bounded "./$emit/VectorProbe$EXE_EXT" vector-unsupported-only || return 1
         gate_capture_ok "$out/value-$axis-unsupported-compare" vector_unsupported_compare_target \
@@ -42,6 +48,7 @@ vector_value_probe() {
         vector_value_metadata_probe "$out" || return 1
         vector_unsupported_metadata_probe "$out" || return 1
         vector_fixed_value_metadata_probe "$out/fixed-metadata" || return 1
+        vector_fixed_managed_guard_probe "$out/fixed-managed-guards" || return 1
     fi
 }
 
@@ -61,6 +68,8 @@ vector_value_wasm_probe() (
     python3 gates/fixtures/vector-value/compare-output.py "$out/value-oracle.stdout" || return 1
     gate_capture_ok "$out/fixed-value-oracle" run_bounded env DOTNET_EnableAVX=0 dotnet "$_CG_APP" vector-fixed-value-only || return 1
     python3 gates/fixtures/vector-fixed-value/compare-output.py "$out/fixed-value-oracle.stdout" || return 1
+    gate_capture_ok "$out/fixed-managed-oracle" run_bounded env DOTNET_EnableAVX=0 dotnet "$_CG_APP" vector-fixed-unsupported-only || return 1
+    python3 gates/fixtures/vector-fixed-value/compare-managed-output.py "$out/fixed-managed-oracle.stdout" || return 1
     gate_capture_ok "$out/unsupported-oracle" run_bounded env DOTNET_EnableAVX=0 dotnet "$_CG_APP" vector-unsupported-only || return 1
     python3 gates/fixtures/vector-unsupported/compare-output.py "$out/unsupported-oracle.stdout" || return 1
     for axis in raw diet; do
@@ -71,6 +80,7 @@ vector_value_wasm_probe() (
             "${flags[@]}" -o "$emit" || return 1
         gate_capture_ok "$out/value-wasm-$axis-generated" python3 gates/fixtures/vector-value/check-generated.py "$emit" || return 1
         gate_capture_ok "$out/value-wasm-$axis-fixed-generated" python3 gates/fixtures/vector-fixed-value/check-generated.py "$emit" || return 1
+        gate_capture_ok "$out/value-wasm-$axis-fixed-managed-generated" python3 gates/fixtures/vector-fixed-value/check-managed-generated.py "$emit" || return 1
         gate_capture_ok "$out/value-wasm-$axis-unsupported-generated" python3 gates/fixtures/vector-unsupported/check-generated.py "$emit" || return 1
         gate_capture_ok "$out/value-wasm-$axis-unsupported-layouts" python3 gates/fixtures/vector-unsupported/check-layouts.py "$emit" --abi || return 1
         compile_console_wasm "$emit" VectorProbe || return 1
@@ -82,6 +92,9 @@ vector_value_wasm_probe() (
         gate_capture_ok "$out/value-wasm-$axis-fixed-run" run_bounded node "./$emit/VectorProbe.js" vector-fixed-value-only || return 1
         gate_output compare "$out/value-wasm-$axis-fixed-run.stdout" "$out/fixed-value-oracle.stdout" --policy crlf || return 1
         python3 gates/fixtures/vector-fixed-value/compare-output.py "$out/value-wasm-$axis-fixed-run.stdout" || return 1
+        gate_capture_ok "$out/value-wasm-$axis-fixed-managed-run" run_bounded node "./$emit/VectorProbe.js" vector-fixed-unsupported-only || return 1
+        gate_output compare "$out/value-wasm-$axis-fixed-managed-run.stdout" "$out/fixed-managed-oracle.stdout" --policy crlf || return 1
+        python3 gates/fixtures/vector-fixed-value/compare-managed-output.py "$out/value-wasm-$axis-fixed-managed-run.stdout" || return 1
         [ "$(grep -Ec '^fixed vector actual four-width tuple interface callable ABI passed hw=(0|1) pointer=(4|8)$' "$out/value-wasm-$axis-fixed-run.stderr")" = 1 ] || return 1
         [ "$(grep -Ec '^fixed vector target pointer=4 independent-native-lanes=2,4,8,16$' "$out/value-wasm-$axis-fixed-run.stderr")" = 1 ] || return 1
         gate_capture_ok "$out/value-wasm-$axis-unsupported-run" run_bounded node "./$emit/VectorProbe.js" vector-unsupported-only || return 1

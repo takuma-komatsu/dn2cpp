@@ -26,8 +26,8 @@ internal static class VectorUnsupportedInputs
         var main = new CMethod("Main", Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, m.TypeSystem.Void); host.Methods.Add(main); m.EntryPoint = main;
         var element = m.ImportReference(core.MainModule.GetType("System.Decimal"));
         var declaration = helper
-            ? core.MainModule.GetType("System.ThrowHelper").Methods.Single(x => x.Name == "ThrowForUnsupportedNumericsVectorBaseType")
-            : core.MainModule.GetType("System.Numerics.Vector`1").Methods.Single(x => x.Name == "get_Count");
+            ? core.MainModule.GetType("System.ThrowHelper").Methods.Single(x => x.Name == VectorUnsupportedFamily.HelperName)
+            : core.MainModule.GetType(VectorUnsupportedFamily.OwnerName).Methods.Single(x => x.Name == "get_Count");
         var target = m.ImportReference(declaration);
         if (!helper)
         {
@@ -110,7 +110,7 @@ internal static class VectorUnsupportedInputs
     {
         var bytes = File.ReadAllBytes(path);
         using var pe = new PEReader(new MemoryStream(bytes)); var reader = pe.GetMetadataReader();
-        var member = reader.MemberReferences.Select(reader.GetMemberReference).Single(x => reader.StringComparer.Equals(x.Name, "ThrowForUnsupportedNumericsVectorBaseType"));
+        var member = reader.MemberReferences.Select(reader.GetMemberReference).Single(x => reader.StringComparer.Equals(x.Name, VectorUnsupportedFamily.HelperName));
         var signature = reader.GetTypeSpecification((TypeSpecificationHandle)member.Parent).Signature;
         var blob = reader.GetBlobReader(signature);
         if (blob.ReadByte() != 0x15 || blob.ReadByte() != 0x12) throw new InvalidOperationException("Expected padded helper owner");
@@ -130,7 +130,7 @@ internal static class VectorUnsupportedInputs
         var bytes = File.ReadAllBytes(path);
         using var pe = new PEReader(new MemoryStream(bytes)); var reader = pe.GetMetadataReader();
         bool helper = mode.StartsWith("helper-", StringComparison.Ordinal);
-        var member = reader.MemberReferences.Select(reader.GetMemberReference).Single(x => reader.StringComparer.Equals(x.Name, helper ? "ThrowForUnsupportedNumericsVectorBaseType" : "get_Count"));
+        var member = reader.MemberReferences.Select(reader.GetMemberReference).Single(x => reader.StringComparer.Equals(x.Name, helper ? VectorUnsupportedFamily.HelperName : "get_Count"));
         BlobHandle blob = mode.EndsWith("owner-trailing", StringComparison.Ordinal) ? reader.GetTypeSpecification((TypeSpecificationHandle)member.Parent).Signature
             : mode.EndsWith("spec-trailing", StringComparison.Ordinal) ? reader.GetMethodSpecification(MetadataTokens.MethodSpecificationHandle(1)).Signature : member.Signature;
         var raw = reader.GetBlobBytes(blob);
@@ -151,7 +151,7 @@ internal static class VectorUnsupportedInputs
         bool helper = mode.StartsWith("helper-", StringComparison.Ordinal);
         string mutation = mode[(mode.IndexOf('-') + 1)..];
         void Require(bool ok, string detail) { if (!ok) throw new InvalidOperationException("Serialized " + mode + ": " + detail); }
-        var memberHandle = reader.MemberReferences.Single(h => reader.StringComparer.Equals(reader.GetMemberReference(h).Name, helper ? "ThrowForUnsupportedNumericsVectorBaseType" : "get_Count"));
+        var memberHandle = reader.MemberReferences.Single(h => reader.StringComparer.Equals(reader.GetMemberReference(h).Name, helper ? VectorUnsupportedFamily.HelperName : "get_Count"));
         var member = reader.GetMemberReference(memberHandle);
         var raw = reader.GetBlobReader(member.Signature);
         int header = raw.ReadByte();
@@ -200,7 +200,8 @@ internal static class VectorUnsupportedInputs
             Require(owner.ReadByte() == (helper ? 0x12 : 0x11), "owner class/value kind");
             int coded = owner.ReadCompressedInteger(); Require((coded & 3) == 1, "owner typeref");
             var type = reader.GetTypeReference(MetadataTokens.TypeReferenceHandle(coded >> 2));
-            Require(reader.StringComparer.Equals(type.Name, helper ? "ThrowHelper" : "Vector`1"), "owner name");
+            Require(reader.StringComparer.Equals(type.Name, helper ? "ThrowHelper" : VectorUnsupportedFamily.TypeName)
+                && reader.StringComparer.Equals(type.Namespace, helper ? "System" : VectorUnsupportedFamily.Namespace), "owner identity");
             Require(type.ResolutionScope.Kind == HandleKind.AssemblyReference && reader.StringComparer.Equals(reader.GetAssemblyReference((AssemblyReferenceHandle)type.ResolutionScope).Name, "System.Private.CoreLib"), "owner CoreLib identity");
             Require(owner.ReadCompressedInteger() == 1, "owner arity"); Require(owner.ReadByte() == 0x11, "owner Decimal value kind");
             var arg = reader.GetTypeReference(MetadataTokens.TypeReferenceHandle(owner.ReadCompressedInteger() >> 2)); Require(reader.StringComparer.Equals(arg.Name, "Decimal"), "owner Decimal identity");
@@ -212,7 +213,7 @@ internal static class VectorUnsupportedInputs
             Require(member.Parent.Kind == HandleKind.TypeDefinition, "foreign helper local owner");
             var type = reader.GetTypeDefinition((TypeDefinitionHandle)member.Parent);
             Require(reader.StringComparer.Equals(type.Name, "ThrowHelper") && reader.StringComparer.Equals(type.Namespace, "System"), "foreign helper exact conflicting name");
-            var localMethodHandle = type.GetMethods().Single(h => reader.StringComparer.Equals(reader.GetMethodDefinition(h).Name, "ThrowForUnsupportedNumericsVectorBaseType"));
+            var localMethodHandle = type.GetMethods().Single(h => reader.StringComparer.Equals(reader.GetMethodDefinition(h).Name, VectorUnsupportedFamily.HelperName));
             var localMethod = reader.GetMethodDefinition(localMethodHandle);
             Require((int)localMethod.Attributes == 0x0093 && (int)localMethod.ImplAttributes == 0x0100
                 && localMethod.RelativeVirtualAddress != 0 && Convert.ToHexString(reader.GetBlobBytes(localMethod.Signature)) == "10010001", "foreign helper exact declaration");

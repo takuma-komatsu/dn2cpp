@@ -17,7 +17,10 @@ internal static partial class CoreIntrinsics
         && !value.IsByRefLike && value.GenericArity == 0 && value.Context.TypeArgs.Length == 0;
 
     // This is a bounded managed-body support set, not the complement of SIMD support.
-    internal static bool IsVectorManagedValueClass(ClassInfo owner)
+    internal static bool IsVectorManagedValueClass(ClassInfo owner) =>
+        IsNumericsVectorManagedValueClass(owner) || IsFixedVectorManagedValueClass(owner);
+
+    private static bool IsNumericsVectorManagedValueClass(ClassInfo owner)
     {
         if (!IsVectorExplicitOwner(owner) || owner.IntrinsicCppName is not null
             || !owner.IsValueType || owner.IsEnum || owner.IsInterface || owner.GenericArity != 1
@@ -35,7 +38,7 @@ internal static partial class CoreIntrinsics
     }
 
     internal static bool IsVectorManagedValueCandidateClass(ClassInfo owner) =>
-        owner.IntrinsicCppName is null && IsVectorExplicitOwner(owner)
+        owner.IntrinsicCppName is null && (IsVectorExplicitOwner(owner) || IsFixedVectorValueOwner(owner))
         && owner.Context.TypeArgs is [var element] && IsVectorManagedValueElement(element);
 
     internal static bool IsVectorManagedCountCandidate(ClassInfo owner, string name) =>
@@ -78,11 +81,17 @@ internal static partial class CoreIntrinsics
         return true;
     }
 
-    internal static bool IsVectorManagedThrowHelper(MethodInfo method)
+    internal static bool IsVectorManagedThrowHelper(MethodInfo method) =>
+        IsNumericsVectorManagedThrowHelper(method) || IsFixedVectorManagedThrowHelper(method);
+
+    private static bool IsNumericsVectorManagedThrowHelper(MethodInfo method) =>
+        method.Name == "ThrowForUnsupportedNumericsVectorBaseType"
+        && IsVectorManagedThrowDeclaration(method);
+
+    private static bool IsVectorManagedThrowDeclaration(MethodInfo method)
     {
         var owner = method.DeclaringClass;
-        if (method.Name != "ThrowForUnsupportedNumericsVectorBaseType"
-            || owner.FullName != "System.ThrowHelper" || owner.Module.AssemblyName != "System.Private.CoreLib"
+        if (owner.FullName != "System.ThrowHelper" || owner.Module.AssemblyName != "System.Private.CoreLib"
             || method.Module != owner.Module || owner.Handle.IsNil || method.Handle.IsNil
             || method.IsSynthetic || method.PInvoke is not null || owner.GenericArity != 0
             || owner.Context.TypeArgs.Length != 0 || method.Context.TypeArgs.Length != 0

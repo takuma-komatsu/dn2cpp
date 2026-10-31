@@ -5,7 +5,7 @@ using System.Reflection.Metadata.Ecma335;
 
 internal static class FixedVectorValueGuards
 {
-    public static void Run(string compiler, string core, string input, bool accept, bool mutations, bool contextRegression = false)
+    public static void Run(string compiler, string core, string input, bool accept, bool mutations, bool contextRegression = false, bool managedScope = false)
     {
         var production = Assembly.LoadFrom(Path.GetFullPath(compiler));
         const BindingFlags instance = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
@@ -53,8 +53,8 @@ internal static class FixedVectorValueGuards
         var app = modules.Single(x => (string)Get(x, "AssemblyName") == "FixedVectorValueGuardInput");
         var coreModule = modules.Single(x => (string)Get(x, "AssemblyName") == "System.Private.CoreLib");
         var reader = (MetadataReader)Get(app, "Reader");
-        bool scopeOnly = new[] { "bool", "char", "decimal", "int128", "uint128", "enum", "struct", "open", "foreign-owner" }.Contains(inputMode);
-        bool managedScope = false;
+        string mutation = FixedVectorValueInputs.Mutation(inputMode);
+        bool scopeOnly = new[] { "bool", "char", "decimal", "int128", "uint128", "enum", "struct", "open", "foreign-owner", "string", "nullable", "generic-struct", "byref-like" }.Contains(mutation);
         var context = Model("GenericContext").GetField("Empty", statics)!.GetValue(null)!;
         var resolve = Model("Compilation").GetMethod("ResolveVectorValueReference", instance)!;
         var constrained = Model("Compilation").GetMethod("ValidateVectorValueConstrained", instance)!;
@@ -188,7 +188,7 @@ internal static class FixedVectorValueGuards
             try
             {
                 object result;
-                if (!accept && constrainedReceivers.TryGetValue(MetadataTokens.GetToken(handle), out var receiverHandle))
+                if (!accept && !managedScope && constrainedReceivers.TryGetValue(MetadataTokens.GetToken(handle), out var receiverHandle))
                 {
                     var receiverDesc = Invoke(loaded, typeResolve, app, receiverHandle, context);
                     var receiver = Get(receiverDesc, "Class");
@@ -206,7 +206,14 @@ internal static class FixedVectorValueGuards
                     }
                     continue;
                 }
-                if (accept)
+                if (managedScope && constrainedReceivers.TryGetValue(MetadataTokens.GetToken(handle), out var managedReceiverHandle))
+                {
+                    var receiverDesc = Invoke(loaded, typeResolve, app, managedReceiverHandle, context);
+                    var receiver = Get(receiverDesc, "Class");
+                    Invoke(loaded, Model("Compilation").GetMethod("ValidateVectorValueReceiver", instance)!, app, managedReceiverHandle, context, receiver);
+                    result = Invoke(loaded, constrained, app, (EntityHandle)handle, context, receiver);
+                }
+                else if (accept || managedScope)
                 {
                     var desc = Invoke(loaded, typeResolve, app, reference.Parent, context);
                     var owner = Get(desc, "Class");
@@ -222,9 +229,40 @@ internal static class FixedVectorValueGuards
                 else result = Invoke(loaded, scopeOnly ? resolve : Model("Compilation").GetMethod("ResolveMemberRefMethod", instance)!, app, handle, context);
                 if (!accept && managedScope)
                 {
+                    if (((string)Get(Get(result, "DeclaringClass"), "FullName")).StartsWith("System.IEquatable", StringComparison.Ordinal))
+                    {
+                        Check(!(bool)Invoke(null, Model("CoreIntrinsics").GetMethod("IsVectorValueEquatableMethod", statics)!, result), "managed-interface-not-numeric");
+                        Check((bool)Invoke(null, Model("CoreIntrinsics").GetMethod("IsVectorValueCallableEquatableMethod", statics)!, result), "managed-interface-callable");
+                        var vector = Get(((Array)Get(Get(Get(result, "DeclaringClass"), "Context"), "TypeArgs")).GetValue(0)!, "Class");
+                        result = Invoke(loaded, constrained, app, (EntityHandle)handle, context, vector);
+                    }
                     Check(!(bool)Invoke(null, predicate, result), "managed-closure-not-numeric");
                     Check((bool)Invoke(null, Model("CoreIntrinsics").GetMethod("IsVectorValueCallableMethod", statics)!, result), "managed-closure-callable");
                     Check((bool)Invoke(null, Model("CoreIntrinsics").GetMethod("IsVectorManagedValueClass", statics)!, Get(result, "DeclaringClass")), "managed-closure-unmapped-owner");
+                    var managedOwner = Get(result, "DeclaringClass");
+                    var managedPredicate = Model("CoreIntrinsics").GetMethod("IsVectorManagedValueMethod", statics)!;
+                    Check((bool)Invoke(null, Model("CoreIntrinsics").GetMethod("IsFixedVectorManagedValueClass", statics)!, managedOwner), "separate-fixed-managed-owner");
+                    Check(Get(managedOwner, "IntrinsicCppName") is null, "managed-owner-has-no-numeric-storage");
+                    void RejectManaged(object value, string field, object next)
+                    {
+                        object saved = Get(value, field); Set(value, field, next);
+                        try { Check(!(bool)Invoke(null, managedPredicate, result), "managed-mutation-" + field); }
+                        finally { Set(value, field, saved); }
+                        Check((bool)Invoke(null, managedPredicate, result), "managed-restored-" + field);
+                    }
+                    RejectManaged(managedOwner, "Module", app);
+                    RejectManaged(managedOwner, "Handle", default(TypeDefinitionHandle));
+                    RejectManaged(managedOwner, "IntrinsicCppName", "Dn2CppVector" + FixedVectorValueInputs.Width);
+                    RejectManaged(managedOwner, "IsValueType", false);
+                    RejectManaged(managedOwner, "IsEnum", true);
+                    RejectManaged(managedOwner, "IsInterface", true);
+                    RejectManaged(managedOwner, "GenericArity", 0);
+                    RejectManaged(result, "Module", app);
+                    RejectManaged(result, "Handle", default(MethodDefinitionHandle));
+                    RejectManaged(result, "IsSynthetic", true);
+                    RejectManaged(result, "Rva", 0);
+                    RejectManaged(result, "Attributes", (MethodAttributes)Get(result, "Attributes") | MethodAttributes.Static);
+                    RejectManaged(result, "ImplAttributes", MethodImplAttributes.InternalCall);
                     Console.WriteLine("fixed-vector-value-reference numeric-scope=excluded managed-callable=accepted raw=" + raw);
                     continue;
                 }
@@ -275,6 +313,6 @@ internal static class FixedVectorValueGuards
                 Check((bool)Invoke(null, predicate, method), "restored-exact-declaration");
             }
         }
-        Console.WriteLine($"fixed-vector-value-guards expected={(accept ? "accept" : "reject")} references={references} checks={checks}");
+        Console.WriteLine($"fixed-vector-value-guards expected={(managedScope ? "managed" : accept ? "accept" : "reject")} references={references} checks={checks}");
     }
 }

@@ -1,6 +1,15 @@
 using System.Globalization;
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+if (args.Length >= 2 && args[0] == "fixed")
+{
+    if (!int.TryParse(args[1], out int width) || width is not (64 or 128 or 256 or 512))
+        throw new ArgumentException("Fixed width must be 64, 128, 256 or 512");
+    VectorUnsupportedFamily.Width = width;
+    args = args[2..];
+    if (args is ["generate", var fixedMode, _, _] && !fixedMode.StartsWith("count-") && !fixedMode.StartsWith("helper-"))
+        throw new ArgumentException("Fixed mode supports only Count and helper fixtures");
+}
 if (args is ["generate", var mode, var core, var output])
 {
     if (mode.StartsWith("count-") || mode.StartsWith("helper-")) VectorUnsupportedInputs.Generate(mode, core, output);
