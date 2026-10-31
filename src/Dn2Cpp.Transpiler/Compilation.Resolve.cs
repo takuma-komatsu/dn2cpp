@@ -84,6 +84,7 @@ internal sealed partial class Compilation
                 var h = (MethodDefinitionHandle)handle;
                 if (!module.MethodMap.TryGetValue(h, out var mi))
                     return null;
+                CoreIntrinsics.ValidateConcreteVectorElement(mi);
                 NoteObfuscationMethod(mi);
                 CoreIntrinsics.ValidateKnownConstantCallable(mi);
                 if (CoreIntrinsics.BrPrimitiveBigMul.Matches(mi)) return mi;
@@ -1348,6 +1349,7 @@ internal sealed partial class Compilation
     /// type, or a same-module non-generic definition.</summary>
     public MethodInfo ResolveMemberRefMethod(Module module, MemberReferenceHandle handle, GenericContext callerCtx)
     {
+        if (TryResolveConcreteVectorElementReference(module, handle, callerCtx) is { } concreteElement) return concreteElement;
         var reader = module.Reader;
         var mr = reader.GetMemberReference(handle);
         ClassInfo cls;
@@ -2112,6 +2114,7 @@ internal sealed partial class Compilation
     /// the member cannot be matched, so callers fall back to intrinsics.</summary>
     public MethodInfo? TryResolveMemberRefMethod(Module module, MemberReferenceHandle handle, GenericContext callerCtx)
     {
+        if (TryResolveConcreteVectorElementReference(module, handle, callerCtx) is { } concreteElement) return concreteElement;
         var reader = module.Reader;
         var mr = reader.GetMemberReference(handle);
         if (mr.Parent.Kind is not (HandleKind.TypeReference or HandleKind.TypeDefinition))

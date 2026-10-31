@@ -481,6 +481,7 @@ internal sealed partial class MethodCompiler
             case HandleKind.MethodDefinition:
             {
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
+                CoreIntrinsics.ValidateConcreteVectorElement(callee);
                 if (CoreIntrinsics.IsVectorValueCandidate(callee.DeclaringClass, callee.Name))
                 {
                     if (!CoreIntrinsics.IsVectorValueCallableMethod(callee))
@@ -911,6 +912,11 @@ internal sealed partial class MethodCompiler
             {
                 var mr = _reader.GetMemberReference((MemberReferenceHandle)handle);
                 string mrName = _reader.GetString(mr.Name);
+                if (_c.TryResolveConcreteVectorElementReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } concreteElement)
+                {
+                    if (TryEmitMethodDefIntercept(CoreIntrinsics.MdRuntimePrimitive, concreteElement)) return;
+                    throw new NotSupportedException("Concrete vector element access requires its exact CoreLib declaration");
+                }
                 if (mr.Parent.Kind == HandleKind.TypeSpecification)
                 {
                     var parent = _reader.GetTypeSpecification((TypeSpecificationHandle)mr.Parent).DecodeSignature(_c.SigProvider, _method.Context);
@@ -1637,6 +1643,13 @@ internal sealed partial class MethodCompiler
                 EmitVectorValue(callee);
                 return;
             }
+        }
+
+        CoreIntrinsics.ValidateConcreteVectorElement(callee);
+        if (CoreIntrinsics.IsConcreteVectorElement(callee))
+        {
+            EmitConcreteVectorElement(callee);
+            return;
         }
 
         if (callee.Name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(callee.DeclaringClass))

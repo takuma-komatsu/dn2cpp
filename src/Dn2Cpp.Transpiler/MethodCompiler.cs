@@ -684,6 +684,7 @@ internal sealed partial class MethodCompiler : IEvalStack
 
     public string Compile()
     {
+        CoreIntrinsics.ValidateConcreteVectorElement(_method);
         TaintCanonicalVectorOwner(_method.DeclaringClass);
         TaintCanonicalFixedVectorValueOwner(_method.DeclaringClass, _method.Name);
         if (SharedTrial && IsFixedVectorFacade(_method.DeclaringClass))
@@ -1224,6 +1225,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// Null when the method has no intrinsic lowering to synthesize from.</summary>
     internal string? CompileCoreIntrinsicWrapper()
     {
+        CoreIntrinsics.ValidateConcreteVectorElement(_method);
         if (_method.Name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(_method.DeclaringClass)
             && !CoreIntrinsics.IsVectorExplicit(_method))
             throw new NotSupportedException("Vector<T>.op_Explicit requires its exact supported CoreLib declaration");
@@ -1276,6 +1278,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsDateTimeFormatInfoSpan(_method)
             || CoreIntrinsics.IsDecimalDivMod(_method)
             || CoreIntrinsics.IsVectorExplicit(_method)
+            || CoreIntrinsics.IsConcreteVectorElement(_method)
             || CoreIntrinsics.IsVectorValueMethod(_method)
             || CoreIntrinsics.IsDateOnlyDeconstruct(_method)
             || CoreIntrinsics.IsDateTimeParserBoundary(_method)

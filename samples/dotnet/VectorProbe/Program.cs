@@ -16,6 +16,11 @@ internal static partial class Program
         // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        if (args.Length > 0 && args[0] == "vector-concrete-elements-only")
+        {
+            ConcreteElements();
+            return;
+        }
         if (args.Length > 0 && args[0] == "vector-fixed-unsupported-only")
         {
             FixedUnsupportedValueSemantics();
@@ -228,6 +233,8 @@ internal static partial class Program
         VectorValueSemantics();
         FixedValueSemantics();
         FixedUnsupportedValueSemantics();
+        if (args.Length > 0 && args[0] == "before-concrete-elements") return;
+        ConcreteElements();
     }
 
     private static void VectorCopyTargets()

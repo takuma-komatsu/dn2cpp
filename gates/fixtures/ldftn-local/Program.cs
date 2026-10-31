@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (ConcreteVectorElementsFixture.Run(args)) return;
+if (ConcreteVectorElementsGuards.Run(args)) return;
 if (ResourceFormatterGuards.Run(args)) return;
 if (ResourceFormatterFixture.Run(args)) return;
 if (ResourceTypeGuardFixture.Run(args)) return;

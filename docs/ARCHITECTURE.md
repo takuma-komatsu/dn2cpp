@@ -692,6 +692,18 @@ target-width storage. Successful
 conversion allocates nothing; overflow retains the ordinary exception-only
 allocation policy. This adapter does not expand reflection discovery.
 
+The concrete `Vector.GetElement` / `WithElement` overloads over Vector2, Vector3
+and Vector4 use exact CoreLib declarations and named Single fields. Bounds are
+checked before selecting a field; byte copies preserve component bits and the
+source value is never mutated. Direct calls and retained callable targets share
+this finite adapter; generic vector operations and reflection discovery are not
+expanded. Exception behavior follows the managed software body: an invalid index
+throws ArgumentOutOfRangeException with parameter `index` and no actual value.
+The CLR JIT's hardware Vector4 intrinsic instead omits the parameter name. This
+bounded divergence is independent of the native Highway setting; strict software
+CLR comparisons disable hardware intrinsics, while separate hardware-oracle
+results retain the differing exception text.
+
 **When does a method earn an intrinsic?** The default is to transpile the real
 BCL IL — Regex/Guid/Crypto coverage landed by removing transpile blockers, not by
 adding intrinsics. Add one only when:

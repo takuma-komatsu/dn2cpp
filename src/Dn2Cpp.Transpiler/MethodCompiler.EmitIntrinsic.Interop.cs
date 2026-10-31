@@ -579,6 +579,12 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsConcreteVectorElement(callee))
+        {
+            EmitConcreteVectorElement(callee);
+            return;
+        }
+
         if (CoreIntrinsics.IsVectorExplicit(callee))
         {
             EmitVectorExplicit(callee);
