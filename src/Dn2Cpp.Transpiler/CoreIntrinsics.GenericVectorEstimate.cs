@@ -8,7 +8,7 @@ internal static partial class CoreIntrinsics
 {
     internal static bool IsGenericVectorEstimateDefinition(ClassInfo owner, Module module, MethodDefinitionHandle handle)
     {
-        if (owner.FullName != "System.Numerics.Vector" || !IsVectorEstimateOwner(owner)
+        if (!IsVectorEstimateOwner(owner)
             || module != owner.Module || handle.IsNil) return false;
         var reader = module.Reader;
         var definition = reader.GetMethodDefinition(handle);
@@ -26,8 +26,9 @@ internal static partial class CoreIntrinsics
             || (token & 3) != 0) return false;
         var vector = reader.GetTypeDefinition(SRME.TypeDefinitionHandle(token >> 2));
         return vector.GetDeclaringType().IsNil && vector.GetGenericParameters().Count == 1
-            && reader.StringComparer.Equals(vector.Namespace, "System.Numerics")
-            && reader.StringComparer.Equals(vector.Name, "Vector`1");
+            && reader.StringComparer.Equals(vector.Namespace, owner.FullName == "System.Numerics.Vector"
+                ? "System.Numerics" : "System.Runtime.Intrinsics")
+            && reader.StringComparer.Equals(vector.Name, GenericVectorEstimateValueName(owner));
     }
 
     internal static bool IsGenericVectorEstimate(MethodInfo method)
@@ -44,7 +45,7 @@ internal static partial class CoreIntrinsics
             || signature.ParameterTypes.Length != 3 || signature.RequiredParameterCount != 3
             || signature.ReturnType is not { Kind: TypeKind.Class, IsCanonPlaceholder: false, Class: { } vector }
             || !IsVectorManagedValueClass(vector) || vector.Module != method.Module
-            || !IsVectorExplicitOwner(vector) || vector.Context.TypeArgs is not [var actual]
+            || vector.Context.TypeArgs is not [var actual]
             || actual.Kind != TypeKind.Class || actual.IsCanonPlaceholder || actual.Class != element.Class) return false;
         if (!ReadGenericVectorEstimateSignature(method.Module.Reader.GetBlobReader(definition.Signature), out int token)
             || token != SRME.GetRowNumber(vector.Handle) << 2) return false;
@@ -52,6 +53,16 @@ internal static partial class CoreIntrinsics
             if (parameter is not { Kind: TypeKind.Class, IsCanonPlaceholder: false, Class: { } operand } || operand != vector) return false;
         return true;
     }
+
+    private static string GenericVectorEstimateValueName(ClassInfo owner) => owner.FullName switch
+    {
+        "System.Numerics.Vector" => "Vector`1",
+        "System.Runtime.Intrinsics.Vector64" => "Vector64`1",
+        "System.Runtime.Intrinsics.Vector128" => "Vector128`1",
+        "System.Runtime.Intrinsics.Vector256" => "Vector256`1",
+        "System.Runtime.Intrinsics.Vector512" => "Vector512`1",
+        _ => "",
+    };
 
     internal static bool ReadGenericVectorEstimateSignature(BlobReader blob, out int vectorToken)
     {

@@ -8,7 +8,10 @@ internal static class GenericVectorEstimateGuards
 {
     public static bool Run(string[] args)
     {
-        if (args.Length != 4 || args[0] != "--generic-vector-estimate-guards") return false;
+        bool fixedWidth = args.Length == 5 && args[0] == "--fixed-generic-vector-estimate-guards";
+        if (!fixedWidth && (args.Length != 4 || args[0] != "--generic-vector-estimate-guards")) return false;
+        int width = fixedWidth ? int.Parse(args[4], CultureInfo.InvariantCulture) : 0;
+        if (fixedWidth && width is not (64 or 128 or 256 or 512)) throw new ArgumentException("unsupported width");
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
         const BindingFlags instance = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
@@ -18,7 +21,7 @@ internal static class GenericVectorEstimateGuards
         foreach (var route in new[] { "direct", "address", "calli" })
         foreach (var mutation in new[] { "valid", "valid-mvar", "valid-var" }.Concat(GenericVectorEstimateFixture.Mutations))
             cases.Add((element, route, mutation));
-        GenericVectorEstimateFixture.Build(args[3], args[2], cases);
+        GenericVectorEstimateFixture.Build(args[3], args[2], cases, width);
         var production = Assembly.LoadFrom(Path.GetFullPath(args[1]));
         Type Model(string name) => production.GetType("Dn2Cpp." + name, true)!;
         object Get(object value, string name) => value.GetType().GetField(name, instance) is { } field ? field.GetValue(value)! : value.GetType().GetProperty(name, instance)!.GetValue(value)!;
@@ -97,7 +100,10 @@ internal static class GenericVectorEstimateGuards
             int header = (originalImage[offset] & 3) == 2 ? 1 : (originalImage[offset + 1] >> 4) * 4;
             return offset + header;
         }
-        foreach (var control in good.Values)
+        if (width != 0)
+            FixedGenericVectorEstimateGuards.Check(compilation, core, args[2], good.Values.Select(c => (c.Token, c.Method)).ToArray(),
+                (module, token, context) => Invoke(resolve, module, token, context), Check);
+        foreach (var control in width == 0 ? good.Values : Enumerable.Empty<(EntityHandle Token, object Method, object Element)>())
         {
             var count = resolveGuard.Invoke(compilation, new[] { control.Method })!;
             int estimateOffset = BodyOffset((int)Get(control.Method, "Rva"));
@@ -147,7 +153,7 @@ internal static class GenericVectorEstimateGuards
             foreach (var resolver in token.Kind == HandleKind.MethodSpecification ? new[] { resolve, resolveSpec, resolveCall } : new[] { resolveReference, resolveFunction, resolveCall })
             {
                 Check(ReferenceEquals(Invoke(resolve, app, control.Token, empty), control.Method), "good-before");
-                bool expected = item.Mutation == "valid" || item.Mutation == "valid-mvar" && ReferenceEquals(context, contexts[1]) || item.Mutation == "valid-var" && ReferenceEquals(context, contexts[2]);
+                bool expected = item.Mutation is "valid" or "fixed" || item.Mutation == "valid-mvar" && ReferenceEquals(context, contexts[1]) || item.Mutation == "valid-var" && ReferenceEquals(context, contexts[2]);
                 if (expected) Check(Accepted(Invoke(resolver, app, token, context)), item.Route + ":" + item.Mutation + ":accept");
                 else Check(Refused(resolver, app, token, context), item.Route + ":" + item.Mutation + ":reject");
                 Check(ReferenceEquals(Invoke(resolve, app, control.Token, empty), control.Method) && Accepted(control.Method), "good-after");
@@ -202,7 +208,7 @@ internal static class GenericVectorEstimateGuards
             foreach (var resolver in new[] { resolve, resolveSpec, resolveCall })
                 Check(Accepted(Invoke(resolver, core, bridgeToken, ownerContext)), "retained-methoddef-resolver");
         }
-        Console.WriteLine("generic-vector-estimate-guards:checks=" + checks.ToString(CultureInfo.InvariantCulture));
+        Console.WriteLine((fixedWidth ? "fixed-generic-vector-estimate-guards:width=" + width + ":checks=" : "generic-vector-estimate-guards:checks=") + checks.ToString(CultureInfo.InvariantCulture));
         return true;
     }
 }

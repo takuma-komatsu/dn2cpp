@@ -16,10 +16,23 @@ using ModuleDefinition = Mono.Cecil.ModuleDefinition;
 internal static class GenericVectorEstimateFixture
 {
     internal static readonly string[] Elements = { "decimal", "enum", "struct", "refs", "int128", "uint128" };
-    internal static readonly string[] Mutations = { "instance", "vararg", "arity", "nongeneric", "concrete", "typevar", "methodvar-one", "extra", "missing", "byref-result", "modopt-0", "modreq-1", "pointer-2", "width", "fixed", "modopt-owner", "byref-owner", "generic-owner", "foreign-owner", "zero", "two", "trailing-spec", "trailing-reference", "reference", "primitive", "nullable", "byref-argument", "pointer-argument", "modopt-argument", "bare", "bare-concrete" };
+    internal static readonly string[] Mutations = { "instance", "vararg", "arity", "nongeneric", "concrete", "typevar", "methodvar-one", "extra", "missing", "byref-result", "modopt-0", "modreq-1", "pointer-2", "width", "fixed", "modopt-owner", "byref-owner", "generic-owner", "foreign-owner", "zero", "two", "trailing-spec", "trailing-reference", "reference", "primitive", "double", "byreflike", "nullable", "byref-argument", "pointer-argument", "modopt-argument", "bare", "bare-concrete" };
 
     public static bool Run(string[] args)
     {
+        if (args.Length == 1 && args[0] == "--fixed-generic-vector-estimate-oracle")
+        {
+            FixedOracle();
+            return true;
+        }
+        if (args.Length == 4 && args[0] == "--fixed-generic-vector-estimate-fixture")
+        {
+            if (args[3] != "all-runtime") throw new ArgumentException("expected all-runtime");
+            Build(args[1], args[2], new[] { 64, 128, 256, 512 }.SelectMany(width => Elements.SelectMany(element =>
+                new[] { "direct", "address", "calli", "bridge" }.Select(route => (element, route, "valid-runtime-" + width)))));
+            Console.WriteLine("fixed-generic-vector-estimate-fixture:all-runtime");
+            return true;
+        }
         if (args.Length == 1 && args[0] == "--generic-vector-estimate-oracle")
         {
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -44,7 +57,7 @@ internal static class GenericVectorEstimateFixture
         return true;
     }
 
-    internal static void Build(string output, string corePath, IEnumerable<(string Element, string Route, string Mutation)> cases)
+    internal static void Build(string output, string corePath, IEnumerable<(string Element, string Route, string Mutation)> cases, int width = 0)
     {
         output = Path.GetFullPath(output);
         if (File.Exists(output)) throw new InvalidOperationException("fixture output must be new");
@@ -67,12 +80,15 @@ internal static class GenericVectorEstimateFixture
             "uint128" => module.ImportReference(core.MainModule.GetType("System.UInt128")),
             _ => throw new ArgumentException(name),
         };
-        TypeReference Vector(TypeReference element, bool wide = false)
+        var byrefLike = new TypeDefinition("Fixture", "ByRefLike", TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.SequentialLayout, plain.BaseType);
+        byrefLike.Fields.Add(new FieldDefinition("Value", FieldAttributes.Public, module.TypeSystem.Int32));
+        byrefLike.CustomAttributes.Add(new Mono.Cecil.CustomAttribute(module.ImportReference(core.MainModule.GetType("System.Runtime.CompilerServices.IsByRefLikeAttribute").Methods.Single(m => m.IsConstructor && m.Parameters.Count == 0))));
+        module.Types.Add(byrefLike);
+        TypeReference Vector(TypeReference element, int selectedWidth, bool wide = false)
         {
-            var vector = new GenericInstanceType(module.ImportReference(core.MainModule.GetType(wide ? "System.Runtime.Intrinsics.Vector128`1" : "System.Numerics.Vector`1")));
+            var vector = new GenericInstanceType(module.ImportReference(core.MainModule.GetType(wide ? (selectedWidth == 128 ? "System.Runtime.Intrinsics.Vector64`1" : "System.Runtime.Intrinsics.Vector128`1") : selectedWidth == 0 ? "System.Numerics.Vector`1" : "System.Runtime.Intrinsics.Vector" + selectedWidth + "`1")));
             vector.GenericArguments.Add(element); return vector;
         }
-        var definition = core.MainModule.GetType("System.Numerics.Vector").Methods.Single(m => m.Name == "MultiplyAddEstimate" && m.HasGenericParameters);
         var entry = new MethodDefinition("Main", MethodAttributes.Public | MethodAttributes.Static, module.TypeSystem.Void);
         host.Methods.Add(entry); assembly.EntryPoint = entry;
         var entryIl = entry.Body.GetILProcessor();
@@ -86,17 +102,19 @@ internal static class GenericVectorEstimateFixture
         var patches = new List<(string Caller, bool Specification)>();
         foreach (var item in cases)
         {
+            int selectedWidth = item.Mutation.StartsWith("valid-runtime-", StringComparison.Ordinal) ? int.Parse(item.Mutation.Substring(14), CultureInfo.InvariantCulture) : width;
+            var definition = core.MainModule.GetType(selectedWidth == 0 ? "System.Numerics.Vector" : "System.Runtime.Intrinsics.Vector" + selectedWidth).Methods.Single(m => m.Name == "MultiplyAddEstimate" && m.HasGenericParameters);
             var element = Element(item.Element);
             var caller = new MethodDefinition("Case" + serial++ + "_" + item.Element + "_" + item.Route + "_" + item.Mutation.Replace('-', '_'), MethodAttributes.Public | MethodAttributes.Static, module.TypeSystem.Void);
             host.Methods.Add(caller);
             var target = module.ImportReference(definition);
-            var vector = Vector(element);
+            var vector = Vector(element, selectedWidth);
             var methodVariable = new GenericParameter("TCaller", caller);
             caller.GenericParameters.Add(methodVariable);
             var typeCarrier = new TypeReference("Fixture", "Carrier`1", module, module);
             var typeVariable = new GenericParameter("TType", typeCarrier); typeCarrier.GenericParameters.Add(typeVariable);
             TypeReference argument = element;
-            string mutation = item.Mutation;
+            string mutation = item.Mutation.StartsWith("valid-runtime-", StringComparison.Ordinal) ? "valid-runtime" : item.Mutation;
             switch (mutation)
             {
                 case "valid": case "valid-runtime": break;
@@ -109,12 +127,12 @@ internal static class GenericVectorEstimateFixture
                 case "concrete": case "bare-concrete":
                     target.ReturnType = vector; foreach (var p in target.Parameters) p.ParameterType = vector; break;
                 case "typevar":
-                    target.ReturnType = Vector(typeVariable); foreach (var p in target.Parameters) p.ParameterType = target.ReturnType; break;
+                    target.ReturnType = Vector(typeVariable, selectedWidth); foreach (var p in target.Parameters) p.ParameterType = target.ReturnType; break;
                 case "methodvar-one":
                     var carrier = new MethodReference("Carrier", module.TypeSystem.Void, target.DeclaringType);
                     carrier.GenericParameters.Add(new GenericParameter("T", carrier));
                     var wrong = new GenericParameter("U", carrier); carrier.GenericParameters.Add(wrong);
-                    target.ReturnType = Vector(wrong); foreach (var p in target.Parameters) p.ParameterType = target.ReturnType; break;
+                    target.ReturnType = Vector(wrong, selectedWidth); foreach (var p in target.Parameters) p.ParameterType = target.ReturnType; break;
                 case "trailing-reference": target.Parameters.Add(new ParameterDefinition(module.TypeSystem.Double)); break;
                 case "extra": target.Parameters.Add(new ParameterDefinition(module.TypeSystem.Int32)); break;
                 case "missing": target.Parameters.RemoveAt(2); break;
@@ -123,7 +141,7 @@ internal static class GenericVectorEstimateFixture
                 case "modreq-1": target.Parameters[1].ParameterType = new RequiredModifierType(module.TypeSystem.Object, target.Parameters[1].ParameterType); break;
                 case "pointer-2": target.Parameters[2].ParameterType = new PointerType(target.Parameters[2].ParameterType); break;
                 case "fixed": target = module.ImportReference(core.MainModule.GetType("System.Runtime.Intrinsics.Vector128").Methods.Single(m => m.Name == "MultiplyAddEstimate" && m.HasGenericParameters)); break;
-                case "width": target.ReturnType = Vector(target.GenericParameters[0], true); break;
+                case "width": target.ReturnType = Vector(target.GenericParameters[0], selectedWidth, true); break;
                 case "modopt-owner": target.DeclaringType = new OptionalModifierType(module.TypeSystem.Object, target.DeclaringType); break;
                 case "byref-owner": target.DeclaringType = new ByReferenceType(target.DeclaringType); break;
                 case "generic-owner":
@@ -133,6 +151,8 @@ internal static class GenericVectorEstimateFixture
                     target.DeclaringType = new TypeReference("System.Numerics", "Vector", module, foreign); break;
                 case "reference": argument = module.TypeSystem.Object; break;
                 case "primitive": argument = module.TypeSystem.Single; break;
+                case "double": argument = module.TypeSystem.Double; break;
+                case "byreflike": argument = byrefLike; break;
                 case "nullable":
                     var nullable = new GenericInstanceType(module.ImportReference(core.MainModule.GetType("System.Nullable`1"))); nullable.GenericArguments.Add(element); argument = nullable; break;
                 case "byref-argument": argument = new ByReferenceType(element); break;
@@ -155,6 +175,14 @@ internal static class GenericVectorEstimateFixture
             var il = caller.Body.GetILProcessor();
             if (mutation == "valid-runtime")
             {
+                if (item.Route == "bridge")
+                {
+                    var bridgeDefinition = core.MainModule.GetType("System.Runtime.Intrinsics.Vector" + selectedWidth + "`1").Methods.Single(m => m.Name.EndsWith(".MultiplyAddEstimate", StringComparison.Ordinal));
+                    var imported = module.ImportReference(bridgeDefinition);
+                    var bridge = new MethodReference(imported.Name, imported.ReturnType, vector) { HasThis = false };
+                    foreach (var parameter in imported.Parameters) bridge.Parameters.Add(new ParameterDefinition(parameter.ParameterType));
+                    call = bridge;
+                }
                 EmitRuntime(module, host, caller, call, vector, item.Route, serial);
                 var closedRuntime = new GenericInstanceMethod(caller); closedRuntime.GenericArguments.Add(element);
                 entry.Body.GetILProcessor().Emit(OpCodes.Call, closedRuntime);
@@ -241,7 +269,7 @@ internal static class GenericVectorEstimateFixture
         var start = Instruction.Create(OpCodes.Nop); il.Append(start);
         if (route == "address") { il.Emit(OpCodes.Ldftn, target); il.Emit(OpCodes.Stloc, pointer); }
         foreach (var factory in factories) il.Emit(OpCodes.Call, factory);
-        if (route == "direct") il.Emit(OpCodes.Call, target);
+        if (route is "direct" or "bridge") il.Emit(OpCodes.Call, target);
         else
         {
             var site = new CallSite(vector); for (int i = 0; i < 3; i++) site.Parameters.Add(new ParameterDefinition(vector));
@@ -298,6 +326,64 @@ internal static class GenericVectorEstimateFixture
                 Console.WriteLine(_oracleOperands);
                 Console.WriteLine(actual.GetType().FullName);
                 Console.WriteLine(actual.Message);
+            }
+        }
+    }
+
+    private static TVector FixedOperand<TVector>(int index) where TVector : struct
+    {
+        _oracleOperands = _oracleOperands * 10 + index;
+        return default;
+    }
+
+    private static void FixedOracle()
+    {
+        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public;
+        var core = typeof(object).Assembly;
+        foreach (int width in new[] { 64, 128, 256, 512 })
+        foreach (var element in new[] { typeof(decimal), typeof(OracleEnum), typeof(OraclePlain), typeof(OracleReferences), typeof(Int128), typeof(UInt128) })
+        {
+            var facade = core.GetType("System.Runtime.Intrinsics.Vector" + width, true)!;
+            var vector = core.GetType("System.Runtime.Intrinsics.Vector" + width + "`1", true)!.MakeGenericType(element);
+            var target = facade.GetMethods(flags).Single(m => m.Name == "MultiplyAddEstimate" && m.IsGenericMethodDefinition).MakeGenericMethod(element);
+            var bridge = vector.GetMethods(flags).Single(m => m.Name.EndsWith(".MultiplyAddEstimate", StringComparison.Ordinal));
+            foreach (string route in new[] { "direct", "address", "calli", "bridge" })
+            {
+                var actualTarget = route == "bridge" ? bridge : target;
+                var dynamic = new System.Reflection.Emit.DynamicMethod("FixedEstimate_" + route, typeof(void), Type.EmptyTypes, typeof(GenericVectorEstimateFixture).Module, true);
+                var il = dynamic.GetILGenerator();
+                System.Reflection.Emit.LocalBuilder? address = null;
+                if (route == "address")
+                {
+                    address = il.DeclareLocal(typeof(IntPtr));
+                    il.Emit(System.Reflection.Emit.OpCodes.Ldftn, actualTarget);
+                    il.Emit(System.Reflection.Emit.OpCodes.Stloc, address);
+                }
+                var operand = typeof(GenericVectorEstimateFixture).GetMethod(nameof(FixedOperand), flags)!.MakeGenericMethod(vector);
+                for (int i = 1; i <= 3; i++)
+                {
+                    il.Emit(System.Reflection.Emit.OpCodes.Ldc_I4, i);
+                    il.Emit(System.Reflection.Emit.OpCodes.Call, operand);
+                }
+                if (route is "direct" or "bridge") il.Emit(System.Reflection.Emit.OpCodes.Call, actualTarget);
+                else
+                {
+                    if (route == "address") il.Emit(System.Reflection.Emit.OpCodes.Ldloc, address!);
+                    else il.Emit(System.Reflection.Emit.OpCodes.Ldftn, actualTarget);
+                    il.EmitCalli(System.Reflection.Emit.OpCodes.Calli, System.Reflection.CallingConventions.Standard,
+                        vector, new[] { vector, vector, vector }, null);
+                }
+                il.Emit(System.Reflection.Emit.OpCodes.Pop); il.Emit(System.Reflection.Emit.OpCodes.Ret);
+                var call = (Action)dynamic.CreateDelegate(typeof(Action));
+                _oracleOperands = 0;
+                try { call(); throw new InvalidOperationException("unexpected fixed estimate return"); }
+                catch (NotSupportedException error)
+                {
+                    if (_oracleOperands != 123) throw new InvalidOperationException("fixed estimate operand order");
+                    Console.WriteLine(_oracleOperands); Console.WriteLine(error.GetType().FullName); Console.WriteLine(error.Message);
+                }
             }
         }
     }

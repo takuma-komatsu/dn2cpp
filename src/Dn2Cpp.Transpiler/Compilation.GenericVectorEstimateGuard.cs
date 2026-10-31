@@ -9,6 +9,8 @@ internal sealed partial class Compilation
     internal MethodInfo ResolveGenericVectorEstimateGuard(MethodInfo method)
     {
         if (!CoreIntrinsics.IsGenericVectorEstimate(method)) throw GenericVectorGuardUnsupported();
+        if (method.DeclaringClass.FullName is not ("System.Numerics.Vector" or "System.Runtime.Intrinsics.Vector64"))
+            return ResolveFixedGenericVectorEstimateGuard(method);
         var body = method.Module.PE.GetMethodBody(method.Rva);
         var instructions = GenericVectorGuardInstructions(method);
         if (body.LocalSignature.IsNil || instructions.Count < 7
@@ -106,7 +108,8 @@ internal sealed partial class Compilation
         if (token.Kind != HandleKind.MethodSpecification) throw GenericVectorGuardUnsupported();
         var guard = TryResolveVectorManagedThrowSpec(count.Module, (MethodSpecificationHandle)token, count.Context);
         if (guard is null || !CoreIntrinsics.IsVectorManagedThrowHelper(guard)
-            || guard.Name != "ThrowForUnsupportedNumericsVectorBaseType"
+            || guard.Name != (CoreIntrinsics.IsVectorExplicitOwner(count.DeclaringClass)
+                ? "ThrowForUnsupportedNumericsVectorBaseType" : "ThrowForUnsupportedIntrinsicsVector64BaseType")
             || guard.Context.MethodArgs[0].Class != count.DeclaringClass.Context.TypeArgs[0].Class)
             throw GenericVectorGuardUnsupported();
         var il = GenericVectorGuardInstructions(guard);

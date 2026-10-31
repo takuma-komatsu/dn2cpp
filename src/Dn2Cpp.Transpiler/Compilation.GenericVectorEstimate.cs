@@ -23,7 +23,7 @@ internal sealed partial class Compilation
         while (type?.Element is { } element) type = element;
         if (type?.Class is not { } owner || !CoreIntrinsics.IsVectorEstimateOwnerName(owner.FullName)) return null;
         if (parent.Kind is not (HandleKind.TypeDefinition or HandleKind.TypeReference)
-            || owner.FullName != "System.Numerics.Vector" || !CoreIntrinsics.IsVectorEstimateOwner(owner))
+            || !CoreIntrinsics.IsVectorEstimateOwner(owner))
             throw GenericVectorEstimateUnsupported();
 
         MethodDefinitionHandle definitionHandle = default;
