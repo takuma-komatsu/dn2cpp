@@ -1,4 +1,4 @@
-// Port of c/common/context.{h,c} (brotli v1.1.0).
+// Port of c/common/context.{h,c} (brotli v1.2.1).
 //
 // The 2048-byte common context lookup table is hand-inlined below as RVA
 // static data (byte-element ReadOnlySpan<byte> collection expression); the

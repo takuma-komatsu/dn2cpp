@@ -1,4 +1,4 @@
-// Port of c/common/dictionary.{h,c} (brotli v1.1.0).
+// Port of c/common/dictionary.{h,c} (brotli v1.2.1).
 //
 // The 122,784-byte word blob lives in DictionaryData.g.cs (RVA static data);
 // BrotliGetDictionary() returns a pointer-stable BrotliDictionary instance

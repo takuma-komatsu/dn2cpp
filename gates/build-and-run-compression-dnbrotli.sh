@@ -10,10 +10,8 @@
 # compose: a System.IO.Compression with zero native codec symbols. Output is
 # diffed exactly against real .NET, which is a valid oracle only because
 # CompressionCore prints round-trip results, never self-created compressed byte
-# counts (DnBrotli's raw-stream bytes happen to match native brotli v1.1.0
-# today, but that is implementation-defined and this gate must not rely on it;
-# a future section printing self-created compressed sizes would split this diff
-# — keep them round-trip based). nm then proves the swap happened: no native
+# counts (compressed output is implementation-defined, so keep the records
+# round-trip based). nm then proves the swap happened: no native
 # brotli symbol may survive (the raw brotli API is re-exported unwrapped, so
 # every native entry point is a _Brotli*-prefixed name-field entry, while
 # managed methods carry their `_m<id>` suffix — no false positives).
@@ -26,6 +24,8 @@
 # compression-core/dnzlib gates are. Distinct OUT dirs (artifacts/*dnbrotli*)
 # so this parallelizes with those gates.
 source "$(dirname "$0")/_common.sh"
+source gates/_compression-reference.sh
+compression_require_brotli_reference
 
 # dnbrotli_diff_gate PROJECT WITH_DNZLIB
 #   WITH_DNZLIB=1 also builds + references DnZlib and asserts the zlib swap.
@@ -99,6 +99,7 @@ dnbrotli_diff_gate() {
     gate_capture_ok "$out/native" run_bounded "./$out/$project$EXE_EXT"
     gate_capture_ok "$out/oracle" run_bounded dotnet "$app"
     gate_output compare "$out/native.stdout" "$out/oracle.stdout"
+    compression_assert_brotli_security "$out"
 
     echo "== 5/5 Asserting the brotli backend really swapped (nm) =="
     # Snapshot the symbol table once and grep the string (here-strings, no pipe):

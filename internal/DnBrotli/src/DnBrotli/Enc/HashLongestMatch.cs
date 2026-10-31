@@ -1,5 +1,5 @@
 // Port of c/enc/hash_longest_match_inc.h and c/enc/hash_longest_match64_inc.h
-// (brotli v1.1.0).
+// (brotli v1.2.1).
 //
 // Each C template is expanded exactly once from hash.h (H5 at hash.h:292-294,
 // H6 at hash.h:296-298); both expansions name their struct `HashLongestMatch`
@@ -11,7 +11,7 @@
 // these two have no compile-time parameters: bucket_bits / block_bits /
 // num_last_distances_to_check come from the runtime hasher params.
 // The num_ array lives in extra[0] and the buckets_ array in extra[1]
-// (see HashMemAllocInBytes + Initialize), mirroring the v1.1.0 layout.
+// (see HashMemAllocInBytes + Initialize), mirroring the v1.2.1 layout.
 
 using System.Runtime.CompilerServices;
 
@@ -139,8 +139,8 @@ internal static unsafe class H5
         uint key = HashBytes(&data[ix & mask], self->hash_shift_);
         nuint minor_ix = self->num_[key] & self->block_mask_;
         nuint offset = minor_ix + ((nuint)key << self->block_bits_);
-        self->buckets_[offset] = (uint)ix;
         ++self->num_[key];
+        self->buckets_[offset] = (uint)ix;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -209,6 +209,8 @@ internal static unsafe class H5
         nuint best_score = @out->score;
         nuint best_len = @out->len;
         nuint i;
+        uint key = HashBytes(&data[cur_ix_masked], self->hash_shift_);
+        uint* bucket = &buckets[key << self->block_bits_];
         @out->len = 0;
         @out->len_code_delta = 0;
         /* Try last distance first. */
@@ -226,8 +228,11 @@ internal static unsafe class H5
             }
             prev_ix &= ring_buffer_mask;
 
-            if (cur_ix_masked + best_len > ring_buffer_mask ||
-                prev_ix + best_len > ring_buffer_mask ||
+            if (cur_ix_masked + best_len > ring_buffer_mask)
+            {
+                break;
+            }
+            if (prev_ix + best_len > ring_buffer_mask ||
                 data[cur_ix_masked + best_len] != data[prev_ix + best_len])
             {
                 continue;
@@ -257,9 +262,9 @@ internal static unsafe class H5
                 }
             }
         }
+        /* Bucket matches require at least four bytes. */
+        if (best_len < 3) best_len = 3;
         {
-            uint key = HashBytes(&data[cur_ix_masked], self->hash_shift_);
-            uint* bucket = &buckets[(nuint)key << self->block_bits_];
             nuint down =
                 (num[key] > self->block_size_) ? (num[key] - self->block_size_) : 0u;
             for (i = num[key]; i > down;)
@@ -271,9 +276,13 @@ internal static unsafe class H5
                     break;
                 }
                 prev_ix &= ring_buffer_mask;
-                if (cur_ix_masked + best_len > ring_buffer_mask ||
-                    prev_ix + best_len > ring_buffer_mask ||
-                    data[cur_ix_masked + best_len] != data[prev_ix + best_len])
+                if (cur_ix_masked + best_len > ring_buffer_mask)
+                {
+                    break;
+                }
+                if (prev_ix + best_len > ring_buffer_mask ||
+                    BROTLI_UNALIGNED_LOAD32LE(&data[cur_ix_masked + best_len - 3]) !=
+                        BROTLI_UNALIGNED_LOAD32LE(&data[prev_ix + best_len - 3]))
                 {
                     continue;
                 }
@@ -499,6 +508,8 @@ internal static unsafe class H6
         nuint best_score = @out->score;
         nuint best_len = @out->len;
         nuint i;
+        nuint key = HashBytes(&data[cur_ix_masked], self->hash_mul_);
+        uint* bucket = &buckets[key << self->block_bits_];
         @out->len = 0;
         @out->len_code_delta = 0;
         /* Try last distance first. */
@@ -516,8 +527,11 @@ internal static unsafe class H6
             }
             prev_ix &= ring_buffer_mask;
 
-            if (cur_ix_masked + best_len > ring_buffer_mask ||
-                prev_ix + best_len > ring_buffer_mask ||
+            if (cur_ix_masked + best_len > ring_buffer_mask)
+            {
+                break;
+            }
+            if (prev_ix + best_len > ring_buffer_mask ||
                 data[cur_ix_masked + best_len] != data[prev_ix + best_len])
             {
                 continue;
@@ -547,9 +561,9 @@ internal static unsafe class H6
                 }
             }
         }
+        /* Bucket matches require at least four bytes. */
+        if (best_len < 3) best_len = 3;
         {
-            nuint key = HashBytes(&data[cur_ix_masked], self->hash_mul_);
-            uint* bucket = &buckets[key << self->block_bits_];
             nuint down =
                 (num[key] > self->block_size_) ?
                 (num[key] - self->block_size_) : 0u;
@@ -566,9 +580,13 @@ internal static unsafe class H6
                     break;
                 }
                 prev_ix &= ring_buffer_mask;
-                if (cur_ix_masked + best_len > ring_buffer_mask ||
-                    prev_ix + best_len > ring_buffer_mask ||
-                    data[cur_ix_masked + best_len] != data[prev_ix + best_len])
+                if (cur_ix_masked + best_len > ring_buffer_mask)
+                {
+                    break;
+                }
+                if (prev_ix + best_len > ring_buffer_mask ||
+                    BROTLI_UNALIGNED_LOAD32LE(&data[cur_ix_masked + best_len - 3]) !=
+                        BROTLI_UNALIGNED_LOAD32LE(&data[prev_ix + best_len - 3]))
                 {
                     continue;
                 }

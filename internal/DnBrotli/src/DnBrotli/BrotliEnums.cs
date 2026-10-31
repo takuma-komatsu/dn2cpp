@@ -43,7 +43,7 @@ public enum BrotliDecoderErrorCode
     ErrorFormatPadding2 = -15,
     ErrorFormatDistance = -16,
 
-    // -17 code is reserved.
+    ErrorFormatBlockSwitch = -17,
 
     ErrorCompoundDictionary = -18,
     ErrorDictionaryNotSet = -19,

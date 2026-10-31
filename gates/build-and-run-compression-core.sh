@@ -41,6 +41,8 @@
 # shape across them. See net10_bcl_diff_gate / resolve_net10_corelib in
 # _common.sh.
 source "$(dirname "$0")/_common.sh"
+source gates/_compression-reference.sh
+compression_require_brotli_reference
 
 # Both arms build with --keep-symbols (-DDN2CPP_STRIP=OFF -DDN2CPP_DEAD_STRIP=OFF):
 # dead-strip would drop the very codec symbols these assertions read, which
@@ -59,6 +61,7 @@ source "$(dirname "$0")/_common.sh"
 # reports failure, which would break a must-be-present check.
 assert_native_codecs() {
     local out="$1" project="$2" syms
+    compression_assert_brotli_security "$out" || return 1
     echo "== Positive control: both native codecs are linked (nm) =="
     syms="$(dump_symbols "$out/$project")"
     if ! grep -qE " [Tt] _?deflate$" <<<"$syms"; then
@@ -82,6 +85,7 @@ assert_native_codecs() {
 # extern-"C" name-field shape keeps managed methods out of the match.
 assert_managed_codecs() {
     local out="$1" project="$2" syms
+    compression_assert_brotli_security "$out" || return 1
     echo "== Asserting the DEFAULT (no -r, no flag) is the managed backend (nm) =="
     syms="$(dump_symbols "$out/$project")"
     if grep -qE " [TUtu] _CompressionNative_" <<<"$syms"; then

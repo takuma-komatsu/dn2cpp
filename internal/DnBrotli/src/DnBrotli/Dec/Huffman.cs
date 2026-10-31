@@ -1,4 +1,4 @@
-// Port of c/dec/huffman.{h,c} (brotli v1.1.0).
+// Port of c/dec/huffman.{h,c} (brotli v1.2.1).
 //
 // HuffmanCode is the plain struct variant (the C default); the ARM32-only
 // BROTLI_HUFFMAN_CODE_FAST_LOAD packed-uint32 variant and its BROTLI_HC_*

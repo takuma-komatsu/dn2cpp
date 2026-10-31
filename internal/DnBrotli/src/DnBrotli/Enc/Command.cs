@@ -1,4 +1,4 @@
-// Port of c/enc/command.{h,c} (brotli v1.1.0): a sequence of literals plus a
+// Port of c/enc/command.{h,c} (brotli v1.2.1): a sequence of literals plus a
 // backward reference copy. The static helpers live on the Command struct
 // itself (imported via `using static DnBrotli.Enc.Command`).
 

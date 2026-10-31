@@ -1,5 +1,5 @@
 // Port of the load/store and bit-scan macros from c/common/platform.h
-// (brotli v1.1.0).
+// (brotli v1.2.1).
 //
 // Choices, per PORTING.md:
 //   - brotli_reg_t is nuint; every dn2cpp target is 64-bit, so the

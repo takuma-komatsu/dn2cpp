@@ -1,4 +1,4 @@
-// Port of c/enc/backward_references_hq.{h,c} (brotli v1.1.0): the Zopfli
+// Port of c/enc/backward_references_hq.{h,c} (brotli v1.2.1): the Zopfli
 // (q10) and HqZopfli (q11) shortest-path command search over the binary-tree
 // hasher H10 (HashToBinaryTree.cs).
 //

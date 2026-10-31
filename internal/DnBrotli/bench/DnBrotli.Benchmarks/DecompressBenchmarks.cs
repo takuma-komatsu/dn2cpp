@@ -6,9 +6,8 @@ namespace DnBrotli.Benchmarks;
 
 /// <summary>
 /// Decompression throughput: DnBrotli vs System.IO.Compression (native brotli), over blobs
-/// pre-compressed by the BCL (= native brotli) at quality 4 — real-world-encoder output, not
-/// DnBrotli's own (DnBrotli's raw stream happens to be byte-identical to native brotli v1.1.0
-/// today, but that is implementation-defined and nothing here should rely on it).
+/// pre-compressed by the BCL (= native brotli) at quality 4. Both implementations decode
+/// the same compressed bytes, independently of DnBrotli's encoder output.
 /// </summary>
 [MemoryDiagnoser]
 public class DecompressBenchmarks

@@ -3,7 +3,7 @@ MIT License
 Copyright (C) 2026 Takuma Komatsu
 
 DnBrotli is a Pure C# reimplementation of brotli, based on / ported from
-brotli 1.1.0 (Copyright (c) 2009, 2010, 2013-2016 by the Brotli Authors,
+brotli 1.2.1 (Copyright (c) 2009, 2010, 2013-2016 by the Brotli Authors,
 https://github.com/google/brotli), and is distributed under the same terms.
 See THIRD-PARTY-NOTICES.txt for the retained upstream notices.
 

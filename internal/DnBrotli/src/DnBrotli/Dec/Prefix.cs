@@ -1,4 +1,4 @@
-// Port of c/dec/prefix.h (brotli v1.1.0).
+// Port of c/dec/prefix.{h,c} and prefix_inc.h (brotli v1.2.1).
 //
 // kCmdLut's 704 CmdLutElement entries (5,632 bytes) are stored below as an RVA
 // byte blob — each record is the exact little-endian in-memory image of the C
@@ -8,11 +8,6 @@
 // (PORTING.md data-table rule). Values were extracted mechanically from the C
 // initializer and are spot-checked against the C source in StaticDataTests.
 //
-// The block-length prefix code table lives in its v1.1.0 C home instead:
-// BrotliConstants._kBrotliPrefixCodeRanges (c/common/constants.{h,c}).
-// kInsBase/kInsExtra/kCopyBase/kCopyExtra do not exist in v1.1.0's decoder
-// (kCmdLut covers them); the encoder-side equivalents in c/enc/prefix.h are
-// out of scope until the encoder stages.
 
 using System.Runtime.InteropServices;
 

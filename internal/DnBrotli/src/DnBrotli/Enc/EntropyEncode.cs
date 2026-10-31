@@ -1,4 +1,4 @@
-// Port of c/enc/entropy_encode.{h,c} (brotli v1.1.0): depth-limited Huffman
+// Port of c/enc/entropy_encode.{h,c} (brotli v1.2.1): depth-limited Huffman
 // tree construction, RLE-compressed tree serialization and canonical-code
 // assignment.
 //

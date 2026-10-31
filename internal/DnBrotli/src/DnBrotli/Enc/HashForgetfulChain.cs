@@ -1,4 +1,4 @@
-// Port of c/enc/hash_forgetful_chain_inc.h (brotli v1.1.0).
+// Port of c/enc/hash_forgetful_chain_inc.h (brotli v1.2.1).
 //
 // The C template is expanded three times from hash.h; here the template
 // parameters BUCKET_BITS / NUM_BANKS / BANK_BITS / NUM_LAST_DISTANCES_TO_CHECK
@@ -12,7 +12,7 @@
 // CAPPED_CHAINS is 0 for all instantiations (a plain #define in the template).
 // The addr/head/tiny_hash arrays live in extra[0] and the banks in extra[1]
 // (see HashMemAllocInBytes + the Addr/Head/TinyHash/Banks accessors),
-// mirroring the v1.1.0 layout.
+// mirroring the v1.2.1 layout.
 
 using System.Runtime.CompilerServices;
 
@@ -343,6 +343,8 @@ internal static unsafe class HashForgetfulChain<TPolicy>
                 }
             }
         }
+        /* Bucket matches require at least four bytes. */
+        if (best_len < 3) best_len = 3;
         {
             nuint bank = key & (nuint)(NUM_BANKS - 1);
             nuint backward = 0;
@@ -364,7 +366,8 @@ internal static unsafe class HashForgetfulChain<TPolicy>
                 delta = banks[bank * (nuint)BANK_SIZE + last].delta;
                 if (cur_ix_masked + best_len > ring_buffer_mask ||
                     prev_ix + best_len > ring_buffer_mask ||
-                    data[cur_ix_masked + best_len] != data[prev_ix + best_len])
+                    BROTLI_UNALIGNED_LOAD32LE(&data[cur_ix_masked + best_len - 3]) !=
+                        BROTLI_UNALIGNED_LOAD32LE(&data[prev_ix + best_len - 3]))
                 {
                     continue;
                 }

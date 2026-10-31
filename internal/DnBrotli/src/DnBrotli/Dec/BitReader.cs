@@ -1,4 +1,4 @@
-// Port of c/dec/bit_reader.{h,c} (brotli v1.1.0).
+// Port of c/dec/bit_reader.{h,c} (brotli v1.2.1).
 //
 // Configuration choices, fixed for every dn2cpp target (PORTING.md):
 //   - brotli_reg_t is nuint and BROTLI_64_BITS is true: only the 64-bit
