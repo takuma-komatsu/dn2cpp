@@ -85,6 +85,7 @@ internal sealed partial class Compilation
                 if (!module.MethodMap.TryGetValue(h, out var mi))
                     return null;
                 CoreIntrinsics.ValidateConcreteVectorElement(mi);
+                CoreIntrinsics.ValidateVectorMultiplyAddEstimate(mi);
                 NoteObfuscationMethod(mi);
                 CoreIntrinsics.ValidateKnownConstantCallable(mi);
                 if (CoreIntrinsics.BrPrimitiveBigMul.Matches(mi)) return mi;
@@ -327,6 +328,7 @@ internal sealed partial class Compilation
             }
             case HandleKind.MethodSpecification:
             {
+                RejectVectorEstimateMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
                 // A generic method on an intrinsic-mapped type (e.g. Unsafe.Add<T>)
                 // is emitted inline, not transpiled, so it is not a reachability
                 // edge. The spec's method is a MemberRef when the call
@@ -729,6 +731,7 @@ internal sealed partial class Compilation
     public MethodInfo ResolveMethodSpec(Module module, MethodSpecificationHandle handle, GenericContext callerCtx)
     {
         RejectVectorValueMethodSpecification(module, handle, callerCtx);
+        RejectVectorEstimateMethodSpecification(module, handle, callerCtx);
         var reader = module.Reader;
         var ms = reader.GetMethodSpecification(handle);
         var methodArgs = ms.DecodeSignature(SigProvider, callerCtx).ToArray();
@@ -1350,6 +1353,7 @@ internal sealed partial class Compilation
     public MethodInfo ResolveMemberRefMethod(Module module, MemberReferenceHandle handle, GenericContext callerCtx)
     {
         if (TryResolveConcreteVectorElementReference(module, handle, callerCtx) is { } concreteElement) return concreteElement;
+        if (TryResolveVectorEstimateReference(module, handle, callerCtx) is { } vectorEstimate) return vectorEstimate;
         var reader = module.Reader;
         var mr = reader.GetMemberReference(handle);
         ClassInfo cls;
@@ -2115,6 +2119,7 @@ internal sealed partial class Compilation
     public MethodInfo? TryResolveMemberRefMethod(Module module, MemberReferenceHandle handle, GenericContext callerCtx)
     {
         if (TryResolveConcreteVectorElementReference(module, handle, callerCtx) is { } concreteElement) return concreteElement;
+        if (TryResolveVectorEstimateReference(module, handle, callerCtx) is { } vectorEstimate) return vectorEstimate;
         var reader = module.Reader;
         var mr = reader.GetMemberReference(handle);
         if (mr.Parent.Kind is not (HandleKind.TypeReference or HandleKind.TypeDefinition))

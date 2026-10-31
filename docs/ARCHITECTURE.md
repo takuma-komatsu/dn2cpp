@@ -13,6 +13,20 @@ bodies on the mapped owner. Ordinary calls, addresses and retained reflection
 share the same bodies, preserving argument effects and exceptions. A false hint
 selects the caller's normal algorithm; it is not a claim that a value is mutable.
 
+The public floating-point portable-vector `MultiplyAddEstimate` overloads use
+an explicit nonfused software profile: each lane's product rounds in its declared
+precision before addition, independently of the Highway backend. This is one
+permitted estimate, not bit parity with a CLR that selects fused hardware
+instructions. NaN payloads are not contractual. Ordinary IEEE compilation is
+required; an explicit `HotPath(FastMath = true)` retains its relaxed contract.
+The strict `FusedMultiplyAdd` and existing scalar routes remain independent.
+Exact CoreLib declaration and raw-reference authority guards the finite public
+family. Generic member references and method specifications are unsupported and
+cannot gain concrete overload authority through caller substitution or address
+resolution; internal
+generic declarations remain outside this intrinsic cut.
+Calls, addresses and retained wrappers share the same lane implementation.
+
 ## 1. Pipeline
 
 ```

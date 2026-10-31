@@ -482,6 +482,7 @@ internal sealed partial class MethodCompiler
             {
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
                 CoreIntrinsics.ValidateConcreteVectorElement(callee);
+                CoreIntrinsics.ValidateVectorMultiplyAddEstimate(callee);
                 if (CoreIntrinsics.IsVectorValueCandidate(callee.DeclaringClass, callee.Name))
                 {
                     if (!CoreIntrinsics.IsVectorValueCallableMethod(callee))
@@ -710,6 +711,7 @@ internal sealed partial class MethodCompiler
             case HandleKind.MethodSpecification:
             {
                 _c.RejectVectorValueMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
+                _c.RejectVectorEstimateMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
                 // A generic method on an intrinsic-mapped type (e.g. Unsafe.Add<T>)
                 // is emitted inline rather than transpiling its body. The
                 // spec's method is a MemberRef across assemblies and a MethodDef
@@ -912,6 +914,11 @@ internal sealed partial class MethodCompiler
             {
                 var mr = _reader.GetMemberReference((MemberReferenceHandle)handle);
                 string mrName = _reader.GetString(mr.Name);
+                if (_c.TryResolveVectorEstimateReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } vectorEstimate)
+                {
+                    EmitVectorMultiplyAddEstimate(vectorEstimate);
+                    return;
+                }
                 if (_c.TryResolveConcreteVectorElementReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } concreteElement)
                 {
                     if (TryEmitMethodDefIntercept(CoreIntrinsics.MdRuntimePrimitive, concreteElement)) return;
@@ -1646,6 +1653,14 @@ internal sealed partial class MethodCompiler
         }
 
         CoreIntrinsics.ValidateConcreteVectorElement(callee);
+
+        CoreIntrinsics.ValidateVectorMultiplyAddEstimate(callee);
+        if (CoreIntrinsics.IsVectorMultiplyAddEstimate(callee))
+        {
+            EmitVectorMultiplyAddEstimate(callee);
+            return;
+        }
+
         if (CoreIntrinsics.IsConcreteVectorElement(callee))
         {
             EmitConcreteVectorElement(callee);

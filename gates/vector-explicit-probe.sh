@@ -53,5 +53,7 @@ gate_extra_asserts() {
     vector_explicit_probe "$out" "$out/oracle.stdout" || return 1
     vector_value_probe "$out" "$out/oracle.stdout" || return 1
     vector_concrete_elements_prefix "$out" || return 1
-    vector_concrete_elements_probe "$out"
+    vector_concrete_elements_probe "$out" || return 1
+    vector_estimate_prefix "$out" || return 1
+    vector_estimate_probe "$out"
 }

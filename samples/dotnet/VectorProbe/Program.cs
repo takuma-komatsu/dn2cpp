@@ -235,6 +235,8 @@ internal static partial class Program
         FixedUnsupportedValueSemantics();
         if (args.Length > 0 && args[0] == "before-concrete-elements") return;
         ConcreteElements();
+        if (args.Length > 0 && args[0] == "before-vector-estimate") return;
+        MultiplyAddEstimates();
     }
 
     private static void VectorCopyTargets()

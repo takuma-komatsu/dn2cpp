@@ -611,6 +611,21 @@ static inline T dn2cpp_vec_dot(const Dn2CppVec<N>& a, const Dn2CppVec<N>& b) {
     }
 }
 
+// Estimate uses the deterministic software profile, independent of Highway.
+// The volatile product rounds before addition and prevents FMA contraction.
+// Explicit FastMath callers retain their relaxed floating-point contract.
+template <class T, int N>
+static inline Dn2CppVec<N> dn2cpp_vec_multiply_add_estimate(const Dn2CppVec<N>& a, const Dn2CppVec<N>& b, const Dn2CppVec<N>& c) {
+    static_assert(std::is_floating_point<T>::value, "MultiplyAddEstimate requires floating-point lanes");
+    Dn2CppVec<N> result;
+    for (int i = 0; i < N / (int)sizeof(T); ++i) {
+        volatile T product = dn2cpp_vec_get<T>(a, i) * dn2cpp_vec_get<T>(b, i);
+        T value = product + dn2cpp_vec_get<T>(c, i);
+        dn2cpp_vec_set<T>(result, i, value);
+    }
+    return result;
+}
+
 template <class T, int N>
 static inline Dn2CppVec<N> dn2cpp_vec_fma(const Dn2CppVec<N>& a, const Dn2CppVec<N>& b, const Dn2CppVec<N>& c) {
 #if defined(DN2CPP_USE_HIGHWAY)

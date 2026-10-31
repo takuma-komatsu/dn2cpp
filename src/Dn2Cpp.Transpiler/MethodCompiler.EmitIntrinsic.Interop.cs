@@ -579,6 +579,12 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsVectorMultiplyAddEstimate(callee))
+        {
+            EmitVectorMultiplyAddEstimate(callee);
+            return;
+        }
+
         if (CoreIntrinsics.IsConcreteVectorElement(callee))
         {
             EmitConcreteVectorElement(callee);
