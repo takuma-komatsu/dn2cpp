@@ -69,6 +69,8 @@ jobs:
           bash gates/fixtures/numeric-tls-records.sh python
           python -X warn_default_encoding -W error::EncodingWarning gates/fixtures/culture-output-family.py
           python -X warn_default_encoding -W error::EncodingWarning gates/fixtures/declared-abort-callers.py
+      - name: Check Android PID observations
+        run: bash gates/fixtures/android-pid-output.sh python
       - name: Check incremental policy enforcement
         run: python gates/test-lint-gate-output.py
       - name: Reject new legacy newline filters

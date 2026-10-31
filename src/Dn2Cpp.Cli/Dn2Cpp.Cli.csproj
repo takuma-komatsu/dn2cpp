@@ -78,6 +78,7 @@
     <ProjectReference Include="../Dn2Cpp.Transpiler/Dn2Cpp.Transpiler.csproj" />
     <ProjectReference Include="../Dn2Cpp.Godot/Dn2Cpp.Godot.csproj" />
     <ProjectReference Include="../Dn2Cpp.DotnetModule/Dn2Cpp.DotnetModule.csproj" />
+    <ProjectReference Include="../Dn2Cpp.UnrealSharp/Dn2Cpp.UnrealSharp.csproj" />
     <!-- The managed support shim: not a compile dependency, just copied next
          to the CLI so it can auto-reference Dn2Cpp.Runtime.dll as a transpiler input. -->
     <ProjectReference Include="../Dn2Cpp.Runtime/Dn2Cpp.Runtime.csproj"
