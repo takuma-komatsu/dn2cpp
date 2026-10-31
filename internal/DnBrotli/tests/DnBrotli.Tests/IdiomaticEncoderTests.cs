@@ -11,17 +11,10 @@ namespace DnBrotli.Tests;
 internal readonly record struct EncodeStep(OperationStatus Status, int Consumed, int Written);
 
 /// <summary>
-/// The idiomatic encoder layer (<see cref="BrotliEncoder"/>, the compress half of
-/// <see cref="Brotli"/>) against the BCL's <c>System.IO.Compression.BrotliEncoder</c> (real
-/// native brotli). The core guarantee is drop-in behavior: identical chunk schedules fed to
-/// both encoders must produce identical <see cref="OperationStatus"/> sequences and
-/// (consumed, written) pairs call-for-call — including the BCL's quirks (DestinationTooSmall
-/// when the final block exactly fills the destination, InvalidData for input pushed after
-/// finalization, argument-validation exception shapes). NOTE: call-for-call (written) parity
-/// and the byte-equality assertions ride on DnBrotli's current byte-identity with native
-/// brotli v1.1.0; like the encoder-path suites, they MAY be relaxed to round-trip checks if a
-/// future BCL/brotli bump legitimately changes native output (PORTING.md pins round-trip facts
-/// and DnBrotli's own determinism only).
+/// Compares the idiomatic encoder layer with the BCL for the selected corpus:
+/// operation status, consumed/written counts, finalization and argument validation.
+/// Byte and written-count parity are additional checks; compressed output can vary
+/// between Brotli implementations and versions (see PORTING.md).
 /// </summary>
 public class IdiomaticEncoderTests
 {

@@ -1,4 +1,4 @@
-// Port of c/dec/state.{h,c} (brotli v1.1.0).
+// Port of c/dec/state.{h,c} (brotli v1.2.1).
 //
 // The C `struct BrotliDecoderStateStruct` (typedef'd BrotliDecoderStateInternal,
 // #define'd BrotliDecoderState) is mirrored field-for-field as the unsafe
@@ -536,7 +536,7 @@ internal static unsafe class State
         group->alphabet_size_limit = (ushort)alphabet_size_limit;
         group->num_htrees = (ushort)ntrees;
         group->htrees = p;
-        group->codes = (HuffmanCode*)(&p[ntrees]);
+        group->codes = p != null ? (HuffmanCode*)(&p[ntrees]) : null;
         return (p != null) ? 1 : 0;
     }
 }

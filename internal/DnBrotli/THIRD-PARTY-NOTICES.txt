@@ -1,7 +1,7 @@
 THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
 ============================================
 
-DnBrotli is a Pure C# reimplementation of brotli. It is a port of brotli 1.1.0
+DnBrotli is a Pure C# reimplementation of brotli. It is a port of brotli 1.2.1
 (the reference implementation by the Brotli Authors). The upstream copyright
 notice and license terms below are retained in accordance with that license.
 This file (or an equivalent attribution) MUST accompany any distribution of
@@ -14,11 +14,11 @@ Summary of components:
 
   Component   Version   License   Binary-form attribution
   ---------   -------   -------   -----------------------------------------
-  brotli      1.1.0     MIT       REQUIRED — reproduce the notice below
+  brotli      1.2.1     MIT       REQUIRED — reproduce the notice below
 
 
 -------------------------------------------------------------------------------
-1. brotli 1.1.0
+1. brotli 1.2.1
    https://github.com/google/brotli
    License: MIT
 -------------------------------------------------------------------------------

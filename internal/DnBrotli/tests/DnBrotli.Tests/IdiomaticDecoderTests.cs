@@ -17,6 +17,27 @@ public class IdiomaticDecoderTests
 {
     public static IEnumerable<object[]> CorpusNames() => Corpus.Names();
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(64)]
+    public void InvalidBlockSwitchRejectsChunkedInputWithoutOverwritingDestination(int inChunk)
+    {
+        (List<DecodeStep> steps, _) = DecoderDrivers.DriveDn(
+            DecoderDrivers.InvalidBlockSwitch, inChunk, 65536);
+        Assert.Equal(OperationStatus.InvalidData, steps[^1].Status);
+    }
+
+    [Fact]
+    public void InvalidBlockSwitchThrowsFromOneShotAndStream()
+    {
+        byte[] input = DecoderDrivers.InvalidBlockSwitch;
+        Assert.Throws<BrotliException>(() => Brotli.Decompress(input));
+        using var source = new MemoryStream(input);
+        using var decoder = new Streams.BrotliStream(
+            source, Streams.CompressionMode.Decompress);
+        Assert.Throws<InvalidOperationException>(() => decoder.CopyTo(Stream.Null));
+    }
+
     // ==================== chunked resumption parity (call-for-call) ====================
 
     [Theory]

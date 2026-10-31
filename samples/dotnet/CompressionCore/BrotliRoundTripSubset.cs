@@ -23,7 +23,7 @@ namespace BrotliRoundTripSubset
     // byte values and compressed LENGTHS are never printed -- brotli's
     // compressed encoding is implementation-defined, so real .NET's bundled
     // brotli and the vendored one may legitimately shape output differently
-    // (and may drift apart across versions even while both are v1.1.x today).
+    // across library versions.
     // Only round-trip equality bools and exception TYPE names are printed; the
     // corrupted buffer is a literal constant, not mutated real compressed
     // output, so its rejection is governed purely by the brotli stream format.
@@ -110,6 +110,64 @@ namespace BrotliRoundTripSubset
             byte[] garbageOut = new byte[64];
             bool garbageOk = BrotliDecoder.TryDecompress(Fill(32, 0x91), garbageOut, out int garbageLen);
             Console.WriteLine("brotli-invalid-oneshot: TryDecompress ok=" + garbageOk);
+
+            // Node.js test/parallel/test-zlib-invalid-input.js, CVE-2026-111497.
+            // The stream exhausts a single-type block, which has no switch tree.
+            byte[] invalidBlockSwitch =
+            {
+                0x20, 0x00, 0x10, 0x41, 0x41, 0x41, 0xFC, 0xFF, 0xFF, 0x07,
+                0x00, 0x22, 0x28, 0xF0, 0x0B, 0x60, 0xF7, 0xF4, 0x1F, 0x00, 0x00, 0x00,
+            };
+            // Leave space after the exhausted block so destination exhaustion
+            // cannot masquerade as malformed-input rejection.
+            bool invalidBlockAccepted = BrotliDecoder.TryDecompress(invalidBlockSwitch,
+                new byte[(1 << 24) + 1], out int invalidBlockWritten);
+            Console.WriteLine("Brotli invalid block switch oneshot rejected: "
+                + (!invalidBlockAccepted && invalidBlockWritten == (1 << 24)));
+            Console.WriteLine("Brotli invalid block switch chunked rejected: "
+                + RejectInvalidBlockSwitch(invalidBlockSwitch, 1));
+            byte[] paddedInvalidBlockSwitch = new byte[invalidBlockSwitch.Length + 64];
+            invalidBlockSwitch.CopyTo(paddedInvalidBlockSwitch, 0);
+            Console.WriteLine("Brotli invalid block switch buffered rejected: "
+                + RejectInvalidBlockSwitch(paddedInvalidBlockSwitch, paddedInvalidBlockSwitch.Length));
+            ExpectThrowStream("brotli-invalid-block-switch-stream", invalidBlockSwitch);
+        }
+
+        private static bool RejectInvalidBlockSwitch(byte[] input, int chunkSize)
+        {
+            byte[] output = Fill(65538, 0xA5);
+            using BrotliDecoder decoder = new BrotliDecoder();
+            int offset = 0;
+            int remaining = 0;
+            for (int iteration = 0; iteration < 1024; iteration++)
+            {
+                if (remaining == 0 && offset < input.Length)
+                {
+                    remaining = Math.Min(chunkSize, input.Length - offset);
+                }
+                OperationStatus status = decoder.Decompress(
+                    new ReadOnlySpan<byte>(input, offset, remaining),
+                    new Span<byte>(output, 1, 65536), out int consumed, out int written);
+                if (output[0] != 0xA5 || output[65537] != 0xA5)
+                {
+                    return false;
+                }
+                if (status == OperationStatus.InvalidData)
+                {
+                    // A terminal error must not resume on later input.
+                    return decoder.Decompress(input, new Span<byte>(output, 1, 65536),
+                        out consumed, out written) == OperationStatus.InvalidData
+                        && consumed == 0 && written == 0
+                        && output[0] == 0xA5 && output[65537] == 0xA5;
+                }
+                if (status == OperationStatus.Done || (consumed == 0 && written == 0))
+                {
+                    return false;
+                }
+                offset += consumed;
+                remaining -= consumed;
+            }
+            return false;
         }
 
         private static byte[] Fill(int length, byte value)

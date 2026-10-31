@@ -21,7 +21,7 @@ public unsafe class StaticDataTests
         Assert.Equal(122_784, DictionaryData.Data.Length);
         Assert.Equal("20e42eb1b511c21806d4d227d07e5dd06877d8ce7b3a817f378f313653f35c70",
             Sha256(DictionaryData.Data));
-        // c/common/dictionary.c line 16: the blob opens with the word "time".
+        // c/common/dictionary_inc.h: the blob opens with the word "time".
         Assert.Equal("time"u8.ToArray(), DictionaryData.Data.Slice(0, 4).ToArray());
     }
 
@@ -43,7 +43,7 @@ public unsafe class StaticDataTests
             BinaryPrimitives.WriteUInt32LittleEndian(le.AsSpan(i * 4), DictionaryData.OffsetsByLength[i]);
         }
         Assert.Equal("9f726ff6c890d095b5490327cc49b2f9ceae08b0e0f977ded9a21a5aec6de84d", Sha256(le));
-        // c/common/dictionary.c lines 5883-5885.
+        // c/common/dictionary.c offsets_by_length.
         Assert.Equal(122_016u, DictionaryData.OffsetsByLength[24]);
         Assert.Equal(122_784u, DictionaryData.OffsetsByLength[31]);
     }
@@ -55,8 +55,8 @@ public unsafe class StaticDataTests
         Assert.True(d == Dictionary.BrotliGetDictionary());  // pointer-stable
         Assert.Equal((nuint)122_784, d->data_size);
         Assert.Equal(122_784u, d->offsets_by_length[31]);
-        Assert.Equal(10, d->size_bits_by_length[4]);   // c/common/dictionary.c line 5873
-        Assert.Equal(5, d->size_bits_by_length[24]);   // c/common/dictionary.c line 5876
+        Assert.Equal(10, d->size_bits_by_length[4]);   // c/common/dictionary.c size_bits_by_length
+        Assert.Equal(5, d->size_bits_by_length[24]);   // c/common/dictionary.c size_bits_by_length
         Assert.Equal((byte)'t', d->data[0]);           // "time"
         Assert.Equal((byte)'e', d->data[3]);
     }
@@ -104,7 +104,7 @@ public unsafe class StaticDataTests
         Assert.Equal("fdbc5d5f207a43d34b26441e29b7024f4f3d00be66502d8a73233bcbe9f6c1b4",
             Sha256(new ReadOnlySpan<byte>(lut, 704 * 8)));
 
-        // c/dec/prefix.h line 27: { 0x00, 0x00, 0, 0x00, 0x0000, 0x0002 }.
+        // c/dec/prefix_inc.h: { 0x00, 0x00, 0, 0x00, 0x0000, 0x0002 }.
         Assert.Equal(0, lut[0].insert_len_extra_bits);
         Assert.Equal(0, lut[0].copy_len_extra_bits);
         Assert.Equal(0, lut[0].distance_code);
@@ -112,7 +112,7 @@ public unsafe class StaticDataTests
         Assert.Equal(0, lut[0].insert_len_offset);
         Assert.Equal(2, lut[0].copy_len_offset);
 
-        // c/dec/prefix.h line 91: { 0x00, 0x01, 0, 0x03, 0x0000, 0x000a }.
+        // c/dec/prefix_inc.h: { 0x00, 0x01, 0, 0x03, 0x0000, 0x000a }.
         Assert.Equal(0, lut[64].insert_len_extra_bits);
         Assert.Equal(1, lut[64].copy_len_extra_bits);
         Assert.Equal(0, lut[64].distance_code);
@@ -120,7 +120,7 @@ public unsafe class StaticDataTests
         Assert.Equal(0, lut[64].insert_len_offset);
         Assert.Equal(0x000A, lut[64].copy_len_offset);
 
-        // c/dec/prefix.h line 411: { 0x00, 0x05, -1, 0x03, 0x0000, 0x0046 }.
+        // c/dec/prefix_inc.h: { 0x00, 0x05, -1, 0x03, 0x0000, 0x0046 }.
         Assert.Equal(0, lut[384].insert_len_extra_bits);
         Assert.Equal(5, lut[384].copy_len_extra_bits);
         Assert.Equal(-1, lut[384].distance_code);
@@ -128,7 +128,7 @@ public unsafe class StaticDataTests
         Assert.Equal(0, lut[384].insert_len_offset);
         Assert.Equal(0x0046, lut[384].copy_len_offset);
 
-        // c/dec/prefix.h line 730 (last entry): { 0x18, 0x18, -1, 0x03, 0x5842, 0x0846 }.
+        // c/dec/prefix_inc.h: { 0x18, 0x18, -1, 0x03, 0x5842, 0x0846 }.
         Assert.Equal(0x18, lut[703].insert_len_extra_bits);
         Assert.Equal(0x18, lut[703].copy_len_extra_bits);
         Assert.Equal(-1, lut[703].distance_code);
@@ -171,7 +171,7 @@ public unsafe class StaticDataTests
     [Fact]
     public void DictionaryHashBlobsMatch()
     {
-        // c/enc/dictionary_hash.c: kStaticDictionaryHashWords (32768 x uint16 LE)
+        // c/enc/dictionary_hash_inc.h: kStaticDictionaryHashWords (32768 x uint16 LE)
         // and kStaticDictionaryHashLengths (32768 x uint8).
         Assert.Equal(65_536, DnBrotli.Enc.DictionaryHash.HashWordsLE.Length);
         Assert.Equal("5f60018015074e571ec29147973866b82ada416b08325bf75d8e3c94bc83fb37",
@@ -184,13 +184,13 @@ public unsafe class StaticDataTests
     [Fact]
     public void StaticDictLutBlobsMatch()
     {
-        // c/enc/static_dict_lut.h: kStaticDictionaryBuckets (32768 x uint16 LE) and
+        // c/enc/static_dict_lut_inc.h: kStaticDictionaryBuckets (32768 x uint16 LE) and
         // kStaticDictionaryWords (31705 x DictWord{len,transform,idx LE} = 4 bytes).
         Assert.Equal(65_536, DnBrotli.Enc.StaticDictLut.BucketsLE.Length);
         Assert.Equal("7b6539ba4c302b1ebc592faec82fbf0c1f6530f7d143db3f411c1ee666958077",
             Sha256(DnBrotli.Enc.StaticDictLut.BucketsLE));
         Assert.Equal(31_705 * 4, DnBrotli.Enc.StaticDictLut.WordsLE.Length);
-        Assert.Equal("0d1192dba189dcd045ca677d24c828d266a6372c4c1bb73ef4b47427f9181327",
+        Assert.Equal("0b553e04dcf6c5371875a40b54ac4115dd450f2b0cef444a16c8531d4c49f891",
             Sha256(DnBrotli.Enc.StaticDictLut.WordsLE));
     }
 
@@ -198,7 +198,7 @@ public unsafe class StaticDataTests
     public void EncoderDictDecodedTablesSpotChecks()
     {
         // Decoded native copies must agree with the blobs and the C source shape.
-        // c/enc/static_dict_lut.h line 29: buckets open with 1,0,0,0.
+        // c/enc/static_dict_lut_inc.h: buckets open with 1,0,0,0.
         Assert.Equal(1, DnBrotli.Enc.EncoderDict.kStaticDictionaryBuckets[0]);
         Assert.Equal(0, DnBrotli.Enc.EncoderDict.kStaticDictionaryBuckets[1]);
         // Last two buckets (index 32766, 32767): 31703, 0.
@@ -209,7 +209,7 @@ public unsafe class StaticDataTests
         Assert.Equal(138, DnBrotli.Enc.EncoderDict.kStaticDictionaryWords[31_704].len);
         Assert.Equal(11, DnBrotli.Enc.EncoderDict.kStaticDictionaryWords[31_704].transform);
         Assert.Equal(347, DnBrotli.Enc.EncoderDict.kStaticDictionaryWords[31_704].idx);
-        // c/enc/dictionary_hash.c: hash words open 1002,0,0,0; lengths open 8,0,0,0.
+        // c/enc/dictionary_hash_inc.h: hash words open 1002,0,0,0; lengths open 8,0,0,0.
         Assert.Equal(1002, DnBrotli.Enc.EncoderDict.kStaticDictionaryHashWords[0]);
         Assert.Equal(8, DnBrotli.Enc.EncoderDict.kStaticDictionaryHashLengths[0]);
         Assert.Equal(0, DnBrotli.Enc.EncoderDict.kStaticDictionaryHashLengths[1]);

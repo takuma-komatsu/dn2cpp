@@ -108,7 +108,7 @@ public static unsafe partial class RawBrotli
         DecoderEngine.BrotliDecoderErrorString(c);
 
     /// <summary><c>BrotliDecoderVersion</c>: library version packed as
-    /// <c>(major &lt;&lt; 24) | (minor &lt;&lt; 12) | patch</c> — 1.1.0, matching the
+    /// <c>(major &lt;&lt; 24) | (minor &lt;&lt; 12) | patch</c> — 1.2.1, matching the
     /// vendored C source.</summary>
     public static uint BrotliDecoderVersion() =>
         DecoderEngine.BrotliDecoderVersion();

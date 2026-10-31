@@ -1,4 +1,4 @@
-// Port of c/enc/find_match_length.h (brotli v1.1.0): maximal matching prefix
+// Port of c/enc/find_match_length.h (brotli v1.2.1): maximal matching prefix
 // of two strings. The BROTLI_TZCNT64 && BROTLI_64_BITS && BROTLI_LITTLE_ENDIAN
 // branch is the scalar port (every dn2cpp target). Per the PORTING.md SIMD
 // policy an architecture-generic Vector128 fast path is layered on top, gated

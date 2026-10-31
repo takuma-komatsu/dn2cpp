@@ -222,13 +222,8 @@ public sealed class EncoderGenericPathTests
         Assert.True(RawBrotli.BrotliEncoderEstimatePeakMemoryUsage(quality, 22, 1 << 20) > 0);
     }
 
-    /// <summary>DnBrotli's q4..q9 one-shot output is currently byte-identical to native
-    /// brotli v1.1.0 (the BCL encoder) for these entries — a strong fidelity signal for
-    /// the generic path (hashers, block splitter FP, clustering, context maps, stores).
-    /// NOTE: byte-identity with native output is NOT part of DnBrotli's contract
-    /// (PORTING.md pins round-trip facts and DnBrotli's own determinism only); this
-    /// assertion MAY be relaxed to a round-trip check when a future BCL/brotli bump
-    /// legitimately changes native output.</summary>
+    /// <summary>Additional byte-parity checks for this corpus. Interoperability
+    /// and DnBrotli's own determinism remain the encoder contract.</summary>
     [Theory]
     [InlineData("hello", 4)]
     [InlineData("hello", 5)]
@@ -256,10 +251,7 @@ public sealed class EncoderGenericPathTests
         Assert.Equal(native, mine);
     }
 
-    /// <summary>Same byte-identity signal on the small-window (forgetful-chain
-    /// H40/H41/H42) arms — one-shot at lgwin &lt;= 16 routes native brotli and
-    /// DnBrotli through the identical ChooseHasher arm. Same relaxation caveat as
-    /// above.</summary>
+    /// <summary>Additional byte-parity checks for the small-window hashers.</summary>
     [Theory]
     [InlineData("english-200k", 5, 10)]
     [InlineData("english-200k", 6, 16)]

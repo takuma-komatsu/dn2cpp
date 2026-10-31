@@ -1,4 +1,4 @@
-// Port of c/enc/cluster.{h,c} + cluster_inc.h (brotli v1.1.0) — functions for
+// Port of c/enc/cluster.{h,c} + cluster_inc.h (brotli v1.2.1) — functions for
 // clustering similar histograms together. The cluster_inc.h template is
 // expanded manually for Literal / Command / Distance (the Histogram.cs house
 // triple pattern). Every double expression keeps the exact C shape

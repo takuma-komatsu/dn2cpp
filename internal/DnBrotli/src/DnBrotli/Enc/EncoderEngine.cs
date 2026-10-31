@@ -1,4 +1,4 @@
-// Port of c/enc/encode.c (brotli v1.1.0) — the compressor state machine and
+// Port of c/enc/encode.c (brotli v1.2.1) — the compressor state machine and
 // the public encode.h surface, function-for-function in the C source order.
 //
 // Scope: the complete streaming machinery (CompressStream with
@@ -314,9 +314,10 @@ internal static unsafe class EncoderEngine
                 uint* literal_histo = stackalloc uint[256];
                 new Span<uint>(literal_histo, 256).Clear();
                 const uint kSampleRate = 13;
+                const double kInvSampleRate = 1.0 / 13.0;
                 const double kMinEntropy = 7.92;
                 double bit_cost_threshold =
-                    (double)bytes * kMinEntropy / kSampleRate;
+                    (double)bytes * kMinEntropy * kInvSampleRate;
                 nuint t = (bytes + kSampleRate - 1) / kSampleRate;
                 uint pos = (uint)last_flush_pos;
                 nuint i;
@@ -325,7 +326,7 @@ internal static unsafe class EncoderEngine
                     ++literal_histo[data[pos & mask]];
                     pos += kSampleRate;
                 }
-                if (BitCost.BitsEntropy(literal_histo, 256) > bit_cost_threshold)
+                if (BitCost.BrotliBitsEntropy(literal_histo, 256) > bit_cost_threshold)
                 {
                     return false;
                 }
@@ -359,12 +360,26 @@ internal static unsafe class EncoderEngine
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     ]);
 
+    private static double EstimateEntropy(uint* population, nuint size)
+    {
+        nuint total = 0;
+        double result = 0;
+        for (nuint i = 0; i < size; ++i)
+        {
+            uint p = population[i];
+            total += p;
+            result += (double)p * FastLog.FastLog2(p);
+        }
+        result = (double)total * FastLog.FastLog2(total) - result;
+        return result;
+    }
+
     /* Decide about the context map based on the ability of the prediction
        ability of the previous byte UTF8-prefix on the next byte. The
        prediction ability is calculated as Shannon entropy. Here we need
-       Shannon entropy instead of 'BitsEntropy' since the prefix will be
+       Shannon entropy instead of 'BrotliBitsEntropy' since the prefix will be
        encoded with the remaining 6 bits of the following byte, and
-       BitsEntropy will assume that symbol to be stored alone using Huffman
+       BrotliBitsEntropy will assume that symbol to be stored alone using Huffman
        coding. */
     private static void ChooseContextMap(int quality,
                                          uint* bigram_histo,
@@ -375,20 +390,19 @@ internal static unsafe class EncoderEngine
         uint* two_prefix_histo = stackalloc uint[6] { 0, 0, 0, 0, 0, 0 };
         nuint total;
         nuint i;
-        nuint dummy;
         double* entropy = stackalloc double[4];
         for (i = 0; i < 9; ++i)
         {
             monogram_histo[i % 3] += bigram_histo[i];
             two_prefix_histo[i % 6] += bigram_histo[i];
         }
-        entropy[1] = BitCost.ShannonEntropy(monogram_histo, 3, &dummy);
-        entropy[2] = (BitCost.ShannonEntropy(two_prefix_histo, 3, &dummy) +
-                      BitCost.ShannonEntropy(two_prefix_histo + 3, 3, &dummy));
+        entropy[1] = EstimateEntropy(monogram_histo, 3);
+        entropy[2] = (EstimateEntropy(two_prefix_histo, 3) +
+                      EstimateEntropy(two_prefix_histo + 3, 3));
         entropy[3] = 0;
         for (i = 0; i < 3; ++i)
         {
-            entropy[3] += BitCost.ShannonEntropy(bigram_histo + 3 * i, 3, &dummy);
+            entropy[3] += EstimateEntropy(bigram_histo + 3 * i, 3);
         }
 
         total = monogram_histo[0] + monogram_histo[1] + monogram_histo[2];
@@ -466,10 +480,9 @@ internal static unsafe class EncoderEngine
             uint* context_histo = arena + 32;
             uint total = 0;
             double* entropy = stackalloc double[3];
-            nuint dummy;
             nuint i;
             byte* utf8_lut = BROTLI_CONTEXT_LUT((nuint)ContextType.CONTEXT_UTF8);
-            new Span<uint>(arena, 32 * 14).Clear();
+            new Span<uint>(arena, 32 * (Metablock.BROTLI_MAX_STATIC_CONTEXTS + 1)).Clear();
             for (; start_pos + 64 <= end_pos; start_pos += 4096)
             {
                 nuint stride_end_pos = start_pos + 64;
@@ -490,11 +503,11 @@ internal static unsafe class EncoderEngine
                     prev1 = literal;
                 }
             }
-            entropy[1] = BitCost.ShannonEntropy(combined_histo, 32, &dummy);
+            entropy[1] = EstimateEntropy(combined_histo, 32);
             entropy[2] = 0;
-            for (i = 0; i < 13; ++i)
+            for (i = 0; i < Metablock.BROTLI_MAX_STATIC_CONTEXTS; ++i)
             {
-                entropy[2] += BitCost.ShannonEntropy(context_histo + (i << 5), 32, &dummy);
+                entropy[2] += EstimateEntropy(context_histo + (i << 5), 32);
             }
             entropy[0] = 1.0 / (double)total;
             entropy[1] *= entropy[0];
@@ -512,7 +525,7 @@ internal static unsafe class EncoderEngine
             }
             else
             {
-                *num_literal_contexts = 13;
+                *num_literal_contexts = Metablock.BROTLI_MAX_STATIC_CONTEXTS;
                 *literal_context_map = kStaticContextMapComplexUTF8;
                 return true;
             }
@@ -647,7 +660,7 @@ internal static unsafe class EncoderEngine
                 if (@params->disable_literal_context_modeling == 0)
                 {
                     /* TODO(eustas): pull to higher level and reuse. */
-                    uint* arena = BROTLI_ALLOC<uint>(m, 14 * 32);
+                    uint* arena = BROTLI_ALLOC<uint>(m, 32 * (Metablock.BROTLI_MAX_STATIC_CONTEXTS + 1));
                     if (BROTLI_IS_OOM(m) || BROTLI_IS_NULL(arena)) return;
                     DecideOverLiteralContextModeling(
                         data, wrapped_last_flush_pos, bytes, mask, @params->quality,
