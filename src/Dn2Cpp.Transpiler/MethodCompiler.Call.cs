@@ -478,6 +478,11 @@ internal sealed partial class MethodCompiler
             case HandleKind.MethodDefinition:
             {
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
+                if (CoreIntrinsics.IsVectorValueCandidate(callee.DeclaringClass, callee.Name))
+                {
+                    EmitVectorValue(callee);
+                    return;
+                }
                 CoreIntrinsics.ValidateKnownConstantCallable(callee);
                 if (CoreIntrinsics.BrPrimitiveBigMul.Matches(callee))
                 {
@@ -694,6 +699,7 @@ internal sealed partial class MethodCompiler
             }
             case HandleKind.MethodSpecification:
             {
+                _c.RejectVectorValueMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
                 // A generic method on an intrinsic-mapped type (e.g. Unsafe.Add<T>)
                 // is emitted inline rather than transpiling its body. The
                 // spec's method is a MemberRef across assemblies and a MethodDef
@@ -897,6 +903,12 @@ internal sealed partial class MethodCompiler
                     if (parent.Kind == TypeKind.SZArray || parent.Kind == TypeKind.MDArray)
                     {
                         TranslateArrayMethodCall(parent, mr);
+                        return;
+                    }
+                    if (parent is { Kind: TypeKind.Class, Class: { } vectorValueOwner }
+                        && CoreIntrinsics.IsVectorValueCandidate(vectorValueOwner, mrName))
+                    {
+                        EmitVectorValue(_c.ResolveVectorValueReference(_module, (MemberReferenceHandle)handle, _method.Context));
                         return;
                     }
                     if (mrName == "op_Explicit" && parent is { Kind: TypeKind.Class, Class: { } vectorOwner }
@@ -1599,6 +1611,12 @@ internal sealed partial class MethodCompiler
 
     private void EmitManagedCall(MethodInfo callee, bool isCallvirt)
     {
+        if (CoreIntrinsics.IsVectorValueCandidate(callee.DeclaringClass, callee.Name))
+        {
+            EmitVectorValue(callee);
+            return;
+        }
+
         if (callee.Name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(callee.DeclaringClass))
         {
             if (!CoreIntrinsics.IsVectorExplicit(callee))
@@ -3636,6 +3654,8 @@ internal sealed partial class MethodCompiler
             return PrimitiveHashExpr(keyType, key);
         if (keyType is { Kind: TypeKind.Class, Class.IsEnum: true })
             return $"(int32_t)({Cast(key, "int32_t")})";
+        if (CoreIntrinsics.IsVectorValueType(keyType))
+            return $"dn2cpp_vec_value_hash<{CppTypes.StorageOf(keyType.Class!.Context.TypeArgs[0])}>({Cast(key, "Dn2CppVectorT")})";
         if (IsCancellationTokenValue(keyType))
             return $"(int32_t)(uintptr_t)(({Cast(key, "Dn2CppCancelToken")}).source)";
         if (IsGCHandleValue(keyType))
@@ -3792,6 +3812,7 @@ internal sealed partial class MethodCompiler
             || IsReferenceKeyType(t)
             || IntrinsicValueTypeFn(t) is not null
             || IsCancellationTokenValue(t)
+            || CoreIntrinsics.IsVectorValueType(t)
             || IsGCHandleValue(t)
             || IntrinsicPointerValueType(t) is not null
             || (EqualityStructArm(t) is { } sc
@@ -3851,6 +3872,8 @@ internal sealed partial class MethodCompiler
             string ect = CppTypes.Of(keyType);
             return $"(({Cast(a, ect)}) == ({Cast(b, ect)}) ? 1 : 0)";
         }
+        if (CoreIntrinsics.IsVectorValueType(keyType))
+            return $"dn2cpp_vec_value_equals<{CppTypes.StorageOf(keyType.Class!.Context.TypeArgs[0])}>({Cast(a, "Dn2CppVectorT")}, {Cast(b, "Dn2CppVectorT")})";
         if (IsCancellationTokenValue(keyType))
             return $"((({Cast(a, "Dn2CppCancelToken")}).source == ({Cast(b, "Dn2CppCancelToken")}).source) ? 1 : 0)";
         if (IsGCHandleValue(keyType))
@@ -4220,6 +4243,13 @@ internal sealed partial class MethodCompiler
             HandleKind.MethodDefinition => _reader.GetString(_reader.GetMethodDefinition((MethodDefinitionHandle)handle).Name),
             _ => "",
         };
+        if (c is { Kind: TypeKind.Class, Class: { } vector }
+            && CoreIntrinsics.IsVectorValueCandidate(vector, name))
+        {
+            _c.ValidateVectorValueReceiver(_module, _constrainedHandle, _method.Context, vector);
+            EmitVectorValue(_c.ValidateVectorValueConstrained(_module, handle, _method.Context, vector));
+            return true;
+        }
         // Object.GetType is not virtual, so no value type implements it: the call boxes
         // the receiver and reads the box's type, which is c itself — or, for a
         // Nullable<T>, T when it has a value and a null box that faults when it has none.

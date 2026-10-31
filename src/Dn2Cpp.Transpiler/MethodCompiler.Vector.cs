@@ -244,6 +244,11 @@ internal sealed partial class MethodCompiler
     private bool TryEmitVectorOp(string vecCpp, int widthBytes, TypeDesc elem, string name,
         MethodSignature<TypeDesc> sig, TypeDesc[]? methodArgs)
     {
+        // Instance value methods require original metadata authority; no name-only
+        // vector route may silently substitute numeric equality or object identity.
+        if (vecCpp == "Dn2CppVectorT" && name is "Equals" or "GetHashCode"
+            && (sig.Header.IsInstance || VecCppName(sig.ReturnType) is null))
+            throw new NotSupportedException("Vector<T> value methods require an exact supported reference");
         string et = CppTypes.StorageOf(elem);   // the template element type T
         int n = widthBytes;
         int lanes = n / VecElemBytes(elem);

@@ -684,6 +684,9 @@ internal sealed partial class MethodCompiler : IEvalStack
 
     public string Compile()
     {
+        if (CoreIntrinsics.IsVectorValueCandidate(_method.DeclaringClass, _method.Name)
+            && !CoreIntrinsics.IsVectorValueMethod(_method))
+            throw new NotSupportedException("Vector<T> value methods require an exact supported declaration");
         if (_method.Name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(_method.DeclaringClass)
             && !CoreIntrinsics.IsVectorExplicit(_method))
             throw new NotSupportedException("Vector<T>.op_Explicit requires its exact supported CoreLib declaration");
@@ -1261,6 +1264,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsDateTimeFormatInfoSpan(_method)
             || CoreIntrinsics.IsDecimalDivMod(_method)
             || CoreIntrinsics.IsVectorExplicit(_method)
+            || CoreIntrinsics.IsVectorValueMethod(_method)
             || CoreIntrinsics.IsDateOnlyDeconstruct(_method)
             || CoreIntrinsics.IsDateTimeParserBoundary(_method)
             || CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(_method)
@@ -3907,14 +3911,19 @@ internal sealed partial class MethodCompiler : IEvalStack
                     Emit($"{otmp} = (Dn2CppObject*){obj.Expr};");
                     string ntmp2 = NewTemp(nct2);
                     Emit($"{ntmp2} = {{}};");
-                    Emit($"if ({otmp}) {{ {ntmp2}.{hvF2} = 1; {ntmp2}.{valF2} = *(({uct2}*)dn2cpp_unbox_nullable({otmp}, {uti2})); }}");
+                    string value2 = NewTemp(uct2);
+                    Emit($"if ({otmp}) {{ {ntmp2}.{hvF2} = 1; std::memcpy(&{value2}, dn2cpp_unbox_nullable({otmp}, {uti2}), sizeof({value2})); {ntmp2}.{valF2} = {value2}; }}");
                     Push(CppTypes.KindOf(target), nct2, ntmp2);
                     break;
                 }
                 string ti = TypeInfoExpr(target, insn.Token)
                     ?? throw new NotSupportedException($"unbox.any of {target} is not supported yet");
                 string ct = CppTypes.Of(target);
-                Push(CppTypes.KindOf(target), ct, $"*(({ct}*)dn2cpp_unbox((Dn2CppObject*){obj.Expr}, {ti}))");
+                // Box payloads follow the object header, which need not satisfy a
+                // vector-containing value's alignment. unbox.any copies, not aliases.
+                string unboxed = NewTemp(ct);
+                Emit($"std::memcpy(&{unboxed}, dn2cpp_unbox((Dn2CppObject*){obj.Expr}, {ti}), sizeof({unboxed}));");
+                Push(CppTypes.KindOf(target), ct, unboxed);
                 break;
             }
 
@@ -4139,6 +4148,19 @@ internal sealed partial class MethodCompiler : IEvalStack
                 else if (CoreIntrinsics.IsMemberMetadataDefinitionBase(m))
                 {
                     expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&dn2cpp_memberinfo_has_same_metadata)";
+                }
+                else if (CoreIntrinsics.IsVectorValueMethod(m) && m.Name == "Equals"
+                    && m.Signature.ParameterTypes[0].Class == m.DeclaringClass)
+                {
+                    // The final typed slot has no managed vtable on an intrinsic box.
+                    // Reuse the exact method wrapper and boxed-receiver adapter.
+                    bindsLowering = true;
+                    NoteFtnTargetBody(m.Emittable);
+                    _c.NoteNamedBodySymbol(_method, m.Emittable);
+                    var adapter = new DelegateAdapter(m.Emittable, false, NfiErased: true);
+                    if (!_c.DelegateAdapters.Contains(adapter))
+                        _c.DelegateAdapters.Add(adapter);
+                    expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{adapter.CppName})";
                 }
                 else if (ObjectDispatchHelper(m) is { } helper)
                 {

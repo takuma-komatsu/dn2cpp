@@ -9,13 +9,18 @@ namespace VectorProbe;
 // .NET. Only ops whose scalar emulation is bit-exact are printed:
 // IsHardwareAccelerated is deliberately not observed (it folds to false here) and
 // float Sum is avoided, being rounding-order dependent.
-internal static class Program
+internal static partial class Program
 {
     private static void Main(string[] args)
     {
         // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        if (args.Length > 0 && args[0] == "vector-value-only")
+        {
+            VectorValueSemantics();
+            return;
+        }
 
         Vector128<int> a = Vector128.Create(1, 2, 3, 4);   // element list
         Vector128<int> b = Vector128.Create(10);           // broadcast
@@ -205,6 +210,7 @@ internal static class Program
         VectorCopyTargets();
         if (args.Length > 0 && args[0] == "before-explicit") return;
         ExplicitReinterprets.Run();
+        VectorValueSemantics();
     }
 
     private static void VectorCopyTargets()

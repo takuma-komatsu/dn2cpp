@@ -573,6 +573,12 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsVectorValueMethod(callee))
+        {
+            EmitVectorValue(callee);
+            return;
+        }
+
         if (CoreIntrinsics.IsVectorExplicit(callee))
         {
             EmitVectorExplicit(callee);

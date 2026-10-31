@@ -1261,6 +1261,31 @@ on the IL evaluation stack therefore stay live across `ldind.ref` and `ldobj` on
 Runtime argument-exception helpers likewise keep earlier managed operands live
 while constructing later message, parameter-name and boxed-value operands.
 
+#### Numeric vector value semantics
+
+Closed supported numeric `System.Numerics.Vector<T>` values share lane-value equality and
+hashing across direct calls, constrained calls, default comparers and boxed
+object hooks. Typed `Equals` accepts paired NaNs and signed zeros; numeric
+operators, equality masks and reductions retain numeric floating comparison.
+Floating hashes reuse the scalar normalization policy. Lane count follows target
+storage width within the existing vector ABI, not the host CLR's SIMD width.
+
+Metadata admission validates the original owner and signature before legacy
+vector dispatch or context-insensitive reference caches. Box hooks check exact
+managed type identity before reading payloads; boxed `IEquatable` dispatch has
+its own exact interface adapter. A typed method-group delegate binds the exact
+intrinsic wrapper through the existing boxed-receiver adapter, not a nonexistent
+managed vtable slot. Unsupported closures and other vector families do not
+acquire numeric value semantics from a shared native representation.
+
+Box payloads need not meet an over-aligned value's native alignment.
+`unbox.any` copies into aligned storage after the existing type/null checks;
+nullable copies use an underlying-value temporary before field assignment.
+`unbox` remains an alias to the original payload. Vector value-method receivers
+and box hooks likewise copy payload bytes rather than forming aligned loads.
+The VectorProbe gates cover value/numeric distinctions, boxed identities,
+callable routes and alignment-sensitive tuple/nullable copies.
+
 #### Platform ISA contract
 
 The `System.Runtime.Intrinsics.X86` / `.Arm` / `.Wasm` families are one

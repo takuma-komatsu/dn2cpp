@@ -719,6 +719,7 @@ internal sealed partial class Compilation
     /// referenced by a MethodSpec, in the caller's generic context.</summary>
     public MethodInfo ResolveMethodSpec(Module module, MethodSpecificationHandle handle, GenericContext callerCtx)
     {
+        RejectVectorValueMethodSpecification(module, handle, callerCtx);
         var reader = module.Reader;
         var ms = reader.GetMethodSpecification(handle);
         var methodArgs = ms.DecodeSignature(SigProvider, callerCtx).ToArray();
@@ -1368,13 +1369,25 @@ internal sealed partial class Compilation
             throw new NotSupportedException($"Unsupported MemberRef parent kind: {mr.Parent.Kind}");
         }
 
+        string name = reader.GetString(mr.Name);
+        // A raw MVAR in a value-method reference depends on the caller context,
+        // which the general MemberRef cache deliberately does not include.
+        if (CoreIntrinsics.IsVectorValueCandidate(cls, name))
+            return ResolveVectorValueReference(module, handle, callerCtx);
+        if (name == "Equals" && cls.Context.TypeArgs is [{ Kind: TypeKind.Class, Class: { } vectorArgument }]
+            && CoreIntrinsics.IsVectorExplicitOwner(vectorArgument))
+        {
+            EnsureShape(vectorArgument);
+            EnsureShape(cls);
+            if (CoreIntrinsics.IsVectorValueEquatable(cls, vectorArgument))
+                ValidateVectorValueConstrained(module, handle, callerCtx, vectorArgument);
+        }
         if (!typeRefParent
             && _memberRefMethodsBySpec.TryGetValue((module.Index, SRME.GetToken(handle), cls), out var hitBySpec))
             return hitBySpec;
 
         if (cls.GenericArity > 0)
             EnsureCompleted(cls); // members may be needed before the queue drains
-        string name = reader.GetString(mr.Name);
         var sig = mr.DecodeMethodSignature(SigProvider, cls.Context);
         if (name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(cls))
         {

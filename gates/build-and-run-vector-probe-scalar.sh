@@ -16,12 +16,13 @@
 # (gates/_common.sh), so this runs alongside the default gate without clobbering it.
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/vector-explicit-probe.sh"
+source "$(dirname "$0")/vector-value-probe.sh"
 
 export SCALAR=1
 # dn2cpp fixes Vector<T> at 128 bits. Keep the hardware-dependent real-.NET
 # oracle at that width so exact output remains host-independent.
 export DN2CPP_ORACLE_DOTNET_ENABLE_AVX=0
-export DN2CPP_GATE_EXTRA_CONTEXT="dotnet-vector-width:128|explicit-raw-diet-retained-fill|block-repeat-low-bytes|cli:$(_gate_cli_hash)"
-export DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/vector-explicit-probe.sh gates/fixtures/vector-explicit gates/fixtures/ldftn-local/VectorExplicitFixture.cs gates/fixtures/ldftn-local/VectorExplicitGuards.cs gates/fixtures/ldftn-local/VectorBlockFixture.cs"
+export DN2CPP_GATE_EXTRA_CONTEXT="dotnet-vector-width:128|explicit-raw-diet-retained-fill|block-repeat-low-bytes|vector-value-raw-diet|cli:$(_gate_cli_hash)"
+export DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/vector-value-probe.sh gates/fixtures/vector-value gates/vector-explicit-probe.sh gates/fixtures/vector-explicit gates/fixtures/ldftn-local/VectorExplicitFixture.cs gates/fixtures/ldftn-local/VectorExplicitGuards.cs gates/fixtures/ldftn-local/VectorBlockFixture.cs"
 
 corelib_diff_gate VectorProbe

@@ -1509,6 +1509,39 @@ internal sealed partial class CppEmitter
                         : "nullptr";
                 string getHash = "nullptr";
                 string equals = "nullptr";
+                if (CoreIntrinsics.IsVectorValueType(TypeDesc.MakeClass(c)))
+                {
+                    string element = CppTypes.StorageOf(c.Context.TypeArgs[0]);
+                    getHash = $"&dn2cpp_vec_value_box_hash<{element}>";
+                    equals = $"&dn2cpp_vec_value_box_equals<{element}>";
+                    var entries = new List<string>();
+                    var aliases = new HashSet<ClassInfo>();
+                    foreach (var itf in _e._emit.OrderBy(t => t.CppName, StringComparer.Ordinal))
+                    {
+                        if (!CoreIntrinsics.IsVectorValueEquatable(itf, c))
+                            continue;
+                        var declaration = itf.Methods.SingleOrDefault(CoreIntrinsics.IsVectorValueEquatableMethod)
+                            ?? throw new NotSupportedException("Vector<T> IEquatable slot requires its exact declaration");
+                        if (declaration.VtableSlot < 0)
+                            throw new InvalidOperationException("Vector<T> IEquatable slot is unassigned");
+                        string stem = $"vector_value_itf_{c.CppName}_{itf.CppName}";
+                        _sb.AppendLine($"static int32_t {stem}_equals({itf.CppStructName}* self, Dn2CppVectorT other) {{ Dn2CppVectorT value; std::memcpy(&value, (Dn2CppObject*)self + 1, sizeof(value)); return dn2cpp_vec_value_equals<{element}>(value, other); }}");
+                        var slots = Enumerable.Repeat("nullptr", declaration.VtableSlot + 1).ToArray();
+                        slots[declaration.VtableSlot] = $"(const void*)&{stem}_equals";
+                        _sb.AppendLine($"static const void* {stem}_slots[] = {{ {string.Join(", ", slots)} }};");
+                        entries.Add($"{{ {_e.TypeInfoRef(itf, "vector value interface")}, {stem}_slots }}");
+                        aliases.Add(itf);
+                        if (_c.SharedGenericsEnabled && _c.CanonicalInterfaceOf(itf) is { } canonical
+                            && aliases.Add(canonical))
+                            entries.Add($"{{ {_e.TypeInfoRef(canonical, "vector value canonical interface")}, {stem}_slots }}");
+                    }
+                    if (entries.Count > 0)
+                    {
+                        interfaces = $"vector_value_itfs_{c.CppName}";
+                        interfaceCount = entries.Count;
+                        _sb.AppendLine($"static const Dn2CppInterfaceEntry {interfaces}[] = {{ {string.Join(", ", entries)} }};");
+                    }
+                }
                 if (MethodCompiler.IsCancellationTokenValue(TypeDesc.MakeClass(c)))
                 {
                     string ghThunk = $"ghthunk_{c.CppName}";

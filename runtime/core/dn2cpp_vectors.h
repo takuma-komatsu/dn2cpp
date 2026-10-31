@@ -163,6 +163,78 @@ static inline Dn2CppString* dn2cpp_vec_box_tostring(Dn2CppObject* boxed)
     return dn2cpp_vec_tostring<T, N>(value, nullptr, nullptr, NumericsVector);
 }
 
+// Value equality is distinct from numeric masks/reductions: paired NaNs compare
+// equal. Lane access and hashing share scalar semantics, including signed zero.
+template <class T>
+static inline int32_t dn2cpp_vec_value_equals(const Dn2CppVectorT& a, const Dn2CppVectorT& b)
+{
+    for (int i = 0; i < 16 / (int)sizeof(T); ++i)
+    {
+        const T x = dn2cpp_vec_get<T>(a, i), y = dn2cpp_vec_get<T>(b, i);
+        if constexpr (std::is_same<T, float>::value)
+        {
+            if (!dn2cpp_single_equals(x, y)) return 0;
+        }
+        else if constexpr (std::is_same<T, double>::value)
+        {
+            if (!dn2cpp_double_equals(x, y)) return 0;
+        }
+        else if (x != y) return 0;
+    }
+    return 1;
+}
+
+template <class T>
+static inline int32_t dn2cpp_vec_value_hash(const Dn2CppVectorT& value)
+{
+    uint32_t hash = 2166136261u;
+    for (int i = 0; i < 16 / (int)sizeof(T); ++i)
+    {
+        const T lane = dn2cpp_vec_get<T>(value, i);
+        uint32_t part;
+        if constexpr (std::is_same<T, float>::value)
+            part = (uint32_t)dn2cpp_single_hash(lane);
+        else if constexpr (std::is_same<T, double>::value)
+            part = (uint32_t)dn2cpp_double_hash(lane);
+        else if constexpr (sizeof(T) == 8)
+        {
+            const uint64_t bits = (uint64_t)lane;
+            part = (uint32_t)bits ^ (uint32_t)(bits >> 32);
+        }
+        else
+            part = (uint32_t)lane;
+        hash = (hash ^ part) * 16777619u;
+    }
+    return (int32_t)hash;
+}
+
+template <class T>
+static inline int32_t dn2cpp_vec_value_object_equals(
+    const Dn2CppVectorT& value, Dn2CppObject* other, const Dn2CppTypeInfo* type)
+{
+    if (!other || other->type != type) return 0;
+    Dn2CppVectorT payload;
+    std::memcpy(&payload, other + 1, sizeof(payload));
+    return dn2cpp_vec_value_equals<T>(value, payload);
+}
+
+template <class T>
+static inline int32_t dn2cpp_vec_value_box_equals(Dn2CppObject* a, Dn2CppObject* b)
+{
+    if (!b || b->type != a->type) return 0;
+    Dn2CppVectorT value;
+    std::memcpy(&value, a + 1, sizeof(value));
+    return dn2cpp_vec_value_object_equals<T>(value, b, a->type);
+}
+
+template <class T>
+static inline int32_t dn2cpp_vec_value_box_hash(Dn2CppObject* boxed)
+{
+    Dn2CppVectorT value;
+    std::memcpy(&value, boxed + 1, sizeof(value));
+    return dn2cpp_vec_value_hash<T>(value);
+}
+
 // ---------------------------------------------------------------------------
 // Construction / constants
 // ---------------------------------------------------------------------------
