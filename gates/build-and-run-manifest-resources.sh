@@ -116,7 +116,21 @@
 # file every run).
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_resource-type-guard.sh"
+source "$(dirname "$0")/_resource-formatter.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_resource-type-guard.sh gates/fixtures/resource-type-guard gates/fixtures/ldftn-local/ResourceTypeGuardFixture.cs gates/fixtures/ldftn-local/ResourceTypeGuardGuards.cs"
+DN2CPP_GATE_EXTRA_INPUTS+=" gates/_resource-formatter.sh gates/fixtures/resource-formatter gates/fixtures/resource-formatter-guards gates/fixtures/ldftn-local/ResourceFormatterFixture.cs gates/fixtures/ldftn-local/ResourceFormatterGuards.cs"
+if [[ "${1:-}" == --formatter-permit-only ]]; then
+    resource_formatter_permit_gate
+    exit $?
+fi
+if [[ "${1:-}" == --formatter-only ]]; then
+    if [[ -n "${DN2CPP_RESOURCE_FORMATTER_OUT:-}" ]]; then
+        resource_formatter_gate "$DN2CPP_RESOURCE_FORMATTER_OUT"
+    else
+        resource_formatter_fresh_gate
+    fi
+    exit $?
+fi
 if [[ "${1:-}" == --type-guard-only ]]; then
     if [[ -n "${DN2CPP_RESOURCE_GUARD_OUT:-}" ]]; then
         resource_type_guard_gate "$DN2CPP_RESOURCE_GUARD_OUT"
@@ -406,3 +420,7 @@ else
 fi
 
 resource_type_guard_fresh_gate
+
+resource_formatter_fresh_gate
+
+resource_formatter_permit_gate

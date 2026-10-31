@@ -909,6 +909,7 @@ internal sealed partial class Compilation
         _reflectionSelectionCount++;
         if (CoreIntrinsics.IsInvariantCompareInfoGetter(target)
             || CoreIntrinsics.IsDefaultPrincipalAccessor(target)
+            || CoreIntrinsics.IsResourceFormatterAccessor(target)
             || CoreIntrinsics.IsCoreClrVirtualSlotCount(target)
             || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(target)
             || CoreIntrinsics.IsRuntimeTypeHandleIsGenericVariable(target)

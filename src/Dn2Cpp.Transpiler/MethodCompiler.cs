@@ -1263,6 +1263,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsRuntimeTypeHandleInterfaces(_method)
             || CoreIntrinsics.IsActivatorFrom(_method)
             || CoreIntrinsics.IsDefaultPrincipalAccessor(_method)
+            || CoreIntrinsics.IsResourceFormatterAccessor(_method)
             || CoreIntrinsics.IsAppDomainExecuteAssembly(_method)
             || CoreIntrinsics.IsGen2GcCallbackRefusal(_method)
             || CoreIntrinsics.IsGen2GcCallbackRegister(_method)

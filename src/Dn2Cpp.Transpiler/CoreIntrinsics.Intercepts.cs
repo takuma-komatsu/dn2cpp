@@ -647,6 +647,7 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleInterfaces(mi)
             || IsActivatorFrom(mi)
             || IsDefaultPrincipalAccessor(mi)
+            || IsResourceFormatterAccessor(mi)
             || IsAppDomainExecuteAssembly(mi)
             || IsDateTimeFormatInfoDayName(mi)
             || IsDateTimeFormatInfoMonthName(mi)
@@ -2214,6 +2215,25 @@ internal static partial class CoreIntrinsics
         return blob.RemainingBytes >= 6 && blob.ReadByte() == 0
             && blob.ReadByte() is 2 or 3 or 8 && IsActivatorNamedSignature(shape);
     }
+
+    internal static bool IsResourceFormatterAccessor(MethodInfo method) =>
+        method.Name is "CreateBinaryFormatter" or "Deserialize"
+        && method.Module.AssemblyName == "System.Private.CoreLib"
+        && method.DeclaringClass.Module == method.Module
+        && method.DeclaringClass.FullName == "System.Resources.ResourceReader"
+        && !method.DeclaringClass.Handle.IsNil && !method.Handle.IsNil
+        && (int)method.Attributes == 0x91 && (int)method.ImplAttributes == 0
+        && method.Rva == 0 && method.PInvoke is null
+        && method.Module.Reader.GetMethodDefinition(method.Handle).GetDeclaringType() == method.DeclaringClass.Handle
+        && ResourceFormatterContract.IsAccessor(method.Module.Reader, method.Handle)
+        && IsResourceFormatterDecodedSignature(method.Signature, method.Module, method.Name == "CreateBinaryFormatter");
+
+    internal static bool IsResourceFormatterDecodedSignature(MethodSignature<TypeDesc> signature, Module module, bool constructor) =>
+        signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+        && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }
+        && (constructor ? signature.ParameterTypes.Length == 0
+            : signature.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object },
+                { Kind: TypeKind.Class, Class: { FullName: "System.IO.Stream" } stream }] && stream.Module == module);
 
     internal static bool IsDefaultPrincipalAccessor(MethodInfo method) =>
         method.Name == DefaultPrincipalContract.AccessorName

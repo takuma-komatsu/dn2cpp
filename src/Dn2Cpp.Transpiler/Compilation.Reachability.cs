@@ -158,6 +158,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsRuntimeTypeHandleInterfaces(m)
             || CoreIntrinsics.IsActivatorFrom(m)
             || CoreIntrinsics.IsDefaultPrincipalAccessor(m)
+            || CoreIntrinsics.IsResourceFormatterAccessor(m)
             || CoreIntrinsics.IsAppDomainExecuteAssembly(m)
             || CoreIntrinsics.IsGen2GcCallbackRefusal(m)
             || CoreIntrinsics.IsGen2GcCallbackRegister(m)

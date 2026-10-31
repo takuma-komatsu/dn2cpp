@@ -1635,6 +1635,14 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsActivatorFrom(resolved))
                 throw new NotSupportedException("Activator path activation requires its exact MemberRef signature");
         }
+        if (name is "CreateBinaryFormatter" or "Deserialize" && candidates.Any(CoreIntrinsics.IsResourceFormatterAccessor))
+        {
+            bool constructor = name == "CreateBinaryFormatter";
+            if (!ResourceFormatterContract.IsAccessorSignature(reader, reader.GetBlobReader(mr.Signature), constructor)
+                || !CoreIntrinsics.IsResourceFormatterDecodedSignature(sig, resolved.Module, constructor)
+                || !CoreIntrinsics.IsResourceFormatterAccessor(resolved))
+                throw new NotSupportedException("ResourceReader formatter accessor requires its exact MemberRef signature");
+        }
         if (name == DefaultPrincipalContract.AccessorName && candidates.Any(CoreIntrinsics.IsDefaultPrincipalAccessor))
         {
             if (!DefaultPrincipalContract.IsAccessorSignature(reader.GetBlobReader(mr.Signature))
@@ -2199,6 +2207,13 @@ internal sealed partial class Compilation
                 if (CoreIntrinsics.IsActivatorFrom(activation))
                     return activation;
             }
+        }
+        if (full == "System.Resources.ResourceReader"
+            && (reader.StringComparer.Equals(mr.Name, "CreateBinaryFormatter") || reader.StringComparer.Equals(mr.Name, "Deserialize")))
+        {
+            var formatter = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsResourceFormatterAccessor(formatter))
+                return formatter;
         }
         if (full == "System.AppDomain" && reader.StringComparer.Equals(mr.Name, DefaultPrincipalContract.AccessorName))
         {

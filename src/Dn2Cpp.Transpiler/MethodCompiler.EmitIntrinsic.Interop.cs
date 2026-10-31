@@ -1050,6 +1050,20 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsResourceFormatterAccessor(callee))
+        {
+            var arguments = new StackEntry[callee.Signature.ParameterTypes.Length];
+            for (int i = arguments.Length - 1; i >= 0; i--)
+                arguments[i] = Pop();
+            foreach (var argument in arguments)
+                Emit($"(void)({argument.Expr});");
+            // Deliberate AOT resource policy, not CLR constructor or loader parity.
+            Emit("dn2cpp_throw_not_supported_msg(\"BinaryFormatter-serialized resource types are not supported. Store the value as one of the primitive resource types (string, numeric types, byte[]) instead.\");");
+            Push(StackKind.Ref, "Dn2CppObject*", "nullptr"); // unreachable stack shape
+            Top = Top with { StaticType = callee.Signature.ReturnType };
+            return;
+        }
+
         if (CoreIntrinsics.IsDefaultPrincipalAccessor(callee))
         {
             var marker = Pop();
