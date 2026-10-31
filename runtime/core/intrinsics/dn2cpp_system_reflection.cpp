@@ -4352,6 +4352,13 @@ void dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> 
     g_culture_compare_info_row = method;
 }
 
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_resourcemanager_default_type_row;
+
+void dn2cpp_set_resourcemanager_default_type_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method)
+{
+    g_resourcemanager_default_type_row = method;
+}
+
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_dateonly_deconstruct_row;
 
 void dn2cpp_set_dateonly_deconstruct_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method)
@@ -4394,7 +4401,10 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     const auto cultureCompareInfo = g_culture_compare_info_row;
     const bool cultureCompareInfoNamed = cultureCompareInfo != nullptr
         && dn2cpp_member_name_matches(cultureCompareInfo->name, name, bindingFlags, false);
-    bool named = factoryNamed || dateOnlyNamed || cultureCompareInfoNamed;
+    const auto resourceManager = g_resourcemanager_default_type_row;
+    const bool resourceManagerNamed = resourceManager != nullptr
+        && dn2cpp_member_name_matches(resourceManager->name, name, bindingFlags, false);
+    bool named = factoryNamed || dateOnlyNamed || cultureCompareInfoNamed || resourceManagerNamed;
     for (int32_t i = 0; i < 2 && !named; i++)
         named = g_datetime_parser_rows[i] != nullptr
             && dn2cpp_member_name_matches(g_datetime_parser_rows[i]->name, name, bindingFlags, false);
@@ -4424,6 +4434,14 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
                 && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
                 && (paramTypes == nullptr || dn2cpp_params_match_types(cultureCompareInfo, paramTypes, queried)))
                 cands.push_back(cultureCompareInfo);
+        }
+        if (resourceManagerNamed)
+        {
+            const auto row = resourceManager.operator->();
+            if (row->declaringType == ti && dn2cpp_member_matches(row->attrs, bindingFlags, inherited)
+                && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
+                && (paramTypes == nullptr || dn2cpp_params_match_types(resourceManager, paramTypes, queried)))
+                cands.push_back(resourceManager);
         }
         if (dateOnlyNamed)
         {

@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (ResourceTypeGuardFixture.Run(args)) return;
+if (ResourceTypeGuardGuards.Run(args)) return;
 if (KnownConstantFixture.Run(args)) return;
 if (KnownConstantGuards.Run(args)) return;
 if (KnownConstantRawGuards.Run(args)) return;

@@ -85,6 +85,21 @@ internal sealed partial class AssemblyDiet
         return lower == 1 && upper == 1;
     }
 
+    private static bool IsCopiedResourceManagerDefaultType(MethodDefinition method, string owner) =>
+        owner == "System.Resources.ResourceManager" && method.Name == "IsDefaultType"
+        && method.Module.Assembly?.Name.Name == "System.Private.CoreLib"
+        && method.DeclaringType.FullName == owner && method.DeclaringType.DeclaringType is null
+        && !method.DeclaringType.IsValueType && !method.DeclaringType.IsEnum && !method.DeclaringType.IsInterface
+        && !method.DeclaringType.HasGenericParameters
+        && method.Attributes == (MethodAttributes.Assembly | MethodAttributes.Static | MethodAttributes.HideBySig)
+        && method.ImplAttributes == MethodImplAttributes.IL
+        && method.HasBody && method.Body.Instructions.Count != 0 && method.RVA != 0
+        && !method.HasThis && !method.ExplicitThis && method.CallingConvention == MethodCallingConvention.Default
+        && !method.HasGenericParameters && !method.IsPInvokeImpl && !method.HasPInvokeInfo
+        && method.ReturnType is not TypeSpecification && method.ReturnType.MetadataType == MetadataType.Boolean
+        && method.Parameters.Count == 2
+        && method.Parameters.All(p => p.ParameterType is not TypeSpecification && p.ParameterType.MetadataType == MetadataType.String);
+
     private static bool IsCopiedInterpolationStaticHelper(MethodDefinition method, string owner)
     {
         if (owner != "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
@@ -440,7 +455,8 @@ internal sealed partial class AssemblyDiet
             traverse = false;
         else if (IsCopiedMemberMetadataDefinition(method, owner))
             traverse = owner == "System.Reflection.MemberInfo";
-        else if (IsCopiedInterpolationStaticHelper(method, owner)
+        else if (IsCopiedResourceManagerDefaultType(method, owner)
+            || IsCopiedInterpolationStaticHelper(method, owner)
             || IsCopiedDateTimeFormatInfoParserFlagGetter(method, owner)
             || IsCopiedRuntimeTypeIntroducedMethodsFactory(method, owner)
             || IsCopiedRuntimeTypeHandleCopy(method, owner) || IsCopiedAmbiguousMatchExceptionFactory(method, owner)

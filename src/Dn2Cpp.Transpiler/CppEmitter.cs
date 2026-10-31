@@ -2158,6 +2158,7 @@ internal sealed partial class CppEmitter
             && !CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
             && !CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(m)
             && !CoreIntrinsics.IsInterpolationStaticHelper(m)
+            && !CoreIntrinsics.IsResourceManagerDefaultType(m)
             && !CoreIntrinsics.IsPrimitiveElementHelper(m)
             && !CoreIntrinsics.IsKnownConstant(m)
             && !CoreIntrinsics.IsVectorManagedThrowHelper(m)
@@ -2742,6 +2743,7 @@ internal sealed partial class CppEmitter
                             && !CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
                             && !CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(m)
                             && !CoreIntrinsics.IsInterpolationStaticHelper(m)
+                            && !CoreIntrinsics.IsResourceManagerDefaultType(m)
                             && !CoreIntrinsics.IsPrimitiveElementHelper(m)
                             && !CoreIntrinsics.IsKnownConstant(m)
                             && !CoreIntrinsics.IsVectorManagedThrowHelper(m)
@@ -3101,6 +3103,8 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    dn2cpp_set_datetime_parser_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeTryAddTicksRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeTryCreateRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeLocalConstructorRow ?? "nullptr"}));");
         if (_cultureCompareInfoRow is { } cultureCompareInfoRow)
             sb.AppendLine($"    dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({cultureCompareInfoRow}));");
+        if (_resourceManagerDefaultTypeRow is { } resourceManagerRow)
+            sb.AppendLine($"    dn2cpp_set_resourcemanager_default_type_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({resourceManagerRow}));");
         if (_dateOnlyDeconstructRow is { } dateOnlyRow)
             sb.AppendLine($"    dn2cpp_set_dateonly_deconstruct_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({dateOnlyRow}));");
         if (_memberNotFoundFactoryRow is { } factoryRow)
@@ -3811,6 +3815,7 @@ internal sealed partial class CppEmitter
     private (string Sym, int Count)? _delegateMethodCatalog;
     private string? _memberNotFoundFactoryRow;
     private string? _dateOnlyDeconstructRow;
+    private string? _resourceManagerDefaultTypeRow;
     private string? _cultureCompareInfoRow;
     private string? _dateTimeTryAddTicksRow;
     private string? _dateTimeTryCreateRow;

@@ -99,6 +99,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(mi)
                     || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(mi)
                     || CoreIntrinsics.IsInterpolationStaticHelper(mi)
+                    || CoreIntrinsics.IsResourceManagerDefaultType(mi)
                     || CoreIntrinsics.IsPrimitiveElementHelper(mi)
                     || CoreIntrinsics.IsKnownConstant(mi)
                     || CoreIntrinsics.IsMemberNotFoundExceptionFactory(mi)
@@ -483,6 +484,11 @@ internal sealed partial class Compilation
                 // Every cut below probes the same MemberReference's parent type
                 // name; read it once (a pure metadata read).
                 string? mrParent = MemberRefParentTypeName(module, (MemberReferenceHandle)handle);
+                if (mrParent == "System.Resources.ResourceManager" && mrName == "IsDefaultType")
+                {
+                    var helper = ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
+                    if (CoreIntrinsics.IsResourceManagerDefaultType(helper)) return helper;
+                }
                 if (mrParent == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
                     && CoreIntrinsics.IsInterpolationStaticHelperName(mrName))
                 {
@@ -1701,6 +1707,13 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsDateTimeFormatInfoYearMonthAdjustment(resolved))
                 throw new NotSupportedException("DateTimeFormatInfo YearMonthAdjustment requires its exact MemberRef signature");
         }
+        if (name == "IsDefaultType" && candidates.Any(CoreIntrinsics.IsResourceManagerDefaultType))
+        {
+            if (!CoreIntrinsics.IsResourceManagerDefaultTypeSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsResourceManagerDefaultTypeDecodedSignature(sig)
+                || !CoreIntrinsics.IsResourceManagerDefaultType(resolved))
+                throw new NotSupportedException("ResourceManager IsDefaultType requires its exact MemberRef signature");
+        }
         if (CoreIntrinsics.IsInterpolationStaticHelperName(name) && candidates.Any(CoreIntrinsics.IsInterpolationStaticHelper))
         {
             if (!CoreIntrinsics.IsInterpolationStaticHelperSignature(name, reader.GetBlobReader(mr.Signature))
@@ -2237,6 +2250,12 @@ internal sealed partial class Compilation
             var adjustment = ResolveMemberRefMethod(module, handle, callerCtx);
             if (CoreIntrinsics.IsDateTimeFormatInfoYearMonthAdjustment(adjustment))
                 return adjustment;
+        }
+        if (full == "System.Resources.ResourceManager" && reader.StringComparer.Equals(mr.Name, "IsDefaultType"))
+        {
+            var helper = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsResourceManagerDefaultType(helper))
+                return helper;
         }
         if (full == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
             && CoreIntrinsics.IsInterpolationStaticHelperName(reader.GetString(mr.Name)))

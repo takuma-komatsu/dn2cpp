@@ -239,6 +239,7 @@ internal sealed partial class Compilation
         if ((CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(m)) || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
             || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(m)
             || CoreIntrinsics.IsInterpolationStaticHelper(m)
+            || CoreIntrinsics.IsResourceManagerDefaultType(m)
             || CoreIntrinsics.IsPrimitiveElementHelper(m)
             || CoreIntrinsics.IsKnownConstant(m)
             || CoreIntrinsics.IsVectorManagedThrowHelper(m)

@@ -115,6 +115,17 @@
 # (the cache slug is derived from OUT, so sharing one would overwrite the key
 # file every run).
 source "$(dirname "$0")/_common.sh"
+source "$(dirname "$0")/_resource-type-guard.sh"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_resource-type-guard.sh gates/fixtures/resource-type-guard gates/fixtures/ldftn-local/ResourceTypeGuardFixture.cs gates/fixtures/ldftn-local/ResourceTypeGuardGuards.cs"
+if [[ "${1:-}" == --type-guard-only ]]; then
+    if [[ -n "${DN2CPP_RESOURCE_GUARD_OUT:-}" ]]; then
+        resource_type_guard_gate "$DN2CPP_RESOURCE_GUARD_OUT"
+    else
+        resource_type_guard_fresh_gate
+    fi
+    exit $?
+fi
+
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|resource-receivers-prefix:${DN2CPP_BEFORE_RM_RECEIVERS:-}"
 
 gate_extra_asserts() {
@@ -393,3 +404,5 @@ else
         'resource local kind=Local' 'resource local kind end'
     gate_cache_commit
 fi
+
+resource_type_guard_fresh_gate

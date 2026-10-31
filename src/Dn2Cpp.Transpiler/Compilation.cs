@@ -4122,6 +4122,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
             || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(m)
             || CoreIntrinsics.IsInterpolationStaticHelper(m)
+            || CoreIntrinsics.IsResourceManagerDefaultType(m)
             || CoreIntrinsics.IsPrimitiveElementHelper(m)
             || CoreIntrinsics.IsKnownConstant(m)
             || CoreIntrinsics.IsVectorManagedThrowHelper(m)

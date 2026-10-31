@@ -1997,6 +1997,7 @@ internal sealed partial class CppEmitter
             EmitDelegateMethodCatalog();
             EmitMemberNotFoundFactoryRow();
             EmitDateOnlyDeconstructRow();
+            EmitResourceManagerDefaultTypeRow();
             EmitCultureCompareInfoRow();
             EmitDateTimeParserRows();
             _e.EmitArrayTypeInfos(_sb, _emittedEnums);
@@ -2060,6 +2061,27 @@ internal sealed partial class CppEmitter
                             throw new InvalidOperationException("Retained DateOnly.Deconstruct has no metadata row.");
                     }
                     _e._dateOnlyDeconstructRow = address;
+                    return;
+                }
+            }
+        }
+
+        // ResourceManager keeps its runtime-owned identity and only this retained helper row.
+        private void EmitResourceManagerDefaultTypeRow()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.FullName != "System.Resources.ResourceManager") continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsResourceManagerDefaultType(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "resourcemanagerdefaulttypetab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained ResourceManager.IsDefaultType has no metadata row.");
+                    }
+                    _e._resourceManagerDefaultTypeRow = address;
                     return;
                 }
             }
@@ -3934,6 +3956,7 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(method)
                         || CoreIntrinsics.IsInterpolationStaticHelper(method)
+                        || CoreIntrinsics.IsResourceManagerDefaultType(method)
                         || CoreIntrinsics.IsPrimitiveElementHelper(method)
                         || CoreIntrinsics.IsKnownConstant(method)
                         || CoreIntrinsics.IsVectorManagedThrowHelper(method)

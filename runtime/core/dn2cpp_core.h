@@ -1418,6 +1418,7 @@ void dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodIn
 void dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 // Exact retained DateOnly member.
 void dn2cpp_set_dateonly_deconstruct_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+void dn2cpp_set_resourcemanager_default_type_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 void dn2cpp_set_datetime_parser_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> addTicks,
     Dn2CppMetadataHandle<Dn2CppMethodInfo> tryCreate, Dn2CppMetadataHandle<Dn2CppMethodInfo> localConstructor);
 Dn2CppObject* dn2cpp_delegate_object_virtual_invoker(void* fn, Dn2CppObject* receiver,

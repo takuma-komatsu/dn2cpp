@@ -926,6 +926,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(target)
             || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(target)
             || CoreIntrinsics.IsInterpolationStaticHelper(target)
+            || CoreIntrinsics.IsResourceManagerDefaultType(target)
             || CoreIntrinsics.IsPrimitiveElementHelper(target)
             || CoreIntrinsics.IsKnownConstant(target)
             || CoreIntrinsics.IsVectorManagedThrowHelper(target)

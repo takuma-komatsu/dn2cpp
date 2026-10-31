@@ -501,6 +501,7 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(callee)
                     || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(callee)
                     || CoreIntrinsics.IsInterpolationStaticHelper(callee)
+                    || CoreIntrinsics.IsResourceManagerDefaultType(callee)
                     || CoreIntrinsics.IsPrimitiveElementHelper(callee)
                     || CoreIntrinsics.IsKnownConstant(callee)
                     || CoreIntrinsics.IsMemberNotFoundExceptionFactory(callee)
