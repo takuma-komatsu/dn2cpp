@@ -13,10 +13,15 @@ expected = set(itertools.product(
     tuple(prefix + name for prefix in ("", "vector64:", "vector128:", "vector256:", "vector512:")
           for name in ("decimal", "int128", "uint128", "enum", "struct", "reference-struct")),
     range(4), range(3), range(3)))
+expected.update(itertools.product(
+    ("number:" + name for name in ("decimal", "int128", "uint128", "enum", "struct", "reference-struct")),
+    range(2), range(3), range(3)))
 
 def read(path):
     lines = path.read_text().splitlines()
-    assert lines.pop() == "fixed vector magnitude unsupported public routes passed", "missing final witness"
+    assert lines.pop() == "vector Number unsupported public routes passed", "missing final witness"
+    assert lines[1081] == "fixed vector magnitude unsupported public routes passed", "missing fixed prefix witness"
+    del lines[1081]
     assert lines[216] == "vector magnitude unsupported public routes passed", "missing Numerics prefix witness"
     del lines[216]
     results = {}

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Unsupported magnitude selectors preserve the managed exception and operand order.
+# Unsupported magnitude and Number selectors preserve the managed exception and operand order.
 probe_vector_magnitude_unsupported() {
     local root="$1" out profile axis emit
     local app="${DN2CPP_VECTOR_MAGNITUDE_UNSUPPORTED_DLL:-gates/fixtures/vector-magnitude-unsupported/bin/$CONFIG/$TFM/VectorMagnitudeUnsupported.dll}"

@@ -23,7 +23,7 @@ internal static class VectorMagnitudeGuards
         const BindingFlags instance = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         const BindingFlags statics = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
         var cases = new List<(string Element, string Route, string Mutation)>();
-        var admitted = number ? new[] { "float", "double" } : new[] { "float", "double", "decimal", "enum", "struct", "refs", "int128", "uint128" };
+        var admitted = number && width != 0 ? new[] { "float", "double" } : new[] { "float", "double", "decimal", "enum", "struct", "refs", "int128", "uint128" };
         string prefix = number ? "vector-number" : "vector-magnitude";
         foreach (var element in admitted)
         foreach (var route in new[] { "direct", "address", "calli" })
@@ -116,6 +116,9 @@ internal static class VectorMagnitudeGuards
             Check((bool)managedPredicate.Invoke(null, new[] { pair.Value.Method })! == managed, "route-kind-" + pair.Key);
             Check((bool)predicate.Invoke(null, new[] { pair.Value.Method })! != managed, "numeric-route-kind-" + pair.Key);
         }
+        if (number && width == 0)
+            GenericVectorNumberGuards.Check(compilation, core, args[2], operation,
+                good.Where(p => p.Key is not ("float" or "double")).Select(p => p.Value.Method).ToArray(), Check);
         if (!number && width == 0)
             GenericVectorMagnitudeGuards.Check(compilation, core, args[2], operation,
                 good.Where(p => p.Key is not ("float" or "double")).Select(p => p.Value.Method).ToArray(), Check);

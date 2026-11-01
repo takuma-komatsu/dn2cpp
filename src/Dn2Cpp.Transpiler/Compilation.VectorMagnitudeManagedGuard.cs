@@ -9,6 +9,11 @@ internal sealed partial class Compilation
     internal MethodInfo ResolveVectorMagnitudeManagedGuard(MethodInfo method)
     {
         if (!CoreIntrinsics.IsVectorMagnitudeManagedGuard(method)) throw VectorMagnitudeGuardUnsupported();
+        return ResolveMagnitudePublicGuard(method);
+    }
+
+    private MethodInfo ResolveMagnitudePublicGuard(MethodInfo method)
+    {
         ValidateMagnitudeNoInitializer(method.DeclaringClass);
         var il = GenericVectorGuardInstructions(method);
         if (method.DeclaringClass.FullName == "System.Runtime.Intrinsics.Vector64")
@@ -26,7 +31,10 @@ internal sealed partial class Compilation
             ? ResolveMagnitudeLoopGuard(method, il, 6)
             : ResolveMagnitudeHalfGuard(method, il, 6, unary: false);
         var hardware = ResolveMagnitudeMathCall(method, il[4].Token, method.Name);
-        ValidateMagnitudeMathGuard(hardware, method.Signature.ReturnType.Class!, count);
+        if (CoreIntrinsics.IsVectorNumberName(method.Name) || method.Name is "Max" or "Min")
+            ValidateNumberMathGuard(hardware, method.Signature.ReturnType.Class!, count);
+        else
+            ValidateMagnitudeMathGuard(hardware, method.Signature.ReturnType.Class!, count);
         return count;
     }
 

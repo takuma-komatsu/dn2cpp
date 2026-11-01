@@ -38,6 +38,13 @@ internal static unsafe class Program
         RunFixed<GuardStruct>("struct");
         RunFixed<GuardReferenceStruct>("reference-struct");
         Console.WriteLine("fixed vector magnitude unsupported public routes passed");
+        RunNumber<decimal>("number:decimal");
+        RunNumber<Int128>("number:int128");
+        RunNumber<UInt128>("number:uint128");
+        RunNumber<GuardEnum>("number:enum");
+        RunNumber<GuardStruct>("number:struct");
+        RunNumber<GuardReferenceStruct>("number:reference-struct");
+        Console.WriteLine("vector Number unsupported public routes passed");
     }
 
     private static void Run<T>(string name) where T : struct
@@ -359,6 +366,61 @@ internal static unsafe class Program
             default: pointer = &Vector512.MinMagnitudeNumber<T>; break;
         }
         _ = pointer(Operand512<T>(true, fail), Operand512<T>(false, fail));
+    }
+
+    private static void RunNumber<T>(string name) where T : struct
+    {
+        for (int op = 0; op < 2; op++)
+            for (int route = 0; route < 3; route++)
+                for (int fail = 0; fail < 3; fail++)
+                    RecordNumber<T>(name, op, route, fail);
+    }
+
+    private static void RecordNumber<T>(string name, int op, int route, int fail) where T : struct
+    {
+        effects = "";
+        try
+        {
+            InvokeNumber<T>(op, route, fail);
+            Console.WriteLine($"{name}|op={op}|route={route}|fail={fail}|returned|effects={effects}");
+        }
+        catch (Exception error)
+        {
+            Console.WriteLine($"{name}|op={op}|route={route}|fail={fail}|exception={error.GetType().FullName}|message={error.Message}|effects={effects}");
+        }
+    }
+
+    private static void InvokeNumber<T>(int op, int route, int fail) where T : struct
+    {
+        if (route == 0)
+        {
+            switch (op)
+            {
+                case 0: _ = Vector.MaxNumber(Operand<T>(true, fail), Operand<T>(false, fail)); break;
+                case 1: _ = Vector.MinNumber(Operand<T>(true, fail), Operand<T>(false, fail)); break;
+            }
+            return;
+        }
+        if (route == 1)
+        {
+            Func<Vector<T>, Vector<T>, Vector<T>> selector;
+            switch (op)
+            {
+                case 0: selector = Vector.MaxNumber<T>; break;
+                default: selector = Vector.MinNumber<T>; break;
+
+            }
+            _ = selector(Operand<T>(true, fail), Operand<T>(false, fail));
+            return;
+        }
+        delegate* managed<Vector<T>, Vector<T>, Vector<T>> pointer;
+        switch (op)
+        {
+            case 0: pointer = &Vector.MaxNumber<T>; break;
+            default: pointer = &Vector.MinNumber<T>; break;
+
+        }
+        _ = pointer(Operand<T>(true, fail), Operand<T>(false, fail));
     }
 
     // The Diet gate proves this unreachable body is rewritten, not merely copied.
