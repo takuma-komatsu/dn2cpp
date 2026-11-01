@@ -37,24 +37,30 @@ internal static partial class CoreIntrinsics
             && reader.StringComparer.Equals(definition.Name, name);
     }
 
-    internal static void ValidateVectorMultiplyAddEstimate(MethodInfo method)
+    internal static void ValidateVectorFloatingPointTernary(MethodInfo method)
     {
-        if (method.Name == "MultiplyAddEstimate" && IsVectorEstimateOwnerName(method.DeclaringClass.FullName)
+        if (method.Name is "MultiplyAddEstimate" or "Lerp" && IsVectorEstimateOwnerName(method.DeclaringClass.FullName)
             && !method.Handle.IsNil
-            && !IsVectorMultiplyAddEstimate(method) && !IsGenericVectorEstimate(method))
-            throw new NotSupportedException("Vector MultiplyAddEstimate requires its exact floating-point CoreLib declaration");
+            && !IsVectorFloatingPointTernary(method) && !IsGenericVectorEstimate(method))
+            throw new NotSupportedException($"Vector {method.Name} requires its exact floating-point CoreLib declaration");
     }
 
-    internal static bool IsVectorMultiplyAddEstimate(MethodInfo method)
+    internal static bool IsVectorMultiplyAddEstimate(MethodInfo method) =>
+        method.Name == "MultiplyAddEstimate" && IsVectorFloatingPointTernary(method);
+
+    internal static bool IsVectorLerp(MethodInfo method) =>
+        method.Name == "Lerp" && IsVectorFloatingPointTernary(method);
+
+    internal static bool IsVectorFloatingPointTernary(MethodInfo method)
     {
         var owner = method.DeclaringClass;
-        if (method.Name != "MultiplyAddEstimate" || !IsVectorEstimateOwner(owner) || method.Module != owner.Module
+        if (method.Name is not ("MultiplyAddEstimate" or "Lerp") || !IsVectorEstimateOwner(owner) || method.Module != owner.Module
             || method.Handle.IsNil || method.IsSynthetic || method.Context.MethodArgs.Length != 0
             || method.Context.TypeArgs.Length != 0 || method.Rva == 0 || method.PInvoke is not null
             || method.Attributes != (MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig)
             || !IsVectorEstimateSignature(method.Signature, owner)) return false;
         var vector = method.Signature.ReturnType.Class!;
-        bool single512 = owner.FullName == "System.Runtime.Intrinsics.Vector512"
+        bool single512 = method.Name == "MultiplyAddEstimate" && owner.FullName == "System.Runtime.Intrinsics.Vector512"
             && vector.Context.TypeArgs[0].Primitive == PrimitiveTypeCode.Single;
         if (method.ImplAttributes != (single512 ? MethodImplAttributes.IL : MethodImplAttributes.AggressiveInlining)) return false;
         var reader = method.Module.Reader;

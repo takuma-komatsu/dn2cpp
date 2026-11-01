@@ -85,7 +85,7 @@ internal sealed partial class Compilation
                 if (!module.MethodMap.TryGetValue(h, out var mi))
                     return null;
                 CoreIntrinsics.ValidateConcreteVectorElement(mi);
-                CoreIntrinsics.ValidateVectorMultiplyAddEstimate(mi);
+                CoreIntrinsics.ValidateVectorFloatingPointTernary(mi);
                 CoreIntrinsics.ValidateVectorAlignment(mi);
                 CoreIntrinsics.ValidateConcreteVectorReduction(mi);
                 CoreIntrinsics.ValidateVectorAsCallable(mi);
@@ -335,6 +335,7 @@ internal sealed partial class Compilation
             {
                 RejectVectorValueMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
                 RejectVectorAlignmentMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
+                RejectVectorLerpMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
                 RejectConcreteVectorReductionMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
                 if (TryResolveGuardedVectorAsSpecForScan(module, (MethodSpecificationHandle)handle, ctx) is { } vectorAs)
                     return vectorAs;
@@ -746,6 +747,7 @@ internal sealed partial class Compilation
     {
         RejectVectorValueMethodSpecification(module, handle, callerCtx);
         RejectVectorAlignmentMethodSpecification(module, handle, callerCtx);
+        RejectVectorLerpMethodSpecification(module, handle, callerCtx);
         RejectConcreteVectorReductionMethodSpecification(module, handle, callerCtx);
         if (TryResolveGuardedVectorAsSpec(module, handle, callerCtx) is { } vectorAs)
             return vectorAs;
@@ -883,6 +885,9 @@ internal sealed partial class Compilation
         ClassInfo declClass, Module defModule, MethodDefinitionHandle templateHandle, TypeDesc[] methodArgs)
     {
         var md = defModule.Reader.GetMethodDefinition(templateHandle);
+        if (defModule.Reader.StringComparer.Equals(md.Name, "Lerp")
+            && CoreIntrinsics.IsVectorEstimateOwnerName(declClass.FullName))
+            throw new NotSupportedException("Vector Lerp requires a nongeneric floating-point declaration");
         ValidateGenericVectorEstimateInstantiation(declClass, defModule, templateHandle, methodArgs);
         ValidateGuardedVectorAsInstantiation(declClass, defModule, templateHandle, methodArgs);
 

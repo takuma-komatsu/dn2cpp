@@ -579,9 +579,9 @@ internal sealed partial class MethodCompiler
             return;
         }
 
-        if (CoreIntrinsics.IsVectorMultiplyAddEstimate(callee))
+        if (CoreIntrinsics.IsVectorFloatingPointTernary(callee))
         {
-            EmitVectorMultiplyAddEstimate(callee);
+            EmitVectorFloatingPointTernary(callee);
             return;
         }
 

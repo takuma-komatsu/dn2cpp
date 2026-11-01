@@ -482,7 +482,7 @@ internal sealed partial class MethodCompiler
             {
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
                 CoreIntrinsics.ValidateConcreteVectorElement(callee);
-                CoreIntrinsics.ValidateVectorMultiplyAddEstimate(callee);
+                CoreIntrinsics.ValidateVectorFloatingPointTernary(callee);
                 CoreIntrinsics.ValidateVectorAlignment(callee);
                 CoreIntrinsics.ValidateConcreteVectorReduction(callee);
                 CoreIntrinsics.ValidateVectorAsCallable(callee);
@@ -717,6 +717,7 @@ internal sealed partial class MethodCompiler
             {
                 _c.RejectVectorValueMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
                 _c.RejectVectorAlignmentMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
+                _c.RejectVectorLerpMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
                 _c.RejectConcreteVectorReductionMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
                 if (_c.TryResolveGuardedVectorAsSpec(_module, (MethodSpecificationHandle)handle, _method.Context) is { } vectorAs)
                 {
@@ -943,7 +944,7 @@ internal sealed partial class MethodCompiler
                 string mrName = _reader.GetString(mr.Name);
                 if (_c.TryResolveVectorEstimateReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } vectorEstimate)
                 {
-                    EmitVectorMultiplyAddEstimate(vectorEstimate);
+                    EmitVectorFloatingPointTernary(vectorEstimate);
                     return;
                 }
                 if (_c.TryResolveConcreteVectorElementReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } concreteElement)
@@ -1686,15 +1687,15 @@ internal sealed partial class MethodCompiler
 
         CoreIntrinsics.ValidateConcreteVectorElement(callee);
 
-        CoreIntrinsics.ValidateVectorMultiplyAddEstimate(callee);
+        CoreIntrinsics.ValidateVectorFloatingPointTernary(callee);
 
         CoreIntrinsics.ValidateVectorAlignment(callee);
         CoreIntrinsics.ValidateConcreteVectorReduction(callee);
 
         CoreIntrinsics.ValidateVectorAsCallable(callee);
-        if (CoreIntrinsics.IsVectorMultiplyAddEstimate(callee))
+        if (CoreIntrinsics.IsVectorFloatingPointTernary(callee))
         {
-            EmitVectorMultiplyAddEstimate(callee);
+            EmitVectorFloatingPointTernary(callee);
             return;
         }
 

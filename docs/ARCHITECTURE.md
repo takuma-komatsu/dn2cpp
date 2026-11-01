@@ -27,6 +27,13 @@ resolution; internal
 generic declarations remain outside this intrinsic cut.
 Calls, addresses and retained wrappers share the same lane implementation.
 
+Public floating-point portable-vector `Lerp` uses the same nonfused estimate
+profile and exact declaration authority. Its composition is
+`MultiplyAddEstimate(left, One - amount, right * amount)`, with each intermediate
+rounded to the lane type. It neither clamps the amount nor shortcuts endpoints;
+exceptional operands still participate. Scalar Lerp and internal generic vector
+Lerp remain separate. Concrete Vector2/3/4 callers keep their managed wrappers.
+
 ## 1. Pipeline
 
 ```

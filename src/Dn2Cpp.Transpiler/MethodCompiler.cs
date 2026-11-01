@@ -693,7 +693,7 @@ internal sealed partial class MethodCompiler : IEvalStack
         if (SharedTrial && IsNumericsVectorFacade(_method.DeclaringClass))
             foreach (var argument in _method.Context.MethodArgs)
                 TaintIfCanonical(argument, "numerics-vector-element");
-        CoreIntrinsics.ValidateVectorMultiplyAddEstimate(_method);
+        CoreIntrinsics.ValidateVectorFloatingPointTernary(_method);
         CoreIntrinsics.ValidateVectorAlignment(_method);
         CoreIntrinsics.ValidateConcreteVectorReduction(_method);
         CoreIntrinsics.ValidateVectorAsCallable(_method);
@@ -1234,7 +1234,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     internal string? CompileCoreIntrinsicWrapper()
     {
         CoreIntrinsics.ValidateConcreteVectorElement(_method);
-        CoreIntrinsics.ValidateVectorMultiplyAddEstimate(_method);
+        CoreIntrinsics.ValidateVectorFloatingPointTernary(_method);
         CoreIntrinsics.ValidateVectorAlignment(_method);
         CoreIntrinsics.ValidateConcreteVectorReduction(_method);
         CoreIntrinsics.ValidateVectorAsCallable(_method);
@@ -1295,7 +1295,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsDecimalDivMod(_method)
             || CoreIntrinsics.IsVectorExplicit(_method)
             || CoreIntrinsics.IsConcreteVectorElement(_method)
-            || CoreIntrinsics.IsVectorMultiplyAddEstimate(_method)
+            || CoreIntrinsics.IsVectorFloatingPointTernary(_method)
             || CoreIntrinsics.IsVectorValueMethod(_method)
             || CoreIntrinsics.IsDateOnlyDeconstruct(_method)
             || CoreIntrinsics.IsDateTimeParserBoundary(_method)

@@ -37,7 +37,7 @@ internal sealed partial class Compilation
         if (NotePreserveReach(m) && _scanned.Remove(m))
             _toScan.Enqueue(m);
         NoteObfuscationMethod(m);
-        CoreIntrinsics.ValidateVectorMultiplyAddEstimate(m);
+        CoreIntrinsics.ValidateVectorFloatingPointTernary(m);
         CoreIntrinsics.ValidateVectorAlignment(m);
         CoreIntrinsics.ValidateConcreteVectorReduction(m);
         CoreIntrinsics.ValidateVectorAsCallable(m);

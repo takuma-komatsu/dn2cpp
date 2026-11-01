@@ -906,7 +906,7 @@ internal sealed partial class Compilation
         if (IsOpenGenericMethod(target) || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls)
             || _backend?.ShouldSkipMethodBody(cls, target) == true)
             return;
-        CoreIntrinsics.ValidateVectorMultiplyAddEstimate(target);
+        CoreIntrinsics.ValidateVectorFloatingPointTernary(target);
         CoreIntrinsics.ValidateVectorAlignment(target);
         CoreIntrinsics.ValidateConcreteVectorReduction(target);
         _reflectionSelectionCount++;

@@ -4094,7 +4094,7 @@ internal sealed partial class Compilation
 
     public void NoteIntrinsicFtnTarget(MethodInfo m)
     {
-        CoreIntrinsics.ValidateVectorMultiplyAddEstimate(m);
+        CoreIntrinsics.ValidateVectorFloatingPointTernary(m);
         CoreIntrinsics.ValidateVectorAlignment(m);
         CoreIntrinsics.ValidateConcreteVectorReduction(m);
         CoreIntrinsics.ValidateVectorAsCallable(m);
