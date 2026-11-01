@@ -908,6 +908,7 @@ internal sealed partial class Compilation
             return;
         CoreIntrinsics.ValidateVectorMultiplyAddEstimate(target);
         CoreIntrinsics.ValidateVectorAlignment(target);
+        CoreIntrinsics.ValidateConcreteVectorReduction(target);
         _reflectionSelectionCount++;
         if (CoreIntrinsics.IsInvariantCompareInfoGetter(target)
             || CoreIntrinsics.IsDefaultPrincipalAccessor(target)
@@ -930,6 +931,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(target)
             || CoreIntrinsics.IsInterpolationStaticHelper(target)
             || CoreIntrinsics.IsVectorAlignment(target)
+            || CoreIntrinsics.IsConcreteVectorReduction(target)
             || CoreIntrinsics.IsResourceManagerDefaultType(target)
             || CoreIntrinsics.IsPrimitiveElementHelper(target)
             || CoreIntrinsics.IsKnownConstant(target)

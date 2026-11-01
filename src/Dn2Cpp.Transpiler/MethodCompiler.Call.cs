@@ -484,6 +484,7 @@ internal sealed partial class MethodCompiler
                 CoreIntrinsics.ValidateConcreteVectorElement(callee);
                 CoreIntrinsics.ValidateVectorMultiplyAddEstimate(callee);
                 CoreIntrinsics.ValidateVectorAlignment(callee);
+                CoreIntrinsics.ValidateConcreteVectorReduction(callee);
                 CoreIntrinsics.ValidateVectorAsCallable(callee);
                 if (CoreIntrinsics.IsVectorValueCandidate(callee.DeclaringClass, callee.Name))
                 {
@@ -506,6 +507,7 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(callee)
                     || CoreIntrinsics.IsInterpolationStaticHelper(callee)
                     || CoreIntrinsics.IsVectorAlignment(callee)
+                    || CoreIntrinsics.IsConcreteVectorReduction(callee)
                     || CoreIntrinsics.IsResourceManagerDefaultType(callee)
                     || CoreIntrinsics.IsPrimitiveElementHelper(callee)
                     || CoreIntrinsics.IsKnownConstant(callee)
@@ -715,6 +717,7 @@ internal sealed partial class MethodCompiler
             {
                 _c.RejectVectorValueMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
                 _c.RejectVectorAlignmentMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
+                _c.RejectConcreteVectorReductionMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
                 if (_c.TryResolveGuardedVectorAsSpec(_module, (MethodSpecificationHandle)handle, _method.Context) is { } vectorAs)
                 {
                     EmitManagedCall(vectorAs, isCallvirt);
@@ -928,6 +931,11 @@ internal sealed partial class MethodCompiler
                 if (_c.TryResolveVectorAlignmentReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } alignment)
                 {
                     EmitManagedCall(alignment, isCallvirt);
+                    return;
+                }
+                if (_c.TryResolveConcreteVectorReductionReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } concreteReduction)
+                {
+                    EmitManagedCall(concreteReduction, isCallvirt);
                     return;
                 }
                 _c.RejectBareVectorAsReference(_module, (MemberReferenceHandle)handle, _method.Context);
@@ -1681,6 +1689,7 @@ internal sealed partial class MethodCompiler
         CoreIntrinsics.ValidateVectorMultiplyAddEstimate(callee);
 
         CoreIntrinsics.ValidateVectorAlignment(callee);
+        CoreIntrinsics.ValidateConcreteVectorReduction(callee);
 
         CoreIntrinsics.ValidateVectorAsCallable(callee);
         if (CoreIntrinsics.IsVectorMultiplyAddEstimate(callee))

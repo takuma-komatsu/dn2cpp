@@ -2,6 +2,9 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (ConcreteVectorReductionFixture.Run(args)) return;
+if (ConcreteVectorReductionGuards.Run(args)) return;
+if (ConcreteVectorReductionParity.Run(args)) return;
 if (VectorAlignmentFixture.Run(args)) return;
 if (VectorAlignmentGuards.Run(args)) return;
 if (VectorForwardingFixture.Run(args)) return;

@@ -39,6 +39,7 @@ internal sealed partial class Compilation
         NoteObfuscationMethod(m);
         CoreIntrinsics.ValidateVectorMultiplyAddEstimate(m);
         CoreIntrinsics.ValidateVectorAlignment(m);
+        CoreIntrinsics.ValidateConcreteVectorReduction(m);
         CoreIntrinsics.ValidateVectorAsCallable(m);
         if (CoreIntrinsics.IsVectorManagedForwarder(m)) _intrinsicTypeTranspiled.Add(m);
         if (CoreIntrinsics.IsGuardedVectorAs(m))
@@ -267,6 +268,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(m)
             || CoreIntrinsics.IsInterpolationStaticHelper(m)
             || CoreIntrinsics.IsVectorAlignment(m)
+            || CoreIntrinsics.IsConcreteVectorReduction(m)
             || CoreIntrinsics.IsResourceManagerDefaultType(m)
             || CoreIntrinsics.IsPrimitiveElementHelper(m)
             || CoreIntrinsics.IsKnownConstant(m)

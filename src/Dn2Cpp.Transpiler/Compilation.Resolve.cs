@@ -87,6 +87,7 @@ internal sealed partial class Compilation
                 CoreIntrinsics.ValidateConcreteVectorElement(mi);
                 CoreIntrinsics.ValidateVectorMultiplyAddEstimate(mi);
                 CoreIntrinsics.ValidateVectorAlignment(mi);
+                CoreIntrinsics.ValidateConcreteVectorReduction(mi);
                 CoreIntrinsics.ValidateVectorAsCallable(mi);
                 NoteObfuscationMethod(mi);
                 CoreIntrinsics.ValidateKnownConstantCallable(mi);
@@ -104,6 +105,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(mi)
                     || CoreIntrinsics.IsInterpolationStaticHelper(mi)
                     || CoreIntrinsics.IsVectorAlignment(mi)
+                    || CoreIntrinsics.IsConcreteVectorReduction(mi)
                     || CoreIntrinsics.IsResourceManagerDefaultType(mi)
                     || CoreIntrinsics.IsPrimitiveElementHelper(mi)
                     || CoreIntrinsics.IsKnownConstant(mi)
@@ -333,6 +335,7 @@ internal sealed partial class Compilation
             {
                 RejectVectorValueMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
                 RejectVectorAlignmentMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
+                RejectConcreteVectorReductionMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
                 if (TryResolveGuardedVectorAsSpecForScan(module, (MethodSpecificationHandle)handle, ctx) is { } vectorAs)
                     return vectorAs;
                 if (TryResolveGenericVectorEstimateSpec(module, (MethodSpecificationHandle)handle, ctx) is { } genericEstimate)
@@ -466,6 +469,7 @@ internal sealed partial class Compilation
             case HandleKind.MemberReference:
             {
                 if (TryResolveVectorAlignmentReference(module, (MemberReferenceHandle)handle, ctx) is { } alignment) return alignment;
+                if (TryResolveConcreteVectorReductionReference(module, (MemberReferenceHandle)handle, ctx) is { } concreteReduction) return concreteReduction;
                 RejectBareVectorAsReference(module, (MemberReferenceHandle)handle, ctx);
                 var mr = module.Reader.GetMemberReference((MemberReferenceHandle)handle);
                 string mrName = module.Reader.GetString(mr.Name);
@@ -742,6 +746,7 @@ internal sealed partial class Compilation
     {
         RejectVectorValueMethodSpecification(module, handle, callerCtx);
         RejectVectorAlignmentMethodSpecification(module, handle, callerCtx);
+        RejectConcreteVectorReductionMethodSpecification(module, handle, callerCtx);
         if (TryResolveGuardedVectorAsSpec(module, handle, callerCtx) is { } vectorAs)
             return vectorAs;
         if (TryResolveGenericVectorEstimateSpec(module, handle, callerCtx) is { } genericEstimate)
@@ -1387,6 +1392,7 @@ internal sealed partial class Compilation
     public MethodInfo ResolveMemberRefMethod(Module module, MemberReferenceHandle handle, GenericContext callerCtx)
     {
         if (TryResolveVectorAlignmentReference(module, handle, callerCtx) is { } alignment) return alignment;
+        if (TryResolveConcreteVectorReductionReference(module, handle, callerCtx) is { } concreteReduction) return concreteReduction;
         RejectBareVectorAsReference(module, handle, callerCtx);
         if (TryResolveConcreteVectorElementReference(module, handle, callerCtx) is { } concreteElement) return concreteElement;
         if (TryResolveVectorEstimateReference(module, handle, callerCtx) is { } vectorEstimate) return vectorEstimate;
@@ -2179,6 +2185,7 @@ internal sealed partial class Compilation
     public MethodInfo? TryResolveMemberRefMethod(Module module, MemberReferenceHandle handle, GenericContext callerCtx)
     {
         if (TryResolveVectorAlignmentReference(module, handle, callerCtx) is { } alignment) return alignment;
+        if (TryResolveConcreteVectorReductionReference(module, handle, callerCtx) is { } concreteReduction) return concreteReduction;
         RejectBareVectorAsReference(module, handle, callerCtx);
         if (TryResolveConcreteVectorElementReference(module, handle, callerCtx) is { } concreteElement) return concreteElement;
         if (TryResolveVectorEstimateReference(module, handle, callerCtx) is { } vectorEstimate) return vectorEstimate;

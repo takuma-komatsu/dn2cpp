@@ -57,7 +57,8 @@ vector_estimate_probe() {
     probe_generic_vector_estimate "$1" || return 1
     probe_fixed_generic_vector_estimate "$1" || return 1
     probe_guarded_vector_as "$1" || return 1
-    probe_vector_alignment "$1"
+    probe_vector_alignment "$1" || return 1
+    probe_concrete_vector_reductions "$1"
 }
 
 vector_estimate_authority_probe() {
