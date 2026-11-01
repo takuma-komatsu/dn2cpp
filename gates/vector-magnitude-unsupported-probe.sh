@@ -19,7 +19,9 @@ probe_vector_magnitude_unsupported() {
         gate_capture_ok "$out/$profile-contract" python3 gates/fixtures/vector-magnitude-unsupported/check-output.py \
             "$out/default.stdout" --candidate "$out/$profile.stdout" || return 1
     done
-    grep -Fx 'numerics-hardware=False' "$out/software-capabilities.stdout" >/dev/null || return 1
+    for profile in numerics vector64 vector128 vector256 vector512; do
+        grep -Fx "$profile-hardware=False" "$out/software-capabilities.stdout" >/dev/null || return 1
+    done
     for axis in raw diet; do
         emit=$(mktemp -d "$out/$axis-XXXXXX") || return 1
         local flags=() runner=()

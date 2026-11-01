@@ -10,12 +10,15 @@ parser.add_argument("oracle", type=Path)
 parser.add_argument("--candidate", type=Path)
 args = parser.parse_args()
 expected = set(itertools.product(
-    ("decimal", "int128", "uint128", "enum", "struct", "reference-struct"),
+    tuple(prefix + name for prefix in ("", "vector64:", "vector128:", "vector256:", "vector512:")
+          for name in ("decimal", "int128", "uint128", "enum", "struct", "reference-struct")),
     range(4), range(3), range(3)))
 
 def read(path):
     lines = path.read_text().splitlines()
-    assert lines.pop() == "vector magnitude unsupported public routes passed", "missing final witness"
+    assert lines.pop() == "fixed vector magnitude unsupported public routes passed", "missing final witness"
+    assert lines[216] == "vector magnitude unsupported public routes passed", "missing Numerics prefix witness"
+    del lines[216]
     results = {}
     for line in lines:
         parts = line.split("|")

@@ -123,7 +123,12 @@ internal sealed partial class Compilation
         var module = getter.Module;
         var reader = module.Reader;
         var il = GenericVectorGuardInstructions(getter);
-        string[] names = { "Byte", "Double", "Int16", "Int32", "Int64", "IntPtr", "UIntPtr", "SByte", "Single", "UInt16", "UInt32", "UInt64" };
+        string[] names = CoreIntrinsics.IsVectorExplicitOwner(getter.DeclaringClass)
+            ? new[] { "Byte", "Double", "Int16", "Int32", "Int64", "IntPtr", "UIntPtr", "SByte", "Single", "UInt16", "UInt32", "UInt64" }
+            : reader.StringComparer.Equals(reader.GetTypeDefinition(getter.DeclaringClass.Handle).Name, "Vector64`1")
+                && CoreIntrinsics.IsFixedVectorManagedValueClass(getter.DeclaringClass)
+                ? new[] { "Byte", "Double", "Int16", "Int32", "Int64", "IntPtr", "SByte", "Single", "UInt16", "UInt32", "UInt64", "UIntPtr" }
+                : throw GuardedVectorAsUnsupported();
         if (il.Count != 74 || !module.PE.GetMethodBody(getter.Rva).LocalSignature.IsNil
             || il[71].OpCode != ILOpCode.Ret || il[72].OpCode != ILOpCode.Ldc_i4_1 || il[73].OpCode != ILOpCode.Ret)
             throw GuardedVectorAsUnsupported();

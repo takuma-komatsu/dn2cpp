@@ -26,16 +26,18 @@ vector_magnitude_authority_probe() {
                 done
             done
         done
+        for width in 0 64 128 256 512; do
         for element in decimal enum struct refs int128 uint128; do
             for route in direct address calli; do
-                case_out=$(mktemp -d "$out/$operation-managed-$element-$route-valid-XXXXXX") || return 1
+                case_out=$(mktemp -d "$out/$operation-$width-managed-$element-$route-valid-XXXXXX") || return 1
                 input="$case_out/input.dll"
                 gate_capture_ok "$case_out/generate" run_bounded dotnet "$fixture" --vector-magnitude-fixture \
-                    "$input" "$_CG_CORELIB" "$operation:0:$element:$route:valid" || return 1
+                    "$input" "$_CG_CORELIB" "$operation:$width:$element:$route:valid" || return 1
                 gate_capture_ok "$case_out/accept" invoke_cli "$input" -r "$_CG_CORELIB" --no-ildiet -o "$case_out/emitted" || return 1
                 positives=$((positives + 1))
-                printf '%s\n' "$operation:0:$element:$route:valid" >> "$out/accepted.txt" || return 1
+                printf '%s\n' "$operation:$width:$element:$route:valid" >> "$out/accepted.txt" || return 1
             done
+        done
         done
         for route in direct address calli; do
             case_out=$(mktemp -d "$out/$operation-mvar-$route-XXXXXX") || return 1
@@ -68,7 +70,7 @@ vector_magnitude_authority_probe() {
                 count=$((count + 1))
                 printf '%s\n' "$operation:128:float:$route:$mutation" >> "$out/rejected.txt" || return 1
             done
-            for element in int uint long ulong byte sbyte short ushort nint nuint bool char object decimal enum struct refs int128 uint128; do
+            for element in int uint long ulong byte sbyte short ushort nint nuint bool char object; do
                 case_out=$(mktemp -d "$out/$operation-$route-$element-XXXXXX") || return 1
                 input="$case_out/input.dll"
                 gate_capture_ok "$case_out/generate" run_bounded dotnet "$fixture" --vector-magnitude-fixture \
@@ -81,7 +83,7 @@ vector_magnitude_authority_probe() {
             done
         done
     done
-    [ "$positives" -eq 204 ] && [ "$((count + upstream))" -eq 612 ] && [ "$upstream" -le 12 ] || return 1
+    [ "$positives" -eq 492 ] && [ "$((count + upstream))" -eq 540 ] && [ "$upstream" -le 12 ] || return 1
     printf 'vector-magnitude-authority:accepted=%s:rejected=%s:upstream-parser-rejected=%s\n' "$positives" "$count" "$upstream" > "$out/summary.txt" || return 1
     cat "$out/summary.txt"
 }

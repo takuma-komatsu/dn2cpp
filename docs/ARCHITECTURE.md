@@ -51,11 +51,13 @@ versus numeric selection and signed-zero magnitude ties remain distinct.
 Operands are evaluated once, and concrete Vector2/3/4 callers retain their IL.
 Original generic signatures and method arguments are checked before cache reuse;
 other element types cannot fall through to a fabricated default result.
-For positively admitted unsupported managed value types, Numerics magnitude
-methods preserve the genuine managed Count/ThrowHelper path. The hardware and
+For positively admitted unsupported managed value types, magnitude methods
+preserve the genuine managed Count/ThrowHelper path. The hardware and
 software prefixes must both reach that guard before any lane operation; the
 hardware prefix is checked through its exact VectorMath/Abs dispatch. This
 route neither enables unsupported arithmetic nor invents a vector result.
+Fixed-width paths authenticate lower-half descent to the actual Vector64 Count
+guard on both branches; an outer-width Count is not substituted.
 
 ## 1. Pipeline
 

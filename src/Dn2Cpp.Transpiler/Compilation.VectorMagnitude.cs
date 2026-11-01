@@ -79,8 +79,7 @@ internal sealed partial class Compilation
         if (arguments is not [var argument]) throw VectorMagnitudeUnsupported();
         if (argument.IsCanonPlaceholder)
         {
-            if (!allowCanonicalForScan || owner.FullName != "System.Numerics.Vector"
-                || argument.Kind != TypeKind.Primitive || argument.CanonAnyIndex != -1
+            if (!allowCanonicalForScan || argument.Kind != TypeKind.Primitive || argument.CanonAnyIndex != -1
                 || !CoreIntrinsics.IsVectorNumericElement(TypeDesc.MakePrimitive(argument.Primitive))
                 || !ReadVectorAsCanonicalArgument(ref raw, context, argument) || raw.RemainingBytes != 0)
                 throw VectorMagnitudeUnsupported();
@@ -90,7 +89,7 @@ internal sealed partial class Compilation
         }
         if (argument.Class is { } value) EnsureShape(value);
         if (!(CoreIntrinsics.IsVectorMagnitudeElement(argument)
-                || owner.FullName == "System.Numerics.Vector" && CoreIntrinsics.IsVectorManagedValueElement(argument))
+                || CoreIntrinsics.IsVectorManagedValueElement(argument))
             || !ReadVectorValueElement(module, ref raw, context, argument) || raw.RemainingBytes != 0)
             throw VectorMagnitudeUnsupported();
         return InstantiateMethodOnClass(owner, owner.Module, definitionHandle, new[] { argument });

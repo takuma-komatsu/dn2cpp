@@ -71,8 +71,7 @@ internal static partial class CoreIntrinsics
 
     internal static bool IsVectorMagnitudeManagedGuard(MethodInfo method)
     {
-        if (method.DeclaringClass.FullName != "System.Numerics.Vector"
-            || !IsVectorMagnitudeName(method.Name) || method.IsSynthetic || method.PInvoke is not null
+        if (!IsVectorMagnitudeName(method.Name) || method.IsSynthetic || method.PInvoke is not null
             || method.Context.TypeArgs.Length != 0 || method.Context.MethodArgs is not [var element]
             || !IsVectorManagedValueElement(element)
             || !IsVectorMagnitudeDefinition(method.DeclaringClass, method.Module, method.Handle)) return false;

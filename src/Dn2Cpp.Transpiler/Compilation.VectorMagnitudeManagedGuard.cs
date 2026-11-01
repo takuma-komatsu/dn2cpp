@@ -11,12 +11,20 @@ internal sealed partial class Compilation
         if (!CoreIntrinsics.IsVectorMagnitudeManagedGuard(method)) throw VectorMagnitudeGuardUnsupported();
         ValidateMagnitudeNoInitializer(method.DeclaringClass);
         var il = GenericVectorGuardInstructions(method);
+        if (method.DeclaringClass.FullName == "System.Runtime.Intrinsics.Vector64")
+        {
+            if (il.Count < 3 || il[0].OpCode != ILOpCode.Ldc_i4_0 || il[1].OpCode != ILOpCode.Brfalse_s
+                || il[1].Operand != il[2].Offset) throw VectorMagnitudeGuardUnsupported();
+            return ResolveMagnitudeLoopGuard(method, il, 2);
+        }
         if (il.Count < 7 || il[0].OpCode != ILOpCode.Call || il[1].OpCode != ILOpCode.Brfalse_s
             || il[1].Operand != il[6].Offset || il[2].OpCode != ILOpCode.Ldarg_0
             || il[3].OpCode != ILOpCode.Ldarg_1 || il[4].OpCode != ILOpCode.Call
             || il[5].OpCode != ILOpCode.Ret) throw VectorMagnitudeGuardUnsupported();
         ValidateMagnitudeHardwareGetter(method, il[0].Token);
-        var count = ResolveMagnitudeLoopGuard(method, il, 6);
+        var count = method.DeclaringClass.FullName == "System.Numerics.Vector"
+            ? ResolveMagnitudeLoopGuard(method, il, 6)
+            : ResolveMagnitudeHalfGuard(method, il, 6, unary: false);
         var hardware = ResolveMagnitudeMathCall(method, il[4].Token, method.Name);
         ValidateMagnitudeMathGuard(hardware, method.Signature.ReturnType.Class!, count);
         return count;
@@ -138,9 +146,7 @@ internal sealed partial class Compilation
         if (body.Count != 3 || body[0].OpCode != ILOpCode.Ldarg_0 || body[1].OpCode != ILOpCode.Call
             || body[2].OpCode != ILOpCode.Ret) throw VectorMagnitudeGuardUnsupported();
         var absMethod = ResolveMagnitudeAbsCall(bridge, body[1].Token, vector);
-        var absBody = GenericVectorGuardInstructions(absMethod);
-        int start = ValidateMagnitudeTypeTests(absMethod, absBody, 0, new[] { "Byte", "UInt16", "UInt32", "UInt64", "UIntPtr" });
-        var actualCount = ResolveMagnitudeLoopGuard(absMethod, absBody, start);
+        var actualCount = ResolveMagnitudeAbsGuard(absMethod);
         if (actualCount != count) throw VectorMagnitudeGuardUnsupported();
     }
 
@@ -209,7 +215,7 @@ internal sealed partial class Compilation
         return bridge ?? throw VectorMagnitudeGuardUnsupported();
     }
 
-    private MethodInfo ResolveMagnitudeAbsCall(MethodInfo bridge, int token, ClassInfo vector)
+    private MethodInfo ResolveMagnitudeAbsCall(MethodInfo bridge, int token, ClassInfo vector, int variable = 0x13)
     {
         var module = bridge.Module;
         var reader = module.Reader;
@@ -219,8 +225,11 @@ internal sealed partial class Compilation
         if (spec.Method.Kind != HandleKind.MethodDefinition) throw VectorMagnitudeGuardUnsupported();
         var definition = reader.GetMethodDefinition((MethodDefinitionHandle)spec.Method);
         var owner = reader.GetTypeDefinition(definition.GetDeclaringType());
-        if (!reader.StringComparer.Equals(owner.Namespace, "System.Numerics")
-            || !reader.StringComparer.Equals(owner.Name, "Vector") || !owner.GetDeclaringType().IsNil
+        var vectorDefinition = reader.GetTypeDefinition(vector.Handle);
+        string vectorName = reader.GetString(vectorDefinition.Name);
+        if (!vectorName.EndsWith("`1", StringComparison.Ordinal)
+            || !reader.StringComparer.Equals(owner.Namespace, reader.GetString(vectorDefinition.Namespace))
+            || !reader.StringComparer.Equals(owner.Name, vectorName[..^2]) || !owner.GetDeclaringType().IsNil
             || owner.GetGenericParameters().Count != 0 || !reader.StringComparer.Equals(definition.Name, "Abs")
             || definition.Attributes != (MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig)
             || definition.ImplAttributes != MethodImplAttributes.AggressiveInlining
@@ -233,7 +242,7 @@ internal sealed partial class Compilation
         }
         var raw = reader.GetBlobReader(spec.Signature);
         if (raw.RemainingBytes != 4 || raw.ReadByte() != 0x0a || raw.ReadByte() != 1
-            || raw.ReadByte() != 0x13 || raw.ReadByte() != 0) throw VectorMagnitudeGuardUnsupported();
+            || raw.ReadByte() != variable || raw.ReadByte() != 0) throw VectorMagnitudeGuardUnsupported();
         var result = ResolveMethodSpec(module, (MethodSpecificationHandle)handle, bridge.Context);
         ValidateMagnitudeResolvedDefinition(result, module, (MethodDefinitionHandle)spec.Method);
         if (result.Module != module || result.PInvoke is not null || result.IsSynthetic

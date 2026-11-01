@@ -178,7 +178,7 @@ internal static class GenericVectorMagnitudeGuards
                 .Where(candidate => (string)Get(candidate, "Name") == (string)Get(resolvedBridge, "Name")).ToArray();
             Console.WriteLine("magnitude-bridge-model-aliases:total=" + aliases.Length + ":unused=" + aliases.Count(candidate => !ReferenceEquals(candidate, resolvedBridge)));
             var publicAbsCall = absBridge.Body.Instructions.Select(i => i.Operand).OfType<Mono.Cecil.GenericInstanceMethod>().Single();
-            var resolvedAbs = absResolver.Invoke(compilation, new[] { resolvedBridge, (object)publicAbsCall.MetadataToken.ToInt32(), vector })!;
+            var resolvedAbs = absResolver.Invoke(compilation, new[] { resolvedBridge, (object)publicAbsCall.MetadataToken.ToInt32(), vector, (object)0x13 })!;
             var dependencies = new[] { mathMethod, numberMethod, resolvedBridge, resolvedAbs }.Distinct().ToArray();
             check(dependencies.Length == (operation == numberName ? 3 : 4), "magnitude-exact-resolved-proof-dependencies");
             void PoisonDependency(object value, string field, object replacement, string label)

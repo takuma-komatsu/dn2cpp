@@ -22,7 +22,7 @@ internal static class VectorMagnitudeGuards
         const BindingFlags instance = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         const BindingFlags statics = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
         var cases = new List<(string Element, string Route, string Mutation)>();
-        var admitted = width == 0 ? new[] { "float", "double", "decimal", "enum", "struct", "refs", "int128", "uint128" } : new[] { "float", "double" };
+        var admitted = new[] { "float", "double", "decimal", "enum", "struct", "refs", "int128", "uint128" };
         foreach (var element in admitted)
         foreach (var route in new[] { "direct", "address", "calli" })
         foreach (var mutation in new[] { "valid", "valid-mvar", "valid-var" }.Concat(VectorMagnitudeFixture.Mutations))
@@ -117,6 +117,9 @@ internal static class VectorMagnitudeGuards
         if (width == 0)
             GenericVectorMagnitudeGuards.Check(compilation, core, args[2], operation,
                 good.Where(p => p.Key is not ("float" or "double")).Select(p => p.Value.Method).ToArray(), Check);
+        if (width != 0)
+            FixedVectorMagnitudeGuards.Check(compilation, core, args[2], operation, width,
+                good.Where(p => p.Key is not ("float" or "double")).Select(p => p.Value.Method).ToArray(), Check);
         for (int i = 0; i < cases.Count; i++)
         {
             var item = cases[i]; var token = Token(methods[i]); var control = good[admitted.Contains(item.Element) ? item.Element : "float"];
@@ -152,9 +155,7 @@ internal static class VectorMagnitudeGuards
                 {
                     var context = Context(canonical, item.Mutation == "valid-var");
                     Check(Refused(resolve, app, token, context), "canonical-strict-reject-" + item.Mutation);
-                    if (width == 0)
-                        Check(Invoke(scan, app, token, context) is null, "canonical-scan-defer-" + item.Mutation);
-                    else Check(Refused(scan, app, token, context), "canonical-fixed-reject-" + item.Mutation);
+                    Check(Invoke(scan, app, token, context) is null, "canonical-scan-defer-" + item.Mutation);
                     Check(Refused(scan, app, token, empty), "canonical-empty-context-" + item.Mutation);
                     var wrongContext = Context(canonical, item.Mutation != "valid-var");
                     Check(Refused(scan, app, token, wrongContext), "canonical-wrong-context-" + item.Mutation);
