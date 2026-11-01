@@ -22,11 +22,12 @@ internal static class VectorMagnitudeGuards
         const BindingFlags instance = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         const BindingFlags statics = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
         var cases = new List<(string Element, string Route, string Mutation)>();
-        foreach (var element in new[] { "float", "double" })
+        var admitted = width == 0 ? new[] { "float", "double", "decimal", "enum", "struct", "refs", "int128", "uint128" } : new[] { "float", "double" };
+        foreach (var element in admitted)
         foreach (var route in new[] { "direct", "address", "calli" })
         foreach (var mutation in new[] { "valid", "valid-mvar", "valid-var" }.Concat(VectorMagnitudeFixture.Mutations))
             cases.Add((element, route, mutation));
-        foreach (var element in VectorMagnitudeFixture.Elements.Where(e => e is not ("float" or "double")))
+        foreach (var element in VectorMagnitudeFixture.Elements.Where(e => !admitted.Contains(e)))
         foreach (var route in new[] { "direct", "address", "calli" }) cases.Add((element, route, "valid"));
         string input = Path.GetFullPath(args[3]) + "." + operation + "." + width + ".dll";
         VectorMagnitudeFixture.Build(input, args[2], cases, width, operation);
@@ -50,7 +51,9 @@ internal static class VectorMagnitudeGuards
         var reader = (MetadataReader)Get(app, "Reader");
         var coreReader = (MetadataReader)Get(core, "Reader");
         var predicate = Model("CoreIntrinsics").GetMethod("IsVectorMagnitude", statics)!;
+        var managedPredicate = Model("CoreIntrinsics").GetMethod("IsVectorMagnitudeManagedGuard", statics)!;
         var resolve = Model("Compilation").GetMethod("TryResolveVectorMagnitudeSpec", instance)!;
+        var scan = Model("Compilation").GetMethod("TryResolveVectorMagnitudeSpecForScan", instance)!;
         var instantiate = Model("Compilation").GetMethod("InstantiateMethodOnClass", instance)!;
         var resolveSpec = Model("Compilation").GetMethod("ResolveMethodSpec", instance)!;
         var resolveCall = Model("Compilation").GetMethod("ResolveCallTarget", instance)!;
@@ -69,7 +72,14 @@ internal static class VectorMagnitudeGuards
             if (!result) throw new InvalidOperationException("vector magnitude guard: " + label);
             checks++;
         }
-        bool Accepted(object? value) => value is not null && (bool)predicate.Invoke(null, new[] { value })!;
+        bool Accepted(object? value)
+        {
+            if (value is null) return false;
+            bool numeric = (bool)predicate.Invoke(null, new[] { value })!;
+            bool managed = (bool)managedPredicate.Invoke(null, new[] { value })!;
+            Check(!(numeric && managed), "disjoint-routes");
+            return numeric || managed;
+        }
         object? Invoke(System.Reflection.MethodInfo method, object module, EntityHandle handle, object context)
         {
             object typedHandle = method == resolveCall ? handle : handle.Kind == HandleKind.MethodSpecification ? (object)(MethodSpecificationHandle)handle : (MemberReferenceHandle)handle;
@@ -91,22 +101,31 @@ internal static class VectorMagnitudeGuards
         var good = new Dictionary<string, (EntityHandle Token, object Method, object Element)>();
         for (int i = 0; i < cases.Count; i++)
         {
-            var item = cases[i]; if (item.Mutation != "valid" || item.Route != "direct" || item.Element is not ("float" or "double")) continue;
+            var item = cases[i]; if (item.Mutation != "valid" || item.Route != "direct" || !admitted.Contains(item.Element)) continue;
             var token = Token(methods[i]);
             var method = Invoke(resolve, app, token, empty)!;
             Check(Accepted(method), "good-initial-" + item.Element);
             var argument = ((Array)Get(Get(method, "Context"), "MethodArgs")).GetValue(0)!;
             good.Add(item.Element, (token, method, argument));
         }
+        foreach (var pair in good)
+        {
+            bool managed = pair.Key is not ("float" or "double");
+            Check((bool)managedPredicate.Invoke(null, new[] { pair.Value.Method })! == managed, "route-kind-" + pair.Key);
+            Check((bool)predicate.Invoke(null, new[] { pair.Value.Method })! != managed, "numeric-route-kind-" + pair.Key);
+        }
+        if (width == 0)
+            GenericVectorMagnitudeGuards.Check(compilation, core, args[2], operation,
+                good.Where(p => p.Key is not ("float" or "double")).Select(p => p.Value.Method).ToArray(), Check);
         for (int i = 0; i < cases.Count; i++)
         {
-            var item = cases[i]; var token = Token(methods[i]); var control = good[item.Element == "double" ? "double" : "float"];
+            var item = cases[i]; var token = Token(methods[i]); var control = good[admitted.Contains(item.Element) ? item.Element : "float"];
             var contexts = new[] { empty, Context(control.Element, false), Context(control.Element, true) };
             foreach (var context in contexts)
             foreach (var resolver in token.Kind == HandleKind.MethodSpecification ? new[] { resolve, resolveSpec, resolveCall } : new[] { resolveReference, resolveFunction, resolveCall })
             {
                 Check(ReferenceEquals(Invoke(resolve, app, control.Token, empty), control.Method), "good-before");
-                bool expected = item.Element is "float" or "double" && (item.Mutation == "valid" || item.Mutation == "valid-mvar" && ReferenceEquals(context, contexts[1]) || item.Mutation == "valid-var" && ReferenceEquals(context, contexts[2]));
+                bool expected = admitted.Contains(item.Element) && (item.Mutation == "valid" || item.Mutation == "valid-mvar" && ReferenceEquals(context, contexts[1]) || item.Mutation == "valid-var" && ReferenceEquals(context, contexts[2]));
                 if (expected) Check(Accepted(Invoke(resolver, app, token, context)), item.Route + ":" + item.Mutation + ":accept");
                 else Check(Refused(resolver, app, token, context), item.Route + ":" + item.Mutation + ":reject");
                 Check(ReferenceEquals(Invoke(resolve, app, control.Token, empty), control.Method) && Accepted(control.Method), "good-after");
@@ -117,6 +136,40 @@ internal static class VectorMagnitudeGuards
                 Console.WriteLine("vector-magnitude-serialized:" + item.Element + ":" + item.Route + ":" + item.Mutation + ":" + MetadataTokens.GetToken(token).ToString("X8") + ":raw=" + Convert.ToHexString(reader.GetBlobBytes(spec.Signature)));
             }
         }
+        var canonical = Activator.CreateInstance(Model("TypeDesc"), true)!;
+        Set(canonical, "Kind", Get(good["float"].Element, "Kind"));
+        Set(canonical, "Primitive", Get(good["float"].Element, "Primitive"));
+        Set(canonical, "IsCanonPlaceholder", true); Set(canonical, "CanonAnyIndex", -1);
+        try
+        {
+            for (int i = 0; i < cases.Count; i++)
+            {
+                var item = cases[i];
+                if (item.Element != "float" || item.Route != "direct") continue;
+                var token = Token(methods[i]);
+                if (token.Kind != HandleKind.MethodSpecification) continue;
+                if (item.Mutation is "valid-mvar" or "valid-var")
+                {
+                    var context = Context(canonical, item.Mutation == "valid-var");
+                    Check(Refused(resolve, app, token, context), "canonical-strict-reject-" + item.Mutation);
+                    if (width == 0)
+                        Check(Invoke(scan, app, token, context) is null, "canonical-scan-defer-" + item.Mutation);
+                    else Check(Refused(scan, app, token, context), "canonical-fixed-reject-" + item.Mutation);
+                    Check(Refused(scan, app, token, empty), "canonical-empty-context-" + item.Mutation);
+                    var wrongContext = Context(canonical, item.Mutation != "valid-var");
+                    Check(Refused(scan, app, token, wrongContext), "canonical-wrong-context-" + item.Mutation);
+                    Set(canonical, "CanonAnyIndex", 0);
+                    try { Check(Refused(scan, app, token, context), "canonical-any-index-reject-" + item.Mutation); }
+                    finally { Set(canonical, "CanonAnyIndex", -1); }
+                }
+                else if (item.Mutation == "valid")
+                    Check(ReferenceEquals(Invoke(scan, app, token, Context(canonical, false)), good["float"].Method), "canonical-literal-not-deferred");
+                else
+                    Check(Refused(scan, app, token, Context(canonical, false)), "canonical-malformed-" + item.Mutation);
+            }
+        }
+        finally { Set(canonical, "IsCanonPlaceholder", false); }
+        Check(ReferenceEquals(Invoke(resolve, app, good["float"].Token, empty), good["float"].Method), "canonical-restored-concrete-cache");
         foreach (var control in good.Values)
         {
             var method = control.Method;
@@ -149,6 +202,8 @@ internal static class VectorMagnitudeGuards
             Poison(method, "Attributes", MethodAttributes.Private | MethodAttributes.Static | MethodAttributes.HideBySig);
             Poison(method, "ImplAttributes", MethodImplAttributes.NoInlining);
             Poison(method, "Context", empty);
+            foreach (var other in good.Values.Where(other => !ReferenceEquals(other.Element, control.Element)))
+                Poison(method, "Context", Context(other.Element, false));
             var owner = Get(method, "DeclaringClass");
             Poison(owner, "Module", app); Poison(owner, "Handle", default(TypeDefinitionHandle));
             Poison(owner, "_fullName", "Application.Vector"); Poison(owner, "IsValueType", false);
@@ -158,7 +213,16 @@ internal static class VectorMagnitudeGuards
             Poison(vector, "Module", app); Poison(vector, "Handle", default(TypeDefinitionHandle));
             Poison(vector, "IsValueType", false); Poison(vector, "IsEnum", true); Poison(vector, "IsInterface", true);
             Poison(vector, "GenericArity", 0); Poison(vector, "Context", empty);
-            Poison(control.Element, "Primitive", PrimitiveTypeCode.Int32);
+            if ((bool)predicate.Invoke(null, new[] { method })!)
+                Poison(control.Element, "Primitive", PrimitiveTypeCode.Int32);
+            else
+            {
+                var elementClass = Get(control.Element, "Class");
+                Poison(elementClass, "IsInterface", true);
+                Poison(elementClass, "IsByRefLike", true);
+                Poison(elementClass, "GenericArity", 1);
+                Poison(elementClass, "Handle", default(TypeDefinitionHandle));
+            }
             Poison(control.Element, "IsCanonPlaceholder", true);
         }
         using (var originalCore = Mono.Cecil.AssemblyDefinition.ReadAssembly(args[2]))

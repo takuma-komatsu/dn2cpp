@@ -55,6 +55,17 @@ internal sealed partial class Compilation
             }
             return;
         }
+        if (CoreIntrinsics.IsVectorMagnitudeManagedGuard(m))
+        {
+            var guard = ResolveVectorMagnitudeManagedGuard(m);
+            _intrinsicTypeTranspiled.Add(m);
+            if (AddReachable(m.EnsureSignature()))
+            {
+                _predTrace.TryAdd(m, _currentScan);
+                Reach(guard);
+            }
+            return;
+        }
         if (CoreIntrinsics.IsGenericVectorEstimate(m))
         {
             var guard = ResolveGenericVectorEstimateGuard(m);

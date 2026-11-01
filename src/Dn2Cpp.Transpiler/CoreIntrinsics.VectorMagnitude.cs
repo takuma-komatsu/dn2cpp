@@ -15,7 +15,7 @@ internal static partial class CoreIntrinsics
     internal static void ValidateVectorMagnitude(MethodInfo method)
     {
         if (IsVectorMagnitudeName(method.Name) && IsVectorEstimateOwnerName(method.DeclaringClass.FullName)
-            && !IsVectorMagnitude(method))
+            && !IsVectorMagnitude(method) && !IsVectorMagnitudeManagedGuard(method))
             throw new NotSupportedException($"Vector {method.Name} requires an exact floating-point generic CoreLib declaration");
     }
 
@@ -62,6 +62,31 @@ internal static partial class CoreIntrinsics
             || vector.IntrinsicCppName != method.DeclaringClass.IntrinsicCppName
             || vector.Context.TypeArgs is not [var actual]
             || !IsVectorMagnitudeElement(actual) || actual.Primitive != element.Primitive) return false;
+        if (!ReadVectorMagnitudeSignature(method.Module.Reader.GetBlobReader(definition.Signature), out int token)
+            || token != SRME.GetRowNumber(vector.Handle) << 2) return false;
+        foreach (var parameter in signature.ParameterTypes)
+            if (parameter is not { Kind: TypeKind.Class, IsCanonPlaceholder: false, Class: { } operand } || operand != vector) return false;
+        return true;
+    }
+
+    internal static bool IsVectorMagnitudeManagedGuard(MethodInfo method)
+    {
+        if (method.DeclaringClass.FullName != "System.Numerics.Vector"
+            || !IsVectorMagnitudeName(method.Name) || method.IsSynthetic || method.PInvoke is not null
+            || method.Context.TypeArgs.Length != 0 || method.Context.MethodArgs is not [var element]
+            || !IsVectorManagedValueElement(element)
+            || !IsVectorMagnitudeDefinition(method.DeclaringClass, method.Module, method.Handle)) return false;
+        var definition = method.Module.Reader.GetMethodDefinition(method.Handle);
+        if (!method.Module.Reader.StringComparer.Equals(definition.Name, method.Name)
+            || method.Attributes != definition.Attributes || method.ImplAttributes != definition.ImplAttributes
+            || method.Rva != definition.RelativeVirtualAddress) return false;
+        var signature = method.Signature;
+        if (signature.Header.RawValue != 0x10 || signature.GenericParameterCount != 1
+            || signature.ParameterTypes.Length != 2 || signature.RequiredParameterCount != 2
+            || signature.ReturnType is not { Kind: TypeKind.Class, IsCanonPlaceholder: false, Class: { } vector }
+            || !IsVectorManagedValueClass(vector) || vector.Module != method.Module
+            || vector.Context.TypeArgs is not [var actual] || actual.Kind != TypeKind.Class
+            || actual.IsCanonPlaceholder || actual.Class != element.Class) return false;
         if (!ReadVectorMagnitudeSignature(method.Module.Reader.GetBlobReader(definition.Signature), out int token)
             || token != SRME.GetRowNumber(vector.Handle) << 2) return false;
         foreach (var parameter in signature.ParameterTypes)

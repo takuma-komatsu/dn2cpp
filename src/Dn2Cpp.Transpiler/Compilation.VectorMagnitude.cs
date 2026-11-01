@@ -5,7 +5,14 @@ namespace Dn2Cpp;
 
 internal sealed partial class Compilation
 {
-    internal MethodInfo? TryResolveVectorMagnitudeSpec(Module module, MethodSpecificationHandle handle, GenericContext context)
+    internal MethodInfo? TryResolveVectorMagnitudeSpec(Module module, MethodSpecificationHandle handle, GenericContext context) =>
+        ResolveVectorMagnitudeSpecification(module, handle, context, allowCanonicalForScan: false);
+
+    private MethodInfo? TryResolveVectorMagnitudeSpecForScan(Module module, MethodSpecificationHandle handle, GenericContext context) =>
+        ResolveVectorMagnitudeSpecification(module, handle, context, allowCanonicalForScan: true);
+
+    private MethodInfo? ResolveVectorMagnitudeSpecification(Module module, MethodSpecificationHandle handle, GenericContext context,
+        bool allowCanonicalForScan)
     {
         var reader = module.Reader;
         var specification = reader.GetMethodSpecification(handle);
@@ -63,12 +70,27 @@ internal sealed partial class Compilation
         {
             if (shape.RemainingBytes != 0) throw VectorMagnitudeUnsupported();
         }
-        else if ((code is not (0x13 or 0x1e)) || !shape.TryReadCompressedInteger(out int index)
-            || shape.RemainingBytes != 0 || index < 0
-            || index >= (code == 0x13 ? context.TypeArgs.Length : context.MethodArgs.Length))
+        else if (!shape.TryReadCompressedInteger(out int index) || shape.RemainingBytes != 0
+            || (code == 0x11 ? index >> 2 == 0 || (index & 3) > 1
+                : code == 0x13 ? index < 0 || index >= context.TypeArgs.Length
+                : code == 0x1e ? index < 0 || index >= context.MethodArgs.Length : true))
             throw VectorMagnitudeUnsupported();
         var arguments = specification.DecodeSignature(SigProvider, context);
-        if (arguments is not [var argument] || !CoreIntrinsics.IsVectorMagnitudeElement(argument)
+        if (arguments is not [var argument]) throw VectorMagnitudeUnsupported();
+        if (argument.IsCanonPlaceholder)
+        {
+            if (!allowCanonicalForScan || owner.FullName != "System.Numerics.Vector"
+                || argument.Kind != TypeKind.Primitive || argument.CanonAnyIndex != -1
+                || !CoreIntrinsics.IsVectorNumericElement(TypeDesc.MakePrimitive(argument.Primitive))
+                || !ReadVectorAsCanonicalArgument(ref raw, context, argument) || raw.RemainingBytes != 0)
+                throw VectorMagnitudeUnsupported();
+            // Width placeholders cannot choose between a supported scalar and an enum.
+            // Existing call/address taint forces the concrete body before emission.
+            return null;
+        }
+        if (argument.Class is { } value) EnsureShape(value);
+        if (!(CoreIntrinsics.IsVectorMagnitudeElement(argument)
+                || owner.FullName == "System.Numerics.Vector" && CoreIntrinsics.IsVectorManagedValueElement(argument))
             || !ReadVectorValueElement(module, ref raw, context, argument) || raw.RemainingBytes != 0)
             throw VectorMagnitudeUnsupported();
         return InstantiateMethodOnClass(owner, owner.Module, definitionHandle, new[] { argument });
@@ -81,6 +103,7 @@ internal sealed partial class Compilation
             || !CoreIntrinsics.IsVectorEstimateOwnerName(owner.FullName)) return;
         if (arguments is not [var argument] || !CoreIntrinsics.IsVectorMagnitudeDefinition(owner, module, handle))
             throw VectorMagnitudeUnsupported();
+        if (argument.Class is { } value) EnsureShape(value);
         var candidate = new MethodInfo
         {
             DeclaringClass = owner, Module = module, Handle = handle, Name = module.Reader.GetString(definition.Name),
@@ -88,7 +111,8 @@ internal sealed partial class Compilation
             ImplAttributes = definition.ImplAttributes, Rva = definition.RelativeVirtualAddress, PInvoke = ReadPInvoke(module, definition),
         };
         if (candidate.Signature.ReturnType.Class is { } vector) EnsureShape(vector);
-        if (!CoreIntrinsics.IsVectorMagnitude(candidate)) throw VectorMagnitudeUnsupported();
+        if (CoreIntrinsics.IsVectorMagnitudeManagedGuard(candidate)) ResolveVectorMagnitudeManagedGuard(candidate);
+        else if (!CoreIntrinsics.IsVectorMagnitude(candidate)) throw VectorMagnitudeUnsupported();
     }
 
     internal void RejectUninstantiatedVectorMagnitudeReference(Module module, MemberReferenceHandle handle, GenericContext context)

@@ -342,7 +342,7 @@ internal sealed partial class Compilation
                 RejectConcreteVectorReductionMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
                 if (TryResolveGuardedVectorAsSpecForScan(module, (MethodSpecificationHandle)handle, ctx) is { } vectorAs)
                     return vectorAs;
-                if (TryResolveVectorMagnitudeSpec(module, (MethodSpecificationHandle)handle, ctx) is { } vectorMagnitude)
+                if (TryResolveVectorMagnitudeSpecForScan(module, (MethodSpecificationHandle)handle, ctx) is { } vectorMagnitude)
                     return vectorMagnitude;
                 if (TryResolveGenericVectorEstimateSpec(module, (MethodSpecificationHandle)handle, ctx) is { } genericEstimate)
                     return genericEstimate;
@@ -918,9 +918,10 @@ internal sealed partial class Compilation
             }
             if (CoreIntrinsics.IsVectorMagnitudeName(methodName)
                 && CoreIntrinsics.IsVectorEstimateOwnerName(declClass.FullName)
-                && (!CoreIntrinsics.IsVectorMagnitude(existing) || existing.Name != methodName
-                    || existing.DeclaringClass != declClass || existing.Module != defModule || existing.Handle != templateHandle
-                    || existing.Context.MethodArgs[0].Primitive != methodArgs[0].Primitive))
+                && (!(CoreIntrinsics.IsVectorMagnitude(existing) || CoreIntrinsics.IsVectorMagnitudeManagedGuard(existing))
+                    || existing.Name != methodName || existing.DeclaringClass != declClass
+                    || existing.Module != defModule || existing.Handle != templateHandle
+                    || !SameTypeArg(existing.Context.MethodArgs[0], methodArgs[0])))
                 throw VectorMagnitudeUnsupported();
             if (defModule.Reader.StringComparer.Equals(md.Name, "MultiplyAddEstimate")
                 && CoreIntrinsics.IsVectorEstimateOwnerName(declClass.FullName)

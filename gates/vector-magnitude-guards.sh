@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Exact generic magnitude declarations reject malformed and unsupported closures.
+# Exact magnitude declarations preserve managed guards and reject malformed closures.
 vector_magnitude_authority_probe() {
     local root="$1" out operation width element route mutation input case_out count=0 positives=0 upstream=0
     local fixture="${DN2CPP_VECTOR_MAGNITUDE_FIXTURE_DLL:-gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll}"
@@ -24,6 +24,17 @@ vector_magnitude_authority_probe() {
                     positives=$((positives + 1))
                     printf '%s\n' "$operation:$width:$element:$route:valid" >> "$out/accepted.txt" || return 1
                 done
+            done
+        done
+        for element in decimal enum struct refs int128 uint128; do
+            for route in direct address calli; do
+                case_out=$(mktemp -d "$out/$operation-managed-$element-$route-valid-XXXXXX") || return 1
+                input="$case_out/input.dll"
+                gate_capture_ok "$case_out/generate" run_bounded dotnet "$fixture" --vector-magnitude-fixture \
+                    "$input" "$_CG_CORELIB" "$operation:0:$element:$route:valid" || return 1
+                gate_capture_ok "$case_out/accept" invoke_cli "$input" -r "$_CG_CORELIB" --no-ildiet -o "$case_out/emitted" || return 1
+                positives=$((positives + 1))
+                printf '%s\n' "$operation:0:$element:$route:valid" >> "$out/accepted.txt" || return 1
             done
         done
         for route in direct address calli; do
@@ -70,7 +81,7 @@ vector_magnitude_authority_probe() {
             done
         done
     done
-    [ "$positives" -eq 132 ] && [ "$((count + upstream))" -eq 612 ] && [ "$upstream" -le 12 ] || return 1
+    [ "$positives" -eq 204 ] && [ "$((count + upstream))" -eq 612 ] && [ "$upstream" -le 12 ] || return 1
     printf 'vector-magnitude-authority:accepted=%s:rejected=%s:upstream-parser-rejected=%s\n' "$positives" "$count" "$upstream" > "$out/summary.txt" || return 1
     cat "$out/summary.txt"
 }

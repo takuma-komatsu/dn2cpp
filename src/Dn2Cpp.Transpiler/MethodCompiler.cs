@@ -701,6 +701,8 @@ internal sealed partial class MethodCompiler : IEvalStack
         CoreIntrinsics.ValidateVectorAsCallable(_method);
         if (CoreIntrinsics.IsGuardedVectorAs(_method))
             return CompileGuardedVectorAs();
+        if (CoreIntrinsics.IsVectorMagnitudeManagedGuard(_method))
+            return CompileVectorMagnitudeManagedGuard();
         if (CoreIntrinsics.IsGenericVectorEstimate(_method))
             return CompileGenericVectorEstimateGuard();
         if (CoreIntrinsics.IsVectorManagedCountCandidate(_method.DeclaringClass, _method.Name)
@@ -1244,6 +1246,8 @@ internal sealed partial class MethodCompiler : IEvalStack
         CoreIntrinsics.ValidateVectorAsCallable(_method);
         if (CoreIntrinsics.IsGuardedVectorAs(_method))
             return CompileGuardedVectorAs();
+        if (CoreIntrinsics.IsVectorMagnitudeManagedGuard(_method))
+            return CompileVectorMagnitudeManagedGuard();
         if (CoreIntrinsics.IsGenericVectorEstimate(_method))
             return CompileGenericVectorEstimateGuard();
         if (_method.Name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(_method.DeclaringClass)
