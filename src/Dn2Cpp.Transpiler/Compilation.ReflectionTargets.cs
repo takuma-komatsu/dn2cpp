@@ -907,6 +907,7 @@ internal sealed partial class Compilation
             || _backend?.ShouldSkipMethodBody(cls, target) == true)
             return;
         CoreIntrinsics.ValidateVectorFloatingPointTernary(target);
+        CoreIntrinsics.ValidateVectorLog(target);
         CoreIntrinsics.ValidateVectorAlignment(target);
         CoreIntrinsics.ValidateConcreteVectorReduction(target);
         _reflectionSelectionCount++;

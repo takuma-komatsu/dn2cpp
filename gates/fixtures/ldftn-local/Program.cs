@@ -15,6 +15,8 @@ if (GenericVectorEstimateFixture.Run(args)) return;
 if (GenericVectorEstimateGuards.Run(args)) return;
 if (VectorLerpFixture.Run(args)) return;
 if (VectorLerpGuards.Run(args)) return;
+if (VectorLogFixture.Run(args)) return;
+if (VectorLogGuards.Run(args)) return;
 if (VectorEstimateFixture.Run(args)) return;
 if (VectorEstimateGuards.Run(args)) return;
 if (ConcreteVectorElementsFixture.Run(args)) return;

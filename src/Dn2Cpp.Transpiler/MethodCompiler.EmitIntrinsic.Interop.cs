@@ -585,6 +585,12 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsVectorLog(callee))
+        {
+            EmitVectorLog(callee);
+            return;
+        }
+
         if (CoreIntrinsics.IsConcreteVectorElement(callee))
         {
             EmitConcreteVectorElement(callee);

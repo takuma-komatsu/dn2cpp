@@ -694,6 +694,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             foreach (var argument in _method.Context.MethodArgs)
                 TaintIfCanonical(argument, "numerics-vector-element");
         CoreIntrinsics.ValidateVectorFloatingPointTernary(_method);
+        CoreIntrinsics.ValidateVectorLog(_method);
         CoreIntrinsics.ValidateVectorAlignment(_method);
         CoreIntrinsics.ValidateConcreteVectorReduction(_method);
         CoreIntrinsics.ValidateVectorAsCallable(_method);
@@ -1235,6 +1236,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     {
         CoreIntrinsics.ValidateConcreteVectorElement(_method);
         CoreIntrinsics.ValidateVectorFloatingPointTernary(_method);
+        CoreIntrinsics.ValidateVectorLog(_method);
         CoreIntrinsics.ValidateVectorAlignment(_method);
         CoreIntrinsics.ValidateConcreteVectorReduction(_method);
         CoreIntrinsics.ValidateVectorAsCallable(_method);
@@ -1296,6 +1298,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsVectorExplicit(_method)
             || CoreIntrinsics.IsConcreteVectorElement(_method)
             || CoreIntrinsics.IsVectorFloatingPointTernary(_method)
+            || CoreIntrinsics.IsVectorLog(_method)
             || CoreIntrinsics.IsVectorValueMethod(_method)
             || CoreIntrinsics.IsDateOnlyDeconstruct(_method)
             || CoreIntrinsics.IsDateTimeParserBoundary(_method)

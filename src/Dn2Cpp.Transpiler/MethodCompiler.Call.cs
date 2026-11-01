@@ -483,6 +483,7 @@ internal sealed partial class MethodCompiler
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
                 CoreIntrinsics.ValidateConcreteVectorElement(callee);
                 CoreIntrinsics.ValidateVectorFloatingPointTernary(callee);
+                CoreIntrinsics.ValidateVectorLog(callee);
                 CoreIntrinsics.ValidateVectorAlignment(callee);
                 CoreIntrinsics.ValidateConcreteVectorReduction(callee);
                 CoreIntrinsics.ValidateVectorAsCallable(callee);
@@ -718,6 +719,7 @@ internal sealed partial class MethodCompiler
                 _c.RejectVectorValueMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
                 _c.RejectVectorAlignmentMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
                 _c.RejectVectorLerpMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
+                _c.RejectVectorLogMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
                 _c.RejectConcreteVectorReductionMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
                 if (_c.TryResolveGuardedVectorAsSpec(_module, (MethodSpecificationHandle)handle, _method.Context) is { } vectorAs)
                 {
@@ -945,6 +947,11 @@ internal sealed partial class MethodCompiler
                 if (_c.TryResolveVectorEstimateReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } vectorEstimate)
                 {
                     EmitVectorFloatingPointTernary(vectorEstimate);
+                    return;
+                }
+                if (_c.TryResolveVectorLogReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } vectorLog)
+                {
+                    EmitVectorLog(vectorLog);
                     return;
                 }
                 if (_c.TryResolveConcreteVectorElementReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } concreteElement)
@@ -1688,6 +1695,7 @@ internal sealed partial class MethodCompiler
         CoreIntrinsics.ValidateConcreteVectorElement(callee);
 
         CoreIntrinsics.ValidateVectorFloatingPointTernary(callee);
+        CoreIntrinsics.ValidateVectorLog(callee);
 
         CoreIntrinsics.ValidateVectorAlignment(callee);
         CoreIntrinsics.ValidateConcreteVectorReduction(callee);
@@ -1696,6 +1704,12 @@ internal sealed partial class MethodCompiler
         if (CoreIntrinsics.IsVectorFloatingPointTernary(callee))
         {
             EmitVectorFloatingPointTernary(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsVectorLog(callee))
+        {
+            EmitVectorLog(callee);
             return;
         }
 

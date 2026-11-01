@@ -34,6 +34,16 @@ rounded to the lane type. It neither clamps the amount nor shortcuts endpoints;
 exceptional operands still participate. Scalar Lerp and internal generic vector
 Lerp remain separate. Concrete Vector2/3/4 callers keep their managed wrappers.
 
+Public floating-point portable-vector `Log` and `Log2` use the corresponding
+typed scalar C++ operation independently for each lane. The scalar library's
+platform-dependent accuracy applies; accelerated CLR polynomial results need
+not be bit-identical. Ordinary IEEE semantics are required, including gradual
+underflow and domain classification; NaN payloads are not contractual. `Log2`
+is not computed by dividing `Log` by a rounded constant. Exact CoreLib unary
+declarations and raw references guard both direct and callable routes before
+cache reuse. Internal generic logarithms remain excluded. Concrete Vector2/3/4
+callers keep their managed wrappers, including positive-one padding.
+
 ## 1. Pipeline
 
 ```

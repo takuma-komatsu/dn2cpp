@@ -86,6 +86,7 @@ internal sealed partial class Compilation
                     return null;
                 CoreIntrinsics.ValidateConcreteVectorElement(mi);
                 CoreIntrinsics.ValidateVectorFloatingPointTernary(mi);
+                CoreIntrinsics.ValidateVectorLog(mi);
                 CoreIntrinsics.ValidateVectorAlignment(mi);
                 CoreIntrinsics.ValidateConcreteVectorReduction(mi);
                 CoreIntrinsics.ValidateVectorAsCallable(mi);
@@ -336,6 +337,7 @@ internal sealed partial class Compilation
                 RejectVectorValueMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
                 RejectVectorAlignmentMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
                 RejectVectorLerpMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
+                RejectVectorLogMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
                 RejectConcreteVectorReductionMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
                 if (TryResolveGuardedVectorAsSpecForScan(module, (MethodSpecificationHandle)handle, ctx) is { } vectorAs)
                     return vectorAs;
@@ -748,6 +750,7 @@ internal sealed partial class Compilation
         RejectVectorValueMethodSpecification(module, handle, callerCtx);
         RejectVectorAlignmentMethodSpecification(module, handle, callerCtx);
         RejectVectorLerpMethodSpecification(module, handle, callerCtx);
+        RejectVectorLogMethodSpecification(module, handle, callerCtx);
         RejectConcreteVectorReductionMethodSpecification(module, handle, callerCtx);
         if (TryResolveGuardedVectorAsSpec(module, handle, callerCtx) is { } vectorAs)
             return vectorAs;
@@ -1401,6 +1404,7 @@ internal sealed partial class Compilation
         RejectBareVectorAsReference(module, handle, callerCtx);
         if (TryResolveConcreteVectorElementReference(module, handle, callerCtx) is { } concreteElement) return concreteElement;
         if (TryResolveVectorEstimateReference(module, handle, callerCtx) is { } vectorEstimate) return vectorEstimate;
+        if (TryResolveVectorLogReference(module, handle, callerCtx) is { } vectorLog) return vectorLog;
         var reader = module.Reader;
         var mr = reader.GetMemberReference(handle);
         ClassInfo cls;
@@ -2194,6 +2198,7 @@ internal sealed partial class Compilation
         RejectBareVectorAsReference(module, handle, callerCtx);
         if (TryResolveConcreteVectorElementReference(module, handle, callerCtx) is { } concreteElement) return concreteElement;
         if (TryResolveVectorEstimateReference(module, handle, callerCtx) is { } vectorEstimate) return vectorEstimate;
+        if (TryResolveVectorLogReference(module, handle, callerCtx) is { } vectorLog) return vectorLog;
         var reader = module.Reader;
         var mr = reader.GetMemberReference(handle);
         if (mr.Parent.Kind is not (HandleKind.TypeReference or HandleKind.TypeDefinition))
