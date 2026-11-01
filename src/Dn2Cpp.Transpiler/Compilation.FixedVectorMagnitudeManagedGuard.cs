@@ -55,6 +55,20 @@ internal sealed partial class Compilation
             if (!CoreIntrinsics.IsFixedVectorManagedValueClass(half)) throw VectorMagnitudeGuardUnsupported();
             lower = ResolveMagnitudeAbsCall(method, il[callIndex].Token, half, 0x1e);
         }
+        else if (method.Name is "Max" or "Min" or "GreaterThan" or "LessThan")
+        {
+            if (!CoreIntrinsics.ReadVectorMagnitudeSignature(reader.GetBlobReader(definition.Signature), out int vectorToken)
+                || (vectorToken & 3) != 0) throw VectorMagnitudeGuardUnsupported();
+            var value = reader.GetTypeDefinition(SRME.TypeDefinitionHandle(vectorToken >> 2));
+            if (!value.GetDeclaringType().IsNil || value.GetGenericParameters().Count != 1
+                || !reader.StringComparer.Equals(value.Namespace, "System.Runtime.Intrinsics")
+                || !reader.StringComparer.Equals(value.Name, lowerName + "`1")) throw VectorMagnitudeGuardUnsupported();
+            var signature = definition.DecodeSignature(SigProvider, method.Context);
+            if (signature.ReturnType.Class is not { } half) throw VectorMagnitudeGuardUnsupported();
+            EnsureShape(half);
+            if (!CoreIntrinsics.IsFixedVectorManagedValueClass(half)) throw VectorMagnitudeGuardUnsupported();
+            lower = ResolveNumberBinaryCall(method, il[callIndex].Token, half, method.Name, 0x1e);
+        }
         else
         {
             lower = TryResolveVectorMagnitudeSpec(module, (MethodSpecificationHandle)handle, method.Context)
@@ -66,6 +80,8 @@ internal sealed partial class Compilation
         ValidateMagnitudeNoInitializer(lower.DeclaringClass);
         ValidateMagnitudeNoInitializer(lower.Signature.ReturnType.Class!);
         ValidateFixedGenericVectorEstimateField(method, il[start + 1].Token, lower.Signature.ReturnType.Class!);
-        return unary ? ResolveMagnitudeAbsGuard(lower) : ResolveVectorMagnitudeManagedGuard(lower);
+        return unary ? ResolveMagnitudeAbsGuard(lower)
+            : method.Name is "Max" or "Min" or "GreaterThan" or "LessThan" ? ResolveNumberDependencyGuard(lower)
+            : ResolveVectorMagnitudeManagedGuard(lower);
     }
 }

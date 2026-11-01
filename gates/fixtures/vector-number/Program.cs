@@ -17,10 +17,15 @@ internal static class Program
     private static string Bits(double value) => BitConverter.DoubleToInt64Bits(value).ToString("X16");
     // An unreachable body proves the Diet axis rewrites the application.
     private static int DietRewriteSentinel() => 548246;
-    private static void Main()
+    private static void Main(string[] args)
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        if (args.Length == 1 && args[0] == "--capabilities")
+        {
+            NumberManagedGuards.Capabilities();
+            return;
+        }
         uint[] fb = { 0x00000000U, 0x80000000U, 0x3F800000U, 0xBF800000U, 0x3F800001U, 0xBF800001U, 0x40000000U, 0xC0000000U, 0x00000001U, 0x80000001U, 0x007FFFFFU, 0x807FFFFFU, 0x00800000U, 0x80800000U, 0x7F7FFFFFU, 0xFF7FFFFFU, 0x7F800000U, 0xFF800000U, 0x7FC12345U, 0xFFC54321U, 0x7FC54321U, 0xFFC12345U, 0x7F812345U, 0xFF854321U };
         ulong[] db = { 0x0000000000000000UL, 0x8000000000000000UL, 0x3FF0000000000000UL, 0xBFF0000000000000UL, 0x3FF0000000000001UL, 0xBFF0000000000001UL, 0x4000000000000000UL, 0xC000000000000000UL, 0x0000000000000001UL, 0x8000000000000001UL, 0x000FFFFFFFFFFFFFUL, 0x800FFFFFFFFFFFFFUL, 0x0010000000000000UL, 0x8010000000000000UL, 0x7FEFFFFFFFFFFFFFUL, 0xFFEFFFFFFFFFFFFFUL, 0x7FF0000000000000UL, 0xFFF0000000000000UL, 0x7FF8123456789ABCUL, 0xFFF8543212345678UL, 0x7FF8543212345678UL, 0xFFF8123456789ABCUL, 0x7FF0123456789ABCUL, 0xFFF0543212345678UL };
         var fa = new float[fb.Length]; var da = new double[db.Length];
@@ -53,6 +58,7 @@ internal static class Program
         TestMinNumberc3(fa);
         TestMinNumberc4(fa);
         Console.WriteLine("vector-number:all-routes-passed");
+        NumberManagedGuards.Run();
     }
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static Vector64<float> Operand64f(int step, Vector64<float> value) { Effect(step); return value; }

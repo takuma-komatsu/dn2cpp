@@ -65,12 +65,15 @@ helpers for exact public generic declarations closed over float or double.
 Their signed numeric ordering is distinct from magnitude selection. One NaN
 selects the number; signed-zero ties select positive zero for maximum and
 negative zero for minimum. Direct and callable routes validate original
-signatures before cache reuse and evaluate operands once. Numerics unsupported
+signatures before cache reuse and evaluate operands once. Unsupported
 managed-value routes validate both hardware and software branches before calling
 the genuine Count guard. The hardware proof follows MaxNumber through Max and
 GreaterThan, or MinNumber through Min and LessThan; comparison guards precede
-selection. These proof dependencies do not admit unsupported arithmetic or
-fixed-width Number guards.
+selection. Fixed-width branches authenticate strict lower-half descent to the
+closed Vector64 Count guard, including the comparison dependencies. Raw bridge
+and half-call arguments remain distinct, and cached models cannot replace their
+declaration or inner-body authority. These proof dependencies do not admit
+unsupported Max, Min or comparison arithmetic.
 
 ## 1. Pipeline
 

@@ -9,6 +9,7 @@ internal static class GenericVectorNumberGuards
     internal static void Check(object compilation, object core, string corePath, string operation,
         object[] controls, Action<bool, string> check)
     {
+        FixedVectorNumberGuards.CheckShared(compilation, core, corePath, operation, controls, check);
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         object Get(object value, string name) => value.GetType().GetField(name, flags) is { } field ? field.GetValue(value)! : value.GetType().GetProperty(name, flags)!.GetValue(value)!;
         void Set(object value, string name, object replacement) => value.GetType().GetField(name, flags)!.SetValue(value, replacement);
@@ -194,7 +195,7 @@ internal static class GenericVectorNumberGuards
             var selectionBridge = bridgeResolver.Invoke(compilation, new[] { numberMath, (object)selectionReference.MetadataToken.ToInt32(), vector, selectedName })!;
             var selectionBridgeBody = bridges.Single(m => m.Name.EndsWith("." + selectedName, StringComparison.Ordinal));
             var selectionSpec = selectionBridgeBody.Body.Instructions.Select(i => i.Operand).OfType<Mono.Cecil.GenericInstanceMethod>().Single();
-            var selection = callResolver.Invoke(compilation, new[] { selectionBridge, (object)selectionSpec.MetadataToken.ToInt32(), vector, selectedName })!;
+            var selection = callResolver.Invoke(compilation, new[] { selectionBridge, (object)selectionSpec.MetadataToken.ToInt32(), vector, selectedName, (object)0x13 })!;
             var selectionMathSpec = selectedPublic.Body.Instructions.Select(i => i.Operand).OfType<Mono.Cecil.GenericInstanceMethod>().Single(m => m.DeclaringType.Name == "VectorMath");
             var selectionMath = mathResolver.Invoke(compilation, new[] { selection, (object)selectionMathSpec.MetadataToken.ToInt32(), selectedName })!;
             var selectionDefinition = math.Methods.Single(m => m.Name == selectedName);
@@ -202,7 +203,7 @@ internal static class GenericVectorNumberGuards
             var comparisonBridge = bridgeResolver.Invoke(compilation, new[] { selectionMath, (object)comparisonReference.MetadataToken.ToInt32(), vector, comparisonName })!;
             var comparisonBridgeBody = bridges.Single(m => m.Name.EndsWith("." + comparisonName, StringComparison.Ordinal));
             var comparisonSpec = comparisonBridgeBody.Body.Instructions.Select(i => i.Operand).OfType<Mono.Cecil.GenericInstanceMethod>().Single();
-            var resolvedComparison = callResolver.Invoke(compilation, new[] { comparisonBridge, (object)comparisonSpec.MetadataToken.ToInt32(), vector, comparisonName })!;
+            var resolvedComparison = callResolver.Invoke(compilation, new[] { comparisonBridge, (object)comparisonSpec.MetadataToken.ToInt32(), vector, comparisonName, (object)0x13 })!;
             var dependencies = new[] { numberMath, selectionBridge, selection, selectionMath, comparisonBridge, resolvedComparison };
             check(dependencies.Distinct().Count() == 6, "number-exact-resolved-proof-dependencies");
             void PoisonDependency(object value, string field, object replacement, string label)

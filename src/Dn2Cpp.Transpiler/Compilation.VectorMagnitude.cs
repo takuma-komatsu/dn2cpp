@@ -88,9 +88,7 @@ internal sealed partial class Compilation
             return null;
         }
         if (argument.Class is { } value) EnsureShape(value);
-        if (!(CoreIntrinsics.IsVectorMagnitudeElement(argument)
-                || (!CoreIntrinsics.IsVectorNumberName(operation) || owner.FullName == "System.Numerics.Vector")
-                    && CoreIntrinsics.IsVectorManagedValueElement(argument))
+        if (!(CoreIntrinsics.IsVectorMagnitudeElement(argument) || CoreIntrinsics.IsVectorManagedValueElement(argument))
             || !ReadVectorValueElement(module, ref raw, context, argument) || raw.RemainingBytes != 0)
             throw VectorMagnitudeUnsupported();
         return InstantiateMethodOnClass(owner, owner.Module, definitionHandle, new[] { argument });

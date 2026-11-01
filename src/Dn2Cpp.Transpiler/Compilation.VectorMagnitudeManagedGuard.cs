@@ -78,12 +78,22 @@ internal sealed partial class Compilation
     {
         var handle = SRME.EntityHandle(token);
         if (handle.Kind != HandleKind.MethodDefinition) throw VectorMagnitudeGuardUnsupported();
+        var definition = method.Module.Reader.GetMethodDefinition((MethodDefinitionHandle)handle);
+        if (definition.GetDeclaringType() != method.DeclaringClass.Handle
+            || !method.Module.Reader.StringComparer.Equals(definition.Name, "get_IsHardwareAccelerated")
+            || definition.Attributes != (MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig | MethodAttributes.SpecialName)
+            || definition.ImplAttributes != MethodImplAttributes.IL || definition.RelativeVirtualAddress == 0
+            || definition.GetGenericParameters().Count != 0
+            || !GenericVectorBooleanGetterSignature(method.Module.Reader.GetBlobReader(definition.Signature)))
+            throw VectorMagnitudeGuardUnsupported();
         var getter = ResolveMethodHandle(method.Module, handle, GenericContext.Empty);
-        if (getter is null || getter.DeclaringClass != method.DeclaringClass || getter.Name != "get_IsHardwareAccelerated"
-            || getter.Attributes != (MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig | MethodAttributes.SpecialName)
-            || getter.ImplAttributes != MethodImplAttributes.IL || getter.Context.MethodArgs.Length != 0
-            || !GenericVectorBooleanGetterSignature(method.Module.Reader.GetBlobReader(
-                method.Module.Reader.GetMethodDefinition(getter.Handle).Signature))) throw VectorMagnitudeGuardUnsupported();
+        if (getter is null) throw VectorMagnitudeGuardUnsupported();
+        ValidateMagnitudeResolvedDefinition(getter, method.Module, (MethodDefinitionHandle)handle);
+        if (getter.DeclaringClass != method.DeclaringClass || getter.Context.MethodArgs.Length != 0 || getter.Context.TypeArgs.Length != 0
+            || getter.Signature.Header.RawValue != 0 || getter.Signature.GenericParameterCount != 0
+            || getter.Signature.RequiredParameterCount != 0 || getter.Signature.ParameterTypes.Length != 0
+            || getter.Signature.ReturnType is not { Kind: TypeKind.Primitive, IsCanonPlaceholder: false, Primitive: PrimitiveTypeCode.Boolean })
+            throw VectorMagnitudeGuardUnsupported();
         var il = GenericVectorGuardInstructions(getter);
         // The exact recursive CoreLib intrinsic is a pure hardware query on either backend.
         if (il.Count != 2 || il[0].OpCode != ILOpCode.Call || il[0].Token != token || il[1].OpCode != ILOpCode.Ret)
@@ -123,9 +133,16 @@ internal sealed partial class Compilation
         var result = ResolveMethodSpec(module, (MethodSpecificationHandle)handle, caller.Context);
         ValidateMagnitudeResolvedDefinition(result, module, (MethodDefinitionHandle)spec.Method);
         if (result.Module != module || result.PInvoke is not null || result.IsSynthetic
-            || result.Signature.ReturnType.Class != vector || result.Signature.ParameterTypes is not [var left, var right]
+            || result.DeclaringClass.FullName != "System.Runtime.Intrinsics.VectorMath"
+            || result.DeclaringClass.GenericArity != 0 || result.DeclaringClass.Context.TypeArgs.Length != 0
+            || result.Signature.Header.RawValue != 0x10 || result.Signature.GenericParameterCount != 2
+            || result.Signature.RequiredParameterCount != 2
+            || result.Signature.ReturnType is not { Kind: TypeKind.Class, IsCanonPlaceholder: false } returned || returned.Class != vector
+            || result.Signature.ParameterTypes is not [{ Kind: TypeKind.Class, IsCanonPlaceholder: false } left,
+                { Kind: TypeKind.Class, IsCanonPlaceholder: false } right]
             || left.Class != vector || right.Class != vector || result.Context.TypeArgs.Length != 0
-            || result.Context.MethodArgs is not [var actualVector, var actualElement]
+            || result.Context.MethodArgs is not [{ Kind: TypeKind.Class, IsCanonPlaceholder: false } actualVector,
+                { Kind: TypeKind.Class, IsCanonPlaceholder: false } actualElement]
             || actualVector.Class != vector || actualElement.Class != element.Class) throw VectorMagnitudeGuardUnsupported();
         ValidateMagnitudeNoInitializer(result.DeclaringClass);
         return result;
@@ -311,6 +328,7 @@ internal sealed partial class Compilation
 
     private static void ValidateMagnitudeResolvedDefinition(MethodInfo method, Module module, MethodDefinitionHandle handle)
     {
+        if (handle.IsNil) throw VectorMagnitudeGuardUnsupported();
         var definition = module.Reader.GetMethodDefinition(handle);
         if (method.Module != module || method.Handle != handle || method.DeclaringClass.Module != module
             || method.DeclaringClass.Handle != definition.GetDeclaringType()

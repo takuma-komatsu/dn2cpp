@@ -9,10 +9,11 @@ internal static class VectorMagnitudeGuards
     private delegate bool RawPredicate(BlobReader signature, out int token);
     public static bool Run(string[] args)
     {
-        if (args.Length != 4 || args[0] is not ("--vector-magnitude-guards" or "--vector-number-guards")) return false;
-        bool number = args[0] == "--vector-number-guards";
+        if (FixedVectorNumberGuards.BuildDependency(args)) return true;
+        if (args.Length != 4 || args[0] is not ("--vector-magnitude-guards" or "--vector-number-guards" or "--vector-number-shared-authority" or "--vector-number-shared-audit")) return false;
+        bool number = args[0] is "--vector-number-guards" or "--vector-number-shared-authority" or "--vector-number-shared-audit";
         foreach (string operation in number ? VectorMagnitudeFixture.NumberOperations : VectorMagnitudeFixture.Operations)
-        foreach (int width in new[] { 0, 64, 128, 256, 512 }) RunCase(args, operation, width, number);
+        foreach (int width in args[0] is "--vector-number-shared-authority" or "--vector-number-shared-audit" ? new[] { 0 } : new[] { 0, 64, 128, 256, 512 }) RunCase(args, operation, width, number);
         return true;
     }
 
@@ -23,7 +24,7 @@ internal static class VectorMagnitudeGuards
         const BindingFlags instance = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         const BindingFlags statics = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
         var cases = new List<(string Element, string Route, string Mutation)>();
-        var admitted = number && width != 0 ? new[] { "float", "double" } : new[] { "float", "double", "decimal", "enum", "struct", "refs", "int128", "uint128" };
+        var admitted = new[] { "float", "double", "decimal", "enum", "struct", "refs", "int128", "uint128" };
         string prefix = number ? "vector-number" : "vector-magnitude";
         foreach (var element in admitted)
         foreach (var route in new[] { "direct", "address", "calli" })
@@ -116,8 +117,17 @@ internal static class VectorMagnitudeGuards
             Check((bool)managedPredicate.Invoke(null, new[] { pair.Value.Method })! == managed, "route-kind-" + pair.Key);
             Check((bool)predicate.Invoke(null, new[] { pair.Value.Method })! != managed, "numeric-route-kind-" + pair.Key);
         }
+        if (args[0] is "--vector-number-shared-authority" or "--vector-number-shared-audit")
+        {
+            FixedVectorNumberGuards.CheckShared(compilation, core, args[2], operation,
+                good.Where(p => p.Key is not ("float" or "double")).Select(p => p.Value.Method).ToArray(), Check, args[0] == "--vector-number-shared-audit");
+            return;
+        }
         if (number && width == 0)
             GenericVectorNumberGuards.Check(compilation, core, args[2], operation,
+                good.Where(p => p.Key is not ("float" or "double")).Select(p => p.Value.Method).ToArray(), Check);
+        if (number && width != 0)
+            FixedVectorNumberGuards.Check(compilation, core, args[2], operation, width,
                 good.Where(p => p.Key is not ("float" or "double")).Select(p => p.Value.Method).ToArray(), Check);
         if (!number && width == 0)
             GenericVectorMagnitudeGuards.Check(compilation, core, args[2], operation,

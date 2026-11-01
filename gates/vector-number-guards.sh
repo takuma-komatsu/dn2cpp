@@ -12,6 +12,17 @@ vector_number_authority_probe() {
     gate_capture_ok "$out/guards" run_bounded dotnet "$fixture" --vector-number-guards \
         "$compiler" "$_CG_CORELIB" "$out/model.dll" || return 1
     [ "$(grep -Ec '^vector-number-guards:(Max|Min)Number:width=(0|64|128|256|512):checks=[0-9]+$' "$out/guards.stdout")" -eq 10 ] || return 1
+    [ "$(grep -Ec '^vector-number-fixed-authority:(Max|Min)Number:width=(64|128|256|512):elements=6:raw=[0-9]+:warm=[0-9]+$' "$out/guards.stdout")" -eq 8 ] || return 1
+    [ "$(grep -Ec '^vector-number-shared-authority:(Max|Min)Number:elements=6:raw=[0-9]+:warm=[0-9]+$' "$out/guards.stdout")" -eq 2 ] || return 1
+    awk -F: '/^vector-number-(fixed|shared)-authority:/ {
+        for (i = 1; i <= NF; i++) {
+            split($i, value, "=")
+            if (value[1] == "elements") { if ($1 == "vector-number-fixed-authority") fixed += value[2]; else shared += value[2] }
+            if (value[1] == "raw") raw += value[2]
+            if (value[1] == "warm") warm += value[2]
+        }
+    } END { printf "vector-number-authority-model:fixed-roots=%d:shared-roots=%d:raw-mutations=%d:warm-mutations=%d\n", fixed, shared, raw, warm }' \
+        "$out/guards.stdout" > "$out/model-summary.txt" || return 1
     for operation in MaxNumber MinNumber; do
         for width in 0 64 128 256 512; do
             for element in float double; do
@@ -26,15 +37,17 @@ vector_number_authority_probe() {
                 done
             done
         done
-        for element in decimal enum struct refs int128 uint128; do
-            for route in direct address calli; do
-                case_out=$(mktemp -d "$out/$operation-0-managed-$element-$route-valid-XXXXXX") || return 1
-                input="$case_out/input.dll"
-                gate_capture_ok "$case_out/generate" run_bounded dotnet "$fixture" --vector-number-fixture \
-                    "$input" "$_CG_CORELIB" "$operation:0:$element:$route:valid" || return 1
-                gate_capture_ok "$case_out/accept" invoke_cli "$input" -r "$_CG_CORELIB" --no-ildiet -o "$case_out/emitted" || return 1
-                positives=$((positives + 1))
-                printf '%s\n' "$operation:0:$element:$route:valid" >> "$out/accepted.txt" || return 1
+        for width in 0 64 128 256 512; do
+            for element in decimal enum struct refs int128 uint128; do
+                for route in direct address calli; do
+                    case_out=$(mktemp -d "$out/$operation-$width-managed-$element-$route-valid-XXXXXX") || return 1
+                    input="$case_out/input.dll"
+                    gate_capture_ok "$case_out/generate" run_bounded dotnet "$fixture" --vector-number-fixture \
+                        "$input" "$_CG_CORELIB" "$operation:$width:$element:$route:valid" || return 1
+                    gate_capture_ok "$case_out/accept" invoke_cli "$input" -r "$_CG_CORELIB" --no-ildiet -o "$case_out/emitted" || return 1
+                    positives=$((positives + 1))
+                    printf '%s\n' "$operation:$width:$element:$route:valid" >> "$out/accepted.txt" || return 1
+                done
             done
         done
         for route in direct address calli; do
@@ -69,7 +82,7 @@ vector_number_authority_probe() {
                 count=$((count + 1))
                 printf '%s\n' "$operation:128:float:$route:$mutation" >> "$out/rejected.txt" || return 1
             done
-            for element in int uint long ulong byte sbyte short ushort nint nuint bool char object decimal enum struct refs int128 uint128; do
+            for element in int uint long ulong byte sbyte short ushort nint nuint bool char object; do
                 case_out=$(mktemp -d "$out/$operation-$route-$element-XXXXXX") || return 1
                 input="$case_out/input.dll"
                 gate_capture_ok "$case_out/generate" run_bounded dotnet "$fixture" --vector-number-fixture \
@@ -82,7 +95,8 @@ vector_number_authority_probe() {
             done
         done
     done
-    [ "$positives" -eq 102 ] && [ "$((count + upstream))" -eq 306 ] && [ "$upstream" -le 6 ] || return 1
+    [ "$positives" -eq 246 ] && [ "$((count + upstream))" -eq 270 ] && [ "$upstream" -le 6 ] || return 1
     printf 'vector-number-authority:accepted=%s:rejected=%s:upstream-parser-rejected=%s\n' "$positives" "$count" "$upstream" > "$out/summary.txt" || return 1
+    cat "$out/model-summary.txt" >> "$out/summary.txt" || return 1
     cat "$out/summary.txt"
 }

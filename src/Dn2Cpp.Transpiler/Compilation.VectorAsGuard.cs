@@ -169,6 +169,7 @@ internal sealed partial class Compilation
             || method.Signature.Header.RawValue != 0 || method.Signature.GenericParameterCount != 0
             || method.Name != (equality ? "op_Equality" : "GetTypeFromHandle"))
             throw GuardedVectorAsUnsupported();
+        ValidateMagnitudeResolvedDefinition(method, module, (MethodDefinitionHandle)handle);
         var definition = module.Reader.GetMethodDefinition(method.Handle);
         var attributes = MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig;
         if (equality) attributes |= MethodAttributes.SpecialName;
@@ -193,10 +194,12 @@ internal sealed partial class Compilation
                 throw GuardedVectorAsUnsupported();
         }
         var signature = method.Signature;
-        if (equality ? signature.ReturnType.Primitive != PrimitiveTypeCode.Boolean
-                || signature.ParameterTypes is not [var left, var right]
+        if (equality ? signature.ReturnType is not { Kind: TypeKind.Primitive, IsCanonPlaceholder: false, Primitive: PrimitiveTypeCode.Boolean }
+                || signature.ParameterTypes is not [{ Kind: TypeKind.Class, IsCanonPlaceholder: false } left,
+                    { Kind: TypeKind.Class, IsCanonPlaceholder: false } right]
                 || left.Class != method.DeclaringClass || right.Class != method.DeclaringClass
-            : signature.ReturnType.Class != method.DeclaringClass || signature.ParameterTypes is not [var argument]
+            : signature.ReturnType is not { Kind: TypeKind.Class, IsCanonPlaceholder: false } returned || returned.Class != method.DeclaringClass
+                || signature.ParameterTypes is not [{ Kind: TypeKind.Class, IsCanonPlaceholder: false } argument]
                 || argument.Class is not { FullName: "System.RuntimeTypeHandle" } owner || owner.Module != module)
             throw GuardedVectorAsUnsupported();
     }

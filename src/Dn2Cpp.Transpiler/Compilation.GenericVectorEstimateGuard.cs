@@ -59,7 +59,7 @@ internal sealed partial class Compilation
         if (specification.Method.Kind != HandleKind.MethodDefinition) throw GenericVectorGuardUnsupported();
         var blob = module.Reader.GetBlobReader(specification.Signature);
         if (blob.RemainingBytes < 3 || blob.ReadByte() != 0x0a || blob.ReadByte() != 1
-            || !ReadVectorValueType(module, ref blob, estimate.Context, vector) || blob.RemainingBytes != 0)
+            || !ReadFixedGenericVectorEstimateType(ref blob, vector.Handle, 0x1e) || blob.RemainingBytes != 0)
             throw GenericVectorGuardUnsupported();
         var definitionHandle = (MethodDefinitionHandle)specification.Method;
         var definition = module.Reader.GetMethodDefinition(definitionHandle);
@@ -87,6 +87,18 @@ internal sealed partial class Compilation
         }
         // Unsafe's exact intrinsic is a no-op; its managed fallback must remain a throw stub.
         var skip = ResolveMethodSpec(module, (MethodSpecificationHandle)handle, estimate.Context);
+        ValidateMagnitudeResolvedDefinition(skip, module, definitionHandle);
+        if (skip.DeclaringClass.FullName != "System.Runtime.CompilerServices.Unsafe"
+            || skip.DeclaringClass.GenericArity != 0 || skip.DeclaringClass.Context.TypeArgs.Length != 0
+            || skip.Context.TypeArgs.Length != 0 || skip.Context.MethodArgs is not [var argument]
+            || argument.Kind != TypeKind.Class || argument.IsCanonPlaceholder || argument.Class != vector
+            || skip.Signature.Header.RawValue != 0x10 || skip.Signature.GenericParameterCount != 1
+            || skip.Signature.RequiredParameterCount != 1
+            || skip.Signature.ReturnType is not { Kind: TypeKind.Primitive, IsCanonPlaceholder: false, Primitive: PrimitiveTypeCode.Void }
+            || skip.Signature.ParameterTypes is not [{ Kind: TypeKind.ByRef, IsCanonPlaceholder: false,
+                Element: { Kind: TypeKind.Class, IsCanonPlaceholder: false } value }] || value.Class != vector)
+            throw GenericVectorGuardUnsupported();
+        ValidateMagnitudeNoInitializer(skip.DeclaringClass);
         var instructions = GenericVectorGuardInstructions(skip);
         if (instructions.Count != 2 || instructions[0].OpCode != ILOpCode.Newobj
             || instructions[1].OpCode != ILOpCode.Throw)
@@ -106,6 +118,11 @@ internal sealed partial class Compilation
             throw GenericVectorGuardUnsupported();
         var token = SRME.EntityHandle(instructions[0].Token);
         if (token.Kind != HandleKind.MethodSpecification) throw GenericVectorGuardUnsupported();
+        var specification = count.Module.Reader.GetMethodSpecification((MethodSpecificationHandle)token);
+        var raw = count.Module.Reader.GetBlobReader(specification.Signature);
+        if (specification.Method.Kind != HandleKind.MethodDefinition || raw.RemainingBytes != 4
+            || raw.ReadByte() != 0x0a || raw.ReadByte() != 1 || raw.ReadByte() != 0x13 || raw.ReadByte() != 0)
+            throw GenericVectorGuardUnsupported();
         var guard = TryResolveVectorManagedThrowSpec(count.Module, (MethodSpecificationHandle)token, count.Context);
         if (guard is null || !CoreIntrinsics.IsVectorManagedThrowHelper(guard)
             || guard.Name != (CoreIntrinsics.IsVectorExplicitOwner(count.DeclaringClass)
@@ -128,32 +145,59 @@ internal sealed partial class Compilation
         if (sinkToken.Kind != HandleKind.MethodDefinition) throw GenericVectorGuardUnsupported();
         var sink = ResolveMethodHandle(guard.Module, sinkToken, GenericContext.Empty);
         if (sink is null || sink.DeclaringClass != guard.DeclaringClass
-            || sink.Name != "ThrowNotSupportedException" || sink.Context.MethodArgs.Length != 0
+            || sink.Name != "ThrowNotSupportedException" || sink.Context.MethodArgs.Length != 0 || sink.Context.TypeArgs.Length != 0
             || sink.Attributes != (MethodAttributes.Assembly | MethodAttributes.Static | MethodAttributes.HideBySig)
             || sink.ImplAttributes != MethodImplAttributes.IL
-            || sink.Signature.ParameterTypes is not [{ Class: { } resource }]
+            || sink.Signature.ParameterTypes is not [{ Kind: TypeKind.Class, IsCanonPlaceholder: false, Class: { } resource }]
             || resource.Module != guard.Module || resource.FullName != "System.ExceptionResource"
-            || !resource.IsEnum || !sink.Signature.ReturnType.IsVoid
+            || !resource.IsEnum
+            || sink.Signature.ReturnType is not { Kind: TypeKind.Primitive, IsCanonPlaceholder: false, Primitive: PrimitiveTypeCode.Void }
             || sink.Signature.Header.RawValue != 0 || sink.Signature.GenericParameterCount != 0
             || sink.Signature.RequiredParameterCount != 1)
             throw GenericVectorGuardUnsupported();
+        ValidateMagnitudeResolvedDefinition(sink, guard.Module, (MethodDefinitionHandle)sinkToken);
+        var sinkSignature = guard.Module.Reader.GetBlobReader(guard.Module.Reader.GetMethodDefinition((MethodDefinitionHandle)sinkToken).Signature);
+        if (sinkSignature.RemainingBytes < 5 || sinkSignature.ReadByte() != 0 || sinkSignature.ReadByte() != 1
+            || sinkSignature.ReadByte() != 1 || !VectorAsRawClass(ref sinkSignature, resource, 0x11)
+            || sinkSignature.RemainingBytes != 0) throw GenericVectorGuardUnsupported();
         var sinkBody = GenericVectorGuardInstructions(sink);
         if (sinkBody.Count != 4 || sinkBody[0].OpCode != ILOpCode.Ldarg_0
             || sinkBody[1].OpCode != ILOpCode.Call || sinkBody[2].OpCode != ILOpCode.Newobj
             || sinkBody[3].OpCode != ILOpCode.Throw)
             throw GenericVectorGuardUnsupported();
-        var resourceGetter = ResolveMethodHandle(sink.Module, SRME.EntityHandle(sinkBody[1].Token), GenericContext.Empty);
+        var resourceToken = SRME.EntityHandle(sinkBody[1].Token);
+        var constructorToken = SRME.EntityHandle(sinkBody[2].Token);
+        if (resourceToken.Kind != HandleKind.MethodDefinition || constructorToken.Kind != HandleKind.MethodDefinition)
+            throw GenericVectorGuardUnsupported();
+        var resourceGetter = ResolveMethodHandle(sink.Module, resourceToken, GenericContext.Empty);
         if (resourceGetter is null || resourceGetter.DeclaringClass != sink.DeclaringClass
             || resourceGetter.Name != "GetResourceString" || !resourceGetter.IsStatic
             || resourceGetter.Signature.Header.RawValue != 0 || resourceGetter.Signature.GenericParameterCount != 0
-            || resourceGetter.Signature.ParameterTypes is not [var resourceArgument] || resourceArgument.Class != resource
-            || resourceGetter.Signature.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String })
+            || resourceGetter.Signature.ParameterTypes is not [{ Kind: TypeKind.Class, IsCanonPlaceholder: false } resourceArgument]
+            || resourceArgument.Class != resource
+            || resourceGetter.Signature.ReturnType is not { Kind: TypeKind.Primitive, IsCanonPlaceholder: false, Primitive: PrimitiveTypeCode.String })
             throw GenericVectorGuardUnsupported();
-        var constructor = ResolveMethodHandle(sink.Module, SRME.EntityHandle(sinkBody[2].Token), GenericContext.Empty);
+        ValidateMagnitudeResolvedDefinition(resourceGetter, sink.Module, (MethodDefinitionHandle)resourceToken);
+        var resourceSignature = sink.Module.Reader.GetBlobReader(sink.Module.Reader.GetMethodDefinition((MethodDefinitionHandle)resourceToken).Signature);
+        if (resourceSignature.RemainingBytes < 5 || resourceSignature.ReadByte() != 0 || resourceSignature.ReadByte() != 1
+            || resourceSignature.ReadByte() != 0x0e || !VectorAsRawClass(ref resourceSignature, resource, 0x11)
+            || resourceSignature.RemainingBytes != 0 || resourceGetter.Context.TypeArgs.Length != 0
+            || resourceGetter.Context.MethodArgs.Length != 0 || resourceGetter.Signature.RequiredParameterCount != 1)
+            throw GenericVectorGuardUnsupported();
+        var constructor = ResolveMethodHandle(sink.Module, constructorToken, GenericContext.Empty);
         if (constructor is null || constructor.Module != sink.Module
             || constructor.DeclaringClass.FullName != "System.NotSupportedException"
             || constructor.Name != ".ctor" || constructor.IsStatic
-            || constructor.Signature.ParameterTypes is not [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String }])
+            || constructor.Signature.ParameterTypes is not [{ Kind: TypeKind.Primitive, IsCanonPlaceholder: false, Primitive: PrimitiveTypeCode.String }])
+            throw GenericVectorGuardUnsupported();
+        ValidateMagnitudeResolvedDefinition(constructor, sink.Module, (MethodDefinitionHandle)constructorToken);
+        var constructorSignature = sink.Module.Reader.GetBlobReader(sink.Module.Reader.GetMethodDefinition((MethodDefinitionHandle)constructorToken).Signature);
+        if (constructorSignature.RemainingBytes != 4 || constructorSignature.ReadByte() != 0x20
+            || constructorSignature.ReadByte() != 1 || constructorSignature.ReadByte() != 1 || constructorSignature.ReadByte() != 0x0e
+            || constructor.Context.TypeArgs.Length != 0 || constructor.Context.MethodArgs.Length != 0
+            || constructor.Signature.Header.RawValue != 0x20 || constructor.Signature.GenericParameterCount != 0
+            || constructor.Signature.RequiredParameterCount != 1
+            || constructor.Signature.ReturnType is not { Kind: TypeKind.Primitive, IsCanonPlaceholder: false, Primitive: PrimitiveTypeCode.Void })
             throw GenericVectorGuardUnsupported();
     }
 
@@ -167,10 +211,23 @@ internal sealed partial class Compilation
             || !module.Reader.StringComparer.Equals(reference.Name, "get_IsSupported"))
             throw GenericVectorGuardUnsupported();
         var owner = module.Reader.GetBlobReader(module.Reader.GetTypeSpecification((TypeSpecificationHandle)reference.Parent).Signature);
-        if (!ReadVectorValueType(module, ref owner, guard.Context, vector) || owner.RemainingBytes != 0)
+        if (!ReadFixedGenericVectorEstimateType(ref owner, vector.Handle, 0x1e) || owner.RemainingBytes != 0)
             throw GenericVectorGuardUnsupported();
         var raw = module.Reader.GetBlobReader(reference.Signature);
         if (!GenericVectorBooleanGetterSignature(raw)) throw GenericVectorGuardUnsupported();
+        MethodDefinitionHandle expected = default;
+        foreach (var candidate in module.Reader.GetTypeDefinition(vector.Handle).GetMethods())
+        {
+            var definition = module.Reader.GetMethodDefinition(candidate);
+            if (!module.Reader.StringComparer.Equals(definition.Name, "get_IsSupported")) continue;
+            if (!expected.IsNil || definition.GetDeclaringType() != vector.Handle || definition.GetGenericParameters().Count != 0
+                || definition.Attributes != (MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig | MethodAttributes.SpecialName)
+                || definition.ImplAttributes != MethodImplAttributes.AggressiveInlining || definition.RelativeVirtualAddress == 0
+                || !GenericVectorBooleanGetterSignature(module.Reader.GetBlobReader(definition.Signature)))
+                throw GenericVectorGuardUnsupported();
+            expected = candidate;
+        }
+        if (expected.IsNil) throw GenericVectorGuardUnsupported();
         var getter = ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, guard.Context);
         if (getter.DeclaringClass != vector || getter.Module != module || getter.IsSynthetic
             || getter.Handle.IsNil || getter.Context.MethodArgs.Length != 0
@@ -178,9 +235,12 @@ internal sealed partial class Compilation
             || getter.ImplAttributes != MethodImplAttributes.AggressiveInlining
             || getter.Rva == 0 || getter.PInvoke is not null)
             throw GenericVectorGuardUnsupported();
-        var definition = module.Reader.GetMethodDefinition(getter.Handle);
-        if (definition.GetDeclaringType() != vector.Handle || definition.GetGenericParameters().Count != 0
-            || !GenericVectorBooleanGetterSignature(module.Reader.GetBlobReader(definition.Signature)))
+        ValidateMagnitudeResolvedDefinition(getter, module, expected);
+        if (getter.Context.TypeArgs is not [var element] || element.Kind != TypeKind.Class || element.IsCanonPlaceholder
+            || element.Class != vector.Context.TypeArgs[0].Class
+            || getter.Signature.Header.RawValue != 0 || getter.Signature.GenericParameterCount != 0
+            || getter.Signature.RequiredParameterCount != 0 || getter.Signature.ParameterTypes.Length != 0
+            || getter.Signature.ReturnType is not { Kind: TypeKind.Primitive, IsCanonPlaceholder: false, Primitive: PrimitiveTypeCode.Boolean })
             throw GenericVectorGuardUnsupported();
         // The emitter lowers this exact unsupported element getter to false.
         if (!CoreIntrinsics.IsVectorManagedValueElement(vector.Context.TypeArgs[0]))
