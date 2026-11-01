@@ -485,6 +485,7 @@ internal sealed partial class MethodCompiler
                 CoreIntrinsics.ValidateVectorFloatingPointTernary(callee);
                 CoreIntrinsics.ValidateVectorLog(callee);
                 CoreIntrinsics.ValidateVectorMagnitude(callee);
+                CoreIntrinsics.ValidateScalarNumericLeaf(callee);
                 CoreIntrinsics.ValidateVectorAlignment(callee);
                 CoreIntrinsics.ValidateConcreteVectorReduction(callee);
                 CoreIntrinsics.ValidateVectorAsCallable(callee);
@@ -508,7 +509,8 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(callee)
                     || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(callee)
                     || CoreIntrinsics.IsInterpolationStaticHelper(callee)
-                    || CoreIntrinsics.IsVectorAlignment(callee)
+                    || CoreIntrinsics.IsScalarNumericLeaf(callee)
+                    || CoreIntrinsics.IsVectorAlignmentManagedBody(callee)
                     || CoreIntrinsics.IsConcreteVectorReduction(callee)
                     || CoreIntrinsics.IsResourceManagerDefaultType(callee)
                     || CoreIntrinsics.IsPrimitiveElementHelper(callee)
@@ -718,6 +720,7 @@ internal sealed partial class MethodCompiler
             case HandleKind.MethodSpecification:
             {
                 _c.RejectVectorValueMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
+                _c.RejectScalarNumericLeafMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
                 _c.RejectVectorAlignmentMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
                 _c.RejectVectorLerpMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
                 _c.RejectVectorLogMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
@@ -937,6 +940,11 @@ internal sealed partial class MethodCompiler
             }
             case HandleKind.MemberReference:
             {
+                if (_c.TryResolveScalarNumericLeafReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } scalarNumericLeaf)
+                {
+                    EmitManagedCall(scalarNumericLeaf, isCallvirt);
+                    return;
+                }
                 if (_c.TryResolveVectorAlignmentReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } alignment)
                 {
                     EmitManagedCall(alignment, isCallvirt);
@@ -1705,6 +1713,7 @@ internal sealed partial class MethodCompiler
         CoreIntrinsics.ValidateVectorLog(callee);
         CoreIntrinsics.ValidateVectorMagnitude(callee);
 
+        CoreIntrinsics.ValidateScalarNumericLeaf(callee);
         CoreIntrinsics.ValidateVectorAlignment(callee);
         CoreIntrinsics.ValidateConcreteVectorReduction(callee);
 
@@ -2088,6 +2097,16 @@ internal sealed partial class MethodCompiler
         if (_constrained is { } c && isCallvirt)
         {
             EmitConstrainedCall(callee, c);
+            return;
+        }
+
+        if (!isCallvirt && SharedTrial && Compilation.IsSimdAlignmentSlotCandidate(callee)
+            && Compilation.ContainsCanonPlaceholder(callee.DeclaringClass))
+            ThrowSharedTaint("simd-alignment", callee.DeclaringClass.FullName);
+        if (!isCallvirt && _c.TryResolveSimdAlignmentCall(_module, SRME.EntityHandle(_callSiteToken),
+            _method.Context, _constrainedHandle, _constrained, callee) is { } alignmentBody)
+        {
+            EmitCallResult(alignmentBody, DirectCall(alignmentBody, PopArgs(callee, hasThis: false)));
             return;
         }
 

@@ -40,7 +40,9 @@ internal sealed partial class Compilation
         CoreIntrinsics.ValidateVectorFloatingPointTernary(m);
         CoreIntrinsics.ValidateVectorLog(m);
         CoreIntrinsics.ValidateVectorMagnitude(m);
+        CoreIntrinsics.ValidateScalarNumericLeaf(m);
         CoreIntrinsics.ValidateVectorAlignment(m);
+        ValidateSimdAlignmentBody(m);
         CoreIntrinsics.ValidateConcreteVectorReduction(m);
         CoreIntrinsics.ValidateVectorAsCallable(m);
         if (CoreIntrinsics.IsVectorManagedForwarder(m)) _intrinsicTypeTranspiled.Add(m);
@@ -280,7 +282,8 @@ internal sealed partial class Compilation
         if ((CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(m)) || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
             || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(m)
             || CoreIntrinsics.IsInterpolationStaticHelper(m)
-            || CoreIntrinsics.IsVectorAlignment(m)
+            || CoreIntrinsics.IsScalarNumericLeaf(m)
+            || CoreIntrinsics.IsVectorAlignmentManagedBody(m)
             || CoreIntrinsics.IsConcreteVectorReduction(m)
             || CoreIntrinsics.IsResourceManagerDefaultType(m)
             || CoreIntrinsics.IsPrimitiveElementHelper(m)
@@ -6530,6 +6533,13 @@ internal sealed partial class Compilation
                         }
                         // An ambiguous static slot emits a throw, so neither its
                         // default body nor either competing override is a call edge.
+                        if (insn.OpCode == ILOpCode.Call && t is not null
+                            && TryResolveSimdAlignmentCall(module, handle, m.Context, constrainedHandle, constrained, t) is { } alignmentBody)
+                        {
+                            ReachIntrinsicTypeMethod(alignmentBody);
+                            constrained = null;
+                            continue;
+                        }
                         if (insn.OpCode == ILOpCode.Call
                             && constrained is { Kind: TypeKind.Class, Class: { } staticSelf }
                             && t is { IsStatic: true, DeclaringClass.IsInterface: true })

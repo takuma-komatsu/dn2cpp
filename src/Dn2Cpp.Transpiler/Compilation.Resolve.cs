@@ -88,6 +88,7 @@ internal sealed partial class Compilation
                 CoreIntrinsics.ValidateVectorFloatingPointTernary(mi);
                 CoreIntrinsics.ValidateVectorLog(mi);
                 CoreIntrinsics.ValidateVectorMagnitude(mi);
+                CoreIntrinsics.ValidateScalarNumericLeaf(mi);
                 CoreIntrinsics.ValidateVectorAlignment(mi);
                 CoreIntrinsics.ValidateConcreteVectorReduction(mi);
                 CoreIntrinsics.ValidateVectorAsCallable(mi);
@@ -106,7 +107,8 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(mi)
                     || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(mi)
                     || CoreIntrinsics.IsInterpolationStaticHelper(mi)
-                    || CoreIntrinsics.IsVectorAlignment(mi)
+                    || CoreIntrinsics.IsScalarNumericLeaf(mi)
+                    || CoreIntrinsics.IsVectorAlignmentManagedBody(mi)
                     || CoreIntrinsics.IsConcreteVectorReduction(mi)
                     || CoreIntrinsics.IsResourceManagerDefaultType(mi)
                     || CoreIntrinsics.IsPrimitiveElementHelper(mi)
@@ -336,6 +338,7 @@ internal sealed partial class Compilation
             case HandleKind.MethodSpecification:
             {
                 RejectVectorValueMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
+                RejectScalarNumericLeafMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
                 RejectVectorAlignmentMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
                 RejectVectorLerpMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
                 RejectVectorLogMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
@@ -474,6 +477,7 @@ internal sealed partial class Compilation
             }
             case HandleKind.MemberReference:
             {
+                if (TryResolveScalarNumericLeafReference(module, (MemberReferenceHandle)handle, ctx) is { } scalarNumericLeaf) return scalarNumericLeaf;
                 if (TryResolveVectorAlignmentReference(module, (MemberReferenceHandle)handle, ctx) is { } alignment) return alignment;
                 if (TryResolveConcreteVectorReductionReference(module, (MemberReferenceHandle)handle, ctx) is { } concreteReduction) return concreteReduction;
                 RejectBareVectorAsReference(module, (MemberReferenceHandle)handle, ctx);
@@ -751,6 +755,7 @@ internal sealed partial class Compilation
     public MethodInfo ResolveMethodSpec(Module module, MethodSpecificationHandle handle, GenericContext callerCtx)
     {
         RejectVectorValueMethodSpecification(module, handle, callerCtx);
+        RejectScalarNumericLeafMethodSpecification(module, handle, callerCtx);
         RejectVectorAlignmentMethodSpecification(module, handle, callerCtx);
         RejectVectorLerpMethodSpecification(module, handle, callerCtx);
         RejectVectorLogMethodSpecification(module, handle, callerCtx);
@@ -1412,6 +1417,7 @@ internal sealed partial class Compilation
     /// type, or a same-module non-generic definition.</summary>
     public MethodInfo ResolveMemberRefMethod(Module module, MemberReferenceHandle handle, GenericContext callerCtx)
     {
+        if (TryResolveScalarNumericLeafReference(module, handle, callerCtx) is { } scalarNumericLeaf) return scalarNumericLeaf;
         if (TryResolveVectorAlignmentReference(module, handle, callerCtx) is { } alignment) return alignment;
         if (TryResolveConcreteVectorReductionReference(module, handle, callerCtx) is { } concreteReduction) return concreteReduction;
         RejectBareVectorAsReference(module, handle, callerCtx);
@@ -2207,6 +2213,7 @@ internal sealed partial class Compilation
     /// the member cannot be matched, so callers fall back to intrinsics.</summary>
     public MethodInfo? TryResolveMemberRefMethod(Module module, MemberReferenceHandle handle, GenericContext callerCtx)
     {
+        if (TryResolveScalarNumericLeafReference(module, handle, callerCtx) is { } scalarNumericLeaf) return scalarNumericLeaf;
         if (TryResolveVectorAlignmentReference(module, handle, callerCtx) is { } alignment) return alignment;
         if (TryResolveConcreteVectorReductionReference(module, handle, callerCtx) is { } concreteReduction) return concreteReduction;
         RejectBareVectorAsReference(module, handle, callerCtx);

@@ -35,6 +35,9 @@ internal static partial class CoreIntrinsics
 
     internal static void ValidateVectorAlignment(MethodInfo method)
     {
+        if (method.Name == "ThrowAccessViolationException" && method.DeclaringClass.FullName == "System.ThrowHelper"
+            && !IsVectorAccessViolationHelper(method))
+            throw new NotSupportedException("ThrowAccessViolationException requires its exact CoreLib declaration and managed body");
         if (method.Name == "get_Alignment" && method.DeclaringClass.FullName == "System.Numerics.Vector"
             && !IsVectorAlignment(method))
             throw new NotSupportedException("Vector.get_Alignment requires its exact CoreLib declaration");

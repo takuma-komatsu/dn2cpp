@@ -684,6 +684,7 @@ internal sealed partial class MethodCompiler : IEvalStack
 
     public string Compile()
     {
+        _c.ValidateSimdAlignmentBody(_method);
         CoreIntrinsics.ValidateConcreteVectorElement(_method);
         TaintCanonicalVectorOwner(_method.DeclaringClass);
         TaintCanonicalFixedVectorValueOwner(_method.DeclaringClass, _method.Name);
@@ -696,6 +697,7 @@ internal sealed partial class MethodCompiler : IEvalStack
         CoreIntrinsics.ValidateVectorFloatingPointTernary(_method);
         CoreIntrinsics.ValidateVectorLog(_method);
         CoreIntrinsics.ValidateVectorMagnitude(_method);
+        CoreIntrinsics.ValidateScalarNumericLeaf(_method);
         CoreIntrinsics.ValidateVectorAlignment(_method);
         CoreIntrinsics.ValidateConcreteVectorReduction(_method);
         CoreIntrinsics.ValidateVectorAsCallable(_method);
@@ -1241,6 +1243,7 @@ internal sealed partial class MethodCompiler : IEvalStack
         CoreIntrinsics.ValidateVectorFloatingPointTernary(_method);
         CoreIntrinsics.ValidateVectorLog(_method);
         CoreIntrinsics.ValidateVectorMagnitude(_method);
+        CoreIntrinsics.ValidateScalarNumericLeaf(_method);
         CoreIntrinsics.ValidateVectorAlignment(_method);
         CoreIntrinsics.ValidateConcreteVectorReduction(_method);
         CoreIntrinsics.ValidateVectorAsCallable(_method);
@@ -3487,7 +3490,9 @@ internal sealed partial class MethodCompiler : IEvalStack
             case ILOpCode.Ldind_u4: LoadIndirect("uint32_t", StackKind.I4, "int32_t"); break;
             case ILOpCode.Ldind_i8: LoadIndirect("int64_t", StackKind.I8, "int64_t"); break;
             case ILOpCode.Ldind_i: LoadIndirect("intptr_t", StackKind.I8, "int64_t"); break;
-            case ILOpCode.Ldind_r4: LoadIndirect("float", StackKind.R8, "double"); break;
+            case ILOpCode.Ldind_r4:
+                LoadIndirect("float", StackKind.R8, CoreIntrinsics.IsSingleStorageBitLoad(_method) ? "float" : "double");
+                break;
             case ILOpCode.Ldind_r8: LoadIndirect("double", StackKind.R8, "double"); break;
             case ILOpCode.Ldind_ref: LoadIndirectRef(); break;
 

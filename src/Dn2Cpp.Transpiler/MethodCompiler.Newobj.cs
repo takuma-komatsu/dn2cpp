@@ -670,9 +670,10 @@ internal sealed partial class MethodCompiler
             // with the array itself as the receiver (Roslyn elides the interface-typed
             // local), so the `this` slot is also an array->IEnumerable<T> coercion.
             var receiver = Pop();
-            // This retained handle body uses the same runtime-owned byref ABI
-            // as its callable declaration, not a managed struct layout.
+            // Retained mapped-value bodies use the callable declaration's byref ABI,
+            // not an emitted managed struct layout.
             string receiverType = CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(callee)
+                || CoreIntrinsics.IsScalarNumericLeaf(callee)
                 ? ReceiverCppType(callee.DeclaringClass)
                 : callee.DeclaringClass.CppStructName + "*";
             args[0] = CoerceTo(receiver, TypeDesc.MakeClass(callee.DeclaringClass), receiverType);

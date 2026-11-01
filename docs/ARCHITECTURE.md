@@ -1405,6 +1405,20 @@ Mapped unsupported primitives, reference elements and generic value elements
 remain outside this bounded managed-body policy. Numeric operators and hardware
 capability reporting retain their existing policies.
 
+#### SIMD alignment defaults
+
+Retained `ISimdVector<TSelf,T>` aligned-memory defaults resolve their alignment
+slot only for authenticated closed numeric vector owners. The exact private
+`MethodImpl` body is materialized without opening the mapped owner's full method
+catalog. Fixed widths execute their installed constants; `Vector<T>` retains the
+existing target-profile `Vector.get_Alignment` to `Vector<byte>.Count` route.
+Raw slot, receiver, bridge and dependency authority is checked before cache reuse.
+Canonical trials specialize rather than borrowing a numeric closure. Unsupported
+element closures cannot fall through to ordinary static-interface resolution.
+The default body's alignment check and genuine `ThrowAccessViolationException`
+body remain managed IL, preserving exception type, argument order and memory
+effects without substituting the public aligned-memory facades.
+
 #### Unmapped vector value methods
 
 Genuine unmapped `System.Numerics.Vector<T>` closures over nongeneric,

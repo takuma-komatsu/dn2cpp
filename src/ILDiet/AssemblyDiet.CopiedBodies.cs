@@ -455,7 +455,8 @@ internal sealed partial class AssemblyDiet
             traverse = false;
         else if (IsCopiedMemberMetadataDefinition(method, owner))
             traverse = owner == "System.Reflection.MemberInfo";
-        else if (IsCopiedResourceManagerDefaultType(method, owner)
+        else if (IsCopiedScalarNumericLeaf(method, owner)
+            || IsCopiedResourceManagerDefaultType(method, owner)
             || IsCopiedInterpolationStaticHelper(method, owner)
             || IsCopiedDateTimeFormatInfoParserFlagGetter(method, owner)
             || IsCopiedRuntimeTypeIntroducedMethodsFactory(method, owner)

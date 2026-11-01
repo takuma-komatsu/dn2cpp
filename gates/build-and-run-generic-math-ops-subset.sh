@@ -40,8 +40,12 @@
 # InterfaceStaticImpl covers an INTERFACE as the constrained type argument: the
 # interface's own explicit static impls resolve the static abstract members, and
 # an unimplemented static-virtual default still binds the default body.
+# ScalarNumericLeaves retains the real IFloatingPoint exponent/significand writers
+# and their finite scalar IL closure, including raw signaling-NaN payloads.
 source "$(dirname "$0")/_common.sh"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|static-impl-selection-prefix:${DN2CPP_BEFORE_STATIC_IMPL_SELECTION:-}"
+source gates/_scalar-numeric-leaves-probe.sh
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_scalar-numeric-leaves-probe.sh gates/fixtures/ldftn-local gates/fixtures/scalar-numeric-leaves"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|static-impl-selection-prefix:${DN2CPP_BEFORE_STATIC_IMPL_SELECTION:-}|scalar-leaf-prefix:${DN2CPP_BEFORE_SCALAR_NUMERIC_LEAVES:-}|scalar-leaf-fixture:${DN2CPP_SCALAR_LEAF_FIXTURE_DLL:-}|cli:$(_gate_cli_hash)"
 
 gate_extra_asserts() {
     local out="$1"
@@ -61,6 +65,20 @@ gate_extra_asserts() {
         --before '== Static interface implementation selection ==' --policy crlf
     gate_output compare "$out/static-selection-prefix.stdout" "$out/static-selection-before.stdout"
 
+    gate_output witness "$out/native.stdout" --count any --policy crlf \
+        '== scalar numeric managed leaves ==' 'scalar numeric managed leaves end' \
+        'leaf-write:f32-7F800001:2:4=True:4:A500800001A5' \
+        'leaf-write:f32-FF812345:2:4=True:4:A500812345A5' \
+        'leaf-sign:-2147483648=-1:-1:2'
+    DN2CPP_BEFORE_SCALAR_NUMERIC_LEAVES=1 gate_capture_ok "$out/scalar-leaves-before" \
+        run_bounded "$out/GenericMathOpsSubset$EXE_EXT"
+    gate_output select "$out/native.stdout" "$out/scalar-leaves-prefix.stdout" \
+        --before '== scalar numeric managed leaves ==' --policy crlf
+    gate_output compare "$out/scalar-leaves-prefix.stdout" "$out/scalar-leaves-before.stdout"
+    DN2CPP_BEFORE_SCALAR_NUMERIC_LEAVES=1 gate_capture_ok "$out/scalar-leaves-oracle-before" \
+        run_bounded dotnet "$_CG_APP"
+    gate_output compare "$out/scalar-leaves-prefix.stdout" "$out/scalar-leaves-oracle-before.stdout"
+    probe_scalar_numeric_leaves "$out/scalar-leaves"
 }
 
 corelib_diff_gate GenericMathOpsSubset System.Runtime

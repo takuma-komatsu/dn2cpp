@@ -1704,6 +1704,8 @@ internal sealed partial class MethodCompiler
         // there, `ThrowIf*` is excluded: a GUARD returns normally on the happy path, so
         // trapping one drops the test. The exact unsupported-vector guard retains
         // its managed body before reaching this sink-only route.
+        if (declType == "System.ThrowHelper" && name == "ThrowAccessViolationException")
+            throw new NotSupportedException("ThrowAccessViolationException requires its exact nongeneric CoreLib declaration and managed body");
         if (declType == "System.ThrowHelper"
             && name.StartsWith("Throw") && !name.StartsWith("ThrowIf"))
         {

@@ -8,6 +8,31 @@ internal sealed partial class Compilation
     {
         var reader = module.Reader;
         var reference = reader.GetMemberReference(handle);
+        if (reader.StringComparer.Equals(reference.Name, "ThrowAccessViolationException")
+            && reference.Parent.Kind == HandleKind.TypeSpecification)
+        {
+            var type = reader.GetTypeSpecification((TypeSpecificationHandle)reference.Parent).DecodeSignature(SigProvider, context);
+            while (type.Element is { } element) type = element;
+            if (type.Class is { } helper && (helper.FullName == "System.ThrowHelper"
+                || GenericDefFullName(helper) == "System.ThrowHelper")) throw SimdAlignmentUnsupported();
+        }
+        if (reader.StringComparer.Equals(reference.Name, "ThrowAccessViolationException")
+            && MemberRefParentTypeName(module, handle) == "System.ThrowHelper")
+        {
+            if (!CoreIntrinsics.IsVectorAccessViolationSignature(reader.GetBlobReader(reference.Signature))
+                || reference.Parent.Kind is not (HandleKind.TypeReference or HandleKind.TypeDefinition)) throw SimdAlignmentUnsupported();
+            ClassInfo? helperOwner = reference.Parent.Kind == HandleKind.TypeReference
+                ? ResolveTypeRef(module, (TypeReferenceHandle)reference.Parent)?.Class
+                : ResolveTypeDefMemberRefClass(module, (TypeDefinitionHandle)reference.Parent);
+            if (helperOwner is not null && helperOwner.MethodsNamed("ThrowAccessViolationException") is { } helpers)
+                foreach (var helper in helpers)
+                    if (CoreIntrinsics.IsVectorAccessViolationHelper(helper))
+                    {
+                        ValidateSimdAlignmentBody(helper);
+                        return helper;
+                    }
+            throw SimdAlignmentUnsupported();
+        }
         if (!reader.StringComparer.Equals(reference.Name, "get_Alignment")) return null;
         if (reference.Parent.Kind == HandleKind.TypeSpecification)
         {
@@ -39,11 +64,11 @@ internal sealed partial class Compilation
     internal void RejectVectorAlignmentMethodSpecification(Module module, MethodSpecificationHandle handle, GenericContext context)
     {
         var specification = module.Reader.GetMethodSpecification(handle);
-        if (MethodSpecMethodName(module, specification) != "get_Alignment") return;
+        if (MethodSpecMethodName(module, specification) is not ("get_Alignment" or "ThrowAccessViolationException")) return;
         if (specification.Method.Kind == HandleKind.MemberReference)
         {
             if (TryResolveVectorAlignmentReference(module, (MemberReferenceHandle)specification.Method, context) is not null)
-                throw new NotSupportedException("Vector.get_Alignment is not a generic method");
+                throw new NotSupportedException("Vector alignment dependencies are not generic methods");
         }
         else if (specification.Method.Kind == HandleKind.MethodDefinition)
         {
@@ -52,6 +77,8 @@ internal sealed partial class Compilation
             if (module.Reader.StringComparer.Equals(owner.Namespace, "System.Numerics")
                 && module.Reader.StringComparer.Equals(owner.Name, "Vector"))
                 throw new NotSupportedException("Vector.get_Alignment is not a generic method");
+            if (module.Reader.StringComparer.Equals(owner.Namespace, "System")
+                && module.Reader.StringComparer.Equals(owner.Name, "ThrowHelper")) throw SimdAlignmentUnsupported();
         }
     }
 }
