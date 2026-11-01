@@ -4095,6 +4095,7 @@ internal sealed partial class Compilation
     public void NoteIntrinsicFtnTarget(MethodInfo m)
     {
         CoreIntrinsics.ValidateVectorMultiplyAddEstimate(m);
+        CoreIntrinsics.ValidateVectorAlignment(m);
         CoreIntrinsics.ValidateVectorAsCallable(m);
         CoreIntrinsics.ValidateKnownConstantCallable(m);
         if (CoreIntrinsics.IsInvariantCompareInfoGetter(m))
@@ -4124,6 +4125,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
             || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(m)
             || CoreIntrinsics.IsInterpolationStaticHelper(m)
+            || CoreIntrinsics.IsVectorAlignment(m)
             || CoreIntrinsics.IsResourceManagerDefaultType(m)
             || CoreIntrinsics.IsPrimitiveElementHelper(m)
             || CoreIntrinsics.IsKnownConstant(m)

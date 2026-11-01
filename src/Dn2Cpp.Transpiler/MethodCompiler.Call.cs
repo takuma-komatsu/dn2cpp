@@ -483,6 +483,7 @@ internal sealed partial class MethodCompiler
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
                 CoreIntrinsics.ValidateConcreteVectorElement(callee);
                 CoreIntrinsics.ValidateVectorMultiplyAddEstimate(callee);
+                CoreIntrinsics.ValidateVectorAlignment(callee);
                 CoreIntrinsics.ValidateVectorAsCallable(callee);
                 if (CoreIntrinsics.IsVectorValueCandidate(callee.DeclaringClass, callee.Name))
                 {
@@ -504,6 +505,7 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(callee)
                     || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(callee)
                     || CoreIntrinsics.IsInterpolationStaticHelper(callee)
+                    || CoreIntrinsics.IsVectorAlignment(callee)
                     || CoreIntrinsics.IsResourceManagerDefaultType(callee)
                     || CoreIntrinsics.IsPrimitiveElementHelper(callee)
                     || CoreIntrinsics.IsKnownConstant(callee)
@@ -712,6 +714,7 @@ internal sealed partial class MethodCompiler
             case HandleKind.MethodSpecification:
             {
                 _c.RejectVectorValueMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
+                _c.RejectVectorAlignmentMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
                 if (_c.TryResolveGuardedVectorAsSpec(_module, (MethodSpecificationHandle)handle, _method.Context) is { } vectorAs)
                 {
                     EmitManagedCall(vectorAs, isCallvirt);
@@ -922,6 +925,11 @@ internal sealed partial class MethodCompiler
             }
             case HandleKind.MemberReference:
             {
+                if (_c.TryResolveVectorAlignmentReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } alignment)
+                {
+                    EmitManagedCall(alignment, isCallvirt);
+                    return;
+                }
                 _c.RejectBareVectorAsReference(_module, (MemberReferenceHandle)handle, _method.Context);
                 var mr = _reader.GetMemberReference((MemberReferenceHandle)handle);
                 string mrName = _reader.GetString(mr.Name);
@@ -1671,6 +1679,8 @@ internal sealed partial class MethodCompiler
         CoreIntrinsics.ValidateConcreteVectorElement(callee);
 
         CoreIntrinsics.ValidateVectorMultiplyAddEstimate(callee);
+
+        CoreIntrinsics.ValidateVectorAlignment(callee);
 
         CoreIntrinsics.ValidateVectorAsCallable(callee);
         if (CoreIntrinsics.IsVectorMultiplyAddEstimate(callee))

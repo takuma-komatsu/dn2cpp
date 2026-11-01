@@ -694,6 +694,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             foreach (var argument in _method.Context.MethodArgs)
                 TaintIfCanonical(argument, "numerics-vector-element");
         CoreIntrinsics.ValidateVectorMultiplyAddEstimate(_method);
+        CoreIntrinsics.ValidateVectorAlignment(_method);
         CoreIntrinsics.ValidateVectorAsCallable(_method);
         if (CoreIntrinsics.IsGuardedVectorAs(_method))
             return CompileGuardedVectorAs();
@@ -1233,6 +1234,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     {
         CoreIntrinsics.ValidateConcreteVectorElement(_method);
         CoreIntrinsics.ValidateVectorMultiplyAddEstimate(_method);
+        CoreIntrinsics.ValidateVectorAlignment(_method);
         CoreIntrinsics.ValidateVectorAsCallable(_method);
         if (CoreIntrinsics.IsGuardedVectorAs(_method))
             return CompileGuardedVectorAs();

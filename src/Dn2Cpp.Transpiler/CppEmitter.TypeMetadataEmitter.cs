@@ -3956,6 +3956,7 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(method)
                         || CoreIntrinsics.IsInterpolationStaticHelper(method)
+                        || CoreIntrinsics.IsVectorAlignment(method)
                         || CoreIntrinsics.IsResourceManagerDefaultType(method)
                         || CoreIntrinsics.IsPrimitiveElementHelper(method)
                         || CoreIntrinsics.IsKnownConstant(method)

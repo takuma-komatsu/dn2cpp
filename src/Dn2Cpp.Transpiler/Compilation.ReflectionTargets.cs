@@ -907,6 +907,7 @@ internal sealed partial class Compilation
             || _backend?.ShouldSkipMethodBody(cls, target) == true)
             return;
         CoreIntrinsics.ValidateVectorMultiplyAddEstimate(target);
+        CoreIntrinsics.ValidateVectorAlignment(target);
         _reflectionSelectionCount++;
         if (CoreIntrinsics.IsInvariantCompareInfoGetter(target)
             || CoreIntrinsics.IsDefaultPrincipalAccessor(target)
@@ -928,6 +929,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(target)
             || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(target)
             || CoreIntrinsics.IsInterpolationStaticHelper(target)
+            || CoreIntrinsics.IsVectorAlignment(target)
             || CoreIntrinsics.IsResourceManagerDefaultType(target)
             || CoreIntrinsics.IsPrimitiveElementHelper(target)
             || CoreIntrinsics.IsKnownConstant(target)
