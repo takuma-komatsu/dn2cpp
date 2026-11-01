@@ -28,21 +28,31 @@ internal static partial class CoreIntrinsics
             && reader.StringComparer.Equals(definition.Name, "Vector`1");
     }
 
-    internal static bool IsVectorExplicit(MethodInfo method)
+    internal static bool IsVectorExplicit(MethodInfo method) =>
+        method.DeclaringClass.IntrinsicCppName == "Dn2CppVectorT"
+        && IsVectorExplicitDeclaration(method);
+
+    private static bool IsVectorExplicitDeclaration(MethodInfo method)
     {
         var owner = method.DeclaringClass;
-        if (method.Name != "op_Explicit" || owner.IntrinsicCppName != "Dn2CppVectorT"
+        if (method.Name != "op_Explicit" || !IsVectorValueCallableClass(owner)
             || owner.Module.AssemblyName != "System.Private.CoreLib" || method.Module != owner.Module
             || owner.Handle.IsNil || method.Handle.IsNil || !owner.IsValueType || owner.IsEnum || owner.IsInterface
-            || owner.GenericArity != 1 || owner.Context.TypeArgs is not [var source] || !IsVectorNumericElement(source)
+            || owner.GenericArity != 1 || owner.Context.TypeArgs is not [var source] || !IsVectorAsElement(source)
             || method.IsSynthetic || method.Context.MethodArgs.Length != 0
+            || method.Context.TypeArgs is not [var contextSource] || contextSource.IsCanonPlaceholder
+            || contextSource.Kind != source.Kind
+            || (source.Kind == TypeKind.Primitive ? contextSource.Primitive != source.Primitive : contextSource.Class != source.Class)
             || method.Attributes != (MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig | MethodAttributes.SpecialName)
             || method.ImplAttributes != MethodImplAttributes.IL || method.Rva == 0 || method.PInvoke is not null)
             return false;
         var reader = method.Module.Reader;
         var type = reader.GetTypeDefinition(owner.Handle);
         var definition = reader.GetMethodDefinition(method.Handle);
-        if (!type.GetDeclaringType().IsNil || type.GetGenericParameters().Count != 1
+        if (!reader.StringComparer.Equals(definition.Name, "op_Explicit")
+            || definition.Attributes != method.Attributes || definition.ImplAttributes != method.ImplAttributes
+            || definition.RelativeVirtualAddress != method.Rva
+            || !type.GetDeclaringType().IsNil || type.GetGenericParameters().Count != 1
             || !reader.StringComparer.Equals(type.Namespace, "System.Numerics")
             || !reader.StringComparer.Equals(type.Name, "Vector`1")
             || definition.GetDeclaringType() != owner.Handle || definition.GetGenericParameters().Count != 0
@@ -57,7 +67,7 @@ internal static partial class CoreIntrinsics
     }
 
     internal static bool IsVectorExplicitSignature(MethodSignature<TypeDesc> signature, ClassInfo owner) =>
-        signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+        signature.Header.RawValue == 0 && signature.GenericParameterCount == 0 && signature.RequiredParameterCount == 1
         && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { } source }] && source == owner
         && signature.ReturnType is { Kind: TypeKind.Class, Class: { } target }
         && target.Module == owner.Module && target.Handle == owner.Handle

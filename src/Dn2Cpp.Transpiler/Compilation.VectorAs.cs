@@ -8,7 +8,8 @@ internal sealed partial class Compilation
     internal void RejectBareVectorAsReference(Module module, MemberReferenceHandle handle, GenericContext context)
     {
         var reference = module.Reader.GetMemberReference(handle);
-        if (!module.Reader.StringComparer.Equals(reference.Name, "As")) return;
+        string name = module.Reader.GetString(reference.Name);
+        if (name != "As" && CoreIntrinsics.VectorAliasElementCode(name) == 0) return;
         if (MemberRefParentTypeName(module, handle) == "System.Numerics.Vector")
             throw GuardedVectorAsUnsupported();
         if (reference.Parent.Kind != HandleKind.TypeSpecification) return;
@@ -28,7 +29,9 @@ internal sealed partial class Compilation
     {
         var reader = module.Reader;
         var specification = reader.GetMethodSpecification(handle);
-        if (MethodSpecMethodName(module, specification) != "As") return null;
+        string name = MethodSpecMethodName(module, specification) ?? "";
+        int arity = name == "As" ? 2 : CoreIntrinsics.VectorAliasElementCode(name) != 0 ? 1 : 0;
+        if (arity == 0) return null;
         var parent = specification.Method.Kind switch
         {
             HandleKind.MethodDefinition => reader.GetMethodDefinition((MethodDefinitionHandle)specification.Method).GetDeclaringType(),
@@ -48,21 +51,22 @@ internal sealed partial class Compilation
         if (specification.Method.Kind == HandleKind.MethodDefinition)
         {
             definitionHandle = (MethodDefinitionHandle)specification.Method;
-            if (!CoreIntrinsics.IsVectorAsDefinition(owner, module, definitionHandle)) throw GuardedVectorAsUnsupported();
+            if (!CoreIntrinsics.IsVectorAsFamilyDefinition(owner, module, definitionHandle)) throw GuardedVectorAsUnsupported();
         }
         else
         {
             var reference = reader.GetMemberReference((MemberReferenceHandle)specification.Method);
-            if (!CoreIntrinsics.ReadVectorAsSignature(reader.GetBlobReader(reference.Signature), out int token))
+            if (!CoreIntrinsics.ReadVectorAsFamilySignature(reader.GetBlobReader(reference.Signature), name, out int token))
                 throw GuardedVectorAsUnsupported();
             EntityHandle vectorHandle = (token & 3) == 0
                 ? SRME.TypeDefinitionHandle(token >> 2) : SRME.TypeReferenceHandle(token >> 2);
             var identity = TypeDefinitionOf(module, vectorHandle);
             foreach (var candidate in owner.Module.Reader.GetTypeDefinition(owner.Handle).GetMethods())
             {
-                if (!CoreIntrinsics.IsVectorAsDefinition(owner, owner.Module, candidate)) continue;
+                if (!CoreIntrinsics.IsVectorAsFamilyDefinition(owner, owner.Module, candidate)
+                    || !owner.Module.Reader.StringComparer.Equals(owner.Module.Reader.GetMethodDefinition(candidate).Name, name)) continue;
                 var definition = owner.Module.Reader.GetMethodDefinition(candidate);
-                if (!CoreIntrinsics.ReadVectorAsSignature(owner.Module.Reader.GetBlobReader(definition.Signature), out int original)
+                if (!CoreIntrinsics.ReadVectorAsFamilySignature(owner.Module.Reader.GetBlobReader(definition.Signature), name, out int original)
                     || identity is not { } target || target.Module != owner.Module
                     || target.Handle != SRME.TypeDefinitionHandle(original >> 2)) continue;
                 if (!definitionHandle.IsNil) throw GuardedVectorAsUnsupported();
@@ -71,15 +75,15 @@ internal sealed partial class Compilation
             if (definitionHandle.IsNil) throw GuardedVectorAsUnsupported();
         }
         var raw = reader.GetBlobReader(specification.Signature);
-        if (raw.RemainingBytes < 4 || raw.ReadByte() != 0x0a || raw.ReadByte() != 2) throw GuardedVectorAsUnsupported();
+        if (raw.RemainingBytes < 2 + arity || raw.ReadByte() != 0x0a || raw.ReadByte() != arity) throw GuardedVectorAsUnsupported();
         var shape = raw;
-        for (int index = 0; index < 2; index++)
+        for (int index = 0; index < arity; index++)
         {
             if (!ReadVectorAsArgumentShape(ref shape, context)) throw GuardedVectorAsUnsupported();
         }
         if (shape.RemainingBytes != 0) throw GuardedVectorAsUnsupported();
         var arguments = specification.DecodeSignature(SigProvider, context);
-        if (arguments.Length != 2) throw GuardedVectorAsUnsupported();
+        if (arguments.Length != arity) throw GuardedVectorAsUnsupported();
         bool deferred = false;
         foreach (var argument in arguments)
         {
@@ -100,7 +104,8 @@ internal sealed partial class Compilation
         // Canonical scans cannot choose a vector representation. The existing
         // call/address emission taint forces the concrete body before use.
         if (deferred) return null;
-        if (CoreIntrinsics.IsVectorNumericElement(arguments[0]) && CoreIntrinsics.IsVectorNumericElement(arguments[1]))
+        if (CoreIntrinsics.IsVectorNumericElement(arguments[0])
+            && (arity == 1 || CoreIntrinsics.IsVectorNumericElement(arguments[1])))
             return null;
         return InstantiateMethodOnClass(owner, owner.Module, definitionHandle, arguments.ToArray());
     }
@@ -129,8 +134,10 @@ internal sealed partial class Compilation
     private void ValidateGuardedVectorAsInstantiation(ClassInfo owner, Module module, MethodDefinitionHandle handle, TypeDesc[] arguments)
     {
         var definition = module.Reader.GetMethodDefinition(handle);
-        if (!module.Reader.StringComparer.Equals(definition.Name, "As") || owner.FullName != "System.Numerics.Vector") return;
-        if (arguments.Length != 2 || !CoreIntrinsics.IsVectorAsDefinition(owner, module, handle)) throw GuardedVectorAsUnsupported();
+        string name = module.Reader.GetString(definition.Name);
+        int arity = name == "As" ? 2 : CoreIntrinsics.VectorAliasElementCode(name) != 0 ? 1 : 0;
+        if (arity == 0 || owner.FullName != "System.Numerics.Vector") return;
+        if (arguments.Length != arity || !CoreIntrinsics.IsVectorAsFamilyDefinition(owner, module, handle)) throw GuardedVectorAsUnsupported();
         foreach (var argument in arguments)
         {
             if (argument.Class is { } value) EnsureShape(value);
@@ -138,17 +145,17 @@ internal sealed partial class Compilation
         }
         var candidate = new MethodInfo
         {
-            DeclaringClass = owner, Module = module, Handle = handle, Name = "As",
+            DeclaringClass = owner, Module = module, Handle = handle, Name = name,
             Context = new GenericContext(owner.Context.TypeArgs, arguments), Attributes = definition.Attributes,
             ImplAttributes = definition.ImplAttributes, Rva = definition.RelativeVirtualAddress, PInvoke = ReadPInvoke(module, definition),
         };
         if (candidate.Signature.ReturnType.Class is { } result) EnsureShape(result);
         foreach (var parameter in candidate.Signature.ParameterTypes)
             if (parameter.Class is { } operand) EnsureShape(operand);
-        if (!CoreIntrinsics.IsVectorAs(candidate)) throw GuardedVectorAsUnsupported();
+        if (!CoreIntrinsics.IsVectorAsFamilyCallable(candidate)) throw GuardedVectorAsUnsupported();
         if (CoreIntrinsics.IsGuardedVectorAs(candidate)) ResolveGuardedVectorAsGuards(candidate);
     }
 
     private static NotSupportedException GuardedVectorAsUnsupported() =>
-        new("Vector.As requires an exact closed CoreLib declaration and unmodified two-element MethodSpec");
+        new("Vector reinterpretation requires an exact closed CoreLib declaration and unmodified MethodSpec");
 }

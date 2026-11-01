@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (VectorForwardingFixture.Run(args)) return;
+if (VectorForwardingGuards.Run(args)) return;
 if (VectorAsFixture.Run(args)) return;
 if (VectorAsGuards.Run(args)) return;
 if (GenericVectorEstimateFixture.Run(args)) return;

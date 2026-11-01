@@ -329,6 +329,7 @@ internal sealed partial class Compilation
             }
             case HandleKind.MethodSpecification:
             {
+                RejectVectorValueMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
                 if (TryResolveGuardedVectorAsSpecForScan(module, (MethodSpecificationHandle)handle, ctx) is { } vectorAs)
                     return vectorAs;
                 if (TryResolveGenericVectorEstimateSpec(module, (MethodSpecificationHandle)handle, ctx) is { } genericEstimate)
@@ -881,12 +882,16 @@ internal sealed partial class Compilation
         var mkey = (declClass.CppName, methodArgs);
         if (byKey.TryGetValue(mkey, out var existing))
         {
-            if (defModule.Reader.StringComparer.Equals(md.Name, "As") && declClass.FullName == "System.Numerics.Vector"
-                && (!CoreIntrinsics.IsVectorAs(existing) || existing.DeclaringClass != declClass
-                    || existing.Module != defModule || existing.Handle != templateHandle
-                    || !SameTypeArg(existing.Context.MethodArgs[0], methodArgs[0])
-                    || !SameTypeArg(existing.Context.MethodArgs[1], methodArgs[1])))
-                throw GuardedVectorAsUnsupported();
+            string methodName = defModule.Reader.GetString(md.Name);
+            if ((methodName == "As" || CoreIntrinsics.VectorAliasElementCode(methodName) != 0)
+                && declClass.FullName == "System.Numerics.Vector")
+            {
+                if (!CoreIntrinsics.IsVectorAsFamilyCallable(existing) || existing.Name != methodName
+                    || existing.DeclaringClass != declClass || existing.Module != defModule || existing.Handle != templateHandle
+                    || existing.Context.MethodArgs.Length != methodArgs.Length) throw GuardedVectorAsUnsupported();
+                for (int index = 0; index < methodArgs.Length; index++)
+                    if (!SameTypeArg(existing.Context.MethodArgs[index], methodArgs[index])) throw GuardedVectorAsUnsupported();
+            }
             if (defModule.Reader.StringComparer.Equals(md.Name, "MultiplyAddEstimate")
                 && CoreIntrinsics.IsVectorEstimateOwnerName(declClass.FullName)
                 && (!CoreIntrinsics.IsGenericVectorEstimate(existing)
@@ -1429,6 +1434,23 @@ internal sealed partial class Compilation
                     && CoreIntrinsics.IsFixedVectorValueEquatableCandidate(cls, vectorArgument))
                 ValidateVectorValueConstrained(module, handle, callerCtx, vectorArgument);
         }
+        // Return types distinguish the conversion siblings. Raw context validation
+        // precedes the general MemberRef cache, which omits method arguments.
+        if (name == "op_Explicit" && (CoreIntrinsics.IsVectorExplicitOwner(cls)
+            || VectorValueNamedOwner(module, mr.Parent)))
+        {
+            if (!CoreIntrinsics.IsVectorExplicitOwner(cls))
+                throw new NotSupportedException("Vector<T>.op_Explicit requires its genuine CoreLib owner");
+            EnsureShape(cls);
+            var referenceContext = new GenericContext(cls.Context.TypeArgs, callerCtx.MethodArgs);
+            var signature = mr.DecodeMethodSignature(SigProvider, referenceContext);
+            if (mr.Parent.Kind != HandleKind.TypeSpecification)
+                throw new NotSupportedException("Vector<T>.op_Explicit requires a closed owner");
+            var parent = reader.GetBlobReader(reader.GetTypeSpecification((TypeSpecificationHandle)mr.Parent).Signature);
+            if (!ReadVectorForwardingReferenceType(module, ref parent, callerCtx, cls) || parent.RemainingBytes != 0)
+                throw new NotSupportedException("Vector<T>.op_Explicit requires an unmodified owner");
+            return ResolveVectorExplicit(cls, signature, reader.GetBlobReader(mr.Signature), module, referenceContext);
+        }
         if (!typeRefParent
             && _memberRefMethodsBySpec.TryGetValue((module.Index, SRME.GetToken(handle), cls), out var hitBySpec))
             return hitBySpec;
@@ -1436,12 +1458,6 @@ internal sealed partial class Compilation
         if (cls.GenericArity > 0)
             EnsureCompleted(cls); // members may be needed before the queue drains
         var sig = mr.DecodeMethodSignature(SigProvider, cls.Context);
-        if (name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(cls))
-        {
-            var conversion = ResolveVectorExplicit(cls, sig, reader.GetBlobReader(mr.Signature));
-            _memberRefMethodsBySpec[(module.Index, SRME.GetToken(handle), cls)] = conversion;
-            return conversion;
-        }
         int argc = sig.ParameterTypes.Length;
         // Name-indexed: same candidates in the same order as the full Methods
         // scan, and Signature (a decode on first read) is still consulted only for
@@ -2058,12 +2074,20 @@ internal sealed partial class Compilation
 
     private readonly Dictionary<(ClassInfo Owner, MethodDefinitionHandle Definition), MethodInfo> _vectorExplicitMethods = new();
 
-    private MethodInfo ResolveVectorExplicit(ClassInfo owner, MethodSignature<TypeDesc> signature, BlobReader reference)
+    private bool ReadVectorForwardingReferenceType(Module module, ref BlobReader blob, GenericContext context, ClassInfo owner) =>
+        owner.Context.TypeArgs is [var element]
+        && ReadVectorValueInstantiation(module, ref blob, owner, 0x11)
+        && ReadVectorValueElement(module, ref blob, context, element);
+
+    private MethodInfo ResolveVectorExplicit(ClassInfo owner, MethodSignature<TypeDesc> signature, BlobReader reference,
+        Module module, GenericContext context)
     {
         if (signature.ReturnType is { Kind: TypeKind.Class, Class: { } result })
             EnsureShape(result);
-        if (!CoreIntrinsics.IsVectorExplicitReference(reference)
-            || !CoreIntrinsics.IsVectorExplicitSignature(signature, owner))
+        if (!CoreIntrinsics.IsVectorExplicitSignature(signature, owner)
+            || reference.RemainingBytes < 2 || reference.ReadByte() != 0 || reference.ReadByte() != 1
+            || !ReadVectorForwardingReferenceType(module, ref reference, context, signature.ReturnType.Class!)
+            || !ReadVectorForwardingReferenceType(module, ref reference, context, owner) || reference.RemainingBytes != 0)
             throw new NotSupportedException("Vector<T>.op_Explicit requires its exact supported CoreLib reference");
         // Intrinsic generic shells deliberately have no member catalog. Resolve only
         // the requested conversion declaration without reopening their IL or metadata.
@@ -2083,12 +2107,17 @@ internal sealed partial class Compilation
                     Attributes = definition.Attributes, ImplAttributes = definition.ImplAttributes,
                     Rva = definition.RelativeVirtualAddress, PInvoke = ReadPInvoke(owner.Module, definition),
                 };
-                _vectorExplicitMethods.Add(key, method);
             }
-            if (CoreIntrinsics.IsVectorExplicit(method) && SameTypeArg(signature.ReturnType, method.Signature.ReturnType))
+            if (method.DeclaringClass != owner || method.Module != owner.Module || method.Handle != handle)
+                throw new NotSupportedException("Vector<T>.op_Explicit cache identity changed");
+            if ((CoreIntrinsics.IsVectorExplicit(method) || CoreIntrinsics.IsVectorManagedForwarder(method))
+                && SameTypeArg(signature.ReturnType, method.Signature.ReturnType))
+            {
+                _vectorExplicitMethods.TryAdd(key, method);
                 return method;
+            }
         }
-        throw new NotSupportedException("Vector<T>.op_Explicit requires its exact supported CoreLib declaration");
+        throw new NotSupportedException($"Vector<T>.op_Explicit requires its exact supported CoreLib declaration (ResolveVectorExplicit: {owner.FullName} -> {signature.ReturnType})");
     }
 
     private static bool RuntimeTypeAssignableFromMemberRefShape(MetadataReader reader, MemberReference member)

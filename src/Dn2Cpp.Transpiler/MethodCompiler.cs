@@ -706,8 +706,8 @@ internal sealed partial class MethodCompiler : IEvalStack
             && !CoreIntrinsics.IsVectorValueCallableMethod(_method))
             throw new NotSupportedException("Vector<T> value methods require an exact supported declaration");
         if (_method.Name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(_method.DeclaringClass)
-            && !CoreIntrinsics.IsVectorExplicit(_method))
-            throw new NotSupportedException("Vector<T>.op_Explicit requires its exact supported CoreLib declaration");
+            && !CoreIntrinsics.IsVectorExplicit(_method) && !CoreIntrinsics.IsVectorManagedForwarder(_method))
+            throw new NotSupportedException($"Vector<T>.op_Explicit requires its exact supported CoreLib declaration (Compile: {_method.DeclaringClass.FullName} -> {_method.Signature.ReturnType})");
         // Decode the HotPath bits for every reachable body here. The planning pass compiles
         // all of them before the emission phase arms its recording, so this guarantees
         // Compilation.NoAllocMethods (populated by IsHotPath's decode) is complete at
@@ -1239,8 +1239,8 @@ internal sealed partial class MethodCompiler : IEvalStack
         if (CoreIntrinsics.IsGenericVectorEstimate(_method))
             return CompileGenericVectorEstimateGuard();
         if (_method.Name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(_method.DeclaringClass)
-            && !CoreIntrinsics.IsVectorExplicit(_method))
-            throw new NotSupportedException("Vector<T>.op_Explicit requires its exact supported CoreLib declaration");
+            && !CoreIntrinsics.IsVectorExplicit(_method) && !CoreIntrinsics.IsVectorManagedForwarder(_method))
+            throw new NotSupportedException($"Vector<T>.op_Explicit requires its exact supported CoreLib declaration (CompileCoreIntrinsicWrapper: {_method.DeclaringClass.FullName} -> {_method.Signature.ReturnType})");
         if (CoreIntrinsics.BrPrimitiveBigMul.Matches(_method))
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
             {

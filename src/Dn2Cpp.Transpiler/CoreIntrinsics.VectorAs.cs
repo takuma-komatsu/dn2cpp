@@ -7,15 +7,21 @@ namespace Dn2Cpp;
 internal static partial class CoreIntrinsics
 {
     internal static bool IsVectorAsDefinition(ClassInfo owner, Module module, MethodDefinitionHandle handle)
+        => IsVectorAsFamilyDefinition(owner, module, handle)
+            && module.Reader.StringComparer.Equals(module.Reader.GetMethodDefinition(handle).Name, "As");
+
+    internal static bool IsVectorAsFamilyDefinition(ClassInfo owner, Module module, MethodDefinitionHandle handle)
     {
         if (owner.FullName != "System.Numerics.Vector" || !IsVectorEstimateOwner(owner)
             || module != owner.Module || handle.IsNil) return false;
         var reader = module.Reader;
         var definition = reader.GetMethodDefinition(handle);
-        if (definition.GetDeclaringType() != owner.Handle || !reader.StringComparer.Equals(definition.Name, "As")
+        string name = reader.GetString(definition.Name);
+        int arity = name == "As" ? 2 : VectorAliasElementCode(name) != 0 ? 1 : 0;
+        if (arity == 0 || definition.GetDeclaringType() != owner.Handle
             || definition.Attributes != (MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig)
-            || definition.ImplAttributes != MethodImplAttributes.AggressiveInlining || definition.RelativeVirtualAddress == 0
-            || definition.GetGenericParameters().Count != 2) return false;
+            || definition.ImplAttributes != (name == "As" ? MethodImplAttributes.AggressiveInlining : MethodImplAttributes.IL) || definition.RelativeVirtualAddress == 0
+            || definition.GetGenericParameters().Count != arity) return false;
         int index = 0;
         foreach (var parameterHandle in definition.GetGenericParameters())
         {
@@ -24,7 +30,7 @@ internal static partial class CoreIntrinsics
                 || parameter.Attributes != GenericParameterAttributes.None || parameter.GetConstraints().Count != 0)
                 return false;
         }
-        if (!ReadVectorAsSignature(reader.GetBlobReader(definition.Signature), out int token) || (token & 3) != 0)
+        if (!ReadVectorAsFamilySignature(reader.GetBlobReader(definition.Signature), name, out int token) || (token & 3) != 0)
             return false;
         var vector = reader.GetTypeDefinition(SRME.TypeDefinitionHandle(token >> 2));
         if (!vector.GetDeclaringType().IsNil || vector.GetGenericParameters().Count != 1
@@ -60,8 +66,9 @@ internal static partial class CoreIntrinsics
 
     internal static void ValidateVectorAsCallable(MethodInfo method)
     {
-        if (method.Name == "As" && method.DeclaringClass.FullName == "System.Numerics.Vector"
-            && !method.Handle.IsNil && !IsVectorAs(method))
+        if ((method.Name == "As" || VectorAliasElementCode(method.Name) != 0)
+            && method.DeclaringClass.FullName == "System.Numerics.Vector"
+            && !method.Handle.IsNil && !IsVectorAsFamilyCallable(method))
             throw new NotSupportedException("Vector.As requires its exact closed CoreLib declaration");
     }
 

@@ -86,7 +86,14 @@ internal static class VectorExplicitFixture
                 enumeration.Fields.Add(new FieldDefinition("value__", FieldAttributes.Public | FieldAttributes.SpecialName | FieldAttributes.RTSpecialName, module.TypeSystem.Int32));
                 module.Types.Add(enumeration); unsupported = enumeration;
             }
-            if (unsupported is not null) replacement.DeclaringType = VectorOf(unsupported);
+            if (unsupported is not null)
+            {
+                replacement.DeclaringType = VectorOf(unsupported);
+                // Managed-source negatives retain a conflicting numeric input;
+                // genuine closed managed operators are exercised separately.
+                if (mode is "enum" or "decimal" or "custom")
+                    replacement.Parameters[0].ParameterType = old.DeclaringType;
+            }
             else switch (mode)
             {
                 case "instance": replacement.HasThis = true; break;

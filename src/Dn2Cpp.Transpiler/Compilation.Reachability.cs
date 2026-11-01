@@ -39,6 +39,7 @@ internal sealed partial class Compilation
         NoteObfuscationMethod(m);
         CoreIntrinsics.ValidateVectorMultiplyAddEstimate(m);
         CoreIntrinsics.ValidateVectorAsCallable(m);
+        if (CoreIntrinsics.IsVectorManagedForwarder(m)) _intrinsicTypeTranspiled.Add(m);
         if (CoreIntrinsics.IsGuardedVectorAs(m))
         {
             var guards = ResolveGuardedVectorAsGuards(m);

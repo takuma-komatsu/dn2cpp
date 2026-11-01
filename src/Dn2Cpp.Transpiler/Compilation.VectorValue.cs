@@ -193,7 +193,7 @@ internal sealed partial class Compilation
     internal void RejectVectorValueMethodSpecification(Module module, MethodSpecificationHandle handle, GenericContext context)
     {
         var specification = module.Reader.GetMethodSpecification(handle);
-        if (MethodSpecMethodName(module, specification) is not ("Equals" or "GetHashCode" or "get_Count")) return;
+        if (MethodSpecMethodName(module, specification) is not ("Equals" or "GetHashCode" or "get_Count" or "op_Explicit")) return;
         var parent = specification.Method.Kind switch
         {
             HandleKind.MethodDefinition => module.Reader.GetMethodDefinition((MethodDefinitionHandle)specification.Method).GetDeclaringType(),

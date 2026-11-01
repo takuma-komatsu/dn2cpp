@@ -67,7 +67,7 @@ internal static class VectorAsFixture
         return true;
     }
 
-    internal static void Build(string output, string corePath, IEnumerable<(string Source, string Destination, string Route, string Mutation)> cases)
+    internal static void Build(string output, string corePath, IEnumerable<(string Source, string Destination, string Route, string Mutation)> cases, string? forwardingFamily = null)
     {
         output = Path.GetFullPath(output);
         if (File.Exists(output)) throw new InvalidOperationException("fixture output must be new");
@@ -182,6 +182,8 @@ internal static class VectorAsFixture
                 if (item.Mutation is "three" or "trailing-spec") specification.GenericArguments.Add(module.TypeSystem.Double);
                 call = specification;
             }
+            if (forwardingFamily is not null)
+                call = ForwardingTarget(module, core, forwardingFamily, fromArgument, destination);
             if (item.Mutation == "trailing-spec") patches.Add((caller.Name, true));
             if (item.Mutation == "trailing-reference") patches.Add((caller.Name, false));
             if (item.Mutation.StartsWith("valid-runtime", StringComparison.Ordinal) || item.Mutation.StartsWith("runtime-", StringComparison.Ordinal))
@@ -195,7 +197,8 @@ internal static class VectorAsFixture
                 }
                 bool variable = item.Mutation is "valid-runtime-mvar" or "valid-runtime-var";
                 EmitRuntime(module, callerHost, caller, call, variable ? Vector(fromArgument) : sourceVector,
-                    variable ? Vector(toArgument) : resultVector, item.Route, item.Mutation, serial, and);
+                    variable && forwardingFamily is null ? Vector(toArgument) : resultVector, item.Route, item.Mutation, serial, and,
+                    inlineOperand: forwardingFamily is not null && runtimeVar);
             }
             else
             {
@@ -253,7 +256,7 @@ internal static class VectorAsFixture
         File.WriteAllText(Path.ChangeExtension(output, ".runtimeconfig.json"), "{\"runtimeOptions\":{\"tfm\":\"net10.0\",\"framework\":{\"name\":\"Microsoft.NETCore.App\",\"version\":\"10.0.0\"}}}\n");
     }
 
-    private static void BuildCanonical(string output, string corePath)
+    internal static void BuildCanonical(string output, string corePath, string? forwardingFamily = null)
     {
         output = Path.GetFullPath(output);
         if (File.Exists(output)) throw new InvalidOperationException("fixture output must be new");
@@ -308,6 +311,7 @@ internal static class VectorAsFixture
         foreach (bool fromGeneric in new[] { true, false })
         foreach (bool indirect in new[] { false, true })
         {
+            if (forwardingFamily is not null && !fromGeneric) continue;
             var owner = typeContext ? carrier : host;
             string name = (fromGeneric ? "ToInt" : "FromInt") + (indirect ? "AdapterCalli" : "Direct");
             var adapter = new MethodDefinition(name, MethodAttributes.Public | MethodAttributes.Static, module.TypeSystem.Void); owner.Methods.Add(adapter);
@@ -318,7 +322,9 @@ internal static class VectorAsFixture
             adapter.ReturnType = result; adapter.Parameters.Add(new ParameterDefinition(source));
             var target = new GenericInstanceMethod(asDefinition);
             target.GenericArguments.Add(fromGeneric ? variable : module.TypeSystem.Int32); target.GenericArguments.Add(fromGeneric ? module.TypeSystem.Int32 : variable);
-            var body = adapter.Body.GetILProcessor(); body.Emit(OpCodes.Ldarg_0); body.Emit(OpCodes.Call, target); body.Emit(OpCodes.Ret);
+            MethodReference invocationTarget = forwardingFamily is null ? target
+                : ForwardingTarget(module, core, forwardingFamily, variable, module.TypeSystem.Int32);
+            var body = adapter.Body.GetILProcessor(); body.Emit(OpCodes.Ldarg_0); body.Emit(OpCodes.Call, invocationTarget); body.Emit(OpCodes.Ret);
             foreach (bool unsupported in new[] { false, true })
             {
                 TypeReference element = unsupported ? enumeration : module.TypeSystem.Int32;
@@ -376,7 +382,7 @@ internal static class VectorAsFixture
         File.WriteAllText(Path.ChangeExtension(output, ".runtimeconfig.json"), "{\"runtimeOptions\":{\"tfm\":\"net10.0\",\"framework\":{\"name\":\"Microsoft.NETCore.App\",\"version\":\"10.0.0\"}}}\n");
     }
 
-    private static void BuildNumeric(string output, string corePath)
+    internal static void BuildNumeric(string output, string corePath, string? forwardingFamily = null)
     {
         output = Path.GetFullPath(output);
         if (File.Exists(output)) throw new InvalidOperationException("fixture output must be new");
@@ -430,12 +436,16 @@ internal static class VectorAsFixture
             check.Body.Variables.Add(original); check.Body.Variables.Add(restored); check.Body.Variables.Add(position);
             var outbound = new GenericInstanceMethod(definition); outbound.GenericArguments.Add(module.TypeSystem.Byte); outbound.GenericArguments.Add(numeric[n]);
             var inbound = new GenericInstanceMethod(definition); inbound.GenericArguments.Add(numeric[n]); inbound.GenericArguments.Add(module.TypeSystem.Byte);
+            MethodReference outboundTarget = forwardingFamily is null ? outbound
+                : ForwardingTarget(module, core, forwardingFamily, module.TypeSystem.Byte, numeric[n]);
+            MethodReference inboundTarget = forwardingFamily is null ? inbound
+                : ForwardingTarget(module, core, forwardingFamily, numeric[n], module.TypeSystem.Byte);
             var il = check.Body.GetILProcessor(); var fail = Instruction.Create(OpCodes.Ldstr, "numeric reinterpretation changed bytes or evaluation count");
             il.Emit(OpCodes.Ldc_I4_0); il.Emit(OpCodes.Stsfld, counter);
             for (int phase = 0; phase < 2; phase++)
             {
                 il.Emit(OpCodes.Ldc_I4, phase); il.Emit(OpCodes.Call, factory); il.Emit(OpCodes.Dup); il.Emit(OpCodes.Stloc, original);
-                il.Emit(OpCodes.Call, outbound); il.Emit(OpCodes.Call, inbound); il.Emit(OpCodes.Stloc, restored);
+                il.Emit(OpCodes.Call, outboundTarget); il.Emit(OpCodes.Call, inboundTarget); il.Emit(OpCodes.Stloc, restored);
                 il.Emit(OpCodes.Ldsfld, counter); il.Emit(OpCodes.Ldc_I4, phase + 1); il.Emit(OpCodes.Bne_Un, fail);
                 il.Emit(OpCodes.Ldc_I4_0); il.Emit(OpCodes.Stloc, position);
                 var body = Instruction.Create(OpCodes.Ldloca, original); var condition = Instruction.Create(OpCodes.Ldloc, position);
@@ -453,8 +463,33 @@ internal static class VectorAsFixture
         File.WriteAllText(Path.ChangeExtension(output, ".runtimeconfig.json"), "{\"runtimeOptions\":{\"tfm\":\"net10.0\",\"framework\":{\"name\":\"Microsoft.NETCore.App\",\"version\":\"10.0.0\"}}}\n");
     }
 
+    private static MethodReference ForwardingTarget(ModuleDefinition module, AssemblyDefinition core,
+        string family, TypeReference source, TypeReference destination)
+    {
+        if (family == "explicit")
+        {
+            var vector = core.MainModule.GetType("System.Numerics.Vector`1");
+            var definition = vector.Methods.Single(m => m.Name == "op_Explicit"
+                && ((GenericInstanceType)m.ReturnType).GenericArguments[0].FullName == destination.FullName);
+            var imported = module.ImportReference(definition);
+            var owner = new GenericInstanceType(module.ImportReference(vector)); owner.GenericArguments.Add(source);
+            var result = new MethodReference(imported.Name, imported.ReturnType, owner) { HasThis = false };
+            foreach (var parameter in imported.Parameters) result.Parameters.Add(new ParameterDefinition(parameter.ParameterType));
+            return result;
+        }
+        if (family != "alias") throw new ArgumentException(family);
+        string suffix = destination.MetadataType switch
+        {
+            MetadataType.IntPtr => "NInt", MetadataType.UIntPtr => "NUInt", _ => destination.Name
+        };
+        var alias = core.MainModule.GetType("System.Numerics.Vector").Methods.Single(m => m.Name == "AsVector" + suffix
+            && m.GenericParameters.Count == 1 && m.Parameters.Count == 1);
+        var call = new GenericInstanceMethod(module.ImportReference(alias)); call.GenericArguments.Add(source);
+        return call;
+    }
+
     private static void EmitRuntime(ModuleDefinition module, TypeDefinition host, MethodDefinition caller, MethodReference target,
-        TypeReference source, TypeReference result, string route, string mutation, int serial, bool and)
+        TypeReference source, TypeReference result, string route, string mutation, int serial, bool and, bool inlineOperand = false)
     {
         var counterDefinition = new FieldDefinition("Operands" + serial, FieldAttributes.Private | FieldAttributes.Static, module.TypeSystem.Int32); host.Fields.Add(counterDefinition);
         FieldReference counter = counterDefinition;
@@ -464,7 +499,7 @@ internal static class VectorAsFixture
             counter = new FieldReference(counterDefinition.Name, module.TypeSystem.Int32, owner);
         }
         var factories = new List<MethodReference>();
-        for (int index = 1; index <= (and ? 2 : 1); index++)
+        for (int index = 1; !inlineOperand && index <= (and ? 2 : 1); index++)
         {
             var factory = new MethodDefinition("Operand" + serial + "_" + index, MethodAttributes.Private | MethodAttributes.Static, source); host.Methods.Add(factory);
             if (mutation == "valid-runtime-mvar")
@@ -498,11 +533,20 @@ internal static class VectorAsFixture
         il.Emit(OpCodes.Ldc_I4_0); il.Emit(OpCodes.Stsfld, counter);
         var start = Instruction.Create(OpCodes.Nop); il.Append(start);
         if (route == "address") { il.Emit(OpCodes.Ldftn, target); il.Emit(OpCodes.Stloc, pointer); }
-        foreach (var factory in factories) il.Emit(OpCodes.Call, factory);
+        if (inlineOperand)
+        {
+            // Keep the VAR forwarding test independent of a generic producer's return ABI.
+            var operand = new VariableDefinition(source); caller.Body.Variables.Add(operand);
+            il.Emit(OpCodes.Ldsfld, counter); il.Emit(OpCodes.Ldc_I4, 10); il.Emit(OpCodes.Mul);
+            il.Emit(OpCodes.Ldc_I4_1); il.Emit(OpCodes.Add); il.Emit(OpCodes.Stsfld, counter);
+            il.Emit(OpCodes.Ldloca, operand); il.Emit(OpCodes.Initobj, source); il.Emit(OpCodes.Ldloc, operand);
+        }
+        else foreach (var factory in factories) il.Emit(OpCodes.Call, factory);
         if (route == "direct") il.Emit(OpCodes.Call, target);
         else
         {
-            var site = new CallSite(result); foreach (var factory in factories) site.Parameters.Add(new ParameterDefinition(source));
+            var site = new CallSite(result);
+            for (int index = 0; index < (and ? 2 : 1); index++) site.Parameters.Add(new ParameterDefinition(source));
             if (route == "address") il.Emit(OpCodes.Ldloc, pointer); else il.Emit(OpCodes.Ldftn, target);
             il.Emit(OpCodes.Calli, site);
         }

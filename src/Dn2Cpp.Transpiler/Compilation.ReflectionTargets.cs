@@ -934,6 +934,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsVectorManagedThrowHelper(target)
             || CoreIntrinsics.IsGenericVectorEstimate(target)
             || CoreIntrinsics.IsGuardedVectorAs(target)
+            || CoreIntrinsics.IsVectorManagedForwarder(target)
             || CoreIntrinsics.IsMemberNotFoundExceptionFactory(target)
             || target.Rva != 0 && cls.IntrinsicCppName is null)
         {

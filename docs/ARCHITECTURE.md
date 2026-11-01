@@ -733,6 +733,11 @@ synthetic default result is produced. Numeric-to-numeric reinterpretation keeps
 its existing path. Calls, stored addresses and retained callable bodies share
 this authority without expanding reflection discovery.
 
+The finite Numerics `Vector<T>.op_Explicit` and `Vector.AsVector{numeric}<T>`
+forwarding families retain their ordinary managed IL for admitted unsupported
+managed sources, reusing this `As` guard. Exact owner, raw signature and caller
+context checks precede cache reuse; this adds no vector layout or numeric operation.
+
 **When does a method earn an intrinsic?** The default is to transpile the real
 BCL IL — Regex/Guid/Crypto coverage landed by removing transpile blockers, not by
 adding intrinsics. Add one only when:

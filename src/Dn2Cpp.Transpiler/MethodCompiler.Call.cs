@@ -953,6 +953,11 @@ internal sealed partial class MethodCompiler
                         && CoreIntrinsics.IsVectorExplicitOwner(vectorOwner))
                     {
                         var conversion = _c.ResolveMemberRefMethod(_module, (MemberReferenceHandle)handle, _method.Context);
+                        if (CoreIntrinsics.IsVectorManagedForwarder(conversion))
+                        {
+                            EmitManagedCall(conversion, isCallvirt);
+                            return;
+                        }
                         if (TryEmitMethodDefIntercept(CoreIntrinsics.MdRuntimePrimitive, conversion))
                             return;
                         throw new NotSupportedException("Vector<T>.op_Explicit requires supported numeric elements");
@@ -1680,10 +1685,11 @@ internal sealed partial class MethodCompiler
             return;
         }
 
-        if (callee.Name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(callee.DeclaringClass))
+        if (callee.Name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(callee.DeclaringClass)
+            && !CoreIntrinsics.IsVectorManagedForwarder(callee))
         {
             if (!CoreIntrinsics.IsVectorExplicit(callee))
-                throw new NotSupportedException("Vector<T>.op_Explicit requires its exact supported CoreLib declaration");
+                throw new NotSupportedException($"Vector<T>.op_Explicit requires its exact supported CoreLib declaration (EmitManagedCall: {callee.DeclaringClass.FullName} -> {callee.Signature.ReturnType})");
             EmitVectorExplicit(callee);
             return;
         }
