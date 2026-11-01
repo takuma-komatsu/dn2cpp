@@ -9,12 +9,17 @@ internal static partial class CoreIntrinsics
     internal static bool IsVectorMagnitudeName(string name) => name is
         "MaxMagnitude" or "MinMagnitude" or "MaxMagnitudeNumber" or "MinMagnitudeNumber";
 
+    internal static bool IsVectorNumberName(string name) => name is "MaxNumber" or "MinNumber";
+
+    // These operations share one exact binary signature, but not their managed guard proofs.
+    internal static bool IsVectorSelectionName(string name) => IsVectorMagnitudeName(name) || IsVectorNumberName(name);
+
     internal static bool IsVectorMagnitudeElement(TypeDesc element) => element is
         { Kind: TypeKind.Primitive, IsCanonPlaceholder: false, Primitive: PrimitiveTypeCode.Single or PrimitiveTypeCode.Double };
 
     internal static void ValidateVectorMagnitude(MethodInfo method)
     {
-        if (IsVectorMagnitudeName(method.Name) && IsVectorEstimateOwnerName(method.DeclaringClass.FullName)
+        if (IsVectorSelectionName(method.Name) && IsVectorEstimateOwnerName(method.DeclaringClass.FullName)
             && !IsVectorMagnitude(method) && !IsVectorMagnitudeManagedGuard(method))
             throw new NotSupportedException($"Vector {method.Name} requires an exact floating-point generic CoreLib declaration");
     }
@@ -25,7 +30,7 @@ internal static partial class CoreIntrinsics
             || module != owner.Module || handle.IsNil) return false;
         var reader = module.Reader;
         var definition = reader.GetMethodDefinition(handle);
-        if (definition.GetDeclaringType() != owner.Handle || !IsVectorMagnitudeName(reader.GetString(definition.Name))
+        if (definition.GetDeclaringType() != owner.Handle || !IsVectorSelectionName(reader.GetString(definition.Name))
             || definition.Attributes != (MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig)
             || definition.ImplAttributes != MethodImplAttributes.AggressiveInlining || definition.RelativeVirtualAddress == 0
             || definition.GetGenericParameters().Count != 1) return false;
@@ -46,7 +51,7 @@ internal static partial class CoreIntrinsics
 
     internal static bool IsVectorMagnitude(MethodInfo method)
     {
-        if (!IsVectorMagnitudeName(method.Name) || method.IsSynthetic || method.PInvoke is not null
+        if (!IsVectorSelectionName(method.Name) || method.IsSynthetic || method.PInvoke is not null
             || method.Context.TypeArgs.Length != 0 || method.Context.MethodArgs is not [var element]
             || !IsVectorMagnitudeElement(element)
             || !IsVectorMagnitudeDefinition(method.DeclaringClass, method.Module, method.Handle)) return false;

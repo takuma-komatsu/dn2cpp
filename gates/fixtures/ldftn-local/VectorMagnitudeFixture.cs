@@ -15,16 +15,19 @@ using ModuleDefinition = Mono.Cecil.ModuleDefinition;
 
 internal static class VectorMagnitudeFixture
 {
+    internal static readonly string[] NumberOperations = { "MaxNumber", "MinNumber" };
     internal static readonly string[] Operations = { "MaxMagnitude", "MaxMagnitudeNumber", "MinMagnitude", "MinMagnitudeNumber" };
     internal static readonly string[] Elements = { "float", "double", "int", "uint", "long", "ulong", "byte", "sbyte", "short", "ushort", "nint", "nuint", "bool", "char", "object", "decimal", "enum", "struct", "refs", "int128", "uint128" };
     internal static readonly string[] Mutations = { "instance", "vararg", "arity", "nongeneric", "concrete", "typevar", "methodvar-one", "extra", "missing", "byref-result", "modopt-0", "modreq-1", "pointer-1", "width", "modopt-owner", "byref-owner", "generic-owner", "foreign-owner", "zero", "two", "trailing-spec", "trailing-reference", "reference", "primitive", "boolean", "byreflike", "nullable", "byref-argument", "pointer-argument", "modopt-argument", "bare", "bare-concrete" };
     public static bool Run(string[] args)
     {
-        if (args.Length != 4 || args[0] != "--vector-magnitude-fixture") return false;
+        if (args.Length != 4 || args[0] is not ("--vector-magnitude-fixture" or "--vector-number-fixture")) return false;
+        bool number = args[0] == "--vector-number-fixture";
+        string prefix = number ? "vector-number" : "vector-magnitude";
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
         var mode = args[3].Split(':');
-        if (mode.Length != 5 || !Operations.Contains(mode[0]) || !Elements.Contains(mode[2]) || mode[3] is not ("direct" or "address" or "calli"))
+        if (mode.Length != 5 || !(number ? NumberOperations : Operations).Contains(mode[0]) || !Elements.Contains(mode[2]) || mode[3] is not ("direct" or "address" or "calli"))
             throw new ArgumentException("expected operation:width:element:direct/address/calli:mutation");
         int width = int.Parse(mode[1], CultureInfo.InvariantCulture);
         if (width is not (0 or 64 or 128 or 256 or 512)) throw new ArgumentException("invalid width");
@@ -37,9 +40,9 @@ internal static class VectorMagnitudeFixture
             var h = MetadataTokens.MethodSpecificationHandle(row);
             var spec = reader.GetMethodSpecification(h);
             if (spec.Method.Kind == HandleKind.MemberReference && reader.GetString(reader.GetMemberReference((MemberReferenceHandle)spec.Method).Name) == mode[0])
-                Console.WriteLine("vector-magnitude-methodspec:" + MetadataTokens.GetToken(h).ToString("X8") + ":raw=" + Convert.ToHexString(reader.GetBlobBytes(spec.Signature)));
+                Console.WriteLine(prefix + "-methodspec:" + MetadataTokens.GetToken(h).ToString("X8") + ":raw=" + Convert.ToHexString(reader.GetBlobBytes(spec.Signature)));
         }
-        Console.WriteLine("vector-magnitude-fixture:" + args[3]);
+        Console.WriteLine(prefix + "-fixture:" + args[3]);
         return true;
     }
     internal static void Build(string output, string corePath, IEnumerable<(string Element, string Route, string Mutation)> cases, int width = 0, string operation = "MaxMagnitude")

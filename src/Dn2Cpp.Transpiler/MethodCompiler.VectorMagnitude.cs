@@ -20,7 +20,9 @@ internal sealed partial class MethodCompiler
         string operation = method.Name switch
         {
             "MaxMagnitude" => "maxmag", "MinMagnitude" => "minmag",
-            "MaxMagnitudeNumber" => "maxmagnum", _ => "minmagnum",
+            "MaxMagnitudeNumber" => "maxmagnum", "MinMagnitudeNumber" => "minmagnum",
+            "MaxNumber" => "maxnum", "MinNumber" => "minnum",
+            _ => throw new InvalidOperationException("Unexpected vector selection operation"),
         };
         // Return the selected operand, preserving floating-point ties and NaN rules.
         Emit($"for ({lane} = 0; {lane} < {width} / sizeof({element}); ++{lane}) {{");

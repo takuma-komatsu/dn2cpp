@@ -9,20 +9,22 @@ internal static class VectorMagnitudeGuards
     private delegate bool RawPredicate(BlobReader signature, out int token);
     public static bool Run(string[] args)
     {
-        if (args.Length != 4 || args[0] != "--vector-magnitude-guards") return false;
-        foreach (string operation in VectorMagnitudeFixture.Operations)
-        foreach (int width in new[] { 0, 64, 128, 256, 512 }) RunCase(args, operation, width);
+        if (args.Length != 4 || args[0] is not ("--vector-magnitude-guards" or "--vector-number-guards")) return false;
+        bool number = args[0] == "--vector-number-guards";
+        foreach (string operation in number ? VectorMagnitudeFixture.NumberOperations : VectorMagnitudeFixture.Operations)
+        foreach (int width in new[] { 0, 64, 128, 256, 512 }) RunCase(args, operation, width, number);
         return true;
     }
 
-    private static void RunCase(string[] args, string operation, int width)
+    private static void RunCase(string[] args, string operation, int width, bool number)
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
         const BindingFlags instance = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         const BindingFlags statics = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
         var cases = new List<(string Element, string Route, string Mutation)>();
-        var admitted = new[] { "float", "double", "decimal", "enum", "struct", "refs", "int128", "uint128" };
+        var admitted = number ? new[] { "float", "double" } : new[] { "float", "double", "decimal", "enum", "struct", "refs", "int128", "uint128" };
+        string prefix = number ? "vector-number" : "vector-magnitude";
         foreach (var element in admitted)
         foreach (var route in new[] { "direct", "address", "calli" })
         foreach (var mutation in new[] { "valid", "valid-mvar", "valid-var" }.Concat(VectorMagnitudeFixture.Mutations))
@@ -114,10 +116,10 @@ internal static class VectorMagnitudeGuards
             Check((bool)managedPredicate.Invoke(null, new[] { pair.Value.Method })! == managed, "route-kind-" + pair.Key);
             Check((bool)predicate.Invoke(null, new[] { pair.Value.Method })! != managed, "numeric-route-kind-" + pair.Key);
         }
-        if (width == 0)
+        if (!number && width == 0)
             GenericVectorMagnitudeGuards.Check(compilation, core, args[2], operation,
                 good.Where(p => p.Key is not ("float" or "double")).Select(p => p.Value.Method).ToArray(), Check);
-        if (width != 0)
+        if (!number && width != 0)
             FixedVectorMagnitudeGuards.Check(compilation, core, args[2], operation, width,
                 good.Where(p => p.Key is not ("float" or "double")).Select(p => p.Value.Method).ToArray(), Check);
         for (int i = 0; i < cases.Count; i++)
@@ -136,7 +138,7 @@ internal static class VectorMagnitudeGuards
             if (token.Kind == HandleKind.MethodSpecification)
             {
                 var spec = reader.GetMethodSpecification((MethodSpecificationHandle)token);
-                Console.WriteLine("vector-magnitude-serialized:" + item.Element + ":" + item.Route + ":" + item.Mutation + ":" + MetadataTokens.GetToken(token).ToString("X8") + ":raw=" + Convert.ToHexString(reader.GetBlobBytes(spec.Signature)));
+                Console.WriteLine(prefix + "-serialized:" + item.Element + ":" + item.Route + ":" + item.Mutation + ":" + MetadataTokens.GetToken(token).ToString("X8") + ":raw=" + Convert.ToHexString(reader.GetBlobBytes(spec.Signature)));
             }
         }
         var canonical = Activator.CreateInstance(Model("TypeDesc"), true)!;
@@ -260,6 +262,6 @@ internal static class VectorMagnitudeGuards
             Check(raw(source.GetMetadataReader().GetBlobReader(blob), out int token) == item.Expected, "raw-shape-" + item.Hex);
             if (item.Expected) Check(token == 4, "raw-vector-token");
         }
-        Console.WriteLine("vector-magnitude-guards:" + operation + ":width=" + width + ":checks=" + checks.ToString(CultureInfo.InvariantCulture));
+        Console.WriteLine(prefix + "-guards:" + operation + ":width=" + width + ":checks=" + checks.ToString(CultureInfo.InvariantCulture));
     }
 }

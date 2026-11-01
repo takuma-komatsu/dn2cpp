@@ -59,6 +59,15 @@ route neither enables unsupported arithmetic nor invents a vector result.
 Fixed-width paths authenticate lower-half descent to the actual Vector64 Count
 guard on both branches; an outer-width Count is not substituted.
 
+
+Portable-vector `MaxNumber` and `MinNumber` reuse the scalar numeric-selection
+helpers for exact public generic declarations closed over float or double.
+Their signed numeric ordering is distinct from magnitude selection. One NaN
+selects the number; signed-zero ties select positive zero for maximum and
+negative zero for minimum. Direct and callable routes validate original
+signatures before cache reuse and evaluate operands once. Other element types
+remain outside this route, including unsupported managed-value guards.
+
 ## 1. Pipeline
 
 ```

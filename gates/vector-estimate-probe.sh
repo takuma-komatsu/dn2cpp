@@ -61,7 +61,8 @@ vector_estimate_probe() {
     probe_concrete_vector_reductions "$1" || return 1
     probe_vector_lerp "$1" || return 1
     probe_vector_log "$1" || return 1
-    probe_vector_magnitude "$1"
+    probe_vector_magnitude "$1" || return 1
+    probe_vector_number "$1"
 }
 
 vector_estimate_authority_probe() {

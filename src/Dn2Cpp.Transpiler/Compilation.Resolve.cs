@@ -916,7 +916,7 @@ internal sealed partial class Compilation
                 for (int index = 0; index < methodArgs.Length; index++)
                     if (!SameTypeArg(existing.Context.MethodArgs[index], methodArgs[index])) throw GuardedVectorAsUnsupported();
             }
-            if (CoreIntrinsics.IsVectorMagnitudeName(methodName)
+            if (CoreIntrinsics.IsVectorSelectionName(methodName)
                 && CoreIntrinsics.IsVectorEstimateOwnerName(declClass.FullName)
                 && (!(CoreIntrinsics.IsVectorMagnitude(existing) || CoreIntrinsics.IsVectorMagnitudeManagedGuard(existing))
                     || existing.Name != methodName || existing.DeclaringClass != declClass

@@ -17,7 +17,7 @@ internal sealed partial class Compilation
         var reader = module.Reader;
         var specification = reader.GetMethodSpecification(handle);
         string? operation = MethodSpecMethodName(module, specification);
-        if (operation is null || !CoreIntrinsics.IsVectorMagnitudeName(operation)) return null;
+        if (operation is null || !CoreIntrinsics.IsVectorSelectionName(operation)) return null;
         var parent = specification.Method.Kind switch
         {
             HandleKind.MethodDefinition => reader.GetMethodDefinition((MethodDefinitionHandle)specification.Method).GetDeclaringType(),
@@ -89,7 +89,7 @@ internal sealed partial class Compilation
         }
         if (argument.Class is { } value) EnsureShape(value);
         if (!(CoreIntrinsics.IsVectorMagnitudeElement(argument)
-                || CoreIntrinsics.IsVectorManagedValueElement(argument))
+                || !CoreIntrinsics.IsVectorNumberName(operation) && CoreIntrinsics.IsVectorManagedValueElement(argument))
             || !ReadVectorValueElement(module, ref raw, context, argument) || raw.RemainingBytes != 0)
             throw VectorMagnitudeUnsupported();
         return InstantiateMethodOnClass(owner, owner.Module, definitionHandle, new[] { argument });
@@ -98,7 +98,7 @@ internal sealed partial class Compilation
     private void ValidateVectorMagnitudeInstantiation(ClassInfo owner, Module module, MethodDefinitionHandle handle, TypeDesc[] arguments)
     {
         var definition = module.Reader.GetMethodDefinition(handle);
-        if (!CoreIntrinsics.IsVectorMagnitudeName(module.Reader.GetString(definition.Name))
+        if (!CoreIntrinsics.IsVectorSelectionName(module.Reader.GetString(definition.Name))
             || !CoreIntrinsics.IsVectorEstimateOwnerName(owner.FullName)) return;
         if (arguments is not [var argument] || !CoreIntrinsics.IsVectorMagnitudeDefinition(owner, module, handle))
             throw VectorMagnitudeUnsupported();
@@ -117,7 +117,7 @@ internal sealed partial class Compilation
     internal void RejectUninstantiatedVectorMagnitudeReference(Module module, MemberReferenceHandle handle, GenericContext context)
     {
         var reference = module.Reader.GetMemberReference(handle);
-        if (!CoreIntrinsics.IsVectorMagnitudeName(module.Reader.GetString(reference.Name))) return;
+        if (!CoreIntrinsics.IsVectorSelectionName(module.Reader.GetString(reference.Name))) return;
         if (MemberRefParentTypeName(module, handle) is { } name && CoreIntrinsics.IsVectorEstimateOwnerName(name))
             throw VectorMagnitudeUnsupported();
         if (reference.Parent.Kind != HandleKind.TypeSpecification) return;
