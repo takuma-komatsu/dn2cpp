@@ -663,6 +663,7 @@ internal static partial class CoreIntrinsics
             || IsConcreteVectorElement(mi)
             || IsVectorFloatingPointTernary(mi)
             || IsVectorLog(mi)
+            || IsVectorMagnitude(mi)
             || IsVectorValueMethod(mi)
             || IsDateOnlyDeconstruct(mi)
             || IsDateTimeParserBoundary(mi)

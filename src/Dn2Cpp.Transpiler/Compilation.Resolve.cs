@@ -87,6 +87,7 @@ internal sealed partial class Compilation
                 CoreIntrinsics.ValidateConcreteVectorElement(mi);
                 CoreIntrinsics.ValidateVectorFloatingPointTernary(mi);
                 CoreIntrinsics.ValidateVectorLog(mi);
+                CoreIntrinsics.ValidateVectorMagnitude(mi);
                 CoreIntrinsics.ValidateVectorAlignment(mi);
                 CoreIntrinsics.ValidateConcreteVectorReduction(mi);
                 CoreIntrinsics.ValidateVectorAsCallable(mi);
@@ -341,6 +342,8 @@ internal sealed partial class Compilation
                 RejectConcreteVectorReductionMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
                 if (TryResolveGuardedVectorAsSpecForScan(module, (MethodSpecificationHandle)handle, ctx) is { } vectorAs)
                     return vectorAs;
+                if (TryResolveVectorMagnitudeSpec(module, (MethodSpecificationHandle)handle, ctx) is { } vectorMagnitude)
+                    return vectorMagnitude;
                 if (TryResolveGenericVectorEstimateSpec(module, (MethodSpecificationHandle)handle, ctx) is { } genericEstimate)
                     return genericEstimate;
                 // A generic method on an intrinsic-mapped type (e.g. Unsafe.Add<T>)
@@ -754,6 +757,8 @@ internal sealed partial class Compilation
         RejectConcreteVectorReductionMethodSpecification(module, handle, callerCtx);
         if (TryResolveGuardedVectorAsSpec(module, handle, callerCtx) is { } vectorAs)
             return vectorAs;
+        if (TryResolveVectorMagnitudeSpec(module, handle, callerCtx) is { } vectorMagnitude)
+            return vectorMagnitude;
         if (TryResolveGenericVectorEstimateSpec(module, handle, callerCtx) is { } genericEstimate)
             return genericEstimate;
         var reader = module.Reader;
@@ -891,6 +896,7 @@ internal sealed partial class Compilation
         if (defModule.Reader.StringComparer.Equals(md.Name, "Lerp")
             && CoreIntrinsics.IsVectorEstimateOwnerName(declClass.FullName))
             throw new NotSupportedException("Vector Lerp requires a nongeneric floating-point declaration");
+        ValidateVectorMagnitudeInstantiation(declClass, defModule, templateHandle, methodArgs);
         ValidateGenericVectorEstimateInstantiation(declClass, defModule, templateHandle, methodArgs);
         ValidateGuardedVectorAsInstantiation(declClass, defModule, templateHandle, methodArgs);
 
@@ -910,6 +916,12 @@ internal sealed partial class Compilation
                 for (int index = 0; index < methodArgs.Length; index++)
                     if (!SameTypeArg(existing.Context.MethodArgs[index], methodArgs[index])) throw GuardedVectorAsUnsupported();
             }
+            if (CoreIntrinsics.IsVectorMagnitudeName(methodName)
+                && CoreIntrinsics.IsVectorEstimateOwnerName(declClass.FullName)
+                && (!CoreIntrinsics.IsVectorMagnitude(existing) || existing.Name != methodName
+                    || existing.DeclaringClass != declClass || existing.Module != defModule || existing.Handle != templateHandle
+                    || existing.Context.MethodArgs[0].Primitive != methodArgs[0].Primitive))
+                throw VectorMagnitudeUnsupported();
             if (defModule.Reader.StringComparer.Equals(md.Name, "MultiplyAddEstimate")
                 && CoreIntrinsics.IsVectorEstimateOwnerName(declClass.FullName)
                 && (!CoreIntrinsics.IsGenericVectorEstimate(existing)
@@ -1404,6 +1416,7 @@ internal sealed partial class Compilation
         RejectBareVectorAsReference(module, handle, callerCtx);
         if (TryResolveConcreteVectorElementReference(module, handle, callerCtx) is { } concreteElement) return concreteElement;
         if (TryResolveVectorEstimateReference(module, handle, callerCtx) is { } vectorEstimate) return vectorEstimate;
+        RejectUninstantiatedVectorMagnitudeReference(module, handle, callerCtx);
         if (TryResolveVectorLogReference(module, handle, callerCtx) is { } vectorLog) return vectorLog;
         var reader = module.Reader;
         var mr = reader.GetMemberReference(handle);
@@ -2198,6 +2211,7 @@ internal sealed partial class Compilation
         RejectBareVectorAsReference(module, handle, callerCtx);
         if (TryResolveConcreteVectorElementReference(module, handle, callerCtx) is { } concreteElement) return concreteElement;
         if (TryResolveVectorEstimateReference(module, handle, callerCtx) is { } vectorEstimate) return vectorEstimate;
+        RejectUninstantiatedVectorMagnitudeReference(module, handle, callerCtx);
         if (TryResolveVectorLogReference(module, handle, callerCtx) is { } vectorLog) return vectorLog;
         var reader = module.Reader;
         var mr = reader.GetMemberReference(handle);

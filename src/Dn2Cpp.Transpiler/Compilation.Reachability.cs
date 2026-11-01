@@ -39,6 +39,7 @@ internal sealed partial class Compilation
         NoteObfuscationMethod(m);
         CoreIntrinsics.ValidateVectorFloatingPointTernary(m);
         CoreIntrinsics.ValidateVectorLog(m);
+        CoreIntrinsics.ValidateVectorMagnitude(m);
         CoreIntrinsics.ValidateVectorAlignment(m);
         CoreIntrinsics.ValidateConcreteVectorReduction(m);
         CoreIntrinsics.ValidateVectorAsCallable(m);

@@ -44,6 +44,14 @@ declarations and raw references guard both direct and callable routes before
 cache reuse. Internal generic logarithms remain excluded. Concrete Vector2/3/4
 callers keep their managed wrappers, including positive-one padding.
 
+Portable-vector magnitude selection admits only exact public generic CoreLib
+`MaxMagnitude`, `MinMagnitude` and their `Number` declarations closed over
+float or double. Each lane reuses the scalar selection helper; NaN propagation
+versus numeric selection and signed-zero magnitude ties remain distinct.
+Operands are evaluated once, and concrete Vector2/3/4 callers retain their IL.
+Original generic signatures and method arguments are checked before cache reuse;
+other element types cannot fall through to a fabricated default result.
+
 ## 1. Pipeline
 
 ```

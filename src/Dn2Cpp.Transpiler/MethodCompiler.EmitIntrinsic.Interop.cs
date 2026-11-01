@@ -585,6 +585,12 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsVectorMagnitude(callee))
+        {
+            EmitVectorMagnitude(callee);
+            return;
+        }
+
         if (CoreIntrinsics.IsVectorLog(callee))
         {
             EmitVectorLog(callee);

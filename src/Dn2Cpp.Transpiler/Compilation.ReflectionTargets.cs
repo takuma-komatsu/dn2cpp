@@ -908,6 +908,7 @@ internal sealed partial class Compilation
             return;
         CoreIntrinsics.ValidateVectorFloatingPointTernary(target);
         CoreIntrinsics.ValidateVectorLog(target);
+        CoreIntrinsics.ValidateVectorMagnitude(target);
         CoreIntrinsics.ValidateVectorAlignment(target);
         CoreIntrinsics.ValidateConcreteVectorReduction(target);
         _reflectionSelectionCount++;

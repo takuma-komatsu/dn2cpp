@@ -484,6 +484,7 @@ internal sealed partial class MethodCompiler
                 CoreIntrinsics.ValidateConcreteVectorElement(callee);
                 CoreIntrinsics.ValidateVectorFloatingPointTernary(callee);
                 CoreIntrinsics.ValidateVectorLog(callee);
+                CoreIntrinsics.ValidateVectorMagnitude(callee);
                 CoreIntrinsics.ValidateVectorAlignment(callee);
                 CoreIntrinsics.ValidateConcreteVectorReduction(callee);
                 CoreIntrinsics.ValidateVectorAsCallable(callee);
@@ -726,6 +727,11 @@ internal sealed partial class MethodCompiler
                     EmitManagedCall(vectorAs, isCallvirt);
                     return;
                 }
+                if (_c.TryResolveVectorMagnitudeSpec(_module, (MethodSpecificationHandle)handle, _method.Context) is { } vectorMagnitude)
+                {
+                    EmitManagedCall(vectorMagnitude, isCallvirt);
+                    return;
+                }
                 if (_c.TryResolveGenericVectorEstimateSpec(_module, (MethodSpecificationHandle)handle, _method.Context) is { } genericEstimate)
                 {
                     EmitManagedCall(genericEstimate, isCallvirt);
@@ -949,6 +955,7 @@ internal sealed partial class MethodCompiler
                     EmitVectorFloatingPointTernary(vectorEstimate);
                     return;
                 }
+                _c.RejectUninstantiatedVectorMagnitudeReference(_module, (MemberReferenceHandle)handle, _method.Context);
                 if (_c.TryResolveVectorLogReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } vectorLog)
                 {
                     EmitVectorLog(vectorLog);
@@ -1696,6 +1703,7 @@ internal sealed partial class MethodCompiler
 
         CoreIntrinsics.ValidateVectorFloatingPointTernary(callee);
         CoreIntrinsics.ValidateVectorLog(callee);
+        CoreIntrinsics.ValidateVectorMagnitude(callee);
 
         CoreIntrinsics.ValidateVectorAlignment(callee);
         CoreIntrinsics.ValidateConcreteVectorReduction(callee);
@@ -1704,6 +1712,12 @@ internal sealed partial class MethodCompiler
         if (CoreIntrinsics.IsVectorFloatingPointTernary(callee))
         {
             EmitVectorFloatingPointTernary(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsVectorMagnitude(callee))
+        {
+            EmitVectorMagnitude(callee);
             return;
         }
 
