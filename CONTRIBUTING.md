@@ -54,6 +54,24 @@ checks outside the basic allowlist. Missing optional prerequisites remain
 reported as skips in its summary and logs. Scheduled and manual runs use a
 separate concurrency group, so a new push cannot cancel them.
 
+The Linux workflow also offers the manual `premerge-debug` mode. Unlike the
+wider smoke profile, it provisions the selected prerequisites and invokes the
+actual strict, uncached `gates/pre-merge.sh --skip-godot` in Debug. Dispatch it
+against the branch containing the workflow and supply the full commit SHA:
+
+```bash
+gh workflow run linux-smoke.yml --repo takuma-komatsu/dn2cpp \
+  --ref YOUR_BRANCH -f mode=premerge-debug -f expected_head=FULL_COMMIT_SHA
+```
+
+The input must match both the workflow's dispatched commit and checkout before
+provisioning or tests begin. The default manual mode remains `suite`; pull
+request, push and scheduled smoke checks are unchanged. The manual pre-merge
+uploads its setup evidence, exact source identity, full log root and receipt
+when produced, including failure logs. Hosted time or disk exhaustion is not a
+pass. Its non-Godot receipt does not replace human Godot-inclusive verification
+for Godot-specific changes.
+
 The Godot-inclusive merge gate — `./gates/pre-merge.sh` — does not run in
 hosted smoke CI. A human runs it on a provisioned desktop host. Xcode-dependent
 gates are excluded automatically when Xcode is unavailable, allowing Windows

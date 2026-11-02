@@ -176,7 +176,7 @@ SUITE
             success_case=success
             [ "$test_os" != windows ] || success_case=sample-crlf
             expected=$(bash "$fixture/gates/ci-smoke.sh" "${runner_args[@]}" --list)
-            expected_budgets=$(printf 'bootstrap\n%s\n' "$expected" | awk '{ print $0, ($0 == "array-core" ? 1200 : 600) }')
+            expected_budgets=$(printf 'bootstrap\n%s\n' "$expected" | awk '{ print $0, ($0 == "array-core" || $0 == "datetime" ? 1200 : 600) }')
             logdir="$fixture/logs-$test_os-$label"
             rc=0
             PATH="$fixture/bin:$PATH" CONFIG=Sentinel DN2CPP_SKIP_BUILD=1 \
@@ -344,7 +344,8 @@ run_step() {
     local name="$1" start=$SECONDS rc=0 budget=600
     shift
     # ArrayCore independently builds the runtime for each allocator axis.
-    [ "$name" != array-core ] || budget=1200
+    # DateTime's aggregate budget covers native builds and family controls.
+    [ "$name" != array-core ] && [ "$name" != datetime ] || budget=1200
     run_with_watchdog "${DN2CPP_GATE_WATCHDOG_SECS:-$budget}" "$@" \
         > "$LOGDIR/$name.log" 2>&1 || rc=$?
     if [ "$rc" -eq 0 ] && grep -Eq \
