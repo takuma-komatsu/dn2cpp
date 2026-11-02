@@ -239,6 +239,10 @@ internal static partial class Program
         MultiplyAddEstimates();
         if (args.Length > 0 && args[0] == "before-vector-angles") return;
         AngleConversions();
+        if (args.Length > 0 && args[0] == "before-vector-trig") return;
+        Trigonometry();
+        if (args.Length > 0 && args[0] == "before-vector-predicate-copy") return;
+        PredicateCopy();
     }
 
     private static void VectorCopyTargets()

@@ -835,6 +835,15 @@ static inline Dn2CppVec<N> dn2cpp_vec_asin(const Dn2CppVec<N>& v) {
 }
 
 template <class T, int N>
+static inline Dn2CppVec<N> dn2cpp_vec_sin(const Dn2CppVec<N>& v) {
+    static_assert(std::is_floating_point<T>::value, "Sin requires floating-point lanes");
+    Dn2CppVec<N> r;
+    for (int i = 0; i < N / (int)sizeof(T); ++i)
+        dn2cpp_vec_set<T>(r, i, (T)std::sin(dn2cpp_vec_get<T>(v, i)));
+    return r;
+}
+
+template <class T, int N>
 static inline Dn2CppVec<N> dn2cpp_vec_cos(const Dn2CppVec<N>& v) {
     if constexpr (std::is_floating_point<T>::value) {
         Dn2CppVec<N> r;
