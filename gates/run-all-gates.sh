@@ -499,6 +499,16 @@ ORDERED_PROJECTS=(
     # Shared fixture outside samples/: build once before array-core and
     # wasm-console consume it under DN2CPP_SKIP_BUILD.
     "gates/fixtures/md-readonly-byrefs/MdReadonlyByrefs.csproj"
+    # These fixture roots are outside the sample scan, but their gates use
+    # build_proj and therefore consume these outputs under DN2CPP_SKIP_BUILD.
+    "gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+    "gates/fixtures/datetime-family/DateTimeFamily.csproj"
+    "gates/fixtures/abbreviated-day/minimal/MinimalDay.csproj"
+    "gates/fixtures/gen2-callback/Gen2Callback.csproj"
+    "gates/fixtures/gen2-callback/interpreter/Base/Gen2CallbackBase.csproj"
+    "gates/fixtures/gen2-callback/interpreter/Patch/Gen2CallbackPatch.csproj"
+    "gates/fixtures/gen2-callback/interpreter/Sealed/Gen2CallbackSealed.csproj"
+    "gates/fixtures/gen2-callback/interpreter/ObjectArgument/Gen2CallbackObjectArgument.csproj"
 )
 
 # Projects whose restore/build is part of the gate's asserted acquisition path.

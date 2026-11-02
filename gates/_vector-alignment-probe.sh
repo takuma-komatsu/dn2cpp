@@ -116,7 +116,7 @@ PYDIM
         gate_output status "$(cat "$out/helper-$mutation.status")" 2 || return 1
         grep -E 'ISimdVector.Alignment requires|Vector alignment dependencies are not generic methods|ThrowAccessViolationException requires' "$out/helper-$mutation.stderr" >/dev/null || return 1
     done
-    source gates/vector-alignment-guards.sh || return 1
+    source gates/_vector-alignment-guards.sh || return 1
     probe_unsupported_aligned_dim_guards "$out" || return 1
     probe_unsupported_aligned_dim_runtime "$out" "$fixture" || return 1
 }

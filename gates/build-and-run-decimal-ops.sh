@@ -33,9 +33,9 @@
 # InvariantGlobalization pins the oracle's culture, which is what makes the diff
 # host-independent. See the csproj.
 source "$(dirname "$0")/_common.sh"
-source "$(dirname "$0")/decimal-divmod-probe.sh"
+source "$(dirname "$0")/_decimal-divmod-probe.sh"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-oa-currency|oa-currency-direct-and-delegate|decimal-scale-direct-and-delegate|decimal-divmod-exact-ref-raw-diet|cli:$(_gate_cli_hash)"
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/decimal-divmod-probe.sh gates/fixtures/decimal-divmod gates/fixtures/ldftn-local/DecimalDivModFixture.cs gates/fixtures/ldftn-local/DecimalDivModGuards.cs"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_decimal-divmod-probe.sh gates/fixtures/decimal-divmod gates/fixtures/ldftn-local/DecimalDivModFixture.cs gates/fixtures/ldftn-local/DecimalDivModGuards.cs"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line

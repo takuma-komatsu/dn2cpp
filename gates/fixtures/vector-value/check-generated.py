@@ -53,7 +53,7 @@ for path in sorted(out.glob('generated*.cpp')):
             assert body.count('dn2cpp_box(&ti_System_Numerics_Vector_Double,') >= 3
             bindings.update(re.findall(r'&dgadapn_(Vector_1_Equals_\w+)', body))
         if name.startswith('Vector_1_Equals_') and 'dn2cpp_vec_value_equals<double, 16>' in body:
-            assert 'std::memcpy' in body, 'boxed receiver must be copied to aligned storage'
+            assert 'dn2cpp_vec_load<16>(a0)' in body, 'boxed receiver must use the byte-aligned load boundary'
             wrappers.add(name)
             kind = 6
         if name.startswith('dgadapn_Vector_1_Equals_'):

@@ -50,8 +50,8 @@ PYDIET
         gate_capture_ok "$out/$axis-contract" python3 gates/fixtures/vector-magnitude/check-oracles.py \
             "$out/$axis-run.stdout" --profile native || return 1
     done
-    source "$_DN2CPP_GATE_ROOT/gates/vector-magnitude-guards.sh" || return 1
+    source "$_DN2CPP_GATE_ROOT/gates/_vector-magnitude-guards.sh" || return 1
     vector_magnitude_authority_probe "$out/authority" || return 1
-    source "$_DN2CPP_GATE_ROOT/gates/vector-magnitude-unsupported-probe.sh" || return 1
+    source "$_DN2CPP_GATE_ROOT/gates/_vector-magnitude-unsupported-probe.sh" || return 1
     probe_vector_magnitude_unsupported "$out"
 }

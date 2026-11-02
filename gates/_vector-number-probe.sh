@@ -67,6 +67,6 @@ PYDIET
         gate_output byte-witness "$out/$axis-run.stdout" 'vector-number:all-routes-passed' \
             'vector-number:managed-guards:start' 'vector-number:managed-guards-passed' || return 1
     done
-    source "$_DN2CPP_GATE_ROOT/gates/vector-number-guards.sh" || return 1
+    source "$_DN2CPP_GATE_ROOT/gates/_vector-number-guards.sh" || return 1
     vector_number_authority_probe "$out/authority"
 }

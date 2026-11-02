@@ -1,7 +1,10 @@
 # Keep representation-read parity independent of optimizer cancellation.
-file(GLOB scalar_leaf_sources "${DN2CPP_APP_DIR}/generated*.cpp")
-if(MSVC)
-    set_source_files_properties(${scalar_leaf_sources} PROPERTIES COMPILE_OPTIONS "/Od")
-else()
-    set_source_files_properties(${scalar_leaf_sources} PROPERTIES COMPILE_OPTIONS "-O0")
-endif()
+# Apply after target creation so its PCH and generated units use the same mode.
+function(dn2cpp_scalar_leaves_unoptimized)
+    if(MSVC)
+        target_compile_options("${DN2CPP_APP_NAME}" PRIVATE /Od)
+    else()
+        target_compile_options("${DN2CPP_APP_NAME}" PRIVATE -O0)
+    endif()
+endfunction()
+cmake_language(DEFER CALL dn2cpp_scalar_leaves_unoptimized)

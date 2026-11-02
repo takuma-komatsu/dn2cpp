@@ -8,8 +8,8 @@
 # primitive; MethodCompiler.TryEmitGenericMathIntrinsic emits the primitive op and
 # the constrained `call` to a static-abstract member devirtualizes to the concrete
 # impl. The app drives the patterns through generic methods; output diffs exact vs
-# real .NET. CoreLib only (no Linq shim). FloatingPointMath covers the floating-
-# point interfaces (IRootFunctions/ITrigonometricFunctions/IExponentialFunctions/
+# real .NET using genuine BCL assemblies (no Linq shim). FloatingPointMath covers
+# the floating-point interfaces (IRootFunctions/ITrigonometricFunctions/IExponentialFunctions/
 # ILogarithmicFunctions/IPowerFunctions/IHyperbolicFunctions/IFloatingPointIeee754/
 # IFloatingPoint) with TSelf closed to double/float/Half. ShiftModulusOps covers
 # op_Modulus (IModulusOperators; integers/float/double/decimal), the IShiftOperators
@@ -81,4 +81,4 @@ gate_extra_asserts() {
     probe_scalar_numeric_leaves "$out/scalar-leaves"
 }
 
-corelib_diff_gate GenericMathOpsSubset System.Runtime
+corelib_diff_gate GenericMathOpsSubset System.Runtime System.Runtime.Numerics

@@ -883,7 +883,8 @@ dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
     --signature-blob-verify "$(resolve_net10_corelib)"
 
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \
-    System.Collections.Specialized -r "samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/DefaultStructCtorLib.dll"
+    System.Collections.Specialized System.Security.Claims \
+    -r "samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/DefaultStructCtorLib.dll"
 
 # The real runner source is linked into this small fixture so this block proves
 # its MethodDef interception independently of a full self-host native build.
@@ -944,7 +945,9 @@ worker_out="artifacts/gc-worker-boundary-$CONFIG"
 invoke_cli "$worker_input/SelfHostPrimSubset.dll" -r "$_CG_CORELIB" \
     -r "$(dirname "$_CG_CORELIB")/System.Linq.dll" \
     -r "$(dirname "$_CG_CORELIB")/System.Diagnostics.TraceSource.dll" \
-    -r "$(dirname "$_CG_CORELIB")/System.Collections.Specialized.dll" -o "$worker_out"
+    -r "$(dirname "$_CG_CORELIB")/System.Collections.Specialized.dll" \
+    -r "$(dirname "$_CG_CORELIB")/System.Security.Claims.dll" \
+    -r "$worker_input/DefaultStructCtorLib.dll" -o "$worker_out"
 compile_console "$worker_out" GcWorkerBoundary
 gate_capture_ok "$worker_out/native" run_bounded "./$worker_out/GcWorkerBoundary$EXE_EXT" native-finalizer-boundary
 gc_worker_boundary_asserts "$worker_out/native.stdout"
@@ -971,7 +974,12 @@ mkdir -p "$vm_input"
 cp samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/* "$vm_input/"
 dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll"     --delegate-vm-constructors "$vm_input/SelfHostPrimSubset.dll" "$_CG_CORELIB"
 vm_out="artifacts/delegate-vm-boundary-$CONFIG"
-invoke_cli "$vm_input/SelfHostPrimSubset.dll" -r "$_CG_CORELIB"     -r "$(dirname "$_CG_CORELIB")/System.Linq.dll"     -r "$(dirname "$_CG_CORELIB")/System.Diagnostics.TraceSource.dll"     -r "$(dirname "$_CG_CORELIB")/System.Collections.Specialized.dll" -o "$vm_out"
+invoke_cli "$vm_input/SelfHostPrimSubset.dll" -r "$_CG_CORELIB" \
+    -r "$(dirname "$_CG_CORELIB")/System.Linq.dll" \
+    -r "$(dirname "$_CG_CORELIB")/System.Diagnostics.TraceSource.dll" \
+    -r "$(dirname "$_CG_CORELIB")/System.Collections.Specialized.dll" \
+    -r "$(dirname "$_CG_CORELIB")/System.Security.Claims.dll" \
+    -r "$vm_input/DefaultStructCtorLib.dll" -o "$vm_out"
 compile_console "$vm_out" DelegateVmBoundary
 gate_capture_ok "$vm_out/native" run_bounded "./$vm_out/DelegateVmBoundary$EXE_EXT" native-vm-constructor-boundary
 vm_ctor_refusal_asserts() {

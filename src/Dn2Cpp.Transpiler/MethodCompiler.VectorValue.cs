@@ -19,10 +19,10 @@ internal sealed partial class MethodCompiler
         string value;
         if (receiver.Kind == StackKind.Ptr)
         {
-            // An instance method-group delegate can supply a boxed payload, whose
-            // address need not have the vector representation's native alignment.
+            // Boxed receivers need the byte-aligned load boundary: memcpy from a
+            // typed vector pointer can still assume the native vector alignment.
             value = NewTemp(cpp);
-            Emit($"std::memcpy(&{value}, {receiver.Expr}, sizeof({value}));");
+            Emit($"{value} = dn2cpp_vec_load<{width}>({receiver.Expr});");
         }
         else
             value = Cast(receiver, cpp);

@@ -25,6 +25,18 @@ bindings = {w: set() for w in widths}
 changes = []
 verified = 0
 
+# Select callable targets by the double witness, not by an ABI that is itself
+# under test. The same corpus also emits managed unsupported-element adapters.
+sources = [(path, path.read_text()) for path in paths]
+for path, source in sources:
+    for match in function.finditer(source):
+        for width in widths:
+            if f'Program_FixedValueTupleWitness{width}_' in match[2]:
+                bindings[width].update(re.findall(
+                    r'&dgadapn_(Vector' + str(width) + r'_1_Equals_\w+)', match[0]))
+for width in widths:
+    assert bindings[width], ('missing double witness callable binding', width)
+
 def helper(name, width):
     return re.compile(r'dn2cpp_vec_value_' + name + r'<double,\s*' + str(width // 8) + r'>')
 
@@ -38,19 +50,19 @@ def instrument(match):
         kind = None
         if f'Program_FixedValueTupleWitness{width}_' in name:
             assert not re.search(r'vtable\[\s*-', body), 'negative bound method vtable slot'
-            bindings[width].update(re.findall(r'&dgadapn_(Vector' + str(width) + r'_1_Equals_\w+)', body))
             for token in ('&dn2cpp_object_equals_virtual', '&dn2cpp_object_gethashcode'):
                 assert token in body, (name, token)
         if name.startswith(f'Vector{width}_1_Equals_') and equal.search(body):
-            assert 'std::memcpy' in body, 'boxed receiver must be copied'
+            assert f'dn2cpp_vec_load<{n}>(a0)' in body, 'boxed receiver must use the byte-aligned load boundary'
             assert f'Dn2CppVector{width}' in declaration, ('wrapper ABI', declaration)
             wrappers[width].add(name)
             kind = 6
-        if name.startswith(f'dgadapn_Vector{width}_1_Equals_'):
+        target = name.removeprefix('dgadapn_')
+        if name.startswith(f'dgadapn_Vector{width}_1_Equals_') and target in bindings[width]:
             assert f'Dn2CppVector{width} a0)' in declaration, ('adapter argument ABI', declaration)
             assert '__target + 1' in body, 'adapter must pass boxed payload'
-            target = name[len('dgadapn_'):]
-            assert target + '(' in body
+            assert re.search(r'\breturn\s+' + re.escape(target) + r'\(', body), (
+                'adapter target call', name)
             adapters[width].add(target)
             kind = 7
         if f'FixedValuePair{width}_TisDouble_' in name:
@@ -93,8 +105,7 @@ def instrument(match):
     verified += count
     return body
 
-for path in paths:
-    original = path.read_text()
+for path, original in sources:
     changed = function.sub(instrument, original)
     for index, width in enumerate(widths):
         pattern = (r'^static int32_t (vector_value_itf_System_Runtime_Intrinsics_Vector' + str(width)

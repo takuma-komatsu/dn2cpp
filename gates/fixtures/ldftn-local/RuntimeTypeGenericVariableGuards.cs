@@ -82,6 +82,8 @@ internal static class RuntimeTypeGenericVariableGuards
             ?? throw new InvalidOperationException("Missing IsGenericVariable production predicate");
         var getterPredicate = intrinsics.GetMethod("IsRuntimeTypeGenericParameterGetter", statics)
             ?? throw new InvalidOperationException("Missing retained generic-parameter getter predicate");
+        var siblingPredicate = intrinsics.GetMethod("IsRuntimeTypeHandleContainsGenericVariablesStatic", statics)
+            ?? throw new InvalidOperationException("Missing static ContainsGenericVariables predicate");
         var row = intrinsics.GetField("MdRuntimePrimitive", statics)!.GetValue(null)!;
         var rowMatches = row.GetType().GetMethod("Matches", new[] { Model("MethodInfo") })!;
         int checks = 0;
@@ -216,9 +218,30 @@ internal static class RuntimeTypeGenericVariableGuards
                     Negative("primitive parameter " + primitive, () => Sig(parameters: new[] { Primitive(primitive) }));
                 foreach (string kind in new[] { "ByRef", "Pointer", "SZArray", "MDArray" })
                     Negative("wrapped parameter " + kind, () => Sig(parameters: new[] { Wrapped(kind, ClassType(parameter)) }));
-                foreach (string name in new[] { "GetGenericVariableIndex", "ContainsGenericVariables",
+                foreach (string name in new[] { "GetGenericVariableIndex",
                     "IsGenericTypeVariable", "IsGenericMethodVariable" })
                     Negative("unrelated private ABI " + name, () => Set(method, "Name", name));
+
+                // A registered sibling is negative for this family, not for the descriptor union.
+                var sibling = typeof(RuntimeTypeHandle).GetMethod("ContainsGenericVariables", statics, new[] { clrRuntimeType })!;
+                var siblingToken = MetadataTokens.MethodDefinitionHandle(sibling.MetadataToken & 0xffffff);
+                var siblingMetadata = reader.GetMethodDefinition(siblingToken);
+                Check(sibling.DeclaringType == typeof(RuntimeTypeHandle) && sibling.Attributes == actual.Attributes
+                    && !sibling.IsGenericMethod && sibling.ReturnType == typeof(bool)
+                    && sibling.GetParameters() is [{ ParameterType: var siblingParameter }] && siblingParameter == clrRuntimeType
+                    && sibling.GetMethodImplementationFlags() == MethodImplAttributes.InternalCall
+                    && sibling.GetMethodBody() is null && siblingMetadata.RelativeVirtualAddress == 0
+                    && reader.GetBlobBytes(siblingMetadata.Signature).SequenceEqual(reader.GetBlobBytes(metadata.Signature)),
+                    "ContainsGenericVariables real CoreLib sibling declaration");
+                Reset();
+                Set(method, "Name", sibling.Name);
+                Check(!(bool)helperPredicate.Invoke(null, new[] { method })!, "ContainsGenericVariables excluded from IsGenericVariable");
+                Check(!(bool)getterPredicate.Invoke(null, new[] { method })!, "ContainsGenericVariables excluded from retained getter");
+                Check((bool)siblingPredicate.Invoke(null, new[] { method })!, "ContainsGenericVariables sibling predicate");
+                Check((bool)rowMatches.Invoke(row, new[] { method })!, "ContainsGenericVariables registered descriptor");
+                Set(method, "Handle", siblingToken);
+                Check((bool)siblingPredicate.Invoke(null, new[] { method })!, "ContainsGenericVariables actual MethodDef predicate");
+                Check((bool)rowMatches.Invoke(row, new[] { method })!, "ContainsGenericVariables actual MethodDef descriptor");
             }
             foreach (var hint in new[] { MethodImplAttributes.NoInlining, MethodImplAttributes.AggressiveInlining,
                 MethodImplAttributes.NoOptimization })

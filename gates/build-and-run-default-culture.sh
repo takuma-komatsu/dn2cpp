@@ -14,7 +14,10 @@
 # WHY IT IS STILL DETERMINISTIC. It never asserts a fixed string. For each
 # locale below it runs the native binary and `dotnet $app` under the SAME
 # LC_ALL/LANG and requires them byte-identical, so the expectation is real .NET's
-# answer on that host rather than any answer written down here. On POSIX the
+# answer on the checked-in target reference, not arbitrary installed ICU.
+# Native binaries never load deployment ICU (tools/check-culture-reference).
+# The sample's resource-key option prevents recursive exception-message lookup
+# without pinning or replacing the locale. On POSIX the
 # forced locales really move both sides (measured: ja-JP, de-DE, en-US, fr-FR all
 # resolve and all match); on Windows neither side reads the environment, so the
 # sweep collapses to four runs of the user's locale — still a real subject-vs-
