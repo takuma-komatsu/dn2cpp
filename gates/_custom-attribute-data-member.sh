@@ -20,7 +20,8 @@ custom_attribute_data_member_routes_gate() {
     done
     custom_attribute_data_member_asserts "$root/oracle.stdout" public || return $?
     local empty_setter
-    empty_setter=$(sed -n 's/^cad-member-public-empty-setter://p' "$root/oracle.stdout" | tr -d '\r')
+    gate_output view "$root/oracle.stdout" "$root/oracle.records" --policy crlf || return $?
+    empty_setter=$(sed -n 's/^cad-member-public-empty-setter://p' "$root/oracle.records")
     [[ "$empty_setter" == System.*Exception ]] || { echo 'Empty setter oracle did not record an exception' >&2; return 1; }
     gate_output witness "$root/custom-oracle.stdout" 'cad-member-custom-clr-override:True' --count 1 --policy crlf || return $?
     gate_output witness "$root/custom-oracle.stdout" 'cad-member-custom-clr-identity:True' --count 1 --policy crlf || return $?
