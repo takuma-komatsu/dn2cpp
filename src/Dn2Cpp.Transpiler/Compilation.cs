@@ -4098,6 +4098,7 @@ internal sealed partial class Compilation
         CoreIntrinsics.ValidateVectorLog(m);
         CoreIntrinsics.ValidateVectorMagnitude(m);
         CoreIntrinsics.ValidateScalarNumericLeaf(m);
+        CoreIntrinsics.ValidateBinaryIntegerEndianBody(m);
         CoreIntrinsics.ValidateVectorAlignment(m);
         CoreIntrinsics.ValidateConcreteVectorReduction(m);
         CoreIntrinsics.ValidateVectorAsCallable(m);
@@ -4130,6 +4131,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(m)
             || CoreIntrinsics.IsInterpolationStaticHelper(m)
             || CoreIntrinsics.IsScalarNumericLeaf(m)
+            || CoreIntrinsics.IsBinaryIntegerEndianBody(m)
             || CoreIntrinsics.IsVectorAlignmentManagedBody(m)
             || CoreIntrinsics.IsConcreteVectorReduction(m)
             || CoreIntrinsics.IsResourceManagerDefaultType(m)

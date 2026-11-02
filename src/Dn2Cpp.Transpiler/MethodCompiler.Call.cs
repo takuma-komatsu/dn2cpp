@@ -486,6 +486,7 @@ internal sealed partial class MethodCompiler
                 CoreIntrinsics.ValidateVectorLog(callee);
                 CoreIntrinsics.ValidateVectorMagnitude(callee);
                 CoreIntrinsics.ValidateScalarNumericLeaf(callee);
+                CoreIntrinsics.ValidateBinaryIntegerEndianBody(callee);
                 CoreIntrinsics.ValidateVectorAlignment(callee);
                 CoreIntrinsics.ValidateConcreteVectorReduction(callee);
                 CoreIntrinsics.ValidateVectorAsCallable(callee);
@@ -510,6 +511,7 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(callee)
                     || CoreIntrinsics.IsInterpolationStaticHelper(callee)
                     || CoreIntrinsics.IsScalarNumericLeaf(callee)
+                    || CoreIntrinsics.IsBinaryIntegerEndianBody(callee)
                     || CoreIntrinsics.IsVectorAlignmentManagedBody(callee)
                     || CoreIntrinsics.IsConcreteVectorReduction(callee)
                     || CoreIntrinsics.IsResourceManagerDefaultType(callee)
@@ -1714,6 +1716,7 @@ internal sealed partial class MethodCompiler
         CoreIntrinsics.ValidateVectorMagnitude(callee);
 
         CoreIntrinsics.ValidateScalarNumericLeaf(callee);
+        CoreIntrinsics.ValidateBinaryIntegerEndianBody(callee);
         CoreIntrinsics.ValidateVectorAlignment(callee);
         CoreIntrinsics.ValidateConcreteVectorReduction(callee);
 
@@ -2097,6 +2100,21 @@ internal sealed partial class MethodCompiler
         if (_constrained is { } c && isCallvirt)
         {
             EmitConstrainedCall(callee, c);
+            return;
+        }
+
+        if (!isCallvirt && SharedTrial
+            && (CoreIntrinsics.IsBinaryIntegerEndianSlotCandidate(callee)
+                || BinaryIntegerEndianContract.IsDefault(callee.Name)
+                    && Comp.GenericDefFullName(callee.DeclaringClass) == "System.Numerics.IBinaryInteger")
+            && (Compilation.ContainsCanonPlaceholder(callee.DeclaringClass)
+                || _constrained is not null && Compilation.ContainsCanonPlaceholder(_constrained)))
+            ThrowSharedTaint("binary-integer-endian", callee.DeclaringClass.FullName);
+        if (!isCallvirt && _c.TryResolveBinaryIntegerEndianCall(_constrained, callee) is { } endianBody)
+        {
+            var arguments = PopArgs(callee, hasThis: false);
+            EmitCallResult(endianBody, DirectCall(endianBody, arguments));
+            EmitByRefSlotFixups();
             return;
         }
 
@@ -3047,19 +3065,8 @@ internal sealed partial class MethodCompiler
             return true;
         }
 
-        // IBinaryInteger<TSelf>.ReadBigEndian(ReadOnlySpan<byte> source, bool isUnsigned)
-        // -> TSelf. A static-virtual whose DEFAULT interface body calls the static-abstract
-        // TryReadBigEndian (an InternalCall with no IL) and throws OverflowException on
-        // failure — dn2cpp_read_big_endian reproduces both: it reads the span big-endian,
-        // sign/zero-extends per isUnsigned, and raises the catchable OverflowException when
-        // the value does not fit TSelf. Reached from System.Formats.Tar (GNU/PAX base-256
-        // numeric fields) closed to Int32/Int64. TSelf is the (substituted) return type.
-        // Only the ReadOnlySpan/Span<byte> overload is modeled — the (byte[], …) overloads
-        // are a loud decline (Tar uses the span form); a name-gated route may DECLINE a
-        // shape but must never POP the wrong one, so the shape is matched before any Pop.
-        // Same predicate the reach-side cut asks (Compilation.IsInterceptedReadBigEndian),
-        // called here at this asker's own position (cut ⟹ route): the reach cut deletes the
-        // DIM body, so this route must name none of it.
+        // The residual sub-word shortcut shares its predicate with reachability.
+        // Admitted endian owners keep the genuine default and concrete TryRead IL.
         if (Comp.IsInterceptedReadBigEndian(callee))
         {
             var rbeSelf = callee.Signature.ReturnType;

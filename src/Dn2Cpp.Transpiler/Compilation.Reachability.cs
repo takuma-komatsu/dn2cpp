@@ -41,6 +41,7 @@ internal sealed partial class Compilation
         CoreIntrinsics.ValidateVectorLog(m);
         CoreIntrinsics.ValidateVectorMagnitude(m);
         CoreIntrinsics.ValidateScalarNumericLeaf(m);
+        CoreIntrinsics.ValidateBinaryIntegerEndianBody(m);
         CoreIntrinsics.ValidateVectorAlignment(m);
         ValidateSimdAlignmentBody(m);
         ValidateUnsupportedAlignedDim(m);
@@ -284,6 +285,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(m)
             || CoreIntrinsics.IsInterpolationStaticHelper(m)
             || CoreIntrinsics.IsScalarNumericLeaf(m)
+            || CoreIntrinsics.IsBinaryIntegerEndianBody(m)
             || CoreIntrinsics.IsVectorAlignmentManagedBody(m)
             || CoreIntrinsics.IsConcreteVectorReduction(m)
             || CoreIntrinsics.IsResourceManagerDefaultType(m)
@@ -2131,18 +2133,12 @@ internal sealed partial class Compilation
         }
     }
 
-    /// <summary>The <c>IBinaryInteger&lt;TSelf&gt;.ReadBigEndian(ReadOnlySpan&lt;byte&gt;|
-    /// Span&lt;byte&gt;, bool)</c> span overload on an integer-primitive TSelf — the shape
-    /// <see cref="MethodCompiler.TryEmitGenericMathIntrinsic"/> lowers to the runtime
-    /// <c>dn2cpp_read_big_endian</c>. It is a static-virtual whose DEFAULT interface body
-    /// calls the static-abstract <c>TryReadBigEndian</c> (an InternalCall with no IL that
-    /// dn2cpp cannot transpile), so the emit route replaces the whole call and the reach
-    /// side must delete that DIM body. This single predicate is asked by BOTH askers of the
-    /// constrained-static-virtual <c>call</c> pair (the reach cut before the ordinary
-    /// <c>Reach(t)</c> edge, and the emit route) so <c>cut ⟹ route</c> cannot drift. Name
-    /// first, so the signature decode runs only for methods actually named ReadBigEndian.</summary>
+    /// <summary>The remaining sub-word ReadBigEndian shortcut. Admitted endian
+    /// owners retain their real default and TryRead bodies; other existing integer
+    /// shapes still use the shared whole-call cut/lowering predicate.</summary>
     public bool IsInterceptedReadBigEndian(MethodInfo m) =>
         m.Name == "ReadBigEndian"
+        && !CoreIntrinsics.IsBinaryIntegerEndianDefault(m)
         && m.DeclaringClass.IsInterface
         && m.DeclaringClass.Namespace.StartsWith("System.Numerics", StringComparison.Ordinal)
         && m.Signature.ReturnType is { Kind: TypeKind.Primitive } rt
@@ -6492,12 +6488,8 @@ internal sealed partial class Compilation
                             constrained = null;
                             continue;
                         }
-                        // IBinaryInteger<TSelf>.ReadBigEndian span overload on an integer
-                        // primitive: emit lowers the whole call to dn2cpp_read_big_endian
-                        // (its default body's TryReadBigEndian leaf is an InternalCall with
-                        // no IL), so its DIM body must NOT enter the tree — cut the ordinary
-                        // Reach(t) edge below. cut ⟹ route: the same predicate gates the emit
-                        // route (MethodCompiler.TryEmitGenericMathIntrinsic).
+                        // Keep the residual shortcut's cut in sync with emission;
+                        // the admitted endian family instead reaches the real DIM.
                         if (t is not null && insn.OpCode == ILOpCode.Call
                             && constrained is { Kind: TypeKind.Primitive, IsCanonPlaceholder: false }
                             && IsInterceptedReadBigEndian(t))
@@ -6545,6 +6537,13 @@ internal sealed partial class Compilation
                         }
                         // An ambiguous static slot emits a throw, so neither its
                         // default body nor either competing override is a call edge.
+                        if (insn.OpCode == ILOpCode.Call && t is not null
+                            && TryResolveBinaryIntegerEndianCall(constrained, t) is { } endianBody)
+                        {
+                            ReachIntrinsicTypeMethod(endianBody);
+                            constrained = null;
+                            continue;
+                        }
                         if (insn.OpCode == ILOpCode.Call && t is not null
                             && TryResolveSimdAlignmentCall(module, handle, m.Context, constrainedHandle, constrained, t) is { } alignmentBody)
                         {
