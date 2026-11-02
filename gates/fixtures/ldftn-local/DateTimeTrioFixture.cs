@@ -11,16 +11,8 @@ internal static class DateTimeTrioFixture
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
         using var core = AssemblyDefinition.ReadAssembly(args[2]);
-        var owner = core.MainModule.GetType("System.DateTime");
-        var addDefinition = owner.Methods.Single(method => method.Name == "TryAddTicks");
-        var createDefinition = owner.Methods.Single(method => method.Name == "TryCreate");
-        var ctorDefinition = owner.Methods.Single(method => method.IsConstructor && method.Parameters.Count == 3
-            && method.Parameters[0].ParameterType.MetadataType == MetadataType.Int64
-            && method.Parameters[1].ParameterType.FullName == "System.DateTimeKind" && method.Parameters[2].ParameterType.MetadataType == MetadataType.Boolean);
-        if ((int)addDefinition.Attributes != 0x83 || (int)createDefinition.Attributes != 0x93 || (int)ctorDefinition.Attributes != 0x1883
-            || new[] { addDefinition, createDefinition, ctorDefinition }.Any(method => method.ImplAttributes != 0 || method.RVA == 0 || method.HasGenericParameters)
-            || addDefinition.MetadataToken.ToInt32() != 0x06000fb6 || createDefinition.MetadataToken.ToInt32() != 0x0600102b || ctorDefinition.MetadataToken.ToInt32() != 0x06000f94)
-            throw new InvalidOperationException("installed DateTime trio changed");
+        var (addDefinition, createDefinition, ctorDefinition) = GetDeclarations(core);
+        var owner = addDefinition.DeclaringType;
         string path = Path.GetFullPath(args[1]);
         using var app = AssemblyDefinition.ReadAssembly(path, new ReaderParameters { InMemory = true });
         var module = app.MainModule;
@@ -119,5 +111,29 @@ internal static class DateTimeTrioFixture
         });
         app.Write(path, new WriterParameters { Timestamp = 0, DeterministicMvid = true });
         return true;
+    }
+
+    public static (MethodDefinition Add, MethodDefinition Create, MethodDefinition Constructor) GetDeclarations(AssemblyDefinition core)
+    {
+        var owner = core.MainModule.GetType("System.DateTime");
+        var add = owner.Methods.Single(method => method.Name == "TryAddTicks");
+        var create = owner.Methods.Single(method => method.Name == "TryCreate");
+        var ctor = owner.Methods.Single(method => method.IsConstructor && method.Parameters.Count == 3
+            && method.Parameters[0].ParameterType.MetadataType == MetadataType.Int64
+            && method.Parameters[1].ParameterType.FullName == "System.DateTimeKind" && method.Parameters[2].ParameterType.MetadataType == MetadataType.Boolean);
+        bool Declaration(MethodDefinition method, string name, bool hasThis, int attributes) =>
+            DateTimeFixtureDeclaration.IsCoreLibMethod(core, method, "System.DateTime", name, valueTypeOwner: true, hasThis: hasThis)
+            && (int)method.Attributes == attributes && method.ImplAttributes == 0 && method.RVA != 0 && method.HasBody && !method.HasGenericParameters;
+        bool DateTimeOutput(ParameterDefinition parameter) => parameter.ParameterType is ByReferenceType reference && ReferenceEquals(reference.ElementType, owner);
+        var kind = core.MainModule.GetType("System.DateTimeKind");
+        if (!Declaration(add, "TryAddTicks", true, 0x83) || add.ReturnType.MetadataType != MetadataType.Boolean
+            || add.Parameters.Count != 2 || add.Parameters[0].ParameterType.MetadataType != MetadataType.Int64 || !DateTimeOutput(add.Parameters[1])
+            || !Declaration(create, "TryCreate", false, 0x93) || create.ReturnType.MetadataType != MetadataType.Boolean
+            || create.Parameters.Count != 8 || create.Parameters.Take(7).Any(parameter => parameter.ParameterType.MetadataType != MetadataType.Int32)
+            || !DateTimeOutput(create.Parameters[7]) || !Declaration(ctor, ".ctor", true, 0x1883) || ctor.ReturnType.MetadataType != MetadataType.Void
+            || kind is null || !kind.IsEnum || !ReferenceEquals(ctor.Parameters[1].ParameterType, kind)
+            || kind.Fields.Count(field => field.Name == "value__" && field.FieldType.MetadataType == MetadataType.Int32) != 1)
+            throw new InvalidOperationException("installed DateTime trio changed");
+        return (add, create, ctor);
     }
 }

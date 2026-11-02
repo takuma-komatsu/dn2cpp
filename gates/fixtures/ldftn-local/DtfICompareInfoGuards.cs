@@ -123,8 +123,19 @@ internal static class DtfICompareInfoGuards
         object?[] fieldArgs = { compareClass, null, null };
         Check((bool)fieldPredicate.Invoke(null, fieldArgs)!, "actual-fields");
         var nameField = fieldArgs[1]!; var sortField = fieldArgs[2]!;
-        Check(MetadataTokens.GetToken((FieldDefinitionHandle)Get(nameField, "Handle")) == 0x0400085c, "name-field-token");
-        Check(MetadataTokens.GetToken((FieldDefinitionHandle)Get(sortField, "Handle")) == 0x0400085e, "sort-field-token");
+        var compareHandle = (TypeDefinitionHandle)Get(compareClass, "Handle");
+        var compareDefinition = reader.GetTypeDefinition(compareHandle);
+        Check(ReferenceEquals(Get(compareClass, "Module"), module)
+            && reader.StringComparer.Equals(compareDefinition.Namespace, "System.Globalization")
+            && reader.StringComparer.Equals(compareDefinition.Name, "CompareInfo"), "actual-field-owner");
+        foreach (var row in new[] { (Field: nameField, Name: "m_name", Attributes: 0x1), (Field: sortField, Name: "_sortName", Attributes: 0x81) })
+        {
+            var handle = (FieldDefinitionHandle)Get(row.Field, "Handle");
+            var definition = reader.GetFieldDefinition(handle);
+            Check(ReferenceEquals(Get(row.Field, "DeclaringClass"), compareClass) && compareDefinition.GetFields().Contains(handle)
+                && reader.StringComparer.Equals(definition.Name, row.Name) && (int)definition.Attributes == row.Attributes
+                && reader.GetBlobBytes(definition.Signature).SequenceEqual(new byte[] { 0x06, 0x0e }), "actual-field-declaration-" + row.Name);
+        }
         bool Fields() => (bool)fieldPredicate.Invoke(null, new object?[] { compareClass, null, null })!;
         foreach (var field in new[] { nameField, sortField })
         {

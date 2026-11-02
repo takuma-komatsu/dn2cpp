@@ -25,13 +25,15 @@ internal static class DateTimeTrioGuards
         }
         string input = Path.GetFullPath(args[3]);
         if (File.Exists(input)) throw new InvalidOperationException("guard input must be new");
-        int[] tokens = { 0x06000fb6, 0x0600102b, 0x06000f94 };
+        int[] tokens;
         int[] publicCtorTokens;
         string[] names = { "TryAddTicks", "TryCreate", "LocalConstructor" };
         using (var app = Mono.Cecil.AssemblyDefinition.CreateAssembly(new Mono.Cecil.AssemblyNameDefinition("DateTimeTrioGuardInput", new Version(1, 0)), "DateTimeTrioGuardInput", Mono.Cecil.ModuleKind.Dll))
         using (var core = Mono.Cecil.AssemblyDefinition.ReadAssembly(args[2]))
         {
             var owner = core.MainModule.GetType("System.DateTime");
+            var declarations = DateTimeTrioFixture.GetDeclarations(core);
+            tokens = new[] { declarations.Add, declarations.Create, declarations.Constructor }.Select(method => method.MetadataToken.ToInt32()).ToArray();
             var host = new Mono.Cecil.TypeDefinition("Guard", "References", Mono.Cecil.TypeAttributes.Public, app.MainModule.TypeSystem.Object);
             app.MainModule.Types.Add(host);
             publicCtorTokens = owner.Methods.Where(method => method.IsConstructor && method.IsPublic
@@ -88,7 +90,7 @@ internal static class DateTimeTrioGuards
         var reader = (MetadataReader)Get(module, "Reader");
         var appReader = (MetadataReader)Get(appModule, "Reader");
         var context = Model("GenericContext").GetField("Empty", statics)!.GetValue(null)!;
-        int checks = 0;
+        int checks = VerifyFixtureDeclarations(args[2]);
         void Check(bool condition, string label)
         {
             if (!condition) throw new InvalidOperationException("DateTime trio guard: " + label);
@@ -186,5 +188,39 @@ internal static class DateTimeTrioGuards
         }
         Console.WriteLine("datetime-trio-guards:" + checks);
         return true;
+    }
+
+    public static int VerifyFixtureDeclarations(string path)
+    {
+        using var core = Mono.Cecil.AssemblyDefinition.ReadAssembly(path);
+        using var other = Mono.Cecil.AssemblyDefinition.ReadAssembly(path);
+        var (add, create, ctor) = DateTimeTrioFixture.GetDeclarations(core);
+        int checks = 1;
+        void Reject(Action mutation, Action restore, string label)
+        {
+            mutation();
+            bool rejected = false;
+            try { DateTimeTrioFixture.GetDeclarations(core); }
+            catch (InvalidOperationException) { rejected = true; }
+            finally { restore(); }
+            if (!rejected) throw new InvalidOperationException("DateTime fixture declaration: " + label);
+            checks++;
+        }
+        string assemblyName = core.Name.Name;
+        Reject(() => core.Name.Name = "Application.CoreLib", () => core.Name.Name = assemblyName, "foreign-assembly");
+        var result = add.ReturnType;
+        Reject(() => add.ReturnType = core.MainModule.TypeSystem.Int32, () => add.ReturnType = result, "wrong-return");
+        var first = create.Parameters[0].ParameterType;
+        Reject(() => create.Parameters[0].ParameterType = core.MainModule.TypeSystem.Int64, () => create.Parameters[0].ParameterType = first, "wrong-integer");
+        var output = add.Parameters[1].ParameterType;
+        Reject(() => add.Parameters[1].ParameterType = new Mono.Cecil.ByReferenceType(other.MainModule.GetType("System.DateTime")),
+            () => add.Parameters[1].ParameterType = output, "foreign-output");
+        var kind = ctor.Parameters[1].ParameterType;
+        Reject(() => ctor.Parameters[1].ParameterType = core.MainModule.TypeSystem.Int32, () => ctor.Parameters[1].ParameterType = kind, "wrong-kind");
+        Reject(() => ctor.HasThis = false, () => ctor.HasThis = true, "static-constructor");
+        var implementation = add.ImplAttributes;
+        Reject(() => add.ImplAttributes = Mono.Cecil.MethodImplAttributes.NoInlining, () => add.ImplAttributes = implementation, "implementation");
+        DateTimeTrioFixture.GetDeclarations(core);
+        return checks + 1;
     }
 }
