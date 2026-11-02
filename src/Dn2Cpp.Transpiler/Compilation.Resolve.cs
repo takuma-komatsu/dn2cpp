@@ -90,6 +90,7 @@ internal sealed partial class Compilation
                 CoreIntrinsics.ValidateVectorMagnitude(mi);
                 CoreIntrinsics.ValidateScalarNumericLeaf(mi);
                 CoreIntrinsics.ValidateBinaryIntegerEndianBody(mi);
+                CoreIntrinsics.ValidatePrimitiveParseBody(mi);
                 CoreIntrinsics.ValidateVectorAlignment(mi);
                 CoreIntrinsics.ValidateConcreteVectorReduction(mi);
                 CoreIntrinsics.ValidateVectorAsCallable(mi);
@@ -110,6 +111,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.IsInterpolationStaticHelper(mi)
                     || CoreIntrinsics.IsScalarNumericLeaf(mi)
                     || CoreIntrinsics.IsBinaryIntegerEndianBody(mi)
+                    || CoreIntrinsics.IsPrimitiveParseBody(mi)
                     || CoreIntrinsics.IsVectorAlignmentManagedBody(mi)
                     || CoreIntrinsics.IsConcreteVectorReduction(mi)
                     || CoreIntrinsics.IsResourceManagerDefaultType(mi)

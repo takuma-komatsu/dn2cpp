@@ -626,18 +626,51 @@ double dn2cpp_fp_parse_str(Dn2CppString* s, int32_t styles,
 // U+202F, U+2212) — so a byte-wise scanner would have to transcode them anyway, in a
 // second place that can drift from the first.
 //
-// The decode is Encoding.UTF8.GetString's (maximal-subpart U+FFFD replacement), so
-// malformed UTF-8 becomes replacement chars, which are neither digits nor any
-// NumberFormatInfo symbol: the parse fails exactly as .NET does on the same bytes.
+// The decoder replaces malformed input. Integer parsing must reject those bytes
+// first: U+FFFD itself can be a legitimate NumberFormatInfo sign or separator.
 static Dn2CppString* ns_utf8_widen(const char* p, int32_t n)
 {
     return dn2cpp_string_decode_utf8(p, n < 0 ? 0 : n);
+}
+
+static bool ns_integer_utf8_valid(const char* p, int32_t n)
+{
+    int32_t i = 0;
+    while (i < n)
+    {
+        unsigned char c = static_cast<unsigned char>(p[i]);
+        if (c < 0x80u) { ++i; continue; }
+        int32_t width;
+        unsigned char lo = 0x80u, hi = 0xBFu;
+        if (c < 0xC2u) return false;
+        if (c < 0xE0u) width = 2;
+        else if (c == 0xE0u) { width = 3; lo = 0xA0u; }
+        else if (c < 0xEDu) width = 3;
+        else if (c == 0xEDu) { width = 3; hi = 0x9Fu; }
+        else if (c < 0xF0u) width = 3;
+        else if (c == 0xF0u) { width = 4; lo = 0x90u; }
+        else if (c < 0xF4u) width = 4;
+        else if (c == 0xF4u) { width = 4; hi = 0x8Fu; }
+        else return false;
+        if (n - i < width) return false;
+        unsigned char second = static_cast<unsigned char>(p[i + 1]);
+        if (second < lo || second > hi) return false;
+        for (int32_t k = 2; k < width; ++k)
+        {
+            unsigned char continuation = static_cast<unsigned char>(p[i + k]);
+            if (continuation < 0x80u || continuation > 0xBFu) return false;
+        }
+        i += width;
+    }
+    return true;
 }
 
 int32_t dn2cpp_integer_tryparse_utf8(const char* p, int32_t n, int32_t styles,
                                      const Dn2CppNumberFormatInfo* nfi, int32_t bitWidth,
                                      int32_t isSigned, int64_t* out)
 {
+    dn2cpp_parse_validate_integer_styles(styles);
+    if (!ns_integer_utf8_valid(p, n)) { *out = 0; return 0; }
     Dn2CppString* s = ns_utf8_widen(p, n);
     return dn2cpp_integer_tryparse_chars(s->chars, s->length, styles, nfi, bitWidth, isSigned, out);
 }
@@ -646,6 +679,9 @@ int64_t dn2cpp_integer_parse_utf8(const char* p, int32_t n, int32_t styles,
                                   const Dn2CppNumberFormatInfo* nfi, int32_t bitWidth,
                                   int32_t isSigned)
 {
+    dn2cpp_parse_validate_integer_styles(styles);
+    if (!ns_integer_utf8_valid(p, n))
+        dn2cpp_throw_sr0(&dn2cpp_format_exception_type, DN2CPP_SR_FORMAT_INVALID_STRING);
     Dn2CppString* s = ns_utf8_widen(p, n);
     return dn2cpp_integer_parse_chars(s->chars, s->length, styles, nfi, bitWidth, isSigned);
 }

@@ -1989,6 +1989,10 @@ internal sealed partial class MethodCompiler
 
         if (intShape is { } iw)
         {
+            // All managed arguments are materialized. CoreLib validates explicit
+            // span styles before GetFormat, decoding, or writing the out slot.
+            if (hasStyles && !isString)
+                Emit($"dn2cpp_parse_validate_integer_styles({stylesExpr});");
             var prim = Compilation.WellKnownPrimitive(declType)!;
             string storeCt = CppTypes.StorageOf(prim);
             var kind = CppTypes.KindOf(prim);

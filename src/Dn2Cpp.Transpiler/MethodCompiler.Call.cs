@@ -487,6 +487,7 @@ internal sealed partial class MethodCompiler
                 CoreIntrinsics.ValidateVectorMagnitude(callee);
                 CoreIntrinsics.ValidateScalarNumericLeaf(callee);
                 CoreIntrinsics.ValidateBinaryIntegerEndianBody(callee);
+                CoreIntrinsics.ValidatePrimitiveParseBody(callee);
                 CoreIntrinsics.ValidateVectorAlignment(callee);
                 CoreIntrinsics.ValidateConcreteVectorReduction(callee);
                 CoreIntrinsics.ValidateVectorAsCallable(callee);
@@ -512,6 +513,7 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.IsInterpolationStaticHelper(callee)
                     || CoreIntrinsics.IsScalarNumericLeaf(callee)
                     || CoreIntrinsics.IsBinaryIntegerEndianBody(callee)
+                    || CoreIntrinsics.IsPrimitiveParseBody(callee)
                     || CoreIntrinsics.IsVectorAlignmentManagedBody(callee)
                     || CoreIntrinsics.IsConcreteVectorReduction(callee)
                     || CoreIntrinsics.IsResourceManagerDefaultType(callee)
@@ -1717,6 +1719,7 @@ internal sealed partial class MethodCompiler
 
         CoreIntrinsics.ValidateScalarNumericLeaf(callee);
         CoreIntrinsics.ValidateBinaryIntegerEndianBody(callee);
+        CoreIntrinsics.ValidatePrimitiveParseBody(callee);
         CoreIntrinsics.ValidateVectorAlignment(callee);
         CoreIntrinsics.ValidateConcreteVectorReduction(callee);
 
@@ -2114,6 +2117,18 @@ internal sealed partial class MethodCompiler
         {
             var arguments = PopArgs(callee, hasThis: false);
             EmitCallResult(endianBody, DirectCall(endianBody, arguments));
+            EmitByRefSlotFixups();
+            return;
+        }
+
+        if (!isCallvirt && SharedTrial && CoreIntrinsics.IsPrimitiveParseSlotCandidate(callee)
+            && (Compilation.ContainsCanonPlaceholder(callee.DeclaringClass)
+                || _constrained is not null && Compilation.ContainsCanonPlaceholder(_constrained)))
+            ThrowSharedTaint("primitive-span-parse", callee.DeclaringClass.FullName);
+        if (!isCallvirt && _c.TryResolvePrimitiveParseCall(_constrained, callee) is { } parseBody)
+        {
+            var arguments = PopArgs(callee, hasThis: false);
+            EmitCallResult(parseBody, DirectCall(parseBody, arguments));
             EmitByRefSlotFixups();
             return;
         }

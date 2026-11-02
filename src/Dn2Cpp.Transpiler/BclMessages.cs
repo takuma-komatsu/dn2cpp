@@ -166,6 +166,7 @@ internal static class BclMessages
         "Arg_EnumUnderlyingTypeAndObjectMustBeSameType",
         "InvalidOperation_UnknownEnumType",
         "Argument_MinMaxValue",
+        "Format_InvalidString",
         "Format_InvalidStringWithValue",
         "Format_BadDateTime",
         "Format_BadFormatSpecifier",

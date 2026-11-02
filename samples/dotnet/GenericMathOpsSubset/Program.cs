@@ -166,6 +166,7 @@ internal static class Program
             {
                 GenericMathScalarLeaves.ScalarNumericLeaves.__GateEntry();
                 GenericMathEndian.EndianReads.__GateEntry();
+                GenericMathParsing.PrimitiveParsing.__GateEntry();
             }
         }
 

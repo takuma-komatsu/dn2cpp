@@ -457,6 +457,7 @@ internal sealed partial class AssemblyDiet
             traverse = owner == "System.Reflection.MemberInfo";
         else if (IsCopiedScalarNumericLeaf(method, owner)
             || IsCopiedBinaryIntegerEndianBody(method, owner)
+            || IsCopiedPrimitiveParseBody(method, owner)
             || IsCopiedResourceManagerDefaultType(method, owner)
             || IsCopiedInterpolationStaticHelper(method, owner)
             || IsCopiedDateTimeFormatInfoParserFlagGetter(method, owner)

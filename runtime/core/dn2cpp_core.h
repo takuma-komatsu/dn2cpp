@@ -2200,6 +2200,7 @@ inline constexpr const char* DN2CPP_SR_UNBOUND_GENERIC = "Arg_UnboundGenParam";
 inline constexpr const char* DN2CPP_SR_DELEGATE_BIND = "Arg_DlgtTargMeth";
 inline constexpr const char* DN2CPP_SR_BAD_IL_FORMAT = "BadImageFormat_BadILFormat";
 inline constexpr const char* DN2CPP_SR_OBJECT_CONVERSION = "Arg_ObjObjEx";
+inline constexpr const char* DN2CPP_SR_FORMAT_INVALID_STRING = "Format_InvalidString";
 inline constexpr const char* DN2CPP_SR_FORMAT_INVALID_STRING_WITH_VALUE = "Format_InvalidStringWithValue";
 inline constexpr const char* DN2CPP_SR_BAD_DATETIME = "Format_BadDateTime";
 inline constexpr const char* DN2CPP_SR_BAD_FORMAT_SPECIFIER = "Format_BadFormatSpecifier";
