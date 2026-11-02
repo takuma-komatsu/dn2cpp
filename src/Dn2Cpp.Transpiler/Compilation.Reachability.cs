@@ -43,6 +43,8 @@ internal sealed partial class Compilation
         CoreIntrinsics.ValidateScalarNumericLeaf(m);
         CoreIntrinsics.ValidateBinaryIntegerEndianBody(m);
         CoreIntrinsics.ValidatePrimitiveParseBody(m);
+        CoreIntrinsics.ValidateDecimalBinaryBody(m);
+        CoreIntrinsics.ValidatePrimitiveWideConversionBody(m);
         CoreIntrinsics.ValidateVectorAlignment(m);
         ValidateSimdAlignmentBody(m);
         ValidateUnsupportedAlignedDim(m);
@@ -288,6 +290,8 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsScalarNumericLeaf(m)
             || CoreIntrinsics.IsBinaryIntegerEndianBody(m)
             || CoreIntrinsics.IsPrimitiveParseBody(m)
+            || CoreIntrinsics.IsDecimalBinaryBody(m)
+            || CoreIntrinsics.IsPrimitiveWideConversionBody(m)
             || CoreIntrinsics.IsVectorAlignmentManagedBody(m)
             || CoreIntrinsics.IsConcreteVectorReduction(m)
             || CoreIntrinsics.IsResourceManagerDefaultType(m)
@@ -6550,6 +6554,13 @@ internal sealed partial class Compilation
                             && TryResolvePrimitiveParseCall(constrained, t) is { } parseBody)
                         {
                             ReachIntrinsicTypeMethod(parseBody);
+                            constrained = null;
+                            continue;
+                        }
+                        if (insn.OpCode == ILOpCode.Call && t is not null
+                            && TryResolvePrimitiveWideConversionCall(constrained, t) is { } wideConversion)
+                        {
+                            ReachIntrinsicTypeMethod(wideConversion);
                             constrained = null;
                             continue;
                         }

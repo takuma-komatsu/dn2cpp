@@ -861,7 +861,7 @@ internal sealed partial class MethodCompiler
                     string st = CppTypes.StorageOf(methodArgs[0]);
                     string ct = CppTypes.Of(methodArgs[0]);
                     // MemoryMarshal.Read throws when the span is smaller than sizeof(T).
-                    Emit($"if ((size_t)({sv}.f__length) < sizeof({st})) dn2cpp_fail(\"ArgumentOutOfRangeException\");");
+                    Emit($"if ((size_t)({sv}.f__length) < sizeof({st})) dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ARGUMENT_OUT_OF_RANGE, \"length\");");
                     string tmp = NewTemp(st);
                     Emit($"std::memcpy(&{tmp}, (const void*)({sv}.f__reference), sizeof({st}));");
                     Push(CppTypes.KindOf(methodArgs[0]), ct, st == ct ? tmp : $"({ct})({tmp})");
@@ -873,7 +873,7 @@ internal sealed partial class MethodCompiler
                     var span = Pop();
                     string sv = SpanValue(span, CppTypes.Of(mmSig.ParameterTypes[0]));
                     string st = CppTypes.StorageOf(methodArgs[0]);
-                    Emit($"if ((size_t)({sv}.f__length) < sizeof({st})) dn2cpp_fail(\"ArgumentOutOfRangeException\");");
+                    Emit($"if ((size_t)({sv}.f__length) < sizeof({st})) dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ARGUMENT_OUT_OF_RANGE, \"length\");");
                     Emit($"std::memcpy((void*)({sv}.f__reference), (const void*)({valRef.Expr}), sizeof({st}));");
                     return;
                 }

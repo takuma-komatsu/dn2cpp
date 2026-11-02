@@ -704,6 +704,8 @@ internal sealed partial class MethodCompiler : IEvalStack
         CoreIntrinsics.ValidateScalarNumericLeaf(_method);
         CoreIntrinsics.ValidateBinaryIntegerEndianBody(_method);
         CoreIntrinsics.ValidatePrimitiveParseBody(_method);
+        CoreIntrinsics.ValidateDecimalBinaryBody(_method);
+        CoreIntrinsics.ValidatePrimitiveWideConversionBody(_method);
         CoreIntrinsics.ValidateVectorAlignment(_method);
         CoreIntrinsics.ValidateConcreteVectorReduction(_method);
         CoreIntrinsics.ValidateVectorAsCallable(_method);
@@ -1252,6 +1254,8 @@ internal sealed partial class MethodCompiler : IEvalStack
         CoreIntrinsics.ValidateScalarNumericLeaf(_method);
         CoreIntrinsics.ValidateBinaryIntegerEndianBody(_method);
         CoreIntrinsics.ValidatePrimitiveParseBody(_method);
+        CoreIntrinsics.ValidateDecimalBinaryBody(_method);
+        CoreIntrinsics.ValidatePrimitiveWideConversionBody(_method);
         CoreIntrinsics.ValidateVectorAlignment(_method);
         CoreIntrinsics.ValidateConcreteVectorReduction(_method);
         CoreIntrinsics.ValidateVectorAsCallable(_method);

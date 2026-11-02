@@ -36,6 +36,7 @@ namespace DecimalOps
             Dn2Cpp.DecimalScaleSubset.Run();
             if (args.Length > 0 && args[0] == "before-decimal-divmod") return;
             Dn2Cpp.DecimalDivModSubset.Run();
+            Dn2Cpp.DecimalBinarySubset.Run();
         }
     }
 }

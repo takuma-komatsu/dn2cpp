@@ -488,6 +488,8 @@ internal sealed partial class MethodCompiler
                 CoreIntrinsics.ValidateScalarNumericLeaf(callee);
                 CoreIntrinsics.ValidateBinaryIntegerEndianBody(callee);
                 CoreIntrinsics.ValidatePrimitiveParseBody(callee);
+                CoreIntrinsics.ValidateDecimalBinaryBody(callee);
+                CoreIntrinsics.ValidatePrimitiveWideConversionBody(callee);
                 CoreIntrinsics.ValidateVectorAlignment(callee);
                 CoreIntrinsics.ValidateConcreteVectorReduction(callee);
                 CoreIntrinsics.ValidateVectorAsCallable(callee);
@@ -514,6 +516,8 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.IsScalarNumericLeaf(callee)
                     || CoreIntrinsics.IsBinaryIntegerEndianBody(callee)
                     || CoreIntrinsics.IsPrimitiveParseBody(callee)
+                    || CoreIntrinsics.IsDecimalBinaryBody(callee)
+                    || CoreIntrinsics.IsPrimitiveWideConversionBody(callee)
                     || CoreIntrinsics.IsVectorAlignmentManagedBody(callee)
                     || CoreIntrinsics.IsConcreteVectorReduction(callee)
                     || CoreIntrinsics.IsResourceManagerDefaultType(callee)
@@ -1720,6 +1724,8 @@ internal sealed partial class MethodCompiler
         CoreIntrinsics.ValidateScalarNumericLeaf(callee);
         CoreIntrinsics.ValidateBinaryIntegerEndianBody(callee);
         CoreIntrinsics.ValidatePrimitiveParseBody(callee);
+        CoreIntrinsics.ValidateDecimalBinaryBody(callee);
+        CoreIntrinsics.ValidatePrimitiveWideConversionBody(callee);
         CoreIntrinsics.ValidateVectorAlignment(callee);
         CoreIntrinsics.ValidateConcreteVectorReduction(callee);
 
@@ -2129,6 +2135,18 @@ internal sealed partial class MethodCompiler
         {
             var arguments = PopArgs(callee, hasThis: false);
             EmitCallResult(parseBody, DirectCall(parseBody, arguments));
+            EmitByRefSlotFixups();
+            return;
+        }
+
+        if (!isCallvirt && SharedTrial && CoreIntrinsics.IsPrimitiveWideConversionSlotFamily(callee)
+            && (Compilation.ContainsCanonPlaceholder(callee.DeclaringClass)
+                || _constrained is not null && Compilation.ContainsCanonPlaceholder(_constrained)))
+            ThrowSharedTaint("primitive-wide-conversion", callee.DeclaringClass.FullName);
+        if (!isCallvirt && _c.TryResolvePrimitiveWideConversionCall(_constrained, callee) is { } wideConversion)
+        {
+            var arguments = PopArgs(callee, hasThis: false);
+            EmitCallResult(wideConversion, DirectCall(wideConversion, arguments));
             EmitByRefSlotFixups();
             return;
         }

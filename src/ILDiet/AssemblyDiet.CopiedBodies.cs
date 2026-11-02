@@ -458,6 +458,8 @@ internal sealed partial class AssemblyDiet
         else if (IsCopiedScalarNumericLeaf(method, owner)
             || IsCopiedBinaryIntegerEndianBody(method, owner)
             || IsCopiedPrimitiveParseBody(method, owner)
+            || IsCopiedDecimalBinaryBody(method, owner)
+            || IsCopiedPrimitiveWideConversionBody(method, owner)
             || IsCopiedResourceManagerDefaultType(method, owner)
             || IsCopiedInterpolationStaticHelper(method, owner)
             || IsCopiedDateTimeFormatInfoParserFlagGetter(method, owner)

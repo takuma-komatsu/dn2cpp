@@ -4100,6 +4100,8 @@ internal sealed partial class Compilation
         CoreIntrinsics.ValidateScalarNumericLeaf(m);
         CoreIntrinsics.ValidateBinaryIntegerEndianBody(m);
         CoreIntrinsics.ValidatePrimitiveParseBody(m);
+        CoreIntrinsics.ValidateDecimalBinaryBody(m);
+        CoreIntrinsics.ValidatePrimitiveWideConversionBody(m);
         CoreIntrinsics.ValidateVectorAlignment(m);
         CoreIntrinsics.ValidateConcreteVectorReduction(m);
         CoreIntrinsics.ValidateVectorAsCallable(m);
@@ -4134,6 +4136,8 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsScalarNumericLeaf(m)
             || CoreIntrinsics.IsBinaryIntegerEndianBody(m)
             || CoreIntrinsics.IsPrimitiveParseBody(m)
+            || CoreIntrinsics.IsDecimalBinaryBody(m)
+            || CoreIntrinsics.IsPrimitiveWideConversionBody(m)
             || CoreIntrinsics.IsVectorAlignmentManagedBody(m)
             || CoreIntrinsics.IsConcreteVectorReduction(m)
             || CoreIntrinsics.IsResourceManagerDefaultType(m)
