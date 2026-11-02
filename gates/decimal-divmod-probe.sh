@@ -16,7 +16,7 @@ decimal_divmod_probe() {
         emit="$out/divmod-$axis"
         local flags=()
         [ "$axis" != raw ] || flags+=(--no-ildiet)
-        gate_capture_ok "$out/divmod-$axis-emit" invoke_cli "$input/DecimalOps.dll" --auto-ref --link-xml gates/fixtures/decimal-divmod/retained.xml "${flags[@]}" -o "$emit" || return 1
+        gate_capture_ok "$out/divmod-$axis-emit" invoke_cli "$input/DecimalOps.dll" --auto-ref --link-xml gates/fixtures/decimal-divmod/retained.xml ${flags[@]+"${flags[@]}"} -o "$emit" || return 1
         gate_capture_ok "$out/divmod-$axis-generated" python3 gates/fixtures/decimal-divmod/check-generated.py "$emit" || return 1
         compile_console "$emit" DecimalOps || return 1
         gate_capture_ok "$out/divmod-$axis-run" run_bounded "./$emit/DecimalOps$EXE_EXT" || return 1
@@ -33,7 +33,7 @@ decimal_divmod_probe() {
         for axis in raw diet; do
             local flags=()
             [ "$axis" != raw ] || flags+=(--no-ildiet)
-            gate_capture "$out/divmod-$mode-$axis-reject" invoke_cli "$negative/DecimalOps.dll" --auto-ref "${flags[@]}" -o "$negative/$axis" || return 1
+            gate_capture "$out/divmod-$mode-$axis-reject" invoke_cli "$negative/DecimalOps.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$negative/$axis" || return 1
             gate_output status "$(cat "$out/divmod-$mode-$axis-reject.status")" 2 || return 1
             if [ "$mode" = foreignref ]; then
                 grep -F "input type 'System.Decimal' in assembly 'DecimalOps' conflicts with a CoreLib/runtime type identity" "$out/divmod-$mode-$axis-reject.stderr" >/dev/null || return 1
