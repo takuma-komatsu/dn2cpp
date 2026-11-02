@@ -2100,6 +2100,8 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (!isCallvirt && TryEmitUnsupportedAlignedDimEdge(callee)) return;
+
         if (!isCallvirt && SharedTrial && Compilation.IsSimdAlignmentSlotCandidate(callee)
             && Compilation.ContainsCanonPlaceholder(callee.DeclaringClass))
             ThrowSharedTaint("simd-alignment", callee.DeclaringClass.FullName);

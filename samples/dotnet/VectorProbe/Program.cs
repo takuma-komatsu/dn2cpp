@@ -237,6 +237,8 @@ internal static partial class Program
         ConcreteElements();
         if (args.Length > 0 && args[0] == "before-vector-estimate") return;
         MultiplyAddEstimates();
+        if (args.Length > 0 && args[0] == "before-vector-angles") return;
+        AngleConversions();
     }
 
     private static void VectorCopyTargets()

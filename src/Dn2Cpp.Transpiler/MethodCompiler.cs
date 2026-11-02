@@ -684,6 +684,10 @@ internal sealed partial class MethodCompiler : IEvalStack
 
     public string Compile()
     {
+        if (SharedTrial && CoreIntrinsics.IsUnsupportedAlignedDimCandidate(_method)
+            && Compilation.ContainsCanonPlaceholder(_method.DeclaringClass))
+            ThrowSharedTaint("unsupported-aligned-dim", _method.DeclaringClass.FullName);
+        _c.ValidateUnsupportedAlignedDim(_method);
         _c.ValidateSimdAlignmentBody(_method);
         CoreIntrinsics.ValidateConcreteVectorElement(_method);
         TaintCanonicalVectorOwner(_method.DeclaringClass);

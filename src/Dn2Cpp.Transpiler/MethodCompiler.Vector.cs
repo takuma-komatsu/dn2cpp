@@ -496,7 +496,11 @@ internal sealed partial class MethodCompiler
             case "Cos": return Un("cos");
             case "Exp": return Un("exp");
             case "Hypot": return Bin("hypot");
-            case "DegreesToRadians": return Un("degrees_to_radians");
+            case "DegreesToRadians" or "RadiansToDegrees":
+                if (elem is not { Kind: TypeKind.Primitive,
+                    Primitive: PrimitiveTypeCode.Single or PrimitiveTypeCode.Double })
+                    throw new NotSupportedException("Vector angle conversion requires float or double lanes");
+                return Un(name == "DegreesToRadians" ? "degrees_to_radians" : "radians_to_degrees");
             case "Sum": { var v = Pop(); PushScalar($"{Vec("sum")}({Val(v, vecCpp)})"); return true; }
             case "Dot": { var b = Pop(); var a = Pop(); PushScalar($"{Vec("dot")}({Val(a, vecCpp)}, {Val(b, vecCpp)})"); return true; }
             case "Clamp" or "ClampNative":

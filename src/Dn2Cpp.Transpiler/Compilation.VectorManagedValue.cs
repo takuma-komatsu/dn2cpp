@@ -8,7 +8,8 @@ internal sealed partial class Compilation
     {
         var specification = module.Reader.GetMethodSpecification(handle);
         if (MethodSpecMethodName(module, specification) is not ("ThrowForUnsupportedNumericsVectorBaseType"
-                or "ThrowForUnsupportedIntrinsicsVector64BaseType" or "ThrowForUnsupportedIntrinsicsVector128BaseType")
+                or "ThrowForUnsupportedIntrinsicsVector64BaseType" or "ThrowForUnsupportedIntrinsicsVector128BaseType"
+                or "ThrowForUnsupportedIntrinsicsVector256BaseType" or "ThrowForUnsupportedIntrinsicsVector512BaseType")
             || MethodSpecParentTypeName(module, specification) != "System.ThrowHelper") return null;
         var raw = module.Reader.GetBlobReader(specification.Signature);
         if (raw.RemainingBytes < 3 || raw.ReadByte() != 0x0a || raw.ReadByte() != 1
@@ -17,7 +18,7 @@ internal sealed partial class Compilation
         var arguments = specification.DecodeSignature(SigProvider, context);
         if (arguments is not [var argument]) throw VectorManagedThrowUnsupported();
         if (argument.Class is { } element) EnsureShape(element);
-        if (!CoreIntrinsics.IsVectorManagedValueElement(argument)) return null;
+        if (!VectorManagedThrowArgument(MethodSpecMethodName(module, specification)!, argument)) return null;
         return ResolveMethodSpec(module, handle, context);
     }
 
@@ -25,16 +26,17 @@ internal sealed partial class Compilation
         MethodInfo target, GenericContext context)
     {
         if (target.Name is not ("ThrowForUnsupportedNumericsVectorBaseType"
-                or "ThrowForUnsupportedIntrinsicsVector64BaseType" or "ThrowForUnsupportedIntrinsicsVector128BaseType")
+                or "ThrowForUnsupportedIntrinsicsVector64BaseType" or "ThrowForUnsupportedIntrinsicsVector128BaseType"
+                or "ThrowForUnsupportedIntrinsicsVector256BaseType" or "ThrowForUnsupportedIntrinsicsVector512BaseType")
             || target.DeclaringClass.FullName != "System.ThrowHelper"
             || target.Context.MethodArgs is not [var argument]) return;
         if (argument.Class is { } element) EnsureShape(element);
-        if (!CoreIntrinsics.IsVectorManagedValueElement(argument)) return;
+        if (!VectorManagedThrowArgument(target.Name, argument)) return;
         if (!CoreIntrinsics.IsVectorManagedThrowHelper(target)) throw VectorManagedThrowUnsupported();
         var reader = module.Reader;
         var blob = reader.GetBlobReader(specification.Signature);
         if (blob.RemainingBytes < 3 || blob.ReadByte() != 0x0a || blob.ReadByte() != 1
-            || !ReadVectorValueElement(module, ref blob, context, argument) || blob.RemainingBytes != 0)
+            || !ReadVectorManagedThrowElement(module, ref blob, context, argument) || blob.RemainingBytes != 0)
             throw VectorManagedThrowUnsupported();
         if (specification.Method.Kind == HandleKind.MemberReference)
         {
@@ -49,6 +51,16 @@ internal sealed partial class Compilation
             || specification.Method != target.Handle)
             throw VectorManagedThrowUnsupported();
     }
+
+    private static bool VectorManagedThrowArgument(string name, TypeDesc argument) =>
+        CoreIntrinsics.IsUnsupportedAlignedDimThrowElement(name, argument)
+        || name is "ThrowForUnsupportedNumericsVectorBaseType" or "ThrowForUnsupportedIntrinsicsVector64BaseType"
+            or "ThrowForUnsupportedIntrinsicsVector128BaseType" && CoreIntrinsics.IsVectorManagedValueElement(argument);
+
+    private bool ReadVectorManagedThrowElement(Module module, ref BlobReader blob, GenericContext context, TypeDesc argument) =>
+        CoreIntrinsics.IsUnsupportedAlignedDimChar(argument)
+            ? ReadUnsupportedAlignedElement(module, ref blob, context, argument)
+            : ReadVectorValueElement(module, ref blob, context, argument);
 
     // Canonical layouts may share enum scalars, but not a managed Vector<enum>
     // field with its intrinsic-mapped Vector<CnInt32> counterpart.

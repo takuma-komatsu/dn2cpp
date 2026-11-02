@@ -43,6 +43,7 @@ internal sealed partial class Compilation
         CoreIntrinsics.ValidateScalarNumericLeaf(m);
         CoreIntrinsics.ValidateVectorAlignment(m);
         ValidateSimdAlignmentBody(m);
+        ValidateUnsupportedAlignedDim(m);
         CoreIntrinsics.ValidateConcreteVectorReduction(m);
         CoreIntrinsics.ValidateVectorAsCallable(m);
         if (CoreIntrinsics.IsVectorManagedForwarder(m)) _intrinsicTypeTranspiled.Add(m);
@@ -6393,6 +6394,17 @@ internal sealed partial class Compilation
                                         ReachBaseValueCall(m.DeclaringClass, oname);
                                 }
                             }
+                        }
+                        // Caller/offset-sensitive argument rewriting shares its proof with
+                        // MethodCompiler.TryEmitUnsupportedAlignedDimEdge, not a name-only cut.
+                        if (insn.OpCode == ILOpCode.Call
+                            && TryResolveUnsupportedAlignedDimEdge(m, insn.Offset, insn.Token,
+                                constrainedHandle, constrained, out _) is { } alignedDimEdge)
+                        {
+                            ReachIntrinsicTypeMethod(alignedDimEdge);
+                            constrained = null;
+                            constrainedHandle = default;
+                            continue;
                         }
                         var t = ResolveCallTarget(module, handle, m.Context);
                         // A bodyless P/Invoke with a registered managed native

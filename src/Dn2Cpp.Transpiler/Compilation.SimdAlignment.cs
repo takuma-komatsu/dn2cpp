@@ -216,7 +216,9 @@ internal sealed partial class Compilation
             || method.IsSynthetic || method.PInvoke is not null || method.Attributes != definition.Attributes
             || method.ImplAttributes != definition.ImplAttributes || method.Rva != definition.RelativeVirtualAddress
             || method.Context.MethodArgs.Length != 0 || method.Context.TypeArgs is not [var element]
-            || !SameTypeArg(element, vector.Context.TypeArgs[0])
+            || (CoreIntrinsics.IsUnsupportedAlignedDimVector(vector)
+                ? !CoreIntrinsics.SameUnsupportedAlignedDimElement(element, vector.Context.TypeArgs[0])
+                : !SameTypeArg(element, vector.Context.TypeArgs[0]))
             || !CoreIntrinsics.IsVectorAlignmentDecodedSignature(method.Signature)) throw SimdAlignmentUnsupported();
     }
 
@@ -243,12 +245,25 @@ internal sealed partial class Compilation
                 || constructor.ImplAttributes != MethodImplAttributes.IL || constructor.RelativeVirtualAddress == 0
                 || raw.RemainingBytes != 3 || raw.ReadByte() != 0x20 || raw.ReadByte() != 0 || raw.ReadByte() != 1)
                 throw SimdAlignmentUnsupported();
+            var resolved = ResolveMethodHandle(module, token, GenericContext.Empty);
+            if (resolved is null) throw SimdAlignmentUnsupported();
+            ValidateMagnitudeResolvedDefinition(resolved, module, (MethodDefinitionHandle)token);
+            var owner = resolved.DeclaringClass;
+            EnsureShape(owner);
+            if (owner.Namespace != "System" || owner.Name != "AccessViolationException" || owner.FullName != "System.AccessViolationException"
+                || owner.IsValueType || owner.IsInterface || owner.IsEnum || owner.IsByRefLike || owner.GenericArity != 0
+                || owner.Context.TypeArgs.Length != 0 || owner.Context.MethodArgs.Length != 0
+                || resolved.Context.TypeArgs.Length != 0 || resolved.Context.MethodArgs.Length != 0
+                || resolved.Signature.Header.RawValue != 0x20 || resolved.Signature.GenericParameterCount != 0
+                || resolved.Signature.RequiredParameterCount != 0 || resolved.Signature.ParameterTypes.Length != 0
+                || resolved.Signature.ReturnType is not { Kind: TypeKind.Primitive, IsCanonPlaceholder: false, Primitive: PrimitiveTypeCode.Void })
+                throw SimdAlignmentUnsupported();
             return;
         }
         foreach (var pair in _simdAlignmentBodies)
             if (pair.Value == method)
             {
-                ValidateSimdAlignmentOwner(pair.Key.Owner);
+                ValidateSimdAlignmentOwner(pair.Key.Owner, requireNumeric: !CoreIntrinsics.IsUnsupportedAlignedDimVector(pair.Key.Owner));
                 ValidateSimdAlignmentBodyDefinition(pair.Key.Owner, pair.Key.Definition);
                 ValidateSimdAlignmentBodyModel(method, pair.Key.Owner, pair.Key.Definition);
                 return;
@@ -280,7 +295,8 @@ internal sealed partial class Compilation
         }
         else
         {
-            int width = CoreIntrinsics.VectorValueWidth(vector);
+            int width = CoreIntrinsics.IsUnsupportedAlignedDimVector(vector)
+                ? CoreIntrinsics.UnsupportedAlignedDimWidth(vector) : CoreIntrinsics.VectorValueWidth(vector);
             if (!(width == 8 ? bytes.Length == 2 && bytes[0] == 0x1e && bytes[1] == 0x2a
                 : bytes.Length == 3 && bytes[0] == 0x1f && bytes[1] == width && bytes[2] == 0x2a))
                 throw SimdAlignmentUnsupported();
