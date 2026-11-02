@@ -65,7 +65,7 @@ internal static class EraNameGuards
         var ownerClass = Get(actual, "DeclaringClass");
         var predicate = Model("CoreIntrinsics").GetMethod("IsDateTimeFormatInfoEraName", statics)!;
         var raw = Model("CoreIntrinsics").GetMethod("IsDateTimeFormatInfoEraNameSignature", statics)!.CreateDelegate<RawPredicate>();
-        int checks = 0;
+        int checks = VerifyFixtureDeclarations(args[2]);
         void Check(bool result, string label)
         {
             if (!result) throw new InvalidOperationException("era name guard: " + label);
@@ -83,7 +83,8 @@ internal static class EraNameGuards
                 Check(raw(reader.GetBlobReader(reader.GetMethodDefinition(h).Signature)), "actual-raw-" + name);
                 var decoded = Model("CoreIntrinsics").GetMethod("IsDateTimeFormatInfoEraNameDecodedSignature", statics)!;
                 Check((bool)decoded.Invoke(null, new[] { Get(candidate, "Signature"), module })!, "actual-decoded-" + name);
-                Check(MetadataTokens.GetToken(h) == (name == "GetEraName" ? 0x060033f7 : 0x060033f9), "actual-token-" + name);
+                Check(reader.GetMethodDefinition(h).GetDeclaringType() == ownerHandle
+                    && reader.GetString(reader.GetMethodDefinition(h).Name) == name, "actual-owner-name-" + name);
                 Console.WriteLine("era-name-installed:" + name + ":" + MetadataTokens.GetToken(h).ToString("X8", CultureInfo.InvariantCulture));
             }
         }
@@ -152,5 +153,45 @@ internal static class EraNameGuards
         Check((bool)predicate.Invoke(null, new[] { actual })!, "restored-actual");
         Console.WriteLine("era-name-guards:" + checks);
         return true;
+    }
+
+    public static int VerifyFixtureDeclarations(string path)
+    {
+        using var core = Mono.Cecil.AssemblyDefinition.ReadAssembly(path);
+        using var other = Mono.Cecil.AssemblyDefinition.ReadAssembly(path);
+        const string ownerName = "System.Globalization.DateTimeFormatInfo";
+        var owner = core.MainModule.GetType(ownerName);
+        var method = owner.Methods.Single(method => method.Name == "GetEraName");
+        bool Accepted() => DateTimeFixtureDeclaration.IsCoreLibInstanceMethod(core, method, ownerName, "GetEraName");
+        int checks = 0;
+        void Check(bool result, string name)
+        {
+            if (!result) throw new InvalidOperationException("datetime fixture declaration: " + name);
+            checks++;
+        }
+        Check(Accepted(), "installed-era-name");
+        Check(DateTimeFixtureDeclaration.IsCoreLibInstanceMethod(core, owner.Methods.Single(method => method.Name == "GetAbbreviatedEraName"), ownerName, "GetAbbreviatedEraName"), "installed-abbreviated-era-name");
+        Check(!DateTimeFixtureDeclaration.IsCoreLibInstanceMethod(core, method, ownerName, "GetEra"), "wrong-name");
+        Check(!DateTimeFixtureDeclaration.IsCoreLibInstanceMethod(core, method, "System.Globalization.CultureInfo", "GetEraName"), "wrong-owner");
+        Check(!DateTimeFixtureDeclaration.IsCoreLibInstanceMethod(core, other.MainModule.GetType(ownerName).Methods.Single(method => method.Name == "GetEraName"), ownerName, "GetEraName"), "foreign-module");
+        string assemblyName = core.Name.Name;
+        core.Name.Name = "Application.CoreLib";
+        try { Check(!Accepted(), "foreign-assembly"); }
+        finally { core.Name.Name = assemblyName; }
+        var result = method.ReturnType;
+        try
+        {
+            method.ReturnType = new Mono.Cecil.TypeReference("System", "String", core.MainModule, other.MainModule);
+            Check(!Accepted(), "foreign-signature-type");
+            method.ReturnType = new Mono.Cecil.OptionalModifierType(core.MainModule.TypeSystem.Object, result);
+            Check(!Accepted(), "modified-signature-type");
+        }
+        finally { method.ReturnType = result; }
+        var convention = method.CallingConvention;
+        method.CallingConvention = Mono.Cecil.MethodCallingConvention.VarArg;
+        try { Check(!Accepted(), "vararg"); }
+        finally { method.CallingConvention = convention; }
+        Check(Accepted(), "restored-declaration");
+        return checks;
     }
 }

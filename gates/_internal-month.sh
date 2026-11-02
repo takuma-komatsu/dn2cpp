@@ -17,8 +17,8 @@ internal_month_routes_gate() {
         fi
         [[ "$axis" != raw ]] || flags+=(--no-ildiet)
         [[ "$mode" != minimal ]] || check+=(--minimal)
-        invoke_cli "$root/input/InternalMonth.dll" --auto-ref "${flags[@]}" -o "$out" || return $?
-        "$(resolve_python)" gates/fixtures/internal-month/check-generated.py "$out" "${check[@]}" || return $?
+        invoke_cli "$root/input/InternalMonth.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$out" || return $?
+        "$(resolve_python)" gates/fixtures/internal-month/check-generated.py "$out" ${check[@]+"${check[@]}"} || return $?
         if [[ "${WASM:-0}" == 1 ]]; then
             compile_console_wasm "$out" InternalMonth || return $?
             runner=(node "$out/InternalMonth.js")
@@ -56,7 +56,7 @@ internal_month_noalloc_gate() {
     for axis in raw diet; do
         local flags=("$@") rc=0
         [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-        invoke_cli "$root/input/InternalMonth.dll" --auto-ref "${flags[@]}" -o "$root/$axis" > "$root/$axis.log" 2>&1 || rc=$?
+        invoke_cli "$root/input/InternalMonth.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$root/$axis" > "$root/$axis.log" 2>&1 || rc=$?
         printf '%s\n' "$rc" > "$root/$axis.status"
         [[ "$rc" == 2 ]] || { echo 'FAIL: NoAlloc internal month boxing accepted' >&2; return 1; }
         grep -Fq '[HotPath(NoAlloc)] closure of InternalMonthSubset.Program::Direct allocates: InternalMonthSubset.Program::Direct emits dn2cpp_box(' "$root/$axis.log" || return 1
@@ -74,7 +74,7 @@ internal_month_negative_gate() {
         for axis in raw diet; do
             local flags=() rc=0
             [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-            invoke_cli "$root/$mode/input/InternalMonth.dll" --auto-ref "${flags[@]}" -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
+            invoke_cli "$root/$mode/input/InternalMonth.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
             printf '%s\n' "$rc" > "$root/$mode/$axis.status"
             [[ "$rc" == 2 ]] || { echo "FAIL: malformed internal month $mode/$axis admitted" >&2; return 1; }
             local diagnostic='DateTimeFormatInfo internal month name requires its exact MemberRef signature'

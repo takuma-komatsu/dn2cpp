@@ -15,8 +15,8 @@ dtfi_calendar_setter_routes_gate() {
         [[ "$axis" != raw ]] || flags+=(--no-ildiet)
         [[ "$mode" != all && "$mode" != reflection ]] || flags+=(--link-xml gates/fixtures/dtfi-calendar-setter/link.xml)
         [[ "$mode" != minimal ]] || checker+=(--minimal)
-        invoke_cli "$root/input/DtfICalendarSetter.dll" --auto-ref "${flags[@]}" -o "$out" || return $?
-        "$(resolve_python)" gates/fixtures/dtfi-calendar-setter/check-generated.py "$out" "${checker[@]}" || return $?
+        invoke_cli "$root/input/DtfICalendarSetter.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$out" || return $?
+        "$(resolve_python)" gates/fixtures/dtfi-calendar-setter/check-generated.py "$out" ${checker[@]+"${checker[@]}"} || return $?
         if [[ "${WASM:-0}" == 1 ]]; then
             compile_console_wasm "$out" DtfICalendarSetter || return $?
             runner=(node "$out/DtfICalendarSetter.js")
@@ -67,7 +67,7 @@ dtfi_calendar_setter_negative_gate() {
         for axis in raw diet; do
             local flags=() rc=0
             [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-            invoke_cli "$root/$mode/input/DtfICalendarSetter.dll" --auto-ref "${flags[@]}" -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
+            invoke_cli "$root/$mode/input/DtfICalendarSetter.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
             printf '%s\n' "$rc" > "$root/$mode/$axis.status"
             [[ "$rc" == 2 ]] || { echo "FAIL: malformed Calendar setter $mode/$axis admitted" >&2; return 1; }
             local diagnostic='DateTimeFormatInfo Calendar setter requires its exact MemberRef signature'
@@ -89,7 +89,7 @@ dtfi_calendar_setter_noalloc_gate() {
     for axis in raw diet; do
         local flags=("$@")
         [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-        gate_capture_ok "$root/$axis" invoke_cli "$root/input/DtfICalendarSetter.dll" --auto-ref "${flags[@]}" -o "$root/$axis-output" || return $?
+        gate_capture_ok "$root/$axis" invoke_cli "$root/input/DtfICalendarSetter.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$root/$axis-output" || return $?
         "$(resolve_python)" gates/fixtures/dtfi-calendar-setter/check-generated.py "$root/$axis-output" || return $?
     done
 }

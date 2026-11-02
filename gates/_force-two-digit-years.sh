@@ -17,8 +17,8 @@ force_two_digit_years_routes_gate() {
         fi
         [[ "$axis" != raw ]] || flags+=(--no-ildiet)
         [[ "$mode" != minimal ]] || check+=(--minimal)
-        invoke_cli "$root/input/ForceTwoDigitYears.dll" --auto-ref "${flags[@]}" -o "$out" || return $?
-        "$(resolve_python)" gates/fixtures/force-two-digit-years/check-generated.py "$out" "${check[@]}" || return $?
+        invoke_cli "$root/input/ForceTwoDigitYears.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$out" || return $?
+        "$(resolve_python)" gates/fixtures/force-two-digit-years/check-generated.py "$out" ${check[@]+"${check[@]}"} || return $?
         if [[ "${WASM:-0}" == 1 ]]; then
             compile_console_wasm "$out" ForceTwoDigitYears || return $?
             runner=(node "$out/ForceTwoDigitYears.js")
@@ -60,7 +60,7 @@ force_two_digit_years_negative_gate() {
         for axis in raw diet; do
             local flags=() rc=0
             [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-            invoke_cli "$root/$mode/input/ForceTwoDigitYears.dll" --auto-ref "${flags[@]}" -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
+            invoke_cli "$root/$mode/input/ForceTwoDigitYears.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
             printf '%s\n' "$rc" > "$root/$mode/$axis.status"
             [[ "$rc" == 2 ]] || { echo "FAIL: malformed ForceTwoDigitYears $mode/$axis admitted" >&2; return 1; }
             case "$mode" in

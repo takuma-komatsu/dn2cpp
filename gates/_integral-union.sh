@@ -5,7 +5,7 @@ integral_union_routes_gate() {
  gate_capture_ok "$root/oracle" run_bounded dotnet "$original/IntegralUnion.dll" || return $?
  for axis in raw diet;do
   local out="$root/$axis" flags=("$@");[[ "$axis" != raw ]] || flags+=(--no-ildiet)
-  invoke_cli "$original/IntegralUnion.dll" --auto-ref "${flags[@]}" -o "$out" || return $?
+  invoke_cli "$original/IntegralUnion.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$out" || return $?
   python3 gates/fixtures/integral-union/check-generated.py "$out" --self-test || return $?
   local runner=()
   if [[ "${WASM:-0}" == 1 ]];then compile_console_wasm "$out" IntegralUnion || return $?;runner=(node "$out/IntegralUnion.js")
@@ -23,7 +23,7 @@ integral_union_negative_gate() {
   dotnet "$fixture" --integral-union-negative "$input/IntegralUnionNegative.dll" "$corelib" "$mode" || return $?
   for axis in raw diet;do
    out="$root/$mode-$axis";local flags=("$@");[[ "$axis" != raw ]] || flags+=(--no-ildiet)
-   gate_capture "$out/emit" invoke_cli "$input/IntegralUnionNegative.dll" --auto-ref "${flags[@]}" -o "$out/generated" || return $?
+   gate_capture "$out/emit" invoke_cli "$input/IntegralUnionNegative.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$out/generated" || return $?
    if [[ "$mode" == unchanged || "$mode" == undersized ]];then gate_output status "$(cat "$out/emit.status")" 0 || return $?
    else
     gate_output status "$(cat "$out/emit.status")" 2 || return $?

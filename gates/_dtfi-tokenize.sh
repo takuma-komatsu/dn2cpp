@@ -14,7 +14,7 @@ dtfi_tokenize_routes_gate() {
         local flags=("$@") runner=() checker=(--mode "$mode")
         [[ "$mode" == minimal ]] || flags+=(--link-xml gates/fixtures/dtfi-tokenize/link.xml)
         [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-        invoke_cli "$root/input/DtfITokenize.dll" --auto-ref "${flags[@]}" -o "$out" || return $?
+        invoke_cli "$root/input/DtfITokenize.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$out" || return $?
         "$(resolve_python)" gates/fixtures/dtfi-tokenize/check-generated.py "$out" "${checker[@]}" || return $?
         if [[ "${WASM:-0}" == 1 ]]; then
             compile_console_wasm "$out" DtfITokenize || return $?
@@ -53,7 +53,7 @@ dtfi_tokenize_negative_gate() {
         for axis in raw diet; do
             local flags=() rc=0
             [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-            invoke_cli "$root/$mode/input/DtfITokenize.dll" --auto-ref "${flags[@]}" -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
+            invoke_cli "$root/$mode/input/DtfITokenize.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
             printf '%s\n' "$rc" > "$root/$mode/$axis.status"
             [[ "$rc" == 2 ]] || return 1
             if [[ "$mode" == *arity ]]; then
@@ -76,7 +76,7 @@ dtfi_tokenize_noalloc_gate() {
     for axis in raw diet; do
         local flags=()
         [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-        invoke_cli "$root/input/DtfITokenize.dll" --auto-ref "${flags[@]}" -o "$root/$axis" || return $?
+        invoke_cli "$root/input/DtfITokenize.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$root/$axis" || return $?
         "$(resolve_python)" gates/fixtures/dtfi-tokenize/check-generated.py "$root/$axis" --mode minimal || return $?
     done
 }

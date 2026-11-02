@@ -5,7 +5,7 @@ gchandle_equality_routes_gate() {
  gate_capture_ok "$root/oracle" run_bounded dotnet "$original/GCHandleEquality.dll" || return $?
  for axis in raw diet;do
   local out="$root/$axis" flags=("$@");[[ "$axis" != raw ]] || flags+=(--no-ildiet)
-  invoke_cli "$original/GCHandleEquality.dll" --auto-ref "${flags[@]}" -o "$out" || return $?
+  invoke_cli "$original/GCHandleEquality.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$out" || return $?
   python3 gates/fixtures/gchandle-equality/check-generated.py "$out" || return $?
   local runner=()
   if [[ "${WASM:-0}" == 1 ]];then compile_console_wasm "$out" GCHandleEquality || return $?;runner=(node "$out/GCHandleEquality.js")

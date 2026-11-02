@@ -22,7 +22,7 @@ internal static class DtfITokenizeFixture
             return true;
         }
         var definition = core.MainModule.GetType("System.Globalization.DateTimeFormatInfo").Methods.Single(m => m.Name == "Tokenize");
-        if (definition.MetadataToken.ToInt32() != 0x0600345f || (int)definition.Attributes != 0x83 || definition.ImplAttributes != 0
+        if (!DateTimeFixtureDeclaration.IsCoreLibInstanceMethod(core, definition, "System.Globalization.DateTimeFormatInfo", "Tokenize") || (int)definition.Attributes != 0x83 || definition.ImplAttributes != 0
             || definition.RVA == 0 || definition.HasGenericParameters || definition.ReturnType.MetadataType != MetadataType.Boolean
             || definition.Parameters.Count != 4 || definition.Parameters[0].ParameterType.FullName != "System.TokenType"
             || definition.Parameters[1].ParameterType.FullName != "System.TokenType&"

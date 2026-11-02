@@ -26,11 +26,11 @@ internal static class DtfICompareInfoFixture
         if (args[0] != "--dtfi-compare-info-oracle")
         {
             foreach (var row in new[] {
-                (Suffix: "DtfI", Type: "DateTimeFormatInfo", Token: 0x06003450, Attributes: 0x883),
-                (Suffix: "Culture", Type: "CultureInfo", Token: 0x060033a9, Attributes: 0x9c6) })
+                (Suffix: "DtfI", Type: "DateTimeFormatInfo", Attributes: 0x883),
+                (Suffix: "Culture", Type: "CultureInfo", Attributes: 0x9c6) })
             {
                 var definition = core.MainModule.GetType("System.Globalization." + row.Type).Methods.Single(method => method.Name == "get_CompareInfo");
-                if (definition.MetadataToken.ToInt32() != row.Token || (int)definition.Attributes != row.Attributes
+                if (!DateTimeFixtureDeclaration.IsCoreLibInstanceMethod(core, definition, "System.Globalization." + row.Type, "get_CompareInfo") || (int)definition.Attributes != row.Attributes
                     || definition.ImplAttributes != 0 || definition.RVA == 0 || definition.HasGenericParameters || definition.Parameters.Count != 0
                     || definition.ReturnType.FullName != "System.Globalization.CompareInfo" || definition.ReturnType.IsValueType)
                     throw new InvalidOperationException("installed CompareInfo getter changed");

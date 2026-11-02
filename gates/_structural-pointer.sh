@@ -5,7 +5,7 @@ structural_pointer_routes_gate() {
  gate_capture_ok "$root/oracle" run_bounded dotnet "$original/StructuralPointer.dll" || return $?
  for axis in raw diet;do
   local out="$root/$axis" flags=("$@");[[ "$axis" != raw ]] || flags+=(--no-ildiet)
-  invoke_cli "$original/StructuralPointer.dll" --auto-ref "${flags[@]}" -o "$out" || return $?
+  invoke_cli "$original/StructuralPointer.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$out" || return $?
   python3 gates/fixtures/structural-pointer/check-generated.py "$out" || return $?
   local runner=()
   if [[ "${WASM:-0}" == 1 ]];then compile_console_wasm "$out" StructuralPointer || return $?;runner=(node "$out/StructuralPointer.js")
@@ -23,7 +23,7 @@ structural_pointer_negative_gate() {
   dotnet "$fixture" --structural-pointer-negative "$input/PointerNegative.dll" "$corelib" "$mode" || return $?
   for axis in raw diet;do
    out="$root/$mode-$axis";local flags=("$@");[[ "$axis" != raw ]] || flags+=(--no-ildiet)
-   gate_capture "$out/emit" invoke_cli "$input/PointerNegative.dll" --auto-ref "${flags[@]}" -o "$out/generated" || return $?
+   gate_capture "$out/emit" invoke_cli "$input/PointerNegative.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$out/generated" || return $?
    if [[ "$mode" == unchanged ]];then gate_output status "$(cat "$out/emit.status")" 0 || return $?
    else
     gate_output status "$(cat "$out/emit.status")" 2 || return $?

@@ -15,8 +15,8 @@ all_datetime_patterns_routes_gate() {
         [[ "$axis" != raw ]] || flags+=(--no-ildiet)
         [[ "$mode" != all && "$mode" != reflection ]] || flags+=(--link-xml gates/fixtures/all-datetime-patterns/link.xml)
         [[ "$mode" != minimal ]] || checker+=(--minimal)
-        invoke_cli "$root/input/AllDateTimePatterns.dll" --auto-ref "${flags[@]}" -o "$out" || return $?
-        "$(resolve_python)" gates/fixtures/all-datetime-patterns/check-generated.py "$out" "${checker[@]}" || return $?
+        invoke_cli "$root/input/AllDateTimePatterns.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$out" || return $?
+        "$(resolve_python)" gates/fixtures/all-datetime-patterns/check-generated.py "$out" ${checker[@]+"${checker[@]}"} || return $?
         if [[ "${WASM:-0}" == 1 ]]; then
             compile_console_wasm "$out" AllDateTimePatterns || return $?
             runner=(node "$out/AllDateTimePatterns.js")
@@ -34,7 +34,7 @@ all_datetime_patterns_routes_gate() {
                 gate_output witness "$out/native.stdout" 'all-datetime-patterns-minimal:True' --count 1 --policy crlf || return $? ;;
             *) echo 'invalid all-patterns test mode' >&2; return 1 ;;
         esac
-        for route in "${routes[@]}"; do
+        for route in ${routes[@]+"${routes[@]}"}; do
             local witnesses=()
             for format in d D f F g G m M o O r R s t T u U y Y; do
                 for witness in ordered array isolated gc; do
@@ -91,7 +91,7 @@ all_datetime_patterns_negative_gate() {
         for axis in raw diet; do
             local flags=() rc=0
             [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-            invoke_cli "$root/$mode/input/AllDateTimePatterns.dll" --auto-ref "${flags[@]}" -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
+            invoke_cli "$root/$mode/input/AllDateTimePatterns.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
             printf '%s\n' "$rc" > "$root/$mode/$axis.status"
             [[ "$rc" == 2 ]] || { echo "FAIL: malformed patterns $mode/$axis admitted" >&2; return 1; }
             local diagnostic='DateTimeFormatInfo GetAllDateTimePatterns(Char) requires its exact MemberRef signature'
@@ -114,7 +114,7 @@ all_datetime_patterns_noalloc_gate() {
     for axis in raw diet; do
         local flags=("$@") rc=0
         [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-        invoke_cli "$root/input/AllDateTimePatterns.dll" --auto-ref "${flags[@]}" -o "$root/$axis-output" > "$root/$axis.log" 2>&1 || rc=$?
+        invoke_cli "$root/input/AllDateTimePatterns.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$root/$axis-output" > "$root/$axis.log" 2>&1 || rc=$?
         printf '%s\n' "$rc" > "$root/$axis.status"
         [[ "$rc" == 2 ]] || return 1
         allocation_lines=$(grep -F '[HotPath(NoAlloc)] closure of AllDateTimePatternsSubset.Program::Direct allocates:' "$root/$axis.log") || return 1
@@ -131,7 +131,7 @@ all_datetime_patterns_zeroarg_gate() {
     for axis in raw diet; do
         local flags=() rc=0
         [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-        invoke_cli "$root/input/AllDateTimePatterns.dll" --auto-ref "${flags[@]}" -o "$root/$axis-output" > "$root/$axis.log" 2>&1 || rc=$?
+        invoke_cli "$root/input/AllDateTimePatterns.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$root/$axis-output" > "$root/$axis.log" 2>&1 || rc=$?
         printf '%s\n' "$rc" > "$root/$axis.status"
         [[ "$rc" == 2 ]] || return 1
         grep -Fq 'call to System.Globalization.DateTimeFormatInfo::GetAllDateTimePatterns() has no intrinsic mapping yet' "$root/$axis.log" || return 1

@@ -33,7 +33,7 @@ internal static class EraNameFixture
                 string targetName = shortName ? "GetAbbreviatedEraName" : "GetEraName";
                 string suffix = shortName ? "Abbreviated" : "";
                 var definition = core.MainModule.GetType("System.Globalization.DateTimeFormatInfo").Methods.Single(m => m.Name == targetName);
-                if (definition.MetadataToken.ToInt32() != (shortName ? 0x060033f9 : 0x060033f7) || (int)definition.Attributes != 0x86 || definition.ImplAttributes != 0 || !definition.HasBody
+                if (!DateTimeFixtureDeclaration.IsCoreLibInstanceMethod(core, definition, "System.Globalization.DateTimeFormatInfo", targetName) || (int)definition.Attributes != 0x86 || definition.ImplAttributes != 0 || !definition.HasBody
                     || definition.HasGenericParameters || definition.Parameters.Count != 1 || definition.ReturnType.MetadataType != MetadataType.String
                     || definition.Parameters[0].ParameterType.MetadataType != MetadataType.Int32)
                     throw new InvalidOperationException("era name declaration changed");

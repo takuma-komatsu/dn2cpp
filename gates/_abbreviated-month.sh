@@ -68,7 +68,7 @@ _month_name_noalloc_gate() {
     for axis in raw diet; do
         local flags=("$@") rc=0
         [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-        invoke_cli "$root/input/${assembly}.dll" --auto-ref "${flags[@]}" -o "$root/$axis" > "$root/$axis.log" 2>&1 || rc=$?
+        invoke_cli "$root/input/${assembly}.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$root/$axis" > "$root/$axis.log" 2>&1 || rc=$?
         printf '%s\n' "$rc" > "$root/$axis.status"
         [[ "$rc" == 2 ]] || { echo 'FAIL: NoAlloc leaf with Int32 exception boxing accepted' >&2; return 1; }
         grep -Fq "[HotPath(NoAlloc)] closure of ${assembly}Subset.Program::Direct allocates: ${assembly}Subset.Program::Direct emits dn2cpp_box(" "$root/$axis.log" || return 1
@@ -95,7 +95,7 @@ _month_name_minimal_gate() {
     for axis in raw diet; do
         local flags=("$@") out="$root/$axis" runner=()
         [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-        invoke_cli "$original/${minimal}.dll" --auto-ref "${flags[@]}" -o "$out" || return $?
+        invoke_cli "$original/${minimal}.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$out" || return $?
         "$(resolve_python)" gates/fixtures/abbreviated-month/check-generated.py "$out" --name "$family"  --minimal || return $?
         if [[ "${WASM:-0}" == 1 ]]; then
             compile_console_wasm "$out" "$minimal" || return $?
@@ -130,7 +130,7 @@ _month_name_negative_gate() {
         for axis in raw diet; do
             local flags=(); rc=0
             [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-            invoke_cli "$root/$mode/input/${assembly}.dll" --auto-ref "${flags[@]}" -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
+            invoke_cli "$root/$mode/input/${assembly}.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
             printf '%s\n' "$rc" > "$root/$mode/$axis.status"
             [[ "$rc" == 2 ]] || { echo "FAIL: malformed abbreviated-month $mode $axis admitted" >&2; return 1; }
             grep -Fq 'DateTimeFormatInfo month name requires its exact MemberRef signature' "$root/$mode/$axis.log" || return 1

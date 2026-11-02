@@ -24,12 +24,12 @@ internal static class DtfIParserFlagsFixture
         int mutations = 0;
         if (args[0] != "--dtfi-parser-flags-oracle")
         foreach (var row in new[] {
-            (Suffix: "Month", Name: "get_HasSpacesInMonthNames", Token: 0x0600342c),
-            (Suffix: "Day", Name: "get_HasSpacesInDayNames", Token: 0x0600342d),
-            (Suffix: "Adjustment", Name: "get_HasYearMonthAdjustment", Token: 0x06003455) })
+            (Suffix: "Month", Name: "get_HasSpacesInMonthNames"),
+            (Suffix: "Day", Name: "get_HasSpacesInDayNames"),
+            (Suffix: "Adjustment", Name: "get_HasYearMonthAdjustment") })
         {
             var definition = owner.Methods.Single(method => method.Name == row.Name);
-            if (definition.MetadataToken.ToInt32() != row.Token || (int)definition.Attributes != 0x883
+            if (!DateTimeFixtureDeclaration.IsCoreLibInstanceMethod(core, definition, "System.Globalization.DateTimeFormatInfo", row.Name) || (int)definition.Attributes != 0x883
                 || definition.ImplAttributes != 0 || definition.RVA == 0 || definition.HasGenericParameters
                 || definition.Parameters.Count != 0 || definition.ReturnType.MetadataType != MetadataType.Boolean)
                 throw new InvalidOperationException("installed parser flag declaration changed");

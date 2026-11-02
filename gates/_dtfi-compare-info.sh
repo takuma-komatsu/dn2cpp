@@ -14,7 +14,7 @@ dtfi_compare_info_routes_gate() {
         local flags=("$@") runner=()
         [[ "$mode" == minimal* ]] || flags+=(--link-xml gates/fixtures/dtfi-compare-info/link.xml)
         [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-        invoke_cli "$root/input/DtfICompareInfo.dll" --auto-ref "${flags[@]}" -o "$out" || return $?
+        invoke_cli "$root/input/DtfICompareInfo.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$out" || return $?
         "$(resolve_python)" gates/fixtures/dtfi-compare-info/check-generated.py "$out" --mode "$mode" || return $?
         if [[ "${WASM:-0}" == 1 ]]; then
             compile_console_wasm "$out" DtfICompareInfo || return $?
@@ -50,7 +50,7 @@ dtfi_compare_info_negative_gate() {
         for axis in raw diet; do
             local flags=() rc=0
             [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-            invoke_cli "$root/$mode/input/DtfICompareInfo.dll" --auto-ref "${flags[@]}" -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
+            invoke_cli "$root/$mode/input/DtfICompareInfo.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
             printf '%s\n' "$rc" > "$root/$mode/$axis.status"
             [[ "$rc" == 2 ]] || return 1
             grep -Fq 'Invariant CompareInfo requires its exact MemberRef signature' "$root/$mode/$axis.log" || return 1
@@ -69,7 +69,7 @@ dtfi_compare_info_noalloc_gate() {
         for axis in raw diet; do
             local flags=() rc=0
             [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-            invoke_cli "$root/$owner/input/DtfICompareInfo.dll" --auto-ref "${flags[@]}" -o "$root/$owner/$axis" > "$root/$owner/$axis.log" 2>&1 || rc=$?
+            invoke_cli "$root/$owner/input/DtfICompareInfo.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$root/$owner/$axis" > "$root/$owner/$axis.log" 2>&1 || rc=$?
             printf '%s\n' "$rc" > "$root/$owner/$axis.status"
             [[ "$rc" == 2 ]] || return 1
             local method=DirectDtfI
@@ -98,7 +98,7 @@ dtfi_compare_info_subclass_gate() {
             if [[ "$mode" == reflection || "$mode" == base-preserved || "$mode" == lookup-only ]]; then
                 flags+=(--link-xml gates/fixtures/dtfi-compare-info/link.xml)
             fi
-            invoke_cli "$root/$mode/input/DtfICompareInfo.dll" --auto-ref "${flags[@]}" -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
+            invoke_cli "$root/$mode/input/DtfICompareInfo.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
             printf '%s\n' "$rc" > "$root/$mode/$axis.status"
             case "$mode" in
                 base|base-preserved|loaded|lookup-only) [[ "$rc" == 0 ]] || return 1 ;;

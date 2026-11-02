@@ -17,7 +17,7 @@ datetime_tchar_negative_gate() {
         for axis in raw diet; do
             local flags=(); rc=0
             [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-            invoke_cli "$root/$mode/input/DateTimeTChar.dll" --auto-ref "${flags[@]}" -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
+            invoke_cli "$root/$mode/input/DateTimeTChar.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
             printf '%s\n' "$rc" > "$root/$mode/$axis.status"
             [[ "$rc" == 2 ]] || return 1
             grep -Fq "$diagnostic" "$root/$mode/$axis.log" || return 1
@@ -38,7 +38,7 @@ datetime_tchar_closure_gate() {
                 local flags=(); rc=0
                 [[ "$axis" != raw ]] || flags+=(--no-ildiet)
                 local out="$root/$kind-$width/$axis"
-                invoke_cli "$root/$kind-$width/input/DateTimeTChar.dll" --auto-ref "${flags[@]}" -o "$out" > "$out.log" 2>&1 || rc=$?
+                invoke_cli "$root/$kind-$width/input/DateTimeTChar.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$out" > "$out.log" 2>&1 || rc=$?
                 printf '%s\n' "$rc" > "$out.status"
                 if [[ "$kind-$width" == noalloc-byte ]]; then
                     [[ "$rc" == 2 ]] || return 1

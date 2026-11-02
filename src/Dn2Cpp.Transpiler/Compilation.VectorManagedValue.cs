@@ -103,6 +103,7 @@ internal sealed partial class Compilation
             {
                 if (counterpart.Handle != field.Handle || counterpart.DeclaringClass.Module != field.DeclaringClass.Module
                     || counterpart.IsStatic || counterpart.IsLiteral) continue;
+                if (!MayHaveVectorFieldStorage(field, counterpart)) break;
                 var actual = field.Type;
                 var canonical = counterpart.Type;
                 if (actual is not { Kind: TypeKind.Class, Class: { } actualClass }
@@ -115,6 +116,27 @@ internal sealed partial class Compilation
             }
         }
         return true;
+    }
+
+    // Only Class descriptors can enter the inline-storage proof. Keep unrelated
+    // field signatures lazy instead of materializing their entire type closure.
+    private static bool MayHaveVectorFieldStorage(FieldInfo field, FieldInfo counterpart)
+    {
+        if (field.Handle.IsNil || counterpart.Handle.IsNil) return true;
+        var reader = field.DeclaringClass.Module.Reader;
+        var blob = reader.GetBlobReader(reader.GetFieldDefinition(field.Handle).Signature);
+        if (blob.RemainingBytes < 2 || blob.ReadByte() != 0x06) return true;
+        byte kind = blob.ReadByte();
+        if (kind is >= 0x02 and <= 0x0e or 0x18 or 0x19 or 0x1c)
+            return blob.RemainingBytes != 0;
+        if (kind is 0x0f or 0x10 or 0x14 or 0x1d)
+            return blob.RemainingBytes == 0;
+        if (kind != 0x13 || !blob.TryReadCompressedInteger(out int index)
+            || index < 0 || blob.RemainingBytes != 0) return true;
+        var actual = field.DeclaringClass.Context.TypeArgs;
+        var canonical = counterpart.DeclaringClass.Context.TypeArgs;
+        return index >= actual.Length || index >= canonical.Length
+            || (actual[index].Kind == TypeKind.Class && canonical[index].Kind == TypeKind.Class);
     }
 
     private static NotSupportedException VectorManagedThrowUnsupported() =>

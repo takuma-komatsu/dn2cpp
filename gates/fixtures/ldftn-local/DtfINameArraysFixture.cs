@@ -27,11 +27,11 @@ internal static class DtfINameArraysFixture
         if (args[0] != "--dtfi-name-arrays-oracle")
         {
             foreach (var row in new[] {
-                (Suffix: "Genitive", Name: "InternalGetGenitiveMonthNames", Token: 0x0600342f, Boolean: true),
-                (Suffix: "Leap", Name: "InternalGetLeapYearMonthNames", Token: 0x06003430, Boolean: false) })
+                (Suffix: "Genitive", Name: "InternalGetGenitiveMonthNames", Boolean: true),
+                (Suffix: "Leap", Name: "InternalGetLeapYearMonthNames", Boolean: false) })
             {
                 var definition = owner.Methods.Single(method => method.Name == row.Name);
-                if (definition.MetadataToken.ToInt32() != row.Token || (int)definition.Attributes != 0x83
+                if (!DateTimeFixtureDeclaration.IsCoreLibInstanceMethod(core, definition, "System.Globalization.DateTimeFormatInfo", row.Name) || (int)definition.Attributes != 0x83
                     || definition.ImplAttributes != 0 || definition.RVA == 0 || definition.HasGenericParameters
                     || definition.Parameters.Count != (row.Boolean ? 1 : 0)
                     || definition.ReturnType is not ArrayType { IsVector: true, ElementType.MetadataType: MetadataType.String }

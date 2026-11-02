@@ -16,8 +16,8 @@ dtfi_name_arrays_routes_gate() {
         [[ "$axis" != raw ]] || flags+=(--no-ildiet)
         [[ "$mode" != minimal ]] || checker+=(--minimal)
         [[ "$mode" != reflection ]] || checker+=(--reflection)
-        invoke_cli "$root/input/DtfINameArrays.dll" --auto-ref "${flags[@]}" -o "$out" || return $?
-        "$(resolve_python)" gates/fixtures/dtfi-name-arrays/check-generated.py "$out" "${checker[@]}" || return $?
+        invoke_cli "$root/input/DtfINameArrays.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$out" || return $?
+        "$(resolve_python)" gates/fixtures/dtfi-name-arrays/check-generated.py "$out" ${checker[@]+"${checker[@]}"} || return $?
         if [[ "${WASM:-0}" == 1 ]]; then
             compile_console_wasm "$out" DtfINameArrays || return $?
             runner=(node "$out/DtfINameArrays.js")
@@ -61,7 +61,7 @@ dtfi_name_arrays_negative_gate() {
         for axis in raw diet; do
             local flags=() rc=0
             [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-            invoke_cli "$root/$mode/input/DtfINameArrays.dll" --auto-ref "${flags[@]}" -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
+            invoke_cli "$root/$mode/input/DtfINameArrays.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
             printf '%s\n' "$rc" > "$root/$mode/$axis.status"
             [[ "$rc" == 2 ]] || return 1
             case "$mode" in
@@ -85,7 +85,7 @@ dtfi_name_arrays_noalloc_gate() {
             local flags=() rc=0 suffix=Genitive
             [[ "$family" != leap ]] || suffix=Leap
             [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-            invoke_cli "$root/$family/input/DtfINameArrays.dll" --auto-ref "${flags[@]}" -o "$root/$family/$axis" > "$root/$family/$axis.log" 2>&1 || rc=$?
+            invoke_cli "$root/$family/input/DtfINameArrays.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$root/$family/$axis" > "$root/$family/$axis.log" 2>&1 || rc=$?
             printf '%s\n' "$rc" > "$root/$family/$axis.status"
             [[ "$rc" == 2 ]] || return 1
             grep -Fq "[HotPath(NoAlloc)] closure of DtfINameArraysSubset.Program::Direct$suffix allocates: DtfINameArraysSubset.Program::Direct$suffix emits dn2cpp_dtfi_invariant_month_names(" "$root/$family/$axis.log" || return 1
@@ -106,7 +106,7 @@ dtfi_name_arrays_setters_gate() {
             local flags=() rc=0 target=set_AbbreviatedMonthNames
             [[ "$family" != genitive ]] || target=set_AbbreviatedMonthGenitiveNames
             [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-            invoke_cli "$root/$family/input/DtfINameArrays.dll" --auto-ref "${flags[@]}" -o "$root/$family/$axis" > "$root/$family/$axis.log" 2>&1 || rc=$?
+            invoke_cli "$root/$family/input/DtfINameArrays.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$root/$family/$axis" > "$root/$family/$axis.log" 2>&1 || rc=$?
             printf '%s\n' "$rc" > "$root/$family/$axis.status"
             [[ "$rc" == 2 ]] || return 1
             grep -Fq "System.Globalization.DateTimeFormatInfo::$target(String[]) has no intrinsic mapping yet" "$root/$family/$axis.log" || return 1
