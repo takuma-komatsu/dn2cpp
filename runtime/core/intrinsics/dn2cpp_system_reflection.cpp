@@ -1375,33 +1375,9 @@ Dn2CppString* enum_flags_format(const Dn2CppTypeInfo* ti, uint64_t mask, uint64_
     return dn2cpp_string_from_utf8(out.c_str(), static_cast<int32_t>(out.size()));
 }
 
-} // namespace
-
-// Enum.Format(Type, object value, string format): the static enum formatter
-// EnumConverter.ConvertTo drives. See the header for the per-specifier contract.
-Dn2CppString* dn2cpp_enum_format(Dn2CppType* t, Dn2CppObject* value, Dn2CppString* format)
+Dn2CppString* enum_format_value(const Dn2CppTypeInfo* ti, int64_t ev, uint64_t uv,
+    int32_t byteWidth, bool isUnsigned, uint64_t mask, char16_t fc)
 {
-    // .NET checks value and format for null before the type.
-    if (value == nullptr)
-        dn2cpp_throw_argument_null_param("value");
-    if (format == nullptr)
-        dn2cpp_throw_argument_null_param("format");
-    const Dn2CppTypeInfo* ti = dn2cpp_enum_type_require(t);
-    if (format->length != 1)
-        dn2cpp_throw_format();
-    char16_t fc = format->chars[0];
-
-    int32_t byteWidth;
-    bool isUnsigned;
-    enum_underlying_shape(ti, &byteWidth, &isUnsigned);
-    uint64_t mask = byteWidth >= 8 ? ~0ULL : ((1ULL << (8 * byteWidth)) - 1);
-    // The box payload sits right after the header; a 64-bit underlying carries an
-    // 8-byte payload, every narrower one the int32 model width (see dn2cpp_object_tostring).
-    const void* payload = value + 1;
-    int64_t ev = byteWidth == 8 ? *reinterpret_cast<const int64_t*>(payload)
-                                : *reinterpret_cast<const int32_t*>(payload);
-    uint64_t uv = static_cast<uint64_t>(ev) & mask;
-
     switch (fc)
     {
         case u'G': case u'g':
@@ -1449,6 +1425,95 @@ Dn2CppString* dn2cpp_enum_format(Dn2CppType* t, Dn2CppObject* value, Dn2CppStrin
             dn2cpp_throw_format();
     }
     return nullptr; // unreachable (all arms return or throw)
+}
+
+} // namespace
+
+// Enum.Format(Type, object value, string format): the static enum formatter
+// EnumConverter.ConvertTo drives. See the header for the per-specifier contract.
+Dn2CppString* dn2cpp_enum_format(Dn2CppType* t, Dn2CppObject* value, Dn2CppString* format)
+{
+    // .NET checks value and format for null before the type.
+    if (value == nullptr)
+        dn2cpp_throw_argument_null_param("value");
+    if (format == nullptr)
+        dn2cpp_throw_argument_null_param("format");
+    const Dn2CppTypeInfo* ti = dn2cpp_enum_type_require(t);
+    if (format->length != 1)
+        dn2cpp_throw_format();
+    char16_t fc = format->chars[0];
+
+    int32_t byteWidth;
+    bool isUnsigned;
+    enum_underlying_shape(ti, &byteWidth, &isUnsigned);
+    uint64_t mask = byteWidth >= 8 ? ~0ULL : ((1ULL << (8 * byteWidth)) - 1);
+    // The box payload sits right after the header; a 64-bit underlying carries an
+    // 8-byte payload, every narrower one the int32 model width (see dn2cpp_object_tostring).
+    const void* payload = value + 1;
+    int64_t ev = byteWidth == 8 ? *reinterpret_cast<const int64_t*>(payload)
+                                : *reinterpret_cast<const int32_t*>(payload);
+    uint64_t uv = static_cast<uint64_t>(ev) & mask;
+
+    return enum_format_value(ti, ev, uv, byteWidth, isUnsigned, mask, fc);
+}
+
+// The generic declaration fixes width/sign; rawData is read before any format or Type check.
+Dn2CppString* dn2cpp_enum_format_raw_integer(Dn2CppType* type, const void* rawData,
+    const Dn2CppTypeInfo* underlying, char16_t format)
+{
+    int32_t width;
+    bool isUnsigned;
+    if (underlying == &dn2cpp_sbyte_type)       { width = 1; isUnsigned = false; }
+    else if (underlying == &dn2cpp_byte_type)   { width = 1; isUnsigned = true; }
+    else if (underlying == &dn2cpp_int16_type)  { width = 2; isUnsigned = false; }
+    else if (underlying == &dn2cpp_uint16_type) { width = 2; isUnsigned = true; }
+    else if (underlying == &dn2cpp_int32_type)  { width = 4; isUnsigned = false; }
+    else if (underlying == &dn2cpp_uint32_type) { width = 4; isUnsigned = true; }
+    else if (underlying == &dn2cpp_int64_type)  { width = 8; isUnsigned = false; }
+    else if (underlying == &dn2cpp_uint64_type) { width = 8; isUnsigned = true; }
+    else dn2cpp_throw_argument_param("Unsupported enum formatter underlying type.", "underlying");
+
+    const void* data = dn2cpp_null_check(rawData);
+    uint64_t uv;
+    switch (width)
+    {
+        case 1: { uint8_t v; std::memcpy(&v, data, sizeof(v)); uv = v; break; }
+        case 2: { uint16_t v; std::memcpy(&v, data, sizeof(v)); uv = v; break; }
+        case 4: { uint32_t v; std::memcpy(&v, data, sizeof(v)); uv = v; break; }
+        default: std::memcpy(&uv, data, sizeof(uv)); break;
+    }
+    int64_t ev = 0;
+    if (!isUnsigned)
+    {
+        if (width == 8) std::memcpy(&ev, &uv, sizeof(ev));
+        else
+        {
+            ev = static_cast<int64_t>(uv);
+            if ((uv & (1ULL << (width * 8 - 1))) != 0)
+                ev -= 1LL << (width * 8);
+        }
+    }
+    const Dn2CppTypeInfo* ti = nullptr;
+    switch (format)
+    {
+        case u'D': case u'd': case u'X': case u'x':
+            break; // These IL branches never inspect enumType.
+        case u'G': case u'g': case u'F': case u'f':
+            type = dn2cpp_null_check(type);
+            // Invalid private-call inputs are native safety boundaries, not CLR cache emulation.
+            if (type->type != &dn2cpp_type_type)
+                dn2cpp_throw_platform_not_supported("Enum formatter requires a canonical RuntimeType");
+            ti = dn2cpp_type_require(type);
+            if ((ti->flags & DN2CPP_TF_ENUM) == 0)
+                dn2cpp_throw_argument_param(DN2CPP_SR_MUST_BE_ENUM, "enumType");
+            if (ti->enumUnderlying != underlying)
+                dn2cpp_throw_argument_param("Enum formatter underlying type does not match enumType.", "enumType");
+            break;
+        default:
+            dn2cpp_throw_format();
+    }
+    uint64_t mask = width == 8 ? ~0ULL : (1ULL << (width * 8)) - 1;
+    return enum_format_value(ti, ev, uv, width, isUnsigned, mask, format);
 }
 
 // The boxed-enum interface map's ISpanFormattable.TryFormat slot. It lives here
@@ -4352,6 +4417,22 @@ void dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> 
     g_culture_compare_info_row = method;
 }
 
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_string_private_rows[2];
+
+void dn2cpp_set_string_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> rawByte,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> length)
+{
+    g_string_private_rows[0] = rawByte;
+    g_string_private_rows[1] = length;
+}
+
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_culture_name_validator_row;
+
+void dn2cpp_set_culture_name_validator_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method)
+{
+    g_culture_name_validator_row = method;
+}
+
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_resourcemanager_default_type_row;
 
 void dn2cpp_set_resourcemanager_default_type_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method)
@@ -4401,10 +4482,16 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     const auto cultureCompareInfo = g_culture_compare_info_row;
     const bool cultureCompareInfoNamed = cultureCompareInfo != nullptr
         && dn2cpp_member_name_matches(cultureCompareInfo->name, name, bindingFlags, false);
+    const auto cultureNameValidator = g_culture_name_validator_row;
+    const bool cultureNameValidatorNamed = cultureNameValidator != nullptr
+        && dn2cpp_member_name_matches(cultureNameValidator->name, name, bindingFlags, false);
     const auto resourceManager = g_resourcemanager_default_type_row;
     const bool resourceManagerNamed = resourceManager != nullptr
         && dn2cpp_member_name_matches(resourceManager->name, name, bindingFlags, false);
-    bool named = factoryNamed || dateOnlyNamed || cultureCompareInfoNamed || resourceManagerNamed;
+    bool named = factoryNamed || dateOnlyNamed || cultureCompareInfoNamed || cultureNameValidatorNamed || resourceManagerNamed;
+    for (int32_t i = 0; i < 2 && !named; i++)
+        named = g_string_private_rows[i] != nullptr
+            && dn2cpp_member_name_matches(g_string_private_rows[i]->name, name, bindingFlags, false);
     for (int32_t i = 0; i < 2 && !named; i++)
         named = g_datetime_parser_rows[i] != nullptr
             && dn2cpp_member_name_matches(g_datetime_parser_rows[i]->name, name, bindingFlags, false);
@@ -4416,6 +4503,20 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     for (const Dn2CppTypeInfo* ti = queried; ti != nullptr; ti = dn2cpp_meta_next_level(ti))
     {
         bool inherited = (ti != queried);
+        if (ti == &dn2cpp_string_type)
+        {
+            for (int32_t i = 0; i < 2; i++)
+            {
+                const auto method = g_string_private_rows[i];
+                if (method == nullptr) continue;
+                const auto row = method.operator->();
+                if (row->declaringType == ti && dn2cpp_member_name_matches(row->name, name, bindingFlags, false)
+                    && dn2cpp_member_matches(row->attrs, bindingFlags, inherited)
+                    && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
+                    && (paramTypes == nullptr || dn2cpp_params_match_types(method, paramTypes, queried)))
+                    cands.push_back(method);
+            }
+        }
         for (int32_t i = 0; i < 2; i++)
         {
             const auto method = g_datetime_parser_rows[i];
@@ -4434,6 +4535,14 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
                 && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
                 && (paramTypes == nullptr || dn2cpp_params_match_types(cultureCompareInfo, paramTypes, queried)))
                 cands.push_back(cultureCompareInfo);
+        }
+        if (cultureNameValidatorNamed)
+        {
+            const auto row = cultureNameValidator.operator->();
+            if (row->declaringType == ti && dn2cpp_member_matches(row->attrs, bindingFlags, inherited)
+                && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
+                && (paramTypes == nullptr || dn2cpp_params_match_types(cultureNameValidator, paramTypes, queried)))
+                cands.push_back(cultureNameValidator);
         }
         if (resourceManagerNamed)
         {
@@ -8682,6 +8791,43 @@ Dn2CppObject* dn2cpp_activator_create_instance_default_ctor(Dn2CppType* t, int32
     if (t == nullptr)
         dn2cpp_throw_null_reference();
     return dn2cpp_activator_create_instance_wrapped(t, publicOnly == 0, wrapExceptions);
+}
+
+// The managed wrappers carry RuntimeType objects, not CoreCLR TypeHandle arrays.
+// AOT discovery retains the constrained closed type and its callable constructor.
+static Dn2CppObject* dn2cpp_runtime_type_create_generic_instance(Dn2CppType* representative,
+    Dn2CppType* const* arguments, int32_t count)
+{
+    if (representative == nullptr)
+        dn2cpp_throw_null_reference();
+    if (representative->type != &dn2cpp_type_type)
+        dn2cpp_throw_platform_not_supported("RuntimeType: generic construction requires runtime Type objects");
+    for (int32_t i = 0; i < count; i++)
+    {
+        if (arguments[i] == nullptr)
+            dn2cpp_throw_null_reference();
+        if (arguments[i]->type != &dn2cpp_type_type)
+            dn2cpp_throw_platform_not_supported("RuntimeType: generic construction requires runtime Type objects");
+        (void)dn2cpp_type_require(arguments[i]);
+    }
+    auto* definition = dn2cpp_type_get_generic_type_definition(representative);
+    auto* args = dn2cpp_newarr_ref(count);
+    for (int32_t i = 0; i < count; i++)
+        dn2cpp_gc_store_ref(&args->data[i], reinterpret_cast<Dn2CppObject*>(arguments[i]));
+    auto* closed = dn2cpp_type_make_generic(definition, args);
+    return dn2cpp_activator_create_instance_default_ctor(closed, 0, 0);
+}
+
+Dn2CppObject* dn2cpp_runtime_type_create_generic_instance_1(Dn2CppType* representative, Dn2CppType* argument)
+{
+    Dn2CppType* arguments[] = { argument };
+    return dn2cpp_runtime_type_create_generic_instance(representative, arguments, 1);
+}
+
+Dn2CppObject* dn2cpp_runtime_type_create_generic_instance_2(Dn2CppType* representative, Dn2CppType* first, Dn2CppType* second)
+{
+    Dn2CppType* arguments[] = { first, second };
+    return dn2cpp_runtime_type_create_generic_instance(representative, arguments, 2);
 }
 
 // The caller owns initialized storage large enough for the type. An implicit

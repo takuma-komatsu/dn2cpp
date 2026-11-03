@@ -51,8 +51,8 @@ gate_extra_asserts() {
     gate_output witness "$out/oracle.stdout" 'block repeat and low-byte checks=24' --count 1 --policy crlf || return 1
     gate_output witness "$out/oracle.stdout" 'retained fill byte and reference canaries passed' --count 1 --policy crlf || return 1
     vector_explicit_probe "$out" "$out/oracle.stdout" || return 1
-    vector_value_probe "$out" "$out/oracle.stdout" || return 1
     vector_concrete_elements_prefix "$out" || return 1
+    vector_value_probe "$out" "$out/concrete-prefix.stdout" || return 1
     vector_concrete_elements_probe "$out" || return 1
     vector_estimate_prefix "$out" || return 1
     vector_estimate_probe "$out"

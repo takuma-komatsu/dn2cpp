@@ -30,7 +30,11 @@ known_constant_asserts() {
 }
 
 known_constant_emitted_asserts() {
-    "$(resolve_python)" - "$1" "$2" "$3" <<'PY_WITNESS'
+    local python
+    python=$(resolve_python) || return $?
+    # resolve_python may return the Windows launcher "py -3".
+    # shellcheck disable=SC2086
+    $python - "$1" "$2" "$3" <<'PY_WITNESS'
 import pathlib, re, sys
 root, mode, level = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
 bodies = []
@@ -76,12 +80,32 @@ print('known-constant-emitted-body-witness:True')
 PY_WITNESS
 }
 
+known_constant_selected_levels() (
+    # Split only on whitespace, never expand a user's level string as paths.
+    set -f
+    IFS=$' \t\n'
+    local level
+    local levels="${DN2CPP_KNOWN_CONSTANT_LEVELS:-High}" selected_levels=0
+    for level in $levels; do
+        case "$level" in
+            [Hh][Ii][Gg][Hh]|[Mm][Ee][Dd][Ii][Uu][Mm]) ;;
+            *) echo 'FAIL: DN2CPP_KNOWN_CONSTANT_LEVELS accepts only High or Medium' >&2; return 1 ;;
+        esac
+        selected_levels=$((selected_levels + 1))
+        printf '%s\n' "$level"
+    done
+    [ "$selected_levels" -gt 0 ] || { echo 'FAIL: no known-constant stripping level selected' >&2; return 1; }
+)
+
 known_constant_routes_gate() {
     local root="$1" original="samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM"
     shift
+    local levels
+    levels=$(known_constant_selected_levels) || return $?
     local fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" corelib
     corelib=$(resolve_net10_corelib) || return $?
     local mode axis level flag oracle input out
+    search_values_shuffle_gate "$root/shuffle" "$fixture" "$corelib" || return $?
     for mode in ${DN2CPP_KNOWN_CONSTANT_MODES:-all reflection}; do
         flag=--known-constant
         [[ "$mode" == all ]] || flag+="-$mode"
@@ -95,12 +119,12 @@ known_constant_routes_gate() {
         gate_capture_ok "$oracle/result" run_bounded dotnet "$oracle/SelfHostPrimSubset.dll" || return $?
         known_constant_asserts "$oracle/result.stdout" "$mode" || return $?
         dotnet "$fixture" "$flag" "$input/SelfHostPrimSubset.dll" "$corelib" || return $?
-        for level in ${DN2CPP_KNOWN_CONSTANT_LEVELS:-High Medium}; do
+        for level in $levels; do
         for axis in ${DN2CPP_KNOWN_CONSTANT_AXES:-raw diet}; do
             out="$root/$mode-$level-$axis"
             local flags=("$@" --stripping-level "$(printf '%s' "$level" | tr '[:upper:]' '[:lower:]')") runner=()
             [[ "$axis" != raw ]] || flags+=(--no-ildiet)
-            invoke_cli "$input/SelfHostPrimSubset.dll" --auto-ref "${flags[@]}" -o "$out" || return $?
+            invoke_cli "$input/SelfHostPrimSubset.dll" -r "$input/DefaultStructCtorLib.dll" --auto-ref "${flags[@]}" -o "$out" || return $?
             known_constant_emitted_asserts "$out" "$mode" "$level" || return $?
             if [[ "${WASM:-0}" == 1 ]]; then
                 compile_console_wasm "$out" KnownConstant || return $?
@@ -114,6 +138,64 @@ known_constant_routes_gate() {
             gate_output compare "$oracle/result.stdout" "$out/native.stdout" --policy crlf || return $?
         done
         done
+    done
+}
+
+search_values_shuffle_gate() {
+    local parent="$1" fixture="$2" corelib="$3" root cli axis out oracle python
+    cli="${DN2CPP_CLI_DLL:-src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}"
+    python=$(resolve_python) || return $?
+    mkdir -p "$parent" || return $?
+    root=$(mktemp -d "$parent/run-XXXXXX") || return $?
+    gate_capture_ok "$root/guards" run_bounded dotnet "$fixture" --search-values-shuffle-guards \
+        "$(dirname "$cli")/Dn2Cpp.Transpiler.dll" "$(dirname "$cli")/ildiet/ILDiet.dll" "$corelib" "$root/model.dll" routes || return $?
+    gate_output match-record "$root/guards.stdout" 'search-values-shuffle-guards:checks=[1-9][0-9]*' --count 1 --policy crlf || return $?
+    gate_capture_ok "$root/generate" run_bounded dotnet "$fixture" --search-values-shuffle-fixture "$root/input.dll" "$corelib" || return $?
+    gate_capture_ok "$root/oracle-default" run_bounded env -u DOTNET_EnableHWIntrinsic -u COMPlus_EnableHWIntrinsic \
+        dotnet "$fixture" --search-values-shuffle-oracle || return $?
+    gate_capture_ok "$root/oracle-portable" run_bounded env -u COMPlus_EnableHWIntrinsic DOTNET_EnableHWIntrinsic=0 \
+        dotnet "$fixture" --search-values-shuffle-oracle || return $?
+    gate_output witness "$root/oracle-portable.stdout" 'search-values-shuffle:ssse3=False' --count 1 --policy crlf || return $?
+    for oracle in default portable; do
+        [[ "$(wc -l < "$root/oracle-$oracle.stdout")" -eq 25 && ! -s "$root/oracle-$oracle.stderr" ]] || return 1
+    done
+    for axis in raw diet; do
+        out="$root/$axis"
+        local flags=() runner=()
+        [[ "$axis" != raw ]] || flags+=(--no-ildiet)
+        gate_capture_ok "$root/$axis-emit" invoke_cli "$root/input.dll" -r "$corelib" --auto-ref ${flags[@]+"${flags[@]}"} -o "$out" || return $?
+        if [[ "$axis" == diet ]]; then
+            # resolve_python may return the Windows launcher "py -3".
+            # shellcheck disable=SC2086
+            $python - "$out/ildiet" "$root/input.dll" <<'PY_SHUFFLE_DIET' || return $?
+import sys
+from pathlib import Path
+sys.path.insert(0, 'gates')
+from ildiet_manifest import manifest
+result, generation = manifest(sys.argv[1])
+assert result.get('fallback') == 'none' and result.get('cutsValidated') == 'true'
+assembly = next(a for a in result.findall('assembly') if a.get('name') == 'SearchValuesShuffle')
+assert assembly.get('mode') == 'rewritten'
+rewritten = Path(result.get('input'))
+assert rewritten == generation / 'SearchValuesShuffle.dll'
+assert rewritten.read_bytes() != Path(sys.argv[2]).read_bytes()
+PY_SHUFFLE_DIET
+        fi
+        if [[ "${WASM:-0}" == 1 ]]; then
+            compile_console_wasm "$out" SearchValuesShuffle || return $?
+            runner=(node "$out/SearchValuesShuffle.js"); oracle=portable
+        else
+            compile_console "$out" SearchValuesShuffle || return $?
+            runner=("$out/SearchValuesShuffle$EXE_EXT"); oracle=default
+        fi
+        gate_capture_ok "$out/native-default" run_bounded env -u DN2CPP_CPU_FEATURES "${runner[@]}" || return $?
+        gate_output compare "$root/oracle-$oracle.stdout" "$out/native-default.stdout" --policy crlf || return $?
+        gate_output compare "$root/oracle-$oracle.stderr" "$out/native-default.stderr" --policy crlf || return $?
+        if [[ "${WASM:-0}" != 1 ]]; then
+            gate_capture_ok "$out/native-portable" run_bounded env DN2CPP_CPU_FEATURES=-Ssse3 "${runner[@]}" || return $?
+            gate_output compare "$root/oracle-portable.stdout" "$out/native-portable.stdout" --policy crlf || return $?
+            gate_output compare "$root/oracle-portable.stderr" "$out/native-portable.stderr" --policy crlf || return $?
+        fi
     done
 }
 

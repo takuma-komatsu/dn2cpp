@@ -670,9 +670,10 @@ internal sealed partial class MethodCompiler
             // with the array itself as the receiver (Roslyn elides the interface-typed
             // local), so the `this` slot is also an array->IEnumerable<T> coercion.
             var receiver = Pop();
-            // Retained mapped-value bodies use the callable declaration's byref ABI,
+            // Retained mapped bodies use the callable declaration's receiver ABI,
             // not an emitted managed struct layout.
             string receiverType = CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(callee)
+                || CoreIntrinsics.BrStringRawByteReference.Matches(callee)
                 || CoreIntrinsics.IsScalarNumericLeaf(callee)
                 ? ReceiverCppType(callee.DeclaringClass)
                 : callee.DeclaringClass.CppStructName + "*";
@@ -1092,13 +1093,11 @@ internal sealed partial class MethodCompiler
             Push(StackKind.Ref, "Dn2CppCancelSource*", ctsNew);
             return;
         }
-        // new CancellationToken(bool canceled) — the expression (newobj) form.
-        if (NewobjTypeName(handle) == "System.Threading.CancellationToken")
+        // Both public Boolean and internal source constructors use the token payload.
+        if (NewobjTypeName(handle) == "System.Threading.CancellationToken"
+            && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition)
         {
-            var arg = Pop(); // bool canceled
-            EmitCanceledExcRegistration();
-            Push(StackKind.Struct, "Dn2CppCancelToken",
-                $"Dn2CppCancelToken{{ ({arg.Expr}) ? dn2cpp_cts_canceled() : nullptr }}");
+            Push(StackKind.Struct, "Dn2CppCancelToken", EmitCancellationTokenCtorExpr(DecodeCtorSignature(handle)));
             return;
         }
         // new Thread(ThreadStart|ParameterizedThreadStart [, int maxStackSize]) — the

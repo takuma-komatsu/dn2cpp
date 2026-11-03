@@ -1972,6 +1972,36 @@ Dn2CppString* dn2cpp_culture_tostring(const Dn2CppNumberFormatInfo* c)
     return c->cultureRealName;
 }
 
+void dn2cpp_compare_info_require_native_culture(const Dn2CppNumberFormatInfo* c)
+{
+    if (c == nullptr)
+        dn2cpp_throw_null_reference();
+    // A native payload starts with a string pointer, not a managed type handle.
+    // Compare the word by value; never dereference an unverified type-info.
+    const void* header = nullptr;
+    std::memcpy(&header, c, sizeof(header));
+    if (header == nullptr)
+        return;
+    for (int32_t i = 0; i < dn2cpp_type_registry_count; ++i)
+        if (header == dn2cpp_type_registry[i].type)
+            dn2cpp_throw_platform_not_supported("CompareInfo initialization requires a native CultureInfo payload");
+    for (const auto* entry = dn2cpp_type_registry_dynamic_head(); entry != nullptr; entry = entry->next)
+        if (header == entry->type)
+            dn2cpp_throw_platform_not_supported("CompareInfo initialization requires a native CultureInfo payload");
+}
+
+Dn2CppString* dn2cpp_culture_sort_name(const Dn2CppNumberFormatInfo* c)
+{
+    if (c == nullptr)
+        dn2cpp_throw_null_reference();
+    auto* name = dn2cpp_culture_tostring(c);
+    // The public legacy Chinese identity differs from CultureData's real name.
+    // Other full identities, including alternate-sort suffixes, stay intact.
+    if (const char16_t* compatible = dn2cpp_culture_compatibility_name(name))
+        return dn2cpp_lit16(compatible);
+    return name;
+}
+
 Dn2CppString* dn2cpp_textinfo_tostring(const Dn2CppNumberFormatInfo* c)
 {
     if (c == nullptr)

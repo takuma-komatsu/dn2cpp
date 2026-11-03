@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Private DTFI probes execute only in native output; the CLR oracle uses public CultureInfo.
+# Rewritten private calls execute only natively; the validator oracle reflects unmodified CoreLib.
 dtfi_compare_info_routes_gate() {
     local root="$1" original="$2" mode="${3:-all}"; shift 3
     local fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" corelib flag=--dtfi-compare-info
@@ -8,6 +8,7 @@ dtfi_compare_info_routes_gate() {
     mkdir -p "$root/input"
     cp -R "$original/." "$root/input/" || return $?
     dotnet "$fixture" "$flag" "$root/input/DtfICompareInfo.dll" "$corelib" || return $?
+    [[ "$mode" != all ]] || dtfi_compare_info_validator_oracle_gate "$root/validator-oracle" "$original" || return $?
     local axis out
     for axis in raw diet; do
         out="$root/$axis"
@@ -24,8 +25,19 @@ dtfi_compare_info_routes_gate() {
             runner=("$out/DtfICompareInfo$EXE_EXT")
         fi
         gate_capture_ok "$out/native" run_bounded "${runner[@]}" || return $?
-        "$(resolve_python)" gates/fixtures/dtfi-compare-info/check-output.py "$out/native.stdout" --mode "$mode" || return $?
+        local output_flags=(--mode "$mode")
+        [[ "$mode" != all ]] || output_flags+=(--validator-output "$out/validator.stdout")
+        "$(resolve_python)" gates/fixtures/dtfi-compare-info/check-output.py "$out/native.stdout" "${output_flags[@]}" || return $?
+        [[ "$mode" != all ]] || gate_output compare "$root/validator-oracle/result.stdout" "$out/validator.stdout" --policy crlf || return $?
     done
+}
+
+dtfi_compare_info_validator_oracle_gate() {
+    local root="$1" original="$2" python
+    python=$(resolve_python) || return $?
+    mkdir -p "$root"
+    gate_capture_ok "$root/result" run_bounded dotnet "$original/DtfICompareInfo.dll" validator-oracle || return $?
+    $python gates/fixtures/dtfi-compare-info/check-output.py "$root/result.stdout" --mode validator || return $?
 }
 
 dtfi_compare_info_oracle_gate() {
@@ -43,7 +55,7 @@ dtfi_compare_info_negative_gate() {
     local root="$1" original="$2" mode axis corelib
     local fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll"
     corelib=$(resolve_net10_corelib) || return $?
-    for mode in ${DN2CPP_DTFI_COMPARE_INFO_NEGATIVES:-dtfi-return culture-byref address-dtfi-return address-culture-byref}; do
+    for mode in ${DN2CPP_DTFI_COMPARE_INFO_NEGATIVES:-dtfi-return culture-byref address-dtfi-return address-culture-byref validator-return address-validator-byref}; do
         mkdir -p "$root/$mode/input"
         cp -R "$original/." "$root/$mode/input/" || return $?
         dotnet "$fixture" --dtfi-compare-info-negative "$root/$mode/input/DtfICompareInfo.dll" "$corelib" "$mode" || return $?
@@ -53,7 +65,9 @@ dtfi_compare_info_negative_gate() {
             invoke_cli "$root/$mode/input/DtfICompareInfo.dll" --auto-ref ${flags[@]+"${flags[@]}"} -o "$root/$mode/$axis" > "$root/$mode/$axis.log" 2>&1 || rc=$?
             printf '%s\n' "$rc" > "$root/$mode/$axis.status"
             [[ "$rc" == 2 ]] || return 1
-            grep -Fq 'Invariant CompareInfo requires its exact MemberRef signature' "$root/$mode/$axis.log" || return 1
+            local diagnostic='Invariant CompareInfo requires its exact MemberRef signature'
+            case "$mode" in *validator-*) diagnostic='CultureInfo name validation requires its exact String, Boolean signature' ;; esac
+            grep -Fq "$diagnostic" "$root/$mode/$axis.log" || return 1
         done
     done
 }
@@ -62,7 +76,7 @@ dtfi_compare_info_noalloc_gate() {
     local root="$1" original="$2" owner axis corelib
     local fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll"
     corelib=$(resolve_net10_corelib) || return $?
-    for owner in dtfi culture; do
+    for owner in dtfi culture ctor initsort; do
         mkdir -p "$root/$owner/input"
         cp -R "$original/." "$root/$owner/input/" || return $?
         dotnet "$fixture" "--dtfi-compare-info-noalloc-$owner" "$root/$owner/input/DtfICompareInfo.dll" "$corelib" || return $?
@@ -73,8 +87,18 @@ dtfi_compare_info_noalloc_gate() {
             printf '%s\n' "$rc" > "$root/$owner/$axis.status"
             [[ "$rc" == 2 ]] || return 1
             local method=DirectDtfI
-            [[ "$owner" != culture ]] || method=DirectCulture
-            local diagnostic="error: [HotPath(NoAlloc)] closure of DtfICompareInfoSubset.Program::$method allocates: DtfICompareInfoSubset.Program::$method emits dn2cpp_invariant_compare_info_"
+            local offender token=dn2cpp_invariant_compare_info_
+            case "$owner" in
+                culture) method=DirectCulture ;;
+                ctor) method=CallCtor ;;
+                initsort) method=DirectInitSort ;;
+            esac
+            offender="DtfICompareInfoSubset.Program::$method"
+            case "$owner" in
+                ctor) offender='System.Globalization.CompareInfo::.ctor'; token='dn2cpp_culture_sort_name(' ;;
+                initsort) offender='System.Globalization.CompareInfo::InitSort'; token='dn2cpp_culture_sort_name(' ;;
+            esac
+            local diagnostic="error: [HotPath(NoAlloc)] closure of DtfICompareInfoSubset.Program::$method allocates: $offender emits $token"
             [[ "$(grep -c '^error:' "$root/$owner/$axis.log")" == 1 ]] || return 1
             gate_output witness "$root/$owner/$axis.log" "$diagnostic" --count 1 --policy crlf || return $?
         done

@@ -1416,6 +1416,10 @@ void dn2cpp_set_delegate_method_catalog(const Dn2CppDelegateMethodCatalog* rows,
 void dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 // Exact retained CultureInfo getter; no general intrinsic-type metadata mutation.
 void dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+void dn2cpp_set_culture_name_validator_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+// Only the two exact retained String entries participate in named lookup.
+void dn2cpp_set_string_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> rawByte,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> length);
 // Exact retained DateOnly member.
 void dn2cpp_set_dateonly_deconstruct_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 void dn2cpp_set_resourcemanager_default_type_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
@@ -1930,6 +1934,10 @@ Dn2CppObject* dn2cpp_enum_to_object_boxed(Dn2CppType* t, Dn2CppObject* value);
 // x and X uppercase, as .NET does). Null type/value/format throw ArgumentNullException,
 // a non-enum type ArgumentException, an unrecognized format string FormatException.
 Dn2CppString* dn2cpp_enum_format(Dn2CppType* t, Dn2CppObject* value, Dn2CppString* format);
+// Closed integer generic Enum formatters: read exactly the primitive's raw width first.
+// D/X ignore type; G/F require canonical matching enum metadata, never CLR cache fields.
+Dn2CppString* dn2cpp_enum_format_raw_integer(Dn2CppType* type, const void* rawData,
+    const Dn2CppTypeInfo* underlying, char16_t format);
 // The Span<char> / ReadOnlySpan<char> an emitted interface-dispatch site passes BY
 // VALUE, i.e. the shape an ISpanFormattable.TryFormat slot is called with.
 struct Dn2CppItfCharSpan { char16_t* ptr; int32_t length; };
@@ -2501,6 +2509,8 @@ Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t 
 // Retained parameterless factory: only canonical runtime Type objects carry a native layout.
 Dn2CppObject* dn2cpp_activator_create_instance_wrapped(Dn2CppType* t, int32_t nonPublic, int32_t wrapExceptions);
 Dn2CppObject* dn2cpp_activator_create_instance_default_ctor(Dn2CppType* t, int32_t publicOnly, int32_t wrapExceptions);
+Dn2CppObject* dn2cpp_runtime_type_create_generic_instance_1(Dn2CppType* representative, Dn2CppType* argument);
+Dn2CppObject* dn2cpp_runtime_type_create_generic_instance_2(Dn2CppType* representative, Dn2CppType* first, Dn2CppType* second);
 void dn2cpp_runtime_type_call_default_struct_constructor(Dn2CppType* t, uint8_t* data);
 // Activator.CreateInstance(Type, object[] args[, BindingFlags, Binder,
 // activationAttributes]): DefaultBinder-style ctor resolution — filter on
@@ -8133,6 +8143,8 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_current_ui();
 void dn2cpp_culture_set_current_ui(const Dn2CppNumberFormatInfo* c);
 const Dn2CppNumberFormatInfo* dn2cpp_culture_installed_ui();
 Dn2CppString* dn2cpp_culture_name(const Dn2CppNumberFormatInfo* c);
+Dn2CppString* dn2cpp_culture_sort_name(const Dn2CppNumberFormatInfo* c);
+void dn2cpp_compare_info_require_native_culture(const Dn2CppNumberFormatInfo* c);
 Dn2CppString* dn2cpp_culture_two_letter_iso_language_name(const Dn2CppNumberFormatInfo* c);
 Dn2CppString* dn2cpp_culture_tostring(const Dn2CppNumberFormatInfo* c);
 Dn2CppString* dn2cpp_textinfo_tostring(const Dn2CppNumberFormatInfo* c);

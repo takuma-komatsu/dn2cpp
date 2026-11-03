@@ -504,6 +504,11 @@ internal sealed partial class MethodCompiler
                     }
                 }
                 CoreIntrinsics.ValidateKnownConstantCallable(callee);
+                if (CoreIntrinsics.IsWaitHandleRawWaitImport(callee))
+                {
+                    EmitManagedCall(callee, isCallvirt);
+                    return;
+                }
                 if (CoreIntrinsics.BrPrimitiveBigMul.Matches(callee))
                 {
                     EmitManagedCall(callee, isCallvirt);
@@ -522,6 +527,11 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.IsConcreteVectorReduction(callee)
                     || CoreIntrinsics.IsResourceManagerDefaultType(callee)
                     || CoreIntrinsics.IsPrimitiveElementHelper(callee)
+                    || CoreIntrinsics.IsCultureInfoNameValidator(callee)
+                    || CoreIntrinsics.IsStringNullTerminatedLength(callee)
+                    || CoreIntrinsics.IsSearchValuesShuffle(callee)
+                    || CoreIntrinsics.IsWaitHandleRawWaitWrapper(callee)
+                    || CoreIntrinsics.IsCancellationInvoke(callee)
                     || CoreIntrinsics.IsKnownConstant(callee)
                     || CoreIntrinsics.IsMemberNotFoundExceptionFactory(callee)
                     || CoreIntrinsics.IsMemberMetadataDefinitionBase(callee)
@@ -537,6 +547,10 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(callee)
                     || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(callee)
                     || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(callee)
+                    || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(callee)
+                    || CoreIntrinsics.BrStringRawByteReference.Matches(callee)
+                    || CoreIntrinsics.BrArrayNativeLength.Matches(callee)
+                    || CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(callee)
                     || CoreIntrinsics.BrActivatorNamed.Matches(callee)
                     || CoreIntrinsics.BrActivatorDefault.Matches(callee))
                 {
@@ -688,6 +702,8 @@ internal sealed partial class MethodCompiler
                 // Compilation.ResolveCallTarget, whose GetMethodTable pointer math has no
                 // mapping.
                 if (TryEmitMethodDefIntercept(CoreIntrinsics.MdMemoryMarshalArrayData, callee))
+                    return;
+                if (TryEmitMethodDefIntercept(CoreIntrinsics.MdMarshalStructureToPtr, callee))
                     return;
                 // An intra-assembly call into an intrinsic-mapped type (e.g.
                 // corelib's Span<T> -> ThrowHelper) is emitted inline, not
@@ -1796,7 +1812,7 @@ internal sealed partial class MethodCompiler
 
         if (IsDelegateInvoke(callee))
         {
-            TranslateDelegateInvoke(callee);
+            TranslateDelegateInvoke(callee, isCallvirt);
             return;
         }
 
@@ -2574,7 +2590,7 @@ internal sealed partial class MethodCompiler
             }
         }
         else if (isCallvirt && callee.IsVirtual
-            && CoreIntrinsics.BrEnumInstanceFormat.Matches(callee.DeclaringClass.FullName, callee.Name))
+            && CoreIntrinsics.BrEnumInstanceFormat.Matches(callee))
         {
             // An enum's virtual-final ToString(IFormatProvider) / ToString(string,
             // IFormatProvider) / GetTypeCode / CompareTo(object) reached as a callvirt on a
@@ -3437,7 +3453,7 @@ internal sealed partial class MethodCompiler
         return $"(void*)&{adapter.CppName}";
     }
 
-    private void TranslateDelegateInvoke(MethodInfo invoke)
+    private void TranslateDelegateInvoke(MethodInfo invoke, bool isCallvirt)
     {
         var cls = invoke.DeclaringClass;
         // This line NAMES dginvoke_<CppName>, so record the class for the invoker
@@ -3449,7 +3465,10 @@ internal sealed partial class MethodCompiler
         var callArgs = new string[ps.Length];
         for (int i = ps.Length - 1; i >= 0; i--)
             callArgs[i] = Cast(Pop(), CppTypes.Of(ps[i]));
-        var dg = Cast(Pop(), cls.CppStructName + "*");
+        var receiver = Pop();
+        var dg = Cast(receiver, cls.CppStructName + "*");
+        if (isCallvirt && !receiver.NonNull)
+            dg = $"dn2cpp_null_check({dg})";
 
         var allArgs = new List<string> { dg };
         allArgs.AddRange(callArgs);

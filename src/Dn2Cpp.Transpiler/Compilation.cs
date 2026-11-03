@@ -4110,9 +4110,19 @@ internal sealed partial class Compilation
         {
             NoteInvariantCompareInfoFactory(m);
         }
-        if (CoreIntrinsics.IsCoreClrTypeCollectibilityImport(m))
+        if (CoreIntrinsics.IsCoreClrTypeCollectibilityImport(m) || CoreIntrinsics.IsWaitHandleRawWaitImport(m))
         {
             NotePInvokeFtnTarget(m);
+            return;
+        }
+        if (CoreIntrinsics.BrArrayNativeLength.Matches(m))
+        {
+            Reach(m);
+            return;
+        }
+        if (CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(m))
+        {
+            Reach(m);
             return;
         }
         if (CoreIntrinsics.BrLifetimeDispose.Matches(m.DeclaringClass.FullName, m.Name))
@@ -4124,6 +4134,11 @@ internal sealed partial class Compilation
             ReachUsedVirtual(m);
             ReachIntrinsicTypeMethod(m);
             DrainReachability();
+            return;
+        }
+        if (CoreIntrinsics.BrStringRawByteReference.Matches(m))
+        {
+            Reach(m);
             return;
         }
         if (_intrinsicTypeTranspiled.Contains(m))
@@ -4142,6 +4157,11 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsConcreteVectorReduction(m)
             || CoreIntrinsics.IsResourceManagerDefaultType(m)
             || CoreIntrinsics.IsPrimitiveElementHelper(m)
+            || CoreIntrinsics.IsCultureInfoNameValidator(m)
+            || CoreIntrinsics.IsStringNullTerminatedLength(m)
+            || CoreIntrinsics.IsSearchValuesShuffle(m)
+            || CoreIntrinsics.IsWaitHandleRawWaitWrapper(m)
+            || CoreIntrinsics.IsCancellationInvoke(m)
             || CoreIntrinsics.IsKnownConstant(m)
             || CoreIntrinsics.IsVectorManagedThrowHelper(m)
             || CoreIntrinsics.IsGenericVectorEstimate(m)

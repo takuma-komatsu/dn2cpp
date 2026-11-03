@@ -8,7 +8,7 @@ import subprocess
 from ildiet_manifest import manifest
 
 
-def validate_buffer_moves(probe, cli, original, directory):
+def validate_buffer_moves(probe, cli, original, directory, *, levels=("high", "medium")):
     records = []
 
     def run(arguments, success=True):
@@ -26,7 +26,7 @@ def validate_buffer_moves(probe, cli, original, directory):
         source = directory / ("buffer-moves-" + kind)
         created = run([probe, "--create-stripping-buffer-moves-fixture", original, source, kind])
         assert "stripping-fixture=buffer-moves:" + kind in created.stdout
-        for level in ("high", "medium"):
+        for level in levels:
             for mode in ("raw", "full"):
                 output = directory / ("emission-buffer-moves-" + kind + "-" + level + "-" + mode)
                 arguments = [cli, source / "MediumApp.dll", "-r", source / "System.Private.CoreLib.dll",

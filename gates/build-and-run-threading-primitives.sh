@@ -136,5 +136,10 @@ gate_extra_asserts() {
     done
 }
 
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ThreadingPrimitives/WaitHandleRawWaitSubset.cs gates/fixtures/ldftn-local/WaitHandleRawWaitFixture.cs gates/fixtures/ldftn-local/WaitHandleRawWaitGuards.cs gates/_wait-handle-raw-wait.sh"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|raw-wait:owned-wrappers,existing-QCall,binding-precedence,raw,diet"
 corelib_diff_gate ThreadingPrimitives
 corelib_diff_gate MonotonicClock
+
+source gates/_wait-handle-raw-wait.sh
+wait_handle_raw_wait_gate

@@ -2,7 +2,7 @@
 # Numeric Vector<T> value equality/hash, independent IEEE oracle and real tuple bodies.
 # Sourced after _common.sh. Native wrappers select Highway or SCALAR explicitly.
 vector_value_probe() {
-    local out="$1" axis emit hardware=1
+    local out="$1" prefix="$2" axis emit hardware=1
     [ -z "${SCALAR:-}" ] || hardware=0
     gate_capture_ok "$out/value-oracle" run_bounded env DOTNET_EnableAVX=0 dotnet "$_CG_APP" vector-value-only || return 1
     python3 gates/fixtures/vector-value/compare-output.py "$out/value-oracle.stdout" || return 1
@@ -12,7 +12,8 @@ vector_value_probe() {
     python3 gates/fixtures/vector-fixed-value/compare-managed-output.py "$out/fixed-managed-oracle.stdout" || return 1
     gate_capture_ok "$out/unsupported-oracle" run_bounded env DOTNET_EnableAVX=0 dotnet "$_CG_APP" vector-unsupported-only || return 1
     python3 gates/fixtures/vector-unsupported/compare-output.py "$out/unsupported-oracle.stdout" || return 1
-    python3 gates/fixtures/vector-value/compare-output.py "$out/oracle.stdout" --full || return 1
+    # The value contract ends before concrete elements; its EOF remains strict.
+    python3 gates/fixtures/vector-value/compare-output.py "$prefix" --full || return 1
     for axis in raw diet; do
         emit=$(mktemp -d "$out/value-$axis-XXXXXX") || return 1
         local flags=()
@@ -31,7 +32,9 @@ vector_value_probe() {
         [ "$(grep -Ec "^vector value actual tuple equality/hash passed hw=$hardware pointer=(4|8)$" "$out/value-$axis-run.stderr")" = 1 ] || return 1
         gate_capture_ok "$out/value-$axis-full" run_bounded "./$emit/VectorProbe$EXE_EXT" || return 1
         gate_output compare "$out/value-$axis-full.stdout" "$out/oracle.stdout" --policy crlf || return 1
-        python3 gates/fixtures/vector-value/compare-output.py "$out/value-$axis-full.stdout" --full || return 1
+        gate_output select "$out/value-$axis-full.stdout" "$out/value-$axis-prefix.stdout" \
+            --before '-- concrete vector elements --' --policy crlf || return 1
+        python3 gates/fixtures/vector-value/compare-output.py "$out/value-$axis-prefix.stdout" --full || return 1
         gate_capture_ok "$out/value-$axis-fixed-run" run_bounded "./$emit/VectorProbe$EXE_EXT" vector-fixed-value-only || return 1
         gate_output compare "$out/value-$axis-fixed-run.stdout" "$out/fixed-value-oracle.stdout" --policy crlf || return 1
         python3 gates/fixtures/vector-fixed-value/compare-output.py "$out/value-$axis-fixed-run.stdout" || return 1

@@ -26,6 +26,7 @@
 # here only because CancellationTokenRegistration is the intrinsic pointer value type
 # that shows the bug. It carries a RuntimeTypeHandle arm for the same reason.
 # Named argument faults, boxed bounds, validation order and GC-retained fields.
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_cancellation-invoke.sh gates/ildiet_manifest.py gates/fixtures/ldftn-local/CancellationInvokeFixture.cs gates/fixtures/ldftn-local/CancellationInvokeGuards.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
 
 gate_extra_asserts() {
@@ -55,3 +56,8 @@ gate_extra_asserts() {
 }
 
 corelib_diff_gate CancellationRegister
+
+source gates/_cancellation-invoke.sh
+build_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+cancellation_invoke_gate "artifacts/cancellation-invoke-$CONFIG" \
+    "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" "$_CG_CORELIB"

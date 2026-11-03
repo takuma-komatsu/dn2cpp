@@ -304,6 +304,8 @@ internal enum InterceptEmitArm
     /// from — never a separate list.</summary>
     HttpShimBody,
     PrimitiveBigMulBody,
+    InvariantCompareInfoInitializerBody,
+    StringRawByteReferenceBody,
     /// <summary>A synthesized System.Enum instance ToString/GetTypeCode body —
     /// <c>MethodCompiler.CompileEnumInstanceFormatBody</c>, emitted under the
     /// intercepted method's OWN symbol so EVERY mouth resolves to it: a direct
@@ -319,6 +321,7 @@ internal enum InterceptEmitArm
     /// <c>dn2cpp_type_get_type_code</c>), which dispatch on the boxed enum's runtime
     /// type, so one synthesized body serves every enum.</summary>
     EnumInstanceFormatBody,
+    EnumStaticFormatBody,
     /// <summary>Inherited lifetime wrappers and their protected base implementations.</summary>
     LifetimeDisposeBody,
     /// <summary>Delegate.Clone's callable slot uses the same shallow-copy helper as a direct call.</summary>
@@ -334,6 +337,9 @@ internal enum InterceptEmitArm
     ActivatorNamedBody,
     ActivatorDefaultBody,
     RuntimeTypeDefaultCtorBody,
+    RuntimeTypeGenericFactoryBody,
+    ArrayNativeLengthBody,
+    GCHandleCheckUninitializedBody,
     RuntimeTypeCreateInstanceOfTBody,
     RuntimeTypeHandleConstructNameBody,
     RuntimeTypeHandleDeclaringTypeBody,
@@ -1157,6 +1163,23 @@ internal static partial class CoreIntrinsics
     public static readonly MethodDefIntercept BrRuntimeTypeCreateInstanceOfT = new(
         InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeTypeCreateInstanceOfTBody,
         typeGate: "System.RuntimeType", nameGate: "CreateInstanceOfT", extra: static m => IsRuntimeTypeCreateInstanceOfT(m));
+
+    /// <summary>Replaces only the managed RuntimeType-object wrappers, never the
+    /// private QCall handle ABI. Every callable route executes the same native factory.</summary>
+    public static readonly MethodDefIntercept BrRuntimeTypeGenericFactory = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeTypeGenericFactoryBody,
+        typeGate: "System.RuntimeTypeHandle", nameGate: "CreateInstanceForAnotherGenericParameter",
+        extra: static m => IsRuntimeTypeGenericFactory(m));
+
+    /// <summary>One owned runtime leaf with a callable body over the native representation.</summary>
+    public static readonly MethodDefIntercept BrArrayNativeLength = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.ArrayNativeLengthBody,
+        typeGate: "System.Array", nameGate: "get_NativeLength", extra: static m => IsArrayNativeLength(m));
+
+    /// <summary>One owned runtime leaf with a callable body over the native representation.</summary>
+    public static readonly MethodDefIntercept BrGCHandleCheckUninitialized = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.GCHandleCheckUninitializedBody,
+        typeGate: "System.Runtime.InteropServices.GCHandle", nameGate: "CheckUninitialized", extra: static m => IsGCHandleCheckUninitialized(m));
 
     internal static bool IsRuntimeTypeDefaultCtor(MethodInfo method)
     {
@@ -3080,13 +3103,21 @@ internal static partial class CoreIntrinsics
         typeGate: "System.Runtime.InteropServices.MemoryMarshal", nameGate: "GetArrayDataReference",
         extra: static mi => mi.Signature.GenericParameterCount == 0);
 
+    /// <summary>The owned non-generic StructureToPtr body uses the same native copy
+    /// as its MemberRef call. Retention and address-taking replay this row rather
+    /// than reviving the CoreCLR MethodTable and marshalling-stub implementation.</summary>
+    public static readonly MethodDefIntercept MdMarshalStructureToPtr = new(
+        InterceptCutKind.Cut, InterceptEmitArm.IntrinsicUnderDeclType,
+        typeGate: "System.Runtime.InteropServices.Marshal", nameGate: "StructureToPtr",
+        extra: static mi => IsMarshalStructureToPtr(mi));
+
     /// <summary>A member of an intrinsic-mapped type
     /// (<see cref="IsIntrinsicType"/>): emitted inline, never transpiled, so an
     /// intra-assembly call into one is not a reachability edge.</summary>
     public static readonly MethodDefIntercept MdIntrinsicType = new(
         InterceptCutKind.Cut, InterceptEmitArm.IntrinsicDispatch,
         extra: static mi => IsIntrinsicType(mi.DeclaringClass.FullName)
-            && !IsCoreClrTypeCollectibilityImport(mi));
+            && !IsCoreClrTypeCollectibilityImport(mi) && !IsWaitHandleRawWaitImport(mi));
 
     /// <summary>Every static member of a CoreLib platform-ISA facade
     /// (<c>Sse2</c>, <c>Lzcnt.X64</c>, <c>AdvSimd.Arm64</c>, <c>PackedSimd</c>, …): the
@@ -3163,6 +3194,7 @@ internal static partial class CoreIntrinsics
         MdExecutionContextRun,
         MdSyncContextSlot,
         MdMemoryMarshalArrayData,
+        MdMarshalStructureToPtr,
         MdIntrinsicType,
         MdPlatformIsa,
         MdSafeHandleLifetime,
@@ -3962,6 +3994,18 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.BodyReplace, InterceptEmitArm.HttpShimBody,
         extra: static (dt, n) => IsBodyReplacedHttpMethod(dt, n));
 
+    /// <summary>The native String buffer supplies the byte reference without CLR inline-field access.</summary>
+    public static readonly MethodDefIntercept BrStringRawByteReference = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.StringRawByteReferenceBody,
+        typeGate: "System.String", nameGate: "GetRawStringDataAsUInt8",
+        extra: static m => IsStringRawByteReference(m));
+
+    /// <summary>Closed integer static formatters consume native enum metadata, not a CLR cache.</summary>
+    public static readonly MethodDefIntercept BrEnumStaticFormat = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.EnumStaticFormatBody,
+        typeGate: "System.Enum", nameGate: "ToString",
+        extra: static m => IsEnumStaticFormatMethod(m));
+
     /// <summary>The System.Enum instance ToString/GetTypeCode family
     /// (<see cref="IsEnumInstanceFormatMethod"/>): real IL cut from the SCAN, body
     /// synthesized by <c>MethodCompiler.CompileEnumInstanceFormatBody</c> under the
@@ -3980,9 +4024,9 @@ internal static partial class CoreIntrinsics
     /// body. The synthesized body calls only runtime helpers that dispatch on the boxed enum's
     /// runtime type, so it reaches no managed edge — unlike <see cref="BrHttpShim"/> there is
     /// no <c>ReachXxxEdges</c> companion.</para></summary>
-    public static readonly NameKeyedIntercept BrEnumInstanceFormat = new(
+    public static readonly MethodDefIntercept BrEnumInstanceFormat = new(
         InterceptCutKind.BodyReplace, InterceptEmitArm.EnumInstanceFormatBody,
-        extra: static (dt, n) => IsEnumInstanceFormatMethod(dt, n));
+        typeGate: "System.Enum", extra: static m => IsEnumInstanceFormatMethod(m));
 
     /// <summary>The boxed and RuntimeType enum leaves read native type-info rather
     /// than CoreCLR MethodTable layout.</summary>
@@ -4145,6 +4189,12 @@ internal static partial class CoreIntrinsics
         extra: static m => CoreIntrinsicTypeMaps.IsDelegateValueMember(m.DeclaringClass.FullName, m.Name)
             && IsDelegateValueSignature(m.DeclaringClass.FullName, m.Name, m.Signature));
 
+    /// <summary>Retained initialization uses the native culture identity and invariant
+    /// comparison posture, not CultureInfo's incompatible managed fields or ICU handles.</summary>
+    public static readonly MethodDefIntercept BrInvariantCompareInfoInitializer = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.InvariantCompareInfoInitializerBody,
+        typeGate: "System.Globalization.CompareInfo", extra: static m => IsInvariantCompareInfoInitializer(m));
+
     /// <summary>CompareInfo instances use the synthetic invariant representation from
     /// CultureInfo.CompareInfo; deserialization preserves it without creating ICU state.</summary>
     public static readonly NameKeyedIntercept BrInvariantCompareInfoCallback = new(
@@ -4224,7 +4274,6 @@ internal static partial class CoreIntrinsics
     public static readonly NameKeyedIntercept[] BoundedIntercepts =
     [
         BrHttpShim,
-        BrEnumInstanceFormat,
         BrLifetimeDispose,
         BrDelegateClone,
         BrInvariantCompareInfoCallback,
@@ -4348,6 +4397,11 @@ internal static partial class CoreIntrinsics
         if (!RegistrySelfCheckEnabled)
             return;
 
+        CheckRow(nameof(BrInvariantCompareInfoInitializer), 0, BrInvariantCompareInfoInitializer.EmitArm,
+            BrInvariantCompareInfoInitializer.TypeGate, BrInvariantCompareInfoInitializer.NameGate);
+        if (BrInvariantCompareInfoInitializer.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Invariant CompareInfo initialization must retain a callable body");
+
         CheckRow(nameof(BrPrimitiveBigMul), 0, BrPrimitiveBigMul.EmitArm,
             BrPrimitiveBigMul.TypeGate, BrPrimitiveBigMul.NameGate);
         if (BrPrimitiveBigMul.CutKind != InterceptCutKind.BodyReplace)
@@ -4409,6 +4463,21 @@ internal static partial class CoreIntrinsics
             BrDelegateValue.TypeGate, BrDelegateValue.NameGate);
         if (BrDelegateValue.CutKind != InterceptCutKind.BodyReplace)
             throw new InvalidOperationException("Delegate value members must remain callable");
+
+        CheckRow(nameof(BrStringRawByteReference), 0, BrStringRawByteReference.EmitArm,
+            BrStringRawByteReference.TypeGate, BrStringRawByteReference.NameGate);
+        if (BrStringRawByteReference.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("String raw byte reference must remain callable");
+
+        CheckRow(nameof(BrEnumStaticFormat), 0, BrEnumStaticFormat.EmitArm,
+            BrEnumStaticFormat.TypeGate, BrEnumStaticFormat.NameGate);
+        if (BrEnumStaticFormat.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Enum static formatting must remain callable");
+
+        CheckRow(nameof(BrEnumInstanceFormat), 0, BrEnumInstanceFormat.EmitArm,
+            BrEnumInstanceFormat.TypeGate, BrEnumInstanceFormat.NameGate);
+        if (BrEnumInstanceFormat.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Enum instance formatting must remain callable");
 
         CheckRow(nameof(BrEnumElementType), 0, BrEnumElementType.EmitArm,
             BrEnumElementType.TypeGate, BrEnumElementType.NameGate);

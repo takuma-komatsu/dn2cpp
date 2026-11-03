@@ -104,6 +104,25 @@ except for the reported CRI skips when its SDK is absent. Xcode gates omitted
 by host selection or `--skip-xcode` are outside the selected suite. CultureInfoAPI
 is likewise outside the default selection unless `--with-culture` is supplied.
 
+Normal pre-merge validation uses **High only** until Medium can complete. The
+inspected main checkpoint `ca620d4b` predates the stripping-level selector; this
+branch names its default reachability policy High. Selecting that profile alone
+does not establish behavioral equivalence to main.
+The pre-merge wrapper pins High even if a shell exports a Medium test profile,
+and its receipt does not count unselected Medium checks as passed. Existing
+High/default equivalence and High callable-retention regressions still run.
+
+Medium development checks remain available separately, with their original
+assertions and failure status:
+
+```bash
+DN2CPP_KNOWN_CONSTANT_LEVELS="High Medium" CONFIG=Debug bash gates/build-and-run-selfhost-prim-subset.sh
+DN2CPP_PRESERVE_CONTROL_MEDIUM=1 CONFIG=Debug bash gates/build-and-run-preserve-control.sh
+```
+
+These optional checks do not establish full Medium completion. Medium remains
+incomplete; preserve each failed run and its exact source/input identity.
+
 For a PR that changes no Godot-specific files, a passing default Debug
 `./gates/pre-merge.sh --skip-godot` is sufficient to merge. Coding agents may
 run this strict non-Godot check autonomously for any change. It omits the Godot

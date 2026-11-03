@@ -374,7 +374,7 @@ internal sealed partial class CppEmitter
     // the identity hash or reference equality, which take a null receiver as .NET's do.
     private NullReceiverScan ScanOwnBodyUnderNullReceiver(ClassInfo cls, MethodInfo m)
     {
-        if (CoreIntrinsics.BrEnumInstanceFormat.Matches(cls.FullName, m.Name) || IsNullTolerantObjectMember(cls, m))
+        if (CoreIntrinsics.BrEnumInstanceFormat.Matches(m) || IsNullTolerantObjectMember(cls, m))
             return NullOnlyScan;
         if (HasReplacedBody(cls, m) || _backend.ShouldSkipMethodBody(cls, m))
             return FaultingScan;

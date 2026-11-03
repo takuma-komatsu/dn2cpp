@@ -166,6 +166,11 @@
 
 set -uo pipefail
 
+# Normal merge validation follows the established High behavior. Medium remains
+# an explicit separate development check, never inherited into this receipt.
+export DN2CPP_KNOWN_CONSTANT_LEVELS=High
+export DN2CPP_PRESERVE_CONTROL_MEDIUM=0
+
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 
 # ── the freshness probes (children of this script, never a source) ────────────
@@ -643,6 +648,8 @@ premerge_argv() {
         "DN2CPP_REQUIRE_ALL=1"
         "DN2CPP_ALLOW_MISSING_CRI_SDK=1"
         "DN2CPP_GATE_CACHE=0"
+        "DN2CPP_KNOWN_CONSTANT_LEVELS=High"
+        "DN2CPP_PRESERVE_CONTROL_MEDIUM=0"
         "SKIP_GODOT=$SKIP_GODOT"
         "SKIP_XCODE=$SKIP_XCODE"
         "DN2CPP_INCLUDE_CULTURE=$DN2CPP_INCLUDE_CULTURE"
@@ -2475,6 +2482,19 @@ OPTS
         st_bad "--dry-run did not report the stale build dir (exit $DR_RC) — see $ST_TMP/dryrun.txt"
     fi
 
+    if grep -q '^stripping: High only; optional Medium checks not selected or counted as passed$' \
+        "$ST_TMP/e2e-both-green/_receipt.txt"; then
+        st_ok "successful receipt explicitly records High-only stripping"
+    else
+        st_bad "successful receipt omits its High-only stripping scope"
+    fi
+    if grep -q 'DN2CPP_KNOWN_CONSTANT_LEVELS=High' "$ST_TMP/dryrun.txt" \
+        && grep -q 'DN2CPP_PRESERVE_CONTROL_MEDIUM=0' "$ST_TMP/dryrun.txt"; then
+        st_ok "dry-run pins both optional Medium selectors to High-only"
+    else
+        st_bad "dry-run does not pin both optional Medium selectors"
+    fi
+
     say "self-test summary"
     printf '  %d passed, %d failed\n' "$ST_PASS" "$ST_FAIL"
     [ "$ST_FAIL" -eq 0 ] || exit 1
@@ -2503,6 +2523,7 @@ if [ "$CULTURE_EXCLUDED" = 1 ]; then
     note "CultureInfoAPI: excluded (opt in with --with-culture); not counted as passed."
 fi
 note "configs: $CONFIGS"
+note "stripping: High only; optional Medium checks are not selected or counted as passed."
 if [ "$SKIP_XCODE" = 1 ]; then
     note "Xcode:  $XCODE_EXCLUDED gate(s) excluded ($XCODE_SELECTION selection)."
 else
@@ -2979,6 +3000,7 @@ if [ "$OVERALL" -eq 0 ]; then
             printf 'Xcode:   selected (%s selection)\n' "$XCODE_SELECTION"
         fi
         printf 'configs: %s\n' "$CONFIGS"
+        printf 'stripping: High only; optional Medium checks not selected or counted as passed\n'
         printf 'culture: %s\n' "$CULTURE_NOTE"
         printf 'strict culture reference: %s\n' "$STRICT_CULTURE_NOTE"
         # Which sources the binary the fork lane ran on was built from: a green

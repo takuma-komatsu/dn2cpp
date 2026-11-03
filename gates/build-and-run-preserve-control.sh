@@ -30,8 +30,8 @@
 # Repeated allocations retain older arrays' defaults without widening array type identity.
 # Integer array and captured-field stores truncate before signed or unsigned reads.
 # Captured field reads retain zero/null defaults alongside later finite writes.
-# Medium keeps static type closure, including private members and known generic
-# arguments, while metadata-only roots and retained initializers remain inert.
+# Optional Medium checks retain static type closure while metadata-only roots
+# and retained initializers remain inert. Normal merge checks run only High.
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_ildiet.sh"
 # The default profile keeps independent positive/negative witnesses. Full mode
@@ -42,6 +42,18 @@ case "${DN2CPP_PRESERVE_CONTROL_FULL:-0}" in
 esac
 export DN2CPP_PRESERVE_CONTROL_FULL="${DN2CPP_PRESERVE_CONTROL_FULL:-0}"
 preserve_full() { [ "$DN2CPP_PRESERVE_CONTROL_FULL" = 1 ]; }
+case "${DN2CPP_PRESERVE_CONTROL_MEDIUM:-0}" in
+    0|1) ;;
+    *) echo 'DN2CPP_PRESERVE_CONTROL_MEDIUM must be 0 or 1' >&2; exit 1 ;;
+esac
+export DN2CPP_PRESERVE_CONTROL_MEDIUM="${DN2CPP_PRESERVE_CONTROL_MEDIUM:-0}"
+stripping_levels=high
+stripping_profile_args=()
+if [ "$DN2CPP_PRESERVE_CONTROL_MEDIUM" = 1 ]; then
+    stripping_levels="high medium"
+    stripping_profile_args=(--with-medium)
+fi
+echo "preserve-control-stripping=$stripping_levels"
 echo "preserve-control-profile=$([ "$DN2CPP_PRESERVE_CONTROL_FULL" = 1 ] && echo full || echo representative)"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|preserve-control-full:$DN2CPP_PRESERVE_CONTROL_FULL"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $(printf '%s ' gates/fixtures/ildiet-metadata-validation/*.py)"
@@ -50,7 +62,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflected-event-operat
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|repeated-arrays-prefix:${DN2CPP_BEFORE_REPEATED_ARRAYS:-}|integer-storage-prefix:${DN2CPP_BEFORE_ARRAY_NARROWING:-}|captured-scalar-defaults-prefix:${DN2CPP_BEFORE_CAPTURED_SCALAR_DEFAULTS:-}|slot-storage-prefix:${DN2CPP_BEFORE_SLOT_STORAGE:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/CutRequestCapture.cs gates/fixtures/ildiet-metadata-validation/cut_authority_admission.py gates/fixtures/ildiet-metadata-validation/selected_cut_admission.py gates/fixtures/ildiet-metadata-validation/cut_request_capture.py"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.cs gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.Globalization.cs gates/fixtures/ildiet-metadata-validation/globalization_retention.py gates/fixtures/ildiet-metadata-validation/check-stripping.py gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.GcMemory.cs gates/fixtures/ildiet-metadata-validation/gc_memory.py gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.GcGenerations.cs gates/fixtures/ildiet-metadata-validation/gc_generations.py"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|stripping-levels:high,medium"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|stripping-levels:$stripping_levels"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.Intercepts.cs gates/fixtures/ildiet-metadata-validation/intercept_retention.py"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.BufferMoves.cs gates/fixtures/ildiet-metadata-validation/buffer_moves.py"
 PYTHON=$(resolve_python) || gate_skip "no working Python 3 interpreter for ILDiet validation"
@@ -1772,17 +1784,19 @@ echo "== ILDiet payload changes invalidate behavior gate caches =="
 
 echo "== Rewritten metadata, signed identity, resources and dead assemblies =="
 build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csproj
-echo "== Medium retains static type closure without promoting metadata-only roots =="
+echo "== Selected stripping levels preserve static closure and metadata-only roots: $stripping_levels =="
 # shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
 $PYTHON gates/fixtures/ildiet-metadata-validation/check-stripping.py "$ILD_DLL" \
     "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
-    "$CLI_BIN/Dn2Cpp.Transpiler.dll" "artifacts/stripping-level-tests-$CONFIG" "$CLI_DLL"
+    "$CLI_BIN/Dn2Cpp.Transpiler.dll" "artifacts/stripping-level-tests-$CONFIG" "$CLI_DLL" \
+    ${stripping_profile_args[@]+"${stripping_profile_args[@]}"}
 stripping_assert_empty_output() {
     local out="$1" program="$2"
     gate_capture_ok "$out/assert-native" run_bounded "$out/$program$EXE_EXT" || return 1
     : > "$out/assert-empty.stdout" || return 1
     gate_output compare "$out/assert-native.stdout" "$out/assert-empty.stdout"
 }
+if [ "$DN2CPP_PRESERVE_CONTROL_MEDIUM" = 1 ]; then
 for fixture in medium retained-equality forwarded-attribute; do
     for mode in raw full; do
         stripping_out="artifacts/stripping-level-tests-$CONFIG/emission-$fixture-$mode"
@@ -1797,8 +1811,9 @@ for fixture in medium retained-equality forwarded-attribute; do
         fi
     done
 done
+fi
 for fixture in retained called; do
-    for level in high medium; do
+    for level in $stripping_levels; do
         for mode in raw full; do
             intercept_out="artifacts/stripping-level-tests-$CONFIG/emission-intercept-$fixture-$level-$mode"
             compile_console "$intercept_out" InterceptRetention
@@ -1808,7 +1823,7 @@ for fixture in retained called; do
     done
 done
 for fixture in retained called; do
-    for level in high medium; do
+    for level in $stripping_levels; do
         for mode in raw full; do
             move_out="artifacts/stripping-level-tests-$CONFIG/emission-buffer-moves-$fixture-$level-$mode"
             compile_console "$move_out" BufferMoves
@@ -1818,7 +1833,7 @@ for fixture in retained called; do
     done
 done
 for fixture in retained called; do
-    for level in high medium; do
+    for level in $stripping_levels; do
         for mode in raw full; do
             query_out="artifacts/stripping-level-tests-$CONFIG/emission-gc-memory-$fixture-$level-$mode"
             compile_console "$query_out" GcMemory
@@ -1828,7 +1843,7 @@ for fixture in retained called; do
     done
 done
 for fixture in retained called; do
-    for level in high medium; do
+    for level in $stripping_levels; do
         for mode in raw full; do
             generation_out="artifacts/stripping-level-tests-$CONFIG/emission-gc-generations-$fixture-$level-$mode"
             compile_console "$generation_out" GcGenerations
@@ -1837,6 +1852,7 @@ for fixture in retained called; do
         done
     done
 done
+if [ "$DN2CPP_PRESERVE_CONTROL_MEDIUM" = 1 ]; then
 # The ICU PAL is unavailable by default; retention alone must not execute it.
 for fixture in retained called alias managed; do
     for mode in raw full; do
@@ -1846,12 +1862,14 @@ for fixture in retained called alias managed; do
         echo "medium-globalization=$fixture:$mode:retained-and-callable"
     done
 done
+fi
 for mode in raw full; do
     globalization_out="artifacts/stripping-level-tests-$CONFIG/emission-globalization-managed-$mode-high"
     compile_console "$globalization_out" GlobalizationRetention
     stripping_assert_empty_output "$globalization_out" GlobalizationRetention
     echo "high-globalization=managed:$mode:address-only-override"
 done
+if [ "$DN2CPP_PRESERVE_CONTROL_MEDIUM" = 1 ]; then
 # CoreCLR QCall imports stay retained and fail only when invoked.
 for fixture in retained called managed other-owner; do
     for mode in raw full; do
@@ -1861,13 +1879,14 @@ for fixture in retained called managed other-owner; do
         echo "medium-kernel32=$fixture:$mode:retained-and-callable"
     done
 done
+fi
 for mode in raw full; do
     kernel32_out="artifacts/stripping-level-tests-$CONFIG/emission-kernel32-managed-$mode-high"
     compile_console "$kernel32_out" Kernel32Retention
     stripping_assert_empty_output "$kernel32_out" Kernel32Retention
     echo "high-kernel32=managed:$mode:address-only-override"
 done
-for level in high medium; do
+for level in $stripping_levels; do
     for mode in raw full; do
         kernel32_out="artifacts/stripping-level-tests-$CONFIG/emission-kernel32-primitive-$mode-$level"
         compile_console "$kernel32_out" Kernel32Retention

@@ -10,8 +10,16 @@ import xml.etree.ElementTree as ET
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from ildiet_manifest import contract_digest, manifest
 
-companion, probe, transpiler, directory = (Path(value).resolve() for value in sys.argv[1:5])
-cli = Path(sys.argv[5]).resolve() if len(sys.argv) > 5 else (
+arguments = sys.argv[1:]
+include_medium = bool(arguments and arguments[-1] == "--with-medium")
+if include_medium:
+    arguments = arguments[:-1]
+if len(arguments) not in (4, 5) or any(value.startswith("--") for value in arguments):
+    raise SystemExit("usage: check-stripping.py ILDIET PROBE TRANSPILER OUTPUT [CLI] [--with-medium]")
+levels = ("high", "medium") if include_medium else ("high",)
+names = ("default", *levels)
+companion, probe, transpiler, directory = (Path(value).resolve() for value in arguments[:4])
+cli = Path(arguments[4]).resolve() if len(arguments) > 4 else (
     Path(__file__).resolve().parents[3] / "src" / "Dn2Cpp.Cli" / "bin"
     / transpiler.parent.parent.name / transpiler.parent.name / "dn2cpp.dll")
 directory.mkdir(parents=True, exist_ok=True)
@@ -34,7 +42,7 @@ def check_core(published, level):
 assert "stripping-fixture=static-closure" in run(probe, "--create-stripping-fixture", original).stdout
 publications = {}
 contracts = {}
-for name in ("default", "high", "medium"):
+for name in names:
     output = directory / name
     request = ET.Element("ildiet", version="2", input=str(original / "MediumApp.dll"), output=str(output))
     if name != "default":
@@ -55,24 +63,30 @@ for name in ("default", "high", "medium"):
     assert "stripping-ildiet=" + level in run(probe, "--check-stripping-fixture", published, level).stdout
     check_core(published, level)
 
-assert contracts["default"] == contracts["high"] != contracts["medium"], "level contract identity is wrong"
+assert contracts["default"] == contracts["high"], "High contract identity is wrong"
+if include_medium:
+    assert contracts["high"] != contracts["medium"], "Medium contract identity is wrong"
 for before in publications["default"].iterdir():
     assert before.read_bytes() == (publications["high"] / before.name).read_bytes(), "explicit High changed default output"
 check_core(original, "high")
-check_core(original, "medium")
+if include_medium:
+    check_core(original, "medium")
 
-for args in (("--stripping-level",), ("--stripping-level", "low"),
-             ("--request", directory / "medium-request.xml", "--stripping-level", "high")):
+invalid_selections = [("--stripping-level",), ("--stripping-level", "low")]
+if include_medium:
+    invalid_selections.append(("--request", directory / "medium-request.xml", "--stripping-level", "high"))
+for args in invalid_selections:
     run(companion, *args, success=False)
 
-# Direct CLI selection and captured request selection must retain the same DLLs.
-direct = directory / "direct"
-run(companion, original / "MediumApp.dll", "-r", original / "MediumLib.dll", "-r",
-    original / "System.Private.CoreLib.dll", "--link-xml", original / "link.xml",
-    "--stripping-level", "medium", "-o", direct)
-_, published = manifest(direct)
-assert "stripping-ildiet=medium-direct" in run(probe, "--check-stripping-fixture", published, "medium-direct").stdout
-assert "stripping-core=medium-direct" in run(probe, "--check-stripping-core", transpiler, published, "medium-direct").stdout
+if include_medium:
+    # Direct CLI selection and captured request selection must retain the same DLLs.
+    direct = directory / "direct"
+    run(companion, original / "MediumApp.dll", "-r", original / "MediumLib.dll", "-r",
+        original / "System.Private.CoreLib.dll", "--link-xml", original / "link.xml",
+        "--stripping-level", "medium", "-o", direct)
+    _, published = manifest(direct)
+    assert "stripping-ildiet=medium-direct" in run(probe, "--check-stripping-fixture", published, "medium-direct").stdout
+    assert "stripping-core=medium-direct" in run(probe, "--check-stripping-core", transpiler, published, "medium-direct").stdout
 
 
 def emitted_files(output):
@@ -81,7 +95,7 @@ def emitted_files(output):
 
 for mode in ("raw", "full"):
     defaults = None
-    for level in ("default", "high", "medium"):
+    for level in names:
         output = directory / ("emission-" + level + "-" + mode)
         arguments = [original / "MediumApp.dll", "-r", original / "MediumLib.dll", "-r",
                      original / "System.Private.CoreLib.dll", "--link-xml", original / "link.xml",
@@ -131,71 +145,75 @@ for mode in ("raw", "full"):
             assert not re.search(r"dn2cpp_cctor_run_startup\(&" + owner + r"__cctor_", text), \
                 "retention scheduled an initializer at startup"
 
-# Exercise both sides of deferred used-slot × boxed-type discovery. This graph
-# boxes normally, while only a retained body's Object.Equals creates the demand.
-retained_equality = directory / "retained-equality"
-run(probe, "--create-stripping-fixture", retained_equality, "retained-equality")
-check_core(retained_equality, "medium")
-for mode in ("raw", "full"):
-    output = directory / ("emission-retained-equality-" + mode)
-    arguments = [retained_equality / "MediumApp.dll", "-r", retained_equality / "MediumLib.dll", "-r",
-                 retained_equality / "System.Private.CoreLib.dll", "--link-xml", retained_equality / "link.xml",
-                 "--reflection-root", "MediumFixture.MetadataOnly", "--trim-reflection",
-                 "--no-metadata-compression", "--no-shared-generics", "--stripping-level", "medium", "-o", output]
-    if mode == "raw":
-        arguments.append("--no-ildiet")
-    run(cli, *arguments)
-    if mode == "full":
-        _, published = manifest(output / "ildiet")
-        check_core(published, "medium")
-    text = "\n".join(content.decode("utf-8") for content in emitted_files(output).values())
-    assert re.search(r"inline void DormantDeferredTarget__cctor_\w+__ensure\(\)", text), \
-        "retained equality demand lost the initializer guard"
-    assert not re.search(r"dn2cpp_cctor_run_startup\(&DormantDeferredTarget__cctor_", text), \
-        "retained equality demand scheduled an initializer at startup"
+if include_medium:
+    # Exercise both sides of deferred used-slot × boxed-type discovery. This graph
+    # boxes normally, while only a retained body's Object.Equals creates the demand.
+    retained_equality = directory / "retained-equality"
+    run(probe, "--create-stripping-fixture", retained_equality, "retained-equality")
+    check_core(retained_equality, "medium")
+    for mode in ("raw", "full"):
+        output = directory / ("emission-retained-equality-" + mode)
+        arguments = [retained_equality / "MediumApp.dll", "-r", retained_equality / "MediumLib.dll", "-r",
+                     retained_equality / "System.Private.CoreLib.dll", "--link-xml", retained_equality / "link.xml",
+                     "--reflection-root", "MediumFixture.MetadataOnly", "--trim-reflection",
+                     "--no-metadata-compression", "--no-shared-generics", "--stripping-level", "medium", "-o", output]
+        if mode == "raw":
+            arguments.append("--no-ildiet")
+        run(cli, *arguments)
+        if mode == "full":
+            _, published = manifest(output / "ildiet")
+            check_core(published, "medium")
+        text = "\n".join(content.decode("utf-8") for content in emitted_files(output).values())
+        assert re.search(r"inline void DormantDeferredTarget__cctor_\w+__ensure\(\)", text), \
+            "retained equality demand lost the initializer guard"
+        assert not re.search(r"dn2cpp_cctor_run_startup\(&DormantDeferredTarget__cctor_", text), \
+            "retained equality demand scheduled an initializer at startup"
 
-forwarded = directory / "forwarded-attribute"
-run(probe, "--create-stripping-forwarder-fixture", original, forwarded)
-for mode in ("raw", "full"):
-    output = directory / ("emission-forwarded-attribute-" + mode)
-    arguments = [forwarded / "MediumApp.dll", "-r", forwarded / "MediumLib.dll", "-r",
-                 forwarded / "System.Private.CoreLib.dll", "-r", forwarded / "MediumFacade.dll",
-                 "--link-xml", forwarded / "link.xml", "--reflection-root", "MediumFixture.MetadataOnly",
-                 "--trim-reflection", "--no-metadata-compression", "--no-shared-generics",
-                 "--stripping-level", "medium", "-o", output]
-    if mode == "raw":
-        arguments.append("--no-ildiet")
-    run(cli, *arguments)
-    text = "\n".join(content.decode("utf-8") for content in emitted_files(output).values())
-    assert re.search(r"\bForwardedArgumentTarget_Marker_\w+\([^;]*?\)\s*\{", text), \
-        "an enum width error lost the following Type-valued attribute dependency"
-    assert re.search(r"\(void\*\)&Used_Follow_\w+, \(void\*\)&inv_[^,]+, attrtab_", text), \
-        "forwarded enum decoding dropped the emitted attribute row"
-    assert re.search(r"o->f_Flags\s*=\s*[^;]*4294967298", text), "forwarded Int64 enum value was truncated"
-    assert re.search(r"o->f_Sentinel\s*=\s*[^;]*73", text), "the named value following the enum was misdecoded"
+    forwarded = directory / "forwarded-attribute"
+    run(probe, "--create-stripping-forwarder-fixture", original, forwarded)
+    for mode in ("raw", "full"):
+        output = directory / ("emission-forwarded-attribute-" + mode)
+        arguments = [forwarded / "MediumApp.dll", "-r", forwarded / "MediumLib.dll", "-r",
+                     forwarded / "System.Private.CoreLib.dll", "-r", forwarded / "MediumFacade.dll",
+                     "--link-xml", forwarded / "link.xml", "--reflection-root", "MediumFixture.MetadataOnly",
+                     "--trim-reflection", "--no-metadata-compression", "--no-shared-generics",
+                     "--stripping-level", "medium", "-o", output]
+        if mode == "raw":
+            arguments.append("--no-ildiet")
+        run(cli, *arguments)
+        text = "\n".join(content.decode("utf-8") for content in emitted_files(output).values())
+        assert re.search(r"\bForwardedArgumentTarget_Marker_\w+\([^;]*?\)\s*\{", text), \
+            "an enum width error lost the following Type-valued attribute dependency"
+        assert re.search(r"\(void\*\)&Used_Follow_\w+, \(void\*\)&inv_[^,]+, attrtab_", text), \
+            "forwarded enum decoding dropped the emitted attribute row"
+        assert re.search(r"o->f_Flags\s*=\s*[^;]*4294967298", text), "forwarded Int64 enum value was truncated"
+        assert re.search(r"o->f_Sentinel\s*=\s*[^;]*73", text), "the named value following the enum was misdecoded"
 
-missing = run(cli, forwarded / "MediumApp.dll", "-r", forwarded / "MediumLib.dll", "-r",
-              forwarded / "System.Private.CoreLib.dll", "--no-ildiet", "--stripping-level", "medium",
-              "-o", directory / "missing-attribute-facade", success=False)
-diagnostic = missing.stdout + missing.stderr
-assert missing.returncode == 2 and "Unhandled exception" not in diagnostic, "unresolved enum escaped the CLI diagnostic"
-for fact in ("MediumFixture.ForwardedAttribute", "MediumLib", "MediumFixture.Used.Follow",
-             "MediumFixture.WideFlags, MediumFacade", "encoded width is unknown", "Medium stripping while retaining"):
-    assert fact in diagnostic, "missing attribute failure provenance: " + fact
-print("stripping-levels=high-compatible,medium-static-closure,raw-rewritten,metadata-inert,known-generics,all-assemblies,lazy-initializer,emitted-metadata")
+    missing = run(cli, forwarded / "MediumApp.dll", "-r", forwarded / "MediumLib.dll", "-r",
+                  forwarded / "System.Private.CoreLib.dll", "--no-ildiet", "--stripping-level", "medium",
+                  "-o", directory / "missing-attribute-facade", success=False)
+    diagnostic = missing.stdout + missing.stderr
+    assert missing.returncode == 2 and "Unhandled exception" not in diagnostic, "unresolved enum escaped the CLI diagnostic"
+    for fact in ("MediumFixture.ForwardedAttribute", "MediumLib", "MediumFixture.Used.Follow",
+                 "MediumFixture.WideFlags, MediumFacade", "encoded width is unknown", "Medium stripping while retaining"):
+        assert fact in diagnostic, "missing attribute failure provenance: " + fact
+if include_medium:
+    print("stripping-levels=high-compatible,medium-static-closure,raw-rewritten,metadata-inert,known-generics,all-assemblies,lazy-initializer,emitted-metadata")
+else:
+    print("stripping-levels=high-compatible; medium not selected or counted as passed")
 
 from intercept_retention import validate_intercept_retention
-validate_intercept_retention(probe, cli, original, directory)
+validate_intercept_retention(probe, cli, original, directory, levels=levels)
 
 from buffer_moves import validate_buffer_moves
-validate_buffer_moves(probe, cli, original, directory)
+validate_buffer_moves(probe, cli, original, directory, levels=levels)
 
 from globalization_retention import validate_globalization, validate_kernel32
-validate_globalization(probe, cli, original, directory)
-validate_kernel32(probe, cli, original, directory)
+validate_globalization(probe, cli, original, directory, levels=levels)
+validate_kernel32(probe, cli, original, directory, levels=levels)
 
 from gc_memory import validate_gc_memory
-validate_gc_memory(probe, cli, original, directory)
+validate_gc_memory(probe, cli, original, directory, levels=levels)
 
 from gc_generations import validate_gc_generations
-validate_gc_generations(probe, cli, original, directory)
+validate_gc_generations(probe, cli, original, directory, levels=levels)

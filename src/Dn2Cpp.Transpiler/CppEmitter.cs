@@ -2126,13 +2126,15 @@ internal sealed partial class CppEmitter
     private bool HasReplacedBody(ClassInfo cls, MethodInfo m) =>
         m.Rva == 0 || m.IsSynthetic
         || CoreIntrinsics.BrHttpShim.Matches(cls.FullName, m.Name)
-        || CoreIntrinsics.BrEnumInstanceFormat.Matches(cls.FullName, m.Name)
+        || CoreIntrinsics.BrEnumStaticFormat.Matches(m)
+        || CoreIntrinsics.BrEnumInstanceFormat.Matches(m)
         || CoreIntrinsics.BrEnumElementType.Matches(m)
         || CoreIntrinsics.BrEnumScalarGetName.Matches(m)
         || CoreIntrinsics.BrEnumUnderlyingType.Matches(m)
         || CoreIntrinsics.BrLifetimeDispose.Matches(cls.FullName, m.Name)
         || CoreIntrinsics.BrDelegateClone.Matches(cls.FullName, m.Name)
         || CoreIntrinsics.BrDelegateValue.Matches(m)
+        || CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(m)
         || CoreIntrinsics.BrPrimitiveBigMul.Matches(m)
         || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(m)
         || CoreIntrinsics.BrNullableReboxing.Matches(m)
@@ -2144,6 +2146,10 @@ internal sealed partial class CppEmitter
         || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(m)
         || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(m)
         || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(m)
+        || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(m)
+        || CoreIntrinsics.BrStringRawByteReference.Matches(m)
+        || CoreIntrinsics.BrArrayNativeLength.Matches(m)
+        || CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(m)
         || CoreIntrinsics.BrActivatorNamed.Matches(m)
         || CoreIntrinsics.BrActivatorDefault.Matches(m)
         || CoreIntrinsics.BrCoreClrDelegateVmConstructor.Matches(m)
@@ -2167,6 +2173,11 @@ internal sealed partial class CppEmitter
             && !CoreIntrinsics.IsConcreteVectorReduction(m)
             && !CoreIntrinsics.IsResourceManagerDefaultType(m)
             && !CoreIntrinsics.IsPrimitiveElementHelper(m)
+            && !CoreIntrinsics.IsCultureInfoNameValidator(m)
+            && !CoreIntrinsics.IsStringNullTerminatedLength(m)
+            && !CoreIntrinsics.IsSearchValuesShuffle(m)
+            && !CoreIntrinsics.IsWaitHandleRawWaitWrapper(m)
+            && !CoreIntrinsics.IsCancellationInvoke(m)
             && !CoreIntrinsics.IsKnownConstant(m)
             && !CoreIntrinsics.IsVectorManagedThrowHelper(m)
             && !CoreIntrinsics.IsGenericVectorEstimate(m)
@@ -2621,7 +2632,17 @@ internal sealed partial class CppEmitter
                             // emit the synthesized enum-format body in place of the real IL that
                             // reachability cut. Like the HTTP shim above, normal planning skips
                             // compilation but measure validates the synthesized body.
-                            if (CoreIntrinsics.BrEnumInstanceFormat.Matches(cls.FullName, m.Name)
+                            if (CoreIntrinsics.BrEnumStaticFormat.Matches(m))
+                            {
+                                if (emitBody is not null || diagnostics is not null)
+                                {
+                                    string body = new MethodCompiler(_c, m, literals, _backend).CompileEnumStaticFormatBody();
+                                    emitBody?.Invoke(m, body);
+                                }
+                                compiledMethods.Add(m);
+                                continue;
+                            }
+                            if (CoreIntrinsics.BrEnumInstanceFormat.Matches(m)
                                 || CoreIntrinsics.BrEnumElementType.Matches(m)
                                 || CoreIntrinsics.BrEnumScalarGetName.Matches(m)
                                 || CoreIntrinsics.BrEnumUnderlyingType.Matches(m))
@@ -2637,6 +2658,7 @@ internal sealed partial class CppEmitter
                             if (CoreIntrinsics.BrLifetimeDispose.Matches(cls.FullName, m.Name)
                                 || CoreIntrinsics.BrDelegateClone.Matches(cls.FullName, m.Name)
                                 || CoreIntrinsics.BrDelegateValue.Matches(m)
+                                || CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(m)
                                 || CoreIntrinsics.BrPrimitiveBigMul.Matches(m)
                                 || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(m)
                                 || CoreIntrinsics.BrNullableReboxing.Matches(m)
@@ -2648,6 +2670,10 @@ internal sealed partial class CppEmitter
                                 || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(m)
                                 || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(m)
                                 || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(m)
+                                || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(m)
+                                || CoreIntrinsics.BrStringRawByteReference.Matches(m)
+                                || CoreIntrinsics.BrArrayNativeLength.Matches(m)
+                                || CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(m)
                                 || CoreIntrinsics.BrActivatorNamed.Matches(m)
                                 || CoreIntrinsics.BrActivatorDefault.Matches(m)
                                 || CoreIntrinsics.BrCoreClrDelegateVmConstructor.Matches(m)
@@ -2780,6 +2806,11 @@ internal sealed partial class CppEmitter
                                 && !CoreIntrinsics.IsConcreteVectorReduction(m)
                                 && !CoreIntrinsics.IsResourceManagerDefaultType(m)
                                 && !CoreIntrinsics.IsPrimitiveElementHelper(m)
+                                && !CoreIntrinsics.IsCultureInfoNameValidator(m)
+                                && !CoreIntrinsics.IsStringNullTerminatedLength(m)
+                                && !CoreIntrinsics.IsSearchValuesShuffle(m)
+                                && !CoreIntrinsics.IsWaitHandleRawWaitWrapper(m)
+                                && !CoreIntrinsics.IsCancellationInvoke(m)
                                 && !CoreIntrinsics.IsKnownConstant(m)
                                 && !CoreIntrinsics.IsVectorManagedThrowHelper(m)
                                 && !CoreIntrinsics.IsGenericVectorEstimate(m)
@@ -3165,6 +3196,10 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    dn2cpp_set_delegate_method_catalog({delegateMethods.Sym}, {delegateMethods.Count});");
         if (_dateTimeTryAddTicksRow is not null || _dateTimeTryCreateRow is not null || _dateTimeLocalConstructorRow is not null)
             sb.AppendLine($"    dn2cpp_set_datetime_parser_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeTryAddTicksRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeTryCreateRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeLocalConstructorRow ?? "nullptr"}));");
+        if (_stringRawByteReferenceRow is not null || _stringNullTerminatedLengthRow is not null)
+            sb.AppendLine($"    dn2cpp_set_string_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_stringRawByteReferenceRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_stringNullTerminatedLengthRow ?? "nullptr"}));");
+        if (_cultureNameValidatorRow is { } cultureNameValidatorRow)
+            sb.AppendLine($"    dn2cpp_set_culture_name_validator_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({cultureNameValidatorRow}));");
         if (_cultureCompareInfoRow is { } cultureCompareInfoRow)
             sb.AppendLine($"    dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({cultureCompareInfoRow}));");
         if (_resourceManagerDefaultTypeRow is { } resourceManagerRow)
@@ -3881,6 +3916,9 @@ internal sealed partial class CppEmitter
     private string? _dateOnlyDeconstructRow;
     private string? _resourceManagerDefaultTypeRow;
     private string? _cultureCompareInfoRow;
+    private string? _cultureNameValidatorRow;
+    private string? _stringRawByteReferenceRow;
+    private string? _stringNullTerminatedLengthRow;
     private string? _dateTimeTryAddTicksRow;
     private string? _dateTimeTryCreateRow;
     private string? _dateTimeLocalConstructorRow;
@@ -4482,7 +4520,7 @@ internal sealed partial class CppEmitter
     /// answer from.</summary>
     private static List<(long value, string name)> SortedEnumMembers(ClassInfo en)
     {
-        return MethodCompiler.EnumMembersModel(en).OrderBy(MethodCompiler.EnumSortKey(en)).ToList();
+        return MethodCompiler.EnumMetadataMembersModel(en).OrderBy(MethodCompiler.EnumSortKey(en)).ToList();
     }
 
     /// <summary>A type's public nested types that are emitted and non-generic —

@@ -192,4 +192,20 @@ gate_extra_asserts() {
 
 }
 
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/EnumInstanceFormatGuards.cs gates/fixtures/ldftn-local/EnumStaticIntegerFormatGuards.cs gates/fixtures/ldftn-local/EnumStaticIntegerFormatFixture.cs gates/_enum-static-integer-format.sh"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|enum-instance:owned-nine,static-negative,cold-purity|enum-static-integer:raw,diet,integer-eight,noalloc"
 corelib_diff_gate EnumOps --link-xml samples/dotnet/EnumOps/keep-element-type.xml
+
+build_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+enum_compiler_dir=$(dirname "${DN2CPP_CLI_DLL:-$PWD/src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}")
+gate_capture_ok "$_CG_OUT/enum-instance-format-guards" run_bounded dotnet \
+    "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" --enum-instance-format-guards \
+    "$enum_compiler_dir/Dn2Cpp.Transpiler.dll" "$(locate_corelib)" \
+    "$enum_compiler_dir/ildiet/ILDiet.dll" "samples/dotnet/EnumOps/bin/$CONFIG/$TFM/EnumOps.dll"
+gate_output byte-witness "$_CG_OUT/enum-instance-format-guards.stdout" \
+    'enum-instance-guards=386:nine-instances,two-static-negatives,cold-purity,owned-shapes,copied-parity' \
+    --count 1 --policy crlf
+
+
+source "$(dirname "$0")/_enum-static-integer-format.sh"
+enum_static_integer_format_gate

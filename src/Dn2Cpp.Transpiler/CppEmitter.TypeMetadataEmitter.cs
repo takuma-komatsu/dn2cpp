@@ -1332,10 +1332,8 @@ internal sealed partial class CppEmitter
             }
             foreach (var cls in _e._referencedIntrinsicTis.ToList())
             {
-                if (cls.FullName != "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler") continue;
-                foreach (var method in cls.Methods)
+                foreach (var method in ReferencedIntrinsicHelperRows(cls))
                 {
-                    if (!IsInterpolationHelperRow(method)) continue;
                     NoteReflectedType(method.Signature.ReturnType);
                     foreach (var parameter in method.Signature.ParameterTypes)
                         NoteReflectedType(parameter);
@@ -1454,9 +1452,9 @@ internal sealed partial class CppEmitter
             }
             foreach (var c in _e._referencedIntrinsicTis)
             {
-                var helperRows = c.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
-                    ? c.Methods.Where(IsInterpolationHelperRow).ToList() : new List<MethodInfo>();
-                var helperTable = helperRows.Count == 0 ? null : BuildMemberTable(c, helperRows, "interpolationhelpertab");
+                var helperRows = ReferencedIntrinsicHelperRows(c).ToList();
+                var helperTable = helperRows.Count == 0 ? null : BuildMemberTable(c, helperRows,
+                    c.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler" ? "interpolationhelpertab" : "methtab");
                 bool isTask = _c.GenericDefFullName(c) == "System.Threading.Tasks.Task";
                 string interfaces = "nullptr";
                 int interfaceCount = 0;
@@ -1999,6 +1997,8 @@ internal sealed partial class CppEmitter
             EmitDateOnlyDeconstructRow();
             EmitResourceManagerDefaultTypeRow();
             EmitCultureCompareInfoRow();
+            EmitCultureNameValidatorRow();
+            EmitStringPrivateEntryPointRows();
             EmitDateTimeParserRows();
             _e.EmitArrayTypeInfos(_sb, _emittedEnums);
             _e.EmitMdArrayItfMap(_sb);
@@ -2039,6 +2039,49 @@ internal sealed partial class CppEmitter
                             throw new InvalidOperationException("Retained CultureInfo.CompareInfo has no metadata row.");
                     }
                     _e._cultureCompareInfoRow = address;
+                    return;
+                }
+            }
+        }
+
+        // String keeps its canonical runtime identity; these rows are named-only attachments.
+        private void EmitStringPrivateEntryPointRows()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.FullName != "System.String") continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsStringPrivateEntryPoint(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    bool rawByte = CoreIntrinsics.IsStringRawByteReference(method);
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, rawByte ? "stringrawbytetab" : "stringlengthtab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained String private entry has no metadata row.");
+                    }
+                    if (rawByte) _e._stringRawByteReferenceRow = address;
+                    else _e._stringNullTerminatedLengthRow = address;
+                }
+            }
+        }
+
+        // The runtime-owned CultureInfo identity exposes only this exact retained validator.
+        private void EmitCultureNameValidatorRow()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.FullName != "System.Globalization.CultureInfo") continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsCultureInfoNameValidator(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "culturenamevalidatortab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained CultureInfo.VerifyCultureName has no metadata row.");
+                    }
+                    _e._cultureNameValidatorRow = address;
                     return;
                 }
             }
@@ -3948,6 +3991,46 @@ internal sealed partial class CppEmitter
         private bool IsInterpolationHelperRow(MethodInfo method) =>
             CoreIntrinsics.IsInterpolationStaticHelper(method) && IsRetainedOpaqueMemberRow(method);
 
+        private static bool IsReferencedIntrinsicHelperOwner(ClassInfo owner)
+        {
+            if (owner.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler")
+                return true;
+            if (owner.FullName != "System.Runtime.InteropServices.GCHandle"
+                || owner.Module.AssemblyName != "System.Private.CoreLib" || owner.Handle.IsNil
+                || owner.GenericArity != 0 || owner.Context.TypeArgs.Length != 0 || owner.Context.MethodArgs.Length != 0
+                || !owner.IsValueType || owner.IsEnum || owner.IsInterface || owner.IsByRefLike)
+                return false;
+            var reader = owner.Module.Reader;
+            if (!reader.IsAssembly || !reader.StringComparer.Equals(reader.GetAssemblyDefinition().Name, "System.Private.CoreLib")
+                || System.Reflection.Metadata.Ecma335.MetadataTokens.GetRowNumber(owner.Handle) > reader.TypeDefinitions.Count)
+                return false;
+            var type = reader.GetTypeDefinition(owner.Handle);
+            if (!type.GetDeclaringType().IsNil || type.GetGenericParameters().Count != 0
+                || (type.Attributes & System.Reflection.TypeAttributes.Interface) != 0
+                || !reader.StringComparer.Equals(type.Namespace, "System.Runtime.InteropServices")
+                || !reader.StringComparer.Equals(type.Name, "GCHandle")
+                || type.BaseType.Kind != HandleKind.TypeDefinition || type.BaseType.IsNil
+                || System.Reflection.Metadata.Ecma335.MetadataTokens.GetRowNumber(type.BaseType) > reader.TypeDefinitions.Count)
+                return false;
+            var parent = reader.GetTypeDefinition((TypeDefinitionHandle)type.BaseType);
+            return parent.GetDeclaringType().IsNil && parent.GetGenericParameters().Count == 0
+                && reader.StringComparer.Equals(parent.Namespace, "System")
+                && reader.StringComparer.Equals(parent.Name, "ValueType");
+        }
+
+        private IEnumerable<MethodInfo> ReferencedIntrinsicHelperRows(ClassInfo owner)
+        {
+            // Methods can complete a cold specialization; exclude unrelated owners first.
+            if (!IsReferencedIntrinsicHelperOwner(owner))
+                return Array.Empty<MethodInfo>();
+            return owner.Methods.Where(IsReferencedIntrinsicHelperRow);
+        }
+
+        private bool IsReferencedIntrinsicHelperRow(MethodInfo method) =>
+            method.DeclaringClass.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
+                ? IsInterpolationHelperRow(method)
+                : CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(method) && IsRetainedOpaqueMemberRow(method);
+
         private bool IsRetainedOpaqueMemberRow(MethodInfo method) =>
             _c.KeepsReflectionMetadata(method.DeclaringClass)
             && (_c.Reachable.Contains(method) && CoreIntrinsics.BrDelegateValue.Matches(method)
@@ -3961,6 +4044,11 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsConcreteVectorReduction(method)
                         || CoreIntrinsics.IsResourceManagerDefaultType(method)
                         || CoreIntrinsics.IsPrimitiveElementHelper(method)
+                        || CoreIntrinsics.IsCultureInfoNameValidator(method)
+                        || CoreIntrinsics.IsStringNullTerminatedLength(method)
+                        || CoreIntrinsics.IsSearchValuesShuffle(method)
+                        || CoreIntrinsics.IsWaitHandleRawWaitWrapper(method)
+                        || CoreIntrinsics.IsCancellationInvoke(method)
                         || CoreIntrinsics.IsKnownConstant(method)
                         || CoreIntrinsics.IsVectorManagedThrowHelper(method)
                         || CoreIntrinsics.IsGenericVectorEstimate(method)
@@ -4034,6 +4122,10 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(method)
                         || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(method)
                         || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(method)
+                        || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(method)
+                        || CoreIntrinsics.BrStringRawByteReference.Matches(method)
+                        || CoreIntrinsics.BrArrayNativeLength.Matches(method)
+                        || CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(method)
                         || CoreIntrinsics.BrActivatorNamed.Matches(method)
                         || CoreIntrinsics.BrActivatorDefault.Matches(method)));
 

@@ -709,6 +709,10 @@ internal sealed partial class MethodCompiler : IEvalStack
         CoreIntrinsics.ValidateVectorAlignment(_method);
         CoreIntrinsics.ValidateConcreteVectorReduction(_method);
         CoreIntrinsics.ValidateVectorAsCallable(_method);
+        if (CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(_method))
+            return CompileInvariantCompareInfoInitializer();
+        if (CoreIntrinsics.BrStringRawByteReference.Matches(_method))
+            return CompileStringRawByteReferenceBody();
         if (CoreIntrinsics.IsGuardedVectorAs(_method))
             return CompileGuardedVectorAs();
         if (CoreIntrinsics.IsVectorMagnitudeManagedGuard(_method))
@@ -1247,6 +1251,14 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// Null when the method has no intrinsic lowering to synthesize from.</summary>
     internal string? CompileCoreIntrinsicWrapper()
     {
+        if (CoreIntrinsics.BrArrayNativeLength.Matches(_method))
+            return CompileArrayNativeLengthBody();
+        if (CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(_method))
+            return CompileGCHandleCheckUninitializedBody();
+        if (CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(_method))
+            return CompileInvariantCompareInfoInitializer();
+        if (CoreIntrinsics.BrStringRawByteReference.Matches(_method))
+            return CompileStringRawByteReferenceBody();
         CoreIntrinsics.ValidateConcreteVectorElement(_method);
         CoreIntrinsics.ValidateVectorFloatingPointTernary(_method);
         CoreIntrinsics.ValidateVectorLog(_method);
@@ -1486,6 +1498,18 @@ internal sealed partial class MethodCompiler : IEvalStack
                     $"dn2cpp_activator_create_instance_default_ctor({Cast(type, "Dn2CppType*")}, 1, 1)");
                 return true;
             }, "RuntimeType public parameterless construction");
+        if (CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                int count = _method.Signature.ParameterTypes.Length;
+                var second = count == 3 ? Pop() : default;
+                var first = Pop();
+                var representative = Pop();
+                string arguments = Cast(representative, "Dn2CppType*") + ", " + Cast(first, "Dn2CppType*");
+                if (second is not null) arguments += ", " + Cast(second, "Dn2CppType*");
+                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_runtime_type_create_generic_instance_{count - 1}({arguments})");
+                return true;
+            }, "RuntimeType generic-family construction");
         if (CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(_method))
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
             {
@@ -4308,7 +4332,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                         + $"dn2cpp_bind_interface_slot(dn2cpp_resolve_interface({receiver}->type, "
                         + $"&{itf.CppTypeInfoName})[{clone.VtableSlot}], {receiver}))";
                 }
-                else if (m.IsVirtual && CoreIntrinsics.BrEnumInstanceFormat.Matches(m.DeclaringClass.FullName, m.Name))
+                else if (m.IsVirtual && CoreIntrinsics.BrEnumInstanceFormat.Matches(m))
                 {
                     _c.NoteEnumInterfaces();
                     bindsLowering = true;

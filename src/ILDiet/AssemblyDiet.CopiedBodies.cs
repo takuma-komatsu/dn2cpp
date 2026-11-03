@@ -254,6 +254,30 @@ internal sealed partial class AssemblyDiet
             method.Parameters.Count == 1 ? Shape(method.Parameters[0].ParameterType) : null);
     }
 
+    private static bool IsCopiedSearchValuesShuffle(MethodDefinition method, string owner) =>
+        CoreIntrinsicTypeMaps.IsSearchValuesShuffleMethod(method.Module.Assembly?.Name.Name, owner, method.Name,
+            method.DeclaringType.FullName == owner && method.DeclaringType.DeclaringType is null
+                && !method.DeclaringType.IsValueType && !method.DeclaringType.IsInterface
+                && method.DeclaringType.IsAbstract && method.DeclaringType.IsSealed && !method.DeclaringType.HasGenericParameters
+                && method.Attributes == (MethodAttributes.Assembly | MethodAttributes.Static | MethodAttributes.HideBySig)
+                && method.ImplAttributes == MethodImplAttributes.AggressiveInlining && method.HasBody && method.RVA != 0
+                && method.Body.Instructions.Count != 0 && !method.HasPInvokeInfo && !method.IsPInvokeImpl && !method.HasGenericParameters,
+            !method.HasThis && !method.ExplicitThis && method.CallingConvention == MethodCallingConvention.Default
+                && method.Parameters.Count == 2 && IsCopiedSearchValuesShuffleVector(method.ReturnType, method.Module)
+                && method.Parameters.All(p => IsCopiedSearchValuesShuffleVector(p.ParameterType, method.Module)));
+
+    private static bool IsCopiedSearchValuesShuffleVector(TypeReference type, ModuleDefinition module)
+    {
+        if (type is not GenericInstanceType { GenericArguments.Count: 1 } vector || !vector.IsValueType
+            || vector.ElementType is not TypeDefinition definition || definition.Module != module
+            || definition.DeclaringType is not null || definition.Namespace != "System.Runtime.Intrinsics" || definition.Name != "Vector128`1"
+            || !definition.IsValueType || definition.IsEnum || definition.IsInterface || definition.GenericParameters.Count != 1
+            || definition.GenericParameters[0].Attributes != GenericParameterAttributes.NonVariant
+            || definition.GenericParameters[0].Constraints.Count != 0)
+            return false;
+        return vector.GenericArguments[0] is not TypeSpecification && vector.GenericArguments[0].MetadataType == MetadataType.Byte;
+    }
+
     private static bool IsCopiedVectorManagedThrowHelper(MethodDefinition method, string owner)
     {
         if (owner != "System.ThrowHelper" || method.Name != "ThrowForUnsupportedNumericsVectorBaseType"
@@ -270,6 +294,79 @@ internal sealed partial class AssemblyDiet
         return parameter.Position == 0 && parameter.Owner == method
             && parameter.Attributes == GenericParameterAttributes.NonVariant && parameter.Constraints.Count == 0;
     }
+
+    private static bool IsCopiedStringPrivateEntryPoint(MethodDefinition method, string owner)
+    {
+        bool length = method.Name == "wcslen";
+        var type = method.DeclaringType;
+        bool signature = length
+            ? !method.HasThis && method.Parameters.Count == 1
+                && method.ReturnType is not TypeSpecification && method.ReturnType.MetadataType == MetadataType.Int32
+                && method.Parameters[0].ParameterType is PointerType { ElementType: var character }
+                && character is not TypeSpecification && character.MetadataType == MetadataType.Char
+            : method.HasThis && method.Parameters.Count == 0
+                && method.ReturnType is ByReferenceType { ElementType: var element }
+                && element is not TypeSpecification && element.MetadataType == MetadataType.Byte;
+        return CoreIntrinsicTypeMaps.IsStringPrivateEntryPointMethod(method.Module.Assembly?.Name.Name, owner, method.Name,
+            type.Module == method.Module && type.FullName == owner && type.DeclaringType is null
+                && type.IsPublic && type.IsSealed && !type.IsAbstract && !type.IsValueType && !type.IsInterface
+                && !type.IsEnum && !type.HasGenericParameters
+                && method.Attributes == (MethodAttributes.Assembly | MethodAttributes.HideBySig
+                    | (length ? MethodAttributes.Static : 0))
+                && method.ImplAttributes == MethodImplAttributes.IL && method.HasBody && method.RVA != 0
+                && method.Body.Instructions.Count != 0 && !method.HasPInvokeInfo && !method.IsPInvokeImpl
+                && !method.HasGenericParameters && !method.ExplicitThis && method.CallingConvention == MethodCallingConvention.Default,
+            signature);
+    }
+
+    private static bool IsCopiedWaitHandleRawWaitWrapper(MethodDefinition method, string owner)
+    {
+        int count = method.Parameters.Count;
+        bool privateMethod = method.Name == "WaitMultipleIgnoringSyncContextCore" || count == 4;
+        return CoreIntrinsicTypeMaps.IsWaitHandleRawWaitWrapperMethod(method.Module.Assembly?.Name.Name, owner, method.Name,
+            method.DeclaringType.FullName == owner && method.DeclaringType.DeclaringType is null
+                && method.DeclaringType.IsAbstract && !method.DeclaringType.IsSealed
+                && !method.DeclaringType.IsValueType && !method.DeclaringType.IsInterface && !method.DeclaringType.HasGenericParameters
+                && method.Attributes == ((privateMethod ? MethodAttributes.Private : MethodAttributes.Assembly)
+                    | MethodAttributes.Static | MethodAttributes.HideBySig)
+                && method.ImplAttributes == MethodImplAttributes.IL && method.HasBody && method.RVA != 0
+                && method.Body.Instructions.Count != 0 && !method.HasPInvokeInfo && !method.IsPInvokeImpl && !method.HasGenericParameters,
+            count, !method.HasThis && !method.ExplicitThis && method.CallingConvention == MethodCallingConvention.Default
+                && method.ReturnType is not TypeSpecification && method.ReturnType.MetadataType == MetadataType.Int32
+                && count is 3 or 4 && IsCopiedRawWaitSpan(method.Parameters[0].ParameterType, method.Module)
+                && (count == 3 || IsCopiedRawWaitPrimitive(method.Parameters[1].ParameterType, MetadataType.Int32))
+                && IsCopiedRawWaitPrimitive(method.Parameters[count - 2].ParameterType, MetadataType.Boolean)
+                && IsCopiedRawWaitPrimitive(method.Parameters[count - 1].ParameterType, MetadataType.Int32));
+    }
+
+    private static bool IsCopiedRawWaitSpan(TypeReference type, ModuleDefinition module) =>
+        type is GenericInstanceType { GenericArguments.Count: 1, IsValueType: true, ElementType: TypeDefinition definition } span
+        && definition.Module == module && definition.DeclaringType is null
+        && definition.Namespace == "System" && definition.Name == "ReadOnlySpan`1"
+        && definition.IsValueType && !definition.IsEnum && !definition.IsInterface && definition.GenericParameters.Count == 1
+        && IsCopiedRawWaitPrimitive(span.GenericArguments[0], MetadataType.IntPtr);
+
+    private static bool IsCopiedRawWaitPrimitive(TypeReference type, MetadataType kind) =>
+        type is not TypeSpecification && type.MetadataType == kind;
+
+    private static bool IsCopiedCancellationInvoke(MethodDefinition method, string owner) =>
+        CoreIntrinsicTypeMaps.IsCancellationInvokeMethod(method.Module.Assembly?.Name.Name, owner, method.Name,
+            method.DeclaringType.FullName == owner && method.DeclaringType.DeclaringType is null
+                && !method.DeclaringType.IsValueType && !method.DeclaringType.IsInterface && !method.DeclaringType.HasGenericParameters
+                && method.Attributes == (MethodAttributes.Private | MethodAttributes.Static | MethodAttributes.HideBySig)
+                && method.ImplAttributes == MethodImplAttributes.IL && method.HasBody && method.RVA != 0
+                && method.Body.Instructions.Count != 0 && !method.HasPInvokeInfo && !method.IsPInvokeImpl && !method.HasGenericParameters,
+            !method.HasThis && !method.ExplicitThis && method.CallingConvention == MethodCallingConvention.Default
+                && method.ReturnType is not TypeSpecification && method.ReturnType.MetadataType == MetadataType.Void
+                && method.Parameters.Count == 3
+                && IsCopiedCancellationClass(method.Parameters[0].ParameterType, method.Module, "System", "Delegate")
+                && method.Parameters[1].ParameterType is not TypeSpecification && method.Parameters[1].ParameterType.MetadataType == MetadataType.Object
+                && IsCopiedCancellationClass(method.Parameters[2].ParameterType, method.Module, "System.Threading", "CancellationTokenSource"));
+
+    private static bool IsCopiedCancellationClass(TypeReference type, ModuleDefinition module, string space, string name) =>
+        type is TypeDefinition definition && definition.Module == module && !definition.IsValueType && !definition.IsEnum
+        && !definition.IsInterface && definition.DeclaringType is null && !definition.HasGenericParameters
+        && definition.Namespace == space && definition.Name == name;
 
     private static bool IsCopiedKnownConstant(MethodDefinition method, string owner)
     {
@@ -304,6 +401,22 @@ internal sealed partial class AssemblyDiet
             method.HasBody && method.ImplAttributes == MethodImplAttributes.IL && !method.HasPInvokeInfo,
             signature, constraints);
     }
+
+    private static bool IsCopiedCultureInfoNameValidator(MethodDefinition method, string owner) =>
+        CoreIntrinsicTypeMaps.IsCultureInfoNameValidatorMethod(method.Module.Assembly?.Name.Name, owner, method.Name,
+            method.DeclaringType.DeclaringType is null && !method.DeclaringType.HasGenericParameters
+                && !method.DeclaringType.IsValueType && !method.DeclaringType.IsInterface
+                && method.Attributes == (MethodAttributes.Assembly | MethodAttributes.Static | MethodAttributes.HideBySig)
+                && method.ImplAttributes == MethodImplAttributes.IL && method.HasBody && method.RVA != 0
+                && method.Body.Instructions.Count != 0 && !method.HasPInvokeInfo && !method.IsPInvokeImpl
+                && !method.HasGenericParameters,
+            !method.HasThis && !method.ExplicitThis && method.CallingConvention == MethodCallingConvention.Default
+                && method.ReturnType is not TypeSpecification && method.ReturnType.MetadataType == MetadataType.Boolean
+                && method.Parameters.Count == 2
+                && method.Parameters[0].ParameterType is not TypeSpecification
+                && method.Parameters[0].ParameterType.MetadataType == MetadataType.String
+                && method.Parameters[1].ParameterType is not TypeSpecification
+                && method.Parameters[1].ParameterType.MetadataType == MetadataType.Boolean);
 
     private static bool IsCopiedPrimitiveElementHelper(MethodDefinition method, string owner)
     {
@@ -453,6 +566,8 @@ internal sealed partial class AssemblyDiet
             traverse = false;
         else if (IsCopiedPrimitiveBigMul(method, owner))
             traverse = false;
+        else if (IsCopiedStringPrivateEntryPoint(method, owner))
+            traverse = method.Name == "wcslen";
         else if (IsCopiedMemberMetadataDefinition(method, owner))
             traverse = owner == "System.Reflection.MemberInfo";
         else if (IsCopiedScalarNumericLeaf(method, owner)
@@ -466,13 +581,17 @@ internal sealed partial class AssemblyDiet
             || IsCopiedRuntimeTypeIntroducedMethodsFactory(method, owner)
             || IsCopiedRuntimeTypeHandleCopy(method, owner) || IsCopiedAmbiguousMatchExceptionFactory(method, owner)
             || IsCopiedMemberNotFoundExceptionFactory(method, owner) || IsCopiedPrimitiveElementHelper(method, owner)
+            || IsCopiedCultureInfoNameValidator(method, owner)
+            || IsCopiedSearchValuesShuffle(method, owner)
+            || IsCopiedWaitHandleRawWaitWrapper(method, owner)
+            || IsCopiedCancellationInvoke(method, owner)
             || IsCopiedKnownConstant(method, owner) || IsCopiedVectorManagedThrowHelper(method, owner))
             traverse = true;
         else if (owner is "System.Array" or "System.Delegate")
             traverse = CoreIntrinsicTypeMaps.IsRealBodyGeneric(owner, method.Name) || CopiedArrayRealBodyMember(method);
         else
             traverse = !CoreIntrinsicTypeMaps.IsInlineLoweredPrimitiveMember(owner, method.Name)
-                && !CoreIntrinsicTypeMaps.IsEnumInstanceFormatMethod(owner, method.Name)
+                && !IsCopiedEnumInstanceFormat(method, owner)
                 && !CoreIntrinsicTypeMaps.IsEnumElementTypeMethod(owner, method.Name,
                     method.IsStatic, method.Parameters.Count, method.ReturnType.FullName,
                     method.Parameters.Count == 1 ? method.Parameters[0].ParameterType.FullName : null)
@@ -489,6 +608,58 @@ internal sealed partial class AssemblyDiet
                     || ClassifyReflectionTarget(method) is null && CopiedInterfaceImplementation(method));
         _copiedBodyTraversal.Add(method, traverse);
         return traverse;
+    }
+
+    private static bool IsCopiedEnumInstanceFormat(MethodDefinition method, string owner)
+    {
+        var type = method.DeclaringType;
+        if (!CoreIntrinsicTypeMaps.IsEnumInstanceFormatMember(owner, method.Name)
+            || method.Module.Assembly?.Name.Name != "System.Private.CoreLib" || type.Module != method.Module
+            || type.FullName != owner || type.DeclaringType is not null || type.HasGenericParameters
+            || !type.IsAbstract || type.IsSealed || type.IsInterface || type.IsEnum
+            || method.IsStatic || !method.HasThis || method.ExplicitThis
+            || method.CallingConvention != MethodCallingConvention.Default || method.HasGenericParameters
+            || !method.HasBody || method.RVA == 0 || method.Body.Instructions.Count == 0
+            || method.HasPInvokeInfo || method.IsPInvokeImpl || method.Parameters.Count > 2)
+            return false;
+        string? result = CopiedEnumInstanceFormatType(method.ReturnType, method.Module);
+        string? first = method.Parameters.Count > 0 ? CopiedEnumInstanceFormatType(method.Parameters[0].ParameterType, method.Module) : null;
+        string? second = method.Parameters.Count > 1 ? CopiedEnumInstanceFormatType(method.Parameters[1].ParameterType, method.Module) : null;
+        return result is not null && (method.Parameters.Count == 0 || first is not null) && (method.Parameters.Count < 2 || second is not null)
+            && CoreIntrinsicTypeMaps.IsEnumInstanceFormatMethod(method.Module.Assembly.Name.Name, owner, method.Name,
+                method.IsStatic, method.GenericParameters.Count, (int)method.Attributes, (int)method.ImplAttributes,
+                method.Parameters.Count, result, first, second);
+    }
+
+    private static string? CopiedEnumInstanceFormatType(TypeReference type, ModuleDefinition module)
+    {
+        if (type is TypeSpecification) return null;
+        switch (type.MetadataType)
+        {
+            case MetadataType.Boolean: return "System.Boolean";
+            case MetadataType.Int32: return "System.Int32";
+            case MetadataType.String: return "System.String";
+            case MetadataType.Object: return "System.Object";
+        }
+        if (type is not TypeDefinition definition || definition.Module != module
+            || definition.DeclaringType is not null || definition.HasGenericParameters)
+            return null;
+        if (definition.FullName == "System.IFormatProvider" && definition.IsInterface
+            && definition.IsAbstract && !definition.IsSealed && !definition.IsValueType)
+            return "System.IFormatProvider";
+        if (definition.FullName != "System.TypeCode" || !definition.IsEnum || !definition.IsValueType
+            || definition.IsInterface || definition.IsAbstract || !definition.IsSealed
+            || definition.BaseType is not TypeDefinition parent || parent.Module != module || parent.FullName != "System.Enum")
+            return null;
+        bool found = false;
+        foreach (var field in definition.Fields)
+        {
+            if (field.IsStatic) continue;
+            if (found || field.Name != "value__" || field.FieldType is TypeSpecification || field.FieldType.MetadataType != MetadataType.Int32)
+                return null;
+            found = true;
+        }
+        return found ? "System.TypeCode" : null;
     }
 
     private static bool CopiedArrayRealBodyMember(MethodDefinition method)

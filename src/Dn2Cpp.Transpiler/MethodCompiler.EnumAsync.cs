@@ -517,16 +517,15 @@ internal sealed partial class MethodCompiler
     }
 
     /// <summary>The (value, name) of an enum's declared members, in declaration order,
-    /// deduped by value (first wins, so duplicate-value aliases don't emit duplicate C++
+    /// deduped by value by default (first wins, so aliases do not emit duplicate C++
     /// case labels) — read as int32, which is the model width of every underlying
     /// narrower than 64 bits (a UInt32 constant reads as its int bit pattern, which is
     /// what the payload carries).
     ///
-    /// <para><b>Call <see cref="EnumMembersModel"/>, not this.</b> On a 64-bit-underlying
+    /// <para><b>Call <see cref="EnumMembersModel"/> or <see cref="EnumMetadataMembersModel"/>.</b> On a 64-bit-underlying
     /// enum the truncation here is silent and the dedupe then collapses distinct members
-    /// onto one value; the only caller that may take the narrow table directly is
-    /// EnumMembersModel itself.</para></summary>
-    internal static List<(int value, string name)> EnumMembers(ClassInfo enumClass)
+    /// onto one value; only those model-width readers may take the narrow table.</para></summary>
+    internal static List<(int value, string name)> EnumMembers(ClassInfo enumClass, bool distinctValues = true)
     {
         var result = new List<(int, string)>();
         var seen = new HashSet<int>();
@@ -554,7 +553,7 @@ internal sealed partial class MethodCompiler
                 ConstantTypeCode.UInt64 => unchecked((int)blob.ReadUInt64()),
                 _ => 0,
             };
-            if (seen.Add(value))
+            if (!distinctValues || seen.Add(value))
                 result.Add((value, reader.GetString(fd.Name)));
         }
         return result;
@@ -567,13 +566,20 @@ internal sealed partial class MethodCompiler
 
     /// <summary>The member table at the enum's MODEL width: <see cref="EnumMembers64"/>
     /// for a 64-bit underlying, the int32 <see cref="EnumMembers"/> widened otherwise.
-    /// Every lowering that emits member values must read through this — the int32 table
+    /// Value-deduplicating consumers read through this — the int32 table
     /// truncates a wide member AND dedupes on the truncation, so two distinct members
     /// collapse onto one C++ case label.</summary>
     internal static List<(long value, string name)> EnumMembersModel(ClassInfo enumClass) =>
         IsWideEnum(enumClass)
             ? EnumMembers64(enumClass)
             : EnumMembers(enumClass).Select(m => ((long)m.value, m.name)).ToList();
+
+    /// <summary>All declared enum names at model width, in FieldDef order. Metadata
+    /// preserves equal-valued aliases; the switch reader remains separate.</summary>
+    internal static List<(long value, string name)> EnumMetadataMembersModel(ClassInfo enumClass) =>
+        IsWideEnum(enumClass)
+            ? EnumMembers64(enumClass, distinctValues: false)
+            : EnumMembers(enumClass, distinctValues: false).Select(m => ((long)m.value, m.name)).ToList();
 
     /// <summary>A C++ literal for a model-width member constant. long.MinValue has no
     /// negative literal form in C++ (the token is an unsigned literal under a unary
@@ -586,7 +592,7 @@ internal sealed partial class MethodCompiler
     /// <summary>Like <see cref="EnumMembers"/> at full 64-bit width, for the
     /// 64-bit-underlying enums whose member values do not survive the int32
     /// truncation (a UInt64 constant reads as its long bit pattern).</summary>
-    internal static List<(long value, string name)> EnumMembers64(ClassInfo enumClass)
+    internal static List<(long value, string name)> EnumMembers64(ClassInfo enumClass, bool distinctValues = true)
     {
         var result = new List<(long, string)>();
         var seen = new HashSet<long>();
@@ -614,7 +620,7 @@ internal sealed partial class MethodCompiler
                 ConstantTypeCode.UInt64 => unchecked((long)blob.ReadUInt64()),
                 _ => 0,
             };
-            if (seen.Add(value))
+            if (!distinctValues || seen.Add(value))
                 result.Add((value, reader.GetString(fd.Name)));
         }
         return result;

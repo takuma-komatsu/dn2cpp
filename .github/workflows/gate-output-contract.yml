@@ -59,6 +59,7 @@ jobs:
           python gates/fixtures/setup-culture-reference-test.py
           python gates/fixtures/bash-fixture-test.py
           python gates/fixtures/culture-gate-scope-test.py
+          python gates/test-stripping-profiles.py
           python gates/fixtures/reflection-gate-inputs-test.py
           bash gates/fixtures/reflection-gate-inputs.sh python
           bash gates/fixtures/hotupdate-output.sh python

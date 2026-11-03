@@ -134,7 +134,8 @@ internal sealed partial class Compilation
         // calls, so replacing it closes that whole family (each To* keeps its real
         // Convert.ToXxx(GetValue(), …) body). The synthesized body names only runtime helpers, so
         // unlike BrHttpShim there is no managed edge to reach.
-        if (CoreIntrinsics.BrEnumInstanceFormat.Matches(m.DeclaringClass.FullName, m.Name)
+        if (CoreIntrinsics.BrEnumStaticFormat.Matches(m)
+            || CoreIntrinsics.BrEnumInstanceFormat.Matches(m)
             || CoreIntrinsics.BrEnumElementType.Matches(m)
             || CoreIntrinsics.BrEnumScalarGetName.Matches(m)
             || CoreIntrinsics.BrEnumUnderlyingType.Matches(m))
@@ -160,6 +161,7 @@ internal sealed partial class Compilation
         }
         if (CoreIntrinsics.BrDelegateClone.Matches(m.DeclaringClass.FullName, m.Name)
             || CoreIntrinsics.BrDelegateValue.Matches(m)
+            || CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(m)
             || CoreIntrinsics.BrPrimitiveBigMul.Matches(m)
             || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(m)
             || CoreIntrinsics.BrNullableReboxing.Matches(m)
@@ -171,6 +173,10 @@ internal sealed partial class Compilation
             || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(m)
             || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(m)
             || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(m)
+            || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(m)
+            || CoreIntrinsics.BrStringRawByteReference.Matches(m)
+            || CoreIntrinsics.BrArrayNativeLength.Matches(m)
+            || CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(m)
             || CoreIntrinsics.BrActivatorNamed.Matches(m)
             || CoreIntrinsics.BrActivatorDefault.Matches(m)
             || CoreIntrinsics.BrCoreClrDelegateVmConstructor.Matches(m)
@@ -296,6 +302,11 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsConcreteVectorReduction(m)
             || CoreIntrinsics.IsResourceManagerDefaultType(m)
             || CoreIntrinsics.IsPrimitiveElementHelper(m)
+            || CoreIntrinsics.IsCultureInfoNameValidator(m)
+            || CoreIntrinsics.IsStringNullTerminatedLength(m)
+            || CoreIntrinsics.IsSearchValuesShuffle(m)
+            || CoreIntrinsics.IsWaitHandleRawWaitWrapper(m)
+            || CoreIntrinsics.IsCancellationInvoke(m)
             || CoreIntrinsics.IsKnownConstant(m)
             || CoreIntrinsics.IsVectorManagedThrowHelper(m)
             || CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
@@ -6186,6 +6197,7 @@ internal sealed partial class Compilation
                 + "ILDiet's retained set must contain every body reachability admits");
         try
         {
+            ReachArraySortFactory(m);
             var insns = ILDecoder.Decode(body.GetILBytes()!.ToImmutableArrayCompat());
             NoteMediumBodyTypes(m, body);
             SummarizeReflection(m, body, insns);

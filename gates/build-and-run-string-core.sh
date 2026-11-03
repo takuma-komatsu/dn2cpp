@@ -387,4 +387,10 @@ gate_extra_asserts() {
     done
 }
 
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/StringPrivateEntryPointsGuards.cs gates/fixtures/ldftn-local/StringPrivateEntryPointsFixture.cs gates/_string-private-entrypoints.sh samples/dotnet/StringCore/keep-private-entrypoints.xml"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|string-private:two-owned,raw,diet,named-token-reflection,NoAlloc"
 corelib_diff_gate StringCore System.Linq
+
+build_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+source "$(dirname "$0")/_string-private-entrypoints.sh"
+string_private_entrypoints_gate

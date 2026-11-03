@@ -58,9 +58,6 @@ internal static partial class CoreIntrinsics
     public static string? IntrinsicNestedCppType(string enclosingFull, string simpleName) =>
         CoreIntrinsicTypeMaps.IntrinsicNestedCppType(enclosingFull, simpleName);
 
-    public static bool IsEnumInstanceFormatMethod(string? declType, string name) =>
-        CoreIntrinsicTypeMaps.IsEnumInstanceFormatMethod(declType, name);
-
     public static bool IntrinsicManagedBodyFamily(string fullName) =>
         CoreIntrinsicTypeMaps.IntrinsicManagedBodyFamily(fullName);
 

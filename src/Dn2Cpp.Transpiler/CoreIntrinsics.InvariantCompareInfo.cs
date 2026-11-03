@@ -5,6 +5,77 @@ namespace Dn2Cpp;
 
 internal static partial class CoreIntrinsics
 {
+    internal static bool IsInvariantCompareInfoInitializer(MethodInfo method)
+    {
+        var cls = method.DeclaringClass;
+        if (method.Name is not (".ctor" or "InitSort") || !IsInvariantCompareInfoType(cls)
+            || method.Module != cls.Module || method.Handle.IsNil || method.IsSynthetic || method.Rva == 0
+            || method.ImplAttributes != MethodImplAttributes.IL || method.PInvoke is not null
+            || cls.Context.MethodArgs.Length != 0
+            || method.Context.TypeArgs.Length != 0 || method.Context.MethodArgs.Length != 0)
+            return false;
+        var expected = method.Name == ".ctor"
+            ? MethodAttributes.Assembly | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName
+            : MethodAttributes.Private | MethodAttributes.HideBySig;
+        var reader = method.Module.Reader;
+        var definition = reader.GetMethodDefinition(method.Handle);
+        if (method.Attributes != expected || definition.GetDeclaringType() != cls.Handle
+            || definition.Attributes != method.Attributes || definition.ImplAttributes != method.ImplAttributes
+            || definition.RelativeVirtualAddress != method.Rva
+            || !reader.StringComparer.Equals(definition.Name, method.Name)
+            || definition.GetGenericParameters().Count != 0)
+            return false;
+        var blob = reader.GetBlobReader(definition.Signature);
+        if (blob.RemainingBytes < 5 || blob.ReadByte() != 0x20 || blob.ReadByte() != 1
+            || blob.ReadByte() != 1 || blob.ReadByte() != 0x12
+            || !blob.TryReadCompressedInteger(out int token) || (token & 3) != 0
+            || (token >> 2) == 0 || (token >> 2) > reader.TypeDefinitions.Count || blob.RemainingBytes != 0)
+            return false;
+        var cultureHandle = System.Reflection.Metadata.Ecma335.MetadataTokens.TypeDefinitionHandle(token >> 2);
+        var parameter = reader.GetTypeDefinition(cultureHandle);
+        if (!parameter.GetDeclaringType().IsNil || parameter.GetGenericParameters().Count != 0
+            || (parameter.Attributes & TypeAttributes.Interface) != 0
+            || !reader.StringComparer.Equals(parameter.Namespace, "System.Globalization")
+            || !reader.StringComparer.Equals(parameter.Name, "CultureInfo")
+            || !TryGetInvariantCompareInfoInitializerFields(cls, out _, out _, out _))
+            return false;
+        if (!method.SignatureReady) return true;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.RequiredParameterCount == 1 && signature.ReturnType.IsVoid
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { } culture }]
+            && culture.Module == method.Module && culture.FullName == "System.Globalization.CultureInfo"
+            && culture.Handle == cultureHandle && !culture.IsValueType && !culture.IsInterface
+            && culture.GenericArity == 0 && culture.Context.TypeArgs.Length == 0 && culture.Context.MethodArgs.Length == 0;
+    }
+
+    internal static bool TryGetInvariantCompareInfoInitializerFields(ClassInfo cls,
+        out FieldInfo name, out FieldInfo sortName, out FieldInfo asciiOrdinal)
+    {
+        asciiOrdinal = null!;
+        if (!TryGetInvariantCompareInfoFields(cls, out name, out sortName)) return false;
+        foreach (var field in cls.Fields)
+        {
+            if (field.Name != "_isAsciiEqualityOrdinal") continue;
+            if (asciiOrdinal is not null || field.DeclaringClass != cls || field.Handle.IsNil
+                || field.IsStatic || field.IsLiteral || field.ByValArraySize >= 0)
+                return false;
+            var reader = cls.Module.Reader;
+            var definition = reader.GetFieldDefinition(field.Handle);
+            if (definition.GetDeclaringType() != cls.Handle
+                || !reader.StringComparer.Equals(definition.Name, field.Name)
+                || definition.Attributes != (FieldAttributes.Private | (FieldAttributes)0x0080)
+                || !definition.GetMarshallingDescriptor().IsNil)
+                return false;
+            var blob = reader.GetBlobReader(definition.Signature);
+            if (blob.RemainingBytes != 2 || blob.ReadByte() != 0x06 || blob.ReadByte() != 0x02
+                || field.TypeReady && field.Type is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean })
+                return false;
+            asciiOrdinal = field;
+        }
+        return asciiOrdinal is not null;
+    }
+
     internal static bool IsInvariantCompareInfoGetter(MethodInfo method)
     {
         var cls = method.DeclaringClass;

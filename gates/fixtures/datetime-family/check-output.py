@@ -91,4 +91,12 @@ require('DateOnlyDeconstruct', ['dateonly-deconstruct-' + witness + ':True' for 
     'reflection-exact-parameters', 'reflection-abi', 'reflection-null-target',
     'direct-null-receiver', 'pointer-null-receiver', 'producer-0', 'producer-1', 'producer-2']]
     + ['DateOnly Deconstruct reflection end', 'DateOnly Deconstruct alias end'])
+require('DtfICompareInfo', ['DTFI CompareInfo end', 'dtfi-compare-info-initializer-newobj-0:True',
+    'dtfi-compare-info-initializer-gc-initsort:True', 'DTFI CompareInfo initializers end',
+    '== CultureInfo name validation ==', 'dtfi-compare-info-validator-0-0-0:True',
+    'dtfi-compare-info-validator-9-1-2:True', 'CultureInfo name validation end'])
+compare = sections['DtfICompareInfo']
+assert compare.index('DTFI CompareInfo end') < compare.index('dtfi-compare-info-initializer-newobj-0:True') \
+    and compare.index('DTFI CompareInfo initializers end') < compare.index('== CultureInfo name validation ==') \
+    and compare[-1] == 'CultureInfo name validation end', 'initializer/validator suffix was truncated at a former end marker'
 print('datetime-family-output:all-sections-and-former-focused-witnesses')

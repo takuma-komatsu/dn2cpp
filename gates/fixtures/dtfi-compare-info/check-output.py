@@ -3,8 +3,10 @@ import argparse
 from pathlib import Path
 p = argparse.ArgumentParser()
 p.add_argument('stdout', type=Path)
-p.add_argument('--mode', choices=['all', 'reflection', 'minimal', 'minimal-culture', 'oracle'], default='all')
+p.add_argument('--mode', choices=['all', 'reflection', 'minimal', 'minimal-culture', 'oracle', 'validator'], default='all')
+p.add_argument('--validator-output', type=Path)
 a = p.parse_args()
+actual = a.stdout.read_bytes().replace(b'\r\n', b'\n').decode().splitlines()
 expected = []
 def check(label): expected.append('dtfi-compare-info-' + label + ':True')
 def route(label):
@@ -16,6 +18,8 @@ if a.mode == 'oracle':
     route('public'); check('public-override')
 elif a.mode in ('minimal', 'minimal-culture'):
     check('minimal-culture' if a.mode == 'minimal-culture' else 'minimal-dtfi')
+elif a.mode == 'validator':
+    pass
 elif a.mode == 'reflection':
     reflection(); expected.append('DTFI CompareInfo reflection end')
 else:
@@ -26,6 +30,38 @@ else:
     for family in ['dtfi', 'culture']:
         for mode in range(3): check(family + '-producer-' + str(mode))
     check('gc-initialized'); check('gc-identity'); expected.append('DTFI CompareInfo end')
-actual = a.stdout.read_bytes().replace(b'\r\n', b'\n').decode().splitlines()
+    for index in range(7):
+        for route in ['newobj', 'call-ctor', 'seed', 'direct', 'calli']: check('initializer-' + route + '-' + str(index))
+    check('initializer-newobj-null')
+    for route in range(3):
+        check('initializer-null-culture-' + str(route)); check('initializer-null-receiver-' + str(route))
+    check('initializer-gc-ctor'); check('initializer-gc-initsort')
+    check('initializer-subclass-type'); check('initializer-subclass-metadata'); check('initializer-subclass-newobj')
+    for route in range(3): check('initializer-subclass-' + str(route))
+    expected.append('DTFI CompareInfo initializers end')
+validator_start = len(expected)
+if a.mode in ('all', 'validator'):
+    expected.append('== CultureInfo name validation ==')
+    for index in range(10):
+        for fail in range(2):
+            for route in range(3):
+                check(f'validator-{index}-{fail}-{route}')
+                prefix = f'culture-name-validator:{index}:{fail}:{route}:'
+                valid = 1 <= index <= 6
+                result = 'exception:System.NullReferenceException|<null>|' if index == 0 else \
+                    'exception:System.ArgumentException|<null>|' if not valid and fail else 'value:' + str(valid)
+                assert len(actual) > len(expected), 'missing validator result'
+                record = actual[len(expected)]
+                if result.startswith('exception:'):
+                    assert record.startswith(prefix + result) and record.endswith('|end') \
+                        and len(record) > len(prefix + result + '|end'), 'validator exception type/parameter/message'
+                else:
+                    assert record == prefix + result + '|end', 'validator result'
+                expected.append(record)
+    expected.append('CultureInfo name validation end')
+if a.validator_output:
+    assert a.mode == 'all', 'extract validator records only from the complete native fixture'
 assert actual == expected, 'missing, false, reordered or duplicate CompareInfo witness'
+if a.validator_output:
+    a.validator_output.write_text('\n'.join(actual[validator_start:]) + '\n')
 print('dtfi-compare-info-output:' + str(sum(x.endswith(':True') for x in expected)))
