@@ -52,7 +52,8 @@ internal static class VectorValueShapeProof
                     var vectorRef = reader.TypeReferences.Single(h =>
                     {
                         var type = reader.GetTypeReference(h);
-                        return reader.StringComparer.Equals(type.Namespace, "System.Numerics") && reader.StringComparer.Equals(type.Name, "Vector`1");
+                        return reader.StringComparer.Equals(type.Namespace, mutation == "fixed-valid" ? "System.Runtime.Intrinsics" : "System.Numerics")
+                            && reader.StringComparer.Equals(type.Name, mutation == "fixed-valid" ? "Vector128`1" : "Vector`1");
                     });
                     baseline = "g(val(" + Identity(reader, vectorRef) + ");!0)";
                 }
@@ -64,6 +65,8 @@ internal static class VectorValueShapeProof
                     "wrong-input" => first == "0A",
                     "wrong-closed" => first.Contains("System.Numerics.Vector`1", StringComparison.Ordinal) && first.EndsWith(";08)", StringComparison.Ordinal),
                     "mvar-context" => first == "!!0",
+                    "fixed-owner" => first == "g(val(ref:System.Numerics.Vector`1@System.Private.CoreLib);!0)",
+                    "fixed-valid" => first == "g(val(ref:System.Runtime.Intrinsics.Vector128`1@System.Private.CoreLib);!0)",
                     _ => hash || first == "1C" || first == "!0" || first.Contains("System.Numerics.Vector`1", StringComparison.Ordinal) && first.EndsWith(";!0)", StringComparison.Ordinal)
                 }, "parameter type/element/qualifiers");
                 if (mutation == "extra") Require(parameters[^1] == "08", "extra parameter type");
@@ -79,7 +82,7 @@ internal static class VectorValueShapeProof
             }
             else owner = Identity(reader, member.Parent);
             if (mutation == "foreign-owner") Require(owner.Contains("def:System.Numerics.Vector`1", StringComparison.Ordinal), "same name local owner identity");
-            else if (mutation == "fixed-owner") Require(owner.Contains("System.Runtime.Intrinsics.Vector128`1", StringComparison.Ordinal), "fixed width owner identity");
+            else if (mutation is "fixed-owner" or "fixed-valid") Require(owner == "g(val(ref:System.Runtime.Intrinsics.Vector128`1@System.Private.CoreLib);0D)", "fixed width owner identity and element");
             else if (mutation == "constrained-foreign-object") Require(owner == "def:System.Object", "foreign Object identity");
             else if (mutation == "constrained-foreign-equatable") Require(owner.Contains("def:System.IEquatable`1", StringComparison.Ordinal), "foreign interface identity");
             else if (mutation is "context-spec-var" or "context-spec-mvar") Require(owner == (mutation == "context-spec-var" ? "!0" : "!!0"), "contextual parent preserved");

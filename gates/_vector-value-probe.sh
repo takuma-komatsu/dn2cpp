@@ -127,13 +127,13 @@ vector_value_metadata_probe() {
                 "$compiler" "$_CG_CORELIB" "$out/context-spec-$owner-$member.dll" "$owner" "$member" || return 1
         done
     done
-    for mode in valid object-valid hash-valid constrained-equatable constrained-object constrained-hash boxed-valid fixed-owner; do
+    for mode in valid object-valid hash-valid constrained-equatable constrained-object constrained-hash boxed-valid fixed-valid; do
         input="$out/$mode.dll"
         gate_capture_ok "$out/$mode-generate" run_bounded dotnet "$fixture" generate "$mode" "$_CG_CORELIB" "$input" || return 1
         gate_capture_ok "$out/$mode-reference" run_bounded dotnet "$fixture" reference "$compiler" "$_CG_CORELIB" "$input" accept || return 1
     done
     for mode in static explicit-this vararg generic byref-result return-modopt wrong-result \
-        byref-input modopt modreq wrong-closed wrong-input extra missing trailing owner-trailing \
+        byref-input modopt modreq wrong-closed wrong-input fixed-owner extra missing trailing owner-trailing \
         methodspec methodspec-zero constrained-foreign-equatable constrained-wrong-equatable constrained-foreign-object \
         boxed-modopt boxed-trailing boxed-owner-trailing boxed-methodspec boxed-methodspec-zero \
         constrained-equatable-modopt constrained-equatable-trailing constrained-equatable-owner-trailing \

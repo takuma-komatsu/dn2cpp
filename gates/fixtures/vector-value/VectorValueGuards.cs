@@ -53,7 +53,7 @@ internal static class VectorValueGuards
         var app = modules.Single(x => (string)Get(x, "AssemblyName") == "VectorValueGuardInput");
         var coreModule = modules.Single(x => (string)Get(x, "AssemblyName") == "System.Private.CoreLib");
         var reader = (MetadataReader)Get(app, "Reader");
-        bool scopeOnly = new[] { "bool", "char", "decimal", "int128", "uint128", "enum", "struct", "open", "fixed-owner", "foreign-owner" }.Contains(inputMode);
+        bool scopeOnly = new[] { "bool", "char", "decimal", "int128", "uint128", "enum", "struct", "open", "foreign-owner" }.Contains(inputMode);
         bool managedScope = inputMode is "decimal" or "int128" or "uint128" or "enum" or "struct";
         var context = Model("GenericContext").GetField("Empty", statics)!.GetValue(null)!;
         var resolve = Model("Compilation").GetMethod("ResolveVectorValueReference", instance)!;

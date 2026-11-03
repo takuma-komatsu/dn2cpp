@@ -22,7 +22,7 @@ internal static class VectorValueInputs
     public static void Generate(string mode, string corePath, string output)
     {
         string baseMode = Mutation(mode);
-        string[] modes = { "all", "valid", "static", "explicit-this", "vararg", "generic", "byref-result", "return-modopt", "wrong-result", "byref-input", "modopt", "modreq", "wrong-closed", "wrong-input", "extra", "missing", "trailing", "owner-trailing", "methodspec", "bool", "char", "decimal", "int128", "uint128", "enum", "struct", "open", "fixed-owner", "foreign-owner", "constrained-equatable", "constrained-object", "constrained-hash", "constrained-foreign-equatable", "constrained-wrong-equatable", "constrained-foreign-object", "constrained-receiver-modopt", "constrained-receiver-trailing", "methodspec-zero", "mvar-context", "context-spec-var", "context-spec-mvar" };
+        string[] modes = { "all", "valid", "static", "explicit-this", "vararg", "generic", "byref-result", "return-modopt", "wrong-result", "byref-input", "modopt", "modreq", "wrong-closed", "wrong-input", "extra", "missing", "trailing", "owner-trailing", "methodspec", "bool", "char", "decimal", "int128", "uint128", "enum", "struct", "open", "fixed-owner", "fixed-valid", "foreign-owner", "constrained-equatable", "constrained-object", "constrained-hash", "constrained-foreign-equatable", "constrained-wrong-equatable", "constrained-foreign-object", "constrained-receiver-modopt", "constrained-receiver-trailing", "methodspec-zero", "mvar-context", "context-spec-var", "context-spec-mvar" };
         if (!modes.Contains(baseMode)) throw new ArgumentException("Unknown vector value mode: " + mode);
         if (File.Exists(output)) throw new InvalidOperationException("Refusing to replace fixture input: " + output);
         using var core = AssemblyDefinition.ReadAssembly(corePath);
@@ -53,7 +53,7 @@ internal static class VectorValueInputs
             }
             var ownerDefinition = m.ImportReference(vector);
             if (mutation == "open") element = ownerDefinition.GenericParameters[0];
-            if (mutation == "fixed-owner") ownerDefinition = m.ImportReference(core.MainModule.GetType("System.Runtime.Intrinsics.Vector128`1"));
+            if (mutation is "fixed-owner" or "fixed-valid") ownerDefinition = m.ImportReference(core.MainModule.GetType("System.Runtime.Intrinsics.Vector128`1"));
             if (mutation == "foreign-owner")
             {
                 var foreign = new CType("System.Numerics", "Vector`1", Mono.Cecil.TypeAttributes.Public | Mono.Cecil.TypeAttributes.Sealed, m.ImportReference(core.MainModule.GetType("System.ValueType")));
@@ -61,7 +61,8 @@ internal static class VectorValueInputs
             }
             var owner = Closed(ownerDefinition, element);
             bool hash = route.Contains("hash"), obj = route.Contains("object");
-            var declaration = vector.Methods.Single(x => x.Name == (hash ? "GetHashCode" : "Equals") && x.Parameters.Count == (hash ? 0 : 1)
+            var declarationOwner = mutation == "fixed-valid" ? core.MainModule.GetType("System.Runtime.Intrinsics.Vector128`1") : vector;
+            var declaration = declarationOwner.Methods.Single(x => x.Name == (hash ? "GetHashCode" : "Equals") && x.Parameters.Count == (hash ? 0 : 1)
                 && (hash || (x.Parameters[0].ParameterType.FullName == "System.Object") == obj));
             var target = m.ImportReference(declaration); target.DeclaringType = owner;
             if (route.StartsWith("constrained-") || route == "boxed-equatable")

@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Collections;
 using System.Reflection;
 using System.Reflection.Metadata;
@@ -126,13 +127,14 @@ internal static class VectorAlignmentGuards
         using (var pe = new PEReader(stream))
         using (var core = Mono.Cecil.AssemblyDefinition.ReadAssembly(args[2]))
         {
-            var pinned = new (int Width, int Token, string[] Bodies)[]
+            // Metadata rows vary across CoreLib builds; dependencies are checked below.
+            var pinned = new (int Width, string[] Bodies)[]
             {
-                (0, 0x06002E84, new[] { "28F72C00062A", "28700F000A2A", "28F82C00062A" }),
-                (64, 0x06005430, new[] { "1E2A", "286C18000A2A", "162A" }),
-                (128, 0x06004EAC, new[] { "1F102A", "28C814000A2A", "28194D00062A" }),
-                (256, 0x0600508C, new[] { "1F202A", "28CA14000A2A", "28214F00062A" }),
-                (512, 0x0600526B, new[] { "1F402A", "28CC14000A2A", "28015100062A" })
+                (0, new[] { "28000000002A", "28000000002A", "28000000002A" }),
+                (64, new[] { "1E2A", "28000000002A", "162A" }),
+                (128, new[] { "1F102A", "28000000002A", "28000000002A" }),
+                (256, new[] { "1F202A", "28000000002A", "28000000002A" }),
+                (512, new[] { "1F402A", "28000000002A", "28000000002A" })
             };
             foreach (var family in pinned)
             {
@@ -142,11 +144,18 @@ internal static class VectorAlignmentGuards
                     string property = VectorAlignmentFixture.Properties[index];
                     var bridge = type.Methods.Single(m => m.Name.EndsWith(".get_" + property, StringComparison.Ordinal));
                     string label = family.Width + ":" + property;
-                    Check(bridge.MetadataToken.ToInt32() == family.Token + index, "bridge-token-" + label);
-                    var def = reader.GetMethodDefinition((MethodDefinitionHandle)MetadataTokens.EntityHandle(family.Token + index));
+                    var def = reader.GetMethodDefinition((MethodDefinitionHandle)MetadataTokens.EntityHandle(bridge.MetadataToken.ToInt32()));
+                    Check(reader.GetString(def.Name) == bridge.Name
+                        && MetadataTokens.GetToken(def.GetDeclaringType()) == type.MetadataToken.ToInt32(), "bridge-owner-" + label);
                     Check((int)def.Attributes == 0x0891 && def.ImplAttributes == MethodImplAttributes.IL, "bridge-flags-" + label);
                     Check(Convert.ToHexString(reader.GetBlobBytes(def.Signature)) == (index == 2 ? "000002" : "000008"), "bridge-signature-" + label);
-                    Check(Convert.ToHexString(pe.GetMethodBody(def.RelativeVirtualAddress).GetILBytes()!) == family.Bodies[index], "bridge-body-" + label);
+                    var expectedBody = Convert.FromHexString(family.Bodies[index]);
+                    if (expectedBody[0] == 0x28)
+                    {
+                        var dependency = (Mono.Cecil.MethodReference)bridge.Body.Instructions[0].Operand;
+                        BinaryPrimitives.WriteInt32LittleEndian(expectedBody.AsSpan(1), dependency.MetadataToken.ToInt32());
+                    }
+                    Check(pe.GetMethodBody(def.RelativeVirtualAddress).GetILBytes()!.AsSpan().SequenceEqual(expectedBody), "bridge-body-" + label);
                     Check(bridge.Overrides.Count == 1 && bridge.Overrides[0].Name == "get_" + property
                         && bridge.Overrides[0].DeclaringType is Mono.Cecil.GenericInstanceType slot
                         && slot.ElementType.FullName == "System.Runtime.Intrinsics.ISimdVector`2"
@@ -159,14 +168,22 @@ internal static class VectorAlignmentGuards
                     {
                         var count = (Mono.Cecil.MethodReference)bridge.Body.Instructions[0].Operand;
                         Check(count.Name == "get_Count" && count.Parameters.Count == 0 && !count.HasThis
+                            && !count.ExplicitThis && !count.HasGenericParameters && count is not Mono.Cecil.GenericInstanceMethod
+                            && count.CallingConvention == Mono.Cecil.MethodCallingConvention.Default
                             && count.ReturnType.MetadataType == Mono.Cecil.MetadataType.Int32
                             && count.DeclaringType is Mono.Cecil.GenericInstanceType owner
-                            && owner.ElementType.FullName == type.FullName
-                            && owner.GenericArguments.Single() is Mono.Cecil.GenericParameter { Position: 0, Type: Mono.Cecil.GenericParameterType.Type }, "bridge-count-dependency-" + label);
+                            && owner.ElementType.Scope == core.MainModule && owner.ElementType.FullName == type.FullName
+                            && owner.GenericArguments.Single() is Mono.Cecil.GenericParameter { Position: 0, Type: Mono.Cecil.GenericParameterType.Type }
+                            && count.Resolve() == type.Methods.Single(m => m.Name == "get_Count"), "bridge-count-dependency-" + label);
                     }
                     else if (bridge.Body.Instructions[0].Operand is Mono.Cecil.MethodReference dependency)
-                        Check(dependency.DeclaringType.FullName == VectorAlignmentFixture.Owner(family.Width)
-                            && dependency.Name == "get_" + property && !dependency.HasThis && dependency.Parameters.Count == 0,
+                        Check(dependency.DeclaringType.Scope == core.MainModule
+                            && dependency.DeclaringType.FullName == VectorAlignmentFixture.Owner(family.Width)
+                            && dependency.Name == "get_" + property && !dependency.HasThis && dependency.Parameters.Count == 0
+                            && !dependency.ExplicitThis && !dependency.HasGenericParameters && dependency is not Mono.Cecil.GenericInstanceMethod
+                            && dependency.CallingConvention == Mono.Cecil.MethodCallingConvention.Default
+                            && dependency.ReturnType.MetadataType == (index == 2 ? Mono.Cecil.MetadataType.Boolean : Mono.Cecil.MetadataType.Int32)
+                            && dependency.Resolve() == core.MainModule.GetType(VectorAlignmentFixture.Owner(family.Width)).Methods.Single(m => m.Name == "get_" + property),
                             "bridge-facade-dependency-" + label);
                 }
             }
