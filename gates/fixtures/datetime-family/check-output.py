@@ -20,7 +20,7 @@ for folder, assembly, namespace, flag in rows:
     end = lines.index('== family end ' + assembly + ' ==', position)
     sections[assembly] = lines[position:end]
     assert end > position and not any(line.endswith(':False') for line in sections[assembly]), 'missing/failed assertions ' + assembly
-    (args.sections / (assembly + '.stdout')).write_text('\n'.join(sections[assembly]) + '\n')
+    (args.sections / (assembly + '.stdout')).write_text('\n'.join(sections[assembly]) + '\n', encoding='utf-8')
     position = end + 1
 assert lines[position:] == ['DateTime family aggregate end'], 'unaccounted aggregate output'
 

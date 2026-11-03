@@ -88,5 +88,5 @@ if a.validator_output:
     assert a.mode == 'all', 'extract validator records only from the complete native fixture'
 assert actual == expected, 'missing, false, reordered or duplicate CompareInfo witness'
 if a.validator_output:
-    a.validator_output.write_text('\n'.join(actual[validator_start:]) + '\n')
+    a.validator_output.write_text('\n'.join(actual[validator_start:]) + '\n', encoding='utf-8')
 print('dtfi-compare-info-output:' + str(sum(x.endswith(':True') for x in expected)))
