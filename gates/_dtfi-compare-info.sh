@@ -9,6 +9,7 @@ dtfi_compare_info_routes_gate() {
     cp -R "$original/." "$root/input/" || return $?
     dotnet "$fixture" "$flag" "$root/input/DtfICompareInfo.dll" "$corelib" || return $?
     [[ "$mode" != all ]] || dtfi_compare_info_validator_oracle_gate "$root/validator-oracle" "$original" || return $?
+    [[ "$mode" != all ]] || dtfi_compare_info_culture_oracle_gate "$root/culture-oracle" "$original" || return $?
     local axis out
     for axis in raw diet; do
         out="$root/$axis"
@@ -26,10 +27,18 @@ dtfi_compare_info_routes_gate() {
         fi
         gate_capture_ok "$out/native" run_bounded "${runner[@]}" || return $?
         local output_flags=(--mode "$mode")
-        [[ "$mode" != all ]] || output_flags+=(--validator-output "$out/validator.stdout")
+        [[ "$mode" != all ]] || output_flags+=(--validator-output "$out/validator.stdout" --culture-oracle "$root/culture-oracle/result.stdout")
         "$(resolve_python)" gates/fixtures/dtfi-compare-info/check-output.py "$out/native.stdout" "${output_flags[@]}" || return $?
         [[ "$mode" != all ]] || gate_output compare "$root/validator-oracle/result.stdout" "$out/validator.stdout" --policy crlf || return $?
     done
+}
+
+dtfi_compare_info_culture_oracle_gate() {
+    local root="$1" original="$2" python
+    python=$(resolve_python) || return $?
+    mkdir -p "$root"
+    gate_capture_ok "$root/result" run_bounded dotnet "$original/DtfICompareInfo.dll" initializer-culture-oracle || return $?
+    $python gates/fixtures/dtfi-compare-info/check-output.py "$root/result.stdout" --mode initializer-cultures || return $?
 }
 
 dtfi_compare_info_validator_oracle_gate() {

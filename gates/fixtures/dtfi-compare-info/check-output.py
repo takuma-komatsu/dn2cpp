@@ -3,10 +3,29 @@ import argparse
 from pathlib import Path
 p = argparse.ArgumentParser()
 p.add_argument('stdout', type=Path)
-p.add_argument('--mode', choices=['all', 'reflection', 'minimal', 'minimal-culture', 'oracle', 'validator'], default='all')
+p.add_argument('--mode', choices=['all', 'reflection', 'minimal', 'minimal-culture', 'oracle', 'validator', 'initializer-cultures'], default='all')
 p.add_argument('--validator-output', type=Path)
+p.add_argument('--culture-oracle', type=Path)
 a = p.parse_args()
 actual = a.stdout.read_bytes().replace(b'\r\n', b'\n').decode().splitlines()
+def constructor_outcomes(records):
+    names = ['', 'en-US', 'de-DE_phoneb', 'zh-CHS', 'zh-CHT', 'zh-CHS_phoneb', 'zh-CHT_phoneb', 'en/US']
+    assert len(records) == len(names), 'missing or extra initializer constructor outcome'
+    accepted = []
+    for index, name in enumerate(names):
+        prefix = f'initializer-culture:{index}|{name}|'
+        success = prefix + 'accepted'
+        refusal = prefix + 'rejected|System.Globalization.CultureNotFoundException|name|' + name
+        allowed = [success] if index < 5 else [refusal] if index == 7 else [success, refusal]
+        assert records[index] in allowed, 'initializer constructor identity, outcome or exception fields'
+        accepted.append(records[index] == success)
+    return accepted
+if a.mode == 'initializer-cultures':
+    assert not a.culture_oracle and not a.validator_output, 'constructor oracle mode has no extraction inputs'
+    constructor_outcomes(actual)
+    print('dtfi-compare-info-constructor-outcomes:8')
+    raise SystemExit(0)
+assert a.mode == 'all' or not a.culture_oracle, 'constructor oracle applies only to the complete fixture'
 expected = []
 def check(label): expected.append('dtfi-compare-info-' + label + ':True')
 def route(label):
@@ -23,6 +42,9 @@ elif a.mode == 'validator':
 elif a.mode == 'reflection':
     reflection(); expected.append('DTFI CompareInfo reflection end')
 else:
+    assert a.culture_oracle is not None, 'complete initializer checks require the independent CLR constructor oracle'
+    cultures = a.culture_oracle.read_bytes().replace(b'\r\n', b'\n').decode().splitlines()
+    accepted = constructor_outcomes(cultures)
     for family in ['dtfi', 'culture']:
         for call in ['direct', 'callvirt', 'calli']: route(family + '-' + call)
     for label in ['delegate-dtfi', 'delegate-culture', 'delegate-abi', 'cross-getter', 'cross-receiver', 'dtfi-clone-readonly']: check(label)
@@ -31,7 +53,10 @@ else:
         for mode in range(3): check(family + '-producer-' + str(mode))
     check('gc-initialized'); check('gc-identity'); expected.append('DTFI CompareInfo end')
     for index in range(7):
-        for route in ['newobj', 'call-ctor', 'seed', 'direct', 'calli']: check('initializer-' + route + '-' + str(index))
+        expected.append(cultures[index])
+        if accepted[index]:
+            for route in ['newobj', 'call-ctor', 'seed', 'direct', 'calli']: check('initializer-' + route + '-' + str(index))
+    expected.append(cultures[7])
     check('initializer-newobj-null')
     for route in range(3):
         check('initializer-null-culture-' + str(route)); check('initializer-null-receiver-' + str(route))

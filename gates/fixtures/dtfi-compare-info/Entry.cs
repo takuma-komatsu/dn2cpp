@@ -176,12 +176,42 @@ internal static class Program
         }
         return value;
     }
+    private static string[] InitializerCultureNames() => new[]
+    {
+        "", "en-US", "de-DE_phoneb", "zh-CHS", "zh-CHT", "zh-CHS_phoneb", "zh-CHT_phoneb"
+    };
+    private static CultureInfo? ObserveInitializerCulture(int index, string name)
+    {
+        CultureInfo culture;
+        try { culture = new CultureInfo(name); }
+        catch (CultureNotFoundException error)
+        {
+            bool permitted = (index == 5 && name == "zh-CHS_phoneb")
+                || (index == 6 && name == "zh-CHT_phoneb") || (index == 7 && name == "en/US");
+            if (!permitted || error.GetType() != typeof(CultureNotFoundException)
+                || error.ParamName != "name" || error.InvalidCultureName != name) throw;
+            Console.WriteLine("initializer-culture:" + index + "|" + name
+                + "|rejected|System.Globalization.CultureNotFoundException|name|" + error.InvalidCultureName);
+            return null;
+        }
+        if (index == 7) throw new InvalidOperationException("malformed initializer culture was accepted");
+        Console.WriteLine("initializer-culture:" + index + "|" + name + "|accepted");
+        return culture;
+    }
+    public static void RunInitializerCultureOracle()
+    {
+        PinCulture();
+        string[] names = InitializerCultureNames();
+        for (int i = 0; i < names.Length; i++) _ = ObserveInitializerCulture(i, names[i]);
+        _ = ObserveInitializerCulture(7, "en/US");
+    }
     private static void InitializerChecks()
     {
-        string[] names = { "", "en-US", "de-DE_phoneb", "zh-CHS", "zh-CHT", "zh-CHS_phoneb", "zh-CHT_phoneb" };
+        string[] names = InitializerCultureNames();
         for (int i = 0; i < names.Length; i++)
         {
-            var culture = new CultureInfo(names[i]);
+            var culture = ObserveInitializerCulture(i, names[i]);
+            if (culture is null) continue;
             string sortName = i == 3 ? "zh-Hans" : i == 4 ? "zh-Hant" : names[i];
             var value = CreateCompareInfo(culture);
             Check("initializer-newobj-" + i, InitializerState(value, names[i], sortName, IntPtr.Zero, true));
@@ -196,6 +226,7 @@ internal static class Program
             PointerInitSort(value, culture);
             Check("initializer-calli-" + i, InitializerState(value, "keep address name", sortName, new IntPtr(0x4321), true));
         }
+        _ = ObserveInitializerCulture(7, "en/US");
         bool observed = false;
         try { CreateCompareInfo(null!); } catch (NullReferenceException) { observed = true; }
         Check("initializer-newobj-null", observed);
@@ -415,6 +446,7 @@ internal static class Program
     private static void Main(string[] args)
     {
         if (args.Length == 1 && args[0] == "validator-oracle") RunValidatorOracle();
+        else if (args.Length == 1 && args[0] == "initializer-culture-oracle") RunInitializerCultureOracle();
         else Run();
     }
 }

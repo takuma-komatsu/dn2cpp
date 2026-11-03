@@ -52,6 +52,7 @@ datetime_family_aggregate_gate() {
         gate_capture_ok "$root/oracles/$assembly/oracle" run_bounded dotnet "$root/oracles/$assembly/input/$assembly.dll" || return $?
     done
     dtfi_compare_info_validator_oracle_gate "$root/oracles/CultureNameValidator" "gates/fixtures/dtfi-compare-info/bin/$CONFIG/$TFM" || return $?
+    dtfi_compare_info_culture_oracle_gate "$root/oracles/InitializerCulture" "gates/fixtures/dtfi-compare-info/bin/$CONFIG/$TFM" || return $?
     local axis out
     for axis in raw diet; do
         out="$root/$axis"
@@ -72,7 +73,7 @@ datetime_family_aggregate_gate() {
         "$(resolve_python)" gates/fixtures/datetime-trio/check-output.py "$out/sections/DateTimeTrio.stdout" || return $?
         "$(resolve_python)" gates/fixtures/dtfi-parser-flags/check-output.py "$out/sections/DtfIParserFlags.stdout" || return $?
         "$(resolve_python)" gates/fixtures/dtfi-name-arrays/check-output.py "$out/sections/DtfINameArrays.stdout" || return $?
-        "$(resolve_python)" gates/fixtures/dtfi-compare-info/check-output.py "$out/sections/DtfICompareInfo.stdout" --validator-output "$out/sections/CultureNameValidator.stdout" || return $?
+        "$(resolve_python)" gates/fixtures/dtfi-compare-info/check-output.py "$out/sections/DtfICompareInfo.stdout" --validator-output "$out/sections/CultureNameValidator.stdout" --culture-oracle "$root/oracles/InitializerCulture/result.stdout" || return $?
         gate_output compare "$root/oracles/CultureNameValidator/result.stdout" "$out/sections/CultureNameValidator.stdout" --policy crlf || return $?
         "$(resolve_python)" gates/fixtures/dtfi-tokenize/check-output.py "$out/sections/DtfITokenize.stdout" || return $?
         for assembly in AbbreviatedDay FullDay AbbreviatedMonth FullMonth EraName DateOnlyDeconstruct; do
