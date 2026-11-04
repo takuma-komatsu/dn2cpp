@@ -112,11 +112,34 @@ The pre-merge wrapper pins High even if a shell exports a Medium test profile,
 and its receipt does not count unselected Medium checks as passed. Existing
 High/default equivalence and High callable-retention regressions still run.
 
+The vector gates use full-driver output/status parity on Highway and scalar
+backends. The selfhost primitive gate uses the source-built aggregate and the
+tool-process fixture. These representative gates retain normal High behavior
+without rebuilding each private route and preprocessing variant. Completion
+witnesses ensure the aggregate drivers reached their final sections.
+
+Pre-merge pins `DN2CPP_VECTOR_FULL=0` and `DN2CPP_SELFHOST_PRIM_FULL=0` even when
+inherited shell settings request full coverage. Gate logs and the receipt mark
+the unselected detailed matrices as **skipped (not selected)**, never passed.
+Those matrices include repeated prefix oracles, raw/diet combinations, isolated
+retained and reflection-only routes, metadata authority/rejection checks, and
+planner/import boundaries. They are outside the normal merge selection, rather
+than prerequisite skips within a selected gate. No production optimization or
+comparison assertion is relaxed by selecting representative coverage.
+
+Full development coverage remains explicitly selectable for the relevant gate:
+
+```bash
+DN2CPP_VECTOR_FULL=1 CONFIG=Debug bash gates/build-and-run-vector-probe.sh
+DN2CPP_VECTOR_FULL=1 CONFIG=Debug bash gates/build-and-run-vector-probe-scalar.sh
+DN2CPP_SELFHOST_PRIM_FULL=1 CONFIG=Debug bash gates/build-and-run-selfhost-prim-subset.sh
+```
+
 Medium development checks remain available separately, with their original
 assertions and failure status:
 
 ```bash
-DN2CPP_KNOWN_CONSTANT_LEVELS="High Medium" CONFIG=Debug bash gates/build-and-run-selfhost-prim-subset.sh
+DN2CPP_SELFHOST_PRIM_FULL=1 DN2CPP_KNOWN_CONSTANT_LEVELS="High Medium" CONFIG=Debug bash gates/build-and-run-selfhost-prim-subset.sh
 DN2CPP_PRESERVE_CONTROL_MEDIUM=1 CONFIG=Debug bash gates/build-and-run-preserve-control.sh
 ```
 

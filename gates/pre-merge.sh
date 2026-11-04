@@ -170,6 +170,9 @@ set -uo pipefail
 # an explicit separate development check, never inherited into this receipt.
 export DN2CPP_KNOWN_CONSTANT_LEVELS=High
 export DN2CPP_PRESERVE_CONTROL_MEDIUM=0
+# Full vector/selfhost matrices are explicit development checks, not merge inputs.
+export DN2CPP_VECTOR_FULL=0
+export DN2CPP_SELFHOST_PRIM_FULL=0
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 
@@ -650,6 +653,8 @@ premerge_argv() {
         "DN2CPP_GATE_CACHE=0"
         "DN2CPP_KNOWN_CONSTANT_LEVELS=High"
         "DN2CPP_PRESERVE_CONTROL_MEDIUM=0"
+        "DN2CPP_VECTOR_FULL=0"
+        "DN2CPP_SELFHOST_PRIM_FULL=0"
         "SKIP_GODOT=$SKIP_GODOT"
         "SKIP_XCODE=$SKIP_XCODE"
         "DN2CPP_INCLUDE_CULTURE=$DN2CPP_INCLUDE_CULTURE"
@@ -2524,6 +2529,8 @@ if [ "$CULTURE_EXCLUDED" = 1 ]; then
 fi
 note "configs: $CONFIGS"
 note "stripping: High only; optional Medium checks are not selected or counted as passed."
+note "coverage: representative vector and selfhost primitive gates."
+note "optional details: vector/selfhost full matrices skipped (not selected); not counted as passed."
 if [ "$SKIP_XCODE" = 1 ]; then
     note "Xcode:  $XCODE_EXCLUDED gate(s) excluded ($XCODE_SELECTION selection)."
 else
@@ -3001,6 +3008,8 @@ if [ "$OVERALL" -eq 0 ]; then
         fi
         printf 'configs: %s\n' "$CONFIGS"
         printf 'stripping: High only; optional Medium checks not selected or counted as passed\n'
+        printf 'coverage: representative vector and selfhost primitive gates\n'
+        printf 'optional details: vector/selfhost full matrices skipped (not selected); not counted as passed\n'
         printf 'culture: %s\n' "$CULTURE_NOTE"
         printf 'strict culture reference: %s\n' "$STRICT_CULTURE_NOTE"
         # Which sources the binary the fork lane ran on was built from: a green
