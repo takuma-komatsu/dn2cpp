@@ -108,6 +108,7 @@ internal sealed partial class AssemblyDiet
 
     private void KeepMethodToken(MethodReference reference)
     {
+        NoteMediumMethod(reference);
         MarkSignatureType(reference.DeclaringType);
         MarkSignatureType(reference.ReturnType);
         foreach (var parameter in reference.Parameters) MarkSignatureType(parameter.ParameterType);
@@ -145,6 +146,7 @@ internal sealed partial class AssemblyDiet
 
     private void MarkExecutableMethod(MethodReference reference)
     {
+        NoteMediumMethod(reference);
         MarkType(reference.DeclaringType);
         MarkSignatureType(reference.ReturnType);
         foreach (var parameter in reference.Parameters) MarkSignatureType(parameter.ParameterType);

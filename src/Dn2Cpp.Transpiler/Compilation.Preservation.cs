@@ -144,6 +144,7 @@ internal sealed partial class Compilation
             || conditional && (policy.ConditionalFields.Count > 0 || policy.ConditionalMethods.Count > 0
                 || policy.ConditionalProperties.Count > 0 || policy.ConditionalEvents.Count > 0))
         {
+            NoteMediumType(TypeDesc.MakeClass(cls));
             NoteForceEmit(cls);
             _explicitReflectionKeep.Add(cls);
             TrimNoteNamedClass(cls);
@@ -322,6 +323,8 @@ internal sealed partial class Compilation
     {
         if (!Reachable.Add(method))
             return false;
+        if (_mediumOwner is not null && _reachingBindingOnlyBody)
+            _mediumMethodOwners.TryAdd(method, _mediumOwner);
         NoteConditionalPreservationUse(method.DeclaringClass);
         NoteSharedMethodReach(method);
         return true;

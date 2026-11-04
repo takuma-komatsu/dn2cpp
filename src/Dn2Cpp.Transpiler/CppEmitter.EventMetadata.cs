@@ -64,7 +64,7 @@ internal sealed partial class CppEmitter
                 string[] typeNames = cls.Context.TypeArgs.Select(type => _e.ReflectionSignatureType(type)).ToArray();
                 rows.Add(EventRow(cls.Module, handle, _e.TypeInfoRef(cls, "event row's declaring type"),
                     "nullptr", RenderConstraintSignature(handler), SymbolicDisplay(handler, typeNames, Array.Empty<string>()) + " " + name,
-                    cls.CppName + "_event_" + rows.Count, addresses, _c.IsUserModule(cls.Module)));
+                    cls.CppName + "_event_" + rows.Count, addresses, _c.KeepsTypeAttributeMetadata(cls)));
             }
             if (rows.Count == 0)
                 return null;

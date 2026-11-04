@@ -2547,12 +2547,18 @@ internal sealed partial class Compilation
                 if (!m.Module.ReflectionSummaries.TryGetValue(m.Handle, out var summary))
                     continue;
                 var app = new ReflectionApplication { Method = m, Summary = summary, Canonical = ContextIsCanonical(m.Context) };
+                bool previous = _reachingBindingOnlyBody;
+                _reachingBindingOnlyBody |= _strippingLevel == StrippingLevel.Medium && _bindingOnlyBodies.Contains(m);
                 try
                 {
                     ApplySite(app, pending.Site);
                 }
                 catch (NotSupportedException e) when (!IsMustEscape(e))
                 {
+                }
+                finally
+                {
+                    _reachingBindingOnlyBody = previous;
                 }
                 applied = true;
             }

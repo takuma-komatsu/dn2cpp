@@ -30,6 +30,8 @@
 # Repeated allocations retain older arrays' defaults without widening array type identity.
 # Integer array and captured-field stores truncate before signed or unsigned reads.
 # Captured field reads retain zero/null defaults alongside later finite writes.
+# Medium keeps static type closure, including private members and known generic
+# arguments, while metadata-only roots and retained initializers remain inert.
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_ildiet.sh"
 # The default profile keeps independent positive/negative witnesses. Full mode
@@ -47,6 +49,9 @@ DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/preserve-
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflected-event-operations:native-ildiet-and-no-ildiet|attribute-object-prefix:${DN2CPP_BEFORE_ATTRIBUTE_OBJECT:-}|named-reflection-prefix:${DN2CPP_BEFORE_NAMED_REFLECTION:-}|runtime-reflection-prefix:${DN2CPP_BEFORE_RUNTIME_REFLECTION:-}|metadata-lookup-prefix:${DN2CPP_BEFORE_METADATA_LOOKUP:-}|signature-construction-prefix:${DN2CPP_BEFORE_SIGNATURE_CONSTRUCTION:-}|signature-invocation-prefix:${DN2CPP_BEFORE_SIGNATURE_INVOCATION:-}|field-boxing-prefix:${DN2CPP_BEFORE_FIELD_BOXING:-}|field-context-prefix:${DN2CPP_BEFORE_FIELD_CONTEXT:-}|field-owner-prefix:${DN2CPP_BEFORE_FIELD_OWNER:-}|field-shape-prefix:${DN2CPP_BEFORE_FIELD_SHAPE:-}|construction-payload-prefix:${DN2CPP_BEFORE_CONSTRUCTION_PAYLOAD:-}|field-cycle-prefix:${DN2CPP_BEFORE_FIELD_CYCLE:-}|member-field-signature-prefix:${DN2CPP_BEFORE_MEMBER_FIELD_SIGNATURE:-}|member-construction-signature-prefix:${DN2CPP_BEFORE_MEMBER_CONSTRUCTION_SIGNATURE:-}|base-field-signature-prefix:${DN2CPP_BEFORE_BASE_FIELD_SIGNATURE:-}|base-construction-signature-prefix:${DN2CPP_BEFORE_BASE_CONSTRUCTION_SIGNATURE:-}|ctor-signature-invocation-prefix:${DN2CPP_BEFORE_CTOR_SIGNATURE_INVOCATION:-}|field-owner-signature-prefix:${DN2CPP_BEFORE_FIELD_OWNER_SIGNATURE:-}|interface-owner-signature-prefix:${DN2CPP_BEFORE_INTERFACE_OWNER_SIGNATURE:-}|ctor-field-owner-signature-prefix:${DN2CPP_BEFORE_CTOR_FIELD_OWNER_SIGNATURE:-}|captured-array-defaults-prefix:${DN2CPP_BEFORE_CAPTURED_ARRAY_DEFAULTS:-}|interface-array-defaults-prefix:${DN2CPP_BEFORE_INTERFACE_ARRAY_DEFAULTS:-}|external-array-defaults-prefix:${DN2CPP_BEFORE_EXTERNAL_ARRAY_DEFAULTS:-}|local-defaults-prefix:${DN2CPP_BEFORE_LOCAL_DEFAULTS:-}|reflection-depth-seeds-prefix:${DN2CPP_BEFORE_REFLECTION_DEPTH_SEEDS:-}|caller-depth-prefix:${DN2CPP_BEFORE_CALLER_DEPTH:-}|extended-depth-prefix:${DN2CPP_BEFORE_EXTENDED_DEPTH:-}|state-machine-signatures-prefix:${DN2CPP_BEFORE_STATE_MACHINE_SIGNATURES:-}|retained-absence-prefix:${DN2CPP_BEFORE_RETAINED_ABSENCE:-}|unknown-target-prefix:${DN2CPP_BEFORE_UNKNOWN_TARGET:-}|initonly-field-prefix:${DN2CPP_BEFORE_INITONLY_FIELD:-}|metadata-owners-prefix:${DN2CPP_BEFORE_METADATA_OWNERS:-}|assembly-construction-prefix:${DN2CPP_BEFORE_ASSEMBLY_CONSTRUCTION:-}|listed-owners-prefix:${DN2CPP_BEFORE_LISTED_OWNERS:-}|dispatched-target-prefix:${DN2CPP_BEFORE_DISPATCHED_TARGET:-}|written-target-prefix:${DN2CPP_BEFORE_WRITTEN_TARGET:-}|absence-values:${DN2CPP_JOINED_TARGET_NAME+set:$DN2CPP_JOINED_TARGET_NAME}:${DN2CPP_FORMED_ONLY+set:$DN2CPP_FORMED_ONLY}:${DN2CPP_CONSTRUCTED_TEMPLATE+set:$DN2CPP_CONSTRUCTED_TEMPLATE}:${DN2CPP_UNUSED_STATICS+set:$DN2CPP_UNUSED_STATICS}:${DN2CPP_USED_STATICS+set:$DN2CPP_USED_STATICS}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|repeated-arrays-prefix:${DN2CPP_BEFORE_REPEATED_ARRAYS:-}|integer-storage-prefix:${DN2CPP_BEFORE_ARRAY_NARROWING:-}|captured-scalar-defaults-prefix:${DN2CPP_BEFORE_CAPTURED_SCALAR_DEFAULTS:-}|slot-storage-prefix:${DN2CPP_BEFORE_SLOT_STORAGE:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/CutRequestCapture.cs gates/fixtures/ildiet-metadata-validation/cut_authority_admission.py gates/fixtures/ildiet-metadata-validation/selected_cut_admission.py gates/fixtures/ildiet-metadata-validation/cut_request_capture.py"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.cs gates/fixtures/ildiet-metadata-validation/check-stripping.py"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|stripping-levels:high,medium"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.Intercepts.cs gates/fixtures/ildiet-metadata-validation/intercept_retention.py"
 PYTHON=$(resolve_python) || gate_skip "no working Python 3 interpreter for ILDiet validation"
 
 PROJECT=PreserveControl
@@ -1766,6 +1771,41 @@ echo "== ILDiet payload changes invalidate behavior gate caches =="
 
 echo "== Rewritten metadata, signed identity, resources and dead assemblies =="
 build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csproj
+echo "== Medium retains static type closure without promoting metadata-only roots =="
+# shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
+$PYTHON gates/fixtures/ildiet-metadata-validation/check-stripping.py "$ILD_DLL" \
+    "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
+    "$CLI_BIN/Dn2Cpp.Transpiler.dll" "artifacts/stripping-level-tests-$CONFIG" "$CLI_DLL"
+stripping_assert_empty_output() {
+    local out="$1" program="$2"
+    gate_capture_ok "$out/assert-native" run_bounded "$out/$program$EXE_EXT" || return 1
+    : > "$out/assert-empty.stdout" || return 1
+    gate_output compare "$out/assert-native.stdout" "$out/assert-empty.stdout"
+}
+for fixture in medium retained-equality forwarded-attribute; do
+    for mode in raw full; do
+        stripping_out="artifacts/stripping-level-tests-$CONFIG/emission-$fixture-$mode"
+        compile_console "$stripping_out" MediumRetention
+        stripping_assert_empty_output "$stripping_out" MediumRetention
+        if [ "$fixture" = medium ]; then
+            echo "medium-initializers=$mode:deferred"
+        elif [ "$fixture" = retained-equality ]; then
+            echo "medium-retained-equality=$mode:deferred"
+        else
+            echo "medium-forwarded-attribute=$mode:retained"
+        fi
+    done
+done
+for fixture in retained called; do
+    for level in high medium; do
+        for mode in raw full; do
+            intercept_out="artifacts/stripping-level-tests-$CONFIG/emission-intercept-$fixture-$level-$mode"
+            compile_console "$intercept_out" InterceptRetention
+            stripping_assert_empty_output "$intercept_out" InterceptRetention
+            echo "retained-intercepts=$fixture:$level:$mode:callable"
+        done
+    done
+done
 # shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
 $PYTHON gates/fixtures/ildiet-metadata-validation/check.py "$ILD_DLL" \
     "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
