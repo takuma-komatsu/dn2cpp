@@ -56,6 +56,9 @@ source "$(dirname "$0")/_common.sh"
 source "$PWD/gates/_ildiet.sh"
 
 OUT="${1:-artifacts/selfhost-fullcli}"
+# Trailing CLI arguments select the same policy for every transpile stage.
+[ "$#" -eq 0 ] || shift
+transpile_args=("$@")
 
 echo "== 1/5 Building the full CLI =="
 build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
@@ -90,7 +93,7 @@ done
 echo "== 3/5 Emitting the full CLI from the managed transpiler (--auto-ref) =="
 rm -rf "$OUT"
 mkdir -p "$OUT"
-dotnet exec "$CLI" "$CLI" "${refs[@]}" --auto-ref --ildiet-output "$OUT/stripped" -o "$OUT"
+dotnet exec "$CLI" "$CLI" "${refs[@]}" ${transpile_args[@]+"${transpile_args[@]}"} --auto-ref --ildiet-output "$OUT/stripped" -o "$OUT"
 [ -f "$OUT/generated.cpp" ] || { echo "error: no generated.cpp produced" >&2; exit 1; }
 tus=("$OUT"/generated*.cpp)
 echo "emitted ${#tus[@]} translation unit(s), $(cat "${tus[@]}" | wc -l | tr -d ' ') C++ lines"
@@ -126,7 +129,7 @@ echo "built native binary: $OUT/dn2cpp (src $(cat "$OUT/dn2cpp.src-hash"))"
 echo "== 5/5 Fixpoint: native binary re-transpiles dn2cpp.dll, diff vs managed =="
 native_out="$OUT/native-retranspile"
 rm -rf "$native_out"; mkdir -p "$native_out"
-"./$OUT/dn2cpp" "$CLI" "${refs[@]}" --auto-ref --ildiet-output "$native_out/stripped" -o "$native_out"
+"./$OUT/dn2cpp" "$CLI" "${refs[@]}" ${transpile_args[@]+"${transpile_args[@]}"} --auto-ref --ildiet-output "$native_out/stripped" -o "$native_out"
 [ -f "$native_out/generated.cpp" ] || { echo "error: native re-transpile produced no output" >&2; exit 1; }
 fail=0
 for f in generated.h "${tus[@]##*/}"; do

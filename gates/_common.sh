@@ -2816,7 +2816,7 @@ _corelib_gate_out() {
 
 # DN2CPP_SAMPLE_PROJECT_DIR can select a nested driver whose assembly name is PROJECT.
 # _corelib_gate_core PROJECT OUT [EXTRA_BCL_NAME | -r DLL | --link-xml FILE |
-#   --reflection-metadata TYPE=LAYOUT | --cut TYPE::METHOD |
+#   --reflection-metadata TYPE=LAYOUT | --cut TYPE::METHOD | --stripping-level LEVEL |
 #   --no-metadata-compression | --no-shared-generics | --no-ildiet | --auto-ref]...
 # Extras name required references and preprocessing options. Sets _CG_CORELIB, _CG_APP,
 # _CG_OUT; the caller may preset _CG_CORELIB_IN to override the CoreLib flavour.
@@ -2850,6 +2850,15 @@ _corelib_gate_core() {
         if [ "$name" = --no-ildiet ] || [ "$name" = --no-metadata-compression ] \
                 || [ "$name" = --no-shared-generics ] || [ "$name" = --auto-ref ]; then
             refs+=("$name")
+            continue
+        fi
+        if [ "$name" = --stripping-level ]; then
+            case "${1:-}" in
+                high|medium) ;;
+                *) echo "error: $name requires high or medium" >&2; return 1 ;;
+            esac
+            refs+=("$name" "$1")
+            shift
             continue
         fi
         if [ "$name" = --reflection-metadata ]; then

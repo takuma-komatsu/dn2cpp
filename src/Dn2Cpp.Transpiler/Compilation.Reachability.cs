@@ -14,6 +14,7 @@ internal sealed partial class Compilation
 
     private void Reach(MethodInfo m)
     {
+        NoteMediumMethod(m);
         if (_reflectedTemplateBodies.Count > 0 && !_reachingReflectedTemplateBody)
             _reflectedTemplateBodies.Remove(m);
         if (NotePreserveReach(m) && _scanned.Remove(m))
@@ -263,6 +264,7 @@ internal sealed partial class Compilation
     /// used-slot model to value types).</summary>
     private void ReachAllocatedType(ClassInfo c)
     {
+        NoteMediumType(TypeDesc.MakeClass(c));
         EnsureCompleted(c);   // vtable + the Effective* overrides an instance dispatches
         // --trim-godot-classes release triggers: a user-code allocation of a wrapper
         // and a user class's engine base chain. BEFORE the dedup below on purpose —
@@ -5922,6 +5924,7 @@ internal sealed partial class Compilation
         try
         {
             var insns = ILDecoder.Decode(body.GetILBytes()!.ToImmutableArrayCompat());
+            NoteMediumBodyTypes(m, body);
             SummarizeReflection(m, body, insns);
             // Folded-guard dead arms are pruned from reachability: a dead
             // instruction's tokens never become edges. Emission prunes the same
@@ -5943,6 +5946,7 @@ internal sealed partial class Compilation
                 if (insn.Token == 0 || (uint)insn.Token >> 24 == 0x70)
                     continue;
                 var handle = SRME.EntityHandle(insn.Token);
+                NoteMediumOperand(module, handle, m.Context);
                 // boxedForFormat is a single-instruction window: it survives only to
                 // the next entity-token instruction (the call that consumes the box).
                 var prevBoxed = boxedForFormat;
@@ -6752,10 +6756,7 @@ internal sealed partial class Compilation
         // message already carries InstantiationDriver's `[chain: …]`.
         catch (NotSupportedException ex) when (!IsMustEscape(ex))
         {
-            var chain = new List<string>();
-            for (var p = m; p is not null; _predTrace.TryGetValue(p, out p))
-                chain.Add(p.DeclaringClass.FullName + "." + p.Name);
-            throw new NotSupportedException($"{m.DeclaringClass.FullName}.{m.Name}: {ex.Message} [chain: {string.Join(" <- ", chain)}]");
+            throw new NotSupportedException($"{m.DeclaringClass.FullName}.{m.Name}: {ex.Message} [chain: {ReachChain(m)}]");
         }
     }
 }
