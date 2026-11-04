@@ -118,19 +118,15 @@ internal sealed partial class Compilation
                 throw GuardedVectorAsUnsupported();
     }
 
-    private void ValidateVectorAsSupportedWhitelist(MethodInfo getter) =>
-        ValidateVectorAsSupportedWhitelistCore(getter, memory: false);
-
-    private void ValidateVectorAsSupportedWhitelistCore(MethodInfo getter, bool memory)
+    private void ValidateVectorAsSupportedWhitelist(MethodInfo getter)
     {
         var module = getter.Module;
         var reader = module.Reader;
         var il = GenericVectorGuardInstructions(getter);
         string[] names = CoreIntrinsics.IsVectorExplicitOwner(getter.DeclaringClass)
             ? new[] { "Byte", "Double", "Int16", "Int32", "Int64", "IntPtr", "UIntPtr", "SByte", "Single", "UInt16", "UInt32", "UInt64" }
-            : (memory && CoreIntrinsics.IsUnsupportedAlignedDimVector(getter.DeclaringClass)
-                || reader.StringComparer.Equals(reader.GetTypeDefinition(getter.DeclaringClass.Handle).Name, "Vector64`1")
-                    && CoreIntrinsics.IsFixedVectorManagedValueClass(getter.DeclaringClass))
+            : reader.StringComparer.Equals(reader.GetTypeDefinition(getter.DeclaringClass.Handle).Name, "Vector64`1")
+                && CoreIntrinsics.IsFixedVectorManagedValueClass(getter.DeclaringClass)
                 ? new[] { "Byte", "Double", "Int16", "Int32", "Int64", "IntPtr", "SByte", "Single", "UInt16", "UInt32", "UInt64", "UIntPtr" }
                 : throw GuardedVectorAsUnsupported();
         if (il.Count != 74 || !module.PE.GetMethodBody(getter.Rva).LocalSignature.IsNil
@@ -157,15 +153,12 @@ internal sealed partial class Compilation
                 || !reader.StringComparer.Equals(definition.Namespace, "System")
                 || !reader.StringComparer.Equals(definition.Name, names[index]))
                 throw GuardedVectorAsUnsupported();
-            ValidateVectorAsTypeOperationCore(module, il[start + 1].Token, false, memory);
-            ValidateVectorAsTypeOperationCore(module, il[start + 4].Token, true, memory);
+            ValidateVectorAsTypeOperation(module, il[start + 1].Token, false);
+            ValidateVectorAsTypeOperation(module, il[start + 4].Token, true);
         }
     }
 
-    private void ValidateVectorAsTypeOperation(Module module, int token, bool equality) =>
-        ValidateVectorAsTypeOperationCore(module, token, equality, memory: false);
-
-    private void ValidateVectorAsTypeOperationCore(Module module, int token, bool equality, bool memory)
+    private void ValidateVectorAsTypeOperation(Module module, int token, bool equality)
     {
         var handle = SRME.EntityHandle(token);
         if (handle.Kind != HandleKind.MethodDefinition) throw GuardedVectorAsUnsupported();
@@ -177,7 +170,6 @@ internal sealed partial class Compilation
             || method.Name != (equality ? "op_Equality" : "GetTypeFromHandle"))
             throw GuardedVectorAsUnsupported();
         ValidateMagnitudeResolvedDefinition(method, module, (MethodDefinitionHandle)handle);
-        if (memory) ValidateUnsupportedAlignedDependencyOwner(method.DeclaringClass, module, "Type");
         var definition = module.Reader.GetMethodDefinition(method.Handle);
         var attributes = MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig;
         if (equality) attributes |= MethodAttributes.SpecialName;

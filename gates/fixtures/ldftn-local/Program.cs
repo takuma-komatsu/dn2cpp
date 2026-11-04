@@ -21,8 +21,6 @@ if (ScalarNumericLeafFixture.Run(args)) return;
 if (ScalarNumericLeafGuards.Run(args)) return;
 if (VectorAlignmentDimFixture.Run(args)) return;
 if (VectorAlignmentDimGuards.Run(args)) return;
-if (UnsupportedAlignedDimFixture.Run(args)) return;
-if (UnsupportedAlignedDimGuards.Run(args)) return;
 if (VectorAlignmentGuards.Run(args)) return;
 if (VectorForwardingFixture.Run(args)) return;
 if (VectorForwardingGuards.Run(args)) return;

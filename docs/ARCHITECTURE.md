@@ -1422,6 +1422,14 @@ The default body's alignment check and genuine `ThrowAccessViolationException`
 body remain managed IL, preserving exception type, argument order and memory
 effects without substituting the public aligned-memory facades.
 
+Exception ordering for unsupported aligned-memory defaults is outside this
+contract. `Vector<decimal>` and fixed-width vectors over `char`, `Int128` or
+`UInt128` remain unsupported for these memory operations; the compiler rejects
+their alignment path rather than retaining a CLR-compatible exception sequence.
+The separate [deferred implementation](../deferred/unsupported-aligned-dim/README.md)
+is not compiled or run by the active gates. Supported numeric memory operations,
+their alignment guards and existing unsupported-element rejection stay active.
+
 #### Unmapped vector value methods
 
 Genuine unmapped `System.Numerics.Vector<T>` closures over nongeneric,

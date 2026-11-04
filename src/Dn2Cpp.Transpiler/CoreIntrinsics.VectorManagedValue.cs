@@ -82,9 +82,7 @@ internal static partial class CoreIntrinsics
     }
 
     internal static bool IsVectorManagedThrowHelper(MethodInfo method) =>
-        IsNumericsVectorManagedThrowHelper(method) || IsFixedVectorManagedThrowHelper(method)
-        || method.Context.MethodArgs is [var element] && IsUnsupportedAlignedDimThrowElement(method.Name, element)
-            && IsVectorManagedThrowDeclaration(method);
+        IsNumericsVectorManagedThrowHelper(method) || IsFixedVectorManagedThrowHelper(method);
 
     private static bool IsNumericsVectorManagedThrowHelper(MethodInfo method) =>
         method.Name == "ThrowForUnsupportedNumericsVectorBaseType"
@@ -97,8 +95,7 @@ internal static partial class CoreIntrinsics
             || method.Module != owner.Module || owner.Handle.IsNil || method.Handle.IsNil
             || method.IsSynthetic || method.PInvoke is not null || owner.GenericArity != 0
             || owner.Context.TypeArgs.Length != 0 || method.Context.TypeArgs.Length != 0
-            || method.Context.MethodArgs is not [var element]
-            || !(IsVectorManagedValueElement(element) || IsUnsupportedAlignedDimThrowElement(method.Name, element))
+            || method.Context.MethodArgs is not [var element] || !IsVectorManagedValueElement(element)
             || method.Attributes != (MethodAttributes.Assembly | MethodAttributes.Static | MethodAttributes.HideBySig)
             || method.ImplAttributes != MethodImplAttributes.AggressiveInlining || method.Rva == 0)
             return false;

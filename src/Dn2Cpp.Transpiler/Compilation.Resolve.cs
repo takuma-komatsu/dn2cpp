@@ -356,7 +356,6 @@ internal sealed partial class Compilation
             }
             case HandleKind.MethodSpecification:
             {
-                RejectUnsupportedAlignedDimSpecification(module, (MethodSpecificationHandle)handle, ctx);
                 RejectVectorValueMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
                 RejectScalarNumericLeafMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
                 RejectVectorAlignmentMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
@@ -497,7 +496,6 @@ internal sealed partial class Compilation
             }
             case HandleKind.MemberReference:
             {
-                if (TryResolveUnsupportedAlignedDimReference(module, (MemberReferenceHandle)handle, ctx) is { } alignedDim) return alignedDim;
                 if (TryResolveScalarNumericLeafReference(module, (MemberReferenceHandle)handle, ctx) is { } scalarNumericLeaf) return scalarNumericLeaf;
                 if (TryResolveVectorAlignmentReference(module, (MemberReferenceHandle)handle, ctx) is { } alignment) return alignment;
                 if (TryResolveConcreteVectorReductionReference(module, (MemberReferenceHandle)handle, ctx) is { } concreteReduction) return concreteReduction;
@@ -818,7 +816,6 @@ internal sealed partial class Compilation
     /// referenced by a MethodSpec, in the caller's generic context.</summary>
     public MethodInfo ResolveMethodSpec(Module module, MethodSpecificationHandle handle, GenericContext callerCtx)
     {
-        RejectUnsupportedAlignedDimSpecification(module, handle, callerCtx);
         RejectVectorValueMethodSpecification(module, handle, callerCtx);
         RejectScalarNumericLeafMethodSpecification(module, handle, callerCtx);
         RejectVectorAlignmentMethodSpecification(module, handle, callerCtx);
@@ -1482,7 +1479,6 @@ internal sealed partial class Compilation
     /// type, or a same-module non-generic definition.</summary>
     public MethodInfo ResolveMemberRefMethod(Module module, MemberReferenceHandle handle, GenericContext callerCtx)
     {
-        if (TryResolveUnsupportedAlignedDimReference(module, handle, callerCtx) is { } alignedDim) return alignedDim;
         if (TryResolveScalarNumericLeafReference(module, handle, callerCtx) is { } scalarNumericLeaf) return scalarNumericLeaf;
         if (TryResolveVectorAlignmentReference(module, handle, callerCtx) is { } alignment) return alignment;
         if (TryResolveConcreteVectorReductionReference(module, handle, callerCtx) is { } concreteReduction) return concreteReduction;
@@ -2399,7 +2395,6 @@ internal sealed partial class Compilation
     /// the member cannot be matched, so callers fall back to intrinsics.</summary>
     public MethodInfo? TryResolveMemberRefMethod(Module module, MemberReferenceHandle handle, GenericContext callerCtx)
     {
-        if (TryResolveUnsupportedAlignedDimReference(module, handle, callerCtx) is { } alignedDim) return alignedDim;
         if (TryResolveScalarNumericLeafReference(module, handle, callerCtx) is { } scalarNumericLeaf) return scalarNumericLeaf;
         if (TryResolveVectorAlignmentReference(module, handle, callerCtx) is { } alignment) return alignment;
         if (TryResolveConcreteVectorReductionReference(module, handle, callerCtx) is { } concreteReduction) return concreteReduction;

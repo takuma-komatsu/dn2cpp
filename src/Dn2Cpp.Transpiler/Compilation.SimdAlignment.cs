@@ -216,9 +216,7 @@ internal sealed partial class Compilation
             || method.IsSynthetic || method.PInvoke is not null || method.Attributes != definition.Attributes
             || method.ImplAttributes != definition.ImplAttributes || method.Rva != definition.RelativeVirtualAddress
             || method.Context.MethodArgs.Length != 0 || method.Context.TypeArgs is not [var element]
-            || (CoreIntrinsics.IsUnsupportedAlignedDimVector(vector)
-                ? !CoreIntrinsics.SameUnsupportedAlignedDimElement(element, vector.Context.TypeArgs[0])
-                : !SameTypeArg(element, vector.Context.TypeArgs[0]))
+            || !SameTypeArg(element, vector.Context.TypeArgs[0])
             || !CoreIntrinsics.IsVectorAlignmentDecodedSignature(method.Signature)) throw SimdAlignmentUnsupported();
     }
 
@@ -263,7 +261,7 @@ internal sealed partial class Compilation
         foreach (var pair in _simdAlignmentBodies)
             if (pair.Value == method)
             {
-                ValidateSimdAlignmentOwner(pair.Key.Owner, requireNumeric: !CoreIntrinsics.IsUnsupportedAlignedDimVector(pair.Key.Owner));
+                ValidateSimdAlignmentOwner(pair.Key.Owner);
                 ValidateSimdAlignmentBodyDefinition(pair.Key.Owner, pair.Key.Definition);
                 ValidateSimdAlignmentBodyModel(method, pair.Key.Owner, pair.Key.Definition);
                 return;
@@ -295,8 +293,7 @@ internal sealed partial class Compilation
         }
         else
         {
-            int width = CoreIntrinsics.IsUnsupportedAlignedDimVector(vector)
-                ? CoreIntrinsics.UnsupportedAlignedDimWidth(vector) : CoreIntrinsics.VectorValueWidth(vector);
+            int width = CoreIntrinsics.VectorValueWidth(vector);
             if (!(width == 8 ? bytes.Length == 2 && bytes[0] == 0x1e && bytes[1] == 0x2a
                 : bytes.Length == 3 && bytes[0] == 0x1f && bytes[1] == width && bytes[2] == 0x2a))
                 throw SimdAlignmentUnsupported();
