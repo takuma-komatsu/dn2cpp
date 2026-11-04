@@ -18,6 +18,7 @@ bool measure = false;
 bool verbose = false;
 bool autoRef = false;
 bool useILDiet = true;
+StrippingLevel strippingLevel = StrippingLevel.High;
 string? ildietOutput = null;
 var ildietSkipAssemblies = new List<string>();
 var linkXmlFiles = new List<string>();
@@ -230,6 +231,24 @@ for (int i = 0; i < args.Length; i++)
         // resolve, instead of requiring every transitive dependency via explicit -r.
         // Opt-in while drift vs. the explicit-ref output is being measured.
         autoRef = true;
+    }
+    else if (args[i] == "--stripping-level")
+    {
+        if (i + 1 >= args.Length)
+        {
+            Console.Error.WriteLine("error: --stripping-level expects high or medium");
+            return 1;
+        }
+        string value = args[++i];
+        if (value == "high")
+            strippingLevel = StrippingLevel.High;
+        else if (value == "medium")
+            strippingLevel = StrippingLevel.Medium;
+        else
+        {
+            Console.Error.WriteLine($"error: --stripping-level expects high or medium, got '{value}'");
+            return 1;
+        }
     }
     else if (args[i] == "--no-ildiet")
     {
@@ -506,7 +525,7 @@ if (generateBindings)
 
 if (string.IsNullOrEmpty(input))
 {
-    Console.Error.WriteLine("Usage: dn2cpp <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--direct-pinvoke <module[!entrypoint]|*>] [--auto-ref] [--no-ildiet] [--ildiet-output <dir>] [--ildiet-skip-assembly <name>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--obfuscate] [--shadow-stack] [--no-metadata-compression] [--reflection-metadata <type>=native|packed] [--trim-reflection] [--reflection-root <Type.Full.Name>] [--no-manifest-resources <Assembly>] [--manifest-resource-root <manifest.name>] [--trim-godot-classes] [--godot-class-root <Godot.Full.Name>] [--max-heap-mb <n>] [--verbose] [--dump-isa-surface <file>] [--gdextension [--godot-api <extension_api.json>]] [--dotnet-module] [--hotupdate-base] [--emit-patch <patch.dll> --base-abi <base-abi.json> [--patch-version <n>] [--patch-stackcode]] [--generate-bindings <extension_api.json>] [--check-wasm-imports <side.wasm> <main.wasm> [<main.js>] [--peer-module <peer.wasm>]...] [--print-runtime-dir]");
+    Console.Error.WriteLine("Usage: dn2cpp <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--direct-pinvoke <module[!entrypoint]|*>] [--auto-ref] [--stripping-level <high|medium>] [--no-ildiet] [--ildiet-output <dir>] [--ildiet-skip-assembly <name>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--obfuscate] [--shadow-stack] [--no-metadata-compression] [--reflection-metadata <type>=native|packed] [--trim-reflection] [--reflection-root <Type.Full.Name>] [--no-manifest-resources <Assembly>] [--manifest-resource-root <manifest.name>] [--trim-godot-classes] [--godot-class-root <Godot.Full.Name>] [--max-heap-mb <n>] [--verbose] [--dump-isa-surface <file>] [--gdextension [--godot-api <extension_api.json>]] [--dotnet-module] [--hotupdate-base] [--emit-patch <patch.dll> --base-abi <base-abi.json> [--patch-version <n>] [--patch-stackcode]] [--generate-bindings <extension_api.json>] [--check-wasm-imports <side.wasm> <main.wasm> [<main.js>] [--peer-module <peer.wasm>]...] [--print-runtime-dir]");
     return 1;
 }
 
@@ -601,6 +620,7 @@ return TranspileDriver.Run(new TranspileOptions
     ManifestResourceRoots = manifestResourceRoots,
     DirectPInvokes = directPInvokes,
     UseILDiet = useILDiet,
+    StrippingLevel = strippingLevel,
     ILDietOutput = ildietOutput,
     ILDietSkipAssemblies = ildietSkipAssemblies,
     LinkXmlFiles = linkXmlFiles,

@@ -61,4 +61,6 @@ def contract_digest(request):
             for key, value in sorted(child.attrib.items()):
                 values.extend((key, value))
             clauses.append(framed_hash(values))
-    return framed_hash(["ildiet-contract-v2", request.get("copyAll", "false"), *sorted(clauses)])
+    level = request.get("strippingLevel", "high")
+    stripping = [] if level == "high" else ["strippingLevel", level]
+    return framed_hash(["ildiet-contract-v2", request.get("copyAll", "false"), *stripping, *sorted(clauses)])
