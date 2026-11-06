@@ -164,6 +164,7 @@ internal static class BclMessages
         "Arg_ObjObjEx",
         "Arg_EnumAndObjectMustBeSameType",
         "Argument_MinMaxValue",
+        "Format_InvalidString",
         "Format_InvalidStringWithValue",
         "Format_BadDateTime",
         "Format_BadFormatSpecifier",
