@@ -7,7 +7,7 @@ namespace UnsafePtr
     // its own namespace, since reflected type names reach the output.
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -26,6 +26,9 @@ namespace UnsafePtr
             // InternalCall, and the [Intrinsic]-stub lowering of Unsafe.SizeOf /
             // Unsafe.Add — which is why it belongs in this bucket.
             CorelibSubset.Program.__GateEntry();
+            if (args.Length > 0 && args[0] == "before-function-pointer-assembly")
+                return;
+            FunctionPointerAssemblySubset.Run();
         }
     }
 }
