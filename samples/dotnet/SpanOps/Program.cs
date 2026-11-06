@@ -35,6 +35,10 @@ namespace SpanOps
                 return;
 
             SpanOverlapSubset.Run();
+            if (args.Length > 0 && args[0] == "before-marshal-bounds")
+                return;
+
+            MemoryMarshalBoundsSubset.Run();
         }
     }
 }
