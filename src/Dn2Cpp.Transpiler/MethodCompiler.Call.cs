@@ -362,8 +362,12 @@ internal sealed partial class MethodCompiler
     {
         // The raw call token, for rgctx slot keying (verified before use).
         _callSiteToken = insn.Token;
+        _callSiteOffset = insn.Offset;
         _callIsVirtual = isCallvirt;
         var handle = SRME.EntityHandle(insn.Token);
+        TaintCanonicalVectorOperation(handle);
+        TaintCanonicalFixedVectorValueOperation(handle);
+        if (_constrained?.Class is { } vectorReceiver) TaintCanonicalVectorOwner(vectorReceiver);
         EnsureCallCctorBefore(handle);
         // Enum.HasFlag(flag): both the receiver and the flag arrive as boxed Enum
         // values; the call is non-virtual (HasFlag is sealed on Enum). Test the bits
@@ -477,6 +481,82 @@ internal sealed partial class MethodCompiler
             case HandleKind.MethodDefinition:
             {
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
+                CoreIntrinsics.ValidateConcreteVectorElement(callee);
+                CoreIntrinsics.ValidateVectorFloatingPointTernary(callee);
+                CoreIntrinsics.ValidateVectorLog(callee);
+                CoreIntrinsics.ValidateVectorMagnitude(callee);
+                CoreIntrinsics.ValidateScalarNumericLeaf(callee);
+                CoreIntrinsics.ValidateBinaryIntegerEndianBody(callee);
+                CoreIntrinsics.ValidatePrimitiveParseBody(callee);
+                CoreIntrinsics.ValidateDecimalBinaryBody(callee);
+                CoreIntrinsics.ValidatePrimitiveWideConversionBody(callee);
+                CoreIntrinsics.ValidateVectorAlignment(callee);
+                CoreIntrinsics.ValidateConcreteVectorReduction(callee);
+                CoreIntrinsics.ValidateVectorAsCallable(callee);
+                if (CoreIntrinsics.IsVectorValueCandidate(callee.DeclaringClass, callee.Name))
+                {
+                    if (!CoreIntrinsics.IsVectorValueCallableMethod(callee))
+                        throw new NotSupportedException("Vector<T> value methods require an exact supported declaration");
+                    if (CoreIntrinsics.IsVectorValueMethod(callee))
+                    {
+                        EmitVectorValue(callee);
+                        return;
+                    }
+                }
+                CoreIntrinsics.ValidateKnownConstantCallable(callee);
+                if (CoreIntrinsics.IsWaitHandleRawWaitImport(callee))
+                {
+                    EmitManagedCall(callee, isCallvirt);
+                    return;
+                }
+                if (CoreIntrinsics.BrPrimitiveBigMul.Matches(callee))
+                {
+                    EmitManagedCall(callee, isCallvirt);
+                    return;
+                }
+                if ((CoreIntrinsics.IsRuntimeTypeHandleCopy(callee) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(callee))
+                    || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(callee)
+                    || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(callee)
+                    || CoreIntrinsics.IsInterpolationStaticHelper(callee)
+                    || CoreIntrinsics.IsScalarNumericLeaf(callee)
+                    || CoreIntrinsics.IsBinaryIntegerEndianBody(callee)
+                    || CoreIntrinsics.IsPrimitiveParseBody(callee)
+                    || CoreIntrinsics.IsDecimalBinaryBody(callee)
+                    || CoreIntrinsics.IsPrimitiveWideConversionBody(callee)
+                    || CoreIntrinsics.IsVectorAlignmentManagedBody(callee)
+                    || CoreIntrinsics.IsConcreteVectorReduction(callee)
+                    || CoreIntrinsics.IsResourceManagerDefaultType(callee)
+                    || CoreIntrinsics.IsPrimitiveElementHelper(callee)
+                    || CoreIntrinsics.IsCultureInfoNameValidator(callee)
+                    || CoreIntrinsics.IsStringNullTerminatedLength(callee)
+                    || CoreIntrinsics.IsSearchValuesShuffle(callee)
+                    || CoreIntrinsics.IsWaitHandleRawWaitWrapper(callee)
+                    || CoreIntrinsics.IsCancellationInvoke(callee)
+                    || CoreIntrinsics.IsKnownConstant(callee)
+                    || CoreIntrinsics.IsMemberNotFoundExceptionFactory(callee)
+                    || CoreIntrinsics.IsMemberMetadataDefinitionBase(callee)
+            || CoreIntrinsics.IsCustomAttributeDataConstructorBase(callee)
+                    || CoreIntrinsics.BrDelegateNamedConstructor.Matches(callee)
+                    || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(callee)
+                    || CoreIntrinsics.BrNullableReboxing.Matches(callee)
+                    || CoreIntrinsics.BrCustomAttributeDataMember.Matches(callee)
+                    || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(callee)
+                    || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(callee)
+                    || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(callee)
+                    || CoreIntrinsics.BrCoreClrActivationInfo.Matches(callee)
+                    || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(callee)
+                    || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(callee)
+                    || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(callee)
+                    || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(callee)
+                    || CoreIntrinsics.BrStringRawByteReference.Matches(callee)
+                    || CoreIntrinsics.BrArrayNativeLength.Matches(callee)
+                    || CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(callee)
+                    || CoreIntrinsics.BrActivatorNamed.Matches(callee)
+                    || CoreIntrinsics.BrActivatorDefault.Matches(callee))
+                {
+                    EmitManagedCall(callee, isCallvirt);
+                    return;
+                }
                 if (TryEmitSafeWaitHandleBase(callee, isCallvirt))
                     return;
                 // The intra-CoreLib runtime primitives reached only via in-CoreLib MethodDef
@@ -495,6 +575,11 @@ internal sealed partial class MethodCompiler
                 // EmitRuntimePrimitive is TOTAL over the predicate — it still selects on the
                 // shape, but an unmodeled shape leaves through a throw, never through
                 // EmitManagedCall.
+                if (CoreIntrinsics.IsInvariantCompareInfoGetter(callee))
+                {
+                    EmitManagedCall(callee, isCallvirt);
+                    return;
+                }
                 if (TryEmitMethodDefIntercept(CoreIntrinsics.MdRuntimePrimitive, callee))
                     return;
                 // Framework EventSource tracing guards: EventSource.IsEnabled() ->
@@ -618,6 +703,8 @@ internal sealed partial class MethodCompiler
                 // mapping.
                 if (TryEmitMethodDefIntercept(CoreIntrinsics.MdMemoryMarshalArrayData, callee))
                     return;
+                if (TryEmitMethodDefIntercept(CoreIntrinsics.MdMarshalStructureToPtr, callee))
+                    return;
                 // An intra-assembly call into an intrinsic-mapped type (e.g.
                 // corelib's Span<T> -> ThrowHelper) is emitted inline, not
                 // transpiled — its body is never pulled into the tree.
@@ -656,11 +743,42 @@ internal sealed partial class MethodCompiler
             }
             case HandleKind.MethodSpecification:
             {
+                _c.RejectVectorValueMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
+                _c.RejectScalarNumericLeafMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
+                _c.RejectVectorAlignmentMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
+                _c.RejectVectorLerpMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
+                _c.RejectVectorLogMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
+                _c.RejectConcreteVectorReductionMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
+                if (_c.TryResolveGuardedVectorAsSpec(_module, (MethodSpecificationHandle)handle, _method.Context) is { } vectorAs)
+                {
+                    EmitManagedCall(vectorAs, isCallvirt);
+                    return;
+                }
+                if (_c.TryResolveVectorMagnitudeSpec(_module, (MethodSpecificationHandle)handle, _method.Context) is { } vectorMagnitude)
+                {
+                    EmitManagedCall(vectorMagnitude, isCallvirt);
+                    return;
+                }
+                if (_c.TryResolveGenericVectorEstimateSpec(_module, (MethodSpecificationHandle)handle, _method.Context) is { } genericEstimate)
+                {
+                    EmitManagedCall(genericEstimate, isCallvirt);
+                    return;
+                }
                 // A generic method on an intrinsic-mapped type (e.g. Unsafe.Add<T>)
                 // is emitted inline rather than transpiling its body. The
                 // spec's method is a MemberRef across assemblies and a MethodDef
                 // within one (e.g. corelib's Span<T> -> Unsafe.Add<T>).
                 var ms = _reader.GetMethodSpecification((MethodSpecificationHandle)handle);
+                if (_c.TryResolveVectorManagedThrowSpec(_module, (MethodSpecificationHandle)handle, _method.Context) is { } vectorGuard)
+                {
+                    EmitManagedCall(vectorGuard, isCallvirt);
+                    return;
+                }
+                if (_c.IsKnownConstantSpec(_module, ms))
+                {
+                    EmitManagedCall(_c.ResolveMethodSpec(_module, (MethodSpecificationHandle)handle, _method.Context), isCallvirt);
+                    return;
+                }
                 // AsyncTaskMethodBuilder.Start<TSM> /.AwaitUnsafeOnCompleted —
                 // generic (AsyncTaskMethodBuilder<T>) or non-generic (async Task)
                 // — are emitted inline.
@@ -683,6 +801,31 @@ internal sealed partial class MethodCompiler
                 {
                     TranslateAsyncGenericIntrinsic(_c.MethodSpecMethodName(_module, ms), (MethodSpecificationHandle)handle);
                     return;
+                }
+                if (_constrained is { Kind: TypeKind.Class, Class: { } unsignedCheckedSelf }
+                    && CoreIntrinsics.IsUInt128CheckedType(unsignedCheckedSelf)
+                    && _c.MethodSpecMethodName(_module, ms) == "CreateChecked")
+                {
+                    var factory = _c.ResolveMethodSpec(_module, (MethodSpecificationHandle)handle, _method.Context);
+                    if (CoreIntrinsics.IsUInt128CheckedInterface(factory))
+                    {
+                        _c.ValidateUInt128CheckedConstrained(_module, _constrainedHandle);
+                        EmitUInt128Checked(_c.ResolveUInt128CheckedInterface(factory, unsignedCheckedSelf));
+                        _constrained = null;
+                        return;
+                    }
+                }
+                if (_constrained is { Kind: TypeKind.Class, Class: { } checkedSelf }
+                    && CoreIntrinsics.IsInt128CheckedType(checkedSelf)
+                    && _c.MethodSpecMethodName(_module, ms) == "CreateChecked")
+                {
+                    var factory = _c.ResolveMethodSpec(_module, (MethodSpecificationHandle)handle, _method.Context);
+                    if (CoreIntrinsics.IsInt128CheckedInterface(factory))
+                    {
+                        EmitInt128Checked(_c.ResolveInt128CheckedInterface(factory, checkedSelf));
+                        _constrained = null;
+                        return;
+                    }
                 }
                 // TSelf.Create{Checked,Truncating,Saturating}<TOther> reached through
                 // the closed interface instantiation (INumberBase<TSelf>.Create*, a
@@ -821,8 +964,40 @@ internal sealed partial class MethodCompiler
             }
             case HandleKind.MemberReference:
             {
+                if (_c.TryResolveScalarNumericLeafReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } scalarNumericLeaf)
+                {
+                    EmitManagedCall(scalarNumericLeaf, isCallvirt);
+                    return;
+                }
+                if (_c.TryResolveVectorAlignmentReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } alignment)
+                {
+                    EmitManagedCall(alignment, isCallvirt);
+                    return;
+                }
+                if (_c.TryResolveConcreteVectorReductionReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } concreteReduction)
+                {
+                    EmitManagedCall(concreteReduction, isCallvirt);
+                    return;
+                }
+                _c.RejectBareVectorAsReference(_module, (MemberReferenceHandle)handle, _method.Context);
                 var mr = _reader.GetMemberReference((MemberReferenceHandle)handle);
                 string mrName = _reader.GetString(mr.Name);
+                if (_c.TryResolveVectorEstimateReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } vectorEstimate)
+                {
+                    EmitVectorFloatingPointTernary(vectorEstimate);
+                    return;
+                }
+                _c.RejectUninstantiatedVectorMagnitudeReference(_module, (MemberReferenceHandle)handle, _method.Context);
+                if (_c.TryResolveVectorLogReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } vectorLog)
+                {
+                    EmitVectorLog(vectorLog);
+                    return;
+                }
+                if (_c.TryResolveConcreteVectorElementReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } concreteElement)
+                {
+                    if (TryEmitMethodDefIntercept(CoreIntrinsics.MdRuntimePrimitive, concreteElement)) return;
+                    throw new NotSupportedException("Concrete vector element access requires its exact CoreLib declaration");
+                }
                 if (mr.Parent.Kind == HandleKind.TypeSpecification)
                 {
                     var parent = _reader.GetTypeSpecification((TypeSpecificationHandle)mr.Parent).DecodeSignature(_c.SigProvider, _method.Context);
@@ -831,6 +1006,25 @@ internal sealed partial class MethodCompiler
                         TranslateArrayMethodCall(parent, mr);
                         return;
                     }
+                    if (parent is { Kind: TypeKind.Class, Class: { } vectorValueOwner }
+                        && CoreIntrinsics.IsVectorValueCandidate(vectorValueOwner, mrName))
+                    {
+                        EmitManagedCall(_c.ResolveVectorValueReference(_module, (MemberReferenceHandle)handle, _method.Context), isCallvirt);
+                        return;
+                    }
+                    if (mrName == "op_Explicit" && parent is { Kind: TypeKind.Class, Class: { } vectorOwner }
+                        && CoreIntrinsics.IsVectorExplicitOwner(vectorOwner))
+                    {
+                        var conversion = _c.ResolveMemberRefMethod(_module, (MemberReferenceHandle)handle, _method.Context);
+                        if (CoreIntrinsics.IsVectorManagedForwarder(conversion))
+                        {
+                            EmitManagedCall(conversion, isCallvirt);
+                            return;
+                        }
+                        if (TryEmitMethodDefIntercept(CoreIntrinsics.MdRuntimePrimitive, conversion))
+                            return;
+                        throw new NotSupportedException("Vector<T>.op_Explicit requires supported numeric elements");
+                    }
                     // A member on a generic Task-family async type (Task<T>,
                     // AsyncTaskMethodBuilder<T>, TaskAwaiter<T>) is emitted inline.
                     // Its signature's type params (!0) are closed by the parent's
@@ -838,6 +1032,8 @@ internal sealed partial class MethodCompiler
                     if (parent is { Kind: TypeKind.Class, Class: { IntrinsicCppName: not null } pc })
                     {
                         var pcSig = mr.DecodeMethodSignature(_c.SigProvider, pc.Context);
+                        if (TryEmitTypedGCHandleIntrinsic(pc, mrName, pcSig))
+                            return;
                         // A member/operator on a closed Vector64/128/256/512<T> / Vector<T>
                         // struct: the receiver supplies the element (instance get_Item /
                         // GetLower / get_Count have no vector in their signature), so dispatch
@@ -1135,6 +1331,11 @@ internal sealed partial class MethodCompiler
                     // Runtime primitives referenced across assemblies need the same
                     // route as an intra-CoreLib MethodDef. NativeLibrary is the
                     // important case: a user resolver calls Load through a MemberRef.
+                    if (CoreIntrinsics.IsInvariantCompareInfoGetter(real))
+                    {
+                        EmitManagedCall(real, isCallvirt);
+                        return;
+                    }
                     if (TryEmitMethodDefIntercept(CoreIntrinsics.MdRuntimePrimitive, real))
                         return;
                     // The framework EventSource tracing guards, reached as a
@@ -1516,10 +1717,95 @@ internal sealed partial class MethodCompiler
 
     private void EmitManagedCall(MethodInfo callee, bool isCallvirt)
     {
+        if (CoreIntrinsics.IsVectorManagedCountCandidate(callee.DeclaringClass, callee.Name)
+            && !CoreIntrinsics.IsVectorManagedCount(callee))
+            throw new NotSupportedException("Vector<T>.Count requires an exact supported declaration");
+        if (CoreIntrinsics.IsVectorValueCandidate(callee.DeclaringClass, callee.Name))
+        {
+            if (!CoreIntrinsics.IsVectorValueCallableMethod(callee))
+                throw new NotSupportedException("Vector<T> value methods require an exact supported declaration");
+            if (CoreIntrinsics.IsVectorValueMethod(callee))
+            {
+                EmitVectorValue(callee);
+                return;
+            }
+        }
+
+        CoreIntrinsics.ValidateConcreteVectorElement(callee);
+
+        CoreIntrinsics.ValidateVectorFloatingPointTernary(callee);
+        CoreIntrinsics.ValidateVectorLog(callee);
+        CoreIntrinsics.ValidateVectorMagnitude(callee);
+
+        CoreIntrinsics.ValidateScalarNumericLeaf(callee);
+        CoreIntrinsics.ValidateBinaryIntegerEndianBody(callee);
+        CoreIntrinsics.ValidatePrimitiveParseBody(callee);
+        CoreIntrinsics.ValidateDecimalBinaryBody(callee);
+        CoreIntrinsics.ValidatePrimitiveWideConversionBody(callee);
+        CoreIntrinsics.ValidateVectorAlignment(callee);
+        CoreIntrinsics.ValidateConcreteVectorReduction(callee);
+
+        CoreIntrinsics.ValidateVectorAsCallable(callee);
+        if (CoreIntrinsics.IsVectorFloatingPointTernary(callee))
+        {
+            EmitVectorFloatingPointTernary(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsVectorMagnitude(callee))
+        {
+            EmitVectorMagnitude(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsVectorLog(callee))
+        {
+            EmitVectorLog(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsConcreteVectorElement(callee))
+        {
+            EmitConcreteVectorElement(callee);
+            return;
+        }
+
+        if (callee.Name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(callee.DeclaringClass)
+            && !CoreIntrinsics.IsVectorManagedForwarder(callee))
+        {
+            if (!CoreIntrinsics.IsVectorExplicit(callee))
+                throw new NotSupportedException($"Vector<T>.op_Explicit requires its exact supported CoreLib declaration (EmitManagedCall: {callee.DeclaringClass.FullName} -> {callee.Signature.ReturnType})");
+            EmitVectorExplicit(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsInvariantCompareInfoGetter(callee))
+        {
+            if (isCallvirt && !_c.IsNativeInvariantCompareInfoReceiver(_method, _callSiteOffset, callee))
+                _c.NoteInvariantCompareInfoDispatchDemand(callee);
+            EmitRuntimePrimitive(callee);
+            return;
+        }
+
         // Target-specific call intrinsics (e.g. Godot shim methods) get first
         // refusal; the core emitter itself has no target knowledge.
         if (_intrinsics is not null && _intrinsics.TryEmitCall(this, callee, isCallvirt))
             return;
+
+        if (isCallvirt && CoreIntrinsics.IsCustomAttributeDataConstructorBase(callee))
+        {
+            var receiver = Pop();
+            Push(StackKind.Ref, "Dn2CppMethodRef*", $"dn2cpp_attrdata_constructor_virtual({Cast(receiver, "Dn2CppObject*")})");
+            return;
+        }
+
+        if (isCallvirt && CoreIntrinsics.IsMemberMetadataDefinitionBase(callee))
+        {
+            var other = Pop();
+            var receiver = Pop();
+            Push(StackKind.I4, "int32_t", $"dn2cpp_memberinfo_has_same_metadata({Cast(receiver, "Dn2CppObject*")}, {Cast(other, "Dn2CppObject*")})");
+            return;
+        }
 
         if (Compilation.RuntimeNumericProviderConsumer(callee))
             FormatProviderDispatchArgs(_stack[^1]);
@@ -1839,6 +2125,55 @@ internal sealed partial class MethodCompiler
         if (_constrained is { } c && isCallvirt)
         {
             EmitConstrainedCall(callee, c);
+            return;
+        }
+
+        if (!isCallvirt && SharedTrial
+            && (CoreIntrinsics.IsBinaryIntegerEndianSlotCandidate(callee)
+                || BinaryIntegerEndianContract.IsDefault(callee.Name)
+                    && Comp.GenericDefFullName(callee.DeclaringClass) == "System.Numerics.IBinaryInteger")
+            && (Compilation.ContainsCanonPlaceholder(callee.DeclaringClass)
+                || _constrained is not null && Compilation.ContainsCanonPlaceholder(_constrained)))
+            ThrowSharedTaint("binary-integer-endian", callee.DeclaringClass.FullName);
+        if (!isCallvirt && _c.TryResolveBinaryIntegerEndianCall(_constrained, callee) is { } endianBody)
+        {
+            var arguments = PopArgs(callee, hasThis: false);
+            EmitCallResult(endianBody, DirectCall(endianBody, arguments));
+            EmitByRefSlotFixups();
+            return;
+        }
+
+        if (!isCallvirt && SharedTrial && CoreIntrinsics.IsPrimitiveParseSlotCandidate(callee)
+            && (Compilation.ContainsCanonPlaceholder(callee.DeclaringClass)
+                || _constrained is not null && Compilation.ContainsCanonPlaceholder(_constrained)))
+            ThrowSharedTaint("primitive-span-parse", callee.DeclaringClass.FullName);
+        if (!isCallvirt && _c.TryResolvePrimitiveParseCall(_constrained, callee) is { } parseBody)
+        {
+            var arguments = PopArgs(callee, hasThis: false);
+            EmitCallResult(parseBody, DirectCall(parseBody, arguments));
+            EmitByRefSlotFixups();
+            return;
+        }
+
+        if (!isCallvirt && SharedTrial && CoreIntrinsics.IsPrimitiveWideConversionSlotFamily(callee)
+            && (Compilation.ContainsCanonPlaceholder(callee.DeclaringClass)
+                || _constrained is not null && Compilation.ContainsCanonPlaceholder(_constrained)))
+            ThrowSharedTaint("primitive-wide-conversion", callee.DeclaringClass.FullName);
+        if (!isCallvirt && _c.TryResolvePrimitiveWideConversionCall(_constrained, callee) is { } wideConversion)
+        {
+            var arguments = PopArgs(callee, hasThis: false);
+            EmitCallResult(wideConversion, DirectCall(wideConversion, arguments));
+            EmitByRefSlotFixups();
+            return;
+        }
+
+        if (!isCallvirt && SharedTrial && Compilation.IsSimdAlignmentSlotCandidate(callee)
+            && Compilation.ContainsCanonPlaceholder(callee.DeclaringClass))
+            ThrowSharedTaint("simd-alignment", callee.DeclaringClass.FullName);
+        if (!isCallvirt && _c.TryResolveSimdAlignmentCall(_module, SRME.EntityHandle(_callSiteToken),
+            _method.Context, _constrainedHandle, _constrained, callee) is { } alignmentBody)
+        {
+            EmitCallResult(alignmentBody, DirectCall(alignmentBody, PopArgs(callee, hasThis: false)));
             return;
         }
 
@@ -2253,7 +2588,7 @@ internal sealed partial class MethodCompiler
             }
         }
         else if (isCallvirt && callee.IsVirtual
-            && CoreIntrinsics.BrEnumInstanceFormat.Matches(callee.DeclaringClass.FullName, callee.Name))
+            && CoreIntrinsics.BrEnumInstanceFormat.Matches(callee))
         {
             // An enum's virtual-final ToString(IFormatProvider) / ToString(string,
             // IFormatProvider) / GetTypeCode / CompareTo(object) reached as a callvirt on a
@@ -2270,6 +2605,13 @@ internal sealed partial class MethodCompiler
             // Object::ToString/Equals/GetHashCode forms take their own direct/intrinsic routes
             // (Equals/GetHashCode land on dn2cpp_object_* — never on Enum's symbol) and never reach
             // here.
+            call = DirectCall(callee, args);
+        }
+        else if (isCallvirt && ((CoreIntrinsics.IsRuntimeTypeArrayRank(callee) || CoreIntrinsics.IsRuntimeTypeEnumName(callee) || CoreIntrinsics.IsRuntimeTypeEnumDefined(callee) || CoreIntrinsics.IsRuntimeTypeAssignableFrom(callee) || CoreIntrinsics.IsRuntimeTypeTypeCode(callee)) || CoreIntrinsics.IsRuntimeTypeMakeCompound(callee) || CoreIntrinsics.IsRuntimeTypeMakeArray(callee)
+            || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(callee) || (CoreIntrinsics.IsRuntimeTypeAssemblyGetter(callee) || CoreIntrinsics.IsRuntimeTypeModuleGetter(callee))
+            || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(callee) || CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(callee) || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(callee) || CoreIntrinsics.IsRuntimeTypeHasElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsArrayOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsByRefOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsPrimitiveOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsPointerOverride(callee) || CoreIntrinsics.IsRuntimeTypeElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(callee)))
+        {
+            // The selected sealed native receiver has no CoreCLR virtual slots.
             call = DirectCall(callee, args);
         }
         else if (isCallvirt && callee.IsVirtual)
@@ -2770,19 +3112,8 @@ internal sealed partial class MethodCompiler
             return true;
         }
 
-        // IBinaryInteger<TSelf>.ReadBigEndian(ReadOnlySpan<byte> source, bool isUnsigned)
-        // -> TSelf. A static-virtual whose DEFAULT interface body calls the static-abstract
-        // TryReadBigEndian (an InternalCall with no IL) and throws OverflowException on
-        // failure — dn2cpp_read_big_endian reproduces both: it reads the span big-endian,
-        // sign/zero-extends per isUnsigned, and raises the catchable OverflowException when
-        // the value does not fit TSelf. Reached from System.Formats.Tar (GNU/PAX base-256
-        // numeric fields) closed to Int32/Int64. TSelf is the (substituted) return type.
-        // Only the ReadOnlySpan/Span<byte> overload is modeled — the (byte[], …) overloads
-        // are a loud decline (Tar uses the span form); a name-gated route may DECLINE a
-        // shape but must never POP the wrong one, so the shape is matched before any Pop.
-        // Same predicate the reach-side cut asks (Compilation.IsInterceptedReadBigEndian),
-        // called here at this asker's own position (cut ⟹ route): the reach cut deletes the
-        // DIM body, so this route must name none of it.
+        // The residual sub-word shortcut shares its predicate with reachability.
+        // Admitted endian owners keep the genuine default and concrete TryRead IL.
         if (Comp.IsInterceptedReadBigEndian(callee))
         {
             var rbeSelf = callee.Signature.ReturnType;
@@ -3337,8 +3668,10 @@ internal sealed partial class MethodCompiler
         var args2 = new List<string> { typedObj };
         for (int i = 0; i < rawArgs.Length; i++)
             args2.Add(Cast(rawArgs[i], CppTypes.Of(ps[i])));
-        // A non-virtual callee has no slot: the object runs its own body.
-        if (!callee.IsVirtual)
+        // Nonvirtual and selected sealed native-Type calls enter their own bodies.
+        if (!callee.IsVirtual || (CoreIntrinsics.IsRuntimeTypeArrayRank(callee) || CoreIntrinsics.IsRuntimeTypeEnumName(callee) || CoreIntrinsics.IsRuntimeTypeEnumDefined(callee) || CoreIntrinsics.IsRuntimeTypeAssignableFrom(callee) || CoreIntrinsics.IsRuntimeTypeTypeCode(callee)) || CoreIntrinsics.IsRuntimeTypeMakeCompound(callee) || CoreIntrinsics.IsRuntimeTypeMakeArray(callee)
+            || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(callee) || (CoreIntrinsics.IsRuntimeTypeAssemblyGetter(callee) || CoreIntrinsics.IsRuntimeTypeModuleGetter(callee))
+            || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(callee) || CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(callee) || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(callee) || CoreIntrinsics.IsRuntimeTypeHasElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsArrayOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsByRefOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsPrimitiveOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsPointerOverride(callee) || CoreIntrinsics.IsRuntimeTypeElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(callee))
         {
             EmitCallResult(callee, DirectCall(callee, args2));
             return;
@@ -3498,6 +3831,14 @@ internal sealed partial class MethodCompiler
     internal static bool IsCancellationTokenValue(TypeDesc t) =>
         t is { Kind: TypeKind.Class, Class: { IsValueType: true, FullName: "System.Threading.CancellationToken" } };
 
+    // GCHandle's opaque cell is not described by its managed _handle field layout.
+    internal static bool IsGCHandleValue(TypeDesc t) =>
+        t is { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false,
+            FullName: "System.Runtime.InteropServices.GCHandle", GenericArity: 0,
+            IntrinsicCppName: "Dn2CppGCHandle" } c }
+        && c.Module.AssemblyName == "System.Private.CoreLib"
+        && c.Context.TypeArgs.Length == 0;
+
     private string EqualityHashExpr(TypeDesc keyType, StackEntry key)
     {
         if (keyType.IsCanonPlaceholder && !keyType.IsObject)
@@ -3508,8 +3849,16 @@ internal sealed partial class MethodCompiler
             return PrimitiveHashExpr(keyType, key);
         if (keyType is { Kind: TypeKind.Class, Class.IsEnum: true })
             return $"(int32_t)({Cast(key, "int32_t")})";
+        if (CoreIntrinsics.IsVectorValueType(keyType))
+            return $"dn2cpp_vec_value_hash<{CppTypes.StorageOf(keyType.Class!.Context.TypeArgs[0])}, {CoreIntrinsics.VectorValueWidth(keyType.Class)}>({Cast(key, keyType.Class.IntrinsicCppName!)})";
         if (IsCancellationTokenValue(keyType))
             return $"(int32_t)(uintptr_t)(({Cast(key, "Dn2CppCancelToken")}).source)";
+        if (IsGCHandleValue(keyType))
+        {
+            // Match the existing public GCHandle.GetHashCode token conversion.
+            string handle = $"(uint64_t)dn2cpp_gchandle_to_intptr({Cast(key, "Dn2CppGCHandle")})";
+            return $"(int32_t)(({handle}) ^ (({handle}) >> 32))";
+        }
         // A reference-type key (a record/class with value equality, System.Type for
         // a record's EqualityContract, or plain object identity) dispatches its
         // GetHashCode override via the type-info slot, else an identity hash.
@@ -3658,6 +4007,8 @@ internal sealed partial class MethodCompiler
             || IsReferenceKeyType(t)
             || IntrinsicValueTypeFn(t) is not null
             || IsCancellationTokenValue(t)
+            || CoreIntrinsics.IsVectorValueType(t)
+            || IsGCHandleValue(t)
             || IntrinsicPointerValueType(t) is not null
             || (EqualityStructArm(t) is { } sc
                 && (Compilation.EffectiveTypedEquals(sc) is not null
@@ -3716,8 +4067,12 @@ internal sealed partial class MethodCompiler
             string ect = CppTypes.Of(keyType);
             return $"(({Cast(a, ect)}) == ({Cast(b, ect)}) ? 1 : 0)";
         }
+        if (CoreIntrinsics.IsVectorValueType(keyType))
+            return $"dn2cpp_vec_value_equals<{CppTypes.StorageOf(keyType.Class!.Context.TypeArgs[0])}, {CoreIntrinsics.VectorValueWidth(keyType.Class)}>({Cast(a, keyType.Class.IntrinsicCppName!)}, {Cast(b, keyType.Class.IntrinsicCppName!)})";
         if (IsCancellationTokenValue(keyType))
             return $"((({Cast(a, "Dn2CppCancelToken")}).source == ({Cast(b, "Dn2CppCancelToken")}).source) ? 1 : 0)";
+        if (IsGCHandleValue(keyType))
+            return $"(dn2cpp_gchandle_to_intptr({Cast(a, "Dn2CppGCHandle")}) == dn2cpp_gchandle_to_intptr({Cast(b, "Dn2CppGCHandle")}) ? 1 : 0)";
         // The closed element type decides whether GenericEqualityComparer<T> calls
         // IEquatable<T>.Equals. A shared body reads that type from its call-site
         // context; the receiver's runtime type may implement other instantiations.
@@ -4083,6 +4438,17 @@ internal sealed partial class MethodCompiler
             HandleKind.MethodDefinition => _reader.GetString(_reader.GetMethodDefinition((MethodDefinitionHandle)handle).Name),
             _ => "",
         };
+        if (c is { Kind: TypeKind.Class, Class: { } vector }
+            && CoreIntrinsics.IsVectorValueCandidate(vector, name))
+        {
+            _c.ValidateVectorValueReceiver(_module, _constrainedHandle, _method.Context, vector);
+            var valueMethod = _c.ValidateVectorValueConstrained(_module, handle, _method.Context, vector);
+            if (CoreIntrinsics.IsVectorValueMethod(valueMethod))
+            {
+                EmitVectorValue(valueMethod);
+                return true;
+            }
+        }
         // Object.GetType is not virtual, so no value type implements it: the call boxes
         // the receiver and reads the box's type, which is c itself — or, for a
         // Nullable<T>, T when it has a value and a null box that faults when it has none.
@@ -4158,6 +4524,8 @@ internal sealed partial class MethodCompiler
                     return true;
                 }
             }
+            if (TryEmitTypedGCHandleIntrinsic(ivc, name, csig))
+                return true;
             // A vector struct virtual reached via `constrained. callvirt` (e.g.
             // IEquatable<Vector128<T>>.Equals): dispatch with the closed element, like the
             // TypeSpec member path. Equals(object)/GetHashCode/ToString fall through.

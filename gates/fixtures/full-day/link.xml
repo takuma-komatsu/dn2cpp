@@ -1,0 +1,7 @@
+<linker>
+  <assembly fullname="System.Private.CoreLib">
+    <type fullname="System.Globalization.DateTimeFormatInfo" preserve="nothing">
+      <method name="GetDayName" />
+    </type>
+  </assembly>
+</linker>

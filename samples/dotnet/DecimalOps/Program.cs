@@ -30,6 +30,13 @@ namespace DecimalOps
             NegativeZeroSubset.Program.Run();
             if (args.Length > 0 && args[0] == "before-decimal-bits") return;
             Dn2Cpp.DecimalBitsSubset.Run();
+            if (args.Length > 0 && args[0] == "before-oa-currency") return;
+            Dn2Cpp.DecimalCurrencySubset.Run();
+            if (args.Length > 0 && args[0] == "before-decimal-scale") return;
+            Dn2Cpp.DecimalScaleSubset.Run();
+            if (args.Length > 0 && args[0] == "before-decimal-divmod") return;
+            Dn2Cpp.DecimalDivModSubset.Run();
+            Dn2Cpp.DecimalBinarySubset.Run();
         }
     }
 }

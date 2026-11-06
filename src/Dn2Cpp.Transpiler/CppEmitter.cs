@@ -836,6 +836,7 @@ internal sealed partial class CppEmitter
         _definedBodySymbols = new HashSet<string>(compiledMethods.Count, StringComparer.Ordinal);
         foreach (var m in compiledMethods)
             _definedBodySymbols.Add(m.CppName);
+        _c.ValidateInvariantCompareInfoDispatch();
         AssertCalledBodiesEmitted();
         AssertNoAllocClosures(compiledMethods);
         Timing.Mark("compile-bodies");
@@ -1021,6 +1022,7 @@ internal sealed partial class CppEmitter
         _c.ComputeReflectionKeepSet();
         EmitTypeInfos(o);
         EmitReflectionTypeTokens(o);
+        _c.ValidateInvariantCompareInfoDispatch();
         // Every ti_ an emitted body named is now either defined by the type-info emission
         // just run or a genuine hole; assert the former before the C++ link finds the latter.
         AssertNamedTypeInfosDefined();
@@ -1034,6 +1036,7 @@ internal sealed partial class CppEmitter
         // The Console.Error managed-writer singleton accessor: after the type
         // infos (ti_ handles) and method forward decls (the ctor prototype) it references.
         EmitConsoleErrorWriterAccessor(o);
+        EmitInvariantCompareInfoFactories(o);
         // Hot-update base build: hash the canonical ABI contract over the emitted
         // classes (now final — bodies compiled, opaque fill done) into the base
         // binary, pre-emit the N2M vtable trampolines the patch loader installs
@@ -2123,13 +2126,66 @@ internal sealed partial class CppEmitter
     private bool HasReplacedBody(ClassInfo cls, MethodInfo m) =>
         m.Rva == 0 || m.IsSynthetic
         || CoreIntrinsics.BrHttpShim.Matches(cls.FullName, m.Name)
-        || CoreIntrinsics.BrEnumInstanceFormat.Matches(cls.FullName, m.Name)
+        || CoreIntrinsics.BrEnumStaticFormat.Matches(m)
+        || CoreIntrinsics.BrEnumInstanceFormat.Matches(m)
+        || CoreIntrinsics.BrEnumElementType.Matches(m)
+        || CoreIntrinsics.BrEnumScalarGetName.Matches(m)
+        || CoreIntrinsics.BrEnumUnderlyingType.Matches(m)
         || CoreIntrinsics.BrLifetimeDispose.Matches(cls.FullName, m.Name)
         || CoreIntrinsics.BrDelegateClone.Matches(cls.FullName, m.Name)
+        || CoreIntrinsics.BrDelegateValue.Matches(m)
+        || CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(m)
+        || CoreIntrinsics.BrPrimitiveBigMul.Matches(m)
+        || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(m)
+        || CoreIntrinsics.BrNullableReboxing.Matches(m)
+        || CoreIntrinsics.BrCustomAttributeDataMember.Matches(m)
+        || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(m)
+        || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(m)
+        || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(m)
+        || CoreIntrinsics.BrCoreClrActivationInfo.Matches(m)
+        || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(m)
+        || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(m)
+        || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(m)
+        || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(m)
+        || CoreIntrinsics.BrStringRawByteReference.Matches(m)
+        || CoreIntrinsics.BrArrayNativeLength.Matches(m)
+        || CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(m)
+        || CoreIntrinsics.BrActivatorNamed.Matches(m)
+        || CoreIntrinsics.BrActivatorDefault.Matches(m)
+        || CoreIntrinsics.BrCoreClrDelegateVmConstructor.Matches(m)
+        || CoreIntrinsics.BrDelegateNamedConstructor.Matches(m)
+        || CoreIntrinsics.BrMulticastAccessor.Matches(m)
+        || CoreIntrinsics.BrMulticastOperation.Matches(m)
+        || CoreIntrinsics.BrMulticastFactory.Matches(m)
         || _c.PInvokeFtnTargets.Contains(m) || _c.IntrinsicFtnTargets.Contains(m)
         || _c.InterceptFtnTargets.Contains(m) || CoreIntrinsics.MdComparerCompare.Matches(m)
         || _c.IsUnorderableComparerCompareBody(m)
-        || CoreIntrinsics.IsIntrinsicType(cls.FullName);
+        || CoreIntrinsics.IsIntrinsicType(cls.FullName) && !(CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(m))
+            && !CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
+            && !CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(m)
+            && !CoreIntrinsics.IsInterpolationStaticHelper(m)
+            && !CoreIntrinsics.IsScalarNumericLeaf(m)
+            && !CoreIntrinsics.IsBinaryIntegerEndianBody(m)
+            && !CoreIntrinsics.IsPrimitiveParseBody(m)
+            && !CoreIntrinsics.IsDecimalBinaryBody(m)
+            && !CoreIntrinsics.IsPrimitiveWideConversionBody(m)
+            && !CoreIntrinsics.IsVectorAlignmentManagedBody(m)
+            && !CoreIntrinsics.IsConcreteVectorReduction(m)
+            && !CoreIntrinsics.IsResourceManagerDefaultType(m)
+            && !CoreIntrinsics.IsPrimitiveElementHelper(m)
+            && !CoreIntrinsics.IsCultureInfoNameValidator(m)
+            && !CoreIntrinsics.IsStringNullTerminatedLength(m)
+            && !CoreIntrinsics.IsSearchValuesShuffle(m)
+            && !CoreIntrinsics.IsWaitHandleRawWaitWrapper(m)
+            && !CoreIntrinsics.IsCancellationInvoke(m)
+            && !CoreIntrinsics.IsKnownConstant(m)
+            && !CoreIntrinsics.IsVectorManagedThrowHelper(m)
+            && !CoreIntrinsics.IsGenericVectorEstimate(m)
+            && !CoreIntrinsics.IsGuardedVectorAs(m)
+            && !CoreIntrinsics.IsVectorManagedForwarder(m)
+            && !CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
+            && !CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
+            && !CoreIntrinsics.IsCustomAttributeDataConstructorBase(m);
 
     private ParallelBodyResult CompileParallelBody(
         MethodInfo m, LiteralPool literals, bool planning)
@@ -2180,7 +2236,8 @@ internal sealed partial class CppEmitter
                             $"dn2cpp: shared-generics unsupported {m.CppName}: {unsupported.Message}");
                     return;
                 }
-                throw error;
+                if (diagnostics is null || Compilation.IsMustEscape(error))
+                    throw error;
             }
             if (diagnostics is not null && !Compilation.IsMustEscape(error))
             {
@@ -2410,9 +2467,19 @@ internal sealed partial class CppEmitter
                 // whose complete method identity produces the same symbol.
                 if (!mintedSymbols.Add(m.CppName))
                     continue;
-                emitBody?.Invoke(m, new MethodCompiler(_c, m, literals, _backend)
-                    .CompileSynthesizedValueBody());
-                compiledMethods.Add(m);
+                try
+                {
+                    if (emitBody is not null || diagnostics is not null)
+                    {
+                        string body = new MethodCompiler(_c, m, literals, _backend).CompileSynthesizedValueBody();
+                        emitBody?.Invoke(m, body);
+                    }
+                    compiledMethods.Add(m);
+                }
+                catch (Exception ex) when (diagnostics is not null && !Compilation.IsMustEscape(ex))
+                {
+                    diagnostics.Add(MeasureGap.From("compile", m, ex));
+                }
             }
             if (batch.Count == 0 && minted.Count == 0 && !rgctxFilled)
             {
@@ -2542,274 +2609,354 @@ internal sealed partial class CppEmitter
                                 emitBody, compiledMethods, diagnostics);
                             continue;
                         }
-                        // A System.Net.Http method whose body dn2cpp replaces (the transport overrides,
-                        // the ClientCertificateOptions accessors — the BodyReplace row CoreIntrinsics.
-                        // BrHttpShim, whose other asker is Compilation.Reach): emit the synthesized body
-                        // (CompileHttpShimBody) in place of the real IL that reachability cut. Like
-                        // the minted value-body arm above, the planning pass leaves emitBody null,
-                        // so the null-conditional skips the compile — the shim edge was already
-                        // reached in Compilation.Reach, so no discovery is lost.
-                        if (CoreIntrinsics.BrHttpShim.Matches(cls.FullName, m.Name))
+                        try
                         {
-                            emitBody?.Invoke(m, new MethodCompiler(_c, m, literals, _backend)
-                                .CompileHttpShimBody());
-                            compiledMethods.Add(m);
-                            continue;
-                        }
-                        // System.Enum's instance ToString/GetTypeCode/value-trio/GetValue — the
-                        // BodyReplace row CoreIntrinsics.BrEnumInstanceFormat, whose other asker is Compilation.Reach:
-                        // emit the synthesized enum-format body in place of the real IL that
-                        // reachability cut. Like the HTTP shim above, the planning pass leaves emitBody
-                        // null so the null-conditional skips the compile.
-                        if (CoreIntrinsics.BrEnumInstanceFormat.Matches(cls.FullName, m.Name))
-                        {
-                            emitBody?.Invoke(m, new MethodCompiler(_c, m, literals, _backend)
-                                .CompileEnumInstanceFormatBody());
-                            compiledMethods.Add(m);
-                            continue;
-                        }
-                        if (CoreIntrinsics.BrLifetimeDispose.Matches(cls.FullName, m.Name)
-                            || CoreIntrinsics.BrDelegateClone.Matches(cls.FullName, m.Name))
-                        {
-                            var wrapper = new MethodCompiler(_c, m, literals, _backend)
-                                .CompileCoreIntrinsicWrapper()
-                                ?? throw new NotSupportedException($"{cls.FullName}.{m.Name}: unsupported retained intrinsic body");
-                            emitBody?.Invoke(m, wrapper);
-                            compiledMethods.Add(m);
-                            continue;
-                        }
-                        // An address-taken bodyless P/Invoke (ldftn / delegate method group
-                        // over a [DllImport] that lowers to a direct native call): synthesize
-                        // a forwarder from the same P/Invoke lowering a call site gets.
-                        if (_c.PInvokeFtnTargets.Contains(m))
-                        {
-                            var forwarder = new MethodCompiler(_c, m, literals, _backend)
-                                    .CompilePInvokeWrapper()
-                                ?? throw new NotSupportedException(
-                                    $"taking the address of {m.DeclaringClass.FullName}::{m.Name} " +
-                                    "(delegate method group / function pointer over a [DllImport]): " +
-                                    "the import's shape is not marshallable, so no forwarder body " +
-                                    "can be synthesized");
-                            emitBody?.Invoke(m, forwarder);
-                            compiledMethods.Add(m);
-                            continue;
-                        }
-                        // An address-taken method of an intrinsic-mapped type (ldftn /
-                        // delegate method group, e.g. Char.IsDigit): no real body is ever
-                        // transpiled — synthesize one from the call intrinsic's lowering.
-                        if (_c.IntrinsicFtnTargets.Contains(m))
-                        {
-                            var wrapper = new MethodCompiler(_c, m, literals, _backend)
-                                    .CompileCoreIntrinsicWrapper();
-                            if (wrapper is null && _c.RuntimeInterfaceLowerings.ContainsKey(m))
+                            // A System.Net.Http method whose body dn2cpp replaces (the transport overrides,
+                            // the ClientCertificateOptions accessors — the BodyReplace row CoreIntrinsics.
+                            // BrHttpShim, whose other asker is Compilation.Reach): emit the synthesized body
+                            // (CompileHttpShimBody) in place of the real IL that reachability cut. Like
+                            // the minted value-body arm above, normal planning skips this compile;
+                            // measure validates it even though its output sink is null.
+                            if (CoreIntrinsics.BrHttpShim.Matches(cls.FullName, m.Name))
                             {
-                                _c.ReachRuntimeInterfaceBody(m);
-                                compiled.Remove(m);
-                                reachCursor = 0;
+                                if (emitBody is not null || diagnostics is not null)
+                                {
+                                    string body = new MethodCompiler(_c, m, literals, _backend).CompileHttpShimBody();
+                                    emitBody?.Invoke(m, body);
+                                }
+                                compiledMethods.Add(m);
                                 continue;
                             }
-                            if (wrapper is null)
-                                throw new NotSupportedException(
-                                    $"taking the address of {m.DeclaringClass.FullName}::{m.Name} " +
-                                    "(delegate method group / function pointer): the method has no " +
-                                    "intrinsic lowering to synthesize a function body from");
-                            emitBody?.Invoke(m, wrapper);
-                            compiledMethods.Add(m);
-                            continue;
-                        }
-                        // System.Collections.Comparer.Compare is body-intercepted — the THIRD mouth
-                        // of the row whose call-site mouths are CoreIntrinsics.MdComparerCompare /
-                        // MrComparerCompare: synthesize from the intrinsic lowering
-                        // (-> dn2cpp_object_compare) instead of transpiling the real IL, so the
-                        // IComparer.Compare slot — how ArrayList.Sort()/SortedList and the
-                        // non-generic boxed sort/search reach Comparer.Default — points at the
-                        // boxed-object order, which handles a boxed primitive (the real body's
-                        // `x as IComparable` cannot). The synthesized body carries Comparer.Compare's
-                        // own symbol, so the slot, any ldftn and a direct call all resolve to it.
-                        if (CoreIntrinsics.MdComparerCompare.Matches(m))
-                        {
-                            var wrapper = new MethodCompiler(_c, m, literals, _backend)
-                                    .CompileCoreIntrinsicWrapper()
-                                ?? throw new NotSupportedException(
-                                    $"{m.DeclaringClass.FullName}::{m.Name}: non-generic boxed-ordering body intercept has no intrinsic lowering to synthesize from");
-                            emitBody?.Invoke(m, wrapper);
-                            compiledMethods.Add(m);
-                            continue;
-                        }
-                        // An address-taken member whose CALLS an intercept row cut (ldftn /
-                        // delegate method group over e.g. ExecutionContext.Run): reachability
-                        // deleted the edge to the real body, so replay that row's own emit arm
-                        // at the body position — cut ⟹ route holds through the body too. Behind
-                        // the Comparer.Compare arm above: that row already owns its own body, and
-                        // an address taken of it must keep getting that one.
-                        if (_c.InterceptFtnTargets.Contains(m))
-                        {
-                            var wrapper = new MethodCompiler(_c, m, literals, _backend)
-                                    .CompileInterceptWrapper()
-                                ?? throw new NotSupportedException(
-                                    $"taking the address of {m.DeclaringClass.FullName}::{m.Name} " +
-                                    "(delegate method group / function pointer): the intercept that " +
-                                    "lowers its calls cannot be replayed as a function body");
-                            emitBody?.Invoke(m, wrapper);
-                            compiledMethods.Add(m);
-                            continue;
-                        }
-                        // A comparer Compare over a VALUE TYPE with no order at all (see
-                        // Compilation.IsUnorderableComparerCompareBody): body-replace with the
-                        // ArgumentException real .NET's Comparer.Default raises for it, so the
-                        // comparer object stays real and only its Compare faults. The trailing
-                        // `return 0;` is unreachable (the throw is [[noreturn]]) and only keeps
-                        // the int32 return type-checking.
-                        if (_c.IsUnorderableComparerCompareBody(m))
-                        {
-                            string body = $"// {m.DeclaringClass.FullName}::{m.Name} (element not orderable — throws on call)\n"
-                                + $"{MethodCompiler.Signature(m)}\n{{\n"
-                                + "    dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_IMPLEMENT_ICOMPARABLE);\n"
-                                + "    return 0;\n}\n";
-                            emitBody?.Invoke(m, body);
-                            compiledMethods.Add(m);
-                            continue;
-                        }
-                        // An intrinsic-mapped type's method whose body IS transpiled (String's
-                        // interface impls): prefer synthesizing from the intrinsic lowering
-                        // when one exists — String.Equals(String) becomes the same
-                        // dn2cpp_string_equals its call sites use, instead of dragging the
-                        // real body's private helpers (EqualsHelper's SIMD loops) into the
-                        // tree. No lowering (GetEnumerator/Clone/the explicit interface
-                        // impls) compiles the real IL; a real body that hits an unmapped
-                        // intrinsic (an IConvertible impl over an unmodeled Convert form)
-                        // degrades to a trap-on-call body instead of failing the build —
-                        // the slot is only reached because SOME type dispatches the decl,
-                        // and a string may never flow there.
-                        if (CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName))
-                        {
-                            string body;
-                            if (new MethodCompiler(_c, m, literals, _backend)
-                                    .CompileCoreIntrinsicWrapper() is { } iw)
-                                body = iw;
-                            else
-                                try
-                                {
-                                    body = new MethodCompiler(_c, m, literals, _backend).Compile();
-                                }
-                                // Must-escape (Compilation.IsMustEscape): a bound overrun is a
-                                // NotSupportedException, so the type alone does not filter it —
-                                // and baking it into a trap body would report the run as a
-                                // success while the model kept growing.
-                                catch (NotSupportedException ex) when (!Compilation.IsMustEscape(ex))
-                                {
-                                    string msg = $"{m.DeclaringClass.FullName}.{m.Name} is not transpilable: {ex.Message}"
-                                        .Replace("\\", "\\\\").Replace("\"", "\\\"");
-                                    body = $"// {m.DeclaringClass.FullName}::{m.Name} (untranspilable — traps on call)\n"
-                                        + $"{MethodCompiler.Signature(m)}\n{{\n    dn2cpp_fail(\"NotSupportedException ({msg})\");\n}}\n";
-                                }
-                            emitBody?.Invoke(m, body);
-                            compiledMethods.Add(m);
-                            continue;
-                        }
-                        // A grouped method bound to a hidden-parameter shared body keeps
-                        // its own symbol as a one-line forwarder appending its class's
-                        // rgctx table — the per-instantiation function identity every
-                        // boundary (vtable, interface table, ldftn, reflection) uses.
-                        if (m.SharedImpl is { } fwdImpl)
-                        {
-                            string fwd = RgctxForwarderBody(m, fwdImpl);
-                            emitBody?.Invoke(m, fwd);
-                            compiledMethods.Add(m);
-                            _c.RgctxForwarderCount++;
-                            continue;
-                        }
-                        // A canonical-owner-world method is only ever a shared-body
-                        // candidate: compile it with the taint checks armed. In the
-                        // planning pass a taint (or an unsupported placeholder shape)
-                        // just marks it unshareable — each grouped user then compiles
-                        // its own body; in the final pass only shareable candidates
-                        // survive in Reachable, so a throw here propagates as a real
-                        // error.
-                        if (_c.SharedGenericsEnabled && Compilation.IsCanonicalMethod(m))
-                        {
-                            var mc = new MethodCompiler(_c, m, literals, _backend, NullReceiverDictionaryChecks(m))
+                            // System.Enum's instance ToString/GetTypeCode/value-trio/GetValue — the
+                            // BodyReplace row CoreIntrinsics.BrEnumInstanceFormat, whose other asker is Compilation.Reach:
+                            // emit the synthesized enum-format body in place of the real IL that
+                            // reachability cut. Like the HTTP shim above, normal planning skips
+                            // compilation but measure validates the synthesized body.
+                            if (CoreIntrinsics.BrEnumStaticFormat.Matches(m))
                             {
-                                SharedTrial = true,
-                                SharedDirectCallees = planning ? new List<(MethodInfo, bool, int)>() : null,
-                            };
-                            if (planning)
-                            {
-                                try
+                                if (emitBody is not null || diagnostics is not null)
                                 {
-                                    mc.Compile();
-                                    _c.SharedTrialCompiled.Add(m);
-                                    _c.SharedCallEdges[m] = mc.SharedDirectCallees!;
+                                    string body = new MethodCompiler(_c, m, literals, _backend).CompileEnumStaticFormatBody();
+                                    emitBody?.Invoke(m, body);
                                 }
-                                catch (SharedBodyTaintException ex)
-                                {
-                                    _c.SharedTaint[m] = ex.Kind;
-                                }
-                                // Must-escape (Compilation.IsMustEscape): never a taint, never a
-                                // fallback — the same filter the measure-mode arm below carries.
-                                // A canonical trial DOES mint instantiations nothing else in the
-                                // run names (the emitter-invented SZArrayEnumerable<E> wrapper of
-                                // an array-to-collection boundary, a delegate ctor resolved under
-                                // the canonical context), so the bound can genuinely trip in here;
-                                // recorded as a taint it would silently change which bodies get
-                                // shared and keep feeding the overrun it bounds.
-                                catch (NotSupportedException ex) when (!Compilation.IsMustEscape(ex))
-                                {
-                                    // A placeholder-only gap (e.g. an intrinsic keyed on
-                                    // the concrete type): unshareable, users fall back.
-                                    _c.SharedTaint[m] = "unsupported";
-                                    if (EnvKnobs.BoolIsOne(EnvKnobs.SharedDump))
-                                        Console.WriteLine(
-                                            $"dn2cpp: shared-generics unsupported {m.CppName}: {ex.Message}");
-                                }
-                            }
-                            else if (diagnostics is null)
-                            {
-                                string canon = mc.Compile();
-                                emitBody?.Invoke(m, canon);
                                 compiledMethods.Add(m);
+                                continue;
                             }
-                            else
+                            if (CoreIntrinsics.BrEnumInstanceFormat.Matches(m)
+                                || CoreIntrinsics.BrEnumElementType.Matches(m)
+                                || CoreIntrinsics.BrEnumScalarGetName.Matches(m)
+                                || CoreIntrinsics.BrEnumUnderlyingType.Matches(m))
                             {
-                                // Measure mode: a canonical survivor's throw becomes a gap
-                                // row instead of aborting the run (the normal-emit branch
-                                // above keeps the invariant that a throw is a real error).
-                                try
+                                if (emitBody is not null || diagnostics is not null)
+                                {
+                                    string body = new MethodCompiler(_c, m, literals, _backend).CompileEnumInstanceFormatBody();
+                                    emitBody?.Invoke(m, body);
+                                }
+                                compiledMethods.Add(m);
+                                continue;
+                            }
+                            if (CoreIntrinsics.BrLifetimeDispose.Matches(cls.FullName, m.Name)
+                                || CoreIntrinsics.BrDelegateClone.Matches(cls.FullName, m.Name)
+                                || CoreIntrinsics.BrDelegateValue.Matches(m)
+                                || CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(m)
+                                || CoreIntrinsics.BrPrimitiveBigMul.Matches(m)
+                                || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(m)
+                                || CoreIntrinsics.BrNullableReboxing.Matches(m)
+                                || CoreIntrinsics.BrCustomAttributeDataMember.Matches(m)
+                                || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(m)
+                                || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(m)
+                                || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(m)
+                                || CoreIntrinsics.BrCoreClrActivationInfo.Matches(m)
+                                || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(m)
+                                || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(m)
+                                || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(m)
+                                || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(m)
+                                || CoreIntrinsics.BrStringRawByteReference.Matches(m)
+                                || CoreIntrinsics.BrArrayNativeLength.Matches(m)
+                                || CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(m)
+                                || CoreIntrinsics.BrActivatorNamed.Matches(m)
+                                || CoreIntrinsics.BrActivatorDefault.Matches(m)
+                                || CoreIntrinsics.BrCoreClrDelegateVmConstructor.Matches(m)
+                                || CoreIntrinsics.BrDelegateNamedConstructor.Matches(m)
+                                || CoreIntrinsics.BrMulticastAccessor.Matches(m)
+                                || CoreIntrinsics.BrMulticastOperation.Matches(m)
+                                || CoreIntrinsics.BrMulticastFactory.Matches(m))
+                            {
+                                var wrapper = new MethodCompiler(_c, m, literals, _backend)
+                                    .CompileCoreIntrinsicWrapper()
+                                    ?? throw new NotSupportedException($"{cls.FullName}.{m.Name}: unsupported retained intrinsic body");
+                                emitBody?.Invoke(m, wrapper);
+                                compiledMethods.Add(m);
+                                continue;
+                            }
+                            // An address-taken bodyless P/Invoke (ldftn / delegate method group
+                            // over a [DllImport] that lowers to a direct native call): synthesize
+                            // a forwarder from the same P/Invoke lowering a call site gets.
+                            if (_c.PInvokeFtnTargets.Contains(m))
+                            {
+                                var forwarder = new MethodCompiler(_c, m, literals, _backend)
+                                        .CompilePInvokeWrapper()
+                                    ?? throw new NotSupportedException(
+                                        $"taking the address of {m.DeclaringClass.FullName}::{m.Name} " +
+                                        "(delegate method group / function pointer over a [DllImport]): " +
+                                        "the import's shape is not marshallable, so no forwarder body " +
+                                        "can be synthesized");
+                                emitBody?.Invoke(m, forwarder);
+                                compiledMethods.Add(m);
+                                continue;
+                            }
+                            // An address-taken method of an intrinsic-mapped type (ldftn /
+                            // delegate method group, e.g. Char.IsDigit): no real body is ever
+                            // transpiled — synthesize one from the call intrinsic's lowering.
+                            if (_c.IntrinsicFtnTargets.Contains(m))
+                            {
+                                var wrapper = new MethodCompiler(_c, m, literals, _backend)
+                                        .CompileCoreIntrinsicWrapper();
+                                if (wrapper is null && _c.RuntimeInterfaceLowerings.ContainsKey(m))
+                                {
+                                    _c.ReachRuntimeInterfaceBody(m);
+                                    compiled.Remove(m);
+                                    reachCursor = 0;
+                                    continue;
+                                }
+                                if (wrapper is null)
+                                    throw new NotSupportedException(
+                                        $"taking the address of {m.DeclaringClass.FullName}::{m.Name} " +
+                                        "(delegate method group / function pointer): the method has no " +
+                                        "intrinsic lowering to synthesize a function body from");
+                                emitBody?.Invoke(m, wrapper);
+                                compiledMethods.Add(m);
+                                continue;
+                            }
+                            // System.Collections.Comparer.Compare is body-intercepted — the THIRD mouth
+                            // of the row whose call-site mouths are CoreIntrinsics.MdComparerCompare /
+                            // MrComparerCompare: synthesize from the intrinsic lowering
+                            // (-> dn2cpp_object_compare) instead of transpiling the real IL, so the
+                            // IComparer.Compare slot — how ArrayList.Sort()/SortedList and the
+                            // non-generic boxed sort/search reach Comparer.Default — points at the
+                            // boxed-object order, which handles a boxed primitive (the real body's
+                            // `x as IComparable` cannot). The synthesized body carries Comparer.Compare's
+                            // own symbol, so the slot, any ldftn and a direct call all resolve to it.
+                            if (CoreIntrinsics.MdComparerCompare.Matches(m))
+                            {
+                                var wrapper = new MethodCompiler(_c, m, literals, _backend)
+                                        .CompileCoreIntrinsicWrapper()
+                                    ?? throw new NotSupportedException(
+                                        $"{m.DeclaringClass.FullName}::{m.Name}: non-generic boxed-ordering body intercept has no intrinsic lowering to synthesize from");
+                                emitBody?.Invoke(m, wrapper);
+                                compiledMethods.Add(m);
+                                continue;
+                            }
+                            // An address-taken member whose CALLS an intercept row cut (ldftn /
+                            // delegate method group over e.g. ExecutionContext.Run): reachability
+                            // deleted the edge to the real body, so replay that row's own emit arm
+                            // at the body position — cut ⟹ route holds through the body too. Behind
+                            // the Comparer.Compare arm above: that row already owns its own body, and
+                            // an address taken of it must keep getting that one.
+                            if (_c.InterceptFtnTargets.Contains(m))
+                            {
+                                var wrapper = new MethodCompiler(_c, m, literals, _backend)
+                                        .CompileInterceptWrapper()
+                                    ?? throw new NotSupportedException(
+                                        $"taking the address of {m.DeclaringClass.FullName}::{m.Name} " +
+                                        "(delegate method group / function pointer): the intercept that " +
+                                        "lowers its calls cannot be replayed as a function body");
+                                emitBody?.Invoke(m, wrapper);
+                                compiledMethods.Add(m);
+                                continue;
+                            }
+                            // A comparer Compare over a VALUE TYPE with no order at all (see
+                            // Compilation.IsUnorderableComparerCompareBody): body-replace with the
+                            // ArgumentException real .NET's Comparer.Default raises for it, so the
+                            // comparer object stays real and only its Compare faults. The trailing
+                            // `return 0;` is unreachable (the throw is [[noreturn]]) and only keeps
+                            // the int32 return type-checking.
+                            if (_c.IsUnorderableComparerCompareBody(m))
+                            {
+                                string body = $"// {m.DeclaringClass.FullName}::{m.Name} (element not orderable — throws on call)\n"
+                                    + $"{MethodCompiler.Signature(m)}\n{{\n"
+                                    + "    dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_IMPLEMENT_ICOMPARABLE);\n"
+                                    + "    return 0;\n}\n";
+                                emitBody?.Invoke(m, body);
+                                compiledMethods.Add(m);
+                                continue;
+                            }
+                            // An intrinsic-mapped type's method whose body IS transpiled (String's
+                            // interface impls): prefer synthesizing from the intrinsic lowering
+                            // when one exists — String.Equals(String) becomes the same
+                            // dn2cpp_string_equals its call sites use, instead of dragging the
+                            // real body's private helpers (EqualsHelper's SIMD loops) into the
+                            // tree. No lowering (GetEnumerator/Clone/the explicit interface
+                            // impls) compiles the real IL; a real body that hits an unmapped
+                            // intrinsic (an IConvertible impl over an unmodeled Convert form)
+                            // degrades to a trap-on-call body instead of failing the build —
+                            // the slot is only reached because SOME type dispatches the decl,
+                            // and a string may never flow there.
+                            if (CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName)
+                                && !(CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(m))
+                                && !CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
+                                && !CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(m)
+                                && !CoreIntrinsics.IsInterpolationStaticHelper(m)
+                                && !CoreIntrinsics.IsScalarNumericLeaf(m)
+                                && !CoreIntrinsics.IsBinaryIntegerEndianBody(m)
+                                && !CoreIntrinsics.IsPrimitiveParseBody(m)
+                                && !CoreIntrinsics.IsDecimalBinaryBody(m)
+                                && !CoreIntrinsics.IsPrimitiveWideConversionBody(m)
+                                && !CoreIntrinsics.IsVectorAlignmentManagedBody(m)
+                                && !CoreIntrinsics.IsConcreteVectorReduction(m)
+                                && !CoreIntrinsics.IsResourceManagerDefaultType(m)
+                                && !CoreIntrinsics.IsPrimitiveElementHelper(m)
+                                && !CoreIntrinsics.IsCultureInfoNameValidator(m)
+                                && !CoreIntrinsics.IsStringNullTerminatedLength(m)
+                                && !CoreIntrinsics.IsSearchValuesShuffle(m)
+                                && !CoreIntrinsics.IsWaitHandleRawWaitWrapper(m)
+                                && !CoreIntrinsics.IsCancellationInvoke(m)
+                                && !CoreIntrinsics.IsKnownConstant(m)
+                                && !CoreIntrinsics.IsVectorManagedThrowHelper(m)
+                                && !CoreIntrinsics.IsGenericVectorEstimate(m)
+                                && !CoreIntrinsics.IsGuardedVectorAs(m)
+                                && !CoreIntrinsics.IsVectorManagedForwarder(m)
+                                && !CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
+                && !CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
+                && !CoreIntrinsics.IsCustomAttributeDataConstructorBase(m))
+                            {
+                                string body;
+                                if (new MethodCompiler(_c, m, literals, _backend)
+                                        .CompileCoreIntrinsicWrapper() is { } iw)
+                                    body = iw;
+                                else
+                                    try
+                                    {
+                                        body = new MethodCompiler(_c, m, literals, _backend).Compile();
+                                    }
+                                    // Must-escape (Compilation.IsMustEscape): a bound overrun is a
+                                    // NotSupportedException, so the type alone does not filter it —
+                                    // and baking it into a trap body would report the run as a
+                                    // success while the model kept growing.
+                                    catch (NotSupportedException ex) when (!Compilation.IsMustEscape(ex))
+                                    {
+                                        if (diagnostics is not null)
+                                        {
+                                            diagnostics.Add(MeasureGap.From("compile", m, ex));
+                                            continue;
+                                        }
+                                        string msg = $"{m.DeclaringClass.FullName}.{m.Name} is not transpilable: {ex.Message}"
+                                            .Replace("\\", "\\\\").Replace("\"", "\\\"");
+                                        body = $"// {m.DeclaringClass.FullName}::{m.Name} (untranspilable — traps on call)\n"
+                                            + $"{MethodCompiler.Signature(m)}\n{{\n    dn2cpp_fail(\"NotSupportedException ({msg})\");\n}}\n";
+                                    }
+                                emitBody?.Invoke(m, body);
+                                compiledMethods.Add(m);
+                                continue;
+                            }
+                            // A grouped method bound to a hidden-parameter shared body keeps
+                            // its own symbol as a one-line forwarder appending its class's
+                            // rgctx table — the per-instantiation function identity every
+                            // boundary (vtable, interface table, ldftn, reflection) uses.
+                            if (m.SharedImpl is { } fwdImpl)
+                            {
+                                string fwd = RgctxForwarderBody(m, fwdImpl);
+                                emitBody?.Invoke(m, fwd);
+                                compiledMethods.Add(m);
+                                _c.RgctxForwarderCount++;
+                                continue;
+                            }
+                            // A canonical-owner-world method is only ever a shared-body
+                            // candidate: compile it with the taint checks armed. In the
+                            // planning pass a taint (or an unsupported placeholder shape)
+                            // just marks it unshareable — each grouped user then compiles
+                            // its own body; in the final pass only shareable candidates
+                            // survive in Reachable, so a throw here propagates as a real
+                            // error.
+                            if (_c.SharedGenericsEnabled && Compilation.IsCanonicalMethod(m))
+                            {
+                                var mc = new MethodCompiler(_c, m, literals, _backend, NullReceiverDictionaryChecks(m))
+                                {
+                                    SharedTrial = true,
+                                    SharedDirectCallees = planning ? new List<(MethodInfo, bool, int)>() : null,
+                                };
+                                if (planning)
+                                {
+                                    try
+                                    {
+                                        mc.Compile();
+                                        _c.SharedTrialCompiled.Add(m);
+                                        _c.SharedCallEdges[m] = mc.SharedDirectCallees!;
+                                    }
+                                    catch (SharedBodyTaintException ex)
+                                    {
+                                        _c.SharedTaint[m] = ex.Kind;
+                                    }
+                                    // Must-escape (Compilation.IsMustEscape): never a taint, never a
+                                    // fallback — the same filter the measure-mode arm below carries.
+                                    // A canonical trial DOES mint instantiations nothing else in the
+                                    // run names (the emitter-invented SZArrayEnumerable<E> wrapper of
+                                    // an array-to-collection boundary, a delegate ctor resolved under
+                                    // the canonical context), so the bound can genuinely trip in here;
+                                    // recorded as a taint it would silently change which bodies get
+                                    // shared and keep feeding the overrun it bounds.
+                                    catch (NotSupportedException ex) when (!Compilation.IsMustEscape(ex))
+                                    {
+                                        // A placeholder-only gap (e.g. an intrinsic keyed on
+                                        // the concrete type): unshareable, users fall back.
+                                        _c.SharedTaint[m] = "unsupported";
+                                        if (EnvKnobs.BoolIsOne(EnvKnobs.SharedDump))
+                                            Console.WriteLine(
+                                                $"dn2cpp: shared-generics unsupported {m.CppName}: {ex.Message}");
+                                    }
+                                }
+                                else if (diagnostics is null)
                                 {
                                     string canon = mc.Compile();
                                     emitBody?.Invoke(m, canon);
                                     compiledMethods.Add(m);
                                 }
-                                // Must-escape (Compilation.IsMustEscape): never a gap row, never a fallback.
-                                catch (Exception ex) when (!Compilation.IsMustEscape(ex))
+                                else
                                 {
-                                    diagnostics.Add(MeasureGap.From("compile", m, ex));
+                                    // Measure mode: a canonical survivor's throw becomes a gap
+                                    // row instead of aborting the run (the normal-emit branch
+                                    // above keeps the invariant that a throw is a real error).
+                                    try
+                                    {
+                                        string canon = mc.Compile();
+                                        emitBody?.Invoke(m, canon);
+                                        compiledMethods.Add(m);
+                                    }
+                                    // Must-escape (Compilation.IsMustEscape): never a gap row, never a fallback.
+                                    catch (Exception ex) when (!Compilation.IsMustEscape(ex))
+                                    {
+                                        diagnostics.Add(MeasureGap.From("compile", m, ex));
+                                    }
                                 }
+                                continue;
                             }
-                            continue;
-                        }
-                        if (diagnostics is null)
-                        {
-                            var body = new MethodCompiler(_c, m, literals, _backend, NullReceiverDictionaryChecks(m)).Compile();
-                            if (!planning)
+                            if (diagnostics is null)
                             {
+                                var body = new MethodCompiler(_c, m, literals, _backend, NullReceiverDictionaryChecks(m)).Compile();
+                                if (!planning)
+                                {
+                                    emitBody?.Invoke(m, body);
+                                    compiledMethods.Add(m);
+                                }
+                                continue;
+                            }
+                            try
+                            {
+                                string body = new MethodCompiler(_c, m, literals, _backend, NullReceiverDictionaryChecks(m)).Compile();
                                 emitBody?.Invoke(m, body);
                                 compiledMethods.Add(m);
                             }
-                            continue;
+                            // Measure mode only (diagnostics != null): record any exception, by type,
+                            // and keep going — an unexpected throw must not truncate the gap inventory.
+                            // The must-escape pair (Compilation.IsMustEscape) is the exception: recording
+                            // the monomorphization bound and compiling on would feed the very growth it
+                            // exists to stop.
+                            catch (Exception ex) when (!Compilation.IsMustEscape(ex))
+                            {
+                                diagnostics.Add(MeasureGap.From("compile", m, ex));
+                            }
                         }
-                        try
-                        {
-                            string body = new MethodCompiler(_c, m, literals, _backend, NullReceiverDictionaryChecks(m)).Compile();
-                            emitBody?.Invoke(m, body);
-                            compiledMethods.Add(m);
-                        }
-                        // Measure mode only (diagnostics != null): record any exception, by type,
-                        // and keep going — an unexpected throw must not truncate the gap inventory.
-                        // The must-escape pair (Compilation.IsMustEscape) is the exception: recording
-                        // the monomorphization bound and compiling on would feed the very growth it
-                        // exists to stop.
-                        catch (Exception ex) when (!Compilation.IsMustEscape(ex))
+                        catch (Exception ex) when (diagnostics is not null && !Compilation.IsMustEscape(ex))
                         {
                             diagnostics.Add(MeasureGap.From("compile", m, ex));
                         }
@@ -2835,8 +2982,9 @@ internal sealed partial class CppEmitter
         }
     }
 
-    /// <summary>Self-hosting feasibility harness: compile every reachable method body,
-    /// collecting per-method failures instead of stopping at the first, and return them. No
+    /// <summary>Self-hosting feasibility harness: attempt discovered method bodies,
+    /// collecting their first failures instead of stopping at the first body. Failed scans
+    /// can hide later dependencies, so the result is an observed lower bound. No
     /// C++ is emitted and no backend epilogue runs — so an entry point taking
     /// <c>string[] args</c> (which the console epilogue does not yet support) does not stop
     /// the measurement. Driven by <c>gates/selfhost-measure.sh</c> through the CLI
@@ -2849,16 +2997,16 @@ internal sealed partial class CppEmitter
         if (_c.ReachabilityDiagnostics is { } reach)
             foreach (var (m, ex) in reach)
                 diagnostics.Add(MeasureGap.From("reach", m, ex));
-        int reachGaps = diagnostics.Count;
+        int initialReachGaps = diagnostics.Count;
         var compiledMethods = new List<MethodInfo>();
+        var planningDiagnostics = new List<MeasureGap>();
         if (_c.SharedGenericsEnabled)
         {
             // Same two-pass canonical-shared-generics protocol as Emit(): without the
             // planning pass, any canonical body that reads its rgctx trips the "planning
             // pass did not record it" assert and aborts the whole measurement instead of
-            // recording a gap row. The planning pass gets a throwaway diagnostics list (not
-            // null): with null, a non-canonical method's gap would abort the planning pass
-            // itself; gap rows are collected only from the real pass below.
+            // recording a gap row. Planning failures not replayed by the real pass
+            // remain visible; finalization can discard their canonical bodies.
             //
             // Discovery → Planning directly: --measure runs no LayoutClosure up front — its
             // guarded closure runs at the real body's fixpoint, where a layout failure is
@@ -2866,7 +3014,10 @@ internal sealed partial class CppEmitter
             // up-front closure does not apply, since measure emits nothing.
             _c.EnterPhase(EmitPhase.Planning);
             CompileReachableBodies(new LiteralPool(), null, new List<MethodInfo>(),
-                diagnostics: new List<MeasureGap>());
+                diagnostics: planningDiagnostics);
+            foreach (var gap in planningDiagnostics)
+                if (gap.Phase is "layout" or "compile-spec")
+                    diagnostics.Add(gap with { Pass = "planning" });
             Timing.Mark("measure-plan-bodies");
             _c.FinalizeSharedGenerics((cls, m) => _backend.ShouldSkipMethodBody(cls, m));
             _c.ResetRgctxForEmission();
@@ -2887,28 +3038,40 @@ internal sealed partial class CppEmitter
         // unread.
         CompileReachableBodies(new LiteralPool(), null, compiledMethods, diagnostics);
         Timing.Mark("measure-bodies-layout");
-        // "Attempted" counts compile-phase bodies only (reach gaps never got that far, and
-        // the dangling rows below are not bodies at all) — snapshot it before the sweep.
-        int attempted = compiledMethods.Count + (diagnostics.Count - reachGaps);
+        // Planning and emission can discover more failed scans. Do not omit those
+        // failures just because the initial reachability drain already finished.
+        if (_c.ReachabilityDiagnostics is { } finalReach)
+            for (int i = initialReachGaps; i < finalReach.Count; i++)
+            {
+                var (method, error) = finalReach[i];
+                diagnostics.Add(MeasureGap.From("reach", method, error));
+            }
+        // This count describes the real pass, not discarded canonical planning trials.
+        int attempted = compiledMethods.Count + diagnostics.Count(g => g.Phase == "compile");
+        foreach (var gap in planningDiagnostics)
+            if (gap.Phase == "compile" && !diagnostics.Any(g => g.Phase == "compile"
+                && g.CppSymbol == gap.CppSymbol && g.Method == gap.Method
+                && g.ExceptionType == gap.ExceptionType && g.Message == gap.Message))
+                diagnostics.Add(gap with { Pass = "planning" });
         // The dangling-symbol sweep: AssertCalledBodiesEmitted's diff, adapted to a mode
         // that DROPS failing bodies. Every drop left a gap row carrying the dropped body's
         // C++ symbol, so unioning those into the defined set removes exactly the false
         // positives; a symbol that still survives is a real cut => route violation, reported
         // as a `dangling` gap row rather than a failure, because --measure's contract is to
-        // keep draining. Compared by SYMBOL STRING like the assert, and decode-free. A
-        // `compile-spec` row means the body pass was truncated mid-fixpoint — bodies dropped
-        // with no row to union — so the sweep is skipped as unsound rather than reported
-        // wrong (NamedSymbols null tells the driver to say so).
+        // keep draining. Compared by SYMBOL STRING like the assert, and decode-free.
+        // A layout or specialization failure truncates a fixpoint, leaving bodies with
+        // no row to union. The sweep is then skipped, including when planning truncated.
+        // NamedSymbols null tells the driver that no sound diff was available.
         int? namedCount = null;
         if (_c.NamedBodySymbols is { } named
-            && !diagnostics.Any(g => g.Phase == "compile-spec"))
+            && !diagnostics.Any(g => g.Phase is "compile-spec" or "layout"))
         {
             namedCount = named.Count;
             var defined = new HashSet<string>(StringComparer.Ordinal);
             foreach (var m in compiledMethods)
                 defined.Add(m.CppName);
             foreach (var g in diagnostics)
-                if (g.CppSymbol is not null)
+                if (g.CppSymbol is not null && g.Pass != "planning")
                     defined.Add(g.CppSymbol);
             // Sorted by callee symbol so the row order is a function of the input, like
             // every other numbering the mode hands out.
@@ -3027,8 +3190,24 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    ({handle})->flags |= DN2CPP_TF_OBJECT_MEMBER_ROWS;");
         if (_delegateInterfaceTargets is { } interfaceTargets)
             sb.AppendLine($"    dn2cpp_set_delegate_interface_targets({interfaceTargets.Sym}, {interfaceTargets.Count});");
+        sb.AppendLine($"    dn2cpp_set_memberinfo_has_same_metadata_slot({_c.MemberMetadataDefinitionSlot()});");
+        sb.AppendLine($"    dn2cpp_set_attrdata_constructor_slot({_c.CustomAttributeDataConstructorSlot()});");
         if (_delegateMethodCatalog is { } delegateMethods)
             sb.AppendLine($"    dn2cpp_set_delegate_method_catalog({delegateMethods.Sym}, {delegateMethods.Count});");
+        if (_dateTimeTryAddTicksRow is not null || _dateTimeTryCreateRow is not null || _dateTimeLocalConstructorRow is not null)
+            sb.AppendLine($"    dn2cpp_set_datetime_parser_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeTryAddTicksRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeTryCreateRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeLocalConstructorRow ?? "nullptr"}));");
+        if (_stringRawByteReferenceRow is not null || _stringNullTerminatedLengthRow is not null)
+            sb.AppendLine($"    dn2cpp_set_string_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_stringRawByteReferenceRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_stringNullTerminatedLengthRow ?? "nullptr"}));");
+        if (_cultureNameValidatorRow is { } cultureNameValidatorRow)
+            sb.AppendLine($"    dn2cpp_set_culture_name_validator_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({cultureNameValidatorRow}));");
+        if (_cultureCompareInfoRow is { } cultureCompareInfoRow)
+            sb.AppendLine($"    dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({cultureCompareInfoRow}));");
+        if (_resourceManagerDefaultTypeRow is { } resourceManagerRow)
+            sb.AppendLine($"    dn2cpp_set_resourcemanager_default_type_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({resourceManagerRow}));");
+        if (_dateOnlyDeconstructRow is { } dateOnlyRow)
+            sb.AppendLine($"    dn2cpp_set_dateonly_deconstruct_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({dateOnlyRow}));");
+        if (_memberNotFoundFactoryRow is { } factoryRow)
+            sb.AppendLine($"    dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({factoryRow}));");
         if (_objectVirtualInheritance is { } objectVirtuals)
             sb.AppendLine($"    dn2cpp_set_object_virtual_inheritance({objectVirtuals.Sym}, {objectVirtuals.Count});");
         // The shared reference-element SZArray fallback table goes in before any managed
@@ -3043,7 +3222,7 @@ internal sealed partial class CppEmitter
         {
             var cloneItf = _c.MdArrayInterfaces!.Dispatches.FirstOrDefault(d => d.Itf.FullName == "System.ICloneable")?.Itf;
             string cloneKey = cloneItf is null ? "nullptr" : TypeInfoRef(cloneItf, "array Clone dispatch");
-            sb.AppendLine($"    dn2cpp_array_set_md_fallback_interfaces({mdm.Sym}, {mdm.Count}, {cloneKey});");
+            sb.AppendLine($"    dn2cpp_array_set_md_fallback_interfaces({mdm.Sym}, {mdm.Count}, {cloneKey}, {(_c.EnumValuesArraysUsed ? "true" : "false")});");
         }
         // The relation-only rows the two tables above cannot carry — the enumeration half.
         // Installed here rather than lazily for the same reason: a cctor can already call
@@ -3733,6 +3912,16 @@ internal sealed partial class CppEmitter
     private readonly List<string> _runtimeHandleObjectRows = [];
     private (string Sym, int Count)? _objectVirtualInheritance;
     private (string Sym, int Count)? _delegateMethodCatalog;
+    private string? _memberNotFoundFactoryRow;
+    private string? _dateOnlyDeconstructRow;
+    private string? _resourceManagerDefaultTypeRow;
+    private string? _cultureCompareInfoRow;
+    private string? _cultureNameValidatorRow;
+    private string? _stringRawByteReferenceRow;
+    private string? _stringNullTerminatedLengthRow;
+    private string? _dateTimeTryAddTicksRow;
+    private string? _dateTimeTryCreateRow;
+    private string? _dateTimeLocalConstructorRow;
     private (string Sym, int Count)? _delegateInterfaceTargets;
 
     /// <summary>Records the base of each unbound reference-type runtime handle whose
@@ -4536,7 +4725,11 @@ internal sealed partial class CppEmitter
             }
             return (kind | PassPointer | (levels << PassPointerDepthShift), type);
         }
-        if (t is { Kind: TypeKind.Class, Class.IsByRefLike: true })
+        // TypedReference signatures decode as a primitive, without the TypeDef's
+        // IsByRefLike flag. Invoke still cannot manufacture or box that value.
+        if (t is { Kind: TypeKind.Class, Class.IsByRefLike: true }
+            or { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.TypedReference }
+            or { Kind: TypeKind.External, ExternalName: "System.TypedReference" })
             return (kind | PassByRefLike, ReflectionAbiTypeInfoExpr(t, emittedEnums));
         if (kind == 0)
             return (0, "nullptr");
@@ -5474,6 +5667,12 @@ internal sealed partial class CppEmitter
             && !_c.IsAllocated(c)
             ? c : null;
 
+    // This pointer spelling is a value payload, not a managed object reference.
+    private static bool IsRuntimeTypeHandleValue(TypeDesc type) =>
+        type is { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeTypeHandle",
+            Module.AssemblyName: "System.Private.CoreLib" } }
+        or { Kind: TypeKind.External, ExternalName: "System.RuntimeTypeHandle" };
+
     /// <summary>Emits (once per distinct C++ ABI shape) the signature-deduplicated
     /// invoker thunk for a reachable method and returns its name. The thunk
     /// unboxes/casts each boxed arg to the parameter's C++ type, calls the method's
@@ -5503,7 +5702,7 @@ internal sealed partial class CppEmitter
         static (bool Ptr, string Cpp) Classify(TypeDesc t)
         {
             string cpp = CppTypes.Of(t);
-            return (cpp.EndsWith("*"), cpp);
+            return (cpp.EndsWith("*") && !IsRuntimeTypeHandleValue(t), cpp);
         }
 
         // Build the shape key + the C++ pieces.
@@ -5552,7 +5751,8 @@ internal sealed partial class CppEmitter
             {
                 key.Append('_').Append(CppNaming.Sanitize(cpp));
                 sigParams.Add(cpp);
-                callArgs.Add($"(args[{i}] == nullptr ? {cpp}{{}} : *({cpp}*)((char*)args[{i}] + sizeof(Dn2CppObject)))");
+                string empty = IsRuntimeTypeHandleValue(ps[i]) ? "nullptr" : $"{cpp}{{}}";
+                callArgs.Add($"(args[{i}] == nullptr ? {empty} : *({cpp}*)((char*)args[{i}] + sizeof(Dn2CppObject)))");
             }
         }
         // A static body taking the generic context gets it last, from `self`
@@ -6861,7 +7061,7 @@ internal sealed partial class CppEmitter
         static (bool Ptr, string Cpp) Classify(TypeDesc t)
         {
             string cpp = MethodCompiler.NfiErasedAbi(CppTypes.Of(t));
-            return (cpp.EndsWith("*"), cpp);
+            return (cpp.EndsWith("*") && !IsRuntimeTypeHandleValue(t), cpp);
         }
 
         var key = new StringBuilder();
@@ -7958,7 +8158,9 @@ internal sealed partial class CppEmitter
         foreach (var cls in EmittedClasses)
         {
             if (!cls.IsEnum && fwdDeclared.Add(cls.CppStructName))
-                sb.AppendLine($"struct {cls.CppStructName};");
+                sb.AppendLine(cls.FullName == "System.TypedReference"
+                    ? $"using {cls.CppStructName} = Dn2CppTypedReference;"
+                    : $"struct {cls.CppStructName};");
         }
         sb.AppendLine();
 
@@ -8029,6 +8231,7 @@ internal sealed partial class CppEmitter
                 sb.AppendLine("    const Dn2CppDelegateMethodIdentity* f_identity;");
                 sb.AppendLine("    Dn2CppObject* f_entry;");
                 sb.AppendLine("    std::atomic<Dn2CppDelegateInvocationCache*> f_invocationCache;");
+                sb.AppendLine("    std::atomic<bool> f_bindingSnapshotted;");
                 sb.AppendLine("};");
                 continue;
             }
@@ -8075,6 +8278,9 @@ internal sealed partial class CppEmitter
 
     private void EmitOneStruct(StringBuilder sb, ClassInfo cls, string? baseName)
     {
+        // Typedref signatures and CoreLib instance bodies share the runtime storage alias.
+        if (cls.FullName == "System.TypedReference")
+            return;
         (ModeledSize Size, ModeledSize Align)? opaqueLayout =
             IsOpaque(cls) && cls.IsValueType ? TryModeledStructLayout(cls) : null;
         // [StructLayout(Pack = N)] caps every field's alignment at N bytes; the
@@ -9362,19 +9568,21 @@ internal sealed partial class CppEmitter
 /// ctor), <c>compile</c> (method-body emit), <c>compile-spec</c> / <c>layout</c>
 /// (specialization completion / layout closure), or <c>dangling</c> (the
 /// dangling-symbol sweep). <paramref name="CppSymbol"/> is the gapped method's
-/// own C++ symbol when the row has one — not written to the TSV; it feeds the sweep's
+/// own C++ symbol when the row has one — omitted only from the legacy TSV; it feeds the sweep's
 /// defined-set union, so a dropped body's callers are not reported as dangling.
 /// Decode-free like the sweep itself (CppName reads neither Signature nor Methods).</summary>
-internal readonly record struct MeasureGap(string Phase, string Namespace, string Method, string ExceptionType, string Message, string? CppSymbol = null)
+internal readonly record struct MeasureGap(string Phase, string Namespace, string Method, string ExceptionType, string Message, string? CppSymbol = null, string Pass = "emission")
 {
     internal static MeasureGap From(string phase, MethodInfo? m, Exception ex)
     {
         if (m is null)
-            return new MeasureGap(phase, "<specialization>", "<specialization>", ex.GetType().Name, ex.Message);
+            return new MeasureGap(phase, "<specialization>", "<specialization>", ex.GetType().Name, ex.Message,
+                Pass: phase == "reach" ? "reachability" : "emission");
         string full = m.DeclaringClass.FullName;
         int dot = full.LastIndexOf('.');
         string ns = dot > 0 ? full.Substring(0, dot) : "<global>";
-        return new MeasureGap(phase, ns, $"{full}.{m.Name}", ex.GetType().Name, ex.Message, m.CppName);
+        return new MeasureGap(phase, ns, $"{full}.{m.Name}", ex.GetType().Name, ex.Message, m.CppName,
+            phase == "reach" ? "reachability" : "emission");
     }
 
     /// <summary>A dangling-symbol row: some body named <paramref name="callee"/>'s
@@ -9397,7 +9605,7 @@ internal readonly record struct MeasureGap(string Phase, string Namespace, strin
 /// <summary>Result of <see cref="CppEmitter.MeasureGaps"/>: how many reachable method
 /// bodies were attempted / compiled cleanly, the per-method gaps for the rest, and how
 /// many named body symbols the dangling-symbol sweep diffed — null when the sweep was
-/// skipped because a <c>compile-spec</c> gap truncated the body pass (bodies dropped
+/// skipped because a layout or specialization gap truncated a pass (bodies dropped
 /// with no row to union make the diff unsound).</summary>
 internal sealed record MeasureResult(int Attempted, int Compiled, List<MeasureGap> Gaps, int? NamedSymbols);
 

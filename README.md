@@ -115,6 +115,15 @@ each is settled, and each refuses out loud rather than answering wrong:
   zones, per-culture *date* formatting and localized display names are
   out (they need ICU + TZif). Culture-aware **numeric** formatting is in.
 - 64-bit only. No COM interop.
+- GC generation queries model one logical generation (`GC.MaxGeneration == 0`).
+  Boehm is non-generational; objects do not undergo CLR-style promotion.
+  Validated `GC.Collect` requests use a whole-heap collection; scheduling and
+  compaction hints do not change the collector into a generational or moving GC.
+- Full-GC notifications are unavailable: registration and cancellation use the
+  input CoreLib's `InvalidOperationException` failure path; waits immediately
+  return `GCNotificationStatus.NotApplicable`. Public argument validation stays
+  intact. This is a dn2cpp capability limit, not a claim about CLR notification
+  support or the host's concurrent-GC setting.
 - `FileStream.IsAsync` answers `false` — async file I/O runs the
   deterministic sync-over-async route.
 - An unsupported IL or BCL shape is a transpile-time error or a catchable
@@ -683,6 +692,9 @@ Full ECMA-335 IL coverage. What that means concretely:
   `IList<T>` / … via a per-`T` `SZArrayEnumerable<T>` wrapper);
   box/unbox and `is`/`as`/cast checks; `ref`/`out`/`in`; `constrained.`
   calls; checked arithmetic; `cpblk`/`initblk`; `typeof`/`ldtoken`.
+  Typed-reference IL (`mkrefany`, `refanytype`, `refanyval`) preserves the
+  referenced storage and exact type identity; extraction with a different
+  type throws `InvalidCastException`. See `gates/build-and-run-unsafe-general.sh`.
 - **UTF-16 strings** with .NET `System.String` semantics; UTF-8
   conversion happens only at the console / Godot / P/Invoke boundary.
 - **Exception handling** — structural EH-region reconstruction into C++
@@ -690,7 +702,17 @@ Full ECMA-335 IL coverage. What that means concretely:
   `catch … when` filters, multi-level finally chains, nested EH.
 - **Delegates / lambdas** — `ldftn`/`ldvirtftn`, Roslyn display classes
   and cached lambdas, multicast `+=`/`-=`, static function pointers
-  (`calli`/`delegate*<...>`).
+  (`calli`/`delegate*<...>`). Retained protected name-binding constructors
+  initialize the existing delegate through the native binder, preserving its
+  identity and exact type. Instance names are case-sensitive; static names are
+  case-insensitive and a missing static match leaves the receiver unchanged.
+  Rebinding an existing multicast list would create CoreCLR-only hybrid state;
+  a successful match on that path throws `PlatformNotSupportedException` before
+  changing the receiver. Rebinding an entry whose binding was ever copied into
+  a multicast list is also refused, even after that list becomes unreachable;
+  cloning a single entry creates an independent, rebindable receiver. These
+  limits do not alter ordinary delegate construction or combination, and do not
+  make concurrent constructor mutation safe.
 - **Generics** — canonically shared bodies by default, in the IL2CPP
   manner; see *Optimization* below.
 - **Static abstract interface members** — dispatched through `constrained.`,
@@ -801,6 +823,12 @@ expression trees at runtime.
   real (de)registration. **`WeakReference`/`WeakReference<T>`** are real,
   on Boehm disappearing and long links, with .NET resurrection semantics;
   **`GCHandle`** supports all four `GCHandleType` values.
+  `GC.GetTotalPauseDuration()` reports cumulative completed pauses in `TimeSpan`
+  ticks, independently of `DN2CPP_GC_STATS`: stop-the-world windows with threads,
+  synchronous full collections on single-threaded Wasm. Diagnostic histograms
+  remain opt-in. Nonthreaded incremental collection cannot supply this measure
+  and throws `PlatformNotSupportedException`; the no-GC allocator reports zero
+  because no collections occur. Absolute timings are collector-specific.
 - **Real OS threads** — `Thread`, `Task.Run`, `ThreadPool`,
   `Parallel.For`/`ForEach`/`Invoke` over `std::thread` and a real worker
   pool. **Real synchronization** — `Interlocked` → `__atomic_*`;
@@ -819,6 +847,76 @@ expression trees at runtime.
   boundary list above). `Type` objects are interned one per type-info handle, so
   `typeof(X)` and `GetType()` are reference-identical; retrieval is
   lock-free for statically-emitted types.
+  CoreCLR's private `RuntimeTypeHandle.GetFirstIntroducedMethod` and
+  `GetNextIntroducedMethod` enumerate VM method descriptors, not these metadata
+  rows, and throw `PlatformNotSupportedException`. Use `Type.GetMethods` or
+  `Type.GetConstructors`; ordinary reflection does not depend on those leaves.
+  The non-public `RuntimeMethodHandle` MethodDesc-query InternalCalls likewise
+  throw rather than treating VM pointers as native metadata. Public method and
+  constructor attributes, generic queries and invocation use `MethodInfo` and
+  `ConstructorInfo`; managed default-handle value, equality and validation paths
+  retain their CoreLib behavior.
+  The non-public `RuntimeFieldHandle` FieldDesc InternalCalls similarly throw;
+  native `FieldInfo` metadata and accessors are not CoreCLR field descriptors.
+  Managed default-field-handle validation and the native RVA array/span literal
+  paths remain independent of these VM leaves. Field access QCalls retain the
+  existing absent-CoreCLR import boundary and explicit native-binding options.
+  `RuntimeTypeHandle.CompareCanonicalHandles` also throws: it compares CoreCLR
+  canonical method tables for FieldDesc contexts, not ordinary type identity.
+  Native type-info identities and generic-sharing placeholders are not those
+  tables; public Type/TypeHandle equality and FieldInfo access remain independent.
+  CoreCLR's private `Signature` blob-parser InternalCalls throw
+  `PlatformNotSupportedException`: native reflection reads decoded metadata and
+  does not construct CoreCLR `Signature` blobs. Managed wrappers retain their
+  negative-offset fast paths; supported public parameter-modifier and
+  function-pointer queries continue to use native signature metadata.
+  Non-public `RuntimeTypeHandle` raw-VM type materialization likewise throws
+  before reading CoreCLR MethodTable, TypeDesc or output-handle state. Its
+  nullable wrapper still returns null for a zero handle. Native `Type.TypeHandle`
+  and `Type.GetTypeFromHandle` use type-info identities, not CoreCLR pointers.
+  The instance `RuntimeTypeHandle.GetRuntimeType` / `GetRuntimeTypeChecked`
+  accessors return that same interned Type; only the checked accessor rejects
+  a default handle, with CoreLib's invalid-handle `ArgumentNullException`.
+  Its managed `RuntimeType` constructor stores the same native type identity;
+  a null argument initializes a default handle, including in-place construction.
+  Its managed interface-verification bridge validates both handles and type shapes,
+  then uses the shared native assignability rules, including variance and arrays.
+  This check does not implement the separate method-mapping surface of
+  `Type.GetInterfaceMap`, which still depends on CoreCLR method descriptors.
+  Its private `GetNumVirtuals` and managed `GetNumVirtualsAndStaticVirtuals`
+  queries throw `PlatformNotSupportedException`: CoreCLR virtual-slot counts
+  are not native dispatch slots or reflection-row counts. Public virtual calls
+  and supported reflection APIs keep their native routes.
+  Its managed `GetMethodAt` / `GetInterfaceMethodImplementation` lookups preserve
+  their null, type-shape and slot validation, then throw
+  `PlatformNotSupportedException`: native reflection rows are not CoreCLR
+  MethodDesc values. Their raw QCall siblings retain native import binding.
+  Its managed `GetGCHandle` / `FreeGCHandle` cache bridges preserve default-handle
+  validation, then throw `PlatformNotSupportedException`: CoreCLR owns these
+  cache slots through its LoaderAllocator. They are not public GCHandle slots;
+  public `GCHandle`, `Type` and `Enum` keep their native implementations.
+  Its managed `IsSZArray(RuntimeType)` helper uses native array identity,
+  distinguishing vectors from rank-one non-SZ arrays and preserving null checks.
+  The retained `RuntimeType.DeclaringMethod` getter reads the same native formal
+  owner metadata as `Type.DeclaringMethod`, returning the typical method definition
+  or null for a type parameter. Its private `RuntimeTypeHandle` bridge instead
+  throws `PlatformNotSupportedException`: `IRuntimeMethodInfo` carries CoreCLR
+  method descriptors, not native reflection rows. The raw QCall remains an import.
+  `MethodInfo.GenericParameterCount` reads native method arity without allocating
+  an argument array; definitions and constructed methods retain the same arity,
+  independently of the declaring type's generic arguments.
+  The managed `RuntimeTypeHandle.SatisfiesConstraints` bridge throws
+  `PlatformNotSupportedException`: its private CoreCLR method contexts are not
+  native reflection rows. Public generic construction keeps its existing native
+  validation; the QCall sibling keeps the absent-import and explicit-binding paths.
+  `RuntimeTypeHandle.CopyRuntimeTypeHandles` retains its managed copy bodies:
+  spans reuse sufficient caller scratch storage or allocate a separate array,
+  and the Type-array overload copies the same native handle values.
+  The managed `RuntimeMethodHandle.ReboxFromNullable` and `ReboxToNullable`
+  adapters instead use native nullable layouts: ordinary objects retain identity,
+  raw nullable boxes normalize to null or a fresh underlying-value box, and
+  materialization copies payload bits and managed references without numeric
+  conversion. Reflection nullable returns and byref copyback share this representation.
 - **P/Invoke** — `DllImport` end to end: `string[]` write-back, delegates
   as native function pointers, non-blittable structs, blittable
   `[MarshalAs(ByValArray)]`. User imports bind lazily through
@@ -1085,8 +1183,7 @@ it does not come back as a ticket.
   A generic base may reorder or omit the level's bare type parameters;
   repeating parameters or mixing them with constant or constructed arguments
   remains outside this subset.
-- **`__arglist` / `TypedReference`**, and varargs or HasThis function-pointer
-  signatures. IL2CPP does not support them either.
+- **`__arglist`**, and varargs or HasThis function-pointer signatures.
 - **`res://` / `user://` translation inside `System.IO` (Godot lane).**
   Convert first with `ProjectSettings.GlobalizePath(...)`, or take the
   writable root from `OS.GetUserDataDir()`. A transparent translation is

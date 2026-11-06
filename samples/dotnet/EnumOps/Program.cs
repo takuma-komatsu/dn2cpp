@@ -42,6 +42,24 @@ namespace EnumOps
             if (args.Length > 0 && args[0] == "before-enum-aliases")
                 return;
             EnumAliasSubset.Run();
+            if (args.Length > 0 && args[0] == "before-enum-element-type")
+                return;
+            EnumElementTypeSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-enum-underlying-type")
+                return;
+            EnumUnderlyingTypeSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-enum-name-lookup")
+                return;
+            EnumNameLookupSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-enum-values-lookup")
+                return;
+            EnumValuesLookupSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-enum-defined-lookup")
+                return;
+            EnumDefinedLookupSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-enum-base-constructors")
+                return;
+            EnumBaseConstructorSubset.Program.Run();
         }
     }
 }

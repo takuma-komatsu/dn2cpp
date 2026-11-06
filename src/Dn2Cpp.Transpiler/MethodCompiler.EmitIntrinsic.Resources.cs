@@ -8,10 +8,9 @@ internal sealed partial class MethodCompiler
     /// the assembly's already-carried <c>&lt;BaseName&gt;.resources</c> blob.
     ///
     /// <para>The type is intrinsic (see <c>CoreIntrinsicTypeMaps.s_intrinsicTypes</c>), so an
-    /// unmapped member here does NOT fall through to a transpiled body — there is none —
-    /// it reaches the loud intrinsic miss. Every member this arm declines is one whose real
-    /// implementation is the groveler/satellite closure the intrinsic mapping deleted, and
-    /// the alternative to a loud miss is a call to a C++ symbol nothing defines.</para>
+    /// unmapped member here does NOT fall through to a transpiled body. The exact field-free
+    /// IsDefaultType helper is routed to its managed body before this arm. Other unmapped
+    /// members reach the loud intrinsic miss rather than an undefined C++ symbol.</para>
     ///
     /// <para>The ctors are intercepted at <c>newobj</c>
     /// (<see cref="MethodCompiler"/>'s Newobj arm), not here. A callvirt receiver

@@ -41,13 +41,30 @@ internal sealed partial class MethodCompiler
 
     /// <summary>Pops a Decimal ctor's args (pushed left-to-right) and returns the
     /// C++ expression constructing the Dn2CppDecimal — the (lo,mid,hi,isNeg,scale)
-    /// bit-pattern ctor and the numeric-widening single-arg ctors.</summary>
+    /// bit-pattern ctors and the numeric-widening single-arg ctors.</summary>
     private string EmitDecimalCtorExpr(MethodSignature<TypeDesc> sig)
     {
         var ps = sig.ParameterTypes;
+        if (ps.Length == 4)
+        {
+            // Both constructor entries carry the original token; refuse before popping.
+            var ctor = Comp.ResolveMethodHandle(_module, SRME.EntityHandle(_callSiteToken),
+                _method.Context, _method.DeclaringClass);
+            if (ctor is null || !CoreIntrinsics.IsDecimalBinaryConstructor(ctor)
+                || sig.Header.RawValue != 0x20 || sig.GenericParameterCount != 0
+                || sig.RequiredParameterCount != 4
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Void }
+                || ps.Any(p => p is not { Kind: TypeKind.Primitive,
+                    Primitive: PrimitiveTypeCode.Int32, IsCanonPlaceholder: false }))
+                throw new NotSupportedException("Decimal four-word construction requires its exact CoreLib constructor");
+        }
         var args = new StackEntry[ps.Length];
         for (int i = ps.Length - 1; i >= 0; i--)
             args[i] = Pop();
+        if (ps.Length == 4)
+            return "([&]() -> Dn2CppDecimal { int32_t words[4] = { "
+                + string.Join(", ", args.Select(a => $"(int32_t)({a.Expr})"))
+                + " }; return dn2cpp_decimal_from_bits(words, 4); })()";
         if (ps.Length == 5)
             return $"dn2cpp_decimal_from_parts((int32_t)({args[0].Expr}), (int32_t)({args[1].Expr}), " +
                    $"(int32_t)({args[2].Expr}), (int32_t)({args[3].Expr}), (int32_t)({args[4].Expr}))";
@@ -145,6 +162,22 @@ internal sealed partial class MethodCompiler
     private bool TryEmitDecimalIntrinsic(string name, MethodSignature<TypeDesc> sig)
     {
         var ps = sig.ParameterTypes;
+        if (!sig.Header.IsInstance && name == "ToOACurrency"
+            && ps is [var currencyValue] && IsDecimal(currencyValue)
+            && sig.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 })
+        {
+            var value = Pop();
+            Push(StackKind.I8, "int64_t", $"dn2cpp_decimal_to_oa_currency({DecVal(value)})");
+            return true;
+        }
+        if (!sig.Header.IsInstance && name == "FromOACurrency"
+            && ps is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 }]
+            && IsDecimal(sig.ReturnType))
+        {
+            var value = Pop();
+            Push(StackKind.Struct, "Dn2CppDecimal", $"dn2cpp_decimal_from_oa_currency({Cast(value, "int64_t")})");
+            return true;
+        }
         if (name == "IsValid" && ps is
                 [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]
             && sig.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean })
@@ -475,6 +508,14 @@ internal sealed partial class MethodCompiler
             return true;
         }
 
+        if (sig.Header.IsInstance && name == "get_Scale" && ps.Length == 0
+            && sig.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte })
+        {
+            var a = Pop();
+            Push(StackKind.I4, "int32_t", $"({DecVal(a)}).scale()");
+            return true;
+        }
+
         // Decimal.get_High — the internal `uint High` accessor: the high 32 mantissa
         // bits, straight off the runtime field.
         if (name == "get_High" && ps.Length == 0)
@@ -778,6 +819,8 @@ internal sealed partial class MethodCompiler
     /// integer ones; Calendar overloads are carve-outs (NotSupported).</summary>
     private string EmitDateTimeCtorExpr(MethodSignature<TypeDesc> sig)
     {
+        if (CoreIntrinsics.IsPotentialDateTimeLocalConstructor(sig))
+            throw new NotSupportedException("DateTime local constructor requires its exact metadata signature");
         var ps = sig.ParameterTypes;
         var args = new StackEntry[ps.Length];
         for (int i = ps.Length - 1; i >= 0; i--) args[i] = Pop();

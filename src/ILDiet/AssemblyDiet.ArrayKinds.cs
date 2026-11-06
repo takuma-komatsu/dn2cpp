@@ -44,6 +44,7 @@ internal sealed partial class AssemblyDiet
                     foreach (var constraint in parameter.Constraints) kinds.Type(constraint.ConstraintType);
                 foreach (var target in method.Overrides) kinds.Member(target);
                 if (!method.HasBody) continue;
+                kinds.ConstrainedTypes(method, assembly.PE);
                 kinds.Locals(method.Body);
                 foreach (var handler in method.Body.ExceptionHandlers) kinds.Type(handler.CatchType);
                 foreach (var instruction in method.Body.Instructions)
@@ -77,8 +78,7 @@ internal sealed partial class AssemblyDiet
         {
             if (type is null || type.Module != _module || !_types.Add(type)
                 || type.MetadataToken.TokenType != TokenType.TypeSpec || type.MetadataToken.RID == 0) return;
-            _reader.GetTypeSpecification(MetadataTokens.TypeSpecificationHandle((int)type.MetadataToken.RID))
-                .DecodeSignature(this, null)?.Invoke(type);
+            OriginalTypeSpecification(MetadataTokens.TypeSpecificationHandle((int)type.MetadataToken.RID))?.Invoke(type);
         }
 
         internal void Member(MemberReference member)
@@ -89,17 +89,24 @@ internal sealed partial class AssemblyDiet
             if (row == 0) return;
             if (member is GenericInstanceMethod generic)
             {
-                var arguments = _reader.GetMethodSpecification(MetadataTokens.MethodSpecificationHandle(row))
-                    .DecodeSignature(this, null);
+                var blob = _reader.GetBlobReader(_reader.GetMethodSpecification(
+                    MetadataTokens.MethodSpecificationHandle(row)).Signature);
+                var decoder = new System.Reflection.Metadata.Ecma335.SignatureDecoder<TypeFix?, object?>(this, _reader, null);
+                var arguments = decoder.DecodeMethodSpecificationSignature(ref blob);
+                RequireConsumed(blob);
                 if (arguments.Length != generic.GenericArguments.Count) throw Mismatch();
                 for (int i = 0; i < arguments.Length; i++) arguments[i]?.Invoke(generic.GenericArguments[i]);
                 Member(generic.ElementMethod);
             }
             else if (member is MethodReference method)
             {
-                var signature = member.MetadataToken.TokenType == TokenType.Method
-                    ? _reader.GetMethodDefinition(MetadataTokens.MethodDefinitionHandle(row)).DecodeSignature(this, null)
-                    : _reader.GetMemberReference(MetadataTokens.MemberReferenceHandle(row)).DecodeMethodSignature(this, null);
+                var handle = member.MetadataToken.TokenType == TokenType.Method
+                    ? _reader.GetMethodDefinition(MetadataTokens.MethodDefinitionHandle(row)).Signature
+                    : _reader.GetMemberReference(MetadataTokens.MemberReferenceHandle(row)).Signature;
+                var blob = _reader.GetBlobReader(handle);
+                var decoder = new System.Reflection.Metadata.Ecma335.SignatureDecoder<TypeFix?, object?>(this, _reader, null);
+                var signature = decoder.DecodeMethodSignature(ref blob);
+                RequireConsumed(blob);
                 Signature(signature, method.ReturnType, method.Parameters);
             }
             else if (member is FieldReference field)
@@ -109,6 +116,28 @@ internal sealed partial class AssemblyDiet
                     : _reader.GetMemberReference(MetadataTokens.MemberReferenceHandle(row)).DecodeFieldSignature(this, null);
                 fix?.Invoke(field.FieldType);
             }
+        }
+
+        internal void ConstrainedTypes(Mono.Cecil.MethodDefinition method,
+            System.Reflection.PortableExecutable.PEReader pe)
+        {
+            int row = (int)method.MetadataToken.RID;
+            if (method.MetadataToken.TokenType != TokenType.Method || row == 0
+                || row > _reader.MethodDefinitions.Count) return;
+            var definition = _reader.GetMethodDefinition(MetadataTokens.MethodDefinitionHandle(row));
+            if (definition.RelativeVirtualAddress == 0) return;
+            var offsets = new HashSet<int>();
+            foreach (var instruction in method.Body.Instructions)
+                if (instruction.OpCode == Mono.Cecil.Cil.OpCodes.Constrained)
+                    offsets.Add(instruction.Offset);
+            if (offsets.Count == 0) return;
+            // A standalone VAR/MVAR TypeSpec becomes a Cecil GenericParameter,
+            // losing its operand token. Retained instruction offsets preserve it.
+            var body = pe.GetMethodBody(definition.RelativeVirtualAddress);
+            foreach (var instruction in ILDecoder.Decode(body.GetILContent()))
+                if (instruction.OpCode == ILOpCode.Constrained && offsets.Contains(instruction.Offset)
+                    && (uint)instruction.Token >> 24 == 0x1b)
+                    OriginalTypeSpecification(MetadataTokens.TypeSpecificationHandle(instruction.Token & 0x00ffffff));
         }
 
         internal void Locals(Mono.Cecil.Cil.MethodBody body)
@@ -219,7 +248,24 @@ internal sealed partial class AssemblyDiet
         }
 
         public TypeFix? GetTypeFromSpecification(MetadataReader reader, object? genericContext,
-            TypeSpecificationHandle handle, byte rawTypeKind) => reader.GetTypeSpecification(handle).DecodeSignature(this, null);
+            TypeSpecificationHandle handle, byte rawTypeKind) => OriginalTypeSpecification(handle);
+
+        private TypeFix? OriginalTypeSpecification(TypeSpecificationHandle handle)
+        {
+            var blob = _reader.GetBlobReader(_reader.GetTypeSpecification(handle).Signature);
+            var decoder = new System.Reflection.Metadata.Ecma335.SignatureDecoder<TypeFix?, object?>(this, _reader, null);
+            var fix = decoder.DecodeType(ref blob, allowTypeSpecifications: true);
+            RequireConsumed(blob);
+            return fix;
+        }
+
+        // Rewriting must not normalize trailing bytes into a different signature
+        // that a downstream exact-call authority would accept.
+        private static void RequireConsumed(BlobReader blob)
+        {
+            if (blob.RemainingBytes != 0)
+                throw new NotSupportedException("Original retained signature has trailing bytes.");
+        }
         public TypeFix? GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind) => null;
         public TypeFix? GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind) => null;
         public TypeFix? GetGenericMethodParameter(object? genericContext, int index) => null;

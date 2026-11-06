@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Numeric Vector<T> value/boxed/callable semantics on actual wasm32 execution.
+source "$(dirname "$0")/_common.sh"
+case "${DN2CPP_VECTOR_FULL:-0}" in
+    0|1) DN2CPP_VECTOR_FULL=${DN2CPP_VECTOR_FULL:-0} ;;
+    *) echo 'DN2CPP_VECTOR_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+if [ "$DN2CPP_VECTOR_FULL" = 1 ]; then
+    echo 'vector value Wasm coverage: raw and ILDiet builds with all runtime modes'
+else
+    echo 'vector value Wasm coverage: shared ILDiet binary with all runtime modes'
+    echo 'vector value Wasm raw preprocessing check: skipped (not selected); not counted as passed'
+fi
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|vector-full:$DN2CPP_VECTOR_FULL"
+source "$(dirname "$0")/_vector-value-probe.sh"
+source "$(dirname "$0")/_vector-unsupported-probe.sh"
+source "$(dirname "$0")/_vector-fixed-value-probe.sh"
+
+dn2cpp_emsdk_resolve --no-bundled
+for tool in em++ emcmake node; do
+    command -v "$tool" >/dev/null 2>&1 || gate_skip "$tool not found — vector value Wasm not verified"
+done
+export WASM=1
+unset SCALAR HIGHWAY DN2CPP_WASM_SIMD
+corelib=$(locate_corelib_cross_posix net10)
+build_proj samples/dotnet/VectorProbe/VectorProbe.csproj
+_CG_APP="samples/dotnet/VectorProbe/bin/$CONFIG/$TFM/VectorProbe.dll"
+out="$(_corelib_gate_out VectorProbe)-value-wasm${DN2CPP_OUT_SUFFIX:-}"
+ctx="vector-value-wasm|vector-unsupported-managed-storage-abi|fixed-vector-abi|AVX0|full:$DN2CPP_VECTOR_FULL|node|independent-native-lanes|$corelib|cli:$(_gate_cli_hash)"
+if gate_cache_check "$out" "$ctx" "$corelib" "$_CG_APP" \
+    "${_CG_APP%.dll}.runtimeconfig.json" "${_CG_APP%.dll}.deps.json" \
+    gates/_vector-value-probe.sh gates/fixtures/vector-value \
+    gates/_vector-unsupported-probe.sh gates/fixtures/vector-unsupported \
+    gates/_vector-fixed-value-probe.sh gates/fixtures/vector-fixed-value; then
+    gate_cache_hit_msg
+else
+    vector_value_wasm_probe "$out"
+    gate_cache_commit
+fi

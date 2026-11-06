@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Dn2CppRepo Condition="'$(Dn2CppRepo)' == ''">$(MSBuildThisFileDirectory)../../../../..</Dn2CppRepo>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Gen2CallbackSubset.cs" Link="Gen2CallbackSubset.cs" />
+    <ProjectReference Include="$(Dn2CppRepo)/src/Dn2Cpp.Runtime/Dn2Cpp.Runtime.csproj" />
+  </ItemGroup>
+</Project>

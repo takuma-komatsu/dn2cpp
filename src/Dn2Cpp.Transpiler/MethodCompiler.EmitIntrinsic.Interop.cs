@@ -388,6 +388,44 @@ internal sealed partial class MethodCompiler
         return false;
     }
 
+    private void EmitCoreClrTypeMaterialization(MethodInfo callee)
+    {
+        for (int i = callee.Signature.ParameterTypes.Length - 1; i > 0; i--) Pop();
+        var handle = Pop();
+        if (callee.Name == "GetRuntimeTypeFromHandleMaybeNull")
+            Emit($"if ({handle.Expr} != 0)");
+        Emit($"dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.{callee.Name} requires CoreCLR type handles. Use Type.TypeHandle and Type.GetTypeFromHandle instead.\");");
+        var result = callee.Signature.ReturnType;
+        if (!result.IsVoid)
+            Push(CppTypes.KindOf(result), CppTypes.Of(result), "nullptr");
+    }
+
+    // A null RuntimeType is stored unchanged by CoreLib's managed constructor.
+    private string RuntimeTypeHandleConstructorValue() =>
+        $"dn2cpp_type_info_or_null({Cast(Pop(), "Dn2CppType*")})";
+
+    private void ValidateRuntimeTypeHandle(string handle, MethodInfo callee)
+    {
+        string message = Comp.SrResourceText(callee.Module, "Arg_InvalidHandle")
+            ?? throw new NotSupportedException("RuntimeTypeHandle validation requires CoreLib's Arg_InvalidHandle resource");
+        Emit($"if ({handle} == nullptr) dn2cpp_throw_argument_text(&dn2cpp_argument_null_exception_type, \"{CppLiteralBody(message)}\", nullptr);");
+    }
+
+    private void ValidateRuntimeTypeInterface(string condition, string resource, MethodInfo callee)
+    {
+        string message = Comp.SrResourceText(callee.Module, resource)
+            ?? throw new NotSupportedException("RuntimeTypeHandle interface validation requires CoreLib's " + resource + " resource");
+        Emit($"if ({condition}) dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type, \"{CppLiteralBody(message)}\", nullptr);");
+    }
+
+    private void EmitGenericParameterPosition(string handle)
+    {
+        string message = Comp.CoreLibSrText("Arg_NotGenericParameter")
+            ?? throw new NotSupportedException("GenericParameterPosition requires CoreLib's Arg_NotGenericParameter resource");
+        Emit($"if (({handle}->flags & DN2CPP_TF_GENERICPARAM) == 0) dn2cpp_throw_of_msg(&dn2cpp_invalid_operation_exception_type, \"{CppLiteralBody(message)}\");");
+        Push(StackKind.I4, "int32_t", $"dn2cpp_type_generic_parameter_position({handle})");
+    }
+
     /// <summary>Lowers a call to a member <see cref="CoreIntrinsics.LoweredRuntimePrimitive"/>
     /// names — the intra-CoreLib runtime primitives the reachability cut deletes from the tree.
     ///
@@ -398,6 +436,891 @@ internal sealed partial class MethodCompiler
     /// runtime plumbing, so there is nothing worth falling through to.</para></summary>
     private void EmitRuntimePrimitive(MethodInfo callee)
     {
+        if (CoreIntrinsics.IsInvariantCompareInfoGetter(callee))
+        {
+            var receiver = Pop();
+            Emit($"if ({receiver.Expr} == nullptr) dn2cpp_throw_null_reference();");
+            _c.NoteInvariantCompareInfoFactory(callee);
+            var result = callee.Signature.ReturnType;
+            NoteReferenceClass(result);
+            string value = NewTemp(CppTypes.Of(result));
+            Emit($"{value} = {CoreIntrinsics.InvariantCompareInfoFactoryName(result.Class!)}();");
+            Push(StackKind.Ref, CppTypes.Of(result), value);
+            Top = Top with { StaticType = result };
+            return;
+        }
+
+        if (CoreIntrinsics.IsDateTimeFormatInfoDayName(callee)
+            || CoreIntrinsics.IsDateTimeFormatInfoMonthName(callee)
+            || CoreIntrinsics.IsDateTimeFormatInfoEraName(callee)
+            || CoreIntrinsics.IsDateTimeFormatInfoInternalMonthName(callee))
+        {
+            bool era = CoreIntrinsics.IsDateTimeFormatInfoEraName(callee);
+            bool internalMonth = CoreIntrinsics.IsDateTimeFormatInfoInternalMonthName(callee);
+            bool month = internalMonth || callee.Name is "GetAbbreviatedMonthName" or "GetMonthName";
+            string? abbreviated = null;
+            string? style = null;
+            if (internalMonth)
+            {
+                abbreviated = NewTemp("int32_t");
+                Emit($"{abbreviated} = {Cast(Pop(), "int32_t")};");
+                style = NewTemp("int32_t");
+                Emit($"{style} = {Cast(Pop(), "int32_t")};");
+            }
+            string index = NewTemp("int32_t");
+            Emit($"{index} = {Cast(Pop(), "int32_t")};");
+            string self = NewTemp("Dn2CppObject*");
+            Emit($"{self} = {Cast(Pop(), "Dn2CppObject*")};");
+            Emit($"dn2cpp_null_check({self});");
+            string range = Comp.SrResourceText(callee.Module, era ? "ArgumentOutOfRange_InvalidEraValue" : "ArgumentOutOfRange_Range")
+                ?? throw new NotSupportedException("DateTimeFormatInfo names require CoreLib's range resource");
+            if (!era)
+                range = range.Replace("{0}", month ? "1" : "Sunday").Replace("{1}", month ? "13" : "Saturday");
+            Comp.NoteTypeIdentityClosure(callee.Signature.ParameterTypes[0], keepSeed: false);
+            string ti = TypeInfoExpr(callee.Signature.ParameterTypes[0])
+                ?? throw new NotSupportedException("DateTimeFormatInfo names require argument type metadata");
+            Emit(era ? $"if ({index} != 0 && {index} != 1) {{"
+                : month ? $"if ((uint32_t){index} - 1u >= 13u) {{" : $"if ((uint32_t){index} > 6u) {{");
+            string actual = NewTemp("Dn2CppObject*");
+            Emit($"    {actual} = dn2cpp_box({ti}, &{index}, sizeof({index}));");
+            string actualText = NewTemp("Dn2CppString*");
+            Emit($"    {actualText} = dn2cpp_format_int({index}, 4, nullptr);");
+            Emit($"    DN2CPP_WEB_GC_LIVENESS({actual});");
+            Emit($"    dn2cpp_throw_argument_out_of_range_actual(\"{CppLiteralBody(range)}\", \"{(era ? "era" : month ? "month" : "dayofweek")}\", {actual}, {actualText});");
+            Emit("}");
+            if (era)
+            {
+                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd(callee.Name == "GetAbbreviatedEraName" ? "AD" : "A.D."));
+                return;
+            }
+            if (month)
+            {
+                var element = TypeDesc.MakePrimitive(PrimitiveTypeCode.String);
+                Comp.NoteArrayElementType(element);
+                string shortNames = internalMonth ? $"({style} != 2 && {abbreviated} != 0)"
+                    : callee.Name == "GetAbbreviatedMonthName" ? "true" : "false";
+                string array = NewTemp("Dn2CppArrayRef*");
+                Emit($"{array} = dn2cpp_dtfi_invariant_month_names({PreciseArrayTypeInfoExpr(element)}, {shortNames});");
+                Push(StackKind.Ref, "Dn2CppString*", $"(Dn2CppString*){array}->data[{index} - 1]");
+                return;
+            }
+            // Day names retain their existing rooted-literal invariant policy.
+            string result = NewTemp("Dn2CppString*");
+            string[] names = callee.Name == "GetAbbreviatedDayName"
+                ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+                : ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+            Emit($"switch ({index}) {{");
+            for (int i = 0; i < names.Length; i++)
+                Emit($"case {i}: {result} = {Literals.GetOrAdd(names[i])}; break;");
+            Emit($"default: {result} = nullptr; break;");
+            Emit("}");
+            Push(StackKind.Ref, "Dn2CppString*", result);
+            return;
+        }
+
+        if (CoreIntrinsics.IsDateTimeFormatInfoFormatFlags(callee))
+        {
+            DateTimeFormatReceiver();
+            // Invariant names contain no genitive differences, spaces or digit
+            // prefixes, and the invariant calendar has no Hebrew flags.
+            var result = callee.Signature.ReturnType;
+            Comp.NoteTypeIdentityClosure(result, keepSeed: false);
+            Push(StackKind.I4, "int32_t", "0");
+            Top = Top with { StaticType = result };
+            return;
+        }
+
+        if (CoreIntrinsics.IsDateTimeFormatInfoYearMonthAdjustment(callee))
+        {
+            // The invariant FormatFlags has no Hebrew adjustment bit. Evaluate
+            // arguments, but never read or write either referenced integer.
+            for (int i = 0; i < 3; i++)
+                Emit($"(void)({Pop().Expr});");
+            DateTimeFormatReceiver();
+            Push(StackKind.I4, "int32_t", "1");
+            Top = Top with { StaticType = callee.Signature.ReturnType };
+            return;
+        }
+
+        if (CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears(callee))
+        {
+            DateTimeFormatReceiver();
+            // Only Japanese and Taiwan calendars force the special year rule;
+            // native DTFI uses the invariant Gregorian policy.
+            Push(StackKind.I4, "int32_t", "0");
+            Top = Top with { StaticType = callee.Signature.ReturnType };
+            return;
+        }
+
+        if (CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePattern(callee))
+        {
+            DateTimeFormatReceiver();
+            // Native date/time patterns are invariant; their setters remain unsupported.
+            string pattern = callee.Name switch
+            {
+                "get_DateTimeOffsetPattern" => "MM/dd/yyyy HH:mm:ss zzz",
+                "get_GeneralLongTimePattern" => "MM/dd/yyyy HH:mm:ss",
+                _ => "MM/dd/yyyy HH:mm"
+            };
+            Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd(pattern));
+            Top = Top with { StaticType = callee.Signature.ReturnType };
+            return;
+        }
+
+        if (CoreIntrinsics.IsDateTimeParserBoundary(callee))
+        {
+            EmitDateTimeParserBoundary(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsVectorValueMethod(callee))
+        {
+            EmitVectorValue(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsVectorFloatingPointTernary(callee))
+        {
+            EmitVectorFloatingPointTernary(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsVectorMagnitude(callee))
+        {
+            EmitVectorMagnitude(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsVectorLog(callee))
+        {
+            EmitVectorLog(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsConcreteVectorElement(callee))
+        {
+            EmitConcreteVectorElement(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsVectorExplicit(callee))
+        {
+            EmitVectorExplicit(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsDecimalDivMod(callee))
+        {
+            var value = Pop();
+            Push(StackKind.I4, "int32_t", $"dn2cpp_decimal_divmod1e9({Cast(value, "Dn2CppDecimal*")})");
+            return;
+        }
+
+        if (CoreIntrinsics.IsDateOnlyDeconstruct(callee))
+        {
+            EmitDateOnlyDeconstruct();
+            return;
+        }
+
+        if (CoreIntrinsics.IsUInt128Checked(callee))
+        {
+            EmitUInt128Checked(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsInt128Checked(callee))
+        {
+            EmitInt128Checked(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsDateTimeFormatInfoSpan(callee))
+        {
+            if (callee.Context.MethodArgs is not [{ Kind: TypeKind.Primitive,
+                    Primitive: PrimitiveTypeCode.Char or PrimitiveTypeCode.Byte } element])
+                throw new NotSupportedException("DateTimeFormatInfo TChar accessor requires Char or Byte");
+            EmitDateTimeFormatSpan(callee, element);
+            return;
+        }
+
+        if (CoreIntrinsics.IsDateTimeFormatInfoMonthArray(callee))
+        {
+            string abbreviated = callee.Name == "InternalGetGenitiveMonthNames"
+                ? Cast(Pop(), "int32_t")
+                : callee.Name.StartsWith("get_", StringComparison.Ordinal) ? "1" : "0";
+            DateTimeFormatReceiver();
+            var element = callee.Signature.ReturnType.Element!;
+            Comp.NoteArrayElementType(element);
+            string array = NewTemp("Dn2CppArrayRef*");
+            Emit($"{array} = dn2cpp_dtfi_invariant_month_names({PreciseArrayTypeInfoExpr(element)}, {abbreviated} != 0);");
+            Push(StackKind.Ref, "Dn2CppArrayRef*", callee.Name.StartsWith("get_", StringComparison.Ordinal)
+                ? $"dn2cpp_array_clone_ref({array})" : array);
+            Top = Top with { StaticType = callee.Signature.ReturnType };
+            return;
+        }
+
+        if (CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatterns(callee))
+        {
+            EmitAllDateTimePatterns(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsDateTimeFormatInfoTokenize(callee))
+        {
+            var arguments = new StackEntry[4];
+            for (int i = arguments.Length - 1; i >= 0; i--) arguments[i] = Pop();
+            string receiver = NewTemp(DateTimeFormatCppType());
+            Emit($"{receiver} = {Cast(Pop(), DateTimeFormatCppType())};");
+            // Preserve evaluation, but never inspect or initialize out/cursor storage.
+            foreach (var argument in arguments) Emit($"(void)({argument.Expr});");
+            // Intrinsic call sites bypass the normal managed-call guard. Raw
+            // calls/addressable bodies deliberately have no receiver-first policy.
+            if (_callIsVirtual) Emit($"dn2cpp_null_check({receiver});");
+            Emit("dn2cpp_throw_platform_not_supported(\"DateTimeFormatInfo token-table parsing is not supported\");");
+            Push(StackKind.I4, "int32_t", "0"); // unreachable Boolean stack shape
+            return;
+        }
+
+        if (CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(callee))
+        {
+            string calendar = Cast(Pop(), "Dn2CppObject*");
+            string receiver = DateTimeFormatReceiver();
+            Emit($"if ({receiver}->dn2cpp_read_only) dn2cpp_throw_invalid_operation_msg(\"Instance is read-only.\");");
+            Emit($"if ({calendar} == nullptr) dn2cpp_throw_argument_null_param(\"value\");");
+            // Native DTFI has no mutable Calendar backing state.
+            Emit("dn2cpp_throw_platform_not_supported(\"DateTimeFormatInfo.Calendar is not supported\");");
+            return;
+        }
+
+        if (CoreIntrinsics.IsDateTimeFormatInfoCalendar(callee))
+        {
+            DateTimeFormatReceiver();
+            // Native DTFI objects have no constructed Calendar backing state.
+            Emit("dn2cpp_throw_platform_not_supported(\"DateTimeFormatInfo.Calendar is not supported\");");
+            var result = callee.Signature.ReturnType;
+            Push(StackKind.Ref, CppTypes.Of(result), "nullptr"); // unreachable stack shape after noreturn
+            Top = Top with { StaticType = result };
+            return;
+        }
+
+        if (CoreIntrinsics.IsGen2GcCallbackRefusal(callee))
+        {
+            // Both arguments and the receiver were already evaluated. Never touch
+            // fields or construct a weak handle; allocation is fenced independently.
+            for (int i = 0; i < callee.Signature.ParameterTypes.Length + 1; i++)
+                Emit($"(void)({Pop().Expr});");
+            Emit("dn2cpp_throw_platform_not_supported(\"Gen2 GC notification objects are not supported\");");
+            return;
+        }
+
+        if (CoreIntrinsics.IsCoreClrTypeMaterialization(callee))
+        {
+            EmitCoreClrTypeMaterialization(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(callee))
+        {
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = dn2cpp_type_require({Cast(Pop(), "Dn2CppType*")});");
+            EmitGenericParameterPosition(handle);
+            return;
+        }
+        if (CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(callee))
+        {
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+            ValidateRuntimeTypeHandle(handle, callee);
+            EmitGenericParameterPosition(handle);
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleUtf8Name(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            string message = Comp.SrResourceText(callee.Module, "Arg_InvalidHandle")
+                ?? throw new NotSupportedException("RuntimeTypeHandle UTF8-name validation requires CoreLib's Arg_InvalidHandle resource");
+            Emit($"dn2cpp_runtime_type_get_utf8_name({Cast(type, "Dn2CppType*")}, \"{CppLiteralBody(message)}\");");
+            var result = callee.Signature.ReturnType;
+            NoteLocalValueLayout(result);
+            string cpp = CppTypes.Of(result);
+            Push(CppTypes.KindOf(result), cpp, $"{cpp}{{}}"); // unreachable stack shape after noreturn
+            Top = Top with { StaticType = result };
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStatic(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            Push(StackKind.I4, "int32_t", $"dn2cpp_runtime_type_contains_generic_variables({Cast(type, "Dn2CppType*")})");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariables(callee))
+        {
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+            ValidateRuntimeTypeHandle(handle, callee);
+            Push(StackKind.I4, "int32_t", $"dn2cpp_type_contains_generic_parameters({handle})");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleMakeCompound(callee))
+        {
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+            ValidateRuntimeTypeHandle(handle, callee);
+            Push(StackKind.Ref, "Dn2CppType*",
+                $"dn2cpp_type_make_compound(dn2cpp_get_type_from_handle({handle}), {(callee.Name == "MakePointer" ? 1 : 2)})");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleMakeArray(callee))
+        {
+            string? rank = null;
+            if (callee.Name == "MakeArray")
+            {
+                rank = NewTemp("int32_t");
+                Emit($"{rank} = {Cast(Pop(), "int32_t")};");
+            }
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+            ValidateRuntimeTypeHandle(handle, callee);
+            if (rank is not null)
+            {
+                // Public IL rejects these ranks first; the private loader ABI is not modeled.
+                Emit($"if ({rank} <= 0) dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.MakeArray with a nonpositive rank requires CoreCLR's private array loader. Use Type.MakeArrayType instead.\");");
+                Push(StackKind.Ref, "Dn2CppType*",
+                    $"dn2cpp_type_make_array_type_rank(dn2cpp_get_type_from_handle({handle}), {rank})");
+            }
+            else
+            {
+                Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_make_array_type(dn2cpp_get_type_from_handle({handle}))");
+            }
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeEnumName(callee))
+        {
+            string value = Cast(Pop(), "Dn2CppObject*");
+            string receiver = CallIsVirtual && _constrained is not null
+                ? DerefReceiver("Dn2CppType*") : Cast(Pop(), "Dn2CppType*");
+            // callvirt checks before entry; the raw managed body validates value first.
+            if (CallIsVirtual)
+                receiver = $"dn2cpp_null_check({receiver})";
+            Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_runtime_type_get_enum_name({receiver}, {value})");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeEnumDefined(callee))
+        {
+            string value = Cast(Pop(), "Dn2CppObject*");
+            string receiver = CallIsVirtual && _constrained is not null
+                ? DerefReceiver("Dn2CppType*") : Cast(Pop(), "Dn2CppType*");
+            // callvirt checks before entry; the raw managed body validates value first.
+            if (CallIsVirtual)
+                receiver = $"dn2cpp_null_check({receiver})";
+            Push(StackKind.I4, "int32_t", $"dn2cpp_runtime_type_is_enum_defined({receiver}, {value})");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeAssignableFrom(callee))
+        {
+            string value = Cast(Pop(), "Dn2CppObject*");
+            string receiver = CallIsVirtual && _constrained is not null
+                ? DerefReceiver("Dn2CppType*") : Cast(Pop(), "Dn2CppType*");
+            // callvirt checks before entry; the raw managed body returns false for a null source first.
+            if (CallIsVirtual)
+                receiver = $"dn2cpp_null_check({receiver})";
+            Push(StackKind.I4, "int32_t", $"dn2cpp_runtime_type_is_assignable_from({receiver}, {value})");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeTypeCode(callee))
+        {
+            string receiver = CallIsVirtual && _constrained is not null
+                ? DerefReceiver("Dn2CppType*") : Cast(Pop(), "Dn2CppType*");
+            Push(StackKind.I4, "int32_t", $"dn2cpp_type_get_type_code(dn2cpp_type_require({receiver}))");
+            return;
+        }
+        if (CoreIntrinsics.IsRuntimeTypeArrayRank(callee))
+        {
+            // A pending constrained prefix still carries the managed-pointer receiver.
+            string receiver = CallIsVirtual && _constrained is not null
+                ? DerefReceiver("Dn2CppType*") : Cast(Pop(), "Dn2CppType*");
+            Push(StackKind.I4, "int32_t", $"dn2cpp_type_get_array_rank({receiver})");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeMakeGenericType(callee))
+        {
+            // callvirt checks before entry; a nonvirtual body checks the array first.
+            if (CallIsVirtual)
+                NullCheckReceiverUnder(1);
+            Emit($"if ({Cast(Peek(1), "Dn2CppArrayRef*")} == nullptr) dn2cpp_throw_argument_null_param(\"typeArguments\");");
+            EmitIntrinsic("System.Type", "MakeGenericType", callee.Signature);
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleInstantiate(callee))
+        {
+            var arguments = Pop();
+            if (callee.Signature.ParameterTypes[0].Kind == TypeKind.SZArray)
+            {
+                string array = NewTemp("Dn2CppArrayRef*");
+                Emit($"{array} = {Cast(arguments, "Dn2CppArrayRef*")};");
+                // CopyRuntimeTypeHandles accepts null/empty arrays, but dereferences every element.
+                Emit($"if ({array} != nullptr) for (int32_t i = 0; i < {array}->length; i++) (void)dn2cpp_null_check({array}->data[i]);");
+            }
+            else
+            {
+                Emit($"(void)dn2cpp_null_check({Cast(arguments, "Dn2CppObject*")});");
+            }
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+            ValidateRuntimeTypeHandle(handle, callee);
+            Emit("dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.Instantiate requires CoreCLR type construction and constraint validation. Use Type.MakeGenericType instead.\");");
+            Push(StackKind.Ref, "Dn2CppType*", "nullptr"); // unreachable stack shape
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeDeclaringMethod(callee))
+        {
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = dn2cpp_type_require({Cast(Pop(), "Dn2CppType*")});");
+            string message = Comp.SrResourceText(callee.Module, "Arg_NotGenericParameter")
+                ?? throw new NotSupportedException("RuntimeType.DeclaringMethod requires CoreLib's Arg_NotGenericParameter resource");
+            Emit($"if (({handle}->flags & DN2CPP_TF_GENERICPARAM) == 0) dn2cpp_throw_of_msg(&dn2cpp_invalid_operation_exception_type, \"{CppLiteralBody(message)}\");");
+            Push(StackKind.Ref, "Dn2CppMethodRef*", $"dn2cpp_type_generic_parameter_declaring_method({handle})");
+            return;
+        }
+        if (CoreIntrinsics.IsCoreClrDeclaringMethodBridge(callee))
+        {
+            Pop();
+            Emit("dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.GetDeclaringMethodForGenericParameter requires CoreCLR method descriptors. Use Type.DeclaringMethod instead.\");");
+            Push(StackKind.Ref, CppTypes.Of(callee.Signature.ReturnType), "nullptr"); // unreachable stack shape
+            return;
+        }
+
+        if (CoreIntrinsics.IsMemberMetadataDefinitionOverride(callee))
+        {
+            var other = Pop();
+            var receiver = Pop();
+            Push(StackKind.I4, "int32_t", $"dn2cpp_memberinfo_has_same_metadata({Cast(receiver, "Dn2CppObject*")}, {Cast(other, "Dn2CppObject*")})");
+            return;
+        }
+        if (CoreIntrinsics.IsMethodGenericParameterCount(callee))
+        {
+            var method = Pop();
+            Push(StackKind.I4, "int32_t", $"dn2cpp_methodref_generic_parameter_count((Dn2CppMethodRef*)({method.Expr}))");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleIsSZArray(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            Push(StackKind.I4, "int32_t", $"dn2cpp_type_is_szarray(dn2cpp_type_require({Cast(type, "Dn2CppType*")}))");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            string helper = callee.Name == "IsFunctionPointer"
+                ? "dn2cpp_type_is_function_pointer" : "dn2cpp_type_is_unmanaged_function_pointer";
+            Push(StackKind.I4, "int32_t", $"{helper}(dn2cpp_type_require({Cast(type, "Dn2CppType*")}))");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleIsGenericVariable(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            Push(StackKind.I4, "int32_t",
+                $"((dn2cpp_type_require({Cast(type, "Dn2CppType*")})->flags & DN2CPP_TF_GENERICPARAM) != 0 ? 1 : 0)");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleGetToken(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            Push(StackKind.I4, "int32_t", $"dn2cpp_memberinfo_metadata_token({Cast(type, "Dn2CppObject*")})");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleHasElementType(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            Push(StackKind.I4, "int32_t", $"dn2cpp_type_has_element_type(dn2cpp_type_require({Cast(type, "Dn2CppType*")}))");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleIsArray(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            Push(StackKind.I4, "int32_t", $"dn2cpp_type_is_array(dn2cpp_type_require({Cast(type, "Dn2CppType*")}))");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleIsByRef(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            Push(StackKind.I4, "int32_t", $"dn2cpp_type_is_by_ref(dn2cpp_type_require({Cast(type, "Dn2CppType*")}))");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleIsPrimitive(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            Push(StackKind.I4, "int32_t", $"dn2cpp_type_is_primitive(dn2cpp_type_require({Cast(type, "Dn2CppType*")}))");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleIsPointer(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            Push(StackKind.I4, "int32_t", $"dn2cpp_type_is_pointer(dn2cpp_type_require({Cast(type, "Dn2CppType*")}))");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleGetElementType(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_get_element_type({Cast(type, "Dn2CppType*")})");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleGetAttributes(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            Push(StackKind.I4, "int32_t", $"dn2cpp_type_il_attrs(dn2cpp_type_require({Cast(type, "Dn2CppType*")}))");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleIsTypeDefinition(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            Push(StackKind.I4, "int32_t", $"dn2cpp_type_is_type_definition(dn2cpp_type_require({Cast(type, "Dn2CppType*")}))");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleGetModule(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            var result = callee.Signature.ReturnType;
+            var module = new StackEntry($"dn2cpp_type_assembly_name({Cast(type, "Dn2CppType*")})",
+                StackKind.Ref, "const char*", StaticType: result);
+            // RuntimeModule is an interned object; public Module consumers unwrap it.
+            Push(StackKind.Ref, CppTypes.Of(result), Cast(module, CppTypes.Of(result)));
+            Top = Top with { StaticType = result };
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleGetAssembly(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = dn2cpp_type_info_or_null({Cast(type, "Dn2CppType*")});");
+            ValidateRuntimeTypeHandle(handle, callee);
+            var result = callee.Signature.ReturnType;
+            var assembly = new StackEntry($"dn2cpp_ti_assembly_name({handle})", StackKind.Ref,
+                "const char*", StaticType: result);
+            // RuntimeAssembly returns a managed wrapper; Assembly consumers unwrap it.
+            Push(StackKind.Ref, CppTypes.Of(result), Cast(assembly, CppTypes.Of(result)));
+            Top = Top with { StaticType = result };
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleFields(callee))
+        {
+            var count = Pop();
+            var buffer = Pop();
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            // Preserve argument evaluation without inspecting the span's storage.
+            Emit($"(void)({buffer.Expr});");
+            Push(StackKind.I4, "int32_t",
+                $"dn2cpp_runtime_type_get_fields({Cast(type, "Dn2CppType*")}, {Cast(count, "int32_t*")})");
+            return;
+        }
+
+        if (CoreIntrinsics.IsActivatorFrom(callee))
+        {
+            var arguments = new StackEntry[callee.Signature.ParameterTypes.Length];
+            for (int i = arguments.Length - 1; i >= 0; i--)
+                arguments[i] = Pop();
+            // The loader fails before any path, type, flags or binder validation.
+            foreach (var argument in arguments)
+                Emit($"(void)({argument.Expr});");
+            Emit("dn2cpp_throw_platform_not_supported(\"Assembly.LoadFrom is not available in AOT-compiled code (no assembly loading)\");");
+            var result = callee.Signature.ReturnType;
+            Push(StackKind.Ref, CppTypes.Of(result), "nullptr"); // unreachable stack shape
+            Top = Top with { StaticType = result };
+            return;
+        }
+
+        if (CoreIntrinsics.IsResourceFormatterAccessor(callee))
+        {
+            var arguments = new StackEntry[callee.Signature.ParameterTypes.Length];
+            for (int i = arguments.Length - 1; i >= 0; i--)
+                arguments[i] = Pop();
+            foreach (var argument in arguments)
+                Emit($"(void)({argument.Expr});");
+            // Deliberate AOT resource policy, not CLR constructor or loader parity.
+            Emit("dn2cpp_throw_not_supported_msg(\"BinaryFormatter-serialized resource types are not supported. Store the value as one of the primitive resource types (string, numeric types, byte[]) instead.\");");
+            Push(StackKind.Ref, "Dn2CppObject*", "nullptr"); // unreachable stack shape
+            Top = Top with { StaticType = callee.Signature.ReturnType };
+            return;
+        }
+
+        if (CoreIntrinsics.IsDefaultPrincipalAccessor(callee))
+        {
+            var marker = Pop();
+            Emit($"(void)({marker.Expr});");
+            var target = Comp.ReachDefaultPrincipalFactory();
+            Push(StackKind.Ref, "Dn2CppObject*", $"((Dn2CppObject*){DirectCallSym(target)}())");
+            Top = Top with { StaticType = callee.Signature.ReturnType };
+            return;
+        }
+
+        if (CoreIntrinsics.IsAppDomainExecuteAssembly(callee))
+        {
+            var arguments = Pop();
+            var assembly = Pop();
+            // Argument expressions still run; the unsupported helper never reads their payloads.
+            Emit($"(void)({arguments.Expr});");
+            Emit($"if ({Cast(assembly, "const char*")} == nullptr) dn2cpp_throw_null_reference();");
+            Emit("dn2cpp_throw_platform_not_supported(\"AppDomain assembly entrypoint execution is not supported\");");
+            Push(StackKind.I4, "int32_t", "0"); // unreachable stack shape
+            return;
+        }
+
+        if (CoreIntrinsics.IsAppContextOnProcessExit(callee))
+        {
+            Emit("dn2cpp_throw_platform_not_supported(\"AppContext process-exit orchestration is not supported\");");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            var result = callee.Signature.ReturnType;
+            var element = result.Element!;
+            Comp.NoteArrayEnumerableElement(element);
+            Push(StackKind.Ref, "Dn2CppArrayRef*",
+                $"dn2cpp_runtime_type_function_pointer_arguments({Cast(type, "Dn2CppType*")}, {PreciseArrayTypeInfoExpr(element)})");
+            Top = Top with { StaticType = result };
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleInterfaces(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            var result = callee.Signature.ReturnType;
+            var element = result.Element!;
+            var runtimeType = callee.Signature.ParameterTypes[0];
+            Comp.NoteArrayEnumerableElement(element);
+            Comp.NoteArrayEnumerableElement(runtimeType);
+            Push(StackKind.Ref, "Dn2CppArrayRef*",
+                $"dn2cpp_runtime_type_get_interfaces({Cast(type, "Dn2CppType*")}, {PreciseArrayTypeInfoExpr(element)}, {PreciseArrayTypeInfoExpr(runtimeType)})");
+            Top = Top with { StaticType = result };
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleInstantiation(callee))
+        {
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+            ValidateRuntimeTypeHandle(handle, callee);
+            string arguments = NewTemp("Dn2CppArrayRef*");
+            Emit($"{arguments} = dn2cpp_type_get_generic_arguments(dn2cpp_get_type_from_handle({handle}));");
+            // The helper allocates a fresh array; private wrappers use null at zero arity.
+            Emit($"if ({arguments}->length == 0) {arguments} = nullptr;");
+            PushReflectionMemberArray(arguments, callee.Signature.ReturnType);
+            _stack[^1] = _stack[^1] with { StaticType = callee.Signature.ReturnType };
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleConstraints(callee))
+        {
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+            ValidateRuntimeTypeHandle(handle, callee);
+            ValidateRuntimeTypeInterface($"({handle}->flags & DN2CPP_TF_GENERICPARAM) == 0", "Arg_InvalidHandle", callee);
+            string constraints = NewTemp("Dn2CppArrayRef*");
+            Emit($"{constraints} = dn2cpp_type_get_generic_parameter_constraints(dn2cpp_get_type_from_handle({handle}));");
+            // The retained public getter owns Type.EmptyTypes normalization.
+            Emit($"if ({constraints}->length == 0) {constraints} = nullptr;");
+            PushReflectionMemberArray(constraints, callee.Signature.ReturnType);
+            _stack[^1] = _stack[^1] with { StaticType = callee.Signature.ReturnType };
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleAccessor(callee))
+        {
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+            if (callee.Name == "GetRuntimeTypeChecked")
+                ValidateRuntimeTypeHandle(handle, callee);
+            Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_get_type_from_handle({handle})");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleConstructor(callee))
+        {
+            string value = RuntimeTypeHandleConstructorValue();
+            Emit($"{DerefReceiver("const Dn2CppTypeInfo*")} = {value};");
+            return;
+        }
+
+        if (CoreIntrinsics.IsCoreClrVirtualSlotCount(callee))
+        {
+            Pop();
+            Emit($"dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.{callee.Name} requires CoreCLR virtual-slot layout. Use supported public Type and MethodInfo APIs instead.\");");
+            Push(StackKind.I4, "int32_t", "0"); // unreachable stack shape
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeInterfaceCheck(callee))
+        {
+            string target = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{target} = {Cast(Pop(), "const Dn2CppTypeInfo*")};");
+            string source = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{source} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+            // Both handles are checked before the native type-shape validation.
+            ValidateRuntimeTypeHandle(source, callee);
+            ValidateRuntimeTypeHandle(target, callee);
+            ValidateRuntimeTypeInterface($"({source}->flags & DN2CPP_TF_GENERICPARAM) != 0", "Arg_InvalidHandle", callee);
+            ValidateRuntimeTypeInterface($"dn2cpp_signature_kind({source}) != 0", "Arg_NotFoundIFace", callee);
+            ValidateRuntimeTypeInterface($"({source}->flags & DN2CPP_TF_INTERFACE) != 0", "Argument_InterfaceMap", callee);
+            ValidateRuntimeTypeInterface($"({target}->flags & DN2CPP_TF_INTERFACE) == 0", "Arg_MustBeInterface", callee);
+            ValidateRuntimeTypeInterface($"dn2cpp_type_is_assignable_from(dn2cpp_get_type_from_handle({target}), dn2cpp_get_type_from_handle({source})) == 0",
+                "Arg_NotFoundIFace", callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsCoreClrMethodSlotLookup(callee))
+        {
+            if (callee.Name == "GetMethodAt")
+            {
+                var slot = Pop();
+                var type = Pop();
+                string handle = NewTemp("const Dn2CppTypeInfo*");
+                Emit($"{handle} = dn2cpp_type_require({Cast(type, "Dn2CppType*")});");
+                // Null and TypeDesc checks precede the managed negative-slot check.
+                ValidateRuntimeTypeInterface($"dn2cpp_signature_kind({handle}) != 0 || ({handle}->flags & DN2CPP_TF_GENERICPARAM) != 0",
+                    "Arg_InvalidHandle", callee);
+                ValidateRuntimeTypeInterface($"{Cast(slot, "int32_t")} < 0", "Arg_ArgumentOutOfRangeException", callee);
+            }
+            else
+            {
+                Pop();
+                string owner = NewTemp("const Dn2CppTypeInfo*");
+                Emit($"{owner} = {Cast(Pop(), "const Dn2CppTypeInfo*")};");
+                string receiver = NewTemp("const Dn2CppTypeInfo*");
+                Emit($"{receiver} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+                // CoreLib checks both type handles, but does not validate the MethodDesc.
+                ValidateRuntimeTypeHandle(receiver, callee);
+                ValidateRuntimeTypeHandle(owner, callee);
+            }
+            Emit($"dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.{callee.Name} requires CoreCLR virtual-slot method descriptors. Use supported public Type and MethodInfo APIs instead.\");");
+            var result = callee.Signature.ReturnType;
+            if (result.Class is { } value) Comp.NoteForceEmit(value);
+            string resultType = CppTypes.Of(result);
+            string unused = NewTemp(resultType);
+            Emit($"{unused} = {{}};"); // unreachable stack shape
+            Push(CppTypes.KindOf(result), resultType, unused);
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(callee))
+        {
+            Pop();
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+            // Both managed wrappers validate through GetNativeHandle before entering QCall.
+            ValidateRuntimeTypeHandle(handle, callee);
+            Emit($"dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.{callee.Name} requires CoreCLR-owned cache handles. Use public GCHandle, Type and Enum APIs instead.\");");
+            Push(StackKind.I8, "intptr_t", "0"); // unreachable stack shape
+            return;
+        }
+
+        if (CoreIntrinsics.IsCoreClrConstraintCheck(callee))
+        {
+            for (int i = 0; i < callee.Signature.ParameterTypes.Length; i++) Pop();
+            Emit("dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.SatisfiesConstraints: CoreCLR private generic-context validation is not supported in this AOT runtime. Use supported Type.MakeGenericType and MethodInfo.MakeGenericMethod APIs instead.\");");
+            Push(StackKind.I4, "int32_t", "0"); // unreachable stack shape
+            return;
+        }
+        if (CoreIntrinsics.IsCoreClrCanonicalTypeComparison(callee))
+        {
+            Pop();
+            Pop();
+            Emit("dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.CompareCanonicalHandles requires CoreCLR canonical method tables. Use supported public Type and FieldInfo APIs instead.\");");
+            Push(StackKind.I4, "int32_t", "0"); // unreachable stack shape
+            return;
+        }
+        if (CoreIntrinsics.IsCoreClrSignatureBlobParser(callee))
+        {
+            for (int i = 0; i < callee.Signature.ParameterTypes.Length; i++) Pop();
+            Emit($"dn2cpp_throw_platform_not_supported(\"System.Signature.{callee.Name}: CoreCLR private signature-blob parsing is not supported in this AOT runtime. Use supported public reflection APIs instead.\");");
+            Push(StackKind.I4, "int32_t", "0"); // unreachable stack shape
+            return;
+        }
+        if (CoreIntrinsics.IsCoreClrFieldDescOperation(callee))
+        {
+            for (int i = 0; i < callee.Signature.ParameterTypes.Length; i++) Pop();
+            Emit($"dn2cpp_throw_platform_not_supported(\"System.RuntimeFieldHandle.{callee.Name} requires CoreCLR field descriptors. Use FieldInfo instead.\");");
+            var result = callee.Signature.ReturnType;
+            if (result.Class is { } value) Comp.NoteForceEmit(value);
+            string type = CppTypes.Of(result);
+            string unused = NewTemp(type);
+            Emit($"{unused} = {{}};"); // unreachable stack shape
+            Push(CppTypes.KindOf(result), type, unused);
+            return;
+        }
+        if (CoreIntrinsics.IsCoreClrMethodDescQuery(callee))
+        {
+            for (int i = 0; i < callee.Signature.ParameterTypes.Length; i++) Pop();
+            Emit($"dn2cpp_throw_platform_not_supported(\"System.RuntimeMethodHandle.{callee.Name} requires CoreCLR method descriptors. Use MethodInfo or ConstructorInfo instead.\");");
+            var result = callee.Signature.ReturnType;
+            if (result.Class is { } value) Comp.NoteForceEmit(value);
+            string type = CppTypes.Of(result);
+            string unused = NewTemp(type);
+            Emit($"{unused} = {{}};"); // unreachable stack shape
+            Push(CppTypes.KindOf(result), type, unused);
+            return;
+        }
+        if (CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(callee))
+        {
+            Pop();
+            Emit($"dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.{callee.Name} requires CoreCLR method descriptors. Use Type.GetMethods or Type.GetConstructors instead.\");");
+            if (!callee.Signature.ReturnType.IsVoid)
+            {
+                var result = callee.Signature.ReturnType;
+                if (result.Class is { } handle) Comp.NoteForceEmit(handle);
+                string type = CppTypes.Of(result);
+                Push(CppTypes.KindOf(result), type, $"{type}{{}}"); // unreachable stack shape
+            }
+            return;
+        }
         if (TryEmitGcMemmoveMarshalPrimitive(callee))
             return;
         if (TryEmitRandomBytesEntryAssemblyPrimitive(callee))
@@ -419,8 +1342,6 @@ internal sealed partial class MethodCompiler
         if (TryEmitNumberGroupSizes(callee))
             return;
         if (TryEmitAppContextBaseDirectory(callee))
-            return;
-        if (TryEmitDelegateTryGetAt(callee))
             return;
         if (TryEmitAsciiTranscode(callee))
             return;
@@ -474,21 +1395,6 @@ internal sealed partial class MethodCompiler
             || callee.Signature.ParameterTypes.Length != 0)
             return false;
         EmitIntrinsic("System.AppContext", callee.Name, callee.Signature);
-        return true;
-    }
-
-    /// <summary><c>MulticastDelegate.TryGetAt(int)</c> → dn2cpp_delegate_try_get_at: the
-    /// invocation-list entry at an index, null past either end, read off the chain the
-    /// uniform delegate layout keeps in place of <c>_invocationList</c>.</summary>
-    private bool TryEmitDelegateTryGetAt(MethodInfo callee)
-    {
-        if (callee.DeclaringClass.FullName != "System.MulticastDelegate" || callee.Name != "TryGetAt"
-            || callee.IsStatic || callee.Signature.ParameterTypes is not [{ Primitive: PrimitiveTypeCode.Int32 }])
-            return false;
-        var index = Pop();
-        var self = Pop();
-        Push(StackKind.Ref, "Dn2CppObject*",
-            $"dn2cpp_delegate_try_get_at({Cast(self, "Dn2CppObject*")}, {Cast(index, "int32_t")})");
         return true;
     }
 
@@ -658,6 +1564,12 @@ internal sealed partial class MethodCompiler
     {
         switch (callee.DeclaringClass.FullName, callee.Name)
         {
+            case ("System.GC", "RunFinalizers") when CoreIntrinsics.IsCoreClrFinalizerWorker(callee):
+                // dn2cpp owns the finalizer consumer. Never pump a second queue or
+                // fabricate the CoreCLR callback's finalized-object count.
+                Emit("dn2cpp_throw_platform_not_supported(\"System.GC.RunFinalizers is a CoreCLR-owned worker entry point; dn2cpp owns finalization. Use GC.WaitForPendingFinalizers instead.\");");
+                Push(StackKind.I4, "uint32_t", "0"); // stack shape only; the throw is noreturn
+                return true;
             case ("System.GC", "SuppressFinalize")
                 when callee.Signature.ParameterTypes.Length == 1 && callee.IsStatic:
             {
@@ -676,6 +1588,20 @@ internal sealed partial class MethodCompiler
                 Emit($"dn2cpp_gc_reregister_for_finalize({Cast(o, "Dn2CppObject*")});");
                 return true;
             }
+            // Public overloads keep their real validation IL. The private leaf
+            // maps their scheduling/compaction hints to Boehm's whole-heap collect.
+            case ("System.GC", "_Collect")
+                when callee.IsStatic
+                    && callee.Signature.ParameterTypes is [
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }]
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Void }:
+                Pop();
+                Pop();
+                Pop();
+                Emit("dn2cpp_gc_collect();");
+                return true;
             case ("System.GC", "Collect")
                 when callee.Signature.ParameterTypes.Length == 0 && callee.IsStatic:
                 Emit("dn2cpp_gc_collect();");
@@ -683,6 +1609,13 @@ internal sealed partial class MethodCompiler
             case ("System.GC", "WaitForPendingFinalizers")
                 when callee.Signature.ParameterTypes.Length == 0 && callee.IsStatic:
                 Emit("dn2cpp_gc_wait_for_pending_finalizers();");
+                return true;
+            // CoreLib's private QCall sibling is the non-collecting query. Retained
+            // MethodDef bodies must replay it through the same runtime accounting.
+            case ("System.GC", "GetTotalMemory")
+                when callee.IsStatic && callee.Signature.ParameterTypes.Length == 0
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 }:
+                Push(StackKind.I8, "int64_t", "dn2cpp_gc_get_total_memory(0)");
                 return true;
             case ("System.GC", "GetTotalMemory")
                 when callee.Signature.ParameterTypes.Length == 1 && callee.IsStatic:
@@ -694,6 +1627,12 @@ internal sealed partial class MethodCompiler
             case ("System.GC", "GetAllocatedBytesForCurrentThread")
                 when callee.Signature.ParameterTypes.Length == 0 && callee.IsStatic:
                 Push(StackKind.I8, "int64_t", "dn2cpp_gc_allocated_bytes_current_thread()");
+                return true;
+            case ("System.GC", "_GetTotalPauseDuration")
+                when callee.IsStatic && callee.Signature.GenericParameterCount == 0
+                    && callee.Signature.ParameterTypes.Length == 0
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 }:
+                Push(StackKind.I8, "int64_t", "dn2cpp_gc_total_pause_ticks()");
                 return true;
             case ("System.GC", "GetTotalAllocatedBytes")
                 when callee.Signature.ParameterTypes.Length == 1 && callee.IsStatic:
@@ -711,6 +1650,45 @@ internal sealed partial class MethodCompiler
                 Emit($"dn2cpp_keep_alive({Cast(o, "Dn2CppObject*")});");
                 return true;
             }
+            // This runtime has no full-GC notification capability. Preserve public
+            // validation and its existing failure contract; never register fake events.
+            case ("System.GC", "_RegisterForFullGCNotification")
+                when callee.IsStatic && callee.Signature.GenericParameterCount == 0
+                    && callee.Signature.ParameterTypes is [
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }:
+                Pop();
+                Pop();
+                Push(StackKind.I4, "int32_t", "0");
+                return true;
+            case ("System.GC", "_CancelFullGCNotification")
+                when callee.IsStatic && callee.Signature.GenericParameterCount == 0
+                    && callee.Signature.ParameterTypes.Length == 0
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }:
+                Push(StackKind.I4, "int32_t", "0");
+                return true;
+            case ("System.GC", "_WaitForFullGCApproach" or "_WaitForFullGCComplete")
+                when callee.IsStatic && callee.Signature.GenericParameterCount == 0
+                    && callee.Signature.ParameterTypes is [
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }:
+                Pop();
+                Push(StackKind.I4, "int32_t", "4"); // GCNotificationStatus.NotApplicable: never registered
+                return true;
+            // Boehm and the calloc fallback have one logical generation. Keep the
+            // public overloads as IL so their object/WeakReference validation survives.
+            case ("System.GC", "GetGenerationInternal")
+                when callee.IsStatic && callee.Signature.ParameterTypes is [{ IsObject: true }]
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }:
+                Pop();
+                Push(StackKind.I4, "int32_t", "0");
+                return true;
+            case ("System.GC", "GetMaxGeneration")
+                when callee.IsStatic && callee.Signature.ParameterTypes.Length == 0
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }:
+                Push(StackKind.I4, "int32_t", "0");
+                return true;
             case ("System.GC", "_CollectionCount")
                 when callee.Signature.ParameterTypes.Length == 2 && callee.IsStatic:
             {
@@ -928,10 +1906,10 @@ internal sealed partial class MethodCompiler
     /// heuristic consumes it, degrading trimming to time-based-only;</item>
     /// <item><c>Gen2GcCallback.Register(Func&lt;bool&gt;)</c> /
     /// <c>Register(Func&lt;object,bool&gt;, object)</c> → a no-op (drop the delegate).
-    /// Boehm has no gen2-notification hook; the only framework use is ArrayPool trim
-    /// scheduling, and pool trimming is QoS, not contract — parked buffers simply stay
-    /// parked. Cutting the class also keeps its CriticalFinalizerObject/WeakGCHandle
-    /// machinery out of the tree.</item>
+    /// Boehm has no gen2-notification hook. Existing ArrayPool and ThreadPool callers
+    /// keep this bounded policy; it is not a claim of Gen2 notification parity.
+    /// The separately retained constructors/finalizer refuse, and allocation is
+    /// prohibited before finalizer registration.</item>
     /// </list></summary>
     private bool TryEmitArrayPoolRuntimePrimitive(MethodInfo callee)
     {
@@ -1572,7 +2550,17 @@ internal sealed partial class MethodCompiler
         }
         // Buffer.BulkMoveWithWriteBarrier(ref byte dst, ref byte src, nuint byteCount) —
         // the overlap-safe move plus the collector notification its contract names.
-        if (name == "BulkMoveWithWriteBarrier" && sig.ParameterTypes.Length == 3)
+        // Its internal and batched entries have the same byte-count contract;
+        // CoreCLR chunk polling is replaced along with the move and write barrier.
+        if ((name == "BulkMoveWithWriteBarrier" && sig.ParameterTypes.Length == 3)
+            || (CoreIntrinsics.IsBufferInternalReferenceMove(name)
+                && !sig.Header.IsInstance && sig.GenericParameterCount == 0 && sig.ReturnType.IsVoid
+                && sig.ParameterTypes is
+                [
+                    { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte } },
+                    { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte } },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.UIntPtr },
+                ]))
         {
             var count = Pop();
             var src = Pop();

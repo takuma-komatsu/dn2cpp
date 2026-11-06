@@ -1,0 +1,5 @@
+<linker><assembly fullname="System.Private.CoreLib"><type fullname="System.Globalization.DateTimeFormatInfo">
+<method name="get_HasSpacesInMonthNames" />
+<method name="get_HasSpacesInDayNames" />
+<method name="get_HasYearMonthAdjustment" />
+</type></assembly></linker>

@@ -200,6 +200,13 @@ inline void __atomic_thread_fence(int) { std::atomic_thread_fence(std::memory_or
 #define DN2CPP_PINVOKE_ASM(sym) asm(DN2CPP_PINVOKE_STR(__USER_LABEL_PREFIX__) sym)
 
 struct Dn2CppTypeInfo;
+
+// CLI typed references retain an interior managed address and its exact type handle.
+struct Dn2CppTypedReference
+{
+    uint8_t* f__value;
+    intptr_t f__type;
+};
 struct Dn2CppObject;
 struct Dn2CppType;
 struct Dn2CppString;
@@ -305,6 +312,9 @@ struct Dn2CppTypeReflection
 #define DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR 0x1
 #define DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR 0x2
 #define DN2CPP_TA_UNALLOCATED 0x4
+// Permanent runtime capability refusal. Unlike UNALLOCATED, preserving methods
+// or enabling hot update cannot make this type safe to instantiate/finalize.
+#define DN2CPP_TA_ALLOCATION_UNSUPPORTED 0x8
 
 inline constexpr Dn2CppTypeReflection dn2cpp_empty_type_reflection{};
 
@@ -1402,6 +1412,19 @@ struct Dn2CppDelegateMethodCatalog
     int32_t methodCount;
 };
 void dn2cpp_set_delegate_method_catalog(const Dn2CppDelegateMethodCatalog* rows, int32_t count);
+// A retained managed Type factory is named-only metadata; its runtime type handle stays immutable.
+void dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+// Exact retained CultureInfo getter; no general intrinsic-type metadata mutation.
+void dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+void dn2cpp_set_culture_name_validator_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+// Only the two exact retained String entries participate in named lookup.
+void dn2cpp_set_string_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> rawByte,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> length);
+// Exact retained DateOnly member.
+void dn2cpp_set_dateonly_deconstruct_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+void dn2cpp_set_resourcemanager_default_type_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+void dn2cpp_set_datetime_parser_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> addTicks,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> tryCreate, Dn2CppMetadataHandle<Dn2CppMethodInfo> localConstructor);
 Dn2CppObject* dn2cpp_delegate_object_virtual_invoker(void* fn, Dn2CppObject* receiver,
     Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
 
@@ -1509,6 +1532,8 @@ struct Dn2CppDelegate : Dn2CppObject
     const Dn2CppDelegateMethodIdentity* identity;
     Dn2CppObject* entry;
     std::atomic<Dn2CppDelegateInvocationCache*> invocationCache;
+    // Monotonic: a chain node has copied this entry's binding.
+    std::atomic<bool> bindingSnapshotted;
 };
 
 // A reflection-bound delegate's context node (MethodInfo.CreateDelegate /
@@ -1599,6 +1624,8 @@ extern const int32_t dn2cpp_delegate_refl_registry_count;
 Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
                                      Dn2CppMethodRef* m, int32_t closedForm,
                                      int32_t throwOnFailure, bool fromDelegate = false);
+void dn2cpp_delegate_initialize_named(Dn2CppObject* receiver, Dn2CppObject* target,
+    Dn2CppType* targetType, Dn2CppString* name, int32_t staticForm);
 Dn2CppObject* dn2cpp_delegate_create_named(Dn2CppType* dt, Dn2CppObject* target,
     Dn2CppType* targetType, Dn2CppString* name, int32_t staticForm,
     int32_t ignoreCase, int32_t throwOnFailure);
@@ -1663,8 +1690,10 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d);
 Dn2CppObject* dn2cpp_delegate_combine(Dn2CppObject* a, Dn2CppObject* b);
 Dn2CppObject* dn2cpp_delegate_combine_n(Dn2CppObject* const* items, int32_t count);
 Dn2CppObject* dn2cpp_delegate_combine_array(Dn2CppArrayRef* items);
+Dn2CppObject* dn2cpp_delegate_from_invocation_prefix(Dn2CppObject* receiver, Dn2CppArrayRef* items, int32_t count);
 Dn2CppObject* dn2cpp_delegate_remove(Dn2CppObject* source, Dn2CppObject* value);
 Dn2CppObject* dn2cpp_delegate_remove_all(Dn2CppObject* source, Dn2CppObject* value);
+Dn2CppObject* dn2cpp_delegate_remove_impl(Dn2CppObject* source, Dn2CppObject* value);
 // Delegate.GetInvocationList: the entries in invocation order as an `arrayType`
 // (System.Delegate[]) array, each the delegate Combine took.
 Dn2CppArrayRef* dn2cpp_delegate_invocation_list(Dn2CppObject* d, const Dn2CppTypeInfo* arrayType);
@@ -1749,6 +1778,7 @@ int32_t dn2cpp_type_is_function_pointer(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_unmanaged_function_pointer(const Dn2CppTypeInfo* ti);
 Dn2CppType* dn2cpp_type_function_pointer_return(Dn2CppType* type);
 Dn2CppArrayRef* dn2cpp_type_function_pointer_parameters(Dn2CppType* type);
+Dn2CppArrayRef* dn2cpp_runtime_type_function_pointer_arguments(Dn2CppType* type, const Dn2CppTypeInfo* typeArray);
 Dn2CppArrayRef* dn2cpp_type_function_pointer_conventions(Dn2CppType* type);
 int32_t dn2cpp_type_is_pointer(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_by_ref(const Dn2CppTypeInfo* ti);
@@ -1776,6 +1806,7 @@ int32_t dn2cpp_type_get_array_rank(Dn2CppType* a);
 // (System.Array, the array collection interfaces, element covariance) and generic
 // variance answer here exactly as a cast would.
 int32_t dn2cpp_type_is_assignable_from(Dn2CppType* a, Dn2CppType* b);
+int32_t dn2cpp_runtime_type_is_assignable_from(Dn2CppType* receiver, Dn2CppObject* source);
 int32_t dn2cpp_type_is_assignable_to(Dn2CppType* t, Dn2CppType* target);
 // Type.IsInstanceOfType(obj): obj is non-null and an instance of type a.
 int32_t dn2cpp_type_is_instance_of_type(Dn2CppType* a, Dn2CppObject* obj);
@@ -1817,12 +1848,15 @@ Dn2CppObject* dn2cpp_get_uninitialized_object(Dn2CppType* t);
 int32_t dn2cpp_type_is_generic_type(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_constructed_generic(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_generic_type_definition(const Dn2CppTypeInfo* ti);
+int32_t dn2cpp_type_is_type_definition(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_contains_generic_parameters(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_generic_parameter_attributes(const Dn2CppTypeInfo* ti);
+int32_t dn2cpp_type_generic_parameter_position(const Dn2CppTypeInfo* ti);
 bool dn2cpp_type_reference_argument(const Dn2CppTypeInfo* ti);
 Dn2CppString* dn2cpp_type_generic_parameter_namespace(const Dn2CppTypeInfo* ti);
 const Dn2CppTypeInfo* dn2cpp_type_generic_parameter_declaring_type(const Dn2CppTypeInfo* ti);
 Dn2CppMethodRef* dn2cpp_type_generic_parameter_declaring_method(const Dn2CppTypeInfo* ti);
+Dn2CppType* dn2cpp_runtime_type_get_declaring_type(Dn2CppType* type);
 Dn2CppType* dn2cpp_type_get_generic_type_definition(Dn2CppType* t);
 Dn2CppArrayRef* dn2cpp_type_get_generic_arguments(Dn2CppType* t);
 Dn2CppArrayRef* dn2cpp_type_get_generic_parameter_constraints(Dn2CppType* t);
@@ -1840,6 +1874,11 @@ Dn2CppType* dn2cpp_type_make_generic(Dn2CppType* def, Dn2CppArrayRef* args);
 // Parse(Type, string[, ignoreCase]) and Type.GetEnumUnderlyingType work via a runtime
 // Type, complementing the generic Enum.*<T> inline lowering.
 Dn2CppArrayRef* dn2cpp_type_get_interfaces(Dn2CppType* t);
+[[noreturn]] void dn2cpp_runtime_type_get_utf8_name(Dn2CppType* t, const char* invalidHandleMessage);
+int32_t dn2cpp_runtime_type_contains_generic_variables(Dn2CppType* t);
+int32_t dn2cpp_runtime_type_get_fields(Dn2CppType* t, int32_t* count);
+Dn2CppArrayRef* dn2cpp_runtime_type_get_interfaces(Dn2CppType* t,
+    const Dn2CppTypeInfo* typeArray, const Dn2CppTypeInfo* runtimeTypeArray);
 // Type.GetInterface(name[, ignoreCase]): the lone matching row of the same table,
 // or null on no match. The name splits at its last '.'; the simple part matches the
 // interface's simple name (the generic DEFINITION's for a closed generic, so
@@ -1858,6 +1897,7 @@ Dn2CppArrayRef* dn2cpp_type_get_enum_names(Dn2CppType* t);
 // Enum.GetValues(Type) (non-generic): the declared values as object[] of boxed enums, so a
 // foreach over the returned System.Array yields boxed `object` elements.
 Dn2CppArrayRef* dn2cpp_enum_get_values_boxed(Dn2CppType* t);
+Dn2CppObject* dn2cpp_type_get_enum_values(Dn2CppType* t);
 // Enum.GetValuesAsUnderlyingType(Type) (non-generic): the declared values as an array of the
 // UNDERLYING primitive (byte[]/int[]/long[]/...), typed with that element's precise identity so
 // GetType()/GetValue read it. Built on dn2cpp_array_create_instance; returned as the array object.
@@ -1867,7 +1907,12 @@ Dn2CppType* dn2cpp_nullable_get_underlying(Dn2CppType* t);
 // The value arrives BOXED: the enum type is chosen at run time at these call sites, so
 // only this side can read the payload at the enum's own model width.
 Dn2CppString* dn2cpp_enum_get_name(Dn2CppType* t, Dn2CppObject* value);
+Dn2CppString* dn2cpp_type_get_enum_name(Dn2CppType* t, Dn2CppObject* value);
+Dn2CppString* dn2cpp_runtime_type_get_enum_name(Dn2CppType* t, Dn2CppObject* value);
+Dn2CppString* dn2cpp_enum_get_name_u64(Dn2CppType* t, uint64_t value);
 int32_t dn2cpp_enum_is_defined(Dn2CppType* t, Dn2CppObject* value);
+int32_t dn2cpp_runtime_type_is_enum_defined(Dn2CppType* t, Dn2CppObject* value);
+int32_t dn2cpp_type_is_enum_defined(Dn2CppType* t, Dn2CppObject* value);
 Dn2CppObject* dn2cpp_enum_parse_type(Dn2CppType* t, Dn2CppString* s, int32_t ignoreCase);
 // Enum.TryParse(Type, string[, ignoreCase], out object): returns 1 + *out=boxed enum on
 // success, 0 + *out=null on a value parse miss; the TYPE is still validated (null / non-enum
@@ -1889,6 +1934,10 @@ Dn2CppObject* dn2cpp_enum_to_object_boxed(Dn2CppType* t, Dn2CppObject* value);
 // x and X uppercase, as .NET does). Null type/value/format throw ArgumentNullException,
 // a non-enum type ArgumentException, an unrecognized format string FormatException.
 Dn2CppString* dn2cpp_enum_format(Dn2CppType* t, Dn2CppObject* value, Dn2CppString* format);
+// Closed integer generic Enum formatters: read exactly the primitive's raw width first.
+// D/X ignore type; G/F require canonical matching enum metadata, never CLR cache fields.
+Dn2CppString* dn2cpp_enum_format_raw_integer(Dn2CppType* type, const void* rawData,
+    const Dn2CppTypeInfo* underlying, char16_t format);
 // The Span<char> / ReadOnlySpan<char> an emitted interface-dispatch site passes BY
 // VALUE, i.e. the shape an ISpanFormattable.TryFormat slot is called with.
 struct Dn2CppItfCharSpan { char16_t* ptr; int32_t length; };
@@ -2068,6 +2117,7 @@ inline constexpr const char* DN2CPP_SR_BLOCKING_CANT_TAKE_WHEN_DONE = "System.Co
 inline constexpr const char* DN2CPP_SR_BLOCKING_COMPLETED = "System.Collections.Concurrent:BlockingCollection_Completed";
 inline constexpr const char* DN2CPP_SR_BLOCKING_TIMEOUT_INVALID = "System.Collections.Concurrent:BlockingCollection_TimeoutInvalid";
 inline constexpr const char* DN2CPP_SR_OVERFLOW_DECIMAL = "Overflow_Decimal";
+inline constexpr const char* DN2CPP_SR_OVERFLOW_CURRENCY = "Overflow_Currency";
 inline constexpr const char* DN2CPP_SR_DECIMAL_ROUND = "ArgumentOutOfRange_DecimalRound";
 inline constexpr const char* DN2CPP_SR_DESTINATION_TOO_SHORT = "Argument_DestinationTooShort";
 inline constexpr const char* DN2CPP_SR_HEX_BINARY_STYLES_NOT_SUPPORTED = "Arg_HexBinaryStylesNotSupported";
@@ -2456,6 +2506,12 @@ Dn2CppObject* dn2cpp_activator_create_instance(Dn2CppType* t);
 // invisible parameterless ctor and abstract/interface targets throw the
 // catchable MissingMethodException (probed against real .NET).
 Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t nonPublic);
+// Retained parameterless factory: only canonical runtime Type objects carry a native layout.
+Dn2CppObject* dn2cpp_activator_create_instance_wrapped(Dn2CppType* t, int32_t nonPublic, int32_t wrapExceptions);
+Dn2CppObject* dn2cpp_activator_create_instance_default_ctor(Dn2CppType* t, int32_t publicOnly, int32_t wrapExceptions);
+Dn2CppObject* dn2cpp_runtime_type_create_generic_instance_1(Dn2CppType* representative, Dn2CppType* argument);
+Dn2CppObject* dn2cpp_runtime_type_create_generic_instance_2(Dn2CppType* representative, Dn2CppType* first, Dn2CppType* second);
+void dn2cpp_runtime_type_call_default_struct_constructor(Dn2CppType* t, uint8_t* data);
 // Activator.CreateInstance(Type, object[] args[, BindingFlags, Binder,
 // activationAttributes]): DefaultBinder-style ctor resolution — filter on
 // flags + arity + boxed-argument admissibility (null matches everything,
@@ -2819,9 +2875,15 @@ extern const Dn2CppTypeInfo dn2cpp_customattributedata_type;
 // member handle's object header, like dn2cpp_get_custom_attributes); the
 // assembly form serves Assembly.CustomAttributes via the assembly registry.
 Dn2CppArrayRef* dn2cpp_member_custom_attributes_data(Dn2CppObject* member);
+Dn2CppArrayRef* dn2cpp_custom_attribute_data_get_custom_attributes(Dn2CppObject* target);
 Dn2CppArrayRef* dn2cpp_assembly_custom_attributes_data(const char* name);
 // CustomAttributeData.AttributeType.
 Dn2CppType* dn2cpp_attrdata_attribute_type(Dn2CppAttrDataRef* d);
+void dn2cpp_set_attrdata_constructor_slot(int32_t slot);
+Dn2CppMethodRef* dn2cpp_attrdata_constructor_virtual(Dn2CppObject* value);
+void* dn2cpp_attrdata_constructor_virtual_address(Dn2CppObject* value);
+Dn2CppObject* dn2cpp_attrdata_constructor_invoker(void* fn, Dn2CppObject* receiver,
+    Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
 
 // Reflection-handle ToString. The header-dispatched entry is also installed in
 // every handle type-info's tostring slot, so direct/base/object paths converge.
@@ -2837,8 +2899,7 @@ int32_t dn2cpp_type_il_attrs(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_public(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_not_public(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_visible(const Dn2CppTypeInfo* ti);
-// Type.HasElementType / GetRootElementType: only array Types materialize with
-// an element in this model (no byref/pointer Type objects exist at runtime).
+// Element presence follows array/pointer/byref category even when the element is unknown.
 int32_t dn2cpp_type_has_element_type(const Dn2CppTypeInfo* ti);
 Dn2CppType* dn2cpp_type_get_root_element_type(Dn2CppType* t);
 // Type.FormatTypeName (internal; MethodInfo/ConstructorInfo.ToString's type
@@ -2863,6 +2924,9 @@ int32_t dn2cpp_type_implement_interface(Dn2CppType* t, Dn2CppType* itf);
 // assembly's simple-name handle (dn2cpp is single-module per assembly).
 int32_t dn2cpp_memberinfo_member_type(Dn2CppObject* m);
 int32_t dn2cpp_memberinfo_metadata_token(Dn2CppObject* m);
+extern int32_t dn2cpp_memberinfo_has_same_metadata_slot;
+void dn2cpp_set_memberinfo_has_same_metadata_slot(int32_t slot);
+int32_t dn2cpp_memberinfo_has_same_metadata(Dn2CppObject* member, Dn2CppObject* other);
 const char* dn2cpp_memberinfo_module(Dn2CppObject* m);
 // MethodBase/MethodInfo raw-word predicates + accessors.
 int32_t dn2cpp_methodref_attributes(Dn2CppMethodRef* m);
@@ -2882,6 +2946,7 @@ Dn2CppArrayRef* dn2cpp_methodref_get_parameter_types(Dn2CppMethodRef* m);
 Dn2CppMethodRef* dn2cpp_methodref_make_generic(Dn2CppMethodRef* m, Dn2CppArrayRef* types);
 Dn2CppMethodRef* dn2cpp_methodref_get_generic_definition(Dn2CppMethodRef* m);
 Dn2CppArrayRef* dn2cpp_methodref_get_generic_arguments(Dn2CppMethodRef* m);
+int32_t dn2cpp_methodref_generic_parameter_count(Dn2CppMethodRef* m);
 int32_t dn2cpp_methodref_is_generic_def(Dn2CppMethodRef* m);
 int32_t dn2cpp_methodref_contains_generic_parameters(Dn2CppMethodRef* m);
 // MethodInfo.GetBaseDefinition: the shallowest base-chain ancestor declaring a
@@ -2900,6 +2965,8 @@ Dn2CppArrayRef* dn2cpp_paramref_custom_modifiers(Dn2CppParamRef* p, int32_t requ
 // Enum.InternalGetCorElementType: the CorElementType code of the boxed enum's
 // underlying primitive (read from the type-info's enumUnderlying handle).
 int32_t dn2cpp_enum_cor_element_type(Dn2CppObject* e);
+int32_t dn2cpp_enum_type_cor_element_type(Dn2CppType* type);
+Dn2CppType* dn2cpp_enum_internal_get_underlying_type(Dn2CppType* type);
 // Enum.GetValue(): boxes the enum's underlying primitive value under the
 // underlying primitive's type-info (Byte/Int16/Int32/.../UInt64), matching what
 // `box <underlying>` emits. Backs the IConvertible.To* overrides (which hand the
@@ -2952,7 +3019,7 @@ void dn2cpp_array_set_ref_fallback_interfaces(const Dn2CppInterfaceEntry* entrie
 // element-agnostic thunk on SZ arrays. Installed when a dispatch route needs it,
 // before any managed code runs.
 void dn2cpp_array_set_md_fallback_interfaces(const Dn2CppInterfaceEntry* entries, int32_t count,
-    const Dn2CppTypeInfo* cloneInterface = nullptr);
+    const Dn2CppTypeInfo* cloneInterface = nullptr, bool enumSzArrays = false);
 // Installs the RELATION-only row set for the six non-generic interfaces every CLR
 // array implements — the same six the two tables above dispatch, but as rows with
 // NULL slot tables, and for ENUMERATION rather than dispatch.
@@ -3424,6 +3491,12 @@ int64_t dn2cpp_gc_get_total_memory(int32_t forceFullCollection);
 // counter (GC_get_gc_no); 0 under the calloc fallback (no collections occur).
 int32_t dn2cpp_gc_collection_count();
 
+// Completed managed-execution pauses in 100 ns ticks, independent of diagnostic
+// reporting. Threaded collectors measure STW windows; synchronous nonthreaded
+// collectors measure full collections. Nonthreaded incremental mode is unsupported.
+// The calloc fallback has no collections and therefore no collection pauses.
+int64_t dn2cpp_gc_total_pause_ticks();
+
 // The two heap-accounting figures the vendored Boehm GC exposes directly, used
 // to fill the honest fields of System.GC.GetGCMemoryInfo()'s GCMemoryInfoData
 // (heap size, and the free/fragmented bytes within it); committed bytes mirror
@@ -3474,6 +3547,7 @@ int64_t dn2cpp_gc_total_allocated_bytes();
 // prologue. For the callers that must recognise a trapped slot WITHOUT calling it
 // (dn2cpp_exception_message's override probe); one image, one registration.
 void dn2cpp_register_vcall_traps(const void* const* fns, int32_t count);
+bool dn2cpp_is_vcall_trap(const void* fn);
 // A dispatch trap entered as `slotFn` throws the catchable PlatformNotSupportedException
 // MethodBase.Invoke and a CreateDelegate binding raise for a receiver whose override the
 // image did not retain, when `slotFn` is the slot the innermost such reflective call is
@@ -3606,6 +3680,8 @@ template <typename T>
 // genuinely field-less struct keeps answering 1. See the flag's own doc for why the
 // bit, not the number, is the test, and why allocation sizing does not call it.
 void dn2cpp_require_layout(const Dn2CppTypeInfo* ti);
+// Call before allocating an instance or registering its finalizer.
+void dn2cpp_require_allocation_supported(const Dn2CppTypeInfo* ti);
 // Numeric/date parse failures (the NumberStyles engine's Parse forms).
 [[noreturn]] void dn2cpp_throw_format();
 // The same, carrying the input real .NET's own message quotes ("The input string 'x' was
@@ -4652,7 +4728,11 @@ Dn2CppObject* dn2cpp_template_unbox_any(Dn2CppObject* obj, const Dn2CppTypeInfo*
 Dn2CppObject* dn2cpp_template_box(Dn2CppObject* obj, const Dn2CppTypeInfo* ti);
 // The U of a closed Nullable<U> type-info, else null.
 const Dn2CppTypeInfo* dn2cpp_nullable_underlying_ti(const Dn2CppTypeInfo* ti);
-// Whether `ti` is Nullable<u>. No box of a Nullable exists, so a boxed U passes a
+// Internal invocation adapters exchange raw Nullable<T> boxes; ordinary boxing
+// exposes null or a boxed T instead. Reboxing preserves payload bits and references.
+Dn2CppObject* dn2cpp_rebox_from_nullable(Dn2CppObject* value);
+Dn2CppObject* dn2cpp_rebox_to_nullable(Dn2CppObject* value, Dn2CppType* type);
+// Whether `ti` is Nullable<u>. Ordinary boxing produces a boxed U, which passes a
 // Nullable<U> type test and Type.IsAssignableFrom(Nullable<U>, U) holds. The rule
 // stays out of dn2cpp_typeinfo_assignable, whose callers also read an answer as
 // the same representation.
@@ -8063,6 +8143,8 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_current_ui();
 void dn2cpp_culture_set_current_ui(const Dn2CppNumberFormatInfo* c);
 const Dn2CppNumberFormatInfo* dn2cpp_culture_installed_ui();
 Dn2CppString* dn2cpp_culture_name(const Dn2CppNumberFormatInfo* c);
+Dn2CppString* dn2cpp_culture_sort_name(const Dn2CppNumberFormatInfo* c);
+void dn2cpp_compare_info_require_native_culture(const Dn2CppNumberFormatInfo* c);
 Dn2CppString* dn2cpp_culture_two_letter_iso_language_name(const Dn2CppNumberFormatInfo* c);
 Dn2CppString* dn2cpp_culture_tostring(const Dn2CppNumberFormatInfo* c);
 Dn2CppString* dn2cpp_textinfo_tostring(const Dn2CppNumberFormatInfo* c);
@@ -8167,6 +8249,9 @@ static_assert(Dn2CppDecimal{ dn2cpp_dec_flags(28, 1), 0, 1 }.scale() == 28
     && Dn2CppDecimal{ dn2cpp_dec_flags(28, 1), 0, 1 }.sign() == 1,
     "the accessors invert the packing");
 
+// Divides the coefficient in caller storage without changing the flags.
+uint32_t dn2cpp_decimal_divmod1e9(Dn2CppDecimal* value);
+
 // Constructors. `from_parts` is the .NET `Decimal(int lo, int mid, int hi, bool
 // isNegative, byte scale)` ctor (and the bit-pattern form); the rest are the
 // numeric implicit/explicit conversions into decimal.
@@ -8218,6 +8303,10 @@ double  dn2cpp_decimal_to_double(Dn2CppDecimal a);
 float   dn2cpp_decimal_to_float(Dn2CppDecimal a);
 int64_t dn2cpp_decimal_to_i8(Dn2CppDecimal a);
 uint64_t dn2cpp_decimal_to_u8(Dn2CppDecimal a);
+
+// OLE currency stores ten-thousandths in a signed 64-bit integer.
+int64_t dn2cpp_decimal_to_oa_currency(Dn2CppDecimal a);
+Dn2CppDecimal dn2cpp_decimal_from_oa_currency(int64_t value);
 
 // Rounding statics. `digits` is the kept decimal places (Round); `mode` is the
 // MidpointRounding enum value (0 = ToEven/banker's, 1 = AwayFromZero,
@@ -8591,6 +8680,9 @@ void dn2cpp_datetime_get_time_precise(Dn2CppDateTime a, int32_t* hour, int32_t* 
 // AddTicks is exact; Add*(double) truncates value*ticksPerUnit toward zero (no
 // millisecond rounding); AddMonths/AddYears clamp the day to the target month.
 Dn2CppDateTime dn2cpp_datetime_add_ticks(Dn2CppDateTime a, int64_t ticks, const char* paramName);
+int32_t dn2cpp_datetime_try_add_ticks(Dn2CppDateTime a, int64_t ticks, Dn2CppDateTime* result);
+int32_t dn2cpp_datetime_try_create(int32_t y, int32_t mo, int32_t d, int32_t h, int32_t mi, int32_t s, int32_t ms, Dn2CppDateTime* result);
+Dn2CppDateTime dn2cpp_datetime_local_from_ticks(int64_t ticks, int32_t ambiguous);
 Dn2CppDateTime dn2cpp_datetime_subtract_ticks(Dn2CppDateTime a, int64_t ticks, const char* paramName);
 Dn2CppDateTime dn2cpp_datetime_add_unit(Dn2CppDateTime a, double value, int64_t ticksPerUnit);
 Dn2CppDateTime dn2cpp_datetime_add_months(Dn2CppDateTime a, int32_t months);
@@ -8681,7 +8773,7 @@ bool dn2cpp_datetimeoffset_try_parse_exact_multi(Dn2CppString* s, Dn2CppArrayRef
 // The invariant DTFI's abbreviated month/day names (string[]), for the synthesized
 // CultureInfo.DateTimeFormat — see dn2cpp_system_datetime.cpp. arrType is the precise
 // string[] type-info so the getter's castclass to it succeeds.
-Dn2CppArrayRef* dn2cpp_dtfi_invariant_abbrev_month_names(const Dn2CppTypeInfo* arrType);
+Dn2CppArrayRef* dn2cpp_dtfi_invariant_month_names(const Dn2CppTypeInfo* arrType, bool abbreviated);
 Dn2CppArrayRef* dn2cpp_dtfi_invariant_abbrev_day_names(const Dn2CppTypeInfo* arrType);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse(Dn2CppString* s);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse_exact(Dn2CppString* s, Dn2CppString* fmt);

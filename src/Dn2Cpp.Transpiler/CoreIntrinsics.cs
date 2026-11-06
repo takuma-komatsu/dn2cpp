@@ -58,9 +58,6 @@ internal static partial class CoreIntrinsics
     public static string? IntrinsicNestedCppType(string enclosingFull, string simpleName) =>
         CoreIntrinsicTypeMaps.IntrinsicNestedCppType(enclosingFull, simpleName);
 
-    public static bool IsEnumInstanceFormatMethod(string? declType, string name) =>
-        CoreIntrinsicTypeMaps.IsEnumInstanceFormatMethod(declType, name);
-
     public static bool IntrinsicManagedBodyFamily(string fullName) =>
         CoreIntrinsicTypeMaps.IntrinsicManagedBodyFamily(fullName);
 
@@ -639,7 +636,7 @@ internal static partial class CoreIntrinsics
     {
         // SuppressFinalize / ReRegisterForFinalize -> dn2cpp_gc_*_finalize (their real bodies
         // are RuntimeHelpers.GetMethodTable -> MethodTable.HasFinalizer -> the *Internal
-        // FCalls); Collect / WaitForPendingFinalizers / GetTotalMemory -> the Boehm entry
+        // FCalls); _Collect / WaitForPendingFinalizers / GetTotalMemory -> the Boehm entry
         // points (real bodies: the _Collect / _WaitForPendingFinalizers InternalCalls and
         // GCMemoryInfo's native accounting); KeepAlive -> the opaque dn2cpp_keep_alive
         // barrier, whose real body is EMPTY — emitting it hands the optimizer a call it may
@@ -652,9 +649,13 @@ internal static partial class CoreIntrinsics
         // GetAllocatedBytesForCurrentThread (a bodyless InternalCall) and
         // GetTotalAllocatedBytes (whose body branches to two bodyless InternalCalls)
         // -> the dn2cpp_gc allocation counters.
-        "System.GC" => name is "SuppressFinalize" or "ReRegisterForFinalize" or "Collect"
+        "System.GC" => name is "SuppressFinalize" or "ReRegisterForFinalize" or "_Collect"
             or "WaitForPendingFinalizers" or "GetTotalMemory" or "KeepAlive"
             or "_CollectionCount" or "GetMemoryInfo"
+            or "GetGenerationInternal" or "GetMaxGeneration"
+            or "_GetTotalPauseDuration"
+            or "_RegisterForFullGCNotification" or "_CancelFullGCNotification"
+            or "_WaitForFullGCApproach" or "_WaitForFullGCComplete"
             or "GetAllocatedBytesForCurrentThread" or "GetTotalAllocatedBytes",
         // SpanHelpers.Memmove -> std::memmove. Cutting the managed entry makes both its
         // hand-unrolled Unsafe.* loop and the SpanHelpers::memmove InternalCall fallback
@@ -707,24 +708,22 @@ internal static partial class CoreIntrinsics
         // Utilities.GetMemoryPressure -> Low. Its real body reads GC.GetGCMemoryInfo — native GC
         // accounting dn2cpp does not model.
         "System.Buffers.Utilities" => name == "GetMemoryPressure",
-        // Gen2GcCallback: the WHOLE class, name ignored. Register(Func<bool>) is a no-op (Boehm
-        // has no gen2-notification hook, and pool trimming is QoS, not contract — parked buffers
-        // simply stay parked), the class is never instantiated because Register is the only thing
-        // that constructs it, and cutting it keeps its CriticalFinalizerObject/WeakGCHandle
-        // machinery out of the tree. Naming the CLASS rather than the one member routes every
-        // member into EmitRuntimePrimitive, where everything but Register hits the throw — so no
-        // other member can fall through to a body the cut deleted.
+        // Gen2GcCallback remains a whole-class cut: Register preserves the existing
+        // no-notification policy for ArrayPool/ThreadPool. Exact retained constructors
+        // and Finalize refuse; the type has a permanent preallocation capability fence.
+        // Unsupported sibling shapes still fail rather than reviving CLR callback IL.
         "System.Gen2GcCallback" => true,
         // Buffer's byte-granular surface -> dn2cpp_buffer_blockcopy / _bytelength /
         // _getbyte / _setbyte / std::memmove / std::memset. BlockCopy's and ByteLength's real
         // bodies reach the Array.NativeLength / GetCorElementTypeOfElementType / GetElementSize
         // InternalCalls, Get/SetByte's the non-generic MemoryMarshal.GetArrayDataReference(Array)
         // -> RuntimeHelpers.GetMethodTable pointer math;
-        // BulkMoveWithWriteBarrier's is the write-barrier FCall pair plus a Thread.FastPollGC
-        // poll, all meaningless under Boehm; ZeroMemoryInternal is a bodyless InternalCall.
+        // Reference-bearing moves use the collector-aware runtime helper instead of
+        // CoreCLR's FCall and chunk polling; ZeroMemoryInternal is a bodyless InternalCall.
         // Buffer's OTHER members (Memmove, MemoryCopy) are not named here and transpile normally.
         "System.Buffer" => name is "BlockCopy" or "ByteLength" or "GetByte" or "SetByte"
-            or "BulkMoveWithWriteBarrier" or "ZeroMemoryInternal",
+            or "BulkMoveWithWriteBarrier" or "ZeroMemoryInternal"
+            || IsBufferInternalReferenceMove(name),
         // Number's private group-sizes readers -> the runtime NFI's modeled
         // NumberGroupSizes array, through the same helper the public properties use. Their
         // real bodies ldfld the intrinsic-mapped NumberFormatInfo, which has no
@@ -757,13 +756,11 @@ internal static partial class CoreIntrinsics
             or "System.Text.RegularExpressions.RegexLWCGCompiler"
             or "System.Text.RegularExpressions.CompiledRegexRunner"
             or "System.Text.RegularExpressions.CompiledRegexRunnerFactory" => true,
-        // MulticastDelegate.TryGetAt -> dn2cpp_delegate_try_get_at. Its real body reads
-        // _invocationList and _invocationCount, which the uniform delegate layout replaces
-        // with the chain the helper walks; Delegate.InvocationListEnumerator's MoveNext
-        // calls it.
-        "System.MulticastDelegate" => name == "TryGetAt",
         _ => false,
     };
+
+    public static bool IsBufferInternalReferenceMove(string name) =>
+        name is "BulkMoveWithWriteBarrierInternal" or "BulkMoveWithWriteBarrierBatch";
 
     /// <summary>The exception types the runtime *itself* raises (the trap helpers /
     /// File I/O paths), mapped to the stable runtime type-info handle it stamps. These
@@ -1659,6 +1656,7 @@ internal static partial class CoreIntrinsics
         // CppTypes.KindOf special: the C++ type string is what the arms agree
         // on; the stack kind is arm-divergent (see there).
         ["System.RuntimeTypeHandle"] = "const Dn2CppTypeInfo*",
+        ["System.TypedReference"] = "Dn2CppTypedReference",
         // The degraded stack-trace objects and the Parallel.For/ForEach result
         // struct referenced without their defining IL (a signature naming them
         // in an assembly compiled against a CoreLib/facade the transpile did

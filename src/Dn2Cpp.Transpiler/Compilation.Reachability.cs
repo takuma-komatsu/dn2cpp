@@ -37,6 +37,52 @@ internal sealed partial class Compilation
         if (NotePreserveReach(m) && _scanned.Remove(m))
             _toScan.Enqueue(m);
         NoteObfuscationMethod(m);
+        CoreIntrinsics.ValidateVectorFloatingPointTernary(m);
+        CoreIntrinsics.ValidateVectorLog(m);
+        CoreIntrinsics.ValidateVectorMagnitude(m);
+        CoreIntrinsics.ValidateScalarNumericLeaf(m);
+        CoreIntrinsics.ValidateBinaryIntegerEndianBody(m);
+        CoreIntrinsics.ValidatePrimitiveParseBody(m);
+        CoreIntrinsics.ValidateDecimalBinaryBody(m);
+        CoreIntrinsics.ValidatePrimitiveWideConversionBody(m);
+        CoreIntrinsics.ValidateVectorAlignment(m);
+        ValidateSimdAlignmentBody(m);
+        CoreIntrinsics.ValidateConcreteVectorReduction(m);
+        CoreIntrinsics.ValidateVectorAsCallable(m);
+        if (CoreIntrinsics.IsVectorManagedForwarder(m)) _intrinsicTypeTranspiled.Add(m);
+        if (CoreIntrinsics.IsGuardedVectorAs(m))
+        {
+            var guards = ResolveGuardedVectorAsGuards(m);
+            _intrinsicTypeTranspiled.Add(m);
+            if (AddReachable(m.EnsureSignature()))
+            {
+                _predTrace.TryAdd(m, _currentScan);
+                foreach (var guard in guards) Reach(guard);
+            }
+            return;
+        }
+        if (CoreIntrinsics.IsVectorMagnitudeManagedGuard(m))
+        {
+            var guard = ResolveVectorMagnitudeManagedGuard(m);
+            _intrinsicTypeTranspiled.Add(m);
+            if (AddReachable(m.EnsureSignature()))
+            {
+                _predTrace.TryAdd(m, _currentScan);
+                Reach(guard);
+            }
+            return;
+        }
+        if (CoreIntrinsics.IsGenericVectorEstimate(m))
+        {
+            var guard = ResolveGenericVectorEstimateGuard(m);
+            _intrinsicTypeTranspiled.Add(m);
+            if (AddReachable(m.EnsureSignature()))
+            {
+                _predTrace.TryAdd(m, _currentScan);
+                Reach(guard);
+            }
+            return;
+        }
         // A minted body (a value type's structural equality/hash) has no IL: scanning it
         // would ask the PE for a MethodBody at a row that does not exist. Its call edges
         // are not discovered, they are CONSTRUCTED — ReachSynthesizedValueEquality walks
@@ -87,7 +133,11 @@ internal sealed partial class Compilation
         // calls, so replacing it closes that whole family (each To* keeps its real
         // Convert.ToXxx(GetValue(), …) body). The synthesized body names only runtime helpers, so
         // unlike BrHttpShim there is no managed edge to reach.
-        if (CoreIntrinsics.BrEnumInstanceFormat.Matches(m.DeclaringClass.FullName, m.Name))
+        if (CoreIntrinsics.BrEnumStaticFormat.Matches(m)
+            || CoreIntrinsics.BrEnumInstanceFormat.Matches(m)
+            || CoreIntrinsics.BrEnumElementType.Matches(m)
+            || CoreIntrinsics.BrEnumScalarGetName.Matches(m)
+            || CoreIntrinsics.BrEnumUnderlyingType.Matches(m))
         {
             if (AddReachable(m))
             {
@@ -96,7 +146,42 @@ internal sealed partial class Compilation
             }
             return; // no _toScan.Enqueue -> the replaced IL is never scanned
         }
-        if (CoreIntrinsics.BrDelegateClone.Matches(m.DeclaringClass.FullName, m.Name))
+        if (CoreIntrinsics.BrDelegateNamedConstructor.Matches(m))
+        {
+            if (AddReachable(m))
+            {
+                _predTrace.TryAdd(m, _currentScan);
+                m.EnsureSignature();
+                NoteReflectionDelegateBind(m.DeclaringClass.Module, named: true);
+                NeedsReflectionDelegateBind = true;
+                NeedsDelegateInvokeRows = true;
+            }
+            return;
+        }
+        if (CoreIntrinsics.BrDelegateClone.Matches(m.DeclaringClass.FullName, m.Name)
+            || CoreIntrinsics.BrDelegateValue.Matches(m)
+            || CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(m)
+            || CoreIntrinsics.BrPrimitiveBigMul.Matches(m)
+            || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(m)
+            || CoreIntrinsics.BrNullableReboxing.Matches(m)
+            || CoreIntrinsics.BrCustomAttributeDataMember.Matches(m)
+            || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(m)
+            || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(m)
+            || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(m)
+            || CoreIntrinsics.BrCoreClrActivationInfo.Matches(m)
+            || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(m)
+            || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(m)
+            || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(m)
+            || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(m)
+            || CoreIntrinsics.BrStringRawByteReference.Matches(m)
+            || CoreIntrinsics.BrArrayNativeLength.Matches(m)
+            || CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(m)
+            || CoreIntrinsics.BrActivatorNamed.Matches(m)
+            || CoreIntrinsics.BrActivatorDefault.Matches(m)
+            || CoreIntrinsics.BrCoreClrDelegateVmConstructor.Matches(m)
+            || CoreIntrinsics.BrMulticastAccessor.Matches(m)
+            || CoreIntrinsics.BrMulticastOperation.Matches(m)
+            || CoreIntrinsics.BrMulticastFactory.Matches(m))
         {
             if (AddReachable(m))
             {
@@ -105,7 +190,73 @@ internal sealed partial class Compilation
             }
             return;
         }
-        if (CoreIntrinsics.BrInvariantCompareInfoCallback.Matches(m.DeclaringClass.FullName, m.Name))
+        // Reflection-only roots need the native wrapper, not the opaque managed body.
+        if (CoreIntrinsics.IsRuntimeTypeHandleAccessor(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsSZArray(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsGenericVariable(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetToken(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetAttributes(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleHasElementType(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsArray(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsByRef(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsPrimitive(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsPointer(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetElementType(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsTypeDefinition(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetAssembly(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetModule(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleInterfaces(m)
+            || CoreIntrinsics.IsActivatorFrom(m)
+            || CoreIntrinsics.IsDefaultPrincipalAccessor(m)
+            || CoreIntrinsics.IsResourceFormatterAccessor(m)
+            || CoreIntrinsics.IsAppDomainExecuteAssembly(m)
+            || CoreIntrinsics.IsGen2GcCallbackRefusal(m)
+            || CoreIntrinsics.IsGen2GcCallbackRegister(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoDayName(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoMonthName(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoEraName(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoInternalMonthName(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatterns(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoMonthArray(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoSpan(m)
+            || CoreIntrinsics.IsInt128Checked(m)
+            || CoreIntrinsics.IsUInt128Checked(m)
+            || CoreIntrinsics.IsDateOnlyDeconstruct(m)
+            || CoreIntrinsics.IsDateTimeParserBoundary(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoCalendar(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoTokenize(m)
+            || CoreIntrinsics.IsInvariantCompareInfoGetter(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoFormatFlags(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoYearMonthAdjustment(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePattern(m)
+            || CoreIntrinsics.IsAppContextOnProcessExit(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleFields(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariables(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStatic(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleUtf8Name(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleConstraints(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleMakeCompound(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleMakeArray(m)
+            || CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleInstantiate(m)
+            || (CoreIntrinsics.IsRuntimeTypeArrayRank(m) || CoreIntrinsics.IsRuntimeTypeEnumName(m) || CoreIntrinsics.IsRuntimeTypeEnumDefined(m) || CoreIntrinsics.IsRuntimeTypeAssignableFrom(m) || CoreIntrinsics.IsRuntimeTypeTypeCode(m))
+            || CoreIntrinsics.IsRuntimeTypeMakeGenericType(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleConstructor(m)
+            || CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(m)
+            || CoreIntrinsics.IsRuntimeTypeInterfaceCheck(m)
+            || CoreIntrinsics.IsMemberMetadataDefinitionOverride(m)
+            || CoreIntrinsics.IsCoreClrVirtualSlotCount(m)
+            || CoreIntrinsics.IsCoreClrMethodSlotLookup(m)
+            || CoreIntrinsics.IsCoreClrConstraintCheck(m)
+            || CoreIntrinsics.IsRuntimeTypeDeclaringMethod(m)
+            || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(m)
+            || CoreIntrinsics.BrInvariantCompareInfoCallback.Matches(m.DeclaringClass.FullName, m.Name))
         {
             _predTrace.TryAdd(m, _currentScan);
             NoteIntrinsicFtnTarget(m);
@@ -138,6 +289,29 @@ internal sealed partial class Compilation
         }
         if (m.Rva == 0)
             return;
+        if ((CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(m)) || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(m)
+            || CoreIntrinsics.IsInterpolationStaticHelper(m)
+            || CoreIntrinsics.IsScalarNumericLeaf(m)
+            || CoreIntrinsics.IsBinaryIntegerEndianBody(m)
+            || CoreIntrinsics.IsPrimitiveParseBody(m)
+            || CoreIntrinsics.IsDecimalBinaryBody(m)
+            || CoreIntrinsics.IsPrimitiveWideConversionBody(m)
+            || CoreIntrinsics.IsVectorAlignmentManagedBody(m)
+            || CoreIntrinsics.IsConcreteVectorReduction(m)
+            || CoreIntrinsics.IsResourceManagerDefaultType(m)
+            || CoreIntrinsics.IsPrimitiveElementHelper(m)
+            || CoreIntrinsics.IsCultureInfoNameValidator(m)
+            || CoreIntrinsics.IsStringNullTerminatedLength(m)
+            || CoreIntrinsics.IsSearchValuesShuffle(m)
+            || CoreIntrinsics.IsWaitHandleRawWaitWrapper(m)
+            || CoreIntrinsics.IsCancellationInvoke(m)
+            || CoreIntrinsics.IsKnownConstant(m)
+            || CoreIntrinsics.IsVectorManagedThrowHelper(m)
+            || CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
+            || CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
+            || CoreIntrinsics.IsCustomAttributeDataConstructorBase(m))
+            _intrinsicTypeTranspiled.Add(m);
         // Methods of an intrinsic-mapped type are emitted inline, never
         // transpiled. Call edges already skip them (ResolveCallTarget), but an
         // allocated subtype's vtable can still surface an inherited intrinsic
@@ -527,6 +701,30 @@ internal sealed partial class Compilation
         t is { Kind: TypeKind.Class, Class: { } pc } && InheritsFromException(pc)
         || t is { Kind: TypeKind.External, ExternalName: { } xn }
            && CoreIntrinsics.IsExternalBclExceptionName(xn);
+
+    // Native reflection handles lack the generated MemberInfo vtable. Other
+    // managed receivers keep the ordinary override in this slot.
+    internal int MemberMetadataDefinitionSlot()
+    {
+        if (FindClassByFullName("System.Reflection.MemberInfo") is not { } owner)
+            return -1;
+        EnsureCompleted(owner);
+        foreach (var method in owner.Methods)
+            if (CoreIntrinsics.IsMemberMetadataDefinitionBase(method))
+                return method.VtableSlot;
+        return -1;
+    }
+
+    internal int CustomAttributeDataConstructorSlot()
+    {
+        if (FindClassByFullName("System.Reflection.CustomAttributeData") is not { } owner)
+            return -1;
+        EnsureCompleted(owner);
+        foreach (var method in owner.Methods)
+            if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(method))
+                return method.VtableSlot;
+        return -1;
+    }
 
     private int? _exceptionGetMessageSlot;
 
@@ -1277,8 +1475,8 @@ internal sealed partial class Compilation
     /// <summary>Whether a value type is shaped so that a field walk is even meaningful.
     /// The carve-outs, and why each one is one:
     /// <list type="bullet">
-    /// <item>explicit layout — overlapping fields are a union; walking them double-counts
-    /// the bytes, and .NET's own memcmp fast path declines such a type too;</item>
+    /// <item>explicit layout — only fixed-width integral fields have a supported
+    /// field walk; overlapping aliases contribute redundant but consistent values;</item>
     /// <item><c>[InlineArray(N)]</c> — the one declared field stands for N elements;</item>
     /// <item>ref struct — never boxed, and never a key;</item>
     /// <item>intrinsic-mapped (BOTH tests: the name table misses a closed generic
@@ -1289,10 +1487,32 @@ internal sealed partial class Compilation
     /// emit site (MethodCompiler) is what routes those to per-instantiation bodies.</item>
     /// </list></summary>
     private static bool SynthesizableShape(ClassInfo c) =>
-        c.IsValueType && !c.IsEnum && !c.IsByRefLike && !c.IsExplicitLayout
+        c.IsValueType && !c.IsEnum && !c.IsByRefLike
         && c.InlineArrayLength == 0
         && !CoreIntrinsics.IsIntrinsicType(c.FullName) && c.IntrinsicCppName is null
-        && !ContainsCanonPlaceholder(c);
+        && !ContainsCanonPlaceholder(c)
+        && (!c.IsExplicitLayout || HasIntegralExplicitFields(c));
+
+    private static bool HasIntegralExplicitFields(ClassInfo c)
+    {
+        bool any = false;
+        foreach (var field in StructuralFields(c))
+        {
+            if (field.ExplicitOffset < 0 || field.ByValArraySize >= 0)
+                return false;
+            var t = field.Type;
+            var code = t.Kind == TypeKind.Primitive ? t.Primitive
+                : t is { Kind: TypeKind.Class, Class: { IsEnum: true } e }
+                    ? e.EnumUnderlying : PrimitiveTypeCode.Void;
+            if (code is not (PrimitiveTypeCode.SByte or PrimitiveTypeCode.Byte
+                or PrimitiveTypeCode.Int16 or PrimitiveTypeCode.UInt16
+                or PrimitiveTypeCode.Int32 or PrimitiveTypeCode.UInt32
+                or PrimitiveTypeCode.Int64 or PrimitiveTypeCode.UInt64))
+                return false;
+            any = true;
+        }
+        return any;
+    }
 
     // The two abstract roots System.Enum / System.ValueType need no carve-out here, and
     // the invariant that keeps it that way lives one level up: BOTH are modeled as
@@ -1359,6 +1579,9 @@ internal sealed partial class Compilation
         // Nullable<U> — so the walk compares/hashes U, and it is U that has to be walkable.
         if (NullableUnderlying(t) is { } nu)
             return CanCompareStructuralField(nu, hash, visiting);
+        // Raw data-pointer fields have address identity, not pointee value semantics.
+        if (t is { Kind: TypeKind.Pointer, IsFunctionPointer: false })
+            return true;
         if (t.IsString)
             return true;
         if (t.Kind == TypeKind.Primitive && !t.IsObject)
@@ -1374,9 +1597,9 @@ internal sealed partial class Compilation
         // helpers instead.
         if (MethodCompiler.IntrinsicValueTypeFn(t) is not null)
             return true;
-        // CancellationToken's emitted source pointer is its whole identity; its loaded
-        // fields and managed equality bodies are not emitted.
-        if (MethodCompiler.IsCancellationTokenValue(t))
+        // These opaque cell identities do not use their loaded managed field layout
+        // or equality bodies.
+        if (MethodCompiler.IsCancellationTokenValue(t) || MethodCompiler.IsGCHandleValue(t))
             return true;
         // Opaque pointer-backed handles compare and hash their entire representation;
         // their loaded managed fields do not describe the emitted runtime payload.
@@ -1388,8 +1611,8 @@ internal sealed partial class Compilation
         if (t is { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false } fc })
             return (hash ? EffectiveGetHashCode(fc) : EffectiveEquals(fc)) is not null
                 || CanSynthesizeValueEquality(fc, hash, visiting);
-        // A pointer, a function pointer, a byref, a TypedReference, an unresolved
-        // placeholder: no value semantics to build one from.
+        // A function pointer, a byref, a TypedReference, an unresolved placeholder:
+        // no structural field semantics to build one from.
         return false;
     }
 
@@ -1556,6 +1779,7 @@ internal sealed partial class Compilation
         if (t is not { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false } fc }
             || MethodCompiler.IntrinsicValueTypeFn(t) is not null
             || MethodCompiler.IsCancellationTokenValue(t)
+            || MethodCompiler.IsGCHandleValue(t)
             || MethodCompiler.IntrinsicPointerValueType(t) is not null)
             return;
         // The Object-virtual override ValueType.Equals/GetHashCode would dispatch through
@@ -1730,6 +1954,11 @@ internal sealed partial class Compilation
         if (constrained.IsObject && !constrained.IsCanonPlaceholder
             && ConstrainedCalleeName(module, calleeHandle) == "CompareTo")
             NoteNonGenericIComparableUsed();
+        // A vector first encountered through an inline generic field can still be
+        // an unshaped shell; emission completes this same receiver before dispatch.
+        if (constrained is { Kind: TypeKind.Class, Class: { } vector }
+            && CoreIntrinsics.IsVectorManagedValueCandidateClass(vector))
+            EnsureShape(vector);
         if (constrained is not { Kind: TypeKind.Class, Class: { IsValueType: true } c })
             return;
         string name;
@@ -1920,18 +2149,12 @@ internal sealed partial class Compilation
         }
     }
 
-    /// <summary>The <c>IBinaryInteger&lt;TSelf&gt;.ReadBigEndian(ReadOnlySpan&lt;byte&gt;|
-    /// Span&lt;byte&gt;, bool)</c> span overload on an integer-primitive TSelf — the shape
-    /// <see cref="MethodCompiler.TryEmitGenericMathIntrinsic"/> lowers to the runtime
-    /// <c>dn2cpp_read_big_endian</c>. It is a static-virtual whose DEFAULT interface body
-    /// calls the static-abstract <c>TryReadBigEndian</c> (an InternalCall with no IL that
-    /// dn2cpp cannot transpile), so the emit route replaces the whole call and the reach
-    /// side must delete that DIM body. This single predicate is asked by BOTH askers of the
-    /// constrained-static-virtual <c>call</c> pair (the reach cut before the ordinary
-    /// <c>Reach(t)</c> edge, and the emit route) so <c>cut ⟹ route</c> cannot drift. Name
-    /// first, so the signature decode runs only for methods actually named ReadBigEndian.</summary>
+    /// <summary>The remaining sub-word ReadBigEndian shortcut. Admitted endian
+    /// owners retain their real default and TryRead bodies; other existing integer
+    /// shapes still use the shared whole-call cut/lowering predicate.</summary>
     public bool IsInterceptedReadBigEndian(MethodInfo m) =>
         m.Name == "ReadBigEndian"
+        && !CoreIntrinsics.IsBinaryIntegerEndianDefault(m)
         && m.DeclaringClass.IsInterface
         && m.DeclaringClass.Namespace.StartsWith("System.Numerics", StringComparison.Ordinal)
         && m.Signature.ReturnType is { Kind: TypeKind.Primitive } rt
@@ -3077,9 +3300,11 @@ internal sealed partial class Compilation
     /// the lowering sets <see cref="NeedsReflectionDelegateBind"/>. A user body's binding
     /// also turns on the invoke emission switch; a framework library binding its own
     /// members does not.</summary>
-    private void NoteReflectionDelegateBind(Module module)
+    private void NoteReflectionDelegateBind(Module module, bool named = false)
     {
         _reflectionDelegateBindScanned = true;
+        if (named)
+            _reflectionNamedDelegateBindUsed = true;
         NoteObjectEqualityDispatch();
         if (IsUserModule(module))
             _reflectionInvokeUsed = true;
@@ -5826,6 +6051,19 @@ internal sealed partial class Compilation
     }
 
     private long _reflectionSummaryMs;
+    private RuntimeTypeMakeGenericTypePlan? _makeGenericTypePlan;
+    private bool _makeGenericTypePlanInitialized;
+
+    private ReflectionSummarizer GetReflectionSummarizer(Module module)
+    {
+        if (!_makeGenericTypePlanInitialized)
+        {
+            _makeGenericTypePlanInitialized = true;
+            _makeGenericTypePlan = new RuntimeTypeMakeGenericTypePlan(Modules.Select(m => m.Reader));
+        }
+        return module.ReflectionSummarizer ??= new ReflectionSummarizer(module.Reader, module.PE, _makeGenericTypePlan);
+    }
+
 
     /// <summary>Summarizes the reflection values of a scanned definition once. A summary
     /// reads raw metadata only, so computing it decodes nothing in the model and cannot
@@ -5836,8 +6074,7 @@ internal sealed partial class Compilation
         if (module.ReflectionSummaries.ContainsKey(m.Handle))
             return;
         long start = Environment.TickCount64;
-        module.ReflectionSummarizer ??= new ReflectionSummarizer(module.Reader, module.PE);
-        module.ReflectionSummaries.Add(m.Handle, module.ReflectionSummarizer.Summarize(m.Handle, body, insns));
+        module.ReflectionSummaries.Add(m.Handle, GetReflectionSummarizer(module).Summarize(m.Handle, body, insns));
         _reflectionSummaryMs += Environment.TickCount64 - start;
     }
 
@@ -5944,6 +6181,7 @@ internal sealed partial class Compilation
         // chain so a failure deep in the BCL points back at the app call site.
         // The pending `constrained.` prefix type for the next callvirt.
         TypeDesc? constrained = null;
+        EntityHandle constrainedHandle = default;
         // The struct boxed by the immediately-preceding instruction whose ToString the
         // box did not reach, pending a formatting call that would dispatch it.
         ClassInfo? boxedForFormat = null;
@@ -5958,6 +6196,7 @@ internal sealed partial class Compilation
                 + "ILDiet's retained set must contain every body reachability admits");
         try
         {
+            ReachArraySortFactory(m);
             var insns = ILDecoder.Decode(body.GetILBytes()!.ToImmutableArrayCompat());
             NoteMediumBodyTypes(m, body);
             SummarizeReflection(m, body, insns);
@@ -5990,6 +6229,7 @@ internal sealed partial class Compilation
                 switch (insn.OpCode)
                 {
                     case ILOpCode.Constrained:
+                        constrainedHandle = handle;
                         constrained = ResolveTypeTokenForScan(module, handle, m.Context);
                         continue;
                     case ILOpCode.Ldtoken:
@@ -6168,40 +6408,6 @@ internal sealed partial class Compilation
                                 }
                             }
                         }
-                        // CultureInfo.CompareInfo -> a synthesized zero-initialized
-                        // CompareInfo (see the MethodCompiler intrinsic in
-                        // EmitIntrinsic.Numbers): mark the transpiled CompareInfo
-                        // allocated so its type-info emits. There is no ctor to
-                        // reach — the real ctor reads fields of the intrinsic-mapped
-                        // CultureInfo — and the invariant arms its reachable members
-                        // run read no instance state. CultureInfo is intrinsic-mapped,
-                        // so ResolveCallTarget returns null for both call forms.
-                        // EffectThenSkipResolve. The row's own NAME half is asked first
-                        // — through the shared predicate, never by reading the row's gate
-                        // field as a value — and the parent only behind it: obtaining the
-                        // parent on the MethodDefinition mouth builds a string, and every
-                        // call token of every reachable body passes here.
-                        if (insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt
-                            && (handle.Kind switch
-                                {
-                                    HandleKind.MethodDefinition => module.Reader.GetString(
-                                        module.Reader.GetMethodDefinition((MethodDefinitionHandle)handle).Name),
-                                    // Reuses the name read above ("get_CompareInfo" is in
-                                    // its parent-gate set, so mrParent is in hand too).
-                                    HandleKind.MemberReference => mrName,
-                                    _ => null,
-                                }) is { } cmpName
-                            && CoreIntrinsics.IsCultureCompareInfoMemberName(cmpName)
-                            && CoreIntrinsics.ScCultureCompareInfo.Matches(
-                                handle.Kind == HandleKind.MemberReference
-                                    ? mrParent : CallTargetTypeName(module, handle),
-                                cmpName)
-                            && FindClassByFullName("System.Globalization.CompareInfo") is { } cmpInfoCls)
-                        {
-                            ReachAllocatedType(cmpInfoCls);
-                            constrained = null;
-                            continue;
-                        }
                         var t = ResolveCallTarget(module, handle, m.Context);
                         // A bodyless P/Invoke with a registered managed native
                         // implementation: the call site lowers to a direct call to the
@@ -6288,16 +6494,29 @@ internal sealed partial class Compilation
                             constrained = null;
                             continue;
                         }
-                        // IBinaryInteger<TSelf>.ReadBigEndian span overload on an integer
-                        // primitive: emit lowers the whole call to dn2cpp_read_big_endian
-                        // (its default body's TryReadBigEndian leaf is an InternalCall with
-                        // no IL), so its DIM body must NOT enter the tree — cut the ordinary
-                        // Reach(t) edge below. cut ⟹ route: the same predicate gates the emit
-                        // route (MethodCompiler.TryEmitGenericMathIntrinsic).
+                        // Keep the residual shortcut's cut in sync with emission;
+                        // the admitted endian family instead reaches the real DIM.
                         if (t is not null && insn.OpCode == ILOpCode.Call
                             && constrained is { Kind: TypeKind.Primitive, IsCanonPlaceholder: false }
                             && IsInterceptedReadBigEndian(t))
                         {
+                            constrained = null;
+                            continue;
+                        }
+                        if (t is not null && insn.OpCode == ILOpCode.Call
+                            && constrained is { Kind: TypeKind.Class, Class: { } unsignedCheckedSelf }
+                            && CoreIntrinsics.IsUInt128CheckedInterface(t))
+                        {
+                            ValidateUInt128CheckedConstrained(module, constrainedHandle);
+                            ResolveUInt128CheckedInterface(t, unsignedCheckedSelf);
+                            constrained = null;
+                            continue;
+                        }
+                        if (t is not null && insn.OpCode == ILOpCode.Call
+                            && constrained is { Kind: TypeKind.Class, Class: { } checkedSelf }
+                            && CoreIntrinsics.IsInt128CheckedInterface(t))
+                        {
+                            ResolveInt128CheckedInterface(t, checkedSelf);
                             constrained = null;
                             continue;
                         }
@@ -6324,6 +6543,34 @@ internal sealed partial class Compilation
                         }
                         // An ambiguous static slot emits a throw, so neither its
                         // default body nor either competing override is a call edge.
+                        if (insn.OpCode == ILOpCode.Call && t is not null
+                            && TryResolveBinaryIntegerEndianCall(constrained, t) is { } endianBody)
+                        {
+                            ReachIntrinsicTypeMethod(endianBody);
+                            constrained = null;
+                            continue;
+                        }
+                        if (insn.OpCode == ILOpCode.Call && t is not null
+                            && TryResolvePrimitiveParseCall(constrained, t) is { } parseBody)
+                        {
+                            ReachIntrinsicTypeMethod(parseBody);
+                            constrained = null;
+                            continue;
+                        }
+                        if (insn.OpCode == ILOpCode.Call && t is not null
+                            && TryResolvePrimitiveWideConversionCall(constrained, t) is { } wideConversion)
+                        {
+                            ReachIntrinsicTypeMethod(wideConversion);
+                            constrained = null;
+                            continue;
+                        }
+                        if (insn.OpCode == ILOpCode.Call && t is not null
+                            && TryResolveSimdAlignmentCall(module, handle, m.Context, constrainedHandle, constrained, t) is { } alignmentBody)
+                        {
+                            ReachIntrinsicTypeMethod(alignmentBody);
+                            constrained = null;
+                            continue;
+                        }
                         if (insn.OpCode == ILOpCode.Call
                             && constrained is { Kind: TypeKind.Class, Class: { } staticSelf }
                             && t is { IsStatic: true, DeclaringClass.IsInterface: true })

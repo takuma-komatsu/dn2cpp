@@ -559,10 +559,9 @@ internal sealed partial class MethodCompiler
             // CancellationToken value struct: { Dn2CppCancelSource* source }.
             case ("System.Threading.CancellationToken", ".ctor"):
             {
-                var arg = Pop();  // bool canceled
+                string value = EmitCancellationTokenCtorExpr(sig);
                 var self = Pop(); // ref this
-                EmitCanceledExcRegistration();
-                Emit($"*(Dn2CppCancelToken*)({self.Expr}) = Dn2CppCancelToken{{ ({arg.Expr}) ? dn2cpp_cts_canceled() : nullptr }};");
+                Emit($"*(Dn2CppCancelToken*)({self.Expr}) = {value};");
                 Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({self.Expr}));");
                 return true;
             }

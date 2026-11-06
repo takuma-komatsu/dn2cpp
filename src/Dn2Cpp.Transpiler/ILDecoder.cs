@@ -190,7 +190,7 @@ internal static class ILDecoder
         ILOpCode.Conv_ovf_i1_un or ILOpCode.Conv_ovf_u1_un or ILOpCode.Conv_ovf_i2_un or ILOpCode.Conv_ovf_u2_un or
         ILOpCode.Conv_ovf_i4_un or ILOpCode.Conv_ovf_u4_un or ILOpCode.Conv_ovf_i8_un or ILOpCode.Conv_ovf_u8_un or
         ILOpCode.Conv_ovf_i_un or ILOpCode.Conv_ovf_u_un or
-        ILOpCode.Ckfinite or
+        ILOpCode.Ckfinite or ILOpCode.Refanytype or
         ILOpCode.Ldlen or
         ILOpCode.Ldelem_i4 or ILOpCode.Stelem_i4 or
         ILOpCode.Ldelem_ref or ILOpCode.Stelem_ref or
@@ -262,7 +262,7 @@ internal static class ILDecoder
         ILOpCode.Box or ILOpCode.Unbox or ILOpCode.Unbox_any or
         ILOpCode.Ldftn or ILOpCode.Ldvirtftn or
         ILOpCode.Constrained or ILOpCode.Ldtoken or
-        ILOpCode.Sizeof
+        ILOpCode.Sizeof or ILOpCode.Mkrefany or ILOpCode.Refanyval
             => OperandKind.Token,
 
         _ => null,

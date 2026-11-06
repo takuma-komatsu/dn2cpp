@@ -67,6 +67,12 @@ namespace ConvertParse
             if (args.Length > 0 && args[0] == "before-invalid-integer-utf8")
                 return;
             IntegerUtf8ValidationSubset.Run();
+            if (args.Length > 0 && args[0] == "before-int128-checked")
+                return;
+            Int128CheckedSubset.Program.__GateEntry();
+            if (args.Length > 0 && args[0] == "before-uint128-checked")
+                return;
+            UInt128CheckedSubset.Program.__GateEntry();
         }
     }
 }

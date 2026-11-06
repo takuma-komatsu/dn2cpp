@@ -54,6 +54,21 @@ namespace DateTimeOps
             if (args.Length > 0 && args[0] == "before-daylight")
                 return;
             DateTimeDaylightSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-abbreviated-day")
+                return;
+            AbbreviatedDaySubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-full-day")
+                return;
+            FullDayPublicSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-abbreviated-month")
+                return;
+            AbbreviatedMonthPublicSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-full-month")
+                return;
+            FullMonthPublicSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-era-name")
+                return;
+            EraNamePublicSubset.Program.Run();
         }
     }
 }

@@ -16,6 +16,31 @@ internal static partial class Program
         // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        if (args.Length > 0 && args[0] == "vector-concrete-elements-only")
+        {
+            ConcreteElements();
+            return;
+        }
+        if (args.Length > 0 && args[0] == "vector-fixed-unsupported-only")
+        {
+            FixedUnsupportedValueSemantics();
+            return;
+        }
+        if (args.Length > 0 && args[0] == "vector-fixed-value-only")
+        {
+            FixedValueSemantics();
+            return;
+        }
+        if (args.Length > 0 && args[0] == "vector-unsupported-only")
+        {
+            VectorUnsupportedSemantics();
+            return;
+        }
+        if (args.Length > 0 && args[0] == "vector-value-only")
+        {
+            VectorValueSemantics();
+            return;
+        }
 
         Vector128<int> a = Vector128.Create(1, 2, 3, 4);   // element list
         Vector128<int> b = Vector128.Create(10);           // broadcast
@@ -208,6 +233,21 @@ internal static partial class Program
         if (args.Length != 0 && args[0] == "before-value-semantics")
             return;
         VectorExistingSemantics();
+        if (args.Length > 0 && args[0] == "before-explicit") return;
+        ExplicitReinterprets.Run();
+        VectorValueSemantics();
+        FixedValueSemantics();
+        FixedUnsupportedValueSemantics();
+        if (args.Length > 0 && args[0] == "before-concrete-elements") return;
+        ConcreteElements();
+        if (args.Length > 0 && args[0] == "before-vector-estimate") return;
+        MultiplyAddEstimates();
+        if (args.Length > 0 && args[0] == "before-vector-angles") return;
+        AngleConversions();
+        if (args.Length > 0 && args[0] == "before-vector-trig") return;
+        Trigonometry();
+        if (args.Length > 0 && args[0] == "before-vector-predicate-copy") return;
+        PredicateCopy();
     }
 
     private static void VectorCopyTargets()

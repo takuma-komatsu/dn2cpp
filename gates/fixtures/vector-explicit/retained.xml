@@ -1,0 +1,7 @@
+<linker>
+  <assembly fullname="System.Private.CoreLib">
+    <type fullname="System.Span`1">
+      <method name="Fill" />
+    </type>
+  </assembly>
+</linker>

@@ -166,6 +166,39 @@
 
 set -uo pipefail
 
+# Normal merge validation includes basic High/Medium retention regressions.
+# Extended Medium API matrices remain explicit development checks.
+export DN2CPP_KNOWN_CONSTANT_LEVELS=High
+export DN2CPP_PRESERVE_CONTROL_MEDIUM=0
+# Full matrices are explicit development checks, never inherited into merge runs.
+export DN2CPP_VECTOR_FULL=0
+export DN2CPP_SELFHOST_PRIM_FULL=0
+export DN2CPP_DATETIME_FULL=0
+export DN2CPP_ARRAY_FULL=0
+export DN2CPP_MANIFEST_RESOURCES_FULL=0
+export DN2CPP_PRESERVE_CONTROL_FULL=0
+export DN2CPP_REFLECT_INVOKE_FULL=0
+export DN2CPP_REFLECT_TYPES_FULL=0
+export DN2CPP_TRANSPILER_LIMITS_FULL=0
+export DN2CPP_EMIT_ORDER_FULL=0
+export DN2CPP_MATH_FULL=0
+export DN2CPP_MARSHAL_FULL=0
+export DN2CPP_HTTP_FULL=0
+export DN2CPP_HOTUPDATE_FULL=0
+export DN2CPP_THREADING_FULL=0
+export DN2CPP_STRING_FULL=0
+export DN2CPP_STRING_INTERP_FULL=0
+export DN2CPP_DECIMAL_FULL=0
+export DN2CPP_DICT_FULL=0
+export DN2CPP_CUSTOM_ASYNC_TASK_FULL=0
+export DN2CPP_EXCEPTION_MESSAGE_FULL=0
+export DN2CPP_MULTIASSEMBLY_FULL=0
+export DN2CPP_TRIM_REFLECTION_FULL=0
+export DN2CPP_OBFUSCATION_FULL=0
+export DN2CPP_WASM_CONSOLE_FULL=0
+export DN2CPP_PLATFORM_ISA_FULL=0
+export DN2CPP_DEFAULT_CULTURE_FULL=0
+
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 
 # ── the freshness probes (children of this script, never a source) ────────────
@@ -354,26 +387,6 @@ case "$CONFIG" in
         exit 2
         ;;
 esac
-# Full matrices are explicit development checks, never inherited into merge runs.
-export DN2CPP_ARRAY_FULL=0
-export DN2CPP_MANIFEST_RESOURCES_FULL=0
-export DN2CPP_PRESERVE_CONTROL_FULL=0
-export DN2CPP_REFLECT_INVOKE_FULL=0
-export DN2CPP_REFLECT_TYPES_FULL=0
-export DN2CPP_TRANSPILER_LIMITS_FULL=0
-export DN2CPP_EMIT_ORDER_FULL=0
-export DN2CPP_MARSHAL_FULL=0
-export DN2CPP_HTTP_FULL=0
-export DN2CPP_HOTUPDATE_FULL=0
-export DN2CPP_CUSTOM_ASYNC_TASK_FULL=0
-export DN2CPP_EXCEPTION_MESSAGE_FULL=0
-export DN2CPP_MULTIASSEMBLY_FULL=0
-export DN2CPP_TRIM_REFLECTION_FULL=0
-export DN2CPP_OBFUSCATION_FULL=0
-export DN2CPP_WASM_CONSOLE_FULL=0
-export DN2CPP_PLATFORM_ISA_FULL=0
-export DN2CPP_DEFAULT_CULTURE_FULL=0
-
 CONFIGS="$CONFIG"
 [ "$BOTH_CONFIGS" != "1" ] || CONFIGS="Release Debug"
 
@@ -661,6 +674,13 @@ premerge_argv() {
         "CONFIG=$config"
         "LOGDIR=$logdir"
         "DN2CPP_REQUIRE_ALL=1"
+        "DN2CPP_ALLOW_MISSING_CRI_SDK=1"
+        "DN2CPP_GATE_CACHE=0"
+        "DN2CPP_KNOWN_CONSTANT_LEVELS=High"
+        "DN2CPP_PRESERVE_CONTROL_MEDIUM=0"
+        "DN2CPP_VECTOR_FULL=0"
+        "DN2CPP_SELFHOST_PRIM_FULL=0"
+        "DN2CPP_DATETIME_FULL=0"
         "DN2CPP_ARRAY_FULL=0"
         "DN2CPP_MANIFEST_RESOURCES_FULL=0"
         "DN2CPP_PRESERVE_CONTROL_FULL=0"
@@ -668,9 +688,15 @@ premerge_argv() {
         "DN2CPP_REFLECT_TYPES_FULL=0"
         "DN2CPP_TRANSPILER_LIMITS_FULL=0"
         "DN2CPP_EMIT_ORDER_FULL=0"
+        "DN2CPP_MATH_FULL=0"
         "DN2CPP_MARSHAL_FULL=0"
         "DN2CPP_HTTP_FULL=0"
         "DN2CPP_HOTUPDATE_FULL=0"
+        "DN2CPP_THREADING_FULL=0"
+        "DN2CPP_STRING_FULL=0"
+        "DN2CPP_STRING_INTERP_FULL=0"
+        "DN2CPP_DECIMAL_FULL=0"
+        "DN2CPP_DICT_FULL=0"
         "DN2CPP_CUSTOM_ASYNC_TASK_FULL=0"
         "DN2CPP_EXCEPTION_MESSAGE_FULL=0"
         "DN2CPP_MULTIASSEMBLY_FULL=0"
@@ -679,8 +705,6 @@ premerge_argv() {
         "DN2CPP_WASM_CONSOLE_FULL=0"
         "DN2CPP_PLATFORM_ISA_FULL=0"
         "DN2CPP_DEFAULT_CULTURE_FULL=0"
-        "DN2CPP_ALLOW_MISSING_CRI_SDK=1"
-        "DN2CPP_GATE_CACHE=0"
         "SKIP_GODOT=$SKIP_GODOT"
         "SKIP_XCODE=$SKIP_XCODE"
         "DN2CPP_INCLUDE_CULTURE=$DN2CPP_INCLUDE_CULTURE"
@@ -2513,6 +2537,19 @@ OPTS
         st_bad "--dry-run did not report the stale build dir (exit $DR_RC) — see $ST_TMP/dryrun.txt"
     fi
 
+    if grep -q '^stripping: default High plus basic High/Medium retention; extended Medium API matrices not selected$' \
+        "$ST_TMP/e2e-both-green/_receipt.txt"; then
+        st_ok "successful receipt records basic High/Medium and extended matrix selection"
+    else
+        st_bad "successful receipt omits its stripping scope"
+    fi
+    if grep -q 'DN2CPP_KNOWN_CONSTANT_LEVELS=High' "$ST_TMP/dryrun.txt" \
+        && grep -q 'DN2CPP_PRESERVE_CONTROL_MEDIUM=0' "$ST_TMP/dryrun.txt"; then
+        st_ok "dry-run excludes extended Medium API matrices"
+    else
+        st_bad "dry-run does not pin both optional Medium selectors"
+    fi
+
     say "self-test summary"
     printf '  %d passed, %d failed\n' "$ST_PASS" "$ST_FAIL"
     [ "$ST_FAIL" -eq 0 ] || exit 1
@@ -2541,9 +2578,9 @@ if [ "$CULTURE_EXCLUDED" = 1 ]; then
     note "CultureInfoAPI: excluded (opt in with --with-culture); not counted as passed."
 fi
 note "configs: $CONFIGS"
-note "stripping: default High plus basic High/Medium retention and initializer regressions."
+note "stripping: default High plus basic High/Medium retention; extended Medium API matrices not selected."
 note "coverage: representative aggregate gates; shared binaries retain runtime and output assertions."
-note "optional details: isolated roots, raw/preprocessed pairs, layout refusals, extended backend and detailed culture matrices skipped (not selected); not counted as passed."
+note "optional details: datetime, array, manifest, preserve, reflection, limits, emit-order, math, marshal, HTTP, hotupdate, threading, string, decimal, collections, async, exceptions, multiassembly, trim, obfuscation, ISA, Wasm, vector, selfhost and detailed culture full matrices skipped (not selected); not counted as passed."
 if [ "$SKIP_XCODE" = 1 ]; then
     note "Xcode:  $XCODE_EXCLUDED gate(s) excluded ($XCODE_SELECTION selection)."
 else
@@ -3020,9 +3057,9 @@ if [ "$OVERALL" -eq 0 ]; then
             printf 'Xcode:   selected (%s selection)\n' "$XCODE_SELECTION"
         fi
         printf 'configs: %s\n' "$CONFIGS"
-        printf 'stripping: default High plus basic High/Medium retention and initializer regressions.\n'
-        printf 'coverage: representative aggregate gates; shared binaries retain runtime and output assertions.\n'
-        printf 'optional details: isolated roots, raw/preprocessed pairs, layout refusals, extended backend and detailed culture matrices skipped (not selected); not counted as passed.\n'
+        printf 'stripping: default High plus basic High/Medium retention; extended Medium API matrices not selected\n'
+        printf 'coverage: representative aggregate gates; shared binaries retain runtime and output assertions\n'
+        printf 'optional details: datetime, array, manifest, preserve, reflection, limits, emit-order, math, marshal, HTTP, hotupdate, threading, string, decimal, collections, async, exceptions, multiassembly, trim, obfuscation, ISA, Wasm, vector, selfhost and detailed culture full matrices skipped (not selected); not counted as passed\n'
         printf 'culture: %s\n' "$CULTURE_NOTE"
         printf 'strict culture reference: %s\n' "$STRICT_CULTURE_NOTE"
         # Which sources the binary the fork lane ran on was built from: a green

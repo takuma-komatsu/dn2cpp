@@ -69,13 +69,15 @@ void dn2cpp_array_set_ref_fallback_interfaces(const Dn2CppInterfaceEntry* entrie
 static const Dn2CppInterfaceEntry* g_array_md_fallback_itfs = nullptr;
 static int32_t g_array_md_fallback_itf_count = 0;
 static const Dn2CppTypeInfo* g_array_clone_interface = nullptr;
+static bool g_array_enum_sz_fallback = false;
 
 void dn2cpp_array_set_md_fallback_interfaces(const Dn2CppInterfaceEntry* entries, int32_t count,
-    const Dn2CppTypeInfo* cloneInterface)
+    const Dn2CppTypeInfo* cloneInterface, bool enumSzArrays)
 {
     g_array_md_fallback_itfs = entries;
     g_array_md_fallback_itf_count = count;
     g_array_clone_interface = cloneInterface;
+    g_array_enum_sz_fallback = enumSzArrays;
 }
 
 // Relation-only rows for the six non-generic array interfaces — the ENUMERATION
@@ -800,9 +802,13 @@ const Dn2CppInterfaceEntry* dn2cpp_dispatch_interface_row_of(const Dn2CppTypeInf
     // Runtime-composed signature arrays use this map too, including jagged arrays
     // whose reference-element SZ map was never statically seeded.
     // Clone reads the runtime shape, so its row also serves an SZ array whose
-    // element has no collection map. Other SZ collection dispatch is unchanged.
+    // element has no collection map. Type.GetEnumValues additionally demands this
+    // reflection-backed non-generic map for enum SZ arrays without static maps;
+    // other value-element SZ arrays remain outside this fallback.
     if ((dn2cpp_is_md_array(t) || (dn2cpp_is_sz_array(t)
-            && (dn2cpp_has_signature_array_element(t) || itf == g_array_clone_interface)))
+            && (dn2cpp_has_signature_array_element(t) || itf == g_array_clone_interface
+                || (g_array_enum_sz_fallback && t->elementType != nullptr
+                    && (t->elementType->flags & DN2CPP_TF_ENUM) != 0))))
         && g_array_md_fallback_itfs != nullptr)
     {
         for (int32_t i = 0; i < g_array_md_fallback_itf_count; i++)
@@ -1690,6 +1696,7 @@ static Dn2CppObject* dn2cpp_delegate_relink(Dn2CppDelegate* tail, const Dn2CppDe
             break;
         }
         auto* copy = static_cast<Dn2CppDelegate*>(dn2cpp_alloc(sizeof(Dn2CppDelegate)));
+        reinterpret_cast<Dn2CppDelegate*>(entry)->bindingSnapshotted.store(true, std::memory_order_relaxed);
         copy->type = n->type;
         dn2cpp_gc_store_ref(&copy->target, n->target);
         copy->method = n->method;
@@ -1727,6 +1734,30 @@ Dn2CppObject* dn2cpp_delegate_combine_n(Dn2CppObject* const* items, int32_t coun
     for (int32_t i = 1; i < count; i++)
         d = dn2cpp_delegate_combine(d, items[i]);
     return d;
+}
+
+// Public Combine/Remove call this private factory only for flattened prefixes of
+// at least two entries. Empty/single-entry private multicast states have different
+// CLR equality semantics and cannot be represented by the uniform native chain.
+Dn2CppObject* dn2cpp_delegate_from_invocation_prefix(Dn2CppObject* receiver, Dn2CppArrayRef* items, int32_t count)
+{
+    if (receiver == nullptr)
+        dn2cpp_throw_null_reference();
+    if (count < 2)
+        dn2cpp_throw_platform_not_supported("Empty or single-entry private multicast state is not represented by dn2cpp.");
+    if (items == nullptr || count > items->length)
+        dn2cpp_throw_platform_not_supported("Multicast construction requires an in-bounds invocation prefix.");
+    for (int32_t i = 0; i < count; ++i)
+    {
+        Dn2CppObject* item = items->data[i];
+        if (item == nullptr || item->type != receiver->type
+            || (item->type->flags & DN2CPP_TF_DELEGATE) == 0
+            || reinterpret_cast<Dn2CppDelegate*>(item)->prev != nullptr)
+            dn2cpp_throw_platform_not_supported("Multicast construction requires flattened entries of the receiver's exact delegate type.");
+    }
+    // At least two non-null single entries ensure a fresh result. Capacity beyond
+    // count is ignored, and the mutable source array is never retained.
+    return dn2cpp_delegate_combine_n(items->data, count);
 }
 
 Dn2CppObject* dn2cpp_delegate_combine_array(Dn2CppArrayRef* items)
@@ -1891,6 +1922,19 @@ Dn2CppObject* dn2cpp_delegate_remove(Dn2CppObject* source, Dn2CppObject* value)
             break;
     }
     return source;
+}
+
+// The protected override treats another delegate type as a non-matching entry.
+// Public Delegate.Remove performs a separate type check and must still throw.
+Dn2CppObject* dn2cpp_delegate_remove_impl(Dn2CppObject* source, Dn2CppObject* value)
+{
+    if (value == nullptr)
+        return source;
+    if (source == nullptr)
+        dn2cpp_throw_null_reference();
+    if (source->type != value->type)
+        return source;
+    return dn2cpp_delegate_remove(source, value);
 }
 
 // Delegate.RemoveAll: Remove until it answers the delegate it was given, which it

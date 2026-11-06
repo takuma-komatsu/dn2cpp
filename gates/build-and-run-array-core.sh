@@ -188,9 +188,11 @@ if [ "$DN2CPP_ARRAY_FULL" = 0 ]; then
     echo 'array coverage: ArrayCore aggregate and isolated finite-search parity'
     echo 'array isolated route and backend matrices: skipped (not selected); not counted as passed'
 fi
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/ArrayNativeLengthGuards.cs gates/fixtures/ldftn-local/ArrayNativeLengthFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj gates/_ildiet.sh gates/ildiet_manifest.py gates/fixtures/array-native-length-runtime/ArrayNativeLengthWitness.csproj gates/fixtures/array-native-length-runtime/Program.cs gates/fixtures/ldftn-local/check-array-native-length-attachment.py"
 source "$(dirname "$0")/_ildiet.sh"
 source gates/_headerless-reference-identity.sh
 source gates/_md-readonly-byrefs.sh
+source gates/_array-sort-factory.sh
 
 # Prefix runs retain their own evidence; a missing or duplicated boundary fails.
 array_core_prefix() {
@@ -488,6 +490,8 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|readonly-raw-md-live-alias
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_md-readonly-byrefs.sh gates/fixtures/md-readonly-byrefs/MdReadonlyByrefs.csproj gates/fixtures/md-readonly-byrefs/Program.cs gates/fixtures/md-readonly-byrefs/runtime-checks.cpp"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ArrayCore/ArrayFiniteSearchOnly.csproj samples/dotnet/ArrayCore/ArrayFiniteSearchProgram.cs samples/dotnet/ArrayCore/ArrayFiniteSearchSubset.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|finite-local-searches:ildiet,no-ildiet|before-finite-local-searches"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_array-sort-factory.sh gates/fixtures/ldftn-local/ArraySortFactoryFixture.cs gates/fixtures/ldftn-local/ArraySortFactoryGuards.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj samples/dotnet/ArraySortFactory/ArraySortFactory.csproj samples/dotnet/ArraySortFactory/Program.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|genuine-array-sort-factory:raw,diet|constraint-derived-activation|private-interface-sort-dispatch"
 (
     DN2CPP_SAMPLE_PROJECT_DIR=samples/dotnet/ArrayCore
     gate_extra_asserts() {
@@ -1380,3 +1384,69 @@ done
 (md_readonly_byrefs_gate unity)
 (export DN2CPP_NO_GC=1; md_readonly_byrefs_gate nogc)
 (export DN2CPP_GC_BACKEND=upstream; md_readonly_byrefs_gate upstream)
+
+# Private helper identity and constrained activation share the public sorting bucket.
+build_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+array_sort_factory_gate artifacts/arraycore-factory \
+    "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" "$corelib"
+
+# Genuine private callable routes supplement the unchanged themed sample above.
+(
+    source gates/_ildiet.sh
+    gate_python -c 'pass' >/dev/null || exit $?
+    finite_core=$(resolve_net10_corelib)
+    finite_cli="${DN2CPP_CLI_DLL:-src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}"
+    build_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+    build_gate_proj gates/fixtures/array-native-length-runtime/ArrayNativeLengthWitness.csproj
+    finite_fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll"
+    finite_app="gates/fixtures/array-native-length-runtime/bin/$CONFIG/$TFM/ArrayNativeLengthWitness.dll"
+    mkdir -p "artifacts/array-native-length-$CONFIG"
+    finite_root=$(mktemp -d "artifacts/array-native-length-$CONFIG/run-XXXXXX")
+    gate_capture_ok "$finite_root/guards" run_bounded dotnet "$finite_fixture" --array-native-length-guards \
+        "$(dirname "$finite_cli")/Dn2Cpp.Transpiler.dll" "$finite_core" "$finite_root/model.dll"
+    gate_output match-record "$finite_root/guards.stdout" 'array-native-length-guards:(checks|passed)=[1-9][0-9]*.*' --count 1 --policy crlf
+    for finite_route in direct-calli reflection-only; do
+        finite_args=()
+        [[ "$finite_route" == direct-calli ]] || finite_args=("$finite_route")
+        gate_capture_ok "$finite_root/$finite_route-oracle" run_bounded dotnet "$finite_app" ${finite_args[@]+"${finite_args[@]}"}
+        finite_end='Array.NativeLength direct and calli end'
+        [[ "$finite_route" == direct-calli ]] || finite_end='Array.NativeLength named reflection only end'
+        gate_output byte-witness "$finite_root/$finite_route-oracle.stdout" "$finite_end" --count 1 --policy crlf
+        gate_capture_ok "$finite_root/$finite_route-generate" run_bounded dotnet "$finite_fixture" \
+            --array-native-length-fixture "$finite_app" "$finite_core" "$finite_root/$finite_route.dll" "$finite_route"
+        for finite_axis in raw diet; do
+            finite_out="$finite_root/$finite_route-$finite_axis"
+            finite_flags=()
+            [[ "$finite_axis" != raw ]] || finite_flags=(--no-ildiet)
+            gate_capture_ok "$finite_root/$finite_route-$finite_axis-emit" invoke_cli "$finite_root/$finite_route.dll" \
+                -r "$finite_core" --auto-ref ${finite_flags[@]+"${finite_flags[@]}"} -o "$finite_out"
+            if [[ "$finite_axis" == diet ]]; then
+                gate_python - "$finite_out/ildiet" 'ArrayNativeLengthWitness' "$finite_core" <<'PY_FINITE_DIET'
+from pathlib import Path
+import sys
+sys.path.insert(0, 'gates')
+from ildiet_manifest import manifest
+result, generation = manifest(sys.argv[1])
+assert result.get('fallback') == 'none' and result.get('cutsValidated') == 'true'
+assembly = next(a for a in result.findall('assembly') if a.get('name') == sys.argv[2])
+assert assembly.get('mode') == 'rewritten'
+core = next(a for a in result.findall('assembly') if a.get('name') == 'System.Private.CoreLib')
+assert core.get('mode') == 'copied'
+assert (generation / 'System.Private.CoreLib.dll').read_bytes() == Path(sys.argv[3]).read_bytes()
+PY_FINITE_DIET
+                finite_rewritten="$(ildiet_generation "$finite_out/ildiet")/ArrayNativeLengthWitness.dll"
+                gate_capture_ok "$finite_out/diet-proof" run_bounded dotnet "$finite_fixture" \
+                    --array-native-length-diet-proof "$finite_root/$finite_route.dll" "$finite_rewritten"
+                gate_capture_ok "$finite_out/diet-proof-negatives" run_bounded dotnet "$finite_fixture" \
+                    --array-native-length-diet-proof-negatives "$finite_root/$finite_route.dll" "$finite_rewritten" "$finite_out/diet-negative-data"
+            fi
+            if [[ "$finite_route" == reflection-only ]]; then
+                gate_python gates/fixtures/ldftn-local/check-array-native-length-attachment.py "$finite_out"
+            fi
+            compile_console "$finite_out" ArrayNativeLengthWitness
+            gate_capture_ok "$finite_out/native" run_bounded "$finite_out/ArrayNativeLengthWitness$EXE_EXT"
+            gate_output compare "$finite_root/$finite_route-oracle.stdout" "$finite_out/native.stdout" --policy crlf
+            gate_output compare "$finite_root/$finite_route-oracle.stderr" "$finite_out/native.stderr" --policy crlf
+        done
+    done
+)
