@@ -454,7 +454,11 @@ internal sealed partial class MethodCompiler
             case "Cos": return Un("cos");
             case "Exp": return Un("exp");
             case "Hypot": return Bin("hypot");
-            case "DegreesToRadians": return Un("degrees_to_radians");
+            case "DegreesToRadians":
+                if (elem is not { Kind: TypeKind.Primitive,
+                    Primitive: PrimitiveTypeCode.Single or PrimitiveTypeCode.Double })
+                    throw new NotSupportedException("Vector angle conversion requires float or double lanes");
+                return Un("degrees_to_radians");
             case "Sum": { var v = Pop(); PushScalar($"{Vec("sum")}({Val(v, vecCpp)})"); return true; }
             case "Dot": { var b = Pop(); var a = Pop(); PushScalar($"{Vec("dot")}({Val(a, vecCpp)}, {Val(b, vecCpp)})"); return true; }
             case "Clamp" or "ClampNative":
@@ -497,7 +501,7 @@ internal sealed partial class MethodCompiler
                 if (VecCppName(sig.ReturnType) is not null)
                     return Bin("equals");                                    // static Equals -> mask
                 if (ps.Length >= 1 && IsVec(ps[0]))
-                    return Red("equals_all");                               // instance Equals(Vector) -> bool
+                    return Red("value_equals");                             // instance Equals(Vector) -> bool
                 throw new NotSupportedException(
                     $"{Method.DeclaringClass.FullName}.{Method.Name}: Vector Equals(object)/GetHashCode is not supported");
             }

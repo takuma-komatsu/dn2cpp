@@ -205,6 +205,9 @@ internal static partial class Program
         VectorCopyTargets();
         if (args.Length != 0 && args[0] == "before-storage-safety") return;
         VectorStorageSafety();
+        if (args.Length != 0 && args[0] == "before-value-semantics")
+            return;
+        VectorExistingSemantics();
     }
 
     private static void VectorCopyTargets()
