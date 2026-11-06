@@ -58,15 +58,19 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=gates/_common.sh
 . gates/_common.sh
-PYTHON=$(resolve_python) || gate_skip "no working Python 3 interpreter for publication comparison"
+case "${DN2CPP_EMIT_ORDER_FULL:-0}" in
+    0|1) DN2CPP_EMIT_ORDER_FULL=${DN2CPP_EMIT_ORDER_FULL:-0} ;;
+    *) echo 'DN2CPP_EMIT_ORDER_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+# Each corner owns these axes rather than inheriting a vacuous comparison.
+export DN2CPP_SPEC_DRAIN=fifo DN2CPP_STRICT_COMPLETION=0
+gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for publication comparison"
 
 compare_outputs() {
-    # shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
-    $PYTHON "$(native_path gates/compare-emit-output.py)" \
+    gate_python "$(native_path gates/compare-emit-output.py)" \
         "$(native_path "$1")" "$(native_path "$2")"
 }
-# shellcheck disable=SC2086
-$PYTHON "$(native_path gates/compare-emit-output.py)" --self-test
+gate_python "$(native_path gates/compare-emit-output.py)" --self-test
 
 echo "== 1/5 Locating the real CoreLib =="
 corelib=$(locate_corelib)
@@ -76,6 +80,33 @@ echo "corlib: $corelib"
 OUT=artifacts/emit-order-stability
 rm -rf "$OUT"
 mkdir -p "$OUT"
+
+if [ "$DN2CPP_EMIT_ORDER_FULL" = 0 ]; then
+    echo 'emit-order coverage: SharedGenerics representative combined-axis parity'
+    echo 'emit-order corpus, unshared and measure matrices: skipped (not selected); not counted as passed'
+    build_proj samples/dotnet/SharedGenerics/SharedGenerics.csproj
+    app="samples/dotnet/SharedGenerics/bin/$CONFIG/$TFM/SharedGenerics.dll"
+    [ -f "$bcl/System.Collections.dll" ] \
+        || { echo "error: System.Collections.dll not found beside $corelib" >&2; exit 1; }
+    if gate_cache_check "$OUT" "emit-order-stability|representative-v1|cli:$(_gate_cli_hash)|$corelib" \
+            gates/compare-emit-output.py gates/ildiet_manifest.py "$app"; then
+        gate_cache_hit_msg
+        exit 0
+    fi
+    fifo="$OUT/SharedGenerics-fifo"
+    parallel_fifo="$OUT/SharedGenerics-strict-jobs2-fifo"
+    lifo="$PWD/$OUT/relocated/SharedGenerics-strict-jobs2-lifo-output-directory"
+    invoke_cli "$app" -r "$corelib" -r "$bcl/System.Collections.dll" --jobs 1 -o "$fifo"
+    DN2CPP_STRICT_COMPLETION=1 \
+        invoke_cli "$app" -r "$corelib" -r "$bcl/System.Collections.dll" --jobs 2 -o "$parallel_fifo"
+    DN2CPP_STRICT_COMPLETION=1 DN2CPP_SPEC_DRAIN=lifo \
+        invoke_cli "$app" -r "$corelib" -r "$bcl/System.Collections.dll" --jobs 2 -o "$(native_path "$lifo")"
+    compare_outputs "$fifo" "$parallel_fifo"
+    compare_outputs "$parallel_fifo" "$lifo"
+    gate_cache_commit
+    echo 'OK: representative output is byte-identical across the selected combined axes'
+    exit 0
+fi
 
 # project | extra BCL references (the same reference set each project's own gate uses)
 SAMPLES=(

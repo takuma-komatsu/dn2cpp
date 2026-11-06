@@ -65,4 +65,5 @@ def sample_knobs(gate, extra_projects):
 
 
 if __name__ == "__main__":
-    print("\n".join(sample_knobs(Path(sys.argv[1]), {Path(p) for p in sys.argv[2:]})))
+    names = sample_knobs(Path(sys.argv[1]), {Path(p) for p in sys.argv[2:]})
+    sys.stdout.buffer.write(("\n".join(names) + "\n").encode("utf-8"))

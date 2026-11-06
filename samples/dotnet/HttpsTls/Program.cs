@@ -22,7 +22,9 @@ namespace HttpsTls
     // cause names the certificate — and the gate diffs exactly that.
     internal static class Program
     {
-        private static int Main(string[] args)
+        private static int Main(string[] args) => Run(args);
+
+        internal static int Run(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;

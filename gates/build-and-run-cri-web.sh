@@ -98,7 +98,7 @@ godot_fork_emcc_python_check "$PATH" "${EMSDK_PYTHON:-}"
 # a different interpreter, and no floor. resolve_python probes by RUNNING one, the
 # only thing that tells a real interpreter from the app-execution-alias stub a
 # stock Windows install answers `python3` with.
-py="$(resolve_python)" || gate_skip "no working Python 3 interpreter (needed to serve the export over HTTP)"
+gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter (needed to serve the export over HTTP)"
 CRI_MANAGED_BROWSER="$(cri_managed_dll browser)" \
     || gate_skip "CriWare.CriAtomLE package (browser flavor) not present — see cri_nuget_root in gates/_common.sh"
 CRI_SAMPLE_ROOT="$(cri_sample_root)" \
@@ -667,8 +667,7 @@ EOF
 SRV_LOG="$OUT/httpd.log"
 # -u: python block-buffers stdout when it is a file, so the "Serving HTTP on …
 # port N" line would sit in the buffer and the port scrape below would time out.
-# shellcheck disable=SC2086  # $py may be `py -3`: two words, deliberately split
-$py -u -m http.server 0 --bind 127.0.0.1 --directory "$WEBDIR" >"$SRV_LOG" 2>&1 &
+(gate_python_exec -u -m http.server 0 --bind 127.0.0.1 --directory "$WEBDIR" >"$SRV_LOG" 2>&1) &
 SRV_PID=$!
 # A hook, not a bare `trap … EXIT`: this gate holds the machine lock for its
 # whole run (gate_machine_lock in _common.sh), and the shell's single trap slot

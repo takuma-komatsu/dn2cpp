@@ -4,13 +4,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 script="$PWD/gates/test-gate-output-shell.sh"
 _DN2CPP_GATE_ROOT="$PWD"
+source gates/_python.sh
 eval "$(sed -n '/^gate_capture() {/,/^}/p; /^gate_capture_ok() {/,/^}/p; /^gate_assert_text() {/,/^}/p; /^_gate_helpers_hash() {/,/^}/p; /^gate_output() {/,/^}/p; /^corelib_diff_gate() {/,/^}/p; /^corelib_diff_abort_gate() {/,/^}/p; /^_corelib_diff_gate() {/,/^}/p; /^corelib_diff_split_gate() {/,/^}/p; /^corelib_subset_gate() {/,/^}/p; /^corelib_freeze_gate() {/,/^}/p; /^wasm_corelib_diff_gate() {/,/^}/p' gates/_common.sh)"
 
 if [ "${1:-}" = --case ]; then
     scenario="$2" fixture="$3" py="$4"
     DN2CPP_OS=linux
     EXE_EXT=
-    resolve_python() { printf '%s\n' "$py"; }
+    export DN2CPP_PYTHON="$py"
     _corelib_gate_out() { printf '%s\n' "$fixture/run"; }
     _corelib_gate_core() { mkdir -p "$2"; _CG_APP=fixture.dll; _CG_CORELIB=Fixture; }
     _corelib_gate_check() { return 1; }
@@ -66,7 +67,7 @@ if [ "${1:-}" = --case ]; then
                 printf 'different oracle diagnostic\n' > "$fixture/oracle.error"
                 corelib_diff_abort_gate Fixture "$witness" "$diagnostic" \
                     --oracle-diagnostic 'different oracle diagnostic'
-                "$py" - "$fixture/abort-contexts" <<'PY'
+                gate_python - "$fixture/abort-contexts" <<'PY'
 from pathlib import Path
 import sys
 contexts = Path(sys.argv[1]).read_bytes().splitlines()
@@ -242,7 +243,7 @@ PY
     exit 0
 fi
 
-py="${1:-python3}"
+py="${1:-${DN2CPP_PYTHON:-}}"
 fixture="$(mktemp -d)"
 trap 'rm -rf "$fixture"' EXIT
 run_case() {
@@ -379,4 +380,5 @@ printf '127\n' > "$fixture/native.code"
 run_case 1 wasm-finalizers
 bash gates/fixtures/luacsharp-output.sh "$py"
 bash gates/fixtures/capture-setup-failure.sh "$py"
+DN2CPP_PYTHON="$py" bash gates/test-gate-python.sh
 printf 'OK: gate output shell contract\n'

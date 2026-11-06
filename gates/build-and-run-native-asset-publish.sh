@@ -16,6 +16,16 @@ set_linux_published_soname_paths() {
     PUBLISHED_SONAME_ALIAS="$PUBLISHED_SONAME.1"
 }
 
+publish_sdk_native_image() {
+    local out="$1" bin="$2" builddir="$PWD/$1/build"
+    # Exercise the shell publisher with the SDK's image and staged manifest.
+    # Rebuilding the same generation would only duplicate the native compile.
+    grep -q 'dn2cpp_main_exit' "$out/generated.cpp" \
+        || { echo "FAIL: generated main does not exit through dn2cpp_main_exit" >&2; return 1; }
+    stage_native_assets "$builddir" "$out" || return 1
+    publish_native_assets "$builddir" "$out" "$bin"
+}
+
 if [ "${DN2CPP_NATIVE_ASSET_BRANCH_SELF_TEST:-}" = linux ]; then
     unset PUBLISHED_SONAME PUBLISHED_SONAME_ALIAS
     set_linux_published_soname_paths /publish/.dn2cpp-native/0123456789abcdef0123 /cache/libfixture.so
@@ -24,6 +34,7 @@ if [ "${DN2CPP_NATIVE_ASSET_BRANCH_SELF_TEST:-}" = linux ]; then
     exit 0
 fi
 
+gate_python "$FIXTURE/test-published-image.py"
 "$CMAKE" -P "$FIXTURE/UniversalSelectionProbe.cmake"
 
 case "$DN2CPP_OS:$(uname -m)" in
@@ -373,11 +384,11 @@ elif [ "$DN2CPP_OS" = linux ]; then
         || { echo "FAIL: staged shared object lost its dependency closure" >&2; cat "$OUT/shared-dynamic.txt" >&2; exit 1; }
 fi
 if [ -n "$SHARED_LIB" ]; then
-    compile_console "$GEN" "$PROJECT"
+    publish_sdk_native_image "$GEN" "$PROJECT"
     [ -f "$GEN/.dn2cpp-native/$GENERATION/$(basename "$PUBLISHED_SHARED")" ] \
-        || { echo "FAIL: compile_console did not publish the shared asset" >&2; exit 1; }
+        || { echo "FAIL: shell publisher did not publish the shared asset" >&2; exit 1; }
     [ -f "$GEN/.dn2cpp-native/$GENERATION/$(basename "$PUBLISHED_DEP")" ] \
-        || { echo "FAIL: compile_console did not publish the dependency closure" >&2; exit 1; }
+        || { echo "FAIL: shell publisher did not publish the dependency closure" >&2; exit 1; }
 
     echo "== Re-publishing package version 1.0.1 with changed shared contents =="
     CHANGED_PACKAGE_DIR="$OUT/changed-package"
@@ -468,22 +479,22 @@ if [ -n "$SHARED_LIB" ]; then
     [ ! -e "$MSBUILD_PARTIAL" ] && [ -f "$PUBLISH/.dn2cpp-native/$NEXT_GENERATION/.complete" ] \
         || { echo "FAIL: Dn2Cpp.Build retry reused or retained a partial directory" >&2; exit 1; }
 
-    if DN2CPP_TEST_NATIVE_ASSET_FAIL_AFTER=1 compile_console "$GEN" "$PROJECT" \
+    if DN2CPP_TEST_NATIVE_ASSET_FAIL_AFTER=1 publish_sdk_native_image "$GEN" "$PROJECT" \
             > "$OUT/compile-failure-probe.log" 2>&1; then
-        echo "FAIL: compile_console failure probe unexpectedly succeeded" >&2
+        echo "FAIL: shell publisher failure probe unexpectedly succeeded" >&2
         exit 1
     fi
     grep -q "injected native-generation copy failure after 1 asset" "$OUT/compile-failure-probe.log" \
-        || { echo "FAIL: compile_console failure probe lacked its diagnostic" >&2; cat "$OUT/compile-failure-probe.log" >&2; exit 1; }
+        || { echo "FAIL: shell publisher failure probe lacked its diagnostic" >&2; cat "$OUT/compile-failure-probe.log" >&2; exit 1; }
     COMMON_PARTIAL=$(find "$GEN/.dn2cpp-native" -mindepth 1 -maxdepth 1 \
         -type d -name ".new-$NEXT_GENERATION.*" -print -quit)
     [ -n "$COMMON_PARTIAL" ] && [ ! -e "$COMMON_PARTIAL/.complete" ] \
         && [ "$(find "$COMMON_PARTIAL" -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d ' ')" -eq 1 ] \
-        || { echo "FAIL: compile_console failure did not leave exactly one unreachable partial asset" >&2; exit 1; }
+        || { echo "FAIL: shell publisher failure did not leave exactly one unreachable partial asset" >&2; exit 1; }
     gate_capture_ok "$OUT/native-after-failed-generation" run_bounded "$GEN/$PROJECT$EXE_EXT"
     gate_assert_text "$OUT/native-after-failed-generation.stdout" "native-asset=42,shared-asset=7"
     [ -d "$GEN/.dn2cpp-native/$GENERATION" ] \
-        || { echo "FAIL: failed compile_console removed the running generation" >&2; exit 1; }
+        || { echo "FAIL: failed shell publication removed the running generation" >&2; exit 1; }
 
     SWITCH_OUTPUT="$OUT/concurrent-switch.out"
     SWITCH_ERRORS="$OUT/concurrent-switch.err"
@@ -493,7 +504,7 @@ if [ -n "$SHARED_LIB" ]; then
     gate_output compare "$OUT/switch-initial.stdout" "$OUT/switch-old.expected" --policy crlf
     cat "$OUT/switch-initial.stdout" > "$SWITCH_OUTPUT"
     cat "$OUT/switch-initial.stderr" > "$SWITCH_ERRORS"
-    compile_console "$GEN" "$PROJECT" &
+    publish_sdk_native_image "$GEN" "$PROJECT" &
     switch_pid=$!
     switch_run=0
     while kill -0 "$switch_pid" 2>/dev/null; do
@@ -525,9 +536,9 @@ if [ -n "$SHARED_LIB" ]; then
         && grep -q 'shared-asset=17' "$SWITCH_OUTPUT" \
         || { echo "FAIL: concurrent launch probe did not observe both generations" >&2; exit 1; }
     [ ! -e "$COMMON_PARTIAL" ] && [ -f "$GEN/.dn2cpp-native/$NEXT_GENERATION/.complete" ] \
-        || { echo "FAIL: compile_console retry reused or retained a partial directory" >&2; exit 1; }
+        || { echo "FAIL: shell publisher retry reused or retained a partial directory" >&2; exit 1; }
     [ -d "$GEN/.dn2cpp-native/$GENERATION" ] \
-        || { echo "FAIL: compile_console removed the immediately prior native generation" >&2; exit 1; }
+        || { echo "FAIL: shell publisher removed the immediately prior native generation" >&2; exit 1; }
 
     echo "== Publishing a third generation and pruning only generation N-2 =="
     THIRD_NATIVE_BUILD="$OUT/third-native-build"
@@ -588,12 +599,12 @@ if [ -n "$SHARED_LIB" ]; then
     [ -d "$PUBLISH/.dn2cpp-native/$NEXT_GENERATION" ] \
         && [ -d "$PUBLISH/.dn2cpp-native/$THIRD_GENERATION" ] \
         || { echo "FAIL: Dn2Cpp.Build did not retain the current and previous generations" >&2; exit 1; }
-    compile_console "$GEN" "$PROJECT"
+    publish_sdk_native_image "$GEN" "$PROJECT"
     [ ! -e "$GEN/.dn2cpp-native/$GENERATION" ] \
-        || { echo "FAIL: compile_console did not prune generation N-2" >&2; exit 1; }
+        || { echo "FAIL: shell publisher did not prune generation N-2" >&2; exit 1; }
     [ -d "$GEN/.dn2cpp-native/$NEXT_GENERATION" ] \
         && [ -d "$GEN/.dn2cpp-native/$THIRD_GENERATION" ] \
-        || { echo "FAIL: compile_console did not retain the current and previous generations" >&2; exit 1; }
+        || { echo "FAIL: shell publisher did not retain the current and previous generations" >&2; exit 1; }
     GENERATION=$THIRD_GENERATION
 fi
 

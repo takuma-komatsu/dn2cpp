@@ -6,7 +6,7 @@ import re
 import subprocess
 
 
-def validate_intercept_retention(probe, cli, original, directory):
+def validate_intercept_retention(probe, cli, original, directory, modes=("raw", "full")):
     def run(arguments):
         result = subprocess.run(["dotnet", "exec", *map(str, arguments)], capture_output=True, text=True,
                                 env={**os.environ, "DN2CPP_STRICT_COMPLETION": "1"})
@@ -19,7 +19,7 @@ def validate_intercept_retention(probe, cli, original, directory):
         result = run([probe, "--create-stripping-intercept-fixture", original, source, kind])
         assert "stripping-fixture=intercept:" + kind in result.stdout
         for level in ("high", "medium"):
-            for mode in ("raw", "full"):
+            for mode in modes:
                 output = directory / ("emission-intercept-" + kind + "-" + level + "-" + mode)
                 arguments = [cli, source / "MediumApp.dll", "-r", source / "System.Private.CoreLib.dll",
                              "-r", source / "MediumLib.dll", "--stripping-level", level,

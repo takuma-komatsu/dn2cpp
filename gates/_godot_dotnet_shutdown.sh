@@ -3,8 +3,8 @@
 # Sourced by the scripted-node gate after its unchanged normal-scene checks.
 godot_dotnet_shutdown_gate() {
     local out="$1" arch="$2" library="$3" os rid_arch rid
-    local root="$PWD/$out/shutdown" python
-    python=$(resolve_python)
+    local root="$PWD/$out/shutdown"
+    gate_python -c 'pass' >/dev/null
     case "$DN2CPP_OS" in
         macos) os=osx ;;
         windows) os=win ;;
@@ -34,7 +34,7 @@ godot_dotnet_shutdown_gate() {
     done
     # The CLR uses the sample's net8 self-contained runtime. Native emission
     # uses the net10 CoreLib selected by godot_dotnet_transpile.
-    $python - "$root" "$data" <<'PY'
+    gate_python - "$root" "$data" <<'PY'
 import hashlib, json, sys
 from pathlib import Path
 root, data = Path(sys.argv[1]), sys.argv[2]
@@ -72,7 +72,7 @@ PY
                 cat "$log" >&2
                 return 1
             fi
-            $python - "$log" "$runtime" "$mode" <<'PY'
+            gate_python - "$log" "$runtime" "$mode" <<'PY'
 import re, sys
 from pathlib import Path
 path, runtime, mode = Path(sys.argv[1]), sys.argv[2], sys.argv[3]

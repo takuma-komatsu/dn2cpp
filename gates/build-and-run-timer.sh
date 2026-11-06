@@ -10,7 +10,7 @@
 # live in System.Threading.dll.
 # Named argument faults, boxed bounds, validation order and GC-retained fields.
 source "$(dirname "$0")/_common.sh"
-timer_python=$(resolve_python) || gate_skip "no working Python 3 interpreter for threading call fixtures"
+gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for threading call fixtures"
 
 call_app="gates/fixtures/threading-delay-call/bin/$CONFIG/$TFM/ThreadingDelayCall.dll"
 build_gate_proj gates/fixtures/threading-delay-call/ThreadingDelayCall.csproj
@@ -44,7 +44,7 @@ gate_extra_asserts() {
     mkdir -p "$oracle"
     cp "$call_app" "$oracle/ThreadingDelayCall.dll"
     cp "${call_app%.dll}.runtimeconfig.json" "${call_app%.dll}.deps.json" "$oracle/"
-    $timer_python gates/fixtures/threading-delay-call/patch-call.py "$oracle/ThreadingDelayCall.dll"
+    gate_python gates/fixtures/threading-delay-call/patch-call.py "$oracle/ThreadingDelayCall.dll"
     invoke_cli "$oracle/ThreadingDelayCall.dll" -r "$_CG_CORELIB" --auto-ref -o "$fixture"
     compile_console "$fixture" ThreadingDelayCall
     gate_capture_ok "$out/assert-expected-3" run_bounded dotnet "$oracle/ThreadingDelayCall.dll"

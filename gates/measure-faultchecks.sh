@@ -73,7 +73,7 @@ text_bytes() {
     printf '%s' "${all%%$'\n'*}"
 }
 
-pct() { python3 -c "import sys; b=float(sys.argv[1]); v=float(sys.argv[2]); print('n/a' if b==0 else f'{(v-b)*100/b:+.2f}')" "$1" "$2"; }
+pct() { gate_python -c "import sys; b=float(sys.argv[1]); v=float(sys.argv[2]); print('n/a' if b==0 else f'{(v-b)*100/b:+.2f}')" "$1" "$2"; }
 
 # build_arm OUT BIN ARM — build one arm into OUT/BIN.ARM.
 build_arm() {

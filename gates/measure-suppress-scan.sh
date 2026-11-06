@@ -83,10 +83,8 @@ fi
 limit=$((suppresses * chunk_entries))
 
 suppress_stat_number() {
-    local python
-    python=$(resolve_python) || return 1
     # Input is already normalized once. Full byte matches must retain payload CR.
-    $python - "$1" "$2" <<'PYTHON'
+    gate_python - "$1" "$2" <<'PYTHON'
 from pathlib import Path
 import re
 import sys

@@ -2,13 +2,14 @@
 # End-anchored diagnostics must not discard a payload CR on Windows.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-py=${1:-python3}
-gate_output() { "$py" gates/gate-output.py "$@"; }
+source gates/_python.sh
+export DN2CPP_PYTHON="${1:-${DN2CPP_PYTHON:-}}"
+gate_output() { gate_python gates/gate-output.py "$@"; }
 eval "$(sed -n '/^array_rank_diagnostic() {/,/^}/p' gates/build-and-run-array-core.sh)"
 eval "$(sed -n '/^signature_abstract_refusal() {/,/^}/p' gates/build-and-run-reflect-types.sh)"
 fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT
-"$py" - "$fixture" <<'PY'
+gate_python - "$fixture" <<'PY'
 from pathlib import Path
 import sys
 root = Path(sys.argv[1])

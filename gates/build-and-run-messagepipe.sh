@@ -56,7 +56,7 @@ done < "$MESSAGEPIPE_SHA_EXPECTED"
 echo "OK: ${#mp_dlls[@]} pinned assemblies verified against $MESSAGEPIPE_SHA_EXPECTED"
 
 echo "== 3/7 Transpiling the real package =="
-build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
+prepare_cli
 refs=(-r "$corelib" "${mp_refs[@]}")
 rm -rf "$out"
 # A cap can only turn the run into an abort or back, never perturb a succeeding

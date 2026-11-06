@@ -38,7 +38,7 @@ fi
 echo "ZString.dll: $zstring_sha (pinned 2.6.0)"
 
 echo "== 3/7 Transpiling the real package =="
-build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
+prepare_cli
 refs=(-r "$corelib" -r "$zstring")
 rm -rf "$out"
 # A cap can only turn the run into an abort or back, never perturb a succeeding

@@ -41,7 +41,7 @@ fi
 echo "R3.dll: $r3_sha (pinned 1.3.1)"
 
 echo "== 3/7 Transpiling the real package =="
-build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
+prepare_cli
 refs=(-r "$corelib" -r "$r3")
 rm -rf "$out"
 ( export DN2CPP_MAX_INSTANTIATIONS=12000

@@ -58,7 +58,7 @@ fi
 echo "MemoryPack.Core.dll: $memorypack_sha (pinned 1.21.4)"
 
 echo "== 3/7 Transpiling the real package =="
-build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
+prepare_cli
 refs=(-r "$corelib" -r "$memorypack")
 rm -rf "$out"
 # A cap can only turn the run into an abort or back, never perturb a succeeding

@@ -227,10 +227,10 @@ if gate_cache_check "$OUT" \
     { gate_cache_hit_msg; exit 0; }
 fi
 
-PYTHON="$(resolve_python)" || gate_skip "export option validation requires Python"
+gate_python -c 'pass' >/dev/null || gate_skip "export option validation requires Python"
 # Execute the production option/argument methods for every target before the
 # host export checks the actual publish, transpiler and native runtime path.
-"$PYTHON" gates/fixtures/godot-editor-export-options.py "$FORK" "$OUT/options"
+gate_python gates/fixtures/godot-editor-export-options.py "$FORK" "$OUT/options"
 
 echo "== 2/14 Installing the working tree's toolchain into the fork editor =="
 # Packaging still runs every run — that is what keeps a dn2cpp-side regression
@@ -852,7 +852,7 @@ if [ "$DN2CPP_OS" = macos ]; then
     cp "$OUT/presets-before-declang.cfg" "$PROJ/export_presets.cfg"
 
     if [ -n "${DN2CPP_DECLANG_COMPILER:-}" ]; then
-        PYTHON="$(resolve_python)" || gate_skip "DeClang editor export validation requires Python"
+        gate_python -c 'pass' >/dev/null || gate_skip "DeClang editor export validation requires Python"
         # The attribute source is compiled into the copied game: recognition is
         # by full type name and does not require a particular defining assembly.
         cp src/Dn2Cpp.Runtime/ObfuscateAttribute.cs "$PROJ/ObfuscateAttribute.cs"
@@ -893,7 +893,7 @@ public partial class ExportProbe
     }
 }
 CS
-        declang_quoted="$("$PYTHON" -c 'import json,os; print(json.dumps(os.environ["DN2CPP_DECLANG_COMPILER"]))')"
+        declang_quoted="$(gate_python -c 'import json,os; print(json.dumps(os.environ["DN2CPP_DECLANG_COMPILER"]))')"
         set_dn2cpp_bool_preset declang_path "$declang_quoted"
         set_dn2cpp_bool_preset declang_seed '"editor-export-gate"'
         for prestrip in false true; do
@@ -918,23 +918,23 @@ CS
         done
         declang_build="$PROJ/.godot/mono/dn2cpp/build/$BUILD_SLOT-declang"
         declang_state="$OUT/declang-build-state.json"
-        "$PYTHON" gates/fixtures/declang-export-checks.py snapshot "$declang_build" "$declang_state"
+        gate_python gates/fixtures/declang-export-checks.py snapshot "$declang_build" "$declang_state"
         set_dn2cpp_bool_preset declang_seed '"editor-export-gate-changed"'
         declang_log="$OUT/export-declang-seed-change.log"
         godot_export_step 1200 "$declang_log" "$APP" "$FORK_EDITOR" --headless \
             --path "$PWD/$PROJ" --export-release "$PRESET" "$APP" \
             || { cat "$declang_log" >&2; echo "FAIL: changed-seed DeClang export" >&2; exit 1; }
         assert_export_succeeded "$declang_log" "changed-seed DeClang export"
-        "$PYTHON" gates/fixtures/declang-export-checks.py check-seed "$declang_build" "$declang_state"
+        gate_python gates/fixtures/declang-export-checks.py check-seed "$declang_build" "$declang_state"
         godot_editor_export_layout "$APP"
         assert_export_artifact_and_run "$OUT/run-declang-seed-change.log"
-        "$PYTHON" gates/fixtures/declang-export-checks.py delete-result "$declang_build" "$declang_state"
+        gate_python gates/fixtures/declang-export-checks.py delete-result "$declang_build" "$declang_state"
         declang_cmake="$(sed -n 's/^CMAKE_COMMAND:INTERNAL=//p' "$declang_build/CMakeCache.txt")"
         [ -n "$declang_cmake" ] || { echo "FAIL: DeClang CMake command missing" >&2; exit 1; }
         DECLANG_HOME="$PWD/$declang_build/declang/disabled" \
             "$declang_cmake" --build "$declang_build" > "$OUT/declang-result-rebuild.log" 2>&1 \
             || { cat "$OUT/declang-result-rebuild.log" >&2; exit 1; }
-        "$PYTHON" gates/fixtures/declang-export-checks.py check-rebuild "$declang_build" "$declang_state"
+        gate_python gates/fixtures/declang-export-checks.py check-rebuild "$declang_build" "$declang_state"
         rm "$PROJ/ObfuscateAttribute.cs" "$PROJ/DeClangProbe.cs"
         cp "$OUT/presets-before-declang.cfg" "$PROJ/export_presets.cfg"
     fi

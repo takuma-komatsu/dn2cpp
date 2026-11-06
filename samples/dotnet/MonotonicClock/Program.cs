@@ -6,7 +6,7 @@ namespace MonotonicClock
     // matches a standalone build.
     internal static class Program
     {
-        private static void Main()
+        internal static void Main()
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;

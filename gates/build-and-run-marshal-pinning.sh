@@ -46,7 +46,17 @@
 # every heap-sensitive section; any later section must be independent of prior
 # allocator and heap state.
 source "$(dirname "$0")/_common.sh"
+case "${DN2CPP_MARSHAL_FULL:-0}" in
+    0|1) DN2CPP_MARSHAL_FULL=${DN2CPP_MARSHAL_FULL:-0} ;;
+    *) echo 'DN2CPP_MARSHAL_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|marshal-pinning-full:$DN2CPP_MARSHAL_FULL"
+if [ "$DN2CPP_MARSHAL_FULL" = 0 ]; then
+    echo 'marshal-pinning coverage: aggregate CLR parity and runtime assertions'
+    echo 'marshal-pinning isolated layout refusals: skipped (not selected); not counted as passed'
+fi
 
+if [ "$DN2CPP_MARSHAL_FULL" = 1 ]; then
 echo "== Asserting [StructLayout(Size=N)] with N not a multiple of the alignment refuses =="
 # SUBJECT: the representation-layout refusal for a declared Size the
 # C++ layout cannot express — real .NET MEASURES the shape (Size=6 over an int
@@ -145,6 +155,8 @@ fi
 grep -q "error: .*PtrOverExplicit: explicit Size=4 over fields ending at byte 9 gives a 9-byte struct, not a multiple of its 8-byte alignment" <<<"$_xover_err" \
     || { echo "FAIL: the refusal did not name the type, Size, field end, total and alignment" >&2; printf '%s\n' "$_xover_err" | tail -3 >&2; exit 1; }
 echo "fields-past-Size refusal OK: exit 2, named type, Size, field end, total and alignment"
+
+fi
 
 gate_capture_diff_files() {
     local out="$1" native="$3"

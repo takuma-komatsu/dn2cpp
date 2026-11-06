@@ -3,12 +3,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 _DN2CPP_GATE_ROOT="$PWD"
-py="${1:-python3}"
+source gates/_python.sh
+export DN2CPP_PYTHON="${1:-${DN2CPP_PYTHON:-}}"
 fixture_root=$(mktemp -d)
 fixture="$fixture_root/run"
 mkdir -p "$fixture"
 trap 'rm -rf "$fixture_root"' EXIT
-resolve_python() { printf '%s\n' "$py"; }
 eval "$(sed -n '/^gate_capture() {/,/^}/p; /^gate_capture_ok() {/,/^}/p; /^gate_output() {/,/^}/p; /^assert_exit_code() {/,/^}/p' gates/_common.sh)"
 eval "$(sed -n '/^gate_extra_asserts() {/,/^}/p' gates/build-and-run-luacsharp.sh)"
 _CG_APP=fixture.dll

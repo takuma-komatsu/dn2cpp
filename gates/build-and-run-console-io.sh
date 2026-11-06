@@ -3,9 +3,8 @@
 # Composite format faults preserve parser diagnostics, null-array semantics and argument effects.
 source "$(dirname "$0")/_common.sh"
 
-py=""
 if [ "$DN2CPP_OS" != windows ]; then
-    py=$(resolve_python) || gate_skip 'Python is required for nonblocking console pipe probes'
+    gate_python -c 'pass' >/dev/null || gate_skip 'Python is required for nonblocking console pipe probes'
 fi
 
 gate_extra_asserts() {
@@ -55,8 +54,8 @@ gate_extra_asserts() {
     gate_output compare "$native" "$expected"
     gate_output byte-witness "$native" 'standard input end' --count any --policy crlf \
         || { echo 'FAIL: redirected standard input section did not run' >&2; return 1; }
-    if [ -n "$py" ]; then
-        run_bounded "$py" gates/fixtures/console-pipes.py "./$out/ConsoleIo$EXE_EXT" "$_CG_APP"
+    if [ "$DN2CPP_OS" != windows ]; then
+        run_bounded gate_python_exec gates/fixtures/console-pipes.py "./$out/ConsoleIo$EXE_EXT" "$_CG_APP"
         local handles_out="$out-handles"
         mkdir -p "$handles_out"
         cp gates/fixtures/console-handles.cpp "$handles_out/generated.cpp"
