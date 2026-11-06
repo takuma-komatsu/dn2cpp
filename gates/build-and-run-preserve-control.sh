@@ -209,11 +209,12 @@ compare_dlls() {
     done
 }
 
-if preserve_full; then
-echo "== Standalone ILDiet agrees with automatic preprocessing =="
 CLI_DLL="${DN2CPP_CLI_DLL:-$PWD/src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}"
 CLI_BIN=$(dirname "$CLI_DLL")
 ILD_DLL="$CLI_BIN/ildiet/ILDiet.dll"
+
+if preserve_full; then
+echo "== Standalone ILDiet agrees with automatic preprocessing =="
 RUNTIME_DLL="$CLI_BIN/Dn2Cpp.Runtime.dll"
 BCL=$(dirname "$(locate_corelib)")
 echo "== Removing an indexer's only accessor fails signature validation =="
