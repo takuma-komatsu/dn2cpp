@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Default coverage uses representative option/entry combinations. Set
+# Default coverage reuses one full-driver binary for all aggregate assertions. Set
 # DN2CPP_REFLECT_INVOKE_FULL=1 for the complete matrix and historical prefixes
 # when extending a section or auditing those axes.
 # MemberwiseClone parity uses safe empty strings and survives full-driver collections.
@@ -281,7 +281,8 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflect-invoke-full:$D
 if [ "$DN2CPP_REFLECT_INVOKE_FULL" = 1 ]; then
     echo 'reflection coverage: full option matrix and prefix replays'
 else
-    echo 'reflection coverage: full-driver parity and representative isolated options'
+    echo 'reflection coverage: full-driver parity and shared-binary assertions'
+    echo 'reflection isolated option and route matrices: skipped (not selected); not counted as passed'
 fi
 # Task cache storage comparisons use CoreLib IL in every CLR oracle.
 export DOTNET_ReadyToRun=0
@@ -309,7 +310,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|metadata-projections-prefi
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|selection-filters-prefix-argv:before-selection-filters"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-alternatives-prefix-argv:before-reflection-alternatives"
 
-py="$(resolve_python)"
+gate_python -c 'pass' >/dev/null
 source gates/_reflect-invoke-inputs.sh
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_reflect-invoke-inputs.sh gates/reflection-gate-inputs.py gates/fixtures/reflection-gate-inputs.sh gates/fixtures/reflection-gate-inputs-test.py"
 source gates/_delegate-identity.sh
@@ -879,7 +880,7 @@ gate_extra_asserts() {
     gate_object_virtual_equality_asserts "$1"
     gate_inherited_object_virtual_equality_asserts "$1"
     local out="$1" native line registry boundary axis route query expected parameter native_file boundary_file
-    "$py" gates/fixtures/check-reflection-layout.py "$out" "$reflection_layout_axis"
+    gate_python gates/fixtures/check-reflection-layout.py "$out" "$reflection_layout_axis"
     # The runtime publishes a constructor's invoke plan only for a record inside a
     # registered extent, so a packed constructor table must appear in the registry.
     registry=$(awk '/^const Dn2CppMetadataBlock dn2cpp_metadata_blocks\[\] = \{$/ { p = 1; next }
@@ -2238,7 +2239,7 @@ gate_extra_asserts() {
     # The capture reports time too, but timing is not a pass/fail threshold.
     DN2CPP_REFLECTION_MEASURE=1 gate_capture_ok "$out/allocations" run_bounded "$out/ReflectInvoke$EXE_EXT"
     cp "$out/allocations.stdout" "$out/allocations.csv"
-    if ! "$py" gates/measure-reflection-metadata.py --check-allocation-limits \
+    if ! gate_python gates/measure-reflection-metadata.py --check-allocation-limits \
             gates/expected/reflection-allocations.csv "$out/allocations.csv" \
             > "$out/allocation-check.json"; then
         cat "$out/allocation-check.json" >&2
@@ -2258,8 +2259,8 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|definition-members:symboli
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_reflected-events.sh samples/dotnet/ReflectInvoke/ReflectedEventsOnly.csproj samples/dotnet/ReflectInvoke/ReflectedEventsOnlyProgram.cs samples/dotnet/ReflectInvoke/ReflectedEventsPreservationProgram.cs gates/fixtures/reflected-event-preservation.xml"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflected-events:packed,native,uncompressed,trimmed,unshared,normal-ildiet,exotic-semantics,runtime-owner|reflected-events-unshared-build:-p:ReflectedEventsUnshared=true|reflected-events-prefix:before-reflected-events|reflected-events-preservation-build:-p:ReflectedEventsPreservation=true"
 reflection_layout_axis=default
-"$py" gates/fixtures/reflection-gate-inputs-test.py
-bash gates/fixtures/reflection-gate-inputs.sh "$py"
+gate_python gates/fixtures/reflection-gate-inputs-test.py
+bash gates/fixtures/reflection-gate-inputs.sh "${DN2CPP_PYTHON:-}"
 DN2CPP_STRICT_COMPLETION=1 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|strict-completion" \
     corelib_diff_gate ReflectInvoke --no-ildiet --link-xml samples/dotnet/ReflectInvoke/link.xml System.ComponentModel.TypeConverter System.Linq System.Threading.Tasks.Parallel
 for axis in native dotnet; do
@@ -2280,6 +2281,10 @@ for axis in native dotnet; do
         'cold inherited getter capabilities=False/True methods=False/True' \
         'inherited private property accessors end'
 done
+if ! reflection_full_profile; then
+    exit 0
+fi
+
 typeconverter="$(dirname "$_CG_CORELIB")/System.ComponentModel.TypeConverter.dll"
 
 if reflection_full_profile; then
@@ -2313,7 +2318,7 @@ run_bounded invoke_cli "$_CG_APP" -r "$_CG_CORELIB" -r "$typeconverter" \
     --reflection-metadata 'ReflectMetadataCompressionSubset.Direct=packed' \
     --reflection-metadata 'System.String=packed' --no-metadata-compression \
     -o "$uncompressed_reverse"
-"$py" gates/fixtures/check-reflection-layout.py "$uncompressed_reverse" uncompressed
+gate_python gates/fixtures/check-reflection-layout.py "$uncompressed_reverse" uncompressed
 
 invalid_out=artifacts/reflection-metadata-invalid
 mkdir -p "$invalid_out"
@@ -3869,7 +3874,7 @@ class_remedy_replay() {
             return 1
         fi
     done
-    "$py" - "$out" "$replay" <<'PY_BODY_DELTA'
+    gate_python - "$out" "$replay" <<'PY_BODY_DELTA'
 import pathlib, sys
 
 def bodies(directory):
@@ -4063,7 +4068,7 @@ gate_extra_asserts() {
         echo 'FAIL: the inherited generic virtual remedy admitted an unrelated override' >&2
         return 1
     fi
-    "$py" - "$out" "$replay" <<'PY_GVM_BODY_DELTA'
+    gate_python - "$out" "$replay" <<'PY_GVM_BODY_DELTA'
 import pathlib, sys
 
 def bodies(directory):

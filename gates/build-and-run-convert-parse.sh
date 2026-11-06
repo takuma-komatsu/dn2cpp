@@ -50,6 +50,7 @@
 # ChangeType forwards custom numeric providers only to consumed conversions.
 # Unsupported DateTime, Boolean, Char and object conversions retain CLR faults.
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|integer-utf8-prefix:before-invalid-integer-utf8"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
@@ -206,6 +207,18 @@ gate_extra_asserts() {
         gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: ChangeType fault witness missing: $line" >&2; exit 1; }
     done
+    gate_capture_ok "$out/integer-utf8-before" run_bounded dotnet "$_CG_APP" before-invalid-integer-utf8
+    gate_output select "$out/native.stdout" "$out/integer-utf8-prefix.stdout" \
+        --before '== integer UTF8 validation ==' --policy crlf
+    gate_output compare "$out/integer-utf8-prefix.stdout" "$out/integer-utf8-before.stdout"
+    gate_output byte-witness "$out/native.stdout" '== integer UTF8 validation ==' \
+        'valid replacement sign=True:-1' \
+        'illegal lead try=False:0' \
+        'illegal lead parse=FormatException:Input string was not in a correct format.' \
+        'invalid style=ArgumentException:style' \
+        'integer UTF8 validation end' \
+        --count 1 --policy crlf
+
 }
 
 corelib_diff_gate ConvertParse System.Private.Uri System.ComponentModel.TypeConverter

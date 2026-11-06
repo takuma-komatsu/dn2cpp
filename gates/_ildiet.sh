@@ -3,9 +3,8 @@
 # so a relocated toolchain needs no dotnet installation.
 # Resolve only the published generation; flat paths can observe partial output.
 ildiet_generation() {
-    local output="$1" python="${PYTHON:-}"
-    [ -n "$python" ] || python=$(resolve_python) || return $?
-    $python - "$output" <<'PYTHON'
+    local output="$1"
+    gate_python - "$output" <<'PYTHON'
 from pathlib import Path
 import re
 import sys

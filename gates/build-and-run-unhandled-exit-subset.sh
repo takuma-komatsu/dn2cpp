@@ -13,12 +13,11 @@
 # A second arm reruns the binary capturing stderr and asserts the report
 # carries the throw-time trace — see its comment below.
 source "$(dirname "$0")/_common.sh"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|worker-modes:pool,thread,timer,cts-timer,async-void,local-continuation,nested-drain,generic-exception,message-override"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|trace-hook:fresh-wrapper-image|worker-modes:pool,thread,timer,cts-timer,async-void,local-continuation,nested-drain,generic-exception,message-override"
 # The Windows/MSYS status-4 workaround also covers the initial Main comparison.
 DN2CPP_RETRY_STATUS4=1
 
-corelib_diff_abort_gate UnhandledExitSubset 'before throw' \
-    'Unhandled exception. System.InvalidOperationException: escaped Main'
+gate_extra_asserts() {
 
 # Throw-time-trace arm: the unhandled report must carry the trace captured at throw. The
 # stdout+exit diff above stays pinned to real .NET; stderr can never join that
@@ -29,20 +28,9 @@ corelib_diff_abort_gate UnhandledExitSubset 'before throw' \
 # frame simply drops); what the feature guarantees is that the report names
 # the throw path.
 echo "== Throw-time-trace arm: unhandled report carries the trace captured at throw =="
-# The OUT the wrapper transpiled into, not a re-derived one: on a non-default
-# axis (-hwy/-scalar/$DN2CPP_OUT_SUFFIX) a literal path would send the
-# compile_console below at a directory this run never wrote, and the trace
-# asserts would then certify a stale binary.
-out="$_CG_OUT"
-project=UnhandledExitSubset
-# Compile unconditionally. `[ -x ]` asks whether SOME binary is there, not
-# whether it came from this run's transpile — a stale executable left by an
-# earlier run satisfies it, and the trace asserts below then certify code that
-# is no longer in the tree. This arm is deliberately outside the cache
-# region; a presence shortcut here partly undoes that. compile_console is
-# ccache-backed, so a genuinely unchanged build costs almost nothing.
-compile_console "$out" "$project"
-gate_capture "$out/trace" run_bounded "./$out/$project"
+# The hook runs only after this output was compiled and checked by the wrapper.
+local out="$1" project=UnhandledExitSubset
+gate_capture "$out/trace" run_bounded "./$out/$project$EXE_EXT"
 code=$(cat "$out/trace.status")
 gate_output native-abort "$out/trace" --host "$DN2CPP_OS" --witness 'before throw' \
     --diagnostic 'Unhandled exception. System.InvalidOperationException: escaped Main'
@@ -51,15 +39,7 @@ if [ "$code" -eq 0 ]; then
     echo "FAIL: the unhandled-exit binary exited 0 — an escaped exception must abort" >&2
     exit 1
 fi
-# A signal death with NO output at all is not this feature failing — it is the
-# binary never having run, and the assert below would blame the trace for a
-# staging bug, which is a real failure mode: on macOS the exec of a path
-# whose bytes were rewritten IN PLACE after that path had already been exec'd is
-# SIGKILLed by the kernel, silently and without a crash report, so the arm saw
-# 137 and an empty stderr. This arm is the one place in the suite that re-execs
-# a binary it has already run, which is why it is the only gate that ever showed
-# it and why the check belongs here rather than in _common.sh. Six lanes spent a
-# day on it because the failure carried no attribution; it does now.
+# A signal before any report is a launch failure, not a missing managed trace.
 if [ "$code" -ge 128 ] && [ ! -s "$err" ]; then
     echo "FAIL: the binary died of signal $((code - 128)) before producing any output — it did not run." >&2
     echo "      On macOS that is what an exec of an in-place-rewritten executable does. Check that" >&2
@@ -128,3 +108,8 @@ throwing $mode"
     fi
     echo "OK worker $mode: reported managed fault and aborted with $native_code"
 done
+}
+
+corelib_diff_abort_gate UnhandledExitSubset 'before throw' \
+    'Unhandled exception. System.InvalidOperationException: escaped Main'
+unset -f gate_extra_asserts

@@ -28,6 +28,9 @@
 source "$(dirname "$0")/_common.sh"
 
 OUT="${1:-artifacts/selfhost-s0}"
+# Trailing CLI arguments select the same policy for every transpile stage.
+[ "$#" -eq 0 ] || shift
+transpile_args=("$@")
 
 echo "== 1/4 Building the CLI =="
 build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
@@ -62,7 +65,7 @@ done
 
 echo "== 3/4 Transpiling dn2cpp itself (--measure, tree-shaken, --auto-ref) =="
 mkdir -p "$OUT"
-dotnet exec "$CLI" "$CLI" "${refs[@]}" --auto-ref --measure -o "$OUT"
+dotnet exec "$CLI" "$CLI" "${refs[@]}" ${transpile_args[@]+"${transpile_args[@]}"} --auto-ref --measure -o "$OUT"
 
 echo "== 4/4 Done =="
 echo "per-gap report: $OUT/s0-gaps.tsv"

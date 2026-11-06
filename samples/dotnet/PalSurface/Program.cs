@@ -6,7 +6,7 @@ namespace PalSurface
     // matches a standalone build.
     internal static class Program
     {
-        private static void Main(string[] args)
+        internal static void Main(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;

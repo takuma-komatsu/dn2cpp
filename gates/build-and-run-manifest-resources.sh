@@ -1,120 +1,24 @@
 #!/usr/bin/env bash
-# Embedded manifest resources and their explicit trim. The sample
-# assembly is the only one in the tree that carries <EmbeddedResource> items — a
-# UTF-8 text file, a 256-byte binary blob spanning every byte value, a
-# namespace-scoped text file, a .resx compiled to a .resources SET, and a
-# pre-compiled set carrying one entry per ResourceTypeCode the reader decodes — and
-# the control arm diffs the native binary's stdout against real .NET running the same
-# DLL. ONE program, transpiled six ways one flag (or one argv token) apart, plus two
-# transpiles that must FAIL. Arms 7-8 cover the ResourceManager lookup over those same
-# blobs; arm 9 is a second program, for the one declaration
-# that cannot share an assembly with the first:
-#
-#   1. no flag -> diffed LIVE against real .NET. What that pins:
-#      * GetManifestResourceStream(string) and (Type, string): the blob is carried
-#        into the image as a .rodata byte array and served as a read-only stream.
-#        dn2cpp hands back a MemoryStream over a copy where real .NET hands back an
-#        UnmanagedMemoryStream over the mapped image — indistinguishable through the
-#        Stream surface, which is why this can be a LIVE diff and not a freeze.
-#      * GetManifestResourceNames / GetManifestResourceInfo, and the misses: a
-#        resource that is not there is null, not an exception. That is exactly the
-#        answer a loud PlatformNotSupportedException could not give
-#        without lying, and it is why the blobs are carried for EVERY loaded module
-#        rather than for the app module alone — hence the CoreLib section.
-#      * The argument-validation shapes (null -> ArgumentNullException, empty ->
-#        ArgumentException).
-#
-#   2. --no-manifest-resources System.Private.CoreLib -> diffed against a frozen
-#      snapshot. The app's own resources still read exactly as in arm 1 (a drop is
-#      per-assembly), and every CoreLib probe reports the catchable
-#      PlatformNotSupportedException VERBATIM — naming the assembly and the remedy —
-#      instead of the null/empty that would mean "no such resource": the registry
-#      row's resourcesDropped bit is what makes the difference loud, the
-#      DN2CPP_TF_METADATA_STRIPPED pattern one level up. Even the deliberate miss
-#      (corelib-miss) throws here, because a null off a dropped assembly is a lie.
-#
-#   3. + --manifest-resource-root System.Private.CoreLib.Strings.resources -> a
-#      second frozen snapshot in which exactly the rooted resource answers again
-#      (corelib-set-big/corelib-info read it truthfully) while everything else still
-#      throws: the enumeration (any list it could return would be incomplete), the
-#      unrooted ILLink.Substitutions.xml, and the miss. A root keeps exactly the
-#      resource it names and no more.
-#
-#   4. BOTH flags REPEATED — a third frozen snapshot. The ticket says both flags
-#      are repeatable and arms 2-3 pass one occurrence each, so nothing above
-#      asserts the word: this arm passes --no-manifest-resources twice
-#      (System.Private.CoreLib, Dn2Cpp.Runtime) and --manifest-resource-root twice
-#      (the Strings set and ILLink.Substitutions.xml). What it pins beyond
-#      repetition itself:
-#      * a second root keeps a second resource and no more — corelib-illink now
-#        reads True where arm 3 froze it throwing, while the enumeration and the
-#        miss still throw. That is the only line between this snapshot and arm 3's,
-#        which is exactly the claim "a root keeps the resource it names".
-#      * Dn2Cpp.Runtime carries NO embedded resource, and naming it is legitimate
-#        (it is loaded) yet must set no bit: the bit is set only when resources were
-#        actually SHED, because an assembly that has none answers every question the
-#        same either way and its null/empty stays truthful. stdout cannot see that —
-#        nothing in the program queries Dn2Cpp.Runtime — so this is the one thing the
-#        arm asserts against the emitted C++ instead: its registry row must still be
-#        the short byte-identical form with no resource tail at all.
-#
-#   5. --no-manifest-resources naming no loaded assembly -> the transpile must FAIL
-#      (the --no-default-ref contract: a typo silently becoming a no-op drop would
-#      keep shipping the very bytes the flag was written to shed).
-#
-#   6. --manifest-resource-root matching no embedded resource of any dropped
-#      assembly -> the transpile must FAIL (the --reflection-root doctrine: a typo
-#      silently becoming a no-op root would surface as a
-#      PlatformNotSupportedException only in the shipped game).
-#
-#   7. The SAME program driven with argv "limits" -> a fourth frozen snapshot: the
-#      ResourceManager carve-outs, i.e. every read whose honest answer
-#      DIVERGES from real .NET and which arm 1's live diff therefore cannot hold. Its
-#      own arm below says which and why.
-#
-#   8. arm 7's argv AND a drop of the app assembly with one set rooted back -> a
-#      fifth frozen snapshot: the drop bit and the lookup are two refusals over one
-#      table, and this is where they have to compose. A dropped set must not read as
-#      an ABSENT one (both would throw, so only the MESSAGE tells them apart), and a
-#      rooted set must still answer (or the flag pair silently reverts to
-#      all-or-nothing). Its own arm below.
-#
-#   9. A SECOND program (samples/dotnet/ManifestResourcesSatellite) declaring
-#      [NeutralResourcesLanguage(..., UltimateResourceFallbackLocation.Satellite)] ->
-#      a sixth frozen snapshot. Assembly-level declarations cannot be mixed, and this
-#      one inverts the sample above: with Satellite, real .NET reads a satellite for
-#      EVERY ask including the culture-less one and never the main assembly's own
-#      blob — so the read dn2cpp is otherwise surest of becomes the wrong answer, and
-#      the refusal has to fire there. Its own arm below.
-#
-# Why the flag arms can only be FROZEN and not diffed live: real .NET does not
-# drop, so it never throws here. The frozen text doubles as the assertion that the
-# PNSE message names the assembly and the remedy — the message is in the snapshot
-# verbatim.
-#
-# The blobs are emitted only when a body actually reaches one of these APIs
-# (Compilation.ManifestResourcesUsed); every other gate in the suite is the
-# negative control for that, since their output must be byte-identical to what it
-# was before manifest resources existed — and, with no --no-manifest-resources
-# passed, to what it was before the trim flag existed.
-#
-# The argless program's LAST section is about EXCEPTIONS, not resources
-# (BclFaultMessageSubset): BCL faults, each caught and its Message read.
-# It rides here because the arms that matter are 2-4 — with CoreLib's resources
-# dropped, that Message read is where a resource-backed SR implementation would
-# fault a second time, inside the diagnostic, uncatchably. dn2cpp folds SR text in
-# at transpile time so it does not, and the section is what keeps that answer true;
-# the default-flip decision rests on it. The message TEXT is diffed too — a
-# runtime-raised fault carries the sentence real .NET raises, and the
-# frozen arms show it surviving the drop, which is the whole claim. The one probe
-# that stays type-only says at its own call site why.
-#
-# The flag arms' cache CONTEXT carries the CLI flags (the net10_bcl_diff_gate
-# --cli-arg discipline): two arms of one gate that transpile the same project
-# under different switches are two different gates, and each also has its own OUT
-# (the cache slug is derived from OUT, so sharing one would overwrite the key
-# file every run).
+# Embedded resources, ResourceManager lookups and explicit per-assembly trimming.
+# The default runs CLR parity and the untrimmed limits on one binary, then frozen
+# repeated-root and app-drop/root composition checks on separate binaries.
+# DN2CPP_MANIFEST_RESOURCES_FULL=1 also selects individual trim arms, satellite
+# fallback and local DateTime kind.
+# Frozen snapshots pin deliberate refusals that cannot be compared with CLR.
 source "$(dirname "$0")/_common.sh"
+case "${DN2CPP_MANIFEST_RESOURCES_FULL:-0}" in
+    0|1) DN2CPP_MANIFEST_RESOURCES_FULL=${DN2CPP_MANIFEST_RESOURCES_FULL:-0} ;;
+    *) echo 'DN2CPP_MANIFEST_RESOURCES_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|manifest-resources-full:$DN2CPP_MANIFEST_RESOURCES_FULL"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/expected/manifest-resources-limits.txt"
+if [ "$DN2CPP_MANIFEST_RESOURCES_FULL" = 1 ]; then
+    echo 'manifest resource coverage: full trim, route and preprocessing matrix'
+else
+    echo 'manifest resource coverage: CLR parity, repeated roots and trim/lookup composition'
+    echo 'manifest resource extended checks: skipped (not selected); not counted as passed'
+fi
+
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|resource-receivers-prefix:${DN2CPP_BEFORE_RM_RECEIVERS:-}"
 
 gate_extra_asserts() {
@@ -126,6 +30,10 @@ gate_extra_asserts() {
         --before '== resource manager receivers ==' --policy crlf
     gate_output compare "$out/resource-receivers-prefix.stdout" "$out/before-resource-receivers.stdout"
 
+    # Run before the control's cache commit; a warm cache need not retain a binary.
+    gate_capture_ok "$out/limits" run_bounded "$out/ManifestResources$EXE_EXT" limits
+    gate_output compare "$out/limits.stdout" "$EXPDIR/manifest-resources-limits.txt" --policy crlf
+
 }
 
 PROJECT=ManifestResources
@@ -133,7 +41,7 @@ EXPDIR="$(dirname "$0")/expected"
 DROP_FLAGS=(--no-manifest-resources System.Private.CoreLib)
 ROOT_FLAGS=("${DROP_FLAGS[@]}" --manifest-resource-root System.Private.CoreLib.Strings.resources)
 # Both flags twice over. Dn2Cpp.Runtime is the resource-less second drop (see the
-# header's arm 4): a legitimate name that must set no bit.
+# repeat arm): a legitimate name that must set no bit.
 REPEAT_FLAGS=("${ROOT_FLAGS[@]}" --no-manifest-resources Dn2Cpp.Runtime
     --manifest-resource-root ILLink.Substitutions.xml)
 
@@ -143,6 +51,7 @@ corelib_diff_gate "$PROJECT"
 APP="$_CG_APP"
 CORELIB="$_CG_CORELIB"
 
+if [ "$DN2CPP_MANIFEST_RESOURCES_FULL" = 1 ]; then
 # ── Arm 2: --no-manifest-resources — freeze (dropped assembly throws) ─────────
 echo "== Arm 2/9: ${DROP_FLAGS[*]}, diff vs frozen snapshot =="
 OUT=artifacts/manifestresources-drop
@@ -171,6 +80,8 @@ else
     gate_capture_ok "$OUT/native" run_bounded "./$OUT/$PROJECT"
     gate_output compare "$OUT/native.stdout" "$EXPDIR/manifest-resources-rooted.txt" --policy crlf
     gate_cache_commit
+fi
+
 fi
 
 # ── Arm 4: both flags REPEATED — freeze (a second root keeps a second name) ───
@@ -252,54 +163,7 @@ assert_flag_hard_error "--manifest-resource-root No.Such.Resource" \
     artifacts/manifestresources-typo-root \
     "${DROP_FLAGS[@]}" --manifest-resource-root No.Such.Resource
 
-# ── Arm 7: the ResourceManager carve-outs — freeze ────────────────────────────
-# The SAME program, no flags, driven with argv "limits" instead of argless. That
-# argv is the whole difference, and it exists because arm 1's control cannot hold
-# these lines: every one of them is a read whose HONEST answer diverges from real
-# .NET, so a live diff would be asserting that dn2cpp reproduces an answer it
-# deliberately refuses to give.
-#
-# What the frozen text pins, message by message (the messages are in the snapshot
-# verbatim, which is the assertion that each refusal names what it refused and the
-# way out):
-#   * culture-fr — real .NET answers the NEUTRAL string here, because this sample
-#     builds no fr satellite. dn2cpp links no satellite assembly at all, so from
-#     inside the image "no fr satellite was built" and "one exists and I cannot
-#     reach it" are one state; serving the neutral would be right in the first case
-#     and a silent wrong answer in the second, in a shipped game. It throws instead.
-#   * missing-set — dn2cpp raises the type .NET raises, with its own message,
-#     so arm 1 diffs the TYPE live and only the message is pinned here. What must not
-#     happen either way is the null a missing KEY gives (arm 1's rm-miss): those are
-#     different bugs with different fixes.
-#   * get-stream — the signature names UnmanagedMemoryStream, so unlike
-#     Assembly.GetManifestResourceStream no MemoryStream can stand in for it.
-#   * non-string — .NET's InvalidOperationException message names the type it found;
-#     dn2cpp raises the same family with its own wording, diffed live in arm 1.
-#   * stream-obj / stream-string — GetObject answers every primitive code and
-#     byte[], so a Stream entry is what is left that it must refuse, for
-#     get-stream's exact reason: the ANSWER is an UnmanagedMemoryStream, not bytes.
-# The `neutral` and `mixed-string` lines are the CONTROLS: without them a section
-# full of expected throws would read exactly the same if the lookup were broken
-# outright.
-#
-# Its own OUT (and so its own transpile) rather than a reuse of arm 1's: the cache
-# slug is derived from OUT, so two arms sharing one would overwrite each other's key
-# file every run — the trap this gate's header already states for the flag arms. A
-# reuse would also break on a warm arm 1, which serves its green without compiling
-# and so leaves no binary to run.
-echo "== Arm 7/9: argv 'limits' — the ResourceManager carve-outs, vs frozen snapshot =="
-OUT=artifacts/manifestresources-limits
-invoke_cli "$APP" -r "$CORELIB" -o "$OUT"
-if gate_cache_check "$OUT" "manifest-resources|argv:limits|$CORELIB" \
-        "$APP" "${APP%.dll}.runtimeconfig.json" "${APP%.dll}.deps.json" \
-        "$EXPDIR/manifest-resources-limits.txt"; then
-    gate_cache_hit_msg
-else
-    compile_console "$OUT" "$PROJECT"
-    gate_capture_ok "$OUT/native" run_bounded "./$OUT/$PROJECT" limits
-    gate_output compare "$OUT/native.stdout" "$EXPDIR/manifest-resources-limits.txt" --policy crlf
-    gate_cache_commit
-fi
+# Arm 7's untrimmed limits share arm 1's executable and cache assertion hook.
 
 # ── Arm 8: the two honesty mechanisms COMPOSE ─────────────────────────────────
 # The app assembly's own resources dropped, with exactly one set rooted back, read
@@ -336,6 +200,11 @@ else
     gate_capture_ok "$OUT/native" run_bounded "./$OUT/$PROJECT" limits
     gate_output compare "$OUT/native.stdout" "$EXPDIR/manifest-resources-limits-dropped.txt" --policy crlf
     gate_cache_commit
+fi
+
+if [ "$DN2CPP_MANIFEST_RESOURCES_FULL" != 1 ]; then
+    echo "OK"
+    exit 0
 fi
 
 # ── Arm 9: the Satellite ultimate fallback ────────────────────────────────────

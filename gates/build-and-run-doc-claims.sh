@@ -907,12 +907,12 @@ eq "gate callers adding the transpiler knob term themselves" "none" "${manual_te
 
 # Read the actual Compile items, including secondary drivers and referenced
 # sample projects; removed sources and build products are not program inputs.
-python=$(resolve_python)
+gate_python -c 'pass' >/dev/null
 for subject in reflect-invoke trim-reflection boxing-primitives generic-math-ops-subset; do
     gate="gates/build-and-run-$subject.sh"
     primary=()
     [ "$subject" = trim-reflection ] && primary=(samples/dotnet/TrimReflect/TrimReflect.csproj)
-    sample_names=$($python gates/fixtures/sample-cache-env.py "$gate" ${primary[@]+"${primary[@]}"} | tr -d '\r')
+    sample_names=$(gate_python gates/fixtures/sample-cache-env.py "$gate" ${primary[@]+"${primary[@]}"})
     context_names=$(sed -n '/^DN2CPP_GATE_EXTRA_CONTEXT=/p' "$gate" \
         | grep -oE '\$\{DN2CPP_[A-Z0-9_]+' | sed 's/^${//' | sort -u)
     missing=$(comm -23 <(printf '%s\n' "$sample_names") <(printf '%s\n' "$context_names"))

@@ -6,7 +6,7 @@ namespace WeakReferences
     // Gate driver: runs each section's __GateEntry() in order.
     internal static class Program
     {
-        private static void Main()
+        internal static void Main()
         {
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;

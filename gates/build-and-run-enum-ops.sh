@@ -32,6 +32,9 @@
 # Former gates: enum-flags, enum-interp, enum-tostring, enum-value-tostring,
 # external-enum.
 source "$(dirname "$0")/_common.sh"
+source "$(dirname "$0")/_narrow-enum-storage-probe.sh"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_narrow-enum-storage-probe.sh gates/fixtures/narrow-enum-storage"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|enum-aliases-prefix:before-enum-aliases"
 
 comparison_prior_extra_asserts() {
     local out="$1" native before prefix line
@@ -90,6 +93,25 @@ gate_extra_asserts() {
         gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: EnumOps comparison coverage missing: $line" >&2; exit 1; }
     done
+    gate_capture_ok "$out/enum-aliases-before" run_bounded dotnet "$_CG_APP" before-enum-aliases
+    gate_output select "$out/native.stdout" "$out/enum-aliases-prefix.stdout" \
+        --before '== enum alias metadata ==' --policy crlf
+    gate_output compare "$out/enum-aliases-prefix.stdout" "$out/enum-aliases-before.stdout" --policy crlf
+    gate_output witness "$out/native.stdout" '== enum alias metadata ==' \
+        'narrow names generic=Zero,One,Alias,Negative' \
+        'narrow names runtime=Zero,One,Alias,Negative' \
+        'narrow values generic=4:0:1:1:-1' \
+        'narrow values runtime=4:0:1:1:-1' \
+        'wide names generic=One,Alias,Top,TopAlias' \
+        'wide names runtime=One,Alias,Top,TopAlias' \
+        'wide values runtime=4:1:1:9223372036854775808:9223372036854775808' \
+        'boxed name wide source=null' \
+        'boxed name unsigned=High:Last' \
+        'boxed defined exact=True:False' \
+        'enum alias metadata end' \
+        --count 1 --policy crlf
+
+    narrow_enum_storage_asserts "$out"
 }
 
 corelib_diff_gate EnumOps

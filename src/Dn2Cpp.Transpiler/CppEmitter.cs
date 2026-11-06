@@ -2335,10 +2335,11 @@ internal sealed partial class CppEmitter
                 // whose members were never decoded cannot own a reachable method (reaching
                 // one means having resolved it, and resolving it is what decodes them), and
                 // a bodyless method has nothing to compile — except an address-taken
-                // P/Invoke or abstract intrinsic-type member, whose body is synthesized
+                // P/Invoke, cut intercept, or intrinsic-type member, whose body is synthesized
                 // below, and whose noting ldftn/ldvirtftn may not have run yet.
                 if (!cls.MembersReady || (m.Rva == 0 && !_c.PInvokeFtnTargets.Contains(m)
-                        && !_c.IntrinsicFtnTargets.Contains(m)))
+                        && !_c.IntrinsicFtnTargets.Contains(m)
+                        && !_c.InterceptFtnTargets.Contains(m)))
                 {
                     pending[keep++] = m;
                     continue;
@@ -4330,7 +4331,7 @@ internal sealed partial class CppEmitter
     /// answer from.</summary>
     private static List<(long value, string name)> SortedEnumMembers(ClassInfo en)
     {
-        return MethodCompiler.EnumMembersModel(en).OrderBy(MethodCompiler.EnumSortKey(en)).ToList();
+        return MethodCompiler.EnumMetadataMembersModel(en).OrderBy(MethodCompiler.EnumSortKey(en)).ToList();
     }
 
     /// <summary>A type's public nested types that are emitted and non-generic —
@@ -5069,6 +5070,11 @@ internal sealed partial class CppEmitter
         }
         var body = new StringBuilder();
         body.AppendLine("{");
+        if (cls.StaticCctor is { } initializer && _c.IsMediumOnlyInitializer(initializer))
+        {
+            _c.NoteCctorEnsure(initializer);
+            body.AppendLine($"    {initializer.CppName}__ensure();");
+        }
         body.AppendLine($"    {cls.CppStructName}* o = ({cls.CppStructName}*)dn2cpp_alloc(sizeof({cls.CppStructName}));");
         body.AppendLine($"    ((Dn2CppObject*)o)->type = {TypeInfoRef(cls, "custom-attribute create function")};");
         foreach (var line in pre)

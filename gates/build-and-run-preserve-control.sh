@@ -30,10 +30,12 @@
 # Repeated allocations retain older arrays' defaults without widening array type identity.
 # Integer array and captured-field stores truncate before signed or unsigned reads.
 # Captured field reads retain zero/null defaults alongside later finite writes.
+# Medium keeps static type closure, including private members and known generic
+# arguments, while metadata-only roots and retained initializers remain inert.
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_ildiet.sh"
-# The default profile keeps independent positive/negative witnesses. Full mode
-# restores the cross-product for focused preservation and reachability changes.
+# The default profile shares aggregate outputs across runtime and metadata checks.
+# Full mode restores isolated routes, negative cases and preprocessing variants.
 case "${DN2CPP_PRESERVE_CONTROL_FULL:-0}" in
     0|1) ;;
     *) echo 'DN2CPP_PRESERVE_CONTROL_FULL must be 0 or 1' >&2; exit 1 ;;
@@ -41,13 +43,20 @@ esac
 export DN2CPP_PRESERVE_CONTROL_FULL="${DN2CPP_PRESERVE_CONTROL_FULL:-0}"
 preserve_full() { [ "$DN2CPP_PRESERVE_CONTROL_FULL" = 1 ]; }
 echo "preserve-control-profile=$([ "$DN2CPP_PRESERVE_CONTROL_FULL" = 1 ] && echo full || echo representative)"
+if ! preserve_full; then
+    echo 'preserve-control coverage: aggregate preservation, basic High/Medium retention and ILDiet runtime parity'
+    echo 'preserve-control extended checks: skipped (not selected); not counted as passed'
+fi
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|preserve-control-full:$DN2CPP_PRESERVE_CONTROL_FULL"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $(printf '%s ' gates/fixtures/ildiet-metadata-validation/*.py)"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/preserve-control/Program.cs gates/fixtures/preserve-control/MetadataProbe.csproj gates/fixtures/preserve-control/accessorless-indexer/AccessorlessIndexer.csproj gates/fixtures/preserve-control/accessorless-indexer/Program.cs gates/fixtures/preserve-control/accessorless-indexer/link.xml gates/fixtures/preserve-control/accessorless-indexer/Targets/IndexerTargets.csproj gates/fixtures/preserve-control/accessorless-indexer/Targets/Indexed.cs gates/fixtures/ildiet-metadata-validation/Program.cs gates/fixtures/ildiet-metadata-validation/check.py samples/dotnet/ILDietControl/keep-attribute-constructed.xml samples/dotnet/ILDietControl/ConstructorOnly/keep-signature-constructed.xml samples/dotnet/ILDietControl/InvokeOnly/keep-signature-invoked.xml samples/dotnet/ILDietControl/AbsenceOnly/keep-preserved-constructor.xml samples/dotnet/ILDietControl/UnknownTargetOnly/keep-parameter-targets.xml samples/dotnet/ILDietControl/ConditionalNamedOnly/keep-conditional-named.xml gates/fixtures/ildiet-attribute-roots/AttributeRoots.csproj gates/fixtures/ildiet-attribute-roots/Program.cs gates/expected/preserve-control-unknown-target.tsv"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflected-event-operations:native-ildiet-and-no-ildiet|attribute-object-prefix:${DN2CPP_BEFORE_ATTRIBUTE_OBJECT:-}|named-reflection-prefix:${DN2CPP_BEFORE_NAMED_REFLECTION:-}|runtime-reflection-prefix:${DN2CPP_BEFORE_RUNTIME_REFLECTION:-}|metadata-lookup-prefix:${DN2CPP_BEFORE_METADATA_LOOKUP:-}|signature-construction-prefix:${DN2CPP_BEFORE_SIGNATURE_CONSTRUCTION:-}|signature-invocation-prefix:${DN2CPP_BEFORE_SIGNATURE_INVOCATION:-}|field-boxing-prefix:${DN2CPP_BEFORE_FIELD_BOXING:-}|field-context-prefix:${DN2CPP_BEFORE_FIELD_CONTEXT:-}|field-owner-prefix:${DN2CPP_BEFORE_FIELD_OWNER:-}|field-shape-prefix:${DN2CPP_BEFORE_FIELD_SHAPE:-}|construction-payload-prefix:${DN2CPP_BEFORE_CONSTRUCTION_PAYLOAD:-}|field-cycle-prefix:${DN2CPP_BEFORE_FIELD_CYCLE:-}|member-field-signature-prefix:${DN2CPP_BEFORE_MEMBER_FIELD_SIGNATURE:-}|member-construction-signature-prefix:${DN2CPP_BEFORE_MEMBER_CONSTRUCTION_SIGNATURE:-}|base-field-signature-prefix:${DN2CPP_BEFORE_BASE_FIELD_SIGNATURE:-}|base-construction-signature-prefix:${DN2CPP_BEFORE_BASE_CONSTRUCTION_SIGNATURE:-}|ctor-signature-invocation-prefix:${DN2CPP_BEFORE_CTOR_SIGNATURE_INVOCATION:-}|field-owner-signature-prefix:${DN2CPP_BEFORE_FIELD_OWNER_SIGNATURE:-}|interface-owner-signature-prefix:${DN2CPP_BEFORE_INTERFACE_OWNER_SIGNATURE:-}|ctor-field-owner-signature-prefix:${DN2CPP_BEFORE_CTOR_FIELD_OWNER_SIGNATURE:-}|captured-array-defaults-prefix:${DN2CPP_BEFORE_CAPTURED_ARRAY_DEFAULTS:-}|interface-array-defaults-prefix:${DN2CPP_BEFORE_INTERFACE_ARRAY_DEFAULTS:-}|external-array-defaults-prefix:${DN2CPP_BEFORE_EXTERNAL_ARRAY_DEFAULTS:-}|local-defaults-prefix:${DN2CPP_BEFORE_LOCAL_DEFAULTS:-}|reflection-depth-seeds-prefix:${DN2CPP_BEFORE_REFLECTION_DEPTH_SEEDS:-}|caller-depth-prefix:${DN2CPP_BEFORE_CALLER_DEPTH:-}|extended-depth-prefix:${DN2CPP_BEFORE_EXTENDED_DEPTH:-}|state-machine-signatures-prefix:${DN2CPP_BEFORE_STATE_MACHINE_SIGNATURES:-}|retained-absence-prefix:${DN2CPP_BEFORE_RETAINED_ABSENCE:-}|unknown-target-prefix:${DN2CPP_BEFORE_UNKNOWN_TARGET:-}|initonly-field-prefix:${DN2CPP_BEFORE_INITONLY_FIELD:-}|metadata-owners-prefix:${DN2CPP_BEFORE_METADATA_OWNERS:-}|assembly-construction-prefix:${DN2CPP_BEFORE_ASSEMBLY_CONSTRUCTION:-}|listed-owners-prefix:${DN2CPP_BEFORE_LISTED_OWNERS:-}|dispatched-target-prefix:${DN2CPP_BEFORE_DISPATCHED_TARGET:-}|written-target-prefix:${DN2CPP_BEFORE_WRITTEN_TARGET:-}|absence-values:${DN2CPP_JOINED_TARGET_NAME+set:$DN2CPP_JOINED_TARGET_NAME}:${DN2CPP_FORMED_ONLY+set:$DN2CPP_FORMED_ONLY}:${DN2CPP_CONSTRUCTED_TEMPLATE+set:$DN2CPP_CONSTRUCTED_TEMPLATE}:${DN2CPP_UNUSED_STATICS+set:$DN2CPP_UNUSED_STATICS}:${DN2CPP_USED_STATICS+set:$DN2CPP_USED_STATICS}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|repeated-arrays-prefix:${DN2CPP_BEFORE_REPEATED_ARRAYS:-}|integer-storage-prefix:${DN2CPP_BEFORE_ARRAY_NARROWING:-}|captured-scalar-defaults-prefix:${DN2CPP_BEFORE_CAPTURED_SCALAR_DEFAULTS:-}|slot-storage-prefix:${DN2CPP_BEFORE_SLOT_STORAGE:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/CutRequestCapture.cs gates/fixtures/ildiet-metadata-validation/cut_authority_admission.py gates/fixtures/ildiet-metadata-validation/selected_cut_admission.py gates/fixtures/ildiet-metadata-validation/cut_request_capture.py"
-PYTHON=$(resolve_python) || gate_skip "no working Python 3 interpreter for ILDiet validation"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.cs gates/fixtures/ildiet-metadata-validation/check-stripping.py"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|stripping-levels:high,medium"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.Intercepts.cs gates/fixtures/ildiet-metadata-validation/intercept_retention.py"
+gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for ILDiet validation"
 
 PROJECT=PreserveControl
 ROOT="samples/dotnet/$PROJECT"
@@ -56,15 +65,19 @@ ASSEMBLYPROJECT=samples/dotnet/PreserveAssemblyLib
 
 echo "== Building app and checking both Runtime target frameworks =="
 build_proj "$ROOT/$PROJECT.csproj"
+if preserve_full; then
 build_proj samples/dotnet/ILDietControl/ILDietControl.csproj
 build_proj samples/dotnet/ILDietControl/LookupOnly/LookupOnly.csproj
 build_proj samples/dotnet/ILDietControl/EventBoundary/EventBoundary.csproj
 build_proj samples/dotnet/ILDietControl/ConstructorOnly/ConstructorOnly.csproj
 build_proj samples/dotnet/ILDietControl/InvokeOnly/InvokeOnly.csproj
 build_proj src/Dn2Cpp.Cli.Console/Dn2Cpp.Cli.Console.csproj
+fi
 build_gate_proj gates/fixtures/preserve-control/MetadataProbe.csproj
+if preserve_full; then
 build_gate_proj gates/fixtures/preserve-control/accessorless-indexer/AccessorlessIndexer.csproj
 build_gate_proj gates/fixtures/ildiet-roots/App/RootApp.csproj
+fi
 if [ -z "${DN2CPP_SKIP_BUILD:-}" ]; then
     dotnet build src/Dn2Cpp.Runtime/Dn2Cpp.Runtime.csproj -c "$CONFIG" -f net8.0 \
         --nologo -v:minimal
@@ -101,6 +114,7 @@ for ignored_dir in bin obj .godot .git; do
 done
 
 echo "== Transpiling with recursive project roots and the com feature =="
+prepare_cli
 if ! transpile=$(invoke_cli "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" --auto-ref --trim-reflection \
     --project-root "$ROOT" --project-root "$ROOT/./" --project-root "$STALE_ROOT" \
     --link-xml "$OUT/.ildiet-request.xml" --link-feature com -o "$OUT" 2>&1); then
@@ -143,6 +157,7 @@ for symbol in DroppedMethod NotKeptByTypeAttribute SignatureNoArgMarker set_XmlP
     fi
 done
 
+if preserve_full; then
 echo "== Backend roots resolve generic bases by assembly identity =="
 ROOT_FIXTURE=gates/fixtures/ildiet-roots
 root_types=$(dotnet exec "$PROBE" --root-types External.Object \
@@ -153,6 +168,8 @@ grep -Fxq 'RootApp:RootApp.RegisteredScript' <<<"$root_types" \
     || { echo "FAIL: a colliding type hid an externally instantiated script" >&2; exit 1; }
 if grep -Fxq 'RootApp:RootApp.OrdinaryClass' <<<"$root_types"; then
     echo "FAIL: a colliding type made an ordinary class an external root" >&2; exit 1
+fi
+
 fi
 
 echo "== DLL metadata is removed before the transpiler model is built =="
@@ -191,10 +208,12 @@ compare_dlls() {
     done
 }
 
-echo "== Standalone ILDiet agrees with automatic preprocessing =="
 CLI_DLL="${DN2CPP_CLI_DLL:-$PWD/src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}"
 CLI_BIN=$(dirname "$CLI_DLL")
 ILD_DLL="$CLI_BIN/ildiet/ILDiet.dll"
+
+if preserve_full; then
+echo "== Standalone ILDiet agrees with automatic preprocessing =="
 RUNTIME_DLL="$CLI_BIN/Dn2Cpp.Runtime.dll"
 BCL=$(dirname "$(locate_corelib)")
 echo "== Removing an indexer's only accessor fails signature validation =="
@@ -320,6 +339,31 @@ invoke_cli "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" --auto-ref --project-root "$ROO
 grep -Fq "_DroppedMethod_" "$WHOLE"/generated* \
     || { echo "FAIL: childless assembly descriptor did not preserve all methods" >&2; exit 1; }
 
+else
+    echo "== Explicit High agrees with default preservation =="
+    HIGH_OUT=artifacts/preserve-control-high
+    invoke_cli "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" --auto-ref --trim-reflection \
+        --project-root "$ROOT" --project-root "$ROOT/./" --project-root "$STALE_ROOT" \
+        --link-xml "$OUT/.ildiet-request.xml" --link-feature com \
+        --stripping-level high -o "$HIGH_OUT"
+    compare_dlls "$(ildiet_generation "$OUT/ildiet")" "$(ildiet_generation "$HIGH_OUT/ildiet")"
+    compare_dlls "$(ildiet_generation "$HIGH_OUT/ildiet")" "$(ildiet_generation "$OUT/ildiet")"
+    gate_python - "$OUT" "$HIGH_OUT" <<'PY_COMPARE'
+from pathlib import Path
+import sys
+
+def generated(directory):
+    return {path.name: path.read_bytes() for path in Path(directory).glob("generated*") if path.is_file()}
+
+default, high = map(generated, sys.argv[1:])
+assert default, "default preservation emitted no C++"
+assert default == high, "explicit High changed default generated C++"
+PY_COMPARE
+    echo 'preserve-control-high=default-equivalent'
+fi
+[ "$INPUT_HASHES" = "$(shasum -a 256 "$APP" "$LIBDLL" "$ASSEMBLYDLL")" ] \
+    || { echo "FAIL: ILDiet changed an input DLL" >&2; exit 1; }
+
 if gate_cache_check "$OUT" "preserve-control|full:$DN2CPP_PRESERVE_CONTROL_FULL|ildiet|com|trim-reflection|cut=none|preserved-box-prefix:${DN2CPP_BEFORE_PRESERVED_BOXES:-}|conditional-fields-prefix:${DN2CPP_BEFORE_CONDITIONAL_FIELDS:-}" \
         "$APP" "$LIBDLL" "$ASSEMBLYDLL" "$ROOT/link.xml" "$ROOT/Nested/link.xml" \
         gates/expected/preserve-control.txt; then
@@ -425,6 +469,54 @@ for row in 'method ILDietControlLib.Base::UnusedPrivate' \
 done
 [ -f "${DIET_LIB%.dll}.pdb" ] && [ ! -e "$(ildiet_generation "$DIET_OUT/ildiet")/ILDietControlLib.pdb" ] \
     || { echo "FAIL: rewritten DLL retained stale debug symbols" >&2; exit 1; }
+
+echo "== Basic High/Medium retention and inert initializers =="
+build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csproj
+stripping_profile_args=()
+stripping_modes=full
+if preserve_full; then
+    stripping_modes="raw full"
+else
+    stripping_profile_args=(--representative)
+fi
+gate_python gates/fixtures/ildiet-metadata-validation/check-stripping.py "$ILD_DLL" \
+    "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
+    "$CLI_BIN/Dn2Cpp.Transpiler.dll" "artifacts/stripping-level-tests-$CONFIG" "$CLI_DLL" ${stripping_profile_args[@]+"${stripping_profile_args[@]}"}
+stripping_assert_empty_output() {
+    local out="$1" program="$2"
+    gate_capture_ok "$out/assert-native" run_bounded "$out/$program$EXE_EXT" || return 1
+    : > "$out/assert-empty.stdout" || return 1
+    gate_output compare "$out/assert-native.stdout" "$out/assert-empty.stdout"
+}
+for fixture in medium retained-equality forwarded-attribute; do
+    for mode in $stripping_modes; do
+        stripping_out="artifacts/stripping-level-tests-$CONFIG/emission-$fixture-$mode"
+        compile_console "$stripping_out" MediumRetention
+        stripping_assert_empty_output "$stripping_out" MediumRetention
+        if [ "$fixture" = medium ]; then
+            echo "medium-initializers=$mode:deferred"
+        elif [ "$fixture" = retained-equality ]; then
+            echo "medium-retained-equality=$mode:deferred"
+        else
+            echo "medium-forwarded-attribute=$mode:retained"
+        fi
+    done
+done
+for fixture in retained called; do
+    for level in high medium; do
+        for mode in $stripping_modes; do
+            intercept_out="artifacts/stripping-level-tests-$CONFIG/emission-intercept-$fixture-$level-$mode"
+            compile_console "$intercept_out" InterceptRetention
+            stripping_assert_empty_output "$intercept_out" InterceptRetention
+            echo "retained-intercepts=$fixture:$level:$mode:callable"
+        done
+    done
+done
+
+if ! preserve_full; then
+    echo 'OK'
+    exit 0
+fi
 
 echo "== Type attribute arguments retain their types without a descriptor or an armed reflection route =="
 # ILDietControl's descriptor and armed construction route keep every application
@@ -1735,8 +1827,7 @@ done
 
 build_proj samples/dotnet/HelloWorld/HelloWorld.csproj
 output_code=0
-# shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
-$PYTHON gates/fixtures/preserve-control/check-ildiet-output.py "$ILD_DLL" \
+gate_python gates/fixtures/preserve-control/check-ildiet-output.py "$ILD_DLL" \
     "samples/dotnet/HelloWorld/bin/$CONFIG/$TFM/HelloWorld.dll" "$_CG_CORELIB" \
     "artifacts/ildiet-output-tests-$CONFIG" || output_code=$?
 if [ "$output_code" -eq 77 ]; then
@@ -1766,22 +1857,19 @@ echo "== ILDiet payload changes invalidate behavior gate caches =="
 
 echo "== Rewritten metadata, signed identity, resources and dead assemblies =="
 build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csproj
-# shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
-$PYTHON gates/fixtures/ildiet-metadata-validation/check.py "$ILD_DLL" \
+gate_python gates/fixtures/ildiet-metadata-validation/check.py "$ILD_DLL" \
     "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
     "$DIET_APP" "$DIET_LIB" "$_CG_CORELIB" "artifacts/ildiet-metadata-tests-$CONFIG"
 
 echo "== Definition graph scans, fallback and immutable publication =="
 GRAPH_OUTPUT="$(mktemp -d "artifacts/ildiet-graph-tests-$CONFIG.XXXXXX")"
 echo "Definition graph evidence: $GRAPH_OUTPUT"
-# shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
-$PYTHON gates/fixtures/ildiet-metadata-validation/check-graph.py "$ILD_DLL" \
+gate_python gates/fixtures/ildiet-metadata-validation/check-graph.py "$ILD_DLL" \
     "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
     "$_CG_CORELIB" "$GRAPH_OUTPUT"
 
 echo "== Conditional engine scripts and constructor registries are rewritten in DLLs =="
-# shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
-$PYTHON gates/fixtures/ildiet-metadata-validation/check-engine-policy.py "$ILD_DLL" \
+gate_python gates/fixtures/ildiet-metadata-validation/check-engine-policy.py "$ILD_DLL" \
     "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
     "$_CG_CORELIB" "artifacts/ildiet-engine-policy-$CONFIG"
 script_discovery=$(dotnet exec "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
@@ -1798,7 +1886,7 @@ echo "== A type initializer runs only after a type-use trigger or an explicit pr
     compile_console() {
         # Check the existing runtime completion flags after the eager pass and
         # before Main; stdout parity alone cannot observe a swallowed failure.
-        $PYTHON gates/fixtures/ildiet-metadata-validation/check.py --instrument-startup "$1" "$initializer_case"
+        gate_python gates/fixtures/ildiet-metadata-validation/check.py --instrument-startup "$1" "$initializer_case"
         compile_initializer_console "$@"
     }
     gate_extra_asserts() {

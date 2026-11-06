@@ -354,6 +354,26 @@ case "$CONFIG" in
         exit 2
         ;;
 esac
+# Full matrices are explicit development checks, never inherited into merge runs.
+export DN2CPP_ARRAY_FULL=0
+export DN2CPP_MANIFEST_RESOURCES_FULL=0
+export DN2CPP_PRESERVE_CONTROL_FULL=0
+export DN2CPP_REFLECT_INVOKE_FULL=0
+export DN2CPP_REFLECT_TYPES_FULL=0
+export DN2CPP_TRANSPILER_LIMITS_FULL=0
+export DN2CPP_EMIT_ORDER_FULL=0
+export DN2CPP_MARSHAL_FULL=0
+export DN2CPP_HTTP_FULL=0
+export DN2CPP_HOTUPDATE_FULL=0
+export DN2CPP_CUSTOM_ASYNC_TASK_FULL=0
+export DN2CPP_EXCEPTION_MESSAGE_FULL=0
+export DN2CPP_MULTIASSEMBLY_FULL=0
+export DN2CPP_TRIM_REFLECTION_FULL=0
+export DN2CPP_OBFUSCATION_FULL=0
+export DN2CPP_WASM_CONSOLE_FULL=0
+export DN2CPP_PLATFORM_ISA_FULL=0
+export DN2CPP_DEFAULT_CULTURE_FULL=0
+
 CONFIGS="$CONFIG"
 [ "$BOTH_CONFIGS" != "1" ] || CONFIGS="Release Debug"
 
@@ -641,6 +661,24 @@ premerge_argv() {
         "CONFIG=$config"
         "LOGDIR=$logdir"
         "DN2CPP_REQUIRE_ALL=1"
+        "DN2CPP_ARRAY_FULL=0"
+        "DN2CPP_MANIFEST_RESOURCES_FULL=0"
+        "DN2CPP_PRESERVE_CONTROL_FULL=0"
+        "DN2CPP_REFLECT_INVOKE_FULL=0"
+        "DN2CPP_REFLECT_TYPES_FULL=0"
+        "DN2CPP_TRANSPILER_LIMITS_FULL=0"
+        "DN2CPP_EMIT_ORDER_FULL=0"
+        "DN2CPP_MARSHAL_FULL=0"
+        "DN2CPP_HTTP_FULL=0"
+        "DN2CPP_HOTUPDATE_FULL=0"
+        "DN2CPP_CUSTOM_ASYNC_TASK_FULL=0"
+        "DN2CPP_EXCEPTION_MESSAGE_FULL=0"
+        "DN2CPP_MULTIASSEMBLY_FULL=0"
+        "DN2CPP_TRIM_REFLECTION_FULL=0"
+        "DN2CPP_OBFUSCATION_FULL=0"
+        "DN2CPP_WASM_CONSOLE_FULL=0"
+        "DN2CPP_PLATFORM_ISA_FULL=0"
+        "DN2CPP_DEFAULT_CULTURE_FULL=0"
         "DN2CPP_ALLOW_MISSING_CRI_SDK=1"
         "DN2CPP_GATE_CACHE=0"
         "SKIP_GODOT=$SKIP_GODOT"
@@ -1043,7 +1081,7 @@ if [ "${DN2CPP_PREMERGE_SELFTEST:-0}" = "1" ]; then
     say "CRI SDK preflight (real gates and skip helpers)"
     ST_CRI="$ST_TMP/cri-preflight"
     mkdir -p "$ST_CRI/gates" "$ST_CRI/sdk"
-    cp "$REPO/gates/_common.sh" "$ST_CRI/gates/_common.sh"
+    cp "$REPO/gates/_common.sh" "$REPO/gates/_python.sh" "$ST_CRI/gates/"
     cp "$REPO/gates/build-and-run-cri-android.sh" "$REPO/gates/build-and-run-cri-web.sh" \
         "$REPO/gates/build-and-run-cri-wasm-smoke.sh" "$ST_CRI/gates/"
     cat > "$ST_CRI/gates/_godot_fork.sh" <<'CRISTUB'
@@ -2503,6 +2541,9 @@ if [ "$CULTURE_EXCLUDED" = 1 ]; then
     note "CultureInfoAPI: excluded (opt in with --with-culture); not counted as passed."
 fi
 note "configs: $CONFIGS"
+note "stripping: default High plus basic High/Medium retention and initializer regressions."
+note "coverage: representative aggregate gates; shared binaries retain runtime and output assertions."
+note "optional details: isolated roots, raw/preprocessed pairs, layout refusals, extended backend and detailed culture matrices skipped (not selected); not counted as passed."
 if [ "$SKIP_XCODE" = 1 ]; then
     note "Xcode:  $XCODE_EXCLUDED gate(s) excluded ($XCODE_SELECTION selection)."
 else
@@ -2979,6 +3020,9 @@ if [ "$OVERALL" -eq 0 ]; then
             printf 'Xcode:   selected (%s selection)\n' "$XCODE_SELECTION"
         fi
         printf 'configs: %s\n' "$CONFIGS"
+        printf 'stripping: default High plus basic High/Medium retention and initializer regressions.\n'
+        printf 'coverage: representative aggregate gates; shared binaries retain runtime and output assertions.\n'
+        printf 'optional details: isolated roots, raw/preprocessed pairs, layout refusals, extended backend and detailed culture matrices skipped (not selected); not counted as passed.\n'
         printf 'culture: %s\n' "$CULTURE_NOTE"
         printf 'strict culture reference: %s\n' "$STRICT_CULTURE_NOTE"
         # Which sources the binary the fork lane ran on was built from: a green

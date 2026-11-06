@@ -27,6 +27,7 @@
 # that shows the bug. It carries a RuntimeTypeHandle arm for the same reason.
 # Named argument faults, boxed bounds, validation order and GC-retained fields.
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|token-identity-prefix:before-token-identity"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
@@ -52,6 +53,18 @@ gate_extra_asserts() {
         gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: CancellationRegister validation witness missing: $line" >&2; exit 1; }
     done
+    gate_capture_ok "$out/token-identity-before" run_bounded dotnet "$_CG_APP" before-token-identity
+    gate_output select "$out/native.stdout" "$out/token-identity-prefix.stdout" \
+        --before '== Cancellation identity and delegate faults ==' --policy crlf
+    gate_output compare "$out/token-identity-prefix.stdout" "$out/token-identity-before.stdout" --policy crlf
+    gate_output witness "$out/native.stdout" '== Cancellation identity and delegate faults ==' \
+        'canceled identity=True:True' \
+        'source identity=True:False' \
+        'delegate null=NullReferenceException arguments=1' \
+        'delegate argument=InvalidOperationException' \
+        'Cancellation identity and delegate faults end' \
+        --count 1 --policy crlf
+
 }
 
 corelib_diff_gate CancellationRegister

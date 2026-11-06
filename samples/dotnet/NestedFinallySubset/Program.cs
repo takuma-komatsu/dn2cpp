@@ -73,7 +73,7 @@ namespace NestedFinallySubset
             }
         }
 
-        private static void Main()
+        internal static void Main()
         {
             Console.WriteLine(Deep());      // f3, f2, f1, 1
             Console.WriteLine(Partial(1));  // inner, outer, 1000

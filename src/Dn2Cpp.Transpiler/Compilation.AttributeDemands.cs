@@ -7,6 +7,7 @@ internal sealed partial class Compilation
     private readonly Dictionary<string, List<(Module Module, CustomAttributeHandle Handle)>> _backendAttributeDemands = new(StringComparer.Ordinal);
     private readonly HashSet<(int Module, CustomAttributeHandle Handle)> _backendAttributeRows = new();
     private readonly Queue<(Module Module, CustomAttributeHandle Handle)> _pendingBackendAttributes = new();
+    private readonly HashSet<(int Module, CustomAttributeHandle Handle)> _mediumOnlyBackendAttributes = new();
     private long _backendAttributeReplayCount;
     private int _backendAllocationCursor;
 
@@ -14,6 +15,14 @@ internal sealed partial class Compilation
     {
         foreach (var handle in handles)
         {
+            if (_strippingLevel == StrippingLevel.Medium)
+            {
+                var key = (module.Index, handle);
+                if (!_reachingBindingOnlyBody)
+                    _mediumOnlyBackendAttributes.Remove(key);
+                else if (!_backendAttributeRows.Contains(key))
+                    _mediumOnlyBackendAttributes.Add(key);
+            }
             string? name = AttributeTypeName(module.Reader, module.Reader.GetCustomAttribute(handle));
             if (name is null || IsUserTypeofNamedFrameworkType(name)
                 || !_backendAttributeRows.Add((module.Index, handle)))
@@ -49,21 +58,33 @@ internal sealed partial class Compilation
                 if (_backend.AllocatedTypeRoots(this, allocated) is not { } roots)
                     continue;
                 pending = true;
-                foreach (var method in roots.Methods)
+                bool previous = _reachingBindingOnlyBody;
+                _reachingBindingOnlyBody |= _mediumOnlyAllocations.Contains(allocated);
+                try
                 {
-                    Reach(method);
-                    ReachRootInitializer(method);
+                    foreach (var method in roots.Methods)
+                    {
+                        Reach(method);
+                        ReachRootInitializer(method);
+                    }
+                    foreach (var cls in roots.AttributeReadClasses)
+                        ReachBackendAttributeRows(cls);
                 }
-                foreach (var cls in roots.AttributeReadClasses)
-                    ReachBackendAttributeRows(cls);
+                finally { _reachingBindingOnlyBody = previous; }
             }
         pending |= _pendingBackendAttributes.Count > 0;
         while (_pendingBackendAttributes.Count > 0)
         {
             var row = _pendingBackendAttributes.Dequeue();
             _backendAttributeReplayCount++;
-            if (DecodeCustomAttribute(row.Module, row.Handle, reachedCtorsOnly: false) is { } attribute)
-                ConstructAttributeRow(attribute);
+            bool previous = _reachingBindingOnlyBody;
+            _reachingBindingOnlyBody |= _mediumOnlyBackendAttributes.Contains((row.Module.Index, row.Handle));
+            try
+            {
+                if (DecodeCustomAttribute(row.Module, row.Handle, reachedCtorsOnly: false) is { } attribute)
+                    ConstructAttributeRow(attribute);
+            }
+            finally { _reachingBindingOnlyBody = previous; }
         }
         return pending;
     }

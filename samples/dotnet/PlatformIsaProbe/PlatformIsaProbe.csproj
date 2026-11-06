@@ -18,6 +18,9 @@
   <PropertyGroup Condition="'$(PlatformIsaShard)' == 'all'">
     <DefineConstants>$(DefineConstants);PLATFORM_ISA_SHARD_ALL</DefineConstants>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(PlatformIsaShard)' == 'native'">
+    <DefineConstants>$(DefineConstants);PLATFORM_ISA_SHARD_X86_BASE;PLATFORM_ISA_SHARD_X86_AVX;PLATFORM_ISA_SHARD_X86_AVX512;PLATFORM_ISA_SHARD_X86_AVX10;PLATFORM_ISA_SHARD_ARM</DefineConstants>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(PlatformIsaShard)' == 'x86-base'">
     <DefineConstants>$(DefineConstants);PLATFORM_ISA_SHARD_X86_BASE</DefineConstants>
   </PropertyGroup>
@@ -39,6 +42,7 @@
 
   <Target Name="ValidatePlatformIsaShard" BeforeTargets="CoreCompile">
     <Error Condition="'$(PlatformIsaShard)' != 'all' and
+                      '$(PlatformIsaShard)' != 'native' and
                       '$(PlatformIsaShard)' != 'x86-base' and
                       '$(PlatformIsaShard)' != 'x86-avx' and
                       '$(PlatformIsaShard)' != 'x86-avx512' and

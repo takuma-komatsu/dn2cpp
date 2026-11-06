@@ -69,14 +69,13 @@ godot_fork_emcc_python_check "$PATH" "${EMSDK_PYTHON:-}"
 # the http.server below — a different interpreter, and no floor. resolve_python
 # probes by RUNNING one, the only thing that tells a real interpreter from the
 # app-execution-alias stub a stock Windows install answers `python3` with.
-py="$(resolve_python)" || gate_skip "no working Python 3 interpreter (needed to read wasm exports and serve the export)"
+gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter (needed to read wasm exports and serve the export)"
 
 # Read a wasm module's export names. A release side module has no name section,
 # so grepping the file for a symbol would also match an import; parse the export
 # section instead.
 wasm_exports() {
-    # shellcheck disable=SC2086  # $py may be `py -3`: two words, deliberately split
-    $py - "$1" <<'PY'
+    gate_python - "$1" <<'PY'
 import sys
 
 def leb(b, i):
@@ -762,8 +761,7 @@ EOF
 SRV_LOG="$OUT/httpd.log"
 # -u: python block-buffers stdout when it is a file, so the "Serving HTTP on …
 # port N" line would sit in the buffer and the port scrape below would time out.
-# shellcheck disable=SC2086  # $py may be `py -3`: two words, deliberately split
-$py -u -m http.server 0 --bind 127.0.0.1 --directory "$WEBDIR" >"$SRV_LOG" 2>&1 &
+(gate_python_exec -u -m http.server 0 --bind 127.0.0.1 --directory "$WEBDIR" >"$SRV_LOG" 2>&1) &
 SRV_PID=$!
 # A hook, not a bare `trap … EXIT`: this gate holds the machine lock for its
 # whole run (gate_machine_lock in _common.sh), and the shell's single trap slot

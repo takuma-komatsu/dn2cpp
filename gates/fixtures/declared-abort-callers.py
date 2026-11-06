@@ -29,8 +29,10 @@ def statement(text, prefix):
 COMMON_TEXT = re.search(r'^gate_assert_text\(\) \{\n.*?^\}',
                         source('_common.sh'), re.M | re.S).group(0)
 UNHANDLED = source('build-and-run-unhandled-exit-subset.sh')
-# Include the actual host policy setup, not a fixture copy of its branches.
-WORKERS = UNHANDLED[UNHANDLED.index('first_line_policy='):]
+# Keep the actual host policy and worker loop inside the wrapper's assertion hook.
+UNHANDLED_ASSERTS = re.search(r'^gate_extra_asserts\(\) \{\n(.*?)^\}',
+                             UNHANDLED, re.M | re.S).group(1)
+WORKERS = UNHANDLED_ASSERTS[UNHANDLED_ASSERTS.index('first_line_policy='):]
 FATAL = re.search(r'^run_fatal_arm\(\) \{\n.*?^\}',
                   source('build-and-run-string-runtime-guards.sh'), re.M | re.S).group(0)
 MODES = ('pool', 'thread', 'timer', 'cts timer', 'async void', 'local continuation',
@@ -156,6 +158,9 @@ assert_log_contains() { grep -Fq "$2" "$1"; }
         self.seed_workers()
         result = self.run_shell(WORKERS)
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), [
+            f'OK worker {mode}: reported managed fault and aborted with 127'.encode()
+            for mode in MODES])
         self.assertNotEqual(self.run_shell(WORKERS, 'linux').returncode, 0)
         prefix = self.directory / 'worker-pool/native'
         Path(str(prefix) + '.stderr').write_bytes(diagnostic('pool').encode() + b'\r\n')
@@ -163,6 +168,15 @@ assert_log_contains() { grep -Fq "$2" "$1"; }
         self.seed_workers()
         Path(str(prefix) + '.stdout').write_bytes(b'wrong\n')
         self.assertNotEqual(self.run_shell(WORKERS).returncode, 0)
+
+    def test_worker_abort_status_pair_is_enforced(self):
+        for side in ('native', 'oracle'):
+            with self.subTest(side=side):
+                self.seed_workers()
+                (self.directory / f'worker-pool/{side}.status').write_bytes(b'134\n')
+                result = self.run_shell(WORKERS)
+                self.assertNotEqual(result.returncode, 0, (result.stdout, result.stderr))
+                self.assertIn(b'expected equal abnormal exits', result.stderr)
 
 
 if __name__ == '__main__':

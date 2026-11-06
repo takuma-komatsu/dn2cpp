@@ -9,4 +9,9 @@
     <RootNamespace>DefaultCulture</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Locale rejection must not recursively initialize CurrentUICulture to format its exception. -->
+    <RuntimeHostConfigurationOption Include="System.Resources.UseSystemResourceKeys" Value="true" />
+  </ItemGroup>
+
 </Project>

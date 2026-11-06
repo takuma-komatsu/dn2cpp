@@ -147,6 +147,31 @@ still bind their members. A closed-generic `--cut` selector that requires type
 specialization also keeps the DLLs intact and reports that validation is deferred
 to the transpiler.
 
+`--stripping-level high` is the default member-level policy. Select
+`--stripping-level medium` to retain all declared members of each statically
+referenced type, including non-public constructors, methods, fields and property
+or event accessors, together with their reflection metadata. The policy applies
+to application, library, BCL and GodotSharp assemblies alike. It follows calls,
+construction, type tokens, signatures, field/property/event types, base types,
+interfaces, generic arguments and constraints, and attribute types and type-valued
+arguments. The same rule follows dependencies of retained members until no new
+retention is required. Loading metadata for analysis alone does not retain a
+type's members, and a type does not automatically retain nested declarations.
+See [the retention contract](docs/ARCHITECTURE.md#1-pipeline) for the
+reference boundaries.
+
+Medium applies in ILDiet and C++ generation; `--no-ildiet` only bypasses the DLL
+rewrite and leaves the selected level active. Known closed generic types retain
+their members; an open definition does not generate arbitrary specializations.
+Types or generic arguments known only at runtime still need explicit roots or
+preservation. Medium composes with `link.xml`, `[Preserve]`, reflection roots and
+Godot asset roots. `--reflection-root` remains metadata-only at either level;
+an independent static or executable preservation edge is required to retain its
+bodies. Members and initializers retained only by Medium do not by themselves
+schedule an initializer for startup. Type-wide retention can reach unsupported
+APIs or substantially increase generated code; it does not broaden the supported
+runtime API surface.
+
 With `--dotnet-module`, ILDiet also removes unused GodotSharp wrappers and unused
 user types derived from `GodotObject`, including their unused generated helpers.
 Handwritten nested .NET types retain ILDiet's usual public-member and
@@ -189,6 +214,12 @@ can change the generated code and size. Hot-update retains its separate trim
 suppression, and ILDiet's copy-all paths leave DLL registries and registration
 attributes unchanged.
 
+Godot export presets offer **Stripping Level** at
+`dotnet/dn2cpp/stripping_level`: **High** (default, value `0`) or **Medium**
+(value `1`). The exporter passes the choice independently of **IL Pre-stripping**.
+A `--stripping-level` in project extra arguments must match the preset; matching
+pairs are deduplicated and a conflict reports an error.
+
 Godot export presets default `dotnet/dn2cpp/trim_reflection`,
 `dotnet/dn2cpp/trim_godot_classes` and `dotnet/dn2cpp/shared_generics` to `true`
 on every platform, including presets that omit these keys. These settings are
@@ -199,8 +230,8 @@ after the preset arguments, so an explicit trim flag there still enables that
 trim when its preset setting is off. Direct CLI defaults are unchanged:
 reflection and Godot-class trimming are opt-in, and shared generics are on.
 
-C++ emission compiles a body only when compiled code depends on it statically,
-an explicit entry names it, a recognized reflection site selects it, or a
+With High, C++ emission compiles a body only when compiled code depends on it
+statically, an explicit entry names it, a recognized reflection site selects it, or a
 preservation rule keeps it. The explicit entries are the entry point, the
 methods a backend's contract calls, `[UnmanagedCallersOnly]` methods and
 non-framework module initializers; a public member is not one by itself. Any
@@ -222,7 +253,7 @@ A reflection site is recognized from the values that reach it within one
 method: constants, `typeof`, locals, captured closure variables, small arrays
 such as `new[] { typeof(int) }`, `BindingFlags` arithmetic, the members a lookup
 or an enumeration in the same method returns, and known generic definitions over
-known type arguments. A recognized lookup or enumeration such as
+known type arguments. Under High, a recognized lookup or enumeration such as
 `typeof(T).GetMethod("Name")` retains metadata only, and a constant name passed
 to `Type.GetType` or `Assembly.GetType` resolves to the type's identity and
 member metadata without its bodies or static constructor; a constant closed

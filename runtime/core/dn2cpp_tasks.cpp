@@ -1601,9 +1601,13 @@ Dn2CppCancelSource* dn2cpp_cts_new()
 
 Dn2CppCancelSource* dn2cpp_cts_canceled()
 {
-    Dn2CppCancelSource* s = dn2cpp_cts_new();
-    s->canceled = 1;
-    return s;
+    // Boolean token construction shares the BCL's permanently canceled source.
+    static DN2CPP_GC_STATIC_ROOT Dn2CppCancelSource* source = [] {
+        auto* s = dn2cpp_cts_new();
+        s->canceled = 1;
+        return s;
+    }();
+    return source;
 }
 
 void dn2cpp_cts_cancel(Dn2CppCancelSource* src, bool throwOnFirstException)

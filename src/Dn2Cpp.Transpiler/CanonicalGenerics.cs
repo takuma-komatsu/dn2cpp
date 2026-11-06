@@ -218,7 +218,7 @@ internal sealed class CanonicalGenerics
         // the grouped user's C++ pointer type name the same struct. Intrinsic generics
         // (Task-family, SIMD vectors) lower to runtime structs and stay put.
         if (cls.GenericArity == 0 || cls.Context.TypeArgs.Length != cls.GenericArity
-            || cls.IntrinsicCppName is not null)
+            || cls.IntrinsicCppName is not null || CoreIntrinsics.IsVectorStorageOwner(cls))
             return t;
         var args = cls.Context.TypeArgs;
         var canon = new TypeDesc[args.Length];
@@ -232,7 +232,10 @@ internal sealed class CanonicalGenerics
         // above, and the no-change arms answer it by returning the very object they
         // were handed. A fresh object on the changed arm keeps that test free of any
         // reasoning about interning (see TypeDesc.MakeClassUnshared).
-        return changed ? TypeDesc.MakeClassUnshared(_c.Instantiate(cls.Module, cls.Handle, canon)) : t;
+        if (!changed) return t;
+        var candidate = _c.Instantiate(cls.Module, cls.Handle, canon);
+        // Canonical signatures cannot replace managed vector fields with mapped storage.
+        return _c.SameVectorFieldStorage(cls, candidate) ? TypeDesc.MakeClassUnshared(candidate) : t;
     }
 
     /// <summary>The per-index ANY placeholder ($CnAny0, $CnAny1, …) a

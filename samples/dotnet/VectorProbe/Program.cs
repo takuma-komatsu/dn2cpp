@@ -9,9 +9,9 @@ namespace VectorProbe;
 // .NET. Only ops whose scalar emulation is bit-exact are printed:
 // IsHardwareAccelerated is deliberately not observed (it folds to false here) and
 // float Sum is avoided, being rounding-order dependent.
-internal static class Program
+internal static partial class Program
 {
-    private static void Main()
+    private static void Main(string[] args)
     {
         // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -203,6 +203,11 @@ internal static class Program
         VectorToStrings();
         // APPENDED LAST: the earlier gate output remains an unchanged prefix.
         VectorCopyTargets();
+        if (args.Length != 0 && args[0] == "before-storage-safety") return;
+        VectorStorageSafety();
+        if (args.Length != 0 && args[0] == "before-value-semantics")
+            return;
+        VectorExistingSemantics();
     }
 
     private static void VectorCopyTargets()

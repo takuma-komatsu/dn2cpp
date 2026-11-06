@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# WASM-axis console gate. Transpiles each program against the tree-shaken real
-# CoreLib, builds it with em++ into a wasm32 module (the WASM=1 build axis in
+# WASM-axis console gate. Console sections share a tree-shaken CoreLib image;
+# finalizers, HTTP and raw-MD owner checks keep independent images. The gate
+# builds them with em++ into wasm32 modules (the WASM=1 build axis in
 # _common.sh routes the CMake configure through emcmake), runs it under node,
 # and diffs the output exactly against real .NET (`dotnet $app`) — proving the
 # C# -> IL -> C++ -> em++/wasm32 pipeline end to end. The wasm build is
@@ -64,6 +65,17 @@
 # Runtime argument messages keep earlier generated operands live across later allocations.
 source "$(dirname "$0")/_common.sh"
 
+case "${DN2CPP_WASM_CONSOLE_FULL:-0}" in
+    0|1) DN2CPP_WASM_CONSOLE_FULL=${DN2CPP_WASM_CONSOLE_FULL:-0} ;;
+    *) echo 'DN2CPP_WASM_CONSOLE_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+if [ "$DN2CPP_WASM_CONSOLE_FULL" = 1 ]; then
+    echo 'wasm-console profile: separate console section images'
+else
+    echo 'wasm-console profile: shared console image with separate process runs; independent finalizer, HTTP and readonly-MD images'
+    echo 'wasm-console separate section reachability roots: skipped (not selected); not counted as passed'
+fi
+
 # --no-bundled: an -O-less link needs the -debug archives the frozen bundle lacks.
 dn2cpp_emsdk_resolve --no-bundled
 for tool in em++ emcmake node; do
@@ -73,19 +85,36 @@ for tool in em++ emcmake node; do
 done
 
 export WASM=1
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|readonly-raw-md-live-alias-wasm32"
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_md-readonly-byrefs.sh gates/fixtures/md-readonly-byrefs/MdReadonlyByrefs.csproj gates/fixtures/md-readonly-byrefs/Program.cs gates/fixtures/md-readonly-byrefs/runtime-checks.cpp samples/dotnet/ArrayCore/ArrayCovariantStoreSubset.cs"
-wasm_corelib_diff_gate StringCore System.Linq
-gate_capture_ok "$_CG_OUT/argument-roots" run_bounded node "$_CG_OUT/StringCore.js"
-gate_capture_ok "$_CG_OUT/argument-before" run_bounded dotnet "$_CG_APP" before-argument-roots
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|readonly-raw-md-live-alias-wasm32|wasm-console-full:$DN2CPP_WASM_CONSOLE_FULL"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/WasmConsole gates/_md-readonly-byrefs.sh gates/fixtures/md-readonly-byrefs/MdReadonlyByrefs.csproj gates/fixtures/md-readonly-byrefs/Program.cs gates/fixtures/md-readonly-byrefs/runtime-checks.cpp samples/dotnet/ArrayCore/ArrayCovariantStoreSubset.cs"
+# The combined image executes each original driver in its own process.
+wasm_console_diff_gate() {
+    local project="$1"
+    if [ "$DN2CPP_WASM_CONSOLE_FULL" = 1 ]; then
+        wasm_corelib_diff_gate "$@"
+        _WC_NATIVE=(node "$_CG_OUT/$project.js")
+        _WC_ORACLE=(dotnet "$_CG_APP")
+        return
+    fi
+    _WC_NATIVE=(node "$_CG_OUT/WasmConsole.js" "$project")
+    _WC_ORACLE=(dotnet "$_CG_APP" "$project")
+    local capture="$_CG_OUT/sections/$project"
+    gate_capture_ok "$capture/native" run_bounded "${_WC_NATIVE[@]}"
+    gate_capture_ok "$capture/oracle" run_bounded "${_WC_ORACLE[@]}"
+    gate_output compare "$capture/native.stdout" "$capture/oracle.stdout" --policy crlf
+    cat "$capture/native.stdout"
+}
+
+wasm_console_section_checks() {
+wasm_console_diff_gate StringCore System.Linq
+gate_capture_ok "$_CG_OUT/argument-roots" run_bounded "${_WC_NATIVE[@]}"
+gate_capture_ok "$_CG_OUT/argument-before" run_bounded "${_WC_ORACLE[@]}" before-argument-roots
 gate_output prefix "$_CG_OUT/argument-roots.stdout" "$_CG_OUT/argument-before.stdout" \
     --before '== Collected runtime argument operands ==' --policy crlf
 gate_output witness "$_CG_OUT/argument-roots.stdout" '== Collected runtime argument operands ==' \
     'Collected runtime argument operands end' --count 1 --policy crlf
-wasm_corelib_diff_gate NestedFinallySubset
-wasm_corelib_diff_gate Finalizers --link-xml samples/dotnet/Finalizers/link.xml
-gate_expected_partial "FinalizerSuppressQueuedSubset's post-enqueue window never opens here: this build never collects an object first named inside a finalizer body while that frame is live, so nothing is observed queued and no setting on either side changes it — the section runs and folds the window into its booleans, and gates/build-and-run-finalizers.sh asserts that surface for real."
-wasm_corelib_diff_gate WeakReferences
+wasm_console_diff_gate NestedFinallySubset
+wasm_console_diff_gate WeakReferences
 pending_barriers=$(awk '
     /\/\/ PendingCallArgumentSubset\.Program::__GateEntry/ { in_method = 1; next }
     in_method && /^\/\/ / { in_method = 0 }
@@ -97,7 +126,7 @@ if [ "$pending_barriers" -ne 1 ]; then
     exit 1
 fi
 
-wasm_corelib_diff_gate MonotonicClock
+wasm_console_diff_gate MonotonicClock
 
 # The section's booleans prove clocks ran; they do not prove they were THESE two.
 # A new intrinsic could leave the section green with a PAL entry no longer linked,
@@ -119,10 +148,10 @@ for thunk in \
 done
 echo "PAL reach OK: MonotonicClock still lowers both clocks to libSystem.Native"
 
-wasm_corelib_diff_gate PalSurface System.Net.Primitives
+wasm_console_diff_gate PalSurface System.Net.Primitives
 
-gate_capture_ok "$_CG_OUT/temp-before" run_bounded dotnet "$_CG_APP" before-temp-file
-gate_capture_ok "$_CG_OUT/temp-native" run_bounded node "$_CG_OUT/PalSurface.js"
+gate_capture_ok "$_CG_OUT/temp-before" run_bounded "${_WC_ORACLE[@]}" before-temp-file
+gate_capture_ok "$_CG_OUT/temp-native" run_bounded "${_WC_NATIVE[@]}"
 gate_output prefix "$_CG_OUT/temp-native.stdout" "$_CG_OUT/temp-before.stdout" \
     --before '== temporary file PAL ==' --policy crlf
 gate_output witness "$_CG_OUT/temp-native.stdout" 'temporary file PAL end' --count any --policy crlf
@@ -168,7 +197,28 @@ for thunk in \
 done
 echo "PAL reach OK: PalSurface still lowers the C heap, the stderr write and the MEMFS file closure to libSystem.Native"
 
-# ── 6th section: the Web lane's HTTP carve-out ────────────────────────────────
+}
+
+if [ "$DN2CPP_WASM_CONSOLE_FULL" = 1 ]; then
+    wasm_console_section_checks
+else
+    _wasm_console_corelib=$(locate_corelib_cross_posix net10)
+    _CG_CORELIB_IN="$_wasm_console_corelib" \
+        _corelib_gate_core WasmConsole artifacts/wasmconsole-wasm System.Linq System.Net.Primitives
+    if _corelib_gate_check "$_CG_OUT" "wasm-console-sections|host:$DN2CPP_OS|$_CG_CORELIB$(_gate_ctx_extras)"; then
+        gate_cache_hit_msg
+    else
+        compile_console_wasm "$_CG_OUT" WasmConsole
+        wasm_console_section_checks
+        gate_cache_commit
+    fi
+fi
+unset -f wasm_console_diff_gate wasm_console_section_checks
+
+wasm_corelib_diff_gate Finalizers --link-xml samples/dotnet/Finalizers/link.xml
+gate_expected_partial "FinalizerSuppressQueuedSubset's post-enqueue window never opens here: this build never collects an object first named inside a finalizer body while that frame is live, so nothing is observed queued and no setting on either side changes it — the section runs and folds the window into its booleans, and gates/build-and-run-finalizers.sh asserts that surface for real."
+
+# ── The Web lane's HTTP carve-out ────────────────────────────────
 # The one section here that is NOT a diff against real .NET, and it cannot be:
 # real .NET has a transport, so the oracle would perform the very request this
 # section exists to prove impossible. A browser has no TCP socket layer
@@ -190,7 +240,7 @@ echo "PAL reach OK: PalSurface still lowers the C heap, the stderr write and the
 #
 # net10.0-pinned like build-and-run-http-get.sh: the sample builds net10.0 and a
 # newer preview CoreLib carries a different System.Net.Http surface.
-echo "== 5/5 Web-lane HTTP carve-out: HttpClient links, then degrades =="
+echo "== Web-lane HTTP carve-out: HttpClient links, then degrades =="
 _wh_corelib=$(resolve_net10_corelib)
 _wh_bcl=$(dirname "$_wh_corelib")
 _wh_nethttp="$_wh_bcl/System.Net.Http.dll"
@@ -203,7 +253,7 @@ _wh_app="samples/dotnet/WasmHttpProbe/bin/$CONFIG/$TFM/WasmHttpProbe.dll"
 [ -f "$_wh_app" ] || { echo "error: not built: $_wh_app" >&2; exit 1; }
 
 _wh_out=artifacts/wasmhttpprobe-wasm
-rm -rf "$_wh_out"; mkdir -p "$_wh_out"
+mkdir -p "$_wh_out"
 invoke_cli "$_wh_app" -r "$_wh_corelib" -r "$_wh_nethttp" -r "$_wh_dnhttp" --auto-ref -o "$_wh_out"
 
 # The fallback's own words, verbatim (runtime/core/intrinsics/dn2cpp_http2_stream.cpp,
@@ -225,7 +275,7 @@ infinite: caught HttpRequestException
 infinite: message='"$_wh_msg"'
 still running'
 
-if gate_cache_check "$_wh_out" "wasm-http-carveout|$_wh_corelib|$_wh_nethttp|$_wh_expected" \
+if gate_cache_check "$_wh_out" "wasm-http-carveout|$_wh_corelib|$_wh_nethttp|$_wh_expected$(_gate_ctx_extras)" \
         "$_wh_app" "${_wh_app%.dll}.runtimeconfig.json" "${_wh_app%.dll}.deps.json" "$_wh_dnhttp"; then
     gate_cache_hit_msg
 else

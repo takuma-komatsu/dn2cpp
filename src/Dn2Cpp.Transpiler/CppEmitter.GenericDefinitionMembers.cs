@@ -67,7 +67,7 @@ internal sealed partial class CppEmitter
             bool available = !_e._strippedGenericMetadata.Contains(data.Name);
             if (available)
                 data.Flags = "(" + data.Flags + " | DN2CPP_TF_OBJECT_MEMBER_ROWS)";
-            bool attributes = available && _c.IsUserModule(owner.Module);
+            bool attributes = available && _c.KeepsTypeAttributeMetadata(owner.Module, owner.Handle);
             bool previousNative = _e._metadataNativeRows;
             _e._metadataNativeRows = data.Native;
             var methods = new List<MetadataRow>();

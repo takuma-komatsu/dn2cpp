@@ -5,18 +5,34 @@
 # refused target set leaves no generated sources in the output directory.
 source "$(dirname "$0")/_common.sh"
 
-# Keep native parity under the standard wrapper; the hook exercises opt-in emission.
-export DN2CPP_GATE_EXTRA_CONTEXT="obfuscation|strict|ildiet-on-off|no-shared-generics|cli:$(_gate_cli_hash)"
-PYTHON="$(resolve_python)" || gate_skip "obfuscation validation requires Python"
+case "${DN2CPP_OBFUSCATION_FULL:-0}" in
+    0|1) DN2CPP_OBFUSCATION_FULL=${DN2CPP_OBFUSCATION_FULL:-0} ;;
+    *) echo 'DN2CPP_OBFUSCATION_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+obfuscation_modes=stripped
+obfuscation_negatives=empty
+if [ "$DN2CPP_OBFUSCATION_FULL" = 1 ]; then
+    obfuscation_modes="stripped original"
+    obfuscation_negatives="empty pinvoke async iterator abstract intrinsic bodyreplace"
+    echo 'obfuscation profile: full preprocessing and refusal matrices'
+else
+    echo 'obfuscation profile: shared aggregate, deterministic targets, late target and empty-set refusal'
+    echo 'obfuscation raw-input and authority-refusal matrices: skipped (not selected); not counted as passed'
+fi
+export DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|obfuscation|strict|full:$DN2CPP_OBFUSCATION_FULL|no-shared-generics|cli:$(_gate_cli_hash)"
+gate_python -c 'pass' >/dev/null || gate_skip "obfuscation validation requires Python"
 gate_extra_asserts() {
     local baseline="$1" mode out
-    for mode in stripped original; do
-        out="$baseline-$mode"
+    for mode in $obfuscation_modes; do
+        out="$baseline"
         local flags=()
-        [ "$mode" = original ] && flags+=(--no-ildiet)
-        DN2CPP_STRICT_COMPLETION=1 invoke_cli "$_CG_APP" -r "$_CG_CORELIB" \
-            --obfuscate ${flags[@]+"${flags[@]}"} -o "$out"
-        "$PYTHON" - "$out" <<'PY'
+        if [ "$mode" = original ]; then
+            flags+=(--no-ildiet)
+            out="$baseline-$mode"
+            DN2CPP_STRICT_COMPLETION=1 invoke_cli "$_CG_APP" -r "$_CG_CORELIB" \
+                --obfuscate "${flags[@]}" -o "$out"
+        fi
+        gate_python - "$out" <<'PY'
 import json, pathlib, re, sys
 root = pathlib.Path(sys.argv[1])
 rows = json.loads((root / 'obfuscation-targets.json').read_text(encoding='utf-8'))['targets']
@@ -44,19 +60,21 @@ row = array_rows[0]
 source = (root / row['cppFile']).read_text(encoding='utf-8')
 assert re.search(r'DN2CPP_NOINLINE [^\n]*' + re.escape(row['implementationSymbol']) + r'\([^\n]*__rgctx', source), row
 PY
-        cp "$out/obfuscation-targets.json" "$out/targets-first.json"
+        local repeated="$out-repeat"
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$_CG_APP" -r "$_CG_CORELIB" \
-            --obfuscate ${flags[@]+"${flags[@]}"} -o "$out"
-        cmp "$out/targets-first.json" "$out/obfuscation-targets.json"
-        compile_console "$out" Obfuscation
-        gate_capture_ok "$out/obfuscated.native" run_bounded "./$out/Obfuscation$EXE_EXT"
-        gate_capture_ok "$out/obfuscated.dotnet" run_bounded dotnet "$_CG_APP"
-        gate_output compare "$out/obfuscated.native.stdout" "$out/obfuscated.dotnet.stdout"
+            --obfuscate ${flags[@]+"${flags[@]}"} -o "$repeated"
+        cmp "$out/obfuscation-targets.json" "$repeated/obfuscation-targets.json"
+        if [ "$mode" = original ]; then
+            compile_console "$out" Obfuscation
+            gate_capture_ok "$out/obfuscated.native" run_bounded "./$out/Obfuscation$EXE_EXT"
+            gate_capture_ok "$out/obfuscated.dotnet" run_bounded dotnet "$_CG_APP"
+            gate_output compare "$out/obfuscated.native.stdout" "$out/obfuscated.dotnet.stdout"
+        fi
     done
 
     local negative="$baseline-negative"
     mkdir -p "$negative"
-    "$PYTHON" - "$negative" <<'PYGEN'
+    gate_python - "$negative" <<'PYGEN'
 import pathlib, sys
 root = pathlib.Path(sys.argv[1])
 cases = {
@@ -79,7 +97,7 @@ for name, (body, call) in cases.items():
         + 'class Program { ' + body + ' public static void Main() { System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture; System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.InvariantCulture; System.Console.WriteLine(' + call + '); } }', encoding='utf-8')
 PYGEN
     local kind reason log
-    for kind in empty pinvoke async iterator abstract intrinsic bodyreplace; do
+    for kind in $obfuscation_negatives; do
         build_gate_proj "$negative/$kind/Probe.csproj"
         case "$kind" in
             empty) reason='requires at least one reachable' ;;
@@ -90,7 +108,7 @@ PYGEN
             iterator) reason='iterator methods are not supported' ;;
             abstract) reason='abstract methods have no implementation body' ;;
         esac
-        for mode in stripped original; do
+        for mode in $obfuscation_modes; do
             local flags=()
             [ "$mode" = original ] && flags+=(--no-ildiet)
             log="$negative/$kind/$mode.log"
@@ -98,9 +116,9 @@ PYGEN
             # Seed -o with a complete earlier transpile: the refusal must remove its
             # header too, not leave it beside chunks the refused run streamed.
             if [ "$kind" = empty ]; then
-                invoke_cli "$negative/$kind/bin/$CONFIG/$TFM/Probe.dll" -r "$_CG_CORELIB" \
-                    ${flags[@]+"${flags[@]}"} -o "$negative/$kind/$mode" >"$log" 2>&1 \
-                    && [ -f "$negative/$kind/$mode/generated.h" ] || { cat "$log"; return 1; }
+                mkdir -p "$negative/$kind/$mode"
+                cp "$baseline"/generated* "$negative/$kind/$mode/"
+                [ -f "$negative/$kind/$mode/generated.h" ] || return 1
             fi
             if invoke_cli "$negative/$kind/bin/$CONFIG/$TFM/Probe.dll" -r "$_CG_CORELIB" \
                 --obfuscate ${flags[@]+"${flags[@]}"} -o "$negative/$kind/$mode" >"$log" 2>&1; then
@@ -113,7 +131,8 @@ PYGEN
         done
     done
 
-    "$PYTHON" - "$negative" <<'PYCROSS'
+    if [ "$DN2CPP_OBFUSCATION_FULL" = 1 ]; then
+    gate_python - "$negative" <<'PYCROSS'
 import pathlib, sys
 root = pathlib.Path(sys.argv[1])
 lib = root / 'cross-lib'
@@ -134,7 +153,7 @@ PYCROSS
         build_gate_proj "$negative/cross-$kind/Probe.csproj"
         reason='implementation is replaced by an intrinsic or backend'
         [ "$kind" = interface ] && reason='abstract methods have no implementation body'
-        for mode in stripped original; do
+        for mode in $obfuscation_modes; do
             local flags=()
             [ "$mode" = original ] && flags+=(--no-ildiet)
             log="$negative/cross-$kind/$mode.log"
@@ -152,13 +171,15 @@ PYCROSS
     done
     echo "refusal OK: every refused --obfuscate run left no generated sources, including over an earlier transpile"
 
+    fi
+
     # Without a planning pass the real pass's compile rounds are the first to reach this
     # target: compiling the field copy mints Cell<int>, and the Array.Initialize lowering
     # reaches each minted value type's parameterless constructor. Its row, and the
     # refusal of a set with no target, follow those rounds.
     local late="$baseline-late" unplanned="$negative/empty-unplanned"
     mkdir -p "$late"
-    "$PYTHON" - "$late" <<'PYLATE'
+    gate_python - "$late" <<'PYLATE'
 import pathlib, sys
 root = pathlib.Path(sys.argv[1])
 (root / 'Probe.csproj').write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>disable</ImplicitUsings></PropertyGroup></Project>', encoding='utf-8')
@@ -178,13 +199,13 @@ class Program {
 """, encoding='utf-8')
 PYLATE
     build_gate_proj "$late/Probe.csproj"
-    for mode in stripped original; do
+    for mode in $obfuscation_modes; do
         local flags=()
         [ "$mode" = original ] && flags+=(--no-ildiet)
         out="$late/$mode"
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$late/bin/$CONFIG/$TFM/Probe.dll" -r "$_CG_CORELIB" \
             --obfuscate --no-shared-generics ${flags[@]+"${flags[@]}"} -o "$out"
-        "$PYTHON" - "$out" <<'PY'
+        gate_python - "$out" <<'PY'
 import json, pathlib, re, sys
 root = pathlib.Path(sys.argv[1])
 rows = json.loads((root / 'obfuscation-targets.json').read_text(encoding='utf-8'))['targets']
@@ -192,6 +213,7 @@ assert len(rows) == 1 and rows[0]['managedMethod'].endswith('::.ctor():Void'), r
 source = (root / rows[0]['cppFile']).read_text(encoding='utf-8')
 assert re.search(r'DN2CPP_NOINLINE [^\n]*\b' + re.escape(rows[0]['implementationSymbol']) + r'\([^\n]*\)\n\{', source), rows
 PY
+        if [ "$DN2CPP_OBFUSCATION_FULL" = 1 ]; then
         log="$unplanned-$mode.log"
         rm -rf "$unplanned-$mode"
         invoke_cli "$negative/empty/bin/$CONFIG/$TFM/Probe.dll" -r "$_CG_CORELIB" --no-shared-generics \
@@ -205,11 +227,16 @@ PY
         grep -F 'requires at least one reachable' "$log" || { cat "$log"; return 1; }
         ! compgen -G "$unplanned-$mode/generated*" >/dev/null \
             || { echo "FAIL: refused empty under --no-shared-generics ($mode) left C++: $(ls -1 "$unplanned-$mode" | tr '\n' ' ')" >&2; return 1; }
+        fi
     done
     compile_console "$late/stripped" Probe
     gate_capture_ok "$late/stripped/probe.native" run_bounded "./$late/stripped/Probe$EXE_EXT"
     gate_capture_ok "$late/stripped/probe.dotnet" run_bounded dotnet "$late/bin/$CONFIG/$TFM/Probe.dll"
     gate_output compare "$late/stripped/probe.native.stdout" "$late/stripped/probe.dotnet.stdout"
-    echo "compile-round target OK: under --no-shared-generics a target a compile round reaches first keeps its row, and an empty target set leaves no generated sources"
+    echo "compile-round target OK: under --no-shared-generics a target a compile round reaches first keeps its row"
 }
-corelib_diff_gate Obfuscation
+DN2CPP_STRICT_COMPLETION=1 corelib_diff_gate Obfuscation --obfuscate
+unset -f gate_extra_asserts
+if [ "$DN2CPP_OBFUSCATION_FULL" = 1 ]; then
+    DN2CPP_OUT_SUFFIX=-plain corelib_diff_gate Obfuscation
+fi

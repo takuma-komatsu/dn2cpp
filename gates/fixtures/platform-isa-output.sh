@@ -3,13 +3,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 _DN2CPP_GATE_ROOT=$PWD
-py=${1:-python3}
-resolve_python() { printf '%s\n' "$py"; }
-gate_output() { "$py" gates/gate-output.py "$@"; }
+source gates/_python.sh
+export DN2CPP_PYTHON="${1:-${DN2CPP_PYTHON:-}}"
+gate_output() { gate_python gates/gate-output.py "$@"; }
 source gates/_platform_isa.sh
 fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT
-"$py" - "$fixture" <<'PY'
+gate_python - "$fixture" <<'PY'
 from pathlib import Path
 import sys
 root = Path(sys.argv[1])
@@ -73,7 +73,7 @@ if platform_isa_output validate "$fixture/plan.view"; then
 fi
 # Native N/NM concatenate independently emitted shards. In particular the
 # x86-base shard can have only contract rows, without an invalid-immediate body.
-"$py" - "$fixture" <<'PYCODE'
+gate_python - "$fixture" <<'PYCODE'
 from pathlib import Path
 import sys
 root = Path(sys.argv[1])

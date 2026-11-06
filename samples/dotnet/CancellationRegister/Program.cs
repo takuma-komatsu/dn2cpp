@@ -29,6 +29,9 @@ namespace CancellationRegister
             if (args.Length != 0 && args[0] == "before-argument-fields")
                 return;
             CancellationDelayValidationSubset.__GateEntry();
+            if (args.Length != 0 && args[0] == "before-token-identity")
+                return;
+            CancellationIdentitySubset.Run();
         }
     }
 }

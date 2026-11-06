@@ -87,7 +87,7 @@
 # it, and it now transpiles under --shared-generics with DN2CPP_SHARED_ASSERT
 # armed, which it never did standalone.
 source "$(dirname "$0")/_common.sh"
-gvm_python=$(resolve_python) || gate_skip "Python is required to inspect generated GVM references"
+gate_python -c 'pass' >/dev/null || gate_skip "Python is required to inspect generated GVM references"
 
 project=SharedGenerics
 out="artifacts/sharedgenerics"
@@ -599,7 +599,7 @@ for line in '== shared trial generic virtual dispatch ==' \
 done
 
 echo "== Shared-trial GVM dispatcher references =="
-$gvm_python - "$out" <<'PY'
+gate_python - "$out" <<'PY'
 import collections
 import pathlib
 import re

@@ -45,7 +45,8 @@ self_test() (
     fixture=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp-ci-smoke-test.XXXXXX")
     trap 'rm -rf "$fixture"' EXIT
     mkdir -p "$fixture/gates" "$fixture/bin" "$fixture/runtime/10.0.0"
-    cp "$SCRIPT_DIR/ci-smoke.sh" "$SCRIPT_DIR/gate-output.py" "$fixture/gates/"
+    cp "$SCRIPT_DIR/ci-smoke.sh" "$SCRIPT_DIR/gate-output.py" \
+        "$SCRIPT_DIR/_python.sh" "$fixture/gates/"
     sed 's/^run_with_watchdog() {/ci_test_run_with_watchdog() {/' \
         "$SCRIPT_DIR/_common.sh" > "$fixture/gates/_common.sh"
     # The short fixture budget targets the selected gate after slow setup.

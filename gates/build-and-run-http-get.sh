@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Default coverage shares one HttpTransport image across the HttpReal,
+# HttpBeyondGet and HttpsTls drivers, preserving all live HTTP/TLS parity and
+# trusted/untrusted handshake witnesses. DN2CPP_HTTP_FULL=1 keeps their separate
+# images and adds the measure inventory, certificate-only contract, no-curl link
+# rejection and dedicated default-reference run.
+#
 # The System.Net.Http vertical slice: the two intercepts, the GET, and beyond it
 # POST/PUT bodies, request-header emission, response-header readback and
 # multi-status (sections 11-12) — then the same transport over TLS (13-15), the
@@ -137,6 +143,18 @@
 # CoreLib carries a different System.Net.Http surface.
 source "$(dirname "$0")/_common.sh"
 
+case "${DN2CPP_HTTP_FULL:-0}" in
+    0|1) DN2CPP_HTTP_FULL=${DN2CPP_HTTP_FULL:-0} ;;
+    *) echo 'DN2CPP_HTTP_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|http-full:$DN2CPP_HTTP_FULL"
+if [ "$DN2CPP_HTTP_FULL" = 1 ]; then
+    echo 'HTTP coverage: full transport, certificate and build-option matrix'
+else
+    echo 'HTTP coverage: shared image for live GET, methods/headers/status and trusted/untrusted TLS'
+    echo 'HTTP independent roots and extended checks: skipped (not selected); not counted as passed'
+fi
+
 echo "== 0/17 CA-bundle freshness =="
 # Ahead of every cached arm, unconditionally: this check is keyed on the CLOCK,
 # not on any input the gate cache hashes, so it must run live on every
@@ -160,6 +178,7 @@ echo "== 2/17 Building the DnHttp shim + the samples =="
 build_proj internal/DnHttp/src/DnHttp/DnHttp.csproj
 dnhttp="internal/DnHttp/src/DnHttp/bin/$CONFIG/$TFM/DnHttp.dll"
 [ -f "$dnhttp" ] || { echo "error: not built: $dnhttp" >&2; exit 1; }
+if [ "$DN2CPP_HTTP_FULL" = 1 ]; then
 build_proj samples/dotnet/HttpReal/HttpReal.csproj
 app="samples/dotnet/HttpReal/bin/$CONFIG/$TFM/HttpReal.dll"
 [ -f "$app" ] || { echo "error: not built: $app" >&2; exit 1; }
@@ -172,14 +191,26 @@ beyondapp="samples/dotnet/HttpBeyondGet/bin/$CONFIG/$TFM/HttpBeyondGet.dll"
 build_proj samples/dotnet/HttpsTls/HttpsTls.csproj
 tlsapp="samples/dotnet/HttpsTls/bin/$CONFIG/$TFM/HttpsTls.dll"
 [ -f "$tlsapp" ] || { echo "error: not built: $tlsapp" >&2; exit 1; }
+http_driver=isolated
+else
+build_proj samples/dotnet/HttpTransport/HttpTransport.csproj
+app="samples/dotnet/HttpTransport/bin/$CONFIG/$TFM/HttpTransport.dll"
+[ -f "$app" ] || { echo "error: not built: $app" >&2; exit 1; }
+beyondapp="$app"
+tlsapp="$app"
+http_driver=aggregate
+fi
 
+if [ "$DN2CPP_HTTP_FULL" = 1 ]; then
 echo "== 3/17 Transpiling the GET (both HttpClient paths) with DnHttp injected (--measure) =="
 out="artifacts/httpreal-measure"
 rm -rf "$out"; mkdir -p "$out"
 # --measure never aborts on a gap: it records each and keeps draining. A NON-ZERO exit
 # here is a harness failure (e.g. an instantiation bound), not a per-body gap.
+# Keep invoke_cli in this shell so its built CLI path is reused by later arms.
 invoke_cli "$app" -r "$corelib" -r "$nethttp" -r "$dnhttp" --auto-ref --measure -o "$out" \
-    | tee "$out/measure.log"
+    > "$out/measure.log"
+cat "$out/measure.log"
 gaps="$out/s0-gaps.tsv"
 [ -f "$gaps" ] || { echo "FAIL: --measure produced no gap report ($gaps)" >&2; exit 1; }
 
@@ -271,7 +302,7 @@ invoke_cli "$certapp" -r "$corelib" -r "$nethttp" -r "$dnhttp" --auto-ref -o "$c
 # Sections 6-7 are one cached arm (this gate transpiles four programs, so each
 # compile+run arm keys on its own out dir; the transpiles above always run).
 cert_hit=0
-if gate_cache_check "$certout" "http-get-cert|$corelib" \
+if gate_cache_check "$certout" "http-get-cert|full:$DN2CPP_HTTP_FULL|$corelib" \
         "$certapp" "$dnhttp" "${certapp%.dll}.runtimeconfig.json" "${certapp%.dll}.deps.json"; then
     gate_cache_hit_msg
     cert_hit=1
@@ -355,13 +386,15 @@ echo "OK: zero certificate-subtree bodies generated; native link has no dangling
 gate_cache_commit
 fi   # cert arm
 
+fi   # full measure and certificate checks
+
 # Shared by the four live-server arms below, whichever of them runs: an empty
 # pid/dir is safe in the traps (`kill "" 2>/dev/null` no-ops, `rm -rf ""` too),
-# and resolve_python is a pure lookup. Declared here, ahead of every arm, because
+# declared here, ahead of every arm, because
 # each arm's `trap ... EXIT` REPLACES the previous one and so must name the
 # earlier arms' server and scratch dir too — under `set -u` a name an arm never
 # reached would otherwise abort the trap and leak the process.
-py="$(resolve_python)"
+gate_python -c 'pass' >/dev/null
 webroot=""
 httppid=""
 echodir=""
@@ -371,27 +404,38 @@ tlspid=""
 defwebroot=""
 defpid=""
 
-echo "== 8/17 Transpiling + building HttpReal native on the libcurl transport =="
+echo "== 8/17 Transpiling + building the $http_driver HTTP image on the libcurl transport =="
 # The full GET now transpiles with NO gaps — a plain transpile (no --measure), so an unmapped
 # call is a hard error rather than a recorded gap. Built against the ordinary runtime — the
 # vendored libcurl rides in it by default (DN2CPP_USE_CURL is ON), and the runtime's
 # dn2cpp_http_* transport symbols are compiled only under that option — it becomes a native
 # console binary that issues a real HTTP request. There is no per-section env to set for that
 # any more; what the option's OFF side does is section 16's job.
-realout="artifacts/httpreal-native"
+if [ "$DN2CPP_HTTP_FULL" = 1 ]; then
+    realout="artifacts/httpreal-native"
+    realbin=httpreal
+    real_oracle=(dotnet "$app")
+    real_native=("$realout/$realbin$EXE_EXT")
+else
+    realout="artifacts/httptransport-native"
+    realbin=httptransport
+    real_oracle=(dotnet "$app" get)
+    real_native=("$realout/$realbin$EXE_EXT" get)
+fi
 rm -rf "$realout"; mkdir -p "$realout"
 invoke_cli "$app" -r "$corelib" -r "$nethttp" -r "$dnhttp" --auto-ref -o "$realout"
-# Sections 8-10: the second cached arm.
+# The aggregate cache covers sections 8-15 and commits only after TLS passes.
+# Full coverage keeps a separate cache for each independently emitted image.
 real_hit=0
-if gate_cache_check "$realout" "http-get-real|$corelib" \
+if gate_cache_check "$realout" "http-get-real|full:$DN2CPP_HTTP_FULL|driver:$http_driver|$corelib" \
         "$app" "$dnhttp" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json"; then
     gate_cache_hit_msg
     real_hit=1
 fi
 if [ "$real_hit" = 0 ]; then
-compile_console "$realout" httpreal
-[ -x "$realout/httpreal" ] || { echo "FAIL: HttpReal native binary was not built" >&2; exit 1; }
-echo "OK: HttpReal transpiles gap-free and links against the libcurl transport"
+compile_console "$realout" "$realbin"
+[ -x "$realout/$realbin$EXE_EXT" ] || { echo "FAIL: HTTP native binary was not built" >&2; exit 1; }
+echo "OK: $http_driver HTTP image transpiles gap-free and links against the libcurl transport"
 
 echo "== 9/17 Live GET: native libcurl vs real .NET SocketsHttpHandler, byte for byte =="
 # A local http.server on an ephemeral free port serves one fixed file. Both the native binary
@@ -402,14 +446,10 @@ echo "== 9/17 Live GET: native libcurl vs real .NET SocketsHttpHandler, byte for
 # section does not change; https:// over this same transport is sections 13-15.
 webroot="$(mktemp -d)"
 printf 'Hello from dn2cpp HttpClient!\nsecond line\n' > "$webroot/hello.txt"
-# resolve_python (_common.sh): a raw `python3` is not portable on Windows — a stock install
-# with no interpreter registered under that exact alias puts a non-functional app-execution-
-# alias stub on PATH instead, and `command -v` cannot tell the difference. Resolved once
-# (above, before the arms) and reused for every python invocation here and in section 12.
 # Ephemeral port: bind :0, read the kernel's pick, release, hand it to http.server. A fixed
 # port would flake when two gates (or a stray process) collide.
-httpport="$($py -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
-$py -m http.server "$httpport" --bind 127.0.0.1 --directory "$webroot" >/dev/null 2>&1 &
+httpport="$(gate_python -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
+(gate_python_exec -m http.server "$httpport" --bind 127.0.0.1 --directory "$webroot" >/dev/null 2>&1) &
 httppid=$!
 disown "$httppid" 2>/dev/null || true  # keep bash from printing a "Terminated" line when the trap kills it
 # `|| true` on every one of this gate's cleanup traps: under `set -e` a failing
@@ -419,16 +459,16 @@ trap 'rc=$?; kill "$httppid" 2>/dev/null || true; if [ "$rc" -eq 0 ]; then rm -r
 # Deterministic readiness wait (no fixed sleep): poll until the server accepts a request.
 httpready=
 for _ in $(seq 1 100); do
-    if $py -c "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:$httpport/hello.txt',timeout=1)" 2>/dev/null; then
+    if gate_python -c "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:$httpport/hello.txt',timeout=1)" 2>/dev/null; then
         httpready=1; break
     fi
     sleep 0.1
 done
 [ -n "$httpready" ] || { echo "FAIL: local http.server never came up on port $httpport" >&2; exit 1; }
 base="http://127.0.0.1:$httpport"
-gate_capture_ok "$realout/native" run_bounded "$realout/httpreal$EXE_EXT" "$base" || {
+gate_capture_ok "$realout/native" run_bounded "${real_native[@]}" "$base" || {
     echo "FAIL: native HttpReal exited non-zero:" >&2; cat "$realout/native.stderr" >&2; exit 1; }
-gate_capture_ok "$realout/oracle" run_bounded dotnet "$app" "$base" || {
+gate_capture_ok "$realout/oracle" run_bounded "${real_oracle[@]}" "$base" || {
     echo "FAIL: real .NET HttpReal exited non-zero" >&2; exit 1; }
 # Non-vacuity floor: the native run really performed the GET (a 200 carrying the body), so the
 # diff below is comparing real output, not two empty streams.
@@ -495,26 +535,40 @@ if grep -qE '^_?(SystemNative_(Socket|Connect|GetHostEntry|Accept|Bind)|CryptoNa
     exit 1
 fi
 echo "OK: zero .NET socket/DNS/TLS bodies or PAL imports — the libcurl transport is the sole path"
-gate_cache_commit
+if [ "$DN2CPP_HTTP_FULL" = 1 ]; then gate_cache_commit; fi
 fi   # real arm
 
-echo "== 11/17 Transpiling + building HttpBeyondGet (POST/PUT/headers/multi-status) =="
+echo "== 11/17 Preparing HttpBeyondGet (POST/PUT/headers/multi-status) =="
 # Same -r set and transport as section 8; a plain transpile, so an unmapped call on
 # the POST/PUT/header/status surface is a hard error, not a recorded gap.
+if [ "$DN2CPP_HTTP_FULL" = 1 ]; then
 beyondout="artifacts/httpbeyondget-native"
 rm -rf "$beyondout"; mkdir -p "$beyondout"
 invoke_cli "$beyondapp" -r "$corelib" -r "$nethttp" -r "$dnhttp" --auto-ref -o "$beyondout"
 # Sections 11-12: the third cached arm.
 beyond_hit=0
-if gate_cache_check "$beyondout" "http-get-beyond|$corelib" \
+if gate_cache_check "$beyondout" "http-get-beyond|full:$DN2CPP_HTTP_FULL|$corelib" \
         "$beyondapp" "$dnhttp" "${beyondapp%.dll}.runtimeconfig.json" "${beyondapp%.dll}.deps.json"; then
     gate_cache_hit_msg
     beyond_hit=1
 fi
+beyond_native=("$beyondout/httpbeyondget$EXE_EXT")
+beyond_oracle=(dotnet "$beyondapp")
+else
+beyondout="$realout/beyond"
+mkdir -p "$beyondout"
+beyond_hit="$real_hit"
+beyond_native=("$realout/$realbin$EXE_EXT" beyond)
+beyond_oracle=(dotnet "$beyondapp" beyond)
+fi
 if [ "$beyond_hit" = 0 ]; then
+if [ "$DN2CPP_HTTP_FULL" = 1 ]; then
 compile_console "$beyondout" httpbeyondget
-[ -x "$beyondout/httpbeyondget" ] || { echo "FAIL: HttpBeyondGet native binary was not built" >&2; exit 1; }
+[ -x "$beyondout/httpbeyondget$EXE_EXT" ] || { echo "FAIL: HttpBeyondGet native binary was not built" >&2; exit 1; }
 echo "OK: HttpBeyondGet transpiles gap-free and links against the libcurl transport"
+else
+echo "OK: HttpBeyondGet reuses the compiled HTTP image"
+fi
 
 echo "== 12/17 Beyond GET: POST/PUT/DELETE, headers, multi-status — native vs real .NET =="
 # One local echo/status server serves both runs. /echo answers with the request's
@@ -624,7 +678,7 @@ srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
 print(srv.server_address[1], flush=True)
 srv.serve_forever()
 PYEOF
-$py -u "$echodir/echo_server.py" > "$echodir/port.txt" 2>"$echodir/server.err" &
+(gate_python_exec -u "$echodir/echo_server.py" > "$echodir/port.txt" 2>"$echodir/server.err") &
 echopid=$!
 disown "$echopid" 2>/dev/null || true
 # A second `trap ... EXIT` REPLACES section 9's — fold that cleanup in rather than
@@ -643,16 +697,16 @@ fi
 # Belt-and-braces readiness: one real round-trip (same discipline as section 9).
 echoready=
 for _ in $(seq 1 100); do
-    if $py -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:$echoport/resphdr', timeout=1)" 2>/dev/null; then
+    if gate_python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:$echoport/resphdr', timeout=1)" 2>/dev/null; then
         echoready=1; break
     fi
     sleep 0.1
 done
 [ -n "$echoready" ] || { echo "FAIL: the echo server never answered on port $echoport" >&2; exit 1; }
 ebase="http://127.0.0.1:$echoport"
-gate_capture_ok "$beyondout/native" run_bounded "$beyondout/httpbeyondget$EXE_EXT" "$ebase" || {
+gate_capture_ok "$beyondout/native" run_bounded "${beyond_native[@]}" "$ebase" || {
     echo "FAIL: native HttpBeyondGet exited non-zero:" >&2; cat "$beyondout/native.stderr" >&2; exit 1; }
-gate_capture_ok "$beyondout/oracle" run_bounded dotnet "$beyondapp" "$ebase" || {
+gate_capture_ok "$beyondout/oracle" run_bounded "${beyond_oracle[@]}" "$ebase" || {
     echo "FAIL: real .NET HttpBeyondGet exited non-zero" >&2; exit 1; }
 # Non-vacuity floors before the diff: the 2 KiB POST body really crossed the wire,
 # and the multi-valued response header really read back as two values — so the diff
@@ -694,14 +748,15 @@ if ! gate_output compare "$beyondout/native.stdout" "$beyondout/oracle.stdout"; 
     echo "FAIL: native libcurl beyond-GET output differs from real .NET" >&2; exit 1
 fi
 echo "OK: POST/PUT/DELETE bodies, request headers, response headers and non-2xx statuses are byte-identical to real .NET ($(grep -c . "$beyondout/native.stdout") lines)"
-gate_cache_commit
+if [ "$DN2CPP_HTTP_FULL" = 1 ]; then gate_cache_commit; fi
 fi   # beyond arm
 
-echo "== 13/17 Transpiling + building HttpsTls native on the libcurl/Mbed TLS transport =="
+echo "== 13/17 Preparing HttpsTls on the libcurl/Mbed TLS transport =="
 # Same -r set and transport as sections 8 and 11; a plain transpile, so an unmapped call is a
 # hard error rather than a recorded gap. https:// changes nothing about the MANAGED surface —
 # HttpsTls issues one ordinary HttpClient.Send — so this section's job is only to produce the
 # one binary sections 14 and 15 run twice.
+if [ "$DN2CPP_HTTP_FULL" = 1 ]; then
 tlsout="artifacts/httpstls-native"
 rm -rf "$tlsout"; mkdir -p "$tlsout"
 invoke_cli "$tlsapp" -r "$corelib" -r "$nethttp" -r "$dnhttp" --auto-ref -o "$tlsout"
@@ -711,15 +766,28 @@ invoke_cli "$tlsapp" -r "$corelib" -r "$nethttp" -r "$dnhttp" --auto-ref -o "$tl
 # the shim and the runtime tree (the shared terms gate_cache_check already folds in, which is
 # where a changed dn2cpp_http2_stream.cpp or a changed cacert.pem lands).
 tls_hit=0
-if gate_cache_check "$tlsout" "http-get-tls|$corelib" \
+if gate_cache_check "$tlsout" "http-get-tls|full:$DN2CPP_HTTP_FULL|$corelib" \
         "$tlsapp" "$dnhttp" "${tlsapp%.dll}.runtimeconfig.json" "${tlsapp%.dll}.deps.json"; then
     gate_cache_hit_msg
     tls_hit=1
 fi
+tls_native=("$tlsout/httpstls$EXE_EXT")
+tls_oracle=(dotnet "$tlsapp")
+else
+tlsout="$realout/tls"
+mkdir -p "$tlsout"
+tls_hit="$real_hit"
+tls_native=("$realout/$realbin$EXE_EXT" tls)
+tls_oracle=(dotnet "$tlsapp" tls)
+fi
 if [ "$tls_hit" = 0 ]; then
+if [ "$DN2CPP_HTTP_FULL" = 1 ]; then
 compile_console "$tlsout" httpstls
-[ -x "$tlsout/httpstls" ] || { echo "FAIL: HttpsTls native binary was not built" >&2; exit 1; }
+[ -x "$tlsout/httpstls$EXE_EXT" ] || { echo "FAIL: HttpsTls native binary was not built" >&2; exit 1; }
 echo "OK: HttpsTls transpiles gap-free and links against the libcurl/Mbed TLS transport"
+else
+echo "OK: HttpsTls reuses the compiled HTTP image"
+fi
 
 # The trust anchors, read at the LINKER's level rather than from the source. The embedded
 # Mozilla bundle reaches the transport as two symbols the generated dn2cpp_ca_bundle.cpp
@@ -879,7 +947,7 @@ srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
 print(srv.server_address[1], flush=True)
 srv.serve_forever()
 PYEOF
-$py -u "$tlsdir/tls_server.py" > "$tlsdir/port.txt" 2>"$tlsdir/server.err" &
+(gate_python_exec -u "$tlsdir/tls_server.py" > "$tlsdir/port.txt" 2>"$tlsdir/server.err") &
 tlspid=$!
 disown "$tlspid" 2>/dev/null || true
 tlsport=
@@ -897,7 +965,7 @@ fi
 # masquerading as a dn2cpp verification failure in section 15.
 tlsready=
 for _ in $(seq 1 100); do
-    if $py -c "import ssl, urllib.request; ctx = ssl.create_default_context(cafile='$tlsca'); urllib.request.urlopen('https://127.0.0.1:$tlsport/hello.txt', context=ctx, timeout=1)" 2>"$tlsdir/readiness.err"; then
+    if gate_python -c "import ssl, urllib.request; ctx = ssl.create_default_context(cafile='$tlsca'); urllib.request.urlopen('https://127.0.0.1:$tlsport/hello.txt', context=ctx, timeout=1)" 2>"$tlsdir/readiness.err"; then
         tlsready=1; break
     fi
     sleep 0.1
@@ -912,7 +980,7 @@ done
 tbase="https://127.0.0.1:$tlsport"
 
 gate_capture_ok "$tlsdir/trusted" run_bounded env DN2CPP_HTTP_CAINFO="$tlsca" \
-    "$tlsout/httpstls$EXE_EXT" "$tbase" || {
+    "${tls_native[@]}" "$tbase" || {
     echo "FAIL: native HttpsTls exited non-zero on the trusted run:" >&2
     cat "$tlsdir/trusted.stderr" >&2; exit 1; }
 # The server is the gate's own and its reply is fixed, so the expected stdout is known
@@ -955,7 +1023,7 @@ echo "== 15/17 Untrusted certificate: a catchable exception that names the cause
 # unverifiable certificate would pass every other section of this gate and every other gate in
 # the suite: nothing else here ever presents one.
 servedbefore="$(grep -c '^served ' "$tlsdir/tls.log" || true)"
-gate_capture_ok "$tlsdir/untrusted" run_bounded "$tlsout/httpstls$EXE_EXT" "$tbase" || {
+gate_capture_ok "$tlsdir/untrusted" run_bounded "${tls_native[@]}" "$tbase" || {
     echo "FAIL: native HttpsTls exited non-zero on the untrusted run — a rejected certificate must be" >&2
     echo "      a catchable HttpRequestException, not a dead process:" >&2
     cat "$tlsdir/untrusted.stderr" >&2; exit 1; }
@@ -999,7 +1067,7 @@ servedafter="$(grep -c '^served ' "$tlsdir/tls.log" || true)"
 # either, so the two transports must agree line for line on the shape of the refusal — a
 # catchable HttpRequestException whose flattened cause names the certificate, and a live
 # process after it. The wording differs and is deliberately not on stdout.
-gate_capture_ok "$tlsdir/untrusted-oracle" run_bounded dotnet "$tlsapp" "$tbase" || {
+gate_capture_ok "$tlsdir/untrusted-oracle" run_bounded "${tls_oracle[@]}" "$tbase" || {
     echo "FAIL: real .NET HttpsTls exited non-zero" >&2; exit 1; }
 if ! gate_output compare "$tlsdir/untrusted.stdout" "$tlsdir/untrusted-oracle.stdout"; then
     echo "FAIL: the native refusal differs in shape from real .NET's" >&2; exit 1
@@ -1008,6 +1076,7 @@ echo "OK: an untrusted certificate is a catchable HttpRequestException naming th
 gate_cache_commit
 fi   # tls arm
 
+if [ "$DN2CPP_HTTP_FULL" = 1 ]; then
 echo "== 16/17 The opt-out: -DDN2CPP_USE_CURL=OFF still builds, and fails LOUDLY at link =="
 # DN2CPP_USE_CURL is ON by default, so this is the only section that builds the other side of
 # the option — and the only coverage the OFF configuration has anywhere in the suite. Before
@@ -1038,7 +1107,7 @@ rm -rf "$nocurlout"; mkdir -p "$nocurlout"
 cp -R "$realout"/* "$nocurlout/"
 # Its own out dir, hence its own cache slug — the four arms above key on theirs.
 nocurl_hit=0
-if gate_cache_check "$nocurlout" "http-get-nocurl|$corelib" \
+if gate_cache_check "$nocurlout" "http-get-nocurl|full:$DN2CPP_HTTP_FULL|$corelib" \
         "$app" "$dnhttp" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json"; then
     gate_cache_hit_msg
     nocurl_hit=1
@@ -1132,7 +1201,7 @@ invoke_cli "$app" -r "$corelib" -r "$nethttp" --auto-ref -o "$defout"
 # difference between "-r DnHttp" and "no -r DnHttp" is one that could replay
 # section 8's green here.
 def_hit=0
-if gate_cache_check "$defout" "http-get-defaultref|$corelib|nodnhttpref" \
+if gate_cache_check "$defout" "http-get-defaultref|full:$DN2CPP_HTTP_FULL|$corelib|nodnhttpref" \
         "$app" "$dnhttp" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json"; then
     gate_cache_hit_msg
     def_hit=1
@@ -1146,14 +1215,14 @@ echo "OK: HttpReal transpiles and links with NO -r DnHttp — the shim was injec
 # REPLACES the previous one, so it carries every earlier arm's pid and dir too.
 defwebroot="$(mktemp -d)"
 printf 'Hello from dn2cpp HttpClient!\nsecond line\n' > "$defwebroot/hello.txt"
-defport="$($py -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
-$py -m http.server "$defport" --bind 127.0.0.1 --directory "$defwebroot" >/dev/null 2>&1 &
+defport="$(gate_python -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
+(gate_python_exec -m http.server "$defport" --bind 127.0.0.1 --directory "$defwebroot" >/dev/null 2>&1) &
 defpid=$!
 disown "$defpid" 2>/dev/null || true
 trap 'rc=$?; kill "$httppid" "$echopid" "$tlspid" "$defpid" 2>/dev/null || true; if [ "$rc" -eq 0 ]; then rm -rf "$webroot" "$echodir" "$tlsdir" "$defwebroot" || true; else printf "HTTP evidence retained: %s\n" "$webroot" "$echodir" "$tlsdir" "$defwebroot" >&2; fi' EXIT
 defready=
 for _ in $(seq 1 100); do
-    if $py -c "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:$defport/hello.txt',timeout=1)" 2>/dev/null; then
+    if gate_python -c "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:$defport/hello.txt',timeout=1)" 2>/dev/null; then
         defready=1; break
     fi
     sleep 0.1
@@ -1174,5 +1243,7 @@ fi
 echo "OK: with no -r DnHttp at all, the GET is byte-identical to real .NET ($(grep -c . "$defout/native.stdout") lines)"
 gate_cache_commit
 fi   # default-ref arm
+
+fi   # full build-option and default-reference checks
 
 echo OK

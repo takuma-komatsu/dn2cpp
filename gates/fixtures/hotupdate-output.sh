@@ -3,8 +3,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 _DN2CPP_GATE_ROOT="$PWD"
-py="${1:-python3}"
-resolve_python() { printf '%s\n' "$py"; }
+source gates/_python.sh
+export DN2CPP_PYTHON="${1:-${DN2CPP_PYTHON:-}}"
 eval "$(sed -n '/^gate_capture() {/,/^}/p; /^gate_output() {/,/^}/p' gates/_common.sh)"
 eval "$(sed -n '/^hotupdate_capture() {/,/^}/p; /^hotupdate_merged()/p; /^hotupdate_fixture() {/,/^}/p; /^hotupdate_before() {/,/^}/p' gates/build-and-run-hotupdate-subset.sh)"
 OUT=$(mktemp -d)
@@ -152,16 +152,18 @@ fixture_status=0
 check_consumer "$ordinary_consumer" pass
 fixture_status=7
 check_consumer "$ordinary_consumer" pass
-# Exercise the real early cache call with a receipt stub: on the same machine,
-# only changing the declared host policy must miss a Windows abort receipt.
-"$py" - "$OUT/cache-call" <<'PYCODE'
+# Exercise the real early cache call: changing the selected profile or host
+# policy must miss a representative Windows receipt.
+gate_python - "$OUT/cache-call" <<'PYCODE'
 from pathlib import Path
 import sys
 gate_script = Path('gates/build-and-run-hotupdate-subset.sh').read_text(encoding='utf-8')
 line = next(line for line in gate_script.splitlines() if line.startswith('if gate_cache_check '))
 assert line.endswith(' \\')
-Path(sys.argv[1]).write_text(line[len('if '):-2] + '\n', encoding='utf-8')
+Path(sys.argv[1]).write_text('hotupdate_cache_probe() {\n' + line[len('if '):-2] + '\n}\n', encoding='utf-8')
 PYCODE
+# A function keeps Bash 3.2 errexit from terminating a sourced cache-miss probe.
+source "$OUT/cache-call"
 _gate_cli_hash() { printf cli; }
 resolve_net10_corelib() { printf corelib; }
 field_packed=packed
@@ -176,11 +178,18 @@ gate_cache_check() {
     [ "$cached_context" = "$2" ]
 }
 DN2CPP_OS=windows
-source "$OUT/cache-call" || :
+DN2CPP_HOTUPDATE_FULL=0
+hotupdate_cache_probe || :
 cache_mode=read
-source "$OUT/cache-call" || { echo 'FAIL: same-host cache control missed' >&2; exit 1; }
+hotupdate_cache_probe || { echo 'FAIL: same-host cache control missed' >&2; exit 1; }
+DN2CPP_HOTUPDATE_FULL=1
+if hotupdate_cache_probe; then
+    echo 'FAIL: full hot-update profile reused representative evidence' >&2
+    exit 1
+fi
+DN2CPP_HOTUPDATE_FULL=0
 DN2CPP_OS=linux
-if source "$OUT/cache-call"; then
+if hotupdate_cache_probe; then
     echo 'FAIL: host-only abort policy change reused cached Windows evidence' >&2
     exit 1
 fi

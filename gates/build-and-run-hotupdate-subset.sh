@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Default coverage runs the aggregate patch through register and stack codecs
+# using one native base. DN2CPP_HOTUPDATE_FULL=1 selects the additional import,
+# rejection, deployment and metadata matrices described below.
+#
 # Closed AOT generic virtual imports dispatch class and interface receivers,
 # including patch receivers below an AOT override. A delegate over such a
 # receiver, bound through the declaring row or by ldvirtftn, reports that
@@ -173,8 +177,20 @@
 # references) is strictly narrower than the invoker ABI; if that surface ever
 # widens the call lands on the invmiss_ stub and raises the same exception.
 source "$(dirname "$0")/_common.sh"
+
+case "${DN2CPP_HOTUPDATE_FULL:-0}" in
+    0|1) DN2CPP_HOTUPDATE_FULL=${DN2CPP_HOTUPDATE_FULL:-0} ;;
+    *) echo 'DN2CPP_HOTUPDATE_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|hotupdate-full:$DN2CPP_HOTUPDATE_FULL"
+if [ "$DN2CPP_HOTUPDATE_FULL" = 1 ]; then
+    echo 'hotupdate coverage: full import, rejection and metadata matrix'
+else
+    echo 'hotupdate coverage: aggregate register/stack interpreter parity'
+    echo 'hotupdate extended checks: skipped (not selected); not counted as passed'
+fi
 source "$(dirname "$0")/_hotupdate-signature-arguments.sh"
-hotupdate_python=$(resolve_python) || gate_skip "no working Python 3 interpreter for import fixtures"
+gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for import fixtures"
 
 OUT=artifacts/hotupdate-subset
 # Each observation has a distinct raw artifact even when a later codec reuses a variable.
@@ -259,8 +275,11 @@ assert_derived_aggregate_prefix() {
 
 echo "== 1/5 Building base + patch C# assemblies =="
 build_proj samples/dotnet/HotUpdateBase/HotUpdateBase.csproj
+if [ "$DN2CPP_HOTUPDATE_FULL" = 1 ]; then
 build_proj samples/dotnet/HotUpdateBase/HotUpdateMetadataBase.csproj
+fi
 build_proj samples/dotnet/HotUpdatePatch/HotUpdatePatch.csproj
+if [ "$DN2CPP_HOTUPDATE_FULL" = 1 ]; then
 build_proj samples/dotnet/HotUpdateBase/NoCtorImportBase.csproj
 build_proj samples/dotnet/HotUpdatePatch/NoCtorImportPatch.csproj
 build_proj samples/dotnet/HotUpdatePatch/NoCtorImportOracle.csproj
@@ -276,8 +295,9 @@ build_proj samples/dotnet/HotUpdatePatch/GvmCallLateNoAlloc.csproj
 build_proj samples/dotnet/HotUpdatePatch/RenamedSlotPatch.csproj
 build_proj samples/dotnet/HotUpdatePatch/AggregateCtorMissPatch.csproj
 build_proj samples/dotnet/HotUpdatePatch/OrdinaryCtorMissPatch.csproj
+fi
 renamed_slot_base_state() {
-    $hotupdate_python - "samples/dotnet/HotUpdateBase/bin/$CONFIG/$TFM/HotUpdateBase.dll" \
+    gate_python - "samples/dotnet/HotUpdateBase/bin/$CONFIG/$TFM/HotUpdateBase.dll" \
         "samples/dotnet/HotUpdateBase/obj/HotUpdateBase/$CONFIG/$TFM/HotUpdateBase.dll" <<'PY'
 import hashlib
 import pathlib
@@ -292,12 +312,15 @@ PY
 renamed_slot_state_before=$(renamed_slot_base_state)
 build_gate_proj gates/fixtures/interpreted-concat-oracle/InterpretedConcatOracle.csproj
 signature_arguments_fixture=gates/fixtures/hotupdate-import-identity/signature-arguments
+if [ "$DN2CPP_HOTUPDATE_FULL" = 1 ]; then
 build_gate_proj "$signature_arguments_fixture/Patch/SignatureArgumentPatch.csproj"
 build_gate_proj "$signature_arguments_fixture/Address/FieldAddressPatch.csproj"
+fi
 assert_output "$(renamed_slot_base_state)" "$renamed_slot_state_before"
 cmp -s "samples/dotnet/HotUpdateBase/bin/$CONFIG/$TFM/HotUpdateBase.dll" \
     "samples/dotnet/HotUpdateBase/obj/HotUpdateBase/$CONFIG/$TFM/HotUpdateBase.dll" \
     || { echo "FAIL: rewritten base bin and intermediate assembly differ" >&2; exit 1; }
+if [ "$DN2CPP_HOTUPDATE_FULL" = 1 ]; then
 build_proj samples/dotnet/HotUpdateBadPatch/HotUpdateBadPatch.csproj
 build_proj samples/dotnet/HotUpdateBadPatch/GenericVirtualBad.csproj
 build_proj samples/dotnet/HotUpdateBadPatchItf/HotUpdateBadPatchItf.csproj
@@ -319,6 +342,7 @@ build_proj samples/dotnet/HotUpdateCoreLibBadPatch/HotUpdateCoreLibBadPatch.cspr
 # adding a sample, because the surface under test is exactly this bucket's own
 # posture (a base image with no CoreLib in the load set).
 build_proj samples/dotnet/InterpBench/InterpBench.csproj
+fi
 base_app="samples/dotnet/HotUpdateBase/bin/$CONFIG/$TFM/HotUpdateBase.dll"
 patch_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/HotUpdatePatch.dll"
 noctor_base_app="samples/dotnet/HotUpdateBase/bin/$CONFIG/$TFM/NoCtorImportBase.dll"
@@ -382,7 +406,7 @@ grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
 # against the REAL net10.0 CoreLib, so which CoreLib that resolves to is an input
 # of this gate the same way it is of net10_bcl_diff_gate — a runtime bump must
 # not be served a green recorded against the previous one.
-if gate_cache_check "$OUT" "hotupdate-subset|abort-host:$DN2CPP_OS|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|patch-method-identities:private-rows/roundtrip/virtual-override/invoke/refusal-variant/metadata-v4|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/intrinsic-bcl/corelib/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:packed/native/register/stack/fields/field-address-refusal|carried-attribute-type-infos" \
+if gate_cache_check "$OUT" "hotupdate-subset|full:$DN2CPP_HOTUPDATE_FULL|abort-host:$DN2CPP_OS|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|patch-method-identities:private-rows/roundtrip/virtual-override/invoke/refusal-variant/metadata-v4|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/intrinsic-bcl/corelib/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:packed/native/register/stack/fields/field-address-refusal|carried-attribute-type-infos" \
         "$base_app" "$patch_app" "$bad_app" "$badgvm_app" "$baditf_app" "$baddg_app" \
         "$concat_oracle_app" \
         "$signature_arguments_base" "$signature_arguments_patch" "$signature_arguments_address" gates/_hotupdate-signature-arguments.sh \
@@ -821,6 +845,12 @@ gate_output compare "$hu_out" "$expected" --policy crlf
 assert_exit_code "$hu_rc" 0
 assert_derived_aggregate_prefix "$hu_out" "$expected_before_derived_aggregate"
 echo "OK (stack-format bake, identical transcript)"
+
+if [ "$DN2CPP_HOTUPDATE_FULL" != 1 ]; then
+    gate_cache_commit
+    echo 'OK (aggregate register and stack codecs)'
+    exit 0
+fi
 
 echo "-- conditional default refs: a base whose load set carries a TRIGGER --"
 # --emit-patch is structurally outside the conditional default-reference
@@ -1459,8 +1489,7 @@ for getter_codec in register stack; do
 
     cp "$getter_dir/HotUpdateDgSigPatch.bpi" "$getter_dir/confused-return.bpi"
     # The resolver may return an interpreter command with arguments.
-    # shellcheck disable=SC2086
-    $hotupdate_python - "$getter_dir/confused-return.bpi" <<'PY'
+    gate_python - "$getter_dir/confused-return.bpi" <<'PY'
 from pathlib import Path
 import sys
 
@@ -1727,7 +1756,7 @@ assert_exit_code "$cl_bad_rc" 0
 # value-type refusal. Relabel only the standalone type import pool entry; the
 # method's signature shape and every offset remain unchanged.
 cl_missing_patch="$OUT/corelib/HotUpdateCoreLibMissingTypePatch.bpi"
-$hotupdate_python - "$OUT/corelib/HotUpdateCoreLibBadPatch.bpi" "$cl_missing_patch" <<'PY'
+gate_python - "$OUT/corelib/HotUpdateCoreLibBadPatch.bpi" "$cl_missing_patch" <<'PY'
 import pathlib
 import struct
 import sys
@@ -1790,7 +1819,7 @@ DN2CPP_STRICT_COMPLETION=1 invoke_cli "$noctor_base_app" --hotupdate-base \
     --hotupdate-refs samples/dotnet/HotUpdatePatch/noctor-import-refs.txt -o "$noctor_out/normal"
 invoke_cli --emit-patch "$noctor_patch_app" --base-abi "$noctor_out/normal/base-abi.json" -o "$noctor_out"
 noctor_bpi="$noctor_out/NoCtorImportPatch.bpi"
-$hotupdate_python - "$noctor_bpi" runtime/core/dn2cpp_interp.h <<'PY'
+gate_python - "$noctor_bpi" runtime/core/dn2cpp_interp.h <<'PY'
 import pathlib
 import re
 import struct
@@ -1823,7 +1852,7 @@ for noctor_axis in duplicate missing legacy-single legacy-ambiguous; do
         --no-metadata-compression \
         --hotupdate-refs samples/dotnet/HotUpdatePatch/noctor-import-refs.txt -o "$noctor_out/$noctor_axis"
     cmp "$noctor_out/normal/base-abi.json" "$noctor_out/$noctor_axis/base-abi.json"
-    $hotupdate_python gates/fixtures/hotupdate-import-identity/mutate-native-rows.py \
+    gate_python gates/fixtures/hotupdate-import-identity/mutate-native-rows.py \
         "$noctor_out/$noctor_axis" "$noctor_axis"
     compile_console "$noctor_out/$noctor_axis" NoCtorImportBase
     hotupdate_capture noctor_result _hotupdate_status stdout run_bounded "./$noctor_out/$noctor_axis/NoCtorImportBase$EXE_EXT" "$noctor_bpi"
@@ -1841,7 +1870,7 @@ echo "-- BPI format rejection at hard-load and directory-header mouths --"
 mkdir -p "$noctor_out/wrong-formats"
 for wrong_format in 1 2 3 2147483647; do
     wrong_bpi="$noctor_out/wrong-formats/format-$wrong_format.bpi"
-    $hotupdate_python gates/fixtures/hotupdate-import-identity/set-bpi-version.py \
+    gate_python gates/fixtures/hotupdate-import-identity/set-bpi-version.py \
         "$noctor_bpi" "$wrong_bpi" "$wrong_format"
     hotupdate_capture noctor_result _hotupdate_status stdout run_bounded "./$noctor_out/normal/NoCtorImportBase$EXE_EXT" "$wrong_bpi"
     gate_output status "$_hotupdate_status" 0
@@ -2308,7 +2337,7 @@ invoke_cli "$base_app" --hotupdate-base \
     --reflection-metadata HotUpdateBase.UnavailableAggregateProbe=native \
     --reflection-metadata HotUpdateBase.UnavailableOrdinaryProbe=native \
     --hotupdate-refs samples/dotnet/HotUpdatePatch/hotupdate-refs.txt -o "$aggregate_ctor_base"
-aggregate_ctor_fixture=$($hotupdate_python gates/fixtures/hotupdate-import-identity/clear-aggregate-ctor-bodies.py \
+aggregate_ctor_fixture=$(gate_python gates/fixtures/hotupdate-import-identity/clear-aggregate-ctor-bodies.py \
     "$aggregate_ctor_base")
 assert_output "$(strip_cr_win "$aggregate_ctor_fixture")" \
     'native aggregate/ordinary constructor bodies unavailable:2'
@@ -2443,7 +2472,7 @@ done
 echo "OK (unrecorded patch method metadata refused in both formats)"
 for mutation in extent parameter-count return-type ownership; do
     malformed="$OUT/renamed-slots/register/metadata-$mutation.bpi"
-    $hotupdate_python gates/fixtures/hotupdate-import-identity/mutate-method-metadata.py \
+    gate_python gates/fixtures/hotupdate-import-identity/mutate-method-metadata.py \
         "$OUT/renamed-slots/register/RenamedSlotPatch.bpi" "$malformed" "$mutation"
     case "$mutation" in
         extent) malformed_diagnostic='BPI: method metadata section extent mismatch' ;;
