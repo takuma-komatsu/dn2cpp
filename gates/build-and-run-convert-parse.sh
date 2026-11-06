@@ -210,8 +210,8 @@ gate_extra_asserts() {
     gate_capture_ok "$out/integer-utf8-before" run_bounded dotnet "$_CG_APP" before-invalid-integer-utf8
     gate_output select "$out/native.stdout" "$out/integer-utf8-prefix.stdout" \
         --before '== integer UTF8 validation ==' --policy crlf
-    gate_output compare "$out/integer-utf8-prefix.stdout" "$out/integer-utf8-before.stdout" --policy crlf
-    gate_output witness "$out/native.stdout" '== integer UTF8 validation ==' \
+    gate_output compare "$out/integer-utf8-prefix.stdout" "$out/integer-utf8-before.stdout"
+    gate_output byte-witness "$out/native.stdout" '== integer UTF8 validation ==' \
         'valid replacement sign=True:-1' \
         'illegal lead try=False:0' \
         'illegal lead parse=FormatException:Input string was not in a correct format.' \
