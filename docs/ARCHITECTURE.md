@@ -1253,6 +1253,15 @@ that answer a fault differently are directly observable by a hot-update program.
 
 ## 5. Cross-cutting machinery (a map of where things live)
 
+CLI value storage boundaries preserve the declared width and physical layout.
+Promoted enum arguments and locals truncate to their underlying storage width,
+including shared generic bodies. Canonical layouts and method signatures cannot
+share a managed vector field with an intrinsic-mapped vector field. Box payloads
+follow the object header and may lack the alignment required by their value;
+`unbox.any` copies bytes into aligned local storage. Field and indirect access
+to vector-containing values also copy bytes, while field addresses continue to
+alias the original storage and reference stores retain their GC barriers.
+
 | Mechanism | Main location |
 |-----------|---------------|
 | Generics (instantiation discovery / specialization) | `Compilation` (discovery + specialization at the IL-scan fixpoint), `SignatureProvider` (`GenericContext` threading) |
