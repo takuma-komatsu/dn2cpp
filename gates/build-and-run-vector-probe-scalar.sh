@@ -22,4 +22,6 @@ export SCALAR=1
 export DN2CPP_ORACLE_DOTNET_ENABLE_AVX=0
 export DN2CPP_GATE_EXTRA_CONTEXT="dotnet-vector-width:128"
 
+source "$(dirname "$0")/_vector-regression-checks.sh"
+
 corelib_diff_gate VectorProbe
