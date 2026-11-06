@@ -118,13 +118,17 @@ The HTTP and Wasm console aggregates run each section in a separate process;
 finalizer-sensitive fixtures retain independent images. Native-asset publication
 reuses each SDK-built image for failure, atomic-switch and generation-pruning checks.
 
+Default-culture normally checks representative numeric cultures, environment
+precedence and frozen unknown-region currency. Its full profile adds the detailed
+locale, fallback, identifier, Windows user-setting and libc-injection matrices.
+
 The default stripping level remains High. Basic High/Medium static closure,
 metadata-only retention, deferred initializers and callable intercept regressions
 run in the preservation gate's normal profile. Its full profile adds raw emission
 alongside DLL rewriting.
 
-Detailed isolation, preprocessing and backend matrices are explicit development
-checks. Omitting them does not establish equivalent coverage: independent roots,
+Detailed isolation, preprocessing, backend and culture matrices are explicit
+development checks. Omitting them does not establish equivalent coverage: independent roots,
 raw/ILDiet pairs, individual emit-order axes and HTTP packaging contracts require
 the relevant full profile. Gate logs and the pre-merge receipt mark these checks
 **skipped (not selected)**. Pre-merge pins these selectors to `0`, including when
@@ -148,6 +152,7 @@ DN2CPP_TRIM_REFLECTION_FULL=1 CONFIG=Debug bash gates/build-and-run-trim-reflect
 DN2CPP_OBFUSCATION_FULL=1 CONFIG=Debug bash gates/build-and-run-obfuscation.sh
 DN2CPP_WASM_CONSOLE_FULL=1 CONFIG=Debug bash gates/build-and-run-wasm-console.sh
 DN2CPP_PLATFORM_ISA_FULL=1 CONFIG=Debug bash gates/build-and-run-platform-isa-native.sh
+DN2CPP_DEFAULT_CULTURE_FULL=1 CONFIG=Debug bash gates/build-and-run-default-culture.sh
 ```
 
 ## What to work on
