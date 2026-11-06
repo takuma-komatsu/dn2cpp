@@ -31,6 +31,8 @@
 # raw bytes and bit-exact round-trips include signed zero and trailing scale.
 # Overlapping CopyTo/TryCopyTo cover scalar storage and GC references.
 source "$(dirname "$0")/_common.sh"
+source "$(dirname "$0")/_memorymarshal-bounds-probe.sh"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_memorymarshal-bounds-probe.sh"
 
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|decimal-layout-prefix:before-decimal-layout"
 gate_extra_asserts() {
@@ -73,6 +75,7 @@ gate_extra_asserts() {
         gate_output byte-witness "$output" "$line" --count any --policy crlf \
             || { echo "FAIL: overlapping span witness missing: $line" >&2; exit 1; }
     done
+    memorymarshal_bounds_asserts "$out"
 }
 
 corelib_diff_gate SpanOps

@@ -58,5 +58,23 @@
 # pointer-compare, fixed-statement, function-pointer, ldftn-external-subset,
 # corelib-subset.
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|function-pointer-assembly-prefix:before-function-pointer-assembly"
+
+gate_extra_asserts() {
+    local out="$1"
+    gate_capture_ok "$out/function-pointer-assembly-before" run_bounded dotnet "$_CG_APP" before-function-pointer-assembly
+    gate_output select "$out/native.stdout" "$out/function-pointer-assembly-prefix.stdout" \
+        --before '== function pointer assembly ==' --policy crlf
+    gate_output compare "$out/function-pointer-assembly-prefix.stdout" "$out/function-pointer-assembly-before.stdout" --policy crlf
+    gate_output witness "$out/native.stdout" '== function pointer assembly ==' \
+        'local return=True' \
+        'core return=True' \
+        'pointer return=True' \
+        'nested return=True' \
+        'pointer wrapper=True' \
+        'function pointer assembly end' \
+        --count 1 --policy crlf
+
+}
 
 corelib_diff_gate UnsafePtr System.Runtime System.Linq System.Threading
