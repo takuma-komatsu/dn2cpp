@@ -105,6 +105,9 @@ gate_extra_asserts() {
         'wide names generic=One,Alias,Top,TopAlias' \
         'wide names runtime=One,Alias,Top,TopAlias' \
         'wide values runtime=4:1:1:9223372036854775808:9223372036854775808' \
+        'boxed name wide source=null' \
+        'boxed name unsigned=High:Last' \
+        'boxed defined exact=True:False' \
         'enum alias metadata end' \
         --count 1 --policy crlf
 
