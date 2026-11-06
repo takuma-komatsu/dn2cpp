@@ -107,8 +107,11 @@ assert_published_image "$third"
 printf 'OK: SDK-image reuse preserves shell publication and failure guards\n'
 '''
 with tempfile.TemporaryDirectory(prefix="dn2cpp-published-image-") as temporary:
+    # Windows command-line limits can truncate the combined Bash source.
+    script = Path(temporary) / "probe.sh"
+    script.write_text(definitions + probe, encoding="utf-8", newline="\n")
     result = subprocess.run(
-        [os.environ.get("DN2CPP_TEST_BASH", "bash"), "-c", definitions + probe],
+        [os.environ.get("DN2CPP_TEST_BASH", "bash"), script.as_posix()],
         cwd=temporary, capture_output=True, text=True, encoding="utf-8",
     )
     if result.returncode:
