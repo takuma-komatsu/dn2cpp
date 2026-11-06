@@ -4138,7 +4138,9 @@ internal sealed partial class MethodCompiler
             if (NullableLayout(c) is (_, var hasValue, _))
             {
                 string nullable = NewTemp(CppTypes.Of(c));
-                Emit($"{nullable} = {ConstrainedReceiverValue(c, receiver.Expr)};");
+                if (_c.ContainsVectorStorage(c))
+                    Emit($"std::memcpy(&{nullable}, (const void*)({receiver.Expr}), sizeof({nullable}));");
+                else Emit($"{nullable} = {ConstrainedReceiverValue(c, receiver.Expr)};");
                 Emit($"if (!{nullable}.{hasValue}) dn2cpp_throw_null_reference();");
             }
             Push(StackKind.Ref, "Dn2CppType*", $"((void)({receiver.Expr}), dn2cpp_get_type_from_handle({ti}))");
@@ -4624,7 +4626,9 @@ internal sealed partial class MethodCompiler
                 $"{_method.DeclaringClass.FullName}.{_method.Name}: constrained call on {c} has no emitted type-info");
         string ct = CppTypes.Of(c);
         string tmp = NewTemp(ct);
-        Emit($"{tmp} = {ConstrainedReceiverValue(c, receiver.Expr)};");
+        if (_c.ContainsVectorStorage(c))
+            Emit($"std::memcpy(&{tmp}, (const void*)({receiver.Expr}), sizeof({tmp}));");
+        else Emit($"{tmp} = {ConstrainedReceiverValue(c, receiver.Expr)};");
         return $"dn2cpp_box({ti}, &{tmp}, sizeof({ct}))";
     }
 
