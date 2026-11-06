@@ -288,6 +288,7 @@ Dn2CppObject* dn2cpp_object_memberwise_clone(Dn2CppObject* obj)
     if (obj == nullptr)
         dn2cpp_throw_null_reference();
     const Dn2CppTypeInfo* t = obj->type;
+    dn2cpp_require_allocation_supported(t);
     if (t == &dn2cpp_string_type)
     {
         auto* s = reinterpret_cast<Dn2CppString*>(obj);
@@ -367,16 +368,19 @@ Dn2CppObject* dn2cpp_object_memberwise_clone(Dn2CppObject* obj)
     {
         auto* source = reinterpret_cast<Dn2CppDelegate*>(obj);
         auto* target = reinterpret_cast<Dn2CppDelegate*>(clone);
-        // Enumeration publishes this cache atomically; a clone cannot read it by memmove.
+        // Cache publication and binding snapshots are atomic; neither may be read by memmove.
         size_t cacheOffset = reinterpret_cast<const char*>(&source->invocationCache)
             - reinterpret_cast<const char*>(source);
-        size_t cacheEnd = cacheOffset + sizeof(source->invocationCache);
+        size_t stateEnd = reinterpret_cast<const char*>(&source->bindingSnapshotted)
+            - reinterpret_cast<const char*>(source) + sizeof(source->bindingSnapshotted);
         dn2cpp_gc_memmove_refs(clone, obj, cacheOffset);
-        if (bytes > cacheEnd)
-            dn2cpp_gc_memmove_refs(reinterpret_cast<char*>(clone) + cacheEnd,
-                reinterpret_cast<const char*>(obj) + cacheEnd, bytes - cacheEnd);
+        if (bytes > stateEnd)
+            dn2cpp_gc_memmove_refs(reinterpret_cast<char*>(clone) + stateEnd,
+                reinterpret_cast<const char*>(obj) + stateEnd, bytes - stateEnd);
         dn2cpp_gc_store_ref(&target->invocationCache,
             source->invocationCache.load(std::memory_order_acquire));
+        // A clone is a new binding owner, not an alias of the source entry.
+        target->bindingSnapshotted.store(false, std::memory_order_relaxed);
     }
     else
     {

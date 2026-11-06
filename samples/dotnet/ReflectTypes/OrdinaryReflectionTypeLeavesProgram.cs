@@ -40,5 +40,11 @@ static class Program
         if (args.Length > 0 && args[0] == "before-method-attribute-inheritance")
             return;
         MethodAttributeInheritanceSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-metadata-definition-identity")
+            return;
+        MetadataDefinitionSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-collectibility")
+            return;
+        CollectibilitySubset.Program.Run();
     }
 }

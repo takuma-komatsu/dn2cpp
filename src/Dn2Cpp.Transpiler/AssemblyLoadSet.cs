@@ -14,6 +14,7 @@ internal sealed class AssemblyLoadSet
     private sealed class AssemblyReferences
     {
         internal string Name = "";
+        internal bool HasDefaultPrincipalAccessor;
         internal readonly List<string> References = new();
     }
 
@@ -23,9 +24,15 @@ internal sealed class AssemblyLoadSet
     {
         using var pe = new PEReader(ImmutableCollectionsMarshal.AsImmutableArray(File.ReadAllBytes(path)));
         var reader = pe.GetMetadataReader();
-        var assembly = new AssemblyReferences { Name = reader.GetString(reader.GetAssemblyDefinition().Name) };
+        var assembly = new AssemblyReferences
+        {
+            Name = reader.GetString(reader.GetAssemblyDefinition().Name),
+            HasDefaultPrincipalAccessor = DefaultPrincipalContract.HasAccessor(reader),
+        };
         foreach (var handle in reader.AssemblyReferences)
             assembly.References.Add(reader.GetString(reader.GetAssemblyReference(handle).Name));
+        if (assembly.HasDefaultPrincipalAccessor)
+            assembly.References.Add(DefaultPrincipalContract.TargetAssembly);
         Paths.Add(path);
         _assemblies.Add(assembly);
         return assembly;
@@ -77,6 +84,13 @@ internal sealed class AssemblyLoadSet
                 string path = Path.Combine(frameworkDirectory, name + ".dll");
                 if (!File.Exists(path))
                     continue;
+                if (name == DefaultPrincipalContract.TargetAssembly)
+                {
+                    using var pe = new PEReader(ImmutableCollectionsMarshal.AsImmutableArray(File.ReadAllBytes(path)));
+                    var reader = pe.GetMetadataReader();
+                    if (!reader.StringComparer.Equals(reader.GetAssemblyDefinition().Name, name))
+                        throw new NotSupportedException("default principal dependency has an unexpected assembly identity");
+                }
                 var added = Add(path);
                 loaded.Add(added.Name);
                 queue.Enqueue(added);

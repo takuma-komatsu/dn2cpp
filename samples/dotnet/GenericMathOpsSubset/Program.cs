@@ -160,7 +160,16 @@ internal static class Program
         GenericMathStaticAbstractGvm.StaticAbstractGenericMethod.__GateEntry();
         GenericMathInterfaceStaticImpl.InterfaceStaticImpl.__GateEntry();
         if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_STATIC_IMPL_SELECTION") != "1")
+        {
             GenericMathStaticAbstractGvm.StaticAbstractGenericMethod.__GateImplSelectionEntry();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_SCALAR_NUMERIC_LEAVES") != "1")
+            {
+                GenericMathScalarLeaves.ScalarNumericLeaves.__GateEntry();
+                GenericMathEndian.EndianReads.__GateEntry();
+                GenericMathParsing.PrimitiveParsing.__GateEntry();
+                GenericMathWideConversions.WideConversions.__GateEntry();
+            }
+        }
 
         return 0;
     }

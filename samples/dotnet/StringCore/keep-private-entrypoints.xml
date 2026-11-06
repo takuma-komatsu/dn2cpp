@@ -1,0 +1,8 @@
+<linker>
+  <assembly fullname="System.Private.CoreLib">
+    <type fullname="System.String">
+      <method name="GetRawStringDataAsUInt8" />
+      <method name="wcslen" />
+    </type>
+  </assembly>
+</linker>

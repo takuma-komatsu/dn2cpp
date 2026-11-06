@@ -53,9 +53,9 @@
 #include <gc.h>
 #include <gc_mark.h>
 
-// ── GC stop-the-world pause-time instrumentation (opt-in: DN2CPP_GC_STATS) ─────
-// A diagnostic (not on any hot path) for measuring collection pauses — used by
-// gates/measure-gcpause.sh to compare incremental vs stop-the-world mode. The
+// ── GC pause-time accounting (optional detail report: DN2CPP_GC_STATS) ─────
+// The cumulative duration backs GC.GetTotalPauseDuration. Detailed statistics
+// serve gates/measure-gcpause.sh without adding work to allocation paths. The
 // on-collection-event callback runs with the GC lock held / the world stopped, so
 // it performs NO GC calls and NO allocation: it only reads steady_clock and bumps
 // relaxed atomics. The summary (which queries GC_get_gc_no / GC_get_heap_size, both
@@ -77,18 +77,32 @@ std::atomic<unsigned long long> g_pause_count;
 std::atomic<unsigned long long> g_pause_total_ns;
 std::atomic<unsigned long long> g_pause_max_ns;
 std::atomic<unsigned long long> g_pause_hist[kPauseBucketCount];
-// Written at POST_STOP_WORLD, read at PRE_START_WORLD. The STW window is single-
-// threaded and collections never overlap, so a plain static suffices.
+// Set before installing the callback; immutable once managed execution begins.
+bool g_pause_details_enabled;
+bool g_pause_accounting_supported = true;
+// Written at the pause start, read at its end. Collection callbacks never
+// overlap, so the timestamp needs no atomic storage.
 std::chrono::steady_clock::time_point g_stop_world_at;
 
 void GC_CALLBACK dn2cpp_gc_event(GC_EventType ev)
 {
-    if (ev == GC_EVENT_POST_STOP_WORLD)
+    if (!g_pause_accounting_supported)
+        return;
+#ifdef GC_THREADS
+    constexpr auto start = GC_EVENT_POST_STOP_WORLD;
+    constexpr auto end = GC_EVENT_PRE_START_WORLD;
+#else
+    // A nonincremental single-threaded collection runs synchronously: the
+    // application cannot execute between these events. Wasm forces this mode.
+    constexpr auto start = GC_EVENT_START;
+    constexpr auto end = GC_EVENT_END;
+#endif
+    if (ev == start)
     {
         g_stop_world_at = std::chrono::steady_clock::now();
         return;
     }
-    if (ev != GC_EVENT_PRE_START_WORLD)
+    if (ev != end)
         return;
 
     auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -97,8 +111,13 @@ void GC_CALLBACK dn2cpp_gc_event(GC_EventType ev)
         ns = 0;
     unsigned long long u = static_cast<unsigned long long>(ns);
 
+    // The callback is serialized by the collector lock. Saturation keeps the
+    // public duration monotonic even if the cumulative nanoseconds overflow.
+    auto total = g_pause_total_ns.load(std::memory_order_relaxed);
+    g_pause_total_ns.store(u > ~0ULL - total ? ~0ULL : total + u, std::memory_order_relaxed);
+    if (!g_pause_details_enabled)
+        return;
     g_pause_count.fetch_add(1, std::memory_order_relaxed);
-    g_pause_total_ns.fetch_add(u, std::memory_order_relaxed);
     unsigned long long prev = g_pause_max_ns.load(std::memory_order_relaxed);
     while (u > prev && !g_pause_max_ns.compare_exchange_weak(prev, u, std::memory_order_relaxed))
         ; // retry: prev refreshed by compare_exchange_weak
@@ -551,7 +570,14 @@ void dn2cpp_runtime_init(Dn2CppCpuFeaturesInit initCpuFeatures)
         GC_set_time_limit(ms);
         GC_enable_incremental();
     }
-    if (dn2cpp_pal_getenv("DN2CPP_GC_STATS") != nullptr)
+    // Pauses are measured from runtime startup, not from the first query or
+    // only when diagnostics happen to be enabled.
+#ifndef GC_THREADS
+    g_pause_accounting_supported = !incremental;
+#endif
+    g_pause_details_enabled = dn2cpp_pal_getenv("DN2CPP_GC_STATS") != nullptr;
+    GC_set_on_collection_event(dn2cpp_gc_event);
+    if (g_pause_details_enabled)
     {
         // Print the active mode immediately (not via atexit), so it is observable
         // even when the host does not exit cleanly (e.g. the Godot engine).
@@ -584,7 +610,6 @@ void dn2cpp_runtime_init(Dn2CppCpuFeaturesInit initCpuFeatures)
                      "[dn2cpp] GC protects: %d (0=none, 1=pointerful heap, 3=+pointer-free)"
                      "; kernel-write bounce: %s\n",
                      needs, (incremental && needs != GC_PROTECTS_NONE) ? "on" : "off");
-        GC_set_on_collection_event(dn2cpp_gc_event);
         std::atexit(dn2cpp_gc_stats_dump_once);
     }
     //   DN2CPP_GC_SUPPRESS_STATS   suppressed-finalizer set work summary at exit
@@ -2419,6 +2444,19 @@ int32_t dn2cpp_gc_collection_count()
     return static_cast<int32_t>(GC_get_gc_no());
 #else
     return 0; // no collections occur under the calloc fallback
+#endif
+}
+
+int64_t dn2cpp_gc_total_pause_ticks()
+{
+#ifdef DN2CPP_USE_BOEHM_GC
+    if (!g_pause_accounting_supported)
+        dn2cpp_throw_platform_not_supported("GC pause duration is unavailable for a nonthreaded incremental collector.");
+    // Dividing the saturated unsigned nanoseconds first keeps the signed ticks
+    // representable and nonnegative. Readers never take the collector lock.
+    return static_cast<int64_t>(g_pause_total_ns.load(std::memory_order_relaxed) / 100);
+#else
+    return 0; // no collector, hence no pauses
 #endif
 }
 

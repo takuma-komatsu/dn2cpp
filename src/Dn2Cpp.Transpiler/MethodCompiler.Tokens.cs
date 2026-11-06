@@ -53,7 +53,7 @@ internal sealed partial class MethodCompiler
     /// the unsupported-kind throw (the ldftn/ldvirtftn arms).</summary>
     private MethodInfo ResolveMethodHandle(EntityHandle handle, string op) => handle.Kind switch
     {
-        HandleKind.MethodDefinition => _c.GetMethod(_module, (MethodDefinitionHandle)handle),
+        HandleKind.MethodDefinition => CoreIntrinsics.ValidateKnownConstantCallable(_c.GetMethod(_module, (MethodDefinitionHandle)handle)),
         HandleKind.MethodSpecification => _c.ResolveMethodSpec(_module, (MethodSpecificationHandle)handle, _method.Context),
         HandleKind.MemberReference => _c.ResolveFunctionMemberRef(_module, (MemberReferenceHandle)handle, _method.Context),
         _ => throw new NotSupportedException($"{op} of {handle.Kind} is not supported"),

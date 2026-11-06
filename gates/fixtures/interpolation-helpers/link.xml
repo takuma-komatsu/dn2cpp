@@ -1,0 +1,8 @@
+<linker>
+  <assembly fullname="System.Private.CoreLib">
+    <type fullname="System.Runtime.CompilerServices.DefaultInterpolatedStringHandler" preserve="nothing">
+      <method name="HasCustomFormatter" />
+      <method name="GetDefaultLength" />
+    </type>
+  </assembly>
+</linker>

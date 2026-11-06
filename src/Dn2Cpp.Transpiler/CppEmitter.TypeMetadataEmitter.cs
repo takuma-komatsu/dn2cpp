@@ -1264,7 +1264,8 @@ internal sealed partial class CppEmitter
                 // RenderMemberTables' guard + BuildMemberTable's row trim.
                 if (_e.IsCanonicalWorld(cls)
                     || _e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls)
-                        && !_e._constructorRowOwners.Contains(cls))
+                        && !_e._constructorRowOwners.Contains(cls)
+                        && !cls.Methods.Any(IsRetainedOpaqueMemberRow))
                     continue;
                 bool keepRefl = _c.KeepsReflectionMetadata(cls);
                 var propertyAccessors = ReflectionAccessorHandles(cls);
@@ -1272,7 +1273,8 @@ internal sealed partial class CppEmitter
                 foreach (var m in _e.ReflectionMethods(cls))
                 {
                     if (_e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls)
-                        && !_e._activationConstructorRows.Contains(m))
+                        && !_e._activationConstructorRows.Contains(m)
+                        && !IsRetainedOpaqueMemberRow(m))
                         continue;
                     bool methodRow = m.Name != ".ctor" && m.Name != ".cctor"
                         && !(_c.SharedGenericsEnabled
@@ -1327,6 +1329,15 @@ internal sealed partial class CppEmitter
                 }
                 catch (Exception e) when (!Compilation.IsMustEscape(e))
                 { /* no decodable property metadata — BuildPropTable yields no rows either */ }
+            }
+            foreach (var cls in _e._referencedIntrinsicTis.ToList())
+            {
+                foreach (var method in ReferencedIntrinsicHelperRows(cls))
+                {
+                    NoteReflectedType(method.Signature.ReturnType);
+                    foreach (var parameter in method.Signature.ParameterTypes)
+                        NoteReflectedType(parameter);
+                }
             }
             // EmitReferencedIntrinsicTypeInfos' generic-argument vectors: those rows are
             // outside the emit set, so the walk above never reaches them.
@@ -1420,6 +1431,8 @@ internal sealed partial class CppEmitter
                 _e._genericDefSyms[gi.DefName] = defSym;
                 var defFlagBits = new List<string> { "DN2CPP_TF_GENERICDEF" };
                 AddGenericDefKindFlags(defFlagBits, c.IsValueType, c.IsInterface, c.IsAbstract, c.IsSealed, c.IsDelegate);
+                if (IsNestedType(c))
+                    defFlagBits.Add("DN2CPP_TF_NESTED");
                 if (IsArrayGenericItfDef(gi.DefName))
                     defFlagBits.Add("DN2CPP_TF_ARRAY_GEN_ITF");
                 string defFlags = "(" + string.Join(" | ", defFlagBits) + ")";
@@ -1439,6 +1452,9 @@ internal sealed partial class CppEmitter
             }
             foreach (var c in _e._referencedIntrinsicTis)
             {
+                var helperRows = ReferencedIntrinsicHelperRows(c).ToList();
+                var helperTable = helperRows.Count == 0 ? null : BuildMemberTable(c, helperRows,
+                    c.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler" ? "interpolationhelpertab" : "methtab");
                 bool isTask = _c.GenericDefFullName(c) == "System.Threading.Tasks.Task";
                 string interfaces = "nullptr";
                 int interfaceCount = 0;
@@ -1473,6 +1489,11 @@ internal sealed partial class CppEmitter
                     flagBits.Add("DN2CPP_TF_ABSTRACT");
                 if (c.IsSealed)
                     flagBits.Add("DN2CPP_TF_SEALED");
+                if (c.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
+                    && c.Methods.Any(CoreIntrinsics.IsInterpolationStaticHelper) && c.IsByRefLike)
+                    flagBits.Add("DN2CPP_TF_BYREFLIKE");
+                if (IsNestedType(c))
+                    flagBits.Add("DN2CPP_TF_NESTED");
                 string flags = flagBits.Count == 0 ? "0" : string.Join(" | ", flagBits);
                 string toString = _c.GenericDefFullName(c) == "System.Threading.Tasks.ValueTask"
                     && c.Context.TypeArgs.Length == 1
@@ -1486,6 +1507,41 @@ internal sealed partial class CppEmitter
                         : "nullptr";
                 string getHash = "nullptr";
                 string equals = "nullptr";
+                if (CoreIntrinsics.IsVectorValueType(TypeDesc.MakeClass(c)))
+                {
+                    int width = CoreIntrinsics.VectorValueWidth(c);
+                    string cpp = c.IntrinsicCppName!;
+                    string element = CppTypes.StorageOf(c.Context.TypeArgs[0]);
+                    getHash = $"&dn2cpp_vec_value_box_hash<{element}, {width}>";
+                    equals = $"&dn2cpp_vec_value_box_equals<{element}, {width}>";
+                    var entries = new List<string>();
+                    var aliases = new HashSet<ClassInfo>();
+                    foreach (var itf in _e._emit.OrderBy(t => t.CppName, StringComparer.Ordinal))
+                    {
+                        if (!CoreIntrinsics.IsVectorValueEquatable(itf, c))
+                            continue;
+                        var declaration = itf.Methods.SingleOrDefault(CoreIntrinsics.IsVectorValueEquatableMethod)
+                            ?? throw new NotSupportedException("Vector<T> IEquatable slot requires its exact declaration");
+                        if (declaration.VtableSlot < 0)
+                            throw new InvalidOperationException("Vector<T> IEquatable slot is unassigned");
+                        string stem = $"vector_value_itf_{c.CppName}_{itf.CppName}";
+                        _sb.AppendLine($"static int32_t {stem}_equals({itf.CppStructName}* self, {cpp} other) {{ {cpp} value; std::memcpy(&value, (Dn2CppObject*)self + 1, sizeof(value)); return dn2cpp_vec_value_equals<{element}, {width}>(value, other); }}");
+                        var slots = Enumerable.Repeat("nullptr", declaration.VtableSlot + 1).ToArray();
+                        slots[declaration.VtableSlot] = $"(const void*)&{stem}_equals";
+                        _sb.AppendLine($"static const void* {stem}_slots[] = {{ {string.Join(", ", slots)} }};");
+                        entries.Add($"{{ {_e.TypeInfoRef(itf, "vector value interface")}, {stem}_slots }}");
+                        aliases.Add(itf);
+                        if (_c.SharedGenericsEnabled && _c.CanonicalInterfaceOf(itf) is { } canonical
+                            && aliases.Add(canonical))
+                            entries.Add($"{{ {_e.TypeInfoRef(canonical, "vector value canonical interface")}, {stem}_slots }}");
+                    }
+                    if (entries.Count > 0)
+                    {
+                        interfaces = $"vector_value_itfs_{c.CppName}";
+                        interfaceCount = entries.Count;
+                        _sb.AppendLine($"static const Dn2CppInterfaceEntry {interfaces}[] = {{ {string.Join(", ", entries)} }};");
+                    }
+                }
                 if (MethodCompiler.IsCancellationTokenValue(TypeDesc.MakeClass(c)))
                 {
                     string ghThunk = $"ghthunk_{c.CppName}";
@@ -1493,6 +1549,16 @@ internal sealed partial class CppEmitter
                     getHash = $"&{ghThunk}";
                     string eqThunk = $"eqthunk_{c.CppName}";
                     _sb.AppendLine($"static int32_t {eqThunk}(Dn2CppObject* a, Dn2CppObject* b) {{ return (b && b->type == a->type && ((Dn2CppCancelToken*)(a + 1))->source == ((Dn2CppCancelToken*)(b + 1))->source) ? 1 : 0; }}");
+                    equals = $"&{eqThunk}";
+                }
+                if (c.IntrinsicCppName == "Dn2CppGCHandle" && c.Context.TypeArgs.Length == 1
+                    && _c.GenericDefFullName(c) == "System.Runtime.InteropServices.GCHandle")
+                {
+                    string ghThunk = $"ghthunk_{c.CppName}";
+                    _sb.AppendLine($"static int32_t {ghThunk}(Dn2CppObject* o) {{ uint64_t h = (uint64_t)dn2cpp_gchandle_to_intptr(*(Dn2CppGCHandle*)(o + 1)); return (int32_t)(h ^ (h >> 32)); }}");
+                    getHash = $"&{ghThunk}";
+                    string eqThunk = $"eqthunk_{c.CppName}";
+                    _sb.AppendLine($"static int32_t {eqThunk}(Dn2CppObject* a, Dn2CppObject* b) {{ return (b && b->type == a->type && ((Dn2CppGCHandle*)(a + 1))->cell == ((Dn2CppGCHandle*)(b + 1))->cell) ? 1 : 0; }}");
                     equals = $"&{eqThunk}";
                 }
                 string genericDef = "nullptr", genericArgs = "nullptr";
@@ -1513,6 +1579,8 @@ internal sealed partial class CppEmitter
                     Interfaces = interfaces, InterfaceCount = interfaceCount,
                     ToStringFn = toString, HashFn = getHash, EqualsFn = equals, Flags = flags,
                     GenericDef = genericDef, GenericArgs = genericArgs, GenericArgCount = genericCount,
+                    Methods = helperTable?.Expr ?? "nullptr", MethodCount = helperTable?.Count ?? 0,
+                    Activation = CoreIntrinsics.IsGen2GcCallbackType(c) ? AllocationUnsupported : 0,
                 });
             }
         }
@@ -1720,6 +1788,8 @@ internal sealed partial class CppEmitter
                 // as real .NET does. An interface is also abstract, mirroring the
                 // closed-type flag rule above.
                 AddGenericDefKindFlags(flagBits, cls.IsValueType, cls.IsInterface, cls.IsAbstract, cls.IsSealed, cls.IsDelegate);
+                if (IsNestedType(cls))
+                    flagBits.Add("DN2CPP_TF_NESTED");
                 if (cls.IsByRefLike)
                     flagBits.Add("DN2CPP_TF_BYREFLIKE");
                 if (varMask != 0)
@@ -1918,7 +1988,18 @@ internal sealed partial class CppEmitter
                     _o.AppendMetadata(block.ToString());
             }
 
+            // These catalogs share the primary TU, not the last metadata chunk's local thunks.
+            _invokerThunks.Clear();
+            _invokerMissStubs.Clear();
+            _slotStubs.Clear();
             EmitDelegateMethodCatalog();
+            EmitMemberNotFoundFactoryRow();
+            EmitDateOnlyDeconstructRow();
+            EmitResourceManagerDefaultTypeRow();
+            EmitCultureCompareInfoRow();
+            EmitCultureNameValidatorRow();
+            EmitStringPrivateEntryPointRows();
+            EmitDateTimeParserRows();
             _e.EmitArrayTypeInfos(_sb, _emittedEnums);
             _e.EmitMdArrayItfMap(_sb);
             _e.EmitArrayNongenericItfRows(_sb);
@@ -1942,13 +2023,164 @@ internal sealed partial class CppEmitter
             Census();
         }
 
+        // CultureInfo owns its runtime type-info. Attach only the exact retained getter.
+        private void EmitCultureCompareInfoRow()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.FullName != "System.Globalization.CultureInfo") continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsInvariantCompareInfoGetter(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "culturecompareinfotab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained CultureInfo.CompareInfo has no metadata row.");
+                    }
+                    _e._cultureCompareInfoRow = address;
+                    return;
+                }
+            }
+        }
+
+        // String keeps its canonical runtime identity; these rows are named-only attachments.
+        private void EmitStringPrivateEntryPointRows()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.FullName != "System.String") continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsStringPrivateEntryPoint(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    bool rawByte = CoreIntrinsics.IsStringRawByteReference(method);
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, rawByte ? "stringrawbytetab" : "stringlengthtab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained String private entry has no metadata row.");
+                    }
+                    if (rawByte) _e._stringRawByteReferenceRow = address;
+                    else _e._stringNullTerminatedLengthRow = address;
+                }
+            }
+        }
+
+        // The runtime-owned CultureInfo identity exposes only this exact retained validator.
+        private void EmitCultureNameValidatorRow()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.FullName != "System.Globalization.CultureInfo") continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsCultureInfoNameValidator(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "culturenamevalidatortab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained CultureInfo.VerifyCultureName has no metadata row.");
+                    }
+                    _e._cultureNameValidatorRow = address;
+                    return;
+                }
+            }
+        }
+
+        // DateOnly owns its canonical type-info in the runtime. Expose only this
+        // retained modeled member, never a duplicate type-info or its unmodeled surface.
+        private void EmitDateOnlyDeconstructRow()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.FullName != "System.DateOnly") continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsDateOnlyDeconstruct(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "dateonlydeconstructtab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained DateOnly.Deconstruct has no metadata row.");
+                    }
+                    _e._dateOnlyDeconstructRow = address;
+                    return;
+                }
+            }
+        }
+
+        // ResourceManager keeps its runtime-owned identity and only this retained helper row.
+        private void EmitResourceManagerDefaultTypeRow()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.FullName != "System.Resources.ResourceManager") continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsResourceManagerDefaultType(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "resourcemanagerdefaulttypetab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained ResourceManager.IsDefaultType has no metadata row.");
+                    }
+                    _e._resourceManagerDefaultTypeRow = address;
+                    return;
+                }
+            }
+        }
+
+        // The runtime owns DateTime's type-info; attach only exact retained rows.
+        private void EmitDateTimeParserRows()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.FullName != "System.DateTime") continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsDateTimeParserBoundary(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method },
+                            CoreIntrinsics.IsDateTimeTryAddTicks(method) ? "datetimeparseraddtab"
+                            : CoreIntrinsics.IsDateTimeTryCreate(method) ? "datetimeparsercreatetab" : "datetimeparserctortab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained DateTime parser member has no metadata row.");
+                    }
+                    if (CoreIntrinsics.IsDateTimeTryAddTicks(method)) _e._dateTimeTryAddTicksRow = address;
+                    else if (CoreIntrinsics.IsDateTimeTryCreate(method)) _e._dateTimeTryCreateRow = address;
+                    else _e._dateTimeLocalConstructorRow = address;
+                }
+            }
+        }
+
+        private void EmitMemberNotFoundFactoryRow()
+        {
+            foreach (var cls in _e.TopoOrder())
+            {
+                if (cls.FullName != "System.Type")
+                    continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsMemberNotFoundExceptionFactory(method) || !IsRetainedOpaqueMemberRow(method))
+                        continue;
+                    // Delegate.Method and named lookup must hand out the same physical row.
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "namedfactorytab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained member-not-found factory has no metadata row.");
+                    }
+                    _e._memberNotFoundFactoryRow = address;
+                    return;
+                }
+            }
+        }
+
         private void EmitDelegateMethodCatalog()
         {
             if (!_c.ReadsDelegateMethod && !_c.NeedsReflectionDelegateBind)
                 return;
-            _invokerThunks.Clear();
-            _invokerMissStubs.Clear();
-            _slotStubs.Clear();
             var entries = new List<string>();
             if (_c.ReadsDelegateMethod)
                 foreach (var (method, address) in _memberAddr)
@@ -2543,7 +2775,7 @@ internal sealed partial class CppEmitter
             return bits;
         }
 
-        private const int OmittedPublicDefaultCtor = 0x1, OmittedNonPublicDefaultCtor = 0x2, Unallocated = 0x4;
+        private const int OmittedPublicDefaultCtor = 0x1, OmittedNonPublicDefaultCtor = 0x2, Unallocated = 0x4, AllocationUnsupported = 0x8;
 
         // Dn2CppTypeReflection::activation: the constructors without a row, and whether
         // reflection may make an instance of the type (for a struct, a box of it; for a
@@ -2551,6 +2783,10 @@ internal sealed partial class CppEmitter
         private int ActivationBits(ClassInfo cls)
         {
             int bits = OmittedCtorBits(cls);
+            // A permanent runtime capability refusal, independent of retention/hot-update.
+            if (CoreIntrinsics.IsGen2GcCallbackType(cls))
+                bits |= AllocationUnsupported; // DN2CPP_TA_ALLOCATION_UNSUPPORTED
+
             if (!_e._hotUpdateBase
                 && (cls.IsValueType ? _e.UnallocatedUserStruct(cls) : _e.UnallocatedUserClass(cls)) is not null)
                 bits |= Unallocated;
@@ -3554,6 +3790,13 @@ internal sealed partial class CppEmitter
                         : m.Name == "Equals" ? "dn2cpp_object_equals_virtual" : "dn2cpp_object_gethashcode");
                     invoker = "(void*)&dn2cpp_delegate_object_virtual_invoker";
                 }
+                // An address-taken base body is nonvirtual. Reflection invokes the
+                // runtime override, whose native handle has no generated vtable.
+                if (CoreIntrinsics.IsMemberMetadataDefinitionBase(m))
+                    invoker = "nullptr";
+                if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(m) && fnPtr != "nullptr")
+                    invoker = "(void*)&dn2cpp_attrdata_constructor_invoker";
+                if (fnPtr != "nullptr") _c.NoteInvariantCompareInfoReflectionRow(m);
                 bool preservable = fnPtr == "nullptr" && !symbolic && _c.IsPreservableTemplateRow(m);
                 // The null-receiver run modes and a template level's
                 // DN2CPP_MTHA_NULLLOOKUP_* masks: only a CreateDelegate binding called
@@ -3743,6 +3986,149 @@ internal sealed partial class CppEmitter
         // thunk per distinct C++ ABI shape. Emitted before the type-info
         // definition so the initializer can name them. GetMethods excludes ctors and
         // GetConstructors excludes methods, matching .NET's split.
+        // Opaque owners expose only explicitly modeled member rows. Signature
+        // discovery and table rendering must select the same catalog.
+        private bool IsInterpolationHelperRow(MethodInfo method) =>
+            CoreIntrinsics.IsInterpolationStaticHelper(method) && IsRetainedOpaqueMemberRow(method);
+
+        private static bool IsReferencedIntrinsicHelperOwner(ClassInfo owner)
+        {
+            if (owner.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler")
+                return true;
+            if (owner.FullName != "System.Runtime.InteropServices.GCHandle"
+                || owner.Module.AssemblyName != "System.Private.CoreLib" || owner.Handle.IsNil
+                || owner.GenericArity != 0 || owner.Context.TypeArgs.Length != 0 || owner.Context.MethodArgs.Length != 0
+                || !owner.IsValueType || owner.IsEnum || owner.IsInterface || owner.IsByRefLike)
+                return false;
+            var reader = owner.Module.Reader;
+            if (!reader.IsAssembly || !reader.StringComparer.Equals(reader.GetAssemblyDefinition().Name, "System.Private.CoreLib")
+                || System.Reflection.Metadata.Ecma335.MetadataTokens.GetRowNumber(owner.Handle) > reader.TypeDefinitions.Count)
+                return false;
+            var type = reader.GetTypeDefinition(owner.Handle);
+            if (!type.GetDeclaringType().IsNil || type.GetGenericParameters().Count != 0
+                || (type.Attributes & System.Reflection.TypeAttributes.Interface) != 0
+                || !reader.StringComparer.Equals(type.Namespace, "System.Runtime.InteropServices")
+                || !reader.StringComparer.Equals(type.Name, "GCHandle")
+                || type.BaseType.Kind != HandleKind.TypeDefinition || type.BaseType.IsNil
+                || System.Reflection.Metadata.Ecma335.MetadataTokens.GetRowNumber(type.BaseType) > reader.TypeDefinitions.Count)
+                return false;
+            var parent = reader.GetTypeDefinition((TypeDefinitionHandle)type.BaseType);
+            return parent.GetDeclaringType().IsNil && parent.GetGenericParameters().Count == 0
+                && reader.StringComparer.Equals(parent.Namespace, "System")
+                && reader.StringComparer.Equals(parent.Name, "ValueType");
+        }
+
+        private IEnumerable<MethodInfo> ReferencedIntrinsicHelperRows(ClassInfo owner)
+        {
+            // Methods can complete a cold specialization; exclude unrelated owners first.
+            if (!IsReferencedIntrinsicHelperOwner(owner))
+                return Array.Empty<MethodInfo>();
+            return owner.Methods.Where(IsReferencedIntrinsicHelperRow);
+        }
+
+        private bool IsReferencedIntrinsicHelperRow(MethodInfo method) =>
+            method.DeclaringClass.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
+                ? IsInterpolationHelperRow(method)
+                : CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(method) && IsRetainedOpaqueMemberRow(method);
+
+        private bool IsRetainedOpaqueMemberRow(MethodInfo method) =>
+            _c.KeepsReflectionMetadata(method.DeclaringClass)
+            && (_c.Reachable.Contains(method) && CoreIntrinsics.BrDelegateValue.Matches(method)
+                || (_c.Reachable.Contains(method) || _c.KeepsUnreachedRow(method))
+                    && ((CoreIntrinsics.IsRuntimeTypeHandleCopy(method) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(method))
+                        || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(method)
+                        || CoreIntrinsics.IsInterpolationStaticHelper(method)
+                        || CoreIntrinsics.IsScalarNumericLeaf(method)
+                        || CoreIntrinsics.IsVectorAlignmentManagedBody(method)
+                        || CoreIntrinsics.IsConcreteVectorReduction(method)
+                        || CoreIntrinsics.IsResourceManagerDefaultType(method)
+                        || CoreIntrinsics.IsPrimitiveElementHelper(method)
+                        || CoreIntrinsics.IsCultureInfoNameValidator(method)
+                        || CoreIntrinsics.IsStringNullTerminatedLength(method)
+                        || CoreIntrinsics.IsSearchValuesShuffle(method)
+                        || CoreIntrinsics.IsWaitHandleRawWaitWrapper(method)
+                        || CoreIntrinsics.IsCancellationInvoke(method)
+                        || CoreIntrinsics.IsKnownConstant(method)
+                        || CoreIntrinsics.IsVectorManagedThrowHelper(method)
+                        || CoreIntrinsics.IsGenericVectorEstimate(method)
+                        || CoreIntrinsics.IsGuardedVectorAs(method)
+                        || CoreIntrinsics.IsMemberNotFoundExceptionFactory(method)
+                        || CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(method)
+                        || CoreIntrinsics.IsCoreClrCanonicalTypeComparison(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleAccessor(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleIsGenericVariable(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleGetToken(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleGetAttributes(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleHasElementType(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleIsArray(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleIsByRef(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleIsPrimitive(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleIsPointer(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleGetElementType(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleIsTypeDefinition(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleGetAssembly(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleGetModule(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleInterfaces(method)
+                        || CoreIntrinsics.IsActivatorFrom(method)
+                        || CoreIntrinsics.IsDefaultPrincipalAccessor(method)
+                        || CoreIntrinsics.IsResourceFormatterAccessor(method)
+                        || CoreIntrinsics.IsAppDomainExecuteAssembly(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoDayName(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoMonthName(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoEraName(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoInternalMonthName(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatterns(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoMonthArray(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoSpan(method)
+                        || CoreIntrinsics.IsDateOnlyDeconstruct(method)
+                        || CoreIntrinsics.IsDateTimeParserBoundary(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoCalendar(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoTokenize(method)
+                        || CoreIntrinsics.IsInvariantCompareInfoGetter(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoFormatFlags(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoYearMonthAdjustment(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePattern(method)
+                        || CoreIntrinsics.IsAppContextOnProcessExit(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleFields(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariables(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStatic(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleUtf8Name(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleConstraints(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleMakeCompound(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleMakeArray(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleInstantiate(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleConstructor(method)
+                        || CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(method)
+                        || CoreIntrinsics.IsRuntimeTypeInterfaceCheck(method)
+                        || CoreIntrinsics.IsCoreClrVirtualSlotCount(method)
+                        || CoreIntrinsics.IsCoreClrMethodSlotLookup(method)
+                        || CoreIntrinsics.IsCoreClrConstraintCheck(method)
+                        || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(method)
+                        || CoreIntrinsics.IsCoreClrTypeMaterialization(method)
+                        || CoreIntrinsics.BrNullableReboxing.Matches(method)
+                        || CoreIntrinsics.IsCustomAttributeDataConstructorBase(method)
+                        || CoreIntrinsics.BrCustomAttributeDataMember.Matches(method)
+                        || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(method)
+                        || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(method)
+                        || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(method)
+                        || CoreIntrinsics.BrCoreClrActivationInfo.Matches(method)
+                        || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(method)
+                        || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(method)
+                        || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(method)
+                        || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(method)
+                        || CoreIntrinsics.BrStringRawByteReference.Matches(method)
+                        || CoreIntrinsics.BrArrayNativeLength.Matches(method)
+                        || CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(method)
+                        || CoreIntrinsics.BrActivatorNamed.Matches(method)
+                        || CoreIntrinsics.BrActivatorDefault.Matches(method)));
+
         private void RenderMemberTables(ClassInfo cls)
         {
             // Skip opaque/intrinsic types (System.Object/ValueType/Exception/…): their
@@ -3754,10 +4140,14 @@ internal sealed partial class CppEmitter
                 return;
             if (_e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls))
             {
-                var activationCtors = cls.Methods.Where(m => _e._activationConstructorRows.Contains(m)).ToList();
+                var activationCtors = cls.Methods.Where(m => _e._activationConstructorRows.Contains(m)
+                    || m.Name == ".ctor" && IsRetainedOpaqueMemberRow(m)).ToList();
                 if (BuildMemberTable(cls, activationCtors, "ctortab") is { } table)
                     _ctorTabs[cls] = table;
                 NoteListedCtors(cls, activationCtors);
+                var valueMethods = cls.Methods.Where(m => m.Name != ".ctor" && IsRetainedOpaqueMemberRow(m)).ToList();
+                if (BuildMemberTable(cls, valueMethods, "methtab") is { } values)
+                    _methodTabs[cls] = values;
                 return;
             }
             // Dedupe by CppName: a class can list the same method twice (e.g. an
@@ -4030,7 +4420,9 @@ internal sealed partial class CppEmitter
                     // lines a record's Equals(object) is. `b->type == a->type` rather than a
                     // baked &ti_: identical here (the receiver IS this class), and it keeps
                     // the thunk independent of which type-info symbol it sits next to.
-                    _sb.AppendLine(ReferenceEquals(eq, synEq)
+                    _sb.AppendLine(ReferenceEquals(eq, synEq) && _c.ContainsVectorStorage(TypeDesc.MakeClass(cls))
+                        ? $"static int32_t {thunk}(Dn2CppObject* a, Dn2CppObject* b) {{ if (!b || b->type != a->type) return 0; {cls.CppStructName} value; std::memcpy(&value, b + 1, sizeof(value)); return {eq.Emittable.CppName}(({cls.CppStructName}*)(a + 1), value); }}"
+                        : ReferenceEquals(eq, synEq)
                         ? $"static int32_t {thunk}(Dn2CppObject* a, Dn2CppObject* b) {{ return (b && b->type == a->type) ? {eq.Emittable.CppName}(({cls.CppStructName}*)(a + 1), *({cls.CppStructName}*)(b + 1)) : 0; }}"
                         : $"static int32_t {thunk}(Dn2CppObject* a, Dn2CppObject* b) {{ return {eq.Emittable.CppName}(({cls.CppStructName}*)(a + 1), b); }}");
                     equals = $"&{thunk}";

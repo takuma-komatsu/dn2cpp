@@ -4,7 +4,7 @@ namespace Dn2Cpp;
 
 /// <summary>Synthesizes the bodies of System.Enum's intercepted instance methods — the four
 /// ToString overloads, GetTypeCode, the value-comparison overrides Equals(object) /
-/// GetHashCode() / CompareTo(object), and the private GetValue() (the boxer behind every
+/// GetHashCode() / CompareTo(object), and the internal GetValue() (the boxer behind every
 /// IConvertible.To* override) — whose real IL reachability replaces (see
 /// CoreIntrinsics.BrEnumInstanceFormat). Each is emitted under the method's own name and
 /// signature, so EVERY mouth resolves to it: a direct callvirt on a System.Enum-typed
@@ -29,12 +29,15 @@ namespace Dn2Cpp;
 internal sealed partial class MethodCompiler
 {
     /// <summary>Compiles the synthesized body for one intercepted System.Enum instance
-    /// method. Cut by NAME (BrEnumInstanceFormat gates on ToString/GetTypeCode), lowered by
-    /// SHAPE here, and TOTAL over the set: an unmodeled overload throws rather than emitting a
-    /// body that names the cut IL — the reach cut has already deleted the real body, so there
-    /// is nothing to fall back to.</summary>
+    /// method. The owned instance/signature predicate and this lowering describe the same
+    /// family; static generic formatting helpers retain their original managed bodies.</summary>
     internal string CompileEnumInstanceFormatBody()
     {
+        if (!CoreIntrinsics.BrEnumInstanceFormat.Matches(_method)
+            && !CoreIntrinsics.BrEnumElementType.Matches(_method)
+            && !CoreIntrinsics.BrEnumScalarGetName.Matches(_method)
+            && !CoreIntrinsics.BrEnumUnderlyingType.Matches(_method))
+            throw new NotSupportedException("Enum body replacement requires an owned supported declaration");
         // a0 = this (the boxed enum, Dn2CppObject* — System.Enum is a reference type).
         const string recv = "((Dn2CppObject*)a0)";
         var ps = _method.Signature.ParameterTypes;
@@ -92,20 +95,38 @@ internal sealed partial class MethodCompiler
                 // enum-type mismatch, matching .NET.
                 Emit($"return ({CppTypes.Of(rt)})dn2cpp_enum_compareto({recv}, (Dn2CppObject*)a1);");
                 break;
+            case ("InternalGetCorElementType", 0) when !_method.IsStatic
+                && rt is { Kind: TypeKind.Class, Class.FullName: "System.Reflection.CorElementType" }:
+                // Retained bodies use our type-info, never CoreCLR MethodTable layout.
+                Emit($"return ({CppTypes.Of(rt)})dn2cpp_enum_cor_element_type({recv});");
+                break;
+            case ("InternalGetCorElementType", 1) when _method.IsStatic
+                && ps[0] is { Kind: TypeKind.Class, Class.FullName: "System.RuntimeType" }
+                && rt is { Kind: TypeKind.Class, Class.FullName: "System.Reflection.CorElementType" }:
+                Emit($"return ({CppTypes.Of(rt)})dn2cpp_enum_type_cor_element_type((Dn2CppType*)a0);");
+                break;
+            case ("InternalGetUnderlyingType", 1) when _method.IsStatic
+                && ps[0] is { Kind: TypeKind.Class, Class.FullName: "System.RuntimeType" }
+                && rt is { Kind: TypeKind.Class, Class.FullName: "System.RuntimeType" }:
+                Emit($"return ({CppTypes.Of(rt)})dn2cpp_enum_internal_get_underlying_type((Dn2CppType*)a0);");
+                break;
+            case ("GetName", 2) when CoreIntrinsics.BrEnumScalarGetName.Matches(_method):
+                Emit($"return ({CppTypes.Of(rt)})dn2cpp_enum_get_name_u64((Dn2CppType*)a0, (uint64_t)a1);");
+                break;
             case ("GetValue", 0):
-                // GetValue() — the private boxer every IConvertible.To* override calls
+                // GetValue() — the internal boxer every IConvertible.To* override calls
                 // (Convert.ToXxx(GetValue(), …)). dn2cpp_enum_get_value re-boxes the payload
                 // under the UNDERLYING primitive's type-info, not the enum's, matching .NET's
                 // `e.GetValue().GetType() == underlying`.
                 Emit($"return dn2cpp_enum_get_value({recv});");
                 break;
             default:
-                // TOTAL over the BrEnumInstanceFormat name set: the reach cut deleted the real
+                // TOTAL over the BrEnumInstanceFormat declaration set: the reach cut deleted the real
                 // body, so an unmodeled overload must throw rather than fall through to a symbol
                 // nothing defines.
                 throw new NotSupportedException(
                     $"{_method.DeclaringClass.FullName}.{_method.Name}: unmodeled System.Enum "
-                    + $"instance ToString/GetTypeCode/Equals/GetHashCode/CompareTo/GetValue overload "
+                    + $"instance ToString/GetTypeCode/Equals/GetHashCode/CompareTo/GetValue/InternalGetCorElementType/InternalGetUnderlyingType overload "
                     + $"({ps.Length} parameter(s)). The reach cut (CoreIntrinsics.BrEnumInstanceFormat) "
                     + "deletes its real IL, so this shape must be modeled here or removed from "
                     + "IsEnumInstanceFormatMethod.");

@@ -47,6 +47,17 @@
 # Composite format faults preserve UTF-16 positions, grammar reasons and argument effects.
 # Runtime argument messages retain named/boxed operands across Web collections.
 source "$(dirname "$0")/_common.sh"
+case "${DN2CPP_STRING_FULL:-0}" in
+    0|1) DN2CPP_STRING_FULL=${DN2CPP_STRING_FULL:-0} ;;
+    *) echo 'DN2CPP_STRING_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|string-full:$DN2CPP_STRING_FULL"
+if [ "$DN2CPP_STRING_FULL" = 1 ]; then
+    echo 'string coverage: full aggregate and private-entry preprocessing matrix'
+else
+    echo 'string coverage: full string aggregate and direct-call comparison'
+    echo 'string extended checks: skipped (not selected); not counted as passed'
+fi
 gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for string call fixtures"
 
 call_app="gates/fixtures/string-comparison-call/bin/$CONFIG/$TFM/StringComparisonCall.dll"
@@ -387,4 +398,12 @@ gate_extra_asserts() {
     done
 }
 
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/StringPrivateEntryPointsGuards.cs gates/fixtures/ldftn-local/StringPrivateEntryPointsFixture.cs gates/_string-private-entrypoints.sh samples/dotnet/StringCore/keep-private-entrypoints.xml"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|string-private:two-owned,raw,diet,named-token-reflection,NoAlloc"
 corelib_diff_gate StringCore System.Linq
+
+if [ "$DN2CPP_STRING_FULL" = 1 ]; then
+build_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+source "$(dirname "$0")/_string-private-entrypoints.sh"
+string_private_entrypoints_gate
+fi

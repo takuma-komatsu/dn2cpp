@@ -82,6 +82,32 @@ internal sealed partial class MethodCompiler
     private void EmitPInvokeCall(MethodInfo callee, PInvokeInfo pinv,
         bool ftnWrapper = false)
     {
+        // Address-taken imports use the same managed override as direct calls.
+        // The direct-call mouth has already checked this before entering here.
+        if (ftnWrapper && (CoreIntrinsics.PiAbsentGlobalizationNative.Matches(callee)
+                || CoreIntrinsics.PiAbsentCoreClrQCall.Matches(callee))
+            && _c.NativeImplFor(pinv) is { } implementation
+            && !ReferenceEquals(implementation, _method))
+        {
+            EmitNativeImplCall(callee, implementation);
+            return;
+        }
+        string? refusal = _c.IsAbsentGlobalizationImport(callee)
+            ? Compilation.AbsentGlobalizationImportMessage(pinv)
+            : _c.IsAbsentCoreClrQCall(callee) ? Compilation.AbsentCoreClrQCallMessage(pinv) : null;
+        if (refusal is not null)
+        {
+            PopArgs(callee, hasThis: !callee.IsStatic);
+            Emit("dn2cpp_throw_platform_not_supported(\"" + refusal + "\");");
+            var returnType = callee.Signature.ReturnType;
+            if (!returnType.IsVoid)
+            {
+                string cppType = CppTypes.Of(returnType);
+                Push(CppTypes.KindOf(returnType), cppType, CppTypes.ZeroInitExpr(cppType));
+            }
+            return;
+        }
+
         string Where(string what) =>
             $"{_method.DeclaringClass.FullName}.{_method.Name}: P/Invoke {callee.DeclaringClass.FullName}.{callee.Name} {what}";
 
@@ -644,8 +670,14 @@ internal sealed partial class MethodCompiler
             // with the array itself as the receiver (Roslyn elides the interface-typed
             // local), so the `this` slot is also an array->IEnumerable<T> coercion.
             var receiver = Pop();
-            args[0] = CoerceTo(receiver, TypeDesc.MakeClass(callee.DeclaringClass),
-                callee.DeclaringClass.CppStructName + "*");
+            // Retained mapped bodies use the callable declaration's receiver ABI,
+            // not an emitted managed struct layout.
+            string receiverType = CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(callee)
+                || CoreIntrinsics.BrStringRawByteReference.Matches(callee)
+                || CoreIntrinsics.IsScalarNumericLeaf(callee)
+                ? ReceiverCppType(callee.DeclaringClass)
+                : callee.DeclaringClass.CppStructName + "*";
+            args[0] = CoerceTo(receiver, TypeDesc.MakeClass(callee.DeclaringClass), receiverType);
         }
         return args.ToList();
     }
@@ -790,6 +822,7 @@ internal sealed partial class MethodCompiler
         // The raw ctor token, for rgctx slot keying (verified before use).
         _callSiteToken = insn.Token;
         var handle = SRME.EntityHandle(insn.Token);
+        TaintCanonicalVectorOperation(handle);
         if (handle.Kind == HandleKind.MemberReference)
         {
             var mr = _reader.GetMemberReference((MemberReferenceHandle)handle);
@@ -802,6 +835,19 @@ internal sealed partial class MethodCompiler
                     return;
                 }
             }
+        }
+
+        if (handle.Kind == HandleKind.MemberReference
+            && _reader.GetMemberReference((MemberReferenceHandle)handle) is var typedHandleCtor
+            && typedHandleCtor.Parent.Kind == HandleKind.TypeSpecification
+            && _reader.GetTypeSpecification((TypeSpecificationHandle)typedHandleCtor.Parent)
+                .DecodeSignature(_c.SigProvider, _method.Context)
+                is { Kind: TypeKind.Class, Class: { } typedHandleOwner }
+            && IsTypedGCHandle(typedHandleOwner))
+        {
+            var sig = typedHandleCtor.DecodeMethodSignature(_c.SigProvider, typedHandleOwner.Context);
+            Push(StackKind.Struct, "Dn2CppGCHandle", TypedGCHandleCtor(typedHandleOwner, sig));
+            return;
         }
 
         // new Vector64/128/256/512<T>(...) / new Vector<T>(...) — intrinsic value types,
@@ -1047,13 +1093,11 @@ internal sealed partial class MethodCompiler
             Push(StackKind.Ref, "Dn2CppCancelSource*", ctsNew);
             return;
         }
-        // new CancellationToken(bool canceled) — the expression (newobj) form.
-        if (NewobjTypeName(handle) == "System.Threading.CancellationToken")
+        // Both public Boolean and internal source constructors use the token payload.
+        if (NewobjTypeName(handle) == "System.Threading.CancellationToken"
+            && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition)
         {
-            var arg = Pop(); // bool canceled
-            EmitCanceledExcRegistration();
-            Push(StackKind.Struct, "Dn2CppCancelToken",
-                $"Dn2CppCancelToken{{ ({arg.Expr}) ? dn2cpp_cts_canceled() : nullptr }}");
+            Push(StackKind.Struct, "Dn2CppCancelToken", EmitCancellationTokenCtorExpr(DecodeCtorSignature(handle)));
             return;
         }
         // new Thread(ThreadStart|ParameterizedThreadStart [, int maxStackSize]) — the
@@ -1562,7 +1606,18 @@ internal sealed partial class MethodCompiler
         if (NewobjTypeName(handle) == "System.DateTime"
             && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition)
         {
-            Push(StackKind.Struct, "Dn2CppDateTime", EmitDateTimeCtorExpr(DecodeCtorSignature(handle)));
+            var signature = DecodeCtorSignature(handle);
+            if (CoreIntrinsics.IsPotentialDateTimeLocalConstructor(signature))
+            {
+                var localCtor = handle.Kind == HandleKind.MethodDefinition
+                    ? ResolveMethodDef((MethodDefinitionHandle)handle)
+                    : _c.ResolveMemberRefMethod(_module, (MemberReferenceHandle)handle, _method.Context);
+                if (!CoreIntrinsics.IsDateTimeLocalConstructor(localCtor))
+                    throw new NotSupportedException("DateTime local constructor requires its exact metadata signature");
+                Push(StackKind.Struct, "Dn2CppDateTime", EmitDateTimeLocalConstructorValue());
+                return;
+            }
+            Push(StackKind.Struct, "Dn2CppDateTime", EmitDateTimeCtorExpr(signature));
             return;
         }
         // A MemberRef from an app assembly but a MethodDef when the newobj sits in
@@ -1932,6 +1987,13 @@ internal sealed partial class MethodCompiler
         };
         var cls = ctor.DeclaringClass;
 
+        if (CoreIntrinsics.IsRuntimeTypeHandleConstructor(ctor))
+        {
+            var type = TypeDesc.MakeClass(cls);
+            Push(CppTypes.KindOf(type), CppTypes.Of(type), RuntimeTypeHandleConstructorValue());
+            return;
+        }
+
         if (!cls.IsBeforeFieldInit)
             EnsureCctorBefore(cls);
 
@@ -2102,8 +2164,9 @@ internal sealed partial class MethodCompiler
                         adapterExpr = DelegateInvokeAddress(method);
                     else if (!fromVirtFtn && ObjectDispatchHelper(method, virtualBinding: false) is { } objectHelper)
                         adapterExpr = $"(void*)&{objectHelper}";
-                    else if (!fromVirtFtn && (method.IsStatic || method.DeclaringClass.IsValueType
-                        || NeedsNfiErasedAdapter(method.Emittable)))
+                    else if ((!fromVirtFtn || CoreIntrinsics.IsRuntimeTypeAssemblyGetter(method) || CoreIntrinsics.IsRuntimeTypeModuleGetter(method))
+                        && (method.IsStatic || method.DeclaringClass.IsValueType
+                            || NeedsNfiErasedAdapter(method.Emittable)))
                     {
                         var impl = method.Emittable;
                         var adapter = new DelegateAdapter(impl,
@@ -2147,14 +2210,20 @@ internal sealed partial class MethodCompiler
             return;
         }
 
-        // A class the reachability cut deletes WHOLESALE (Gen2GcCallback; the compiled-Regex
+        // A class the reachability cut deletes WHOLESALE (the compiled-Regex
         // classes) has no .ctor body either, so a newobj of it would call a symbol nothing
         // emitted — the same C++ link error the call path rules out, arriving through the
         // other door. Both are dead today, which is precisely why opening a path to one must
         // fail here rather than at link time. The name-keyed families are unaffected:
         // ".ctor" is in none of their name sets.
+        // Gen2GcCallback has callable refusal bodies, but must still reject newobj
+        // BEFORE the generic path allocates and registers a finalizer.
         if (CoreIntrinsics.LoweredRuntimePrimitive(ctor.DeclaringClass.FullName, ctor.Name))
         {
+            if (CoreIntrinsics.IsGen2GcCallbackRefusal(ctor))
+                throw new NotSupportedException(
+                    $"{_method.DeclaringClass.FullName}.{_method.Name}: newobj System.Gen2GcCallback "
+                    + "— native allocation of Gen2 GC notification objects is not supported.");
             throw new NotSupportedException(
                 $"{_method.DeclaringClass.FullName}.{_method.Name}: newobj "
                 + $"{ctor.DeclaringClass.FullName} — the reachability cut deletes this class "

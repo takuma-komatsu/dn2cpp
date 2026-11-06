@@ -84,7 +84,21 @@ internal sealed partial class Compilation
                 var h = (MethodDefinitionHandle)handle;
                 if (!module.MethodMap.TryGetValue(h, out var mi))
                     return null;
+                CoreIntrinsics.ValidateConcreteVectorElement(mi);
+                CoreIntrinsics.ValidateVectorFloatingPointTernary(mi);
+                CoreIntrinsics.ValidateVectorLog(mi);
+                CoreIntrinsics.ValidateVectorMagnitude(mi);
+                CoreIntrinsics.ValidateScalarNumericLeaf(mi);
+                CoreIntrinsics.ValidateBinaryIntegerEndianBody(mi);
+                CoreIntrinsics.ValidatePrimitiveParseBody(mi);
+                CoreIntrinsics.ValidateDecimalBinaryBody(mi);
+                CoreIntrinsics.ValidatePrimitiveWideConversionBody(mi);
+                CoreIntrinsics.ValidateVectorAlignment(mi);
+                CoreIntrinsics.ValidateConcreteVectorReduction(mi);
+                CoreIntrinsics.ValidateVectorAsCallable(mi);
                 NoteObfuscationMethod(mi);
+                CoreIntrinsics.ValidateKnownConstantCallable(mi);
+                if (CoreIntrinsics.BrPrimitiveBigMul.Matches(mi)) return mi;
                 // System.Exception::get_Message is cut as intrinsic (below), but a call to
                 // it — even the non-virtual base.Message inside an override — means the
                 // used-virtual × allocated-type cross product must reach every allocated
@@ -92,6 +106,47 @@ internal sealed partial class Compilation
                 // receiver (which folds to the dispatching runtime helper) finds it. Over-
                 // reaching on the non-virtual form is harmless.
                 ReachExceptionGetMessage(mi);
+                if (CoreIntrinsics.IsInvariantCompareInfoGetter(mi)) return mi;
+                if ((CoreIntrinsics.IsRuntimeTypeHandleCopy(mi) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(mi))
+                    || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(mi)
+                    || CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(mi)
+                    || CoreIntrinsics.IsInterpolationStaticHelper(mi)
+                    || CoreIntrinsics.IsScalarNumericLeaf(mi)
+                    || CoreIntrinsics.IsBinaryIntegerEndianBody(mi)
+                    || CoreIntrinsics.IsPrimitiveParseBody(mi)
+                    || CoreIntrinsics.IsDecimalBinaryBody(mi)
+                    || CoreIntrinsics.IsPrimitiveWideConversionBody(mi)
+                    || CoreIntrinsics.IsVectorAlignmentManagedBody(mi)
+                    || CoreIntrinsics.IsConcreteVectorReduction(mi)
+                    || CoreIntrinsics.IsResourceManagerDefaultType(mi)
+                    || CoreIntrinsics.IsPrimitiveElementHelper(mi)
+                    || CoreIntrinsics.IsCultureInfoNameValidator(mi)
+                    || CoreIntrinsics.IsStringNullTerminatedLength(mi)
+                    || CoreIntrinsics.IsSearchValuesShuffle(mi)
+                    || CoreIntrinsics.IsWaitHandleRawWaitWrapper(mi)
+                    || CoreIntrinsics.IsCancellationInvoke(mi)
+                    || CoreIntrinsics.IsKnownConstant(mi)
+                    || CoreIntrinsics.IsMemberNotFoundExceptionFactory(mi)
+                    || CoreIntrinsics.IsMemberMetadataDefinitionBase(mi)
+            || CoreIntrinsics.IsCustomAttributeDataConstructorBase(mi)
+                    || CoreIntrinsics.BrDelegateNamedConstructor.Matches(mi)
+                    || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(mi)
+                    || CoreIntrinsics.BrNullableReboxing.Matches(mi)
+                    || CoreIntrinsics.BrCustomAttributeDataMember.Matches(mi)
+                    || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(mi)
+                    || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(mi)
+                    || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(mi)
+                    || CoreIntrinsics.BrCoreClrActivationInfo.Matches(mi)
+                    || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(mi)
+                    || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(mi)
+                    || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(mi)
+                    || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(mi)
+                    || CoreIntrinsics.BrStringRawByteReference.Matches(mi)
+                    || CoreIntrinsics.BrArrayNativeLength.Matches(mi)
+                    || CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(mi)
+                    || CoreIntrinsics.BrActivatorNamed.Matches(mi)
+                    || CoreIntrinsics.BrActivatorDefault.Matches(mi))
+                    return mi;
                 // Intrinsic-mapped types are emitted inline, not transpiled, so
                 // an intra-assembly call into one (e.g. corelib's Span<T> ->
                 // ThrowHelper) is not a reachability edge.
@@ -283,6 +338,8 @@ internal sealed partial class Compilation
                 // (MethodCompiler.TranslateCall) asks THIS SAME row.
                 if (CoreIntrinsics.MdMemoryMarshalArrayData.Matches(mi))
                     return null;
+                if (CoreIntrinsics.MdMarshalStructureToPtr.Matches(mi))
+                    return null;
                 // System.Enum.InternalGetCorElementType() (the 0-arg instance form): the emit
                 // route reads the CorElementType from the boxed enum's type-info header
                 // (dn2cpp_enum_cor_element_type — MethodCompiler.EmitIntrinsic.Reflection), so
@@ -299,12 +356,28 @@ internal sealed partial class Compilation
             }
             case HandleKind.MethodSpecification:
             {
+                RejectVectorValueMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
+                RejectScalarNumericLeafMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
+                RejectVectorAlignmentMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
+                RejectVectorLerpMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
+                RejectVectorLogMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
+                RejectConcreteVectorReductionMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
+                if (TryResolveGuardedVectorAsSpecForScan(module, (MethodSpecificationHandle)handle, ctx) is { } vectorAs)
+                    return vectorAs;
+                if (TryResolveVectorMagnitudeSpecForScan(module, (MethodSpecificationHandle)handle, ctx) is { } vectorMagnitude)
+                    return vectorMagnitude;
+                if (TryResolveGenericVectorEstimateSpec(module, (MethodSpecificationHandle)handle, ctx) is { } genericEstimate)
+                    return genericEstimate;
                 // A generic method on an intrinsic-mapped type (e.g. Unsafe.Add<T>)
                 // is emitted inline, not transpiled, so it is not a reachability
                 // edge. The spec's method is a MemberRef when the call
                 // crosses assemblies and a MethodDef when it stays within one
                 // (e.g. corelib's Span<T> -> Unsafe.Add<T>).
                 var ms = module.Reader.GetMethodSpecification((MethodSpecificationHandle)handle);
+                if (TryResolveVectorManagedThrowSpec(module, (MethodSpecificationHandle)handle, ctx) is { } vectorGuard)
+                    return vectorGuard;
+                if (IsKnownConstantSpec(module, ms))
+                    return ResolveMethodSpec(module, (MethodSpecificationHandle)handle, ctx);
                 // AsyncTaskMethodBuilder.Start<TSM> / .AwaitUnsafeOnCompleted are
                 // emitted inline. Both drive TSM.MoveNext (Start synchronously,
                 // AwaitUnsafeOnCompleted by registering it as a continuation), so
@@ -423,6 +496,10 @@ internal sealed partial class Compilation
             }
             case HandleKind.MemberReference:
             {
+                if (TryResolveScalarNumericLeafReference(module, (MemberReferenceHandle)handle, ctx) is { } scalarNumericLeaf) return scalarNumericLeaf;
+                if (TryResolveVectorAlignmentReference(module, (MemberReferenceHandle)handle, ctx) is { } alignment) return alignment;
+                if (TryResolveConcreteVectorReductionReference(module, (MemberReferenceHandle)handle, ctx) is { } concreteReduction) return concreteReduction;
+                RejectBareVectorAsReference(module, (MemberReferenceHandle)handle, ctx);
                 var mr = module.Reader.GetMemberReference((MemberReferenceHandle)handle);
                 string mrName = module.Reader.GetString(mr.Name);
                 if (mr.Parent.Kind == HandleKind.TypeSpecification)
@@ -453,6 +530,60 @@ internal sealed partial class Compilation
                 // Every cut below probes the same MemberReference's parent type
                 // name; read it once (a pure metadata read).
                 string? mrParent = MemberRefParentTypeName(module, (MemberReferenceHandle)handle);
+                if (mrParent == "System.Threading.CancellationTokenSource" && mrName == "Invoke")
+                {
+                    var helper = ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
+                    if (CoreIntrinsics.IsCancellationInvoke(helper)) return helper;
+                }
+                if (mrParent == "System.Threading.WaitHandle"
+                    && mrName is "WaitMultipleIgnoringSyncContext" or "WaitMultipleIgnoringSyncContextCore"
+                        or "<WaitMultipleIgnoringSyncContext>g____PInvoke|2_0")
+                {
+                    var helper = ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
+                    if (CoreIntrinsics.IsWaitHandleRawWaitWrapper(helper) || CoreIntrinsics.IsWaitHandleRawWaitImport(helper))
+                        return helper;
+                }
+                if (mrParent == "System.String" && mrName is "GetRawStringDataAsUInt8" or "wcslen")
+                {
+                    var helper = ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
+                    if (CoreIntrinsics.IsStringPrivateEntryPoint(helper)) return helper;
+                }
+                if (mrParent == "System.Globalization.CultureInfo" && mrName == "VerifyCultureName")
+                {
+                    var helper = ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
+                    if (CoreIntrinsics.IsCultureInfoNameValidator(helper)) return helper;
+                }
+                if (mrParent == "System.Buffers.SearchValues" && mrName == "ShuffleNativeModified")
+                {
+                    var helper = ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
+                    if (CoreIntrinsics.IsSearchValuesShuffle(helper)) return helper;
+                }
+                if (mrParent == "System.RuntimeTypeHandle" && mrName == "CreateInstanceForAnotherGenericParameter")
+                {
+                    var helper = ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
+                    if (CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(helper)) return helper;
+                }
+                if (mrParent == "System.Array" && mrName == "get_NativeLength")
+                {
+                    var helper = ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
+                    if (CoreIntrinsics.BrArrayNativeLength.Matches(helper)) return helper;
+                }
+                if (mrParent == "System.Runtime.InteropServices.GCHandle" && mrName == "CheckUninitialized")
+                {
+                    var helper = ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
+                    if (CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(helper)) return helper;
+                }
+                if (mrParent == "System.Resources.ResourceManager" && mrName == "IsDefaultType")
+                {
+                    var helper = ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
+                    if (CoreIntrinsics.IsResourceManagerDefaultType(helper)) return helper;
+                }
+                if (mrParent == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
+                    && CoreIntrinsics.IsInterpolationStaticHelperName(mrName))
+                {
+                    var helper = ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
+                    if (CoreIntrinsics.IsInterpolationStaticHelper(helper)) return helper;
+                }
                 // Some cuts below need the OVERLOAD, not just the name — an intercept that
                 // lowers one overload of a method must not cut the edge to the others.
                 // Decode the signature at most once per token, and only once a cut whose
@@ -685,6 +816,18 @@ internal sealed partial class Compilation
     /// referenced by a MethodSpec, in the caller's generic context.</summary>
     public MethodInfo ResolveMethodSpec(Module module, MethodSpecificationHandle handle, GenericContext callerCtx)
     {
+        RejectVectorValueMethodSpecification(module, handle, callerCtx);
+        RejectScalarNumericLeafMethodSpecification(module, handle, callerCtx);
+        RejectVectorAlignmentMethodSpecification(module, handle, callerCtx);
+        RejectVectorLerpMethodSpecification(module, handle, callerCtx);
+        RejectVectorLogMethodSpecification(module, handle, callerCtx);
+        RejectConcreteVectorReductionMethodSpecification(module, handle, callerCtx);
+        if (TryResolveGuardedVectorAsSpec(module, handle, callerCtx) is { } vectorAs)
+            return vectorAs;
+        if (TryResolveVectorMagnitudeSpec(module, handle, callerCtx) is { } vectorMagnitude)
+            return vectorMagnitude;
+        if (TryResolveGenericVectorEstimateSpec(module, handle, callerCtx) is { } genericEstimate)
+            return genericEstimate;
         var reader = module.Reader;
         var ms = reader.GetMethodSpecification(handle);
         var methodArgs = ms.DecodeSignature(SigProvider, callerCtx).ToArray();
@@ -747,7 +890,64 @@ internal sealed partial class Compilation
                 $"Generic method instantiation via {ms.Method.Kind} is not supported yet");
         }
 
-        return InstantiateMethodOnClass(declClass, defModule, templateHandle, methodArgs);
+        var resolved = InstantiateMethodOnClass(declClass, defModule, templateHandle, methodArgs);
+        if (CoreIntrinsics.IsKnownConstantName(declClass.FullName, resolved.Name))
+            ValidateKnownConstantSpec(module, ms, resolved, callerCtx);
+        if (declClass.FullName == "System.Globalization.DateTimeFormatInfo"
+            && defModule.AssemblyName == "System.Private.CoreLib"
+            && CoreIntrinsics.IsDateTimeFormatInfoSpanName(resolved.Name))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoSpan(resolved)
+                || methodArgs is not [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char or PrimitiveTypeCode.Byte }])
+                throw new NotSupportedException("DateTimeFormatInfo TChar accessor requires its exact Char or Byte signature");
+            if (ms.Method.Kind == HandleKind.MemberReference)
+            {
+                var reference = reader.GetMemberReference((MemberReferenceHandle)ms.Method);
+                var signature = reference.DecodeMethodSignature(SigProvider,
+                    new GenericContext(declClass.Context.TypeArgs, methodArgs));
+                if (!CoreIntrinsics.IsDateTimeFormatInfoSpanSignature(reader.GetBlobReader(reference.Signature))
+                    || !CoreIntrinsics.IsDateTimeFormatInfoSpanDecodedSignature(signature, defModule))
+                    throw new NotSupportedException("DateTimeFormatInfo TChar accessor requires its exact MethodSpec MemberRef signature");
+            }
+        }
+        if (resolved.Name == "CreateChecked"
+            && (CoreIntrinsics.IsInt128CheckedType(declClass) || CoreIntrinsics.IsInt128CheckedInterface(resolved)))
+        {
+            bool interfaceForm = declClass.IsInterface;
+            var target = interfaceForm ? declClass.Context.TypeArgs[0].Class! : declClass;
+            if (methodArgs is [var source] && CoreIntrinsics.IsInt128CheckedSource(source, target))
+            {
+                if (!(interfaceForm ? CoreIntrinsics.IsInt128CheckedInterface(resolved) : CoreIntrinsics.IsInt128Checked(resolved)))
+                    throw new NotSupportedException("Int128.CreateChecked requires its exact closed signature");
+                if (ms.Method.Kind == HandleKind.MemberReference)
+                {
+                    var reference = reader.GetMemberReference((MemberReferenceHandle)ms.Method);
+                    var signature = reference.DecodeMethodSignature(SigProvider,
+                        new GenericContext(declClass.Context.TypeArgs, methodArgs));
+                    if (!CoreIntrinsics.IsInt128CheckedSignature(reader.GetBlobReader(reference.Signature), interfaceForm)
+                        || !CoreIntrinsics.IsInt128CheckedDecodedSignature(signature, target, source))
+                        throw new NotSupportedException("Int128.CreateChecked requires its exact MethodSpec MemberRef signature");
+                }
+            }
+        }
+        ValidateVectorManagedThrowSpec(module, ms, resolved, callerCtx);
+        ValidateUInt128CheckedSpec(module, ms, resolved);
+        return resolved;
+    }
+
+    internal MethodInfo ResolveInt128CheckedInterface(MethodInfo method, ClassInfo target)
+    {
+        if (!CoreIntrinsics.IsInt128CheckedInterface(method)
+            || method.DeclaringClass.Context.TypeArgs[0].Class != target)
+            throw new NotSupportedException("Int128.CreateChecked requires its exact constrained interface signature");
+        foreach (var handle in target.Module.Reader.GetTypeDefinition(target.Handle).GetMethods())
+        {
+            var definition = target.Module.Reader.GetMethodDefinition(handle);
+            if (!target.Module.Reader.StringComparer.Equals(definition.Name, "CreateChecked")) continue;
+            var concrete = InstantiateMethodOnClass(target, target.Module, handle, method.Context.MethodArgs);
+            if (CoreIntrinsics.IsInt128Checked(concrete)) return concrete;
+        }
+        throw new NotSupportedException("Int128.CreateChecked concrete integer factory is unavailable");
     }
 
     /// <summary>Instantiates a generic-method template (<paramref name="templateHandle"/>,
@@ -760,13 +960,44 @@ internal sealed partial class Compilation
         ClassInfo declClass, Module defModule, MethodDefinitionHandle templateHandle, TypeDesc[] methodArgs)
     {
         var md = defModule.Reader.GetMethodDefinition(templateHandle);
+        if (defModule.Reader.StringComparer.Equals(md.Name, "Lerp")
+            && CoreIntrinsics.IsVectorEstimateOwnerName(declClass.FullName))
+            throw new NotSupportedException("Vector Lerp requires a nongeneric floating-point declaration");
+        ValidateVectorMagnitudeInstantiation(declClass, defModule, templateHandle, methodArgs);
+        ValidateGenericVectorEstimateInstantiation(declClass, defModule, templateHandle, methodArgs);
+        ValidateGuardedVectorAsInstantiation(declClass, defModule, templateHandle, methodArgs);
 
         // Key on the closed declaring class plus the method template and its args,
         // so Container<int>.Map<int> and Container<string>.Map<int> stay distinct.
         var byKey = MethodInstancesFor(defModule, templateHandle);
         var mkey = (declClass.CppName, methodArgs);
         if (byKey.TryGetValue(mkey, out var existing))
+        {
+            string methodName = defModule.Reader.GetString(md.Name);
+            if ((methodName == "As" || CoreIntrinsics.VectorAliasElementCode(methodName) != 0)
+                && declClass.FullName == "System.Numerics.Vector")
+            {
+                if (!CoreIntrinsics.IsVectorAsFamilyCallable(existing) || existing.Name != methodName
+                    || existing.DeclaringClass != declClass || existing.Module != defModule || existing.Handle != templateHandle
+                    || existing.Context.MethodArgs.Length != methodArgs.Length) throw GuardedVectorAsUnsupported();
+                for (int index = 0; index < methodArgs.Length; index++)
+                    if (!SameTypeArg(existing.Context.MethodArgs[index], methodArgs[index])) throw GuardedVectorAsUnsupported();
+            }
+            if (CoreIntrinsics.IsVectorSelectionName(methodName)
+                && CoreIntrinsics.IsVectorEstimateOwnerName(declClass.FullName)
+                && (!(CoreIntrinsics.IsVectorMagnitude(existing) || CoreIntrinsics.IsVectorMagnitudeManagedGuard(existing))
+                    || existing.Name != methodName || existing.DeclaringClass != declClass
+                    || existing.Module != defModule || existing.Handle != templateHandle
+                    || !SameTypeArg(existing.Context.MethodArgs[0], methodArgs[0])))
+                throw VectorMagnitudeUnsupported();
+            if (defModule.Reader.StringComparer.Equals(md.Name, "MultiplyAddEstimate")
+                && CoreIntrinsics.IsVectorEstimateOwnerName(declClass.FullName)
+                && (!CoreIntrinsics.IsGenericVectorEstimate(existing)
+                    || existing.DeclaringClass != declClass || existing.Module != defModule || existing.Handle != templateHandle
+                    || existing.Context.MethodArgs[0].Class != methodArgs[0].Class))
+                throw GenericVectorEstimateUnsupported();
             return existing;
+        }
 
         // The method dimension nests independently of the class dimension —
         // `M<T>() => M<List<T>>()` deepens its method arguments forever on a
@@ -1248,6 +1479,14 @@ internal sealed partial class Compilation
     /// type, or a same-module non-generic definition.</summary>
     public MethodInfo ResolveMemberRefMethod(Module module, MemberReferenceHandle handle, GenericContext callerCtx)
     {
+        if (TryResolveScalarNumericLeafReference(module, handle, callerCtx) is { } scalarNumericLeaf) return scalarNumericLeaf;
+        if (TryResolveVectorAlignmentReference(module, handle, callerCtx) is { } alignment) return alignment;
+        if (TryResolveConcreteVectorReductionReference(module, handle, callerCtx) is { } concreteReduction) return concreteReduction;
+        RejectBareVectorAsReference(module, handle, callerCtx);
+        if (TryResolveConcreteVectorElementReference(module, handle, callerCtx) is { } concreteElement) return concreteElement;
+        if (TryResolveVectorEstimateReference(module, handle, callerCtx) is { } vectorEstimate) return vectorEstimate;
+        RejectUninstantiatedVectorMagnitudeReference(module, handle, callerCtx);
+        if (TryResolveVectorLogReference(module, handle, callerCtx) is { } vectorLog) return vectorLog;
         var reader = module.Reader;
         var mr = reader.GetMemberReference(handle);
         ClassInfo cls;
@@ -1278,13 +1517,49 @@ internal sealed partial class Compilation
             throw new NotSupportedException($"Unsupported MemberRef parent kind: {mr.Parent.Kind}");
         }
 
+        string name = reader.GetString(mr.Name);
+        // A raw MVAR in a value-method reference depends on the caller context,
+        // which the general MemberRef cache deliberately does not include.
+        if (CoreIntrinsics.IsVectorValueCandidate(cls, name))
+            return ResolveVectorValueReference(module, handle, callerCtx);
+        if (CoreIntrinsics.IsVectorManagedCountCandidate(cls, name))
+            return ResolveVectorManagedCountReference(module, handle, callerCtx);
+        if (name == "Equals" && cls.Context.TypeArgs is [{ Kind: TypeKind.Class, Class: { } vectorArgument }]
+            && (CoreIntrinsics.IsVectorExplicitOwner(vectorArgument) || CoreIntrinsics.IsFixedVectorValueOwner(vectorArgument)))
+        {
+            EnsureShape(vectorArgument);
+            EnsureShape(cls);
+            // Canonical placeholders are speculative owners, not numeric admission.
+            // The fixed value trial taints before dispatch; concrete calls revalidate.
+            if (CoreIntrinsics.IsVectorValueCallableEquatable(cls, vectorArgument)
+                || CoreIntrinsics.IsVectorManagedEquatableCandidate(cls, vectorArgument)
+                || !ContainsCanonPlaceholder(vectorArgument)
+                    && CoreIntrinsics.IsFixedVectorValueEquatableCandidate(cls, vectorArgument))
+                ValidateVectorValueConstrained(module, handle, callerCtx, vectorArgument);
+        }
+        // Return types distinguish the conversion siblings. Raw context validation
+        // precedes the general MemberRef cache, which omits method arguments.
+        if (name == "op_Explicit" && (CoreIntrinsics.IsVectorExplicitOwner(cls)
+            || VectorValueNamedOwner(module, mr.Parent)))
+        {
+            if (!CoreIntrinsics.IsVectorExplicitOwner(cls))
+                throw new NotSupportedException("Vector<T>.op_Explicit requires its genuine CoreLib owner");
+            EnsureShape(cls);
+            var referenceContext = new GenericContext(cls.Context.TypeArgs, callerCtx.MethodArgs);
+            var signature = mr.DecodeMethodSignature(SigProvider, referenceContext);
+            if (mr.Parent.Kind != HandleKind.TypeSpecification)
+                throw new NotSupportedException("Vector<T>.op_Explicit requires a closed owner");
+            var parent = reader.GetBlobReader(reader.GetTypeSpecification((TypeSpecificationHandle)mr.Parent).Signature);
+            if (!ReadVectorForwardingReferenceType(module, ref parent, callerCtx, cls) || parent.RemainingBytes != 0)
+                throw new NotSupportedException("Vector<T>.op_Explicit requires an unmodified owner");
+            return ResolveVectorExplicit(cls, signature, reader.GetBlobReader(mr.Signature), module, referenceContext);
+        }
         if (!typeRefParent
             && _memberRefMethodsBySpec.TryGetValue((module.Index, SRME.GetToken(handle), cls), out var hitBySpec))
             return hitBySpec;
 
         if (cls.GenericArity > 0)
             EnsureCompleted(cls); // members may be needed before the queue drains
-        string name = reader.GetString(mr.Name);
         var sig = mr.DecodeMethodSignature(SigProvider, cls.Context);
         int argc = sig.ParameterTypes.Length;
         // Name-indexed: same candidates in the same order as the full Methods
@@ -1332,11 +1607,782 @@ internal sealed partial class Compilation
                     : candidates.FirstOrDefault(x => ParameterIdentityKey(x.Signature.ParameterTypes) == want) ?? candidates[0];
             }
         }
+        if (CoreIntrinsics.IsKnownConstantName(cls.FullName, name))
+            ValidateKnownConstantReference(module, mr, resolved, callerCtx);
+        if (CoreIntrinsics.IsRuntimeTypeHandleGetAttributes(resolved)
+            || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(resolved))
+        {
+            // The general single-candidate path does not prove an incoming native ABI.
+            bool helper = resolved.IsStatic;
+            if (!RuntimeTypeAttributeMemberRefShape(reader, mr, helper)
+                || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.TypeAttributes", IsEnum: true } result }
+                || result.Module != resolved.Module
+                || (helper && (sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+                    || parameter.Module != resolved.Module)))
+                throw new NotSupportedException("RuntimeType attribute query requires its exact MemberRef signature");
+        }
+        if (CoreIntrinsics.IsRuntimeTypeHandleHasElementType(resolved)
+            || CoreIntrinsics.IsRuntimeTypeHasElementTypeOverride(resolved))
+        {
+            bool helper = resolved.IsStatic;
+            var blob = reader.GetBlobReader(mr.Signature);
+            bool shape = blob.RemainingBytes >= 3 && blob.ReadByte() == (helper ? 0 : 0x20)
+                && blob.ReadCompressedInteger() == (helper ? 1 : 0)
+                && blob.ReadByte() == (byte)SignatureTypeCode.Boolean;
+            if (shape && helper)
+                shape = blob.RemainingBytes >= 2 && blob.ReadByte() == 0x12
+                    && !blob.ReadTypeHandle().IsNil;
+            if (!shape || blob.RemainingBytes != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+                || (helper && (sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+                    || parameter.Module != resolved.Module)))
+                throw new NotSupportedException("RuntimeType element-presence query requires its exact MemberRef signature");
+        }
+        if (CoreIntrinsics.IsRuntimeTypeHandleIsArray(resolved)
+            || CoreIntrinsics.IsRuntimeTypeIsArrayOverride(resolved))
+        {
+            bool helper = resolved.IsStatic;
+            var blob = reader.GetBlobReader(mr.Signature);
+            bool shape = blob.RemainingBytes >= 3 && blob.ReadByte() == (helper ? 0 : 0x20)
+                && blob.ReadCompressedInteger() == (helper ? 1 : 0)
+                && blob.ReadByte() == (byte)SignatureTypeCode.Boolean;
+            if (shape && helper)
+                shape = blob.RemainingBytes >= 2 && blob.ReadByte() == 0x12
+                    && !blob.ReadTypeHandle().IsNil;
+            if (!shape || blob.RemainingBytes != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+                || (helper && (sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+                    || parameter.Module != resolved.Module)))
+                throw new NotSupportedException("RuntimeType array query requires its exact MemberRef signature");
+        }
+        if (CoreIntrinsics.IsRuntimeTypeHandleIsByRef(resolved)
+            || CoreIntrinsics.IsRuntimeTypeIsByRefOverride(resolved))
+        {
+            bool helper = resolved.IsStatic;
+            var blob = reader.GetBlobReader(mr.Signature);
+            bool shape = blob.RemainingBytes >= 3 && blob.ReadByte() == (helper ? 0 : 0x20)
+                && blob.ReadCompressedInteger() == (helper ? 1 : 0)
+                && blob.ReadByte() == (byte)SignatureTypeCode.Boolean;
+            if (shape && helper)
+                shape = blob.RemainingBytes >= 2 && blob.ReadByte() == 0x12
+                    && !blob.ReadTypeHandle().IsNil;
+            if (!shape || blob.RemainingBytes != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+                || (helper && (sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+                    || parameter.Module != resolved.Module)))
+                throw new NotSupportedException("RuntimeType by-reference query requires its exact MemberRef signature");
+        }
+        if (CoreIntrinsics.IsRuntimeTypeHandleIsPrimitive(resolved)
+            || CoreIntrinsics.IsRuntimeTypeIsPrimitiveOverride(resolved))
+        {
+            bool helper = resolved.IsStatic;
+            var blob = reader.GetBlobReader(mr.Signature);
+            bool shape = blob.RemainingBytes >= 3 && blob.ReadByte() == (helper ? 0 : 0x20)
+                && blob.ReadCompressedInteger() == (helper ? 1 : 0)
+                && blob.ReadByte() == (byte)SignatureTypeCode.Boolean;
+            if (shape && helper)
+                shape = blob.RemainingBytes >= 2 && blob.ReadByte() == 0x12
+                    && !blob.ReadTypeHandle().IsNil;
+            if (!shape || blob.RemainingBytes != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+                || (helper && (sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+                    || parameter.Module != resolved.Module)))
+                throw new NotSupportedException("RuntimeType primitive query requires its exact MemberRef signature");
+        }
+        if (CoreIntrinsics.IsRuntimeTypeHandleIsPointer(resolved)
+            || CoreIntrinsics.IsRuntimeTypeIsPointerOverride(resolved))
+        {
+            bool helper = resolved.IsStatic;
+            var blob = reader.GetBlobReader(mr.Signature);
+            bool shape = blob.RemainingBytes >= 3 && blob.ReadByte() == (helper ? 0 : 0x20)
+                && blob.ReadCompressedInteger() == (helper ? 1 : 0)
+                && blob.ReadByte() == (byte)SignatureTypeCode.Boolean;
+            if (shape && helper)
+                shape = blob.RemainingBytes >= 2 && blob.ReadByte() == 0x12
+                    && !blob.ReadTypeHandle().IsNil;
+            if (!shape || blob.RemainingBytes != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+                || (helper && (sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+                    || parameter.Module != resolved.Module)))
+                throw new NotSupportedException("RuntimeType pointer query requires its exact MemberRef signature");
+        }
+        if (CoreIntrinsics.IsRuntimeTypeHandleGetElementType(resolved)
+            || CoreIntrinsics.IsRuntimeTypeElementTypeOverride(resolved))
+        {
+            bool helper = resolved.IsStatic;
+            if (!RuntimeTypeReferenceQueryMemberRefShape(reader, mr, helper)
+                || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Class, Class: { } result }
+                || result.FullName != (helper ? "System.RuntimeType" : "System.Type")
+                || result.Module != resolved.Module
+                || (helper && (sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+                    || parameter.Module != resolved.Module)))
+                throw new NotSupportedException("RuntimeType element query requires its exact MemberRef signature");
+        }
+        if (CoreIntrinsics.IsRuntimeTypeHandleGetModule(resolved)
+            || CoreIntrinsics.IsRuntimeTypeModuleGetter(resolved)
+            || CoreIntrinsics.IsRuntimeTypeGetRuntimeModule(resolved))
+        {
+            bool helper = resolved.IsStatic;
+            bool publicGetter = CoreIntrinsics.IsRuntimeTypeModuleGetter(resolved);
+            if (!RuntimeTypeReferenceQueryMemberRefShape(reader, mr, helper)
+                || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Class, Class: { } result }
+                || result.FullName != (publicGetter ? "System.Reflection.Module" : "System.Reflection.RuntimeModule")
+                || result.Module != resolved.Module
+                || (helper && (sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+                    || parameter.Module != resolved.Module)))
+                throw new NotSupportedException("RuntimeType module query requires its exact MemberRef signature");
+        }
+        if (CoreIntrinsics.IsRuntimeTypeTypeCode(resolved))
+        {
+            if (!RuntimeTypeAttributeMemberRefShape(reader, mr, helper: false)
+                || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Class, Class: { FullName: "System.TypeCode", IsEnum: true,
+                    EnumUnderlying: PrimitiveTypeCode.Int32 } result }
+                || result.Module != resolved.Module)
+                throw new NotSupportedException("RuntimeType type-code query requires its exact MemberRef signature");
+        }
+        if (CoreIntrinsics.IsRuntimeTypeEnumName(resolved))
+        {
+            var blob = reader.GetBlobReader(mr.Signature);
+            if (blob.RemainingBytes != 4 || blob.ReadByte() != 0x20 || blob.ReadByte() != 1
+                || blob.ReadByte() != (byte)SignatureTypeCode.String || blob.ReadByte() != (byte)SignatureTypeCode.Object)
+                throw new NotSupportedException("RuntimeType enum name query requires its exact MemberRef signature");
+        }
+        if (CoreIntrinsics.IsRuntimeTypeEnumDefined(resolved))
+        {
+            var blob = reader.GetBlobReader(mr.Signature);
+            if (blob.RemainingBytes != 4 || blob.ReadByte() != 0x20 || blob.ReadByte() != 1
+                || blob.ReadByte() != (byte)SignatureTypeCode.Boolean || blob.ReadByte() != (byte)SignatureTypeCode.Object)
+                throw new NotSupportedException("RuntimeType enum defined query requires its exact MemberRef signature");
+        }
+        if (name == "get_Constructor" && candidates.Any(CoreIntrinsics.IsCustomAttributeDataConstructorBase))
+        {
+            if (!CoreIntrinsics.IsCustomAttributeDataConstructorSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0x20 || sig.GenericParameterCount != 0 || sig.ParameterTypes.Length != 0
+                || sig.ReturnType != resolved.Signature.ReturnType
+                || !CoreIntrinsics.IsCustomAttributeDataConstructorBase(resolved))
+                throw new NotSupportedException("CustomAttributeData constructor query requires its exact MemberRef signature");
+        }
+        if (name == "GetCustomAttributes" && candidates.Any(CoreIntrinsics.IsCustomAttributeDataMember)
+            && (CoreIntrinsics.BrCustomAttributeDataMember.Matches(resolved)
+                || sig.ParameterTypes is [{ Kind: TypeKind.Class, Class.FullName: "System.Reflection.MemberInfo" }]))
+        {
+            if (!CoreIntrinsics.IsCustomAttributeDataMemberSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType != resolved.Signature.ReturnType
+                || sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.Reflection.MemberInfo" } member }]
+                || member.Module != resolved.Module || !CoreIntrinsics.BrCustomAttributeDataMember.Matches(resolved))
+                throw new NotSupportedException("CustomAttributeData member query requires its exact MemberRef signature");
+        }
+        if (name == "CreateInstanceFrom" && candidates.Any(CoreIntrinsics.IsActivatorFrom)
+            && sig.ParameterTypes.Length is 2 or 3 or 8)
+        {
+            if (!CoreIntrinsics.IsActivatorFromSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsActivatorFromDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsActivatorFrom(resolved))
+                throw new NotSupportedException("Activator path activation requires its exact MemberRef signature");
+        }
+        if (name is "CreateBinaryFormatter" or "Deserialize" && candidates.Any(CoreIntrinsics.IsResourceFormatterAccessor))
+        {
+            bool constructor = name == "CreateBinaryFormatter";
+            if (!ResourceFormatterContract.IsAccessorSignature(reader, reader.GetBlobReader(mr.Signature), constructor)
+                || !CoreIntrinsics.IsResourceFormatterDecodedSignature(sig, resolved.Module, constructor)
+                || !CoreIntrinsics.IsResourceFormatterAccessor(resolved))
+                throw new NotSupportedException("ResourceReader formatter accessor requires its exact MemberRef signature");
+        }
+        if (name == DefaultPrincipalContract.AccessorName && candidates.Any(CoreIntrinsics.IsDefaultPrincipalAccessor))
+        {
+            if (!DefaultPrincipalContract.IsAccessorSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }
+                || sig.ParameterTypes is not [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }]
+                || !CoreIntrinsics.IsDefaultPrincipalAccessor(resolved))
+                throw new NotSupportedException("default principal accessor requires its exact MemberRef signature");
+        }
+        if (name == "ExecuteAssembly" && candidates.Any(CoreIntrinsics.IsAppDomainExecuteAssembly)
+            && (CoreIntrinsics.IsAppDomainExecuteAssembly(resolved)
+                || (sig.Header.RawValue == 0 && sig.ParameterTypes.Length == 2)
+                || sig.ParameterTypes is [{ Kind: TypeKind.Class, Class.FullName: "System.Reflection.Assembly" }, _]))
+        {
+            if (!CoreIntrinsics.IsAppDomainExecuteAssemblySignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }
+                || sig.ParameterTypes is not [
+                    { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.Assembly", IsValueType: false } assembly },
+                    { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String } }]
+                || assembly.Module != resolved.Module || !CoreIntrinsics.IsAppDomainExecuteAssembly(resolved))
+                throw new NotSupportedException("AppDomain assembly execution requires its exact MemberRef signature");
+        }
+        if (name is ".ctor" or "Finalize" && candidates.Any(CoreIntrinsics.IsGen2GcCallbackRefusal))
+        {
+            if (!CoreIntrinsics.IsGen2GcCallbackSignature(reader.GetBlobReader(mr.Signature), name)
+                || !CoreIntrinsics.IsGen2GcCallbackDecodedSignature(sig, resolved.Module, name)
+                || !CoreIntrinsics.IsGen2GcCallbackRefusal(resolved))
+                throw new NotSupportedException("Gen2GcCallback requires its exact MemberRef signature");
+        }
+        if (name is "GetAbbreviatedDayName" or "GetDayName" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoDayName))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoDayNameSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoDayNameDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsDateTimeFormatInfoDayName(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo day name requires its exact MemberRef signature");
+        }
+        if (name is "GetAbbreviatedMonthName" or "GetMonthName" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoMonthName))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoMonthNameSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoMonthNameDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsDateTimeFormatInfoMonthName(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo month name requires its exact MemberRef signature");
+        }
+        if ((name is "GetEraName" or "GetAbbreviatedEraName") && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoEraName))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoEraNameSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoEraNameDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsDateTimeFormatInfoEraName(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo era name requires its exact MemberRef signature");
+        }
+        if (name == "InternalGetMonthName" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoInternalMonthName))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoInternalMonthNameSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoInternalMonthNameDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsDateTimeFormatInfoInternalMonthName(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo internal month name requires its exact MemberRef signature");
+        }
+        if (name == "get_FormatFlags" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoFormatFlags))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoFormatFlagsSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoFormatFlagsDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsDateTimeFormatInfoFormatFlags(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo FormatFlags requires its exact MemberRef signature");
+        }
+        if (name == "YearMonthAdjustment" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoYearMonthAdjustment))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoYearMonthAdjustmentSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoYearMonthAdjustmentDecodedSignature(sig)
+                || !CoreIntrinsics.IsDateTimeFormatInfoYearMonthAdjustment(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo YearMonthAdjustment requires its exact MemberRef signature");
+        }
+        if (name == "IsDefaultType" && candidates.Any(CoreIntrinsics.IsResourceManagerDefaultType))
+        {
+            if (!CoreIntrinsics.IsResourceManagerDefaultTypeSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsResourceManagerDefaultTypeDecodedSignature(sig)
+                || !CoreIntrinsics.IsResourceManagerDefaultType(resolved))
+                throw new NotSupportedException("ResourceManager IsDefaultType requires its exact MemberRef signature");
+        }
+        if (CoreIntrinsics.IsInterpolationStaticHelperName(name) && candidates.Any(CoreIntrinsics.IsInterpolationStaticHelper))
+        {
+            if (!CoreIntrinsics.IsInterpolationStaticHelperSignature(name, reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsInterpolationStaticHelperDecodedSignature(name, sig, resolved.Module)
+                || !CoreIntrinsics.IsInterpolationStaticHelper(resolved))
+                throw new NotSupportedException($"DefaultInterpolatedStringHandler {name} requires its exact MemberRef signature");
+        }
+        if (CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetterName(name) && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetterSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetterDecodedSignature(sig)
+                || !CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(resolved))
+                throw new NotSupportedException($"DateTimeFormatInfo {name} requires its exact MemberRef signature");
+        }
+        if (name == "get_HasForceTwoDigitYears" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYearsSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYearsDecodedSignature(sig)
+                || !CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo HasForceTwoDigitYears requires its exact MemberRef signature");
+        }
+        if ((name is "get_GeneralShortTimePattern" or "get_GeneralLongTimePattern" or "get_DateTimeOffsetPattern") && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePattern))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePatternSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePatternDecodedSignature(sig)
+                || !CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePattern(resolved))
+                throw new NotSupportedException($"DateTimeFormatInfo {name.Substring(4)} requires its exact MemberRef signature");
+        }
+        if (resolved.DeclaringClass.FullName == "System.DateTime" &&
+            (name is "TryAddTicks" or "TryCreate" || name == ".ctor" && CoreIntrinsics.IsPotentialDateTimeLocalConstructor(sig)))
+        {
+            bool exact = name switch
+            {
+                "TryAddTicks" => CoreIntrinsics.IsDateTimeTryAddTicks(resolved)
+                    && CoreIntrinsics.IsDateTimeTryAddTicksSignature(reader.GetBlobReader(mr.Signature))
+                    && CoreIntrinsics.IsDateTimeTryAddTicksDecodedSignature(sig, resolved.Module),
+                "TryCreate" => CoreIntrinsics.IsDateTimeTryCreate(resolved)
+                    && CoreIntrinsics.IsDateTimeTryCreateSignature(reader.GetBlobReader(mr.Signature))
+                    && CoreIntrinsics.IsDateTimeTryCreateDecodedSignature(sig, resolved.Module),
+                _ => CoreIntrinsics.IsDateTimeLocalConstructor(resolved)
+                    && CoreIntrinsics.IsDateTimeLocalConstructorSignature(reader.GetBlobReader(mr.Signature))
+                    && CoreIntrinsics.IsDateTimeLocalConstructorDecodedSignature(sig, resolved.Module)
+            };
+            if (!exact) throw new NotSupportedException($"DateTime {name} requires its exact MemberRef signature");
+        }
+        if (name == "DecDivMod1E9" && candidates.Any(CoreIntrinsics.IsDecimalDivMod))
+        {
+            if (!CoreIntrinsics.IsDecimalDivModSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDecimalDivModDecodedSignature(sig, resolved.DeclaringClass)
+                || !CoreIntrinsics.IsDecimalDivMod(resolved))
+                throw new NotSupportedException("Decimal.DecDivMod1E9 requires its exact MemberRef signature");
+        }
+        if (name == "Deconstruct" && candidates.Any(CoreIntrinsics.IsDateOnlyDeconstruct))
+        {
+            if (!CoreIntrinsics.IsDateOnlyDeconstructSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateOnlyDeconstructDecodedSignature(sig)
+                || !CoreIntrinsics.IsDateOnlyDeconstruct(resolved))
+                throw new NotSupportedException("DateOnly Deconstruct requires its exact MemberRef signature");
+        }
+        if (CoreIntrinsics.IsDateTimeFormatInfoSpanName(name) && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoSpan))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoSpanSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoSpanDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsDateTimeFormatInfoSpan(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo TChar accessor requires its exact MemberRef signature");
+        }
+        if (CoreIntrinsics.IsDateTimeFormatInfoMonthArrayName(name) && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoMonthArray))
+        {
+            bool hasBoolean = name == "InternalGetGenitiveMonthNames";
+            if (!CoreIntrinsics.IsDateTimeFormatInfoMonthArraySignature(reader.GetBlobReader(mr.Signature), hasBoolean)
+                || !CoreIntrinsics.IsDateTimeFormatInfoMonthArrayDecodedSignature(sig, hasBoolean)
+                || !CoreIntrinsics.IsDateTimeFormatInfoMonthArray(resolved))
+                throw new NotSupportedException($"DateTimeFormatInfo {name} requires its exact MemberRef signature");
+        }
+        if (name == "GetAllDateTimePatterns" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatterns))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatternsSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatternsDecodedSignature(sig)
+                || !CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatterns(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo GetAllDateTimePatterns(Char) requires its exact MemberRef signature");
+        }
+        if (name == "Tokenize" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoTokenize))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoTokenizeSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoTokenizeDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsDateTimeFormatInfoTokenize(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo Tokenize requires its exact MemberRef signature");
+        }
+        if (name == "set_Calendar" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoCalendarSetterSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoCalendarSetterDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo Calendar setter requires its exact MemberRef signature");
+        }
+        if (name is "WaitMultipleIgnoringSyncContext" or "WaitMultipleIgnoringSyncContextCore"
+            && candidates.Any(CoreIntrinsics.IsWaitHandleRawWaitWrapper))
+        {
+            if (!IsWaitHandleRawWaitReference(module, reader.GetBlobReader(mr.Signature), resolved)
+                || !CoreIntrinsics.IsWaitHandleRawWaitWrapperDecodedSignature(sig, resolved.Module, name)
+                || !CoreIntrinsics.IsWaitHandleRawWaitWrapper(resolved))
+                throw new NotSupportedException("WaitHandle raw wait wrapper requires its exact ReadOnlySpan<IntPtr> signature");
+        }
+        if (name == "<WaitMultipleIgnoringSyncContext>g____PInvoke|2_0"
+            && candidates.Any(CoreIntrinsics.IsWaitHandleRawWaitImport))
+        {
+            if (!CoreIntrinsics.IsWaitHandleRawWaitImportSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsWaitHandleRawWaitImport(resolved))
+                throw new NotSupportedException("WaitHandle raw wait import requires its exact IntPtr pointer signature");
+        }
+        if (name == "Invoke" && candidates.Any(CoreIntrinsics.IsCancellationInvoke))
+        {
+            if (!IsCancellationInvokeReference(module, reader.GetBlobReader(mr.Signature), resolved)
+                || !CoreIntrinsics.IsCancellationInvokeDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsCancellationInvoke(resolved))
+                throw new NotSupportedException("Cancellation callback Invoke requires its exact Delegate, Object, CancellationTokenSource signature");
+        }
+        if (name == "ShuffleNativeModified" && candidates.Any(CoreIntrinsics.IsSearchValuesShuffle))
+        {
+            if (!IsSearchValuesShuffleReference(module, reader.GetBlobReader(mr.Signature), resolved)
+                || !CoreIntrinsics.IsSearchValuesShuffleDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsSearchValuesShuffle(resolved))
+                throw new NotSupportedException("SearchValues shuffle requires its exact Vector128<Byte> signature");
+        }
+        if (name is "GetRawStringDataAsUInt8" or "wcslen" && candidates.Any(CoreIntrinsics.IsStringPrivateEntryPoint))
+        {
+            if (!CoreIntrinsics.IsStringPrivateEntryPointSignature(name, reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsStringPrivateEntryPointDecodedSignature(name, sig)
+                || !CoreIntrinsics.IsStringPrivateEntryPoint(resolved))
+                throw new NotSupportedException("String private entry point requires its exact byte-reference or UTF-16 pointer signature");
+        }
+        if (name == "VerifyCultureName" && candidates.Any(CoreIntrinsics.IsCultureInfoNameValidator))
+        {
+            if (!CoreIntrinsics.IsCultureInfoNameValidatorSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsCultureInfoNameValidatorDecodedSignature(sig)
+                || !CoreIntrinsics.IsCultureInfoNameValidator(resolved))
+                throw new NotSupportedException("CultureInfo name validation requires its exact String, Boolean signature");
+        }
+        if (name == "get_CompareInfo" && candidates.Any(CoreIntrinsics.IsInvariantCompareInfoGetter))
+        {
+            if (!CoreIntrinsics.IsInvariantCompareInfoGetterSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsInvariantCompareInfoGetterDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsInvariantCompareInfoGetter(resolved))
+                throw new NotSupportedException("Invariant CompareInfo requires its exact MemberRef signature");
+        }
+        if (name == "get_Calendar" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoCalendar))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoCalendarSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoCalendarDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsDateTimeFormatInfoCalendar(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo Calendar requires its exact MemberRef signature");
+        }
+        if (name == "OnProcessExit" && candidates.Any(CoreIntrinsics.IsAppContextOnProcessExit))
+        {
+            if (!CoreIntrinsics.IsAppContextOnProcessExitSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ParameterTypes.Length != 0 || !sig.ReturnType.IsVoid
+                || !CoreIntrinsics.IsAppContextOnProcessExit(resolved))
+                throw new NotSupportedException("AppContext process-exit hook requires its exact MemberRef signature");
+        }
+        if (name == "GetUtf8Name" && candidates.Any(CoreIntrinsics.IsRuntimeTypeHandleUtf8Name))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeHandleUtf8NameSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Class,
+                    Class: { FullName: "System.MdUtf8String", IsValueType: true } result }
+                || result.Module != resolved.Module
+                || sig.ParameterTypes is not [{ Kind: TypeKind.Class,
+                    Class: { FullName: "System.RuntimeType", IsValueType: false } type }]
+                || type.Module != resolved.Module || !CoreIntrinsics.IsRuntimeTypeHandleUtf8Name(resolved))
+                throw new NotSupportedException("RuntimeTypeHandle UTF8-name query requires its exact MemberRef signature");
+        }
+        if (name == "ContainsGenericVariables" && candidates.Any(CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStatic)
+            && (CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStatic(resolved) || sig.ParameterTypes.Length != 0))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStaticSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+                || sig.ParameterTypes is not [{ Kind: TypeKind.Class,
+                    Class: { FullName: "System.RuntimeType", IsValueType: false } type }]
+                || type.Module != resolved.Module || !CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStatic(resolved))
+                throw new NotSupportedException("RuntimeTypeHandle static generic-variable query requires its exact MemberRef signature");
+        }
+        if (name == "GetFields" && candidates.Any(CoreIntrinsics.IsRuntimeTypeHandleFields)
+            && (CoreIntrinsics.IsRuntimeTypeHandleFields(resolved)
+                || sig.ParameterTypes is [{ Kind: TypeKind.Class, Class.FullName: "System.RuntimeType" }, _, _]))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeHandleFieldsSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+                || sig.ParameterTypes is not [
+                    { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType", IsValueType: false } type },
+                    var buffer, { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 } }]
+                || type.Module != resolved.Module || !CoreIntrinsics.IsRuntimeTypeFieldsSpan(buffer, resolved.Module)
+                || !CoreIntrinsics.IsRuntimeTypeHandleFields(resolved))
+                throw new NotSupportedException("RuntimeTypeHandle fields query requires its exact MemberRef signature");
+        }
+        if (name == "GetArgumentTypesFromFunctionPointer" && candidates.Any(CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments)
+            && (CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(resolved) || sig.ParameterTypes.Length == 1))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArgumentsSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Class,
+                    Class: { FullName: "System.Type", IsValueType: false } element } }
+                || element.Module != resolved.Module
+                || sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } type }]
+                || type.Module != resolved.Module || !CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(resolved))
+                throw new NotSupportedException("RuntimeTypeHandle function-pointer argument query requires its exact MemberRef signature");
+        }
+        if (name == "GetInterfaces" && candidates.Any(CoreIntrinsics.IsRuntimeTypeHandleInterfaces)
+            && (CoreIntrinsics.IsRuntimeTypeHandleInterfaces(resolved) || sig.ParameterTypes.Length == 1))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeHandleInterfacesSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Class,
+                    Class: { FullName: "System.Type", IsValueType: false } element } }
+                || element.Module != resolved.Module
+                || sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } type }]
+                || type.Module != resolved.Module || !CoreIntrinsics.IsRuntimeTypeHandleInterfaces(resolved))
+                throw new NotSupportedException("RuntimeTypeHandle interfaces query requires its exact MemberRef signature");
+        }
+        if (name == "GetIntroducedMethods" && candidates.Any(CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactorySignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType != resolved.Signature.ReturnType || sig.ParameterTypes.Length != 1
+                || sig.ParameterTypes[0] != resolved.Signature.ParameterTypes[0]
+                || !CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(resolved))
+                throw new NotSupportedException("RuntimeTypeHandle introduced-method factory requires its exact MemberRef signature");
+        }
+        if (name == "<GetGenericTypeDefinition>g__CacheGenericDefinition|50_0"
+            && candidates.Any(CoreIntrinsics.IsRuntimeTypeCacheGenericDefinition))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeCacheGenericDefinitionSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0x20 || sig.GenericParameterCount != 0 || sig.ParameterTypes.Length != 0
+                || sig.ReturnType != resolved.Signature.ReturnType
+                || !CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(resolved))
+                throw new NotSupportedException("RuntimeTypeCache generic-definition helper requires its exact MemberRef signature");
+        }
+        if (name == "GetDeclaringType" && candidates.Any(CoreIntrinsics.IsRuntimeTypeHandleDeclaringType))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeHandleDeclaringTypeSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } result }
+                || sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+                || result != parameter || result.Module != resolved.Module
+                || !CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(resolved))
+                throw new NotSupportedException("RuntimeTypeHandle declaring-type query requires its exact MemberRef signature");
+        }
+        if (name == "ConstructName" && candidates.Any(CoreIntrinsics.IsRuntimeTypeHandleConstructName))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeHandleConstructNameSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0x20 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String }
+                || sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.TypeNameFormatFlags",
+                    IsEnum: true, EnumUnderlying: PrimitiveTypeCode.Int32 } flags }]
+                || flags.Module != resolved.Module || !CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(resolved))
+                throw new NotSupportedException("RuntimeTypeHandle name construction requires its exact MemberRef signature");
+        }
+        if (name == "GetActivationInfo" && candidates.Any(CoreIntrinsics.IsCoreClrActivationInfo)
+            && (CoreIntrinsics.BrCoreClrActivationInfo.Matches(resolved)
+                || sig.ParameterTypes.FirstOrDefault()?.Class?.FullName == "System.RuntimeType"
+                || sig.ParameterTypes is [{ },
+                    { Kind: TypeKind.ByRef, Element.Kind: TypeKind.Pointer },
+                    { Kind: TypeKind.ByRef, Element.Kind: TypeKind.Pointer },
+                    { Kind: TypeKind.ByRef, Element.Kind: TypeKind.Pointer },
+                    { Kind: TypeKind.ByRef, Element.Kind: TypeKind.Pointer },
+                    { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean } }]))
+        {
+            if (!CoreIntrinsics.IsCoreClrActivationInfoSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ParameterTypes[0] is not { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } type }
+                || type.Module != resolved.Module || !CoreIntrinsics.BrCoreClrActivationInfo.Matches(resolved))
+                throw new NotSupportedException("CoreCLR activation-info bridge requires its exact MemberRef signature");
+        }
+        if (name == "CallDefaultStructConstructor" && candidates.Any(CoreIntrinsics.IsRuntimeTypeDefaultStructCtor))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeDefaultStructCtorSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0x20 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Void }
+                || sig.ParameterTypes is not [{ Kind: TypeKind.ByRef,
+                    Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte } }]
+                || !CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(resolved))
+                throw new NotSupportedException("RuntimeType in-place construction requires its exact MemberRef signature");
+        }
+        if (name == "CreateInstanceOfT" && candidates.Any(CoreIntrinsics.IsRuntimeTypeCreateInstanceOfT))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeCreateInstanceOfTSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0x20 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }
+                || sig.ParameterTypes.Length != 0 || !CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(resolved))
+                throw new NotSupportedException("RuntimeType generic-caller construction requires its exact MemberRef signature");
+        }
+        if (name == "CreateInstanceForAnotherGenericParameter" && candidates.Any(CoreIntrinsics.IsRuntimeTypeGenericFactory))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeGenericFactorySignature(reader.GetBlobReader(mr.Signature), out _, out _)
+                || !CoreIntrinsics.IsRuntimeTypeGenericFactoryDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(resolved))
+                throw new NotSupportedException("RuntimeType generic factory requires its exact RuntimeType operands");
+        }
+        if (name == "get_NativeLength" && candidates.Any(CoreIntrinsics.IsArrayNativeLength))
+        {
+            if (!CoreIntrinsics.IsArrayNativeLengthSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsArrayNativeLengthDecodedSignature(sig)
+                || !CoreIntrinsics.BrArrayNativeLength.Matches(resolved))
+                throw new NotSupportedException("System.Array.get_NativeLength requires its exact MemberRef signature");
+        }
+        if (name == "CheckUninitialized" && candidates.Any(CoreIntrinsics.IsGCHandleCheckUninitialized))
+        {
+            if (!CoreIntrinsics.IsGCHandleCheckUninitializedSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsGCHandleCheckUninitializedDecodedSignature(sig)
+                || !CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(resolved))
+                throw new NotSupportedException("System.Runtime.InteropServices.GCHandle.CheckUninitialized requires its exact MemberRef signature");
+        }
+        if (name == "CreateInstanceDefaultCtor" && candidates.Any(CoreIntrinsics.IsRuntimeTypeDefaultCtor))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeDefaultCtorSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0x20 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }
+                || sig.ParameterTypes is not [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }]
+                || !CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(resolved))
+                throw new NotSupportedException("RuntimeType default construction requires its exact MemberRef signature");
+        }
+        if (name == "CreateInstance" && candidates.Any(CoreIntrinsics.IsActivatorNamed)
+            && (CoreIntrinsics.BrActivatorNamed.Matches(resolved)
+                || (sig.ParameterTypes.Length is 2 or 3 or 8
+                    && sig.ReturnType is { Kind: TypeKind.Class, Class.FullName: "System.Runtime.Remoting.ObjectHandle" })
+                || sig.ParameterTypes.Length is 2 or 3 or 8 && sig.ParameterTypes[0].IsString))
+        {
+            if (!CoreIntrinsics.IsActivatorNamedSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsActivatorNamedDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.BrActivatorNamed.Matches(resolved))
+                throw new NotSupportedException("Named Activator construction requires its exact MemberRef signature");
+        }
+        if (name == "CreateInstance" && candidates.Any(CoreIntrinsics.IsActivatorDefault)
+            && !sig.ParameterTypes[0].IsString && sig.ParameterTypes[1].Kind != TypeKind.SZArray)
+        {
+            // Named Boolean and other near-misses must not fall back to an unrelated same-arity overload.
+            if (!CoreIntrinsics.IsActivatorDefaultSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }
+                || sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.Type" } type },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }]
+                || type.Module != resolved.Module || !CoreIntrinsics.BrActivatorDefault.Matches(resolved))
+                throw new NotSupportedException("Activator default construction requires its exact MemberRef signature");
+        }
+        if (name == "IsAssignableFrom" && candidates.Any(CoreIntrinsics.IsRuntimeTypeAssignableFrom))
+        {
+            // Arity fallback must not reinterpret an unknown source as the TypeInfo sibling.
+            // That legitimate overload remains managed IL, not an additional adapter.
+            if (!RuntimeTypeAssignableFromMemberRefShape(reader, mr)
+                || sig.Header.RawValue != 0x20 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+                || sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.Type" or "System.Reflection.TypeInfo" } argument }]
+                || argument.Module != resolved.Module
+                || !SameTypeArg(sig.ParameterTypes[0], resolved.Signature.ParameterTypes[0]))
+                throw new NotSupportedException("RuntimeType assignability query requires its exact MemberRef signature");
+        }
         if (typeRefParent)
             _memberRefMethodsByTypeRef[(module.Index, SRME.GetToken(handle))] = resolved;
         else
             _memberRefMethodsBySpec[(module.Index, SRME.GetToken(handle), cls)] = resolved;
         return resolved;
+    }
+
+    private readonly Dictionary<(ClassInfo Owner, MethodDefinitionHandle Definition), MethodInfo> _vectorExplicitMethods = new();
+
+    private bool ReadVectorForwardingReferenceType(Module module, ref BlobReader blob, GenericContext context, ClassInfo owner) =>
+        owner.Context.TypeArgs is [var element]
+        && ReadVectorValueInstantiation(module, ref blob, owner, 0x11)
+        && ReadVectorValueElement(module, ref blob, context, element);
+
+    private bool IsCancellationInvokeReference(Module module, BlobReader blob, MethodInfo target)
+    {
+        if (!CoreIntrinsics.IsCancellationInvoke(target)
+            || !CoreIntrinsics.TryReadCancellationInvokeSignature(module, blob, out var callback, out var source))
+            return false;
+        bool Owned(EntityHandle handle, TypeDesc expected)
+        {
+            if (expected.Class is not { } definition) return false;
+            var type = handle.Kind == HandleKind.TypeReference
+                ? ResolveTypeRef(module, (TypeReferenceHandle)handle)
+                : GetTypeDescForDefinition(module, (TypeDefinitionHandle)handle);
+            return type is { Kind: TypeKind.Class, Class: { } cls }
+                && cls.Module == definition.Module && cls.Handle == definition.Handle;
+        }
+        return Owned(callback, target.Signature.ParameterTypes[0]) && Owned(source, target.Signature.ParameterTypes[2]);
+    }
+
+    private bool IsWaitHandleRawWaitReference(Module module, BlobReader blob, MethodInfo target)
+    {
+        if (!CoreIntrinsics.IsWaitHandleRawWaitWrapper(target)
+            || target.Signature.ParameterTypes[0].Class is not { } expected
+            || !CoreIntrinsics.TryReadWaitHandleRawWaitWrapperSignature(target.Name, blob, out var span, out int count)
+            || count != target.Signature.ParameterTypes.Length)
+            return false;
+        if (span.Kind == HandleKind.TypeReference
+            ? SRME.GetRowNumber((TypeReferenceHandle)span) > module.Reader.TypeReferences.Count
+            : SRME.GetRowNumber((TypeDefinitionHandle)span) > module.Reader.TypeDefinitions.Count)
+            return false;
+        var type = span.Kind == HandleKind.TypeReference
+            ? ResolveTypeRef(module, (TypeReferenceHandle)span)
+            : GetTypeDescForDefinition(module, (TypeDefinitionHandle)span);
+        if (type is null) return false;
+        return type.Kind == TypeKind.Template
+            ? type.TemplateModule == expected.Module && type.TemplateHandle == expected.Handle
+            : type.Kind == TypeKind.Class && type.Class is { } cls && cls.Module == expected.Module && cls.Handle == expected.Handle;
+    }
+
+    private bool IsSearchValuesShuffleReference(Module module, BlobReader blob, MethodInfo target)
+    {
+        if (!CoreIntrinsics.IsSearchValuesShuffle(target)
+            || target.Signature.ReturnType.Class is not { } expected
+            || !CoreIntrinsics.TryReadSearchValuesShuffleSignature(module, blob, out var result, out var first, out var second))
+            return false;
+        bool Owned(EntityHandle handle)
+        {
+            var type = handle.Kind == HandleKind.TypeReference
+                ? ResolveTypeRef(module, (TypeReferenceHandle)handle)
+                : GetTypeDescForDefinition(module, (TypeDefinitionHandle)handle);
+            if (type is null) return false;
+            return type.Kind == TypeKind.Template
+                ? type.TemplateModule == expected.Module && type.TemplateHandle == expected.Handle
+                : type.Kind == TypeKind.Class && type.Class is { } cls && cls.Module == expected.Module && cls.Handle == expected.Handle;
+        }
+        return Owned(result) && Owned(first) && Owned(second);
+    }
+
+    private MethodInfo ResolveVectorExplicit(ClassInfo owner, MethodSignature<TypeDesc> signature, BlobReader reference,
+        Module module, GenericContext context)
+    {
+        if (signature.ReturnType is { Kind: TypeKind.Class, Class: { } result })
+            EnsureShape(result);
+        if (!CoreIntrinsics.IsVectorExplicitSignature(signature, owner)
+            || reference.RemainingBytes < 2 || reference.ReadByte() != 0 || reference.ReadByte() != 1
+            || !ReadVectorForwardingReferenceType(module, ref reference, context, signature.ReturnType.Class!)
+            || !ReadVectorForwardingReferenceType(module, ref reference, context, owner) || reference.RemainingBytes != 0)
+            throw new NotSupportedException("Vector<T>.op_Explicit requires its exact supported CoreLib reference");
+        // Intrinsic generic shells deliberately have no member catalog. Resolve only
+        // the requested conversion declaration without reopening their IL or metadata.
+        var reader = owner.Module.Reader;
+        foreach (var handle in reader.GetTypeDefinition(owner.Handle).GetMethods())
+        {
+            var definition = reader.GetMethodDefinition(handle);
+            if (!reader.StringComparer.Equals(definition.Name, "op_Explicit"))
+                continue;
+            var key = (owner, handle);
+            if (!_vectorExplicitMethods.TryGetValue(key, out var method))
+            {
+                method = new MethodInfo
+                {
+                    DeclaringClass = owner, Name = "op_Explicit", Handle = handle,
+                    Module = owner.Module, Context = owner.Context,
+                    Attributes = definition.Attributes, ImplAttributes = definition.ImplAttributes,
+                    Rva = definition.RelativeVirtualAddress, PInvoke = ReadPInvoke(owner.Module, definition),
+                };
+            }
+            if (method.DeclaringClass != owner || method.Module != owner.Module || method.Handle != handle)
+                throw new NotSupportedException("Vector<T>.op_Explicit cache identity changed");
+            if ((CoreIntrinsics.IsVectorExplicit(method) || CoreIntrinsics.IsVectorManagedForwarder(method))
+                && SameTypeArg(signature.ReturnType, method.Signature.ReturnType))
+            {
+                _vectorExplicitMethods.TryAdd(key, method);
+                return method;
+            }
+        }
+        throw new NotSupportedException($"Vector<T>.op_Explicit requires its exact supported CoreLib declaration (ResolveVectorExplicit: {owner.FullName} -> {signature.ReturnType})");
+    }
+
+    private static bool RuntimeTypeAssignableFromMemberRefShape(MetadataReader reader, MemberReference member)
+    {
+        var blob = reader.GetBlobReader(member.Signature);
+        if (blob.RemainingBytes < 5 || blob.ReadByte() != 0x20 || blob.ReadByte() != 1
+            || blob.ReadByte() != (byte)SignatureTypeCode.Boolean || blob.ReadByte() != 0x12)
+            return false;
+        blob.ReadCompressedInteger();
+        return blob.RemainingBytes == 0;
+    }
+
+    private static bool RuntimeTypeAttributeMemberRefShape(MetadataReader reader, MemberReference member, bool helper)
+    {
+        var blob = reader.GetBlobReader(member.Signature);
+        if (blob.RemainingBytes < 3 || blob.ReadByte() != (helper ? 0 : 0x20)
+            || blob.ReadCompressedInteger() != (helper ? 1 : 0) || blob.ReadByte() != 0x11)
+            return false;
+        blob.ReadCompressedInteger(); // The attribute/type-code enum is encoded as a value type.
+        if (helper)
+        {
+            if (blob.RemainingBytes < 2 || blob.ReadByte() != 0x12)
+                return false;
+            blob.ReadCompressedInteger(); // RuntimeType is encoded as a reference type.
+        }
+        return blob.RemainingBytes == 0;
+    }
+
+    private static bool RuntimeTypeReferenceQueryMemberRefShape(MetadataReader reader, MemberReference member, bool helper)
+    {
+        var blob = reader.GetBlobReader(member.Signature);
+        if (blob.RemainingBytes < 3 || blob.ReadByte() != (helper ? 0 : 0x20)
+            || blob.ReadCompressedInteger() != (helper ? 1 : 0) || blob.ReadByte() != 0x12)
+            return false;
+        blob.ReadCompressedInteger(); // The return is encoded as a reference type.
+        if (helper)
+        {
+            if (blob.RemainingBytes < 2 || blob.ReadByte() != 0x12)
+                return false;
+            blob.ReadCompressedInteger();
+        }
+        return blob.RemainingBytes == 0;
     }
 
     // Display names omit the defining assembly; overload keys use the model's type identity.
@@ -1349,11 +2395,540 @@ internal sealed partial class Compilation
     /// the member cannot be matched, so callers fall back to intrinsics.</summary>
     public MethodInfo? TryResolveMemberRefMethod(Module module, MemberReferenceHandle handle, GenericContext callerCtx)
     {
+        if (TryResolveScalarNumericLeafReference(module, handle, callerCtx) is { } scalarNumericLeaf) return scalarNumericLeaf;
+        if (TryResolveVectorAlignmentReference(module, handle, callerCtx) is { } alignment) return alignment;
+        if (TryResolveConcreteVectorReductionReference(module, handle, callerCtx) is { } concreteReduction) return concreteReduction;
+        RejectBareVectorAsReference(module, handle, callerCtx);
+        if (TryResolveConcreteVectorElementReference(module, handle, callerCtx) is { } concreteElement) return concreteElement;
+        if (TryResolveVectorEstimateReference(module, handle, callerCtx) is { } vectorEstimate) return vectorEstimate;
+        RejectUninstantiatedVectorMagnitudeReference(module, handle, callerCtx);
+        if (TryResolveVectorLogReference(module, handle, callerCtx) is { } vectorLog) return vectorLog;
         var reader = module.Reader;
         var mr = reader.GetMemberReference(handle);
         if (mr.Parent.Kind is not (HandleKind.TypeReference or HandleKind.TypeDefinition))
             return null;
         string? full = MemberRefParentTypeName(module, handle);
+        if (reader.StringComparer.Equals(mr.Name, "IsKnownConstant")
+            && full == "System.Runtime.CompilerServices.RuntimeHelpers")
+            return CoreIntrinsics.ValidateKnownConstantCallable(ResolveMemberRefMethod(module, handle, callerCtx));
+        if (full == "System.Decimal" && reader.StringComparer.Equals(mr.Name, "DecDivMod1E9"))
+        {
+            var divide = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDecimalDivMod(divide)
+                && CoreIntrinsics.IsDecimalDivModSignature(reader.GetBlobReader(mr.Signature))
+                && CoreIntrinsics.IsDecimalDivModDecodedSignature(mr.DecodeMethodSignature(SigProvider, callerCtx), divide.DeclaringClass))
+                return divide;
+            throw new NotSupportedException("Decimal.DecDivMod1E9 requires its exact CoreLib reference and declaration");
+        }
+        if (CoreIntrinsicTypeMaps.IsPrimitiveBigMulOwner(full) && reader.StringComparer.Equals(mr.Name, "BigMul"))
+        {
+            var multiply = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsPrimitiveBigMulReference(multiply, mr.DecodeMethodSignature(SigProvider, callerCtx), reader.GetBlobReader(mr.Signature)))
+                return multiply;
+            throw new NotSupportedException("Primitive BigMul requires its exact CoreLib reference and declaration");
+        }
+        if (CoreIntrinsicTypeMaps.IsDelegateBaseType(full) && reader.StringComparer.Equals(mr.Name, ".ctor"))
+        {
+            try
+            {
+                var constructor = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.BrDelegateNamedConstructor.Matches(constructor))
+                    return constructor;
+            }
+            catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.Reflection.CustomAttributeData" && reader.StringComparer.Equals(mr.Name, "get_Constructor"))
+        {
+            var constructor = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(constructor))
+                return constructor;
+        }
+        if (CoreIntrinsicTypeMaps.IsMemberMetadataDefinitionOwner(full)
+            && reader.StringComparer.Equals(mr.Name, "HasSameMetadataDefinitionAs"))
+        {
+            try
+            {
+                var identity = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.IsMemberMetadataDefinition(identity))
+                    return identity;
+            }
+            catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.Type" && reader.StringComparer.Equals(mr.Name, "CreateGetMemberWithSameMetadataDefinitionAsNotFoundException"))
+        {
+            try
+            {
+                var factory = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.IsMemberNotFoundExceptionFactory(factory))
+                    return factory;
+            }
+            catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.Threading.CancellationTokenSource" && reader.StringComparer.Equals(mr.Name, "Invoke"))
+        {
+            var callback = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsCancellationInvoke(callback))
+                return callback;
+        }
+        if (full == "System.Threading.WaitHandle"
+            && (reader.StringComparer.Equals(mr.Name, "WaitMultipleIgnoringSyncContext")
+                || reader.StringComparer.Equals(mr.Name, "WaitMultipleIgnoringSyncContextCore")
+                || reader.StringComparer.Equals(mr.Name, "<WaitMultipleIgnoringSyncContext>g____PInvoke|2_0")))
+        {
+            var wait = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsWaitHandleRawWaitWrapper(wait) || CoreIntrinsics.IsWaitHandleRawWaitImport(wait))
+                return wait;
+        }
+        if (full == "System.Buffers.SearchValues" && reader.StringComparer.Equals(mr.Name, "ShuffleNativeModified"))
+        {
+            var shuffle = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsSearchValuesShuffle(shuffle))
+                return shuffle;
+        }
+        if (full == "System.String" && (reader.StringComparer.Equals(mr.Name, "GetRawStringDataAsUInt8")
+            || reader.StringComparer.Equals(mr.Name, "wcslen")))
+        {
+            var helper = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsStringPrivateEntryPoint(helper)) return helper;
+        }
+        if (full == "System.Globalization.CultureInfo" && reader.StringComparer.Equals(mr.Name, "VerifyCultureName"))
+        {
+            var validator = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsCultureInfoNameValidator(validator))
+                return validator;
+        }
+        if (full == "System.Runtime.CompilerServices.RuntimeHelpers"
+            && (reader.StringComparer.Equals(mr.Name, "IsPrimitiveType")
+                || reader.StringComparer.Equals(mr.Name, "CanPrimitiveWiden")))
+        {
+            try
+            {
+                var predicate = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.IsPrimitiveElementHelper(predicate))
+                    return predicate;
+            }
+            catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.ThrowHelper" && reader.StringComparer.Equals(mr.Name, "GetAmbiguousMatchException"))
+        {
+            try
+            {
+                var factory = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.IsAmbiguousMatchExceptionFactory(factory))
+                    return factory;
+            }
+            catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.Activator" && reader.StringComparer.Equals(mr.Name, "CreateInstanceFrom"))
+        {
+            var blob = reader.GetBlobReader(mr.Signature);
+            var header = blob.ReadSignatureHeader();
+            if (header.IsGeneric)
+                blob.ReadCompressedInteger();
+            if (blob.ReadCompressedInteger() is 2 or 3 or 8)
+            {
+                var activation = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.IsActivatorFrom(activation))
+                    return activation;
+            }
+        }
+        if (full == "System.Resources.ResourceReader"
+            && (reader.StringComparer.Equals(mr.Name, "CreateBinaryFormatter") || reader.StringComparer.Equals(mr.Name, "Deserialize")))
+        {
+            var formatter = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsResourceFormatterAccessor(formatter))
+                return formatter;
+        }
+        if (full == "System.AppDomain" && reader.StringComparer.Equals(mr.Name, DefaultPrincipalContract.AccessorName))
+        {
+            var principal = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDefaultPrincipalAccessor(principal))
+                return principal;
+        }
+        if (full == "System.AppDomain" && reader.StringComparer.Equals(mr.Name, "ExecuteAssembly"))
+        {
+            var execute = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsAppDomainExecuteAssembly(execute))
+                return execute;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo"
+            && (reader.StringComparer.Equals(mr.Name, "GetAbbreviatedDayName") || reader.StringComparer.Equals(mr.Name, "GetDayName")))
+        {
+            var dayName = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoDayName(dayName))
+                return dayName;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo"
+            && (reader.StringComparer.Equals(mr.Name, "GetAbbreviatedMonthName") || reader.StringComparer.Equals(mr.Name, "GetMonthName")))
+        {
+            var monthName = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoMonthName(monthName))
+                return monthName;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo"
+            && (reader.StringComparer.Equals(mr.Name, "GetEraName") || reader.StringComparer.Equals(mr.Name, "GetAbbreviatedEraName")))
+        {
+            var eraName = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoEraName(eraName))
+                return eraName;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "InternalGetMonthName"))
+        {
+            var monthName = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoInternalMonthName(monthName))
+                return monthName;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "get_FormatFlags"))
+        {
+            var formatFlags = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoFormatFlags(formatFlags))
+                return formatFlags;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "YearMonthAdjustment"))
+        {
+            var adjustment = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoYearMonthAdjustment(adjustment))
+                return adjustment;
+        }
+        if (full == "System.Resources.ResourceManager" && reader.StringComparer.Equals(mr.Name, "IsDefaultType"))
+        {
+            var helper = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsResourceManagerDefaultType(helper))
+                return helper;
+        }
+        if (full == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
+            && CoreIntrinsics.IsInterpolationStaticHelperName(reader.GetString(mr.Name)))
+        {
+            var helper = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsInterpolationStaticHelper(helper))
+                return helper;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo" && CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetterName(reader.GetString(mr.Name)))
+        {
+            var adjustment = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoParserFlagGetter(adjustment))
+                return adjustment;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "get_HasForceTwoDigitYears"))
+        {
+            var forceTwoDigitYears = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoHasForceTwoDigitYears(forceTwoDigitYears))
+                return forceTwoDigitYears;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo"
+            && (reader.StringComparer.Equals(mr.Name, "get_GeneralShortTimePattern")
+                || reader.StringComparer.Equals(mr.Name, "get_GeneralLongTimePattern")
+                || reader.StringComparer.Equals(mr.Name, "get_DateTimeOffsetPattern")))
+        {
+            var generalShortTimePattern = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoGeneralTimePattern(generalShortTimePattern))
+                return generalShortTimePattern;
+        }
+        if (full == "System.DateTime" && (reader.StringComparer.Equals(mr.Name, "TryAddTicks")
+            || reader.StringComparer.Equals(mr.Name, "TryCreate")
+            || reader.StringComparer.Equals(mr.Name, ".ctor")
+                && CoreIntrinsics.IsPotentialDateTimeLocalConstructor(mr.DecodeMethodSignature(SigProvider, callerCtx))))
+        {
+            var parserMember = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeParserBoundary(parserMember)) return parserMember;
+        }
+        if (full == "System.DateOnly" && reader.StringComparer.Equals(mr.Name, "Deconstruct"))
+        {
+            var deconstruct = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateOnlyDeconstruct(deconstruct))
+                return deconstruct;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo" && CoreIntrinsics.IsDateTimeFormatInfoMonthArrayName(reader.GetString(mr.Name)))
+        {
+            var names = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoMonthArray(names)) return names;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "GetAllDateTimePatterns"))
+        {
+            var calendar = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoAllDateTimePatterns(calendar))
+                return calendar;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "Tokenize"))
+        {
+            var tokenize = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoTokenize(tokenize)) return tokenize;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "set_Calendar"))
+        {
+            var calendar = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoCalendarSetter(calendar))
+                return calendar;
+        }
+        if (full is "System.Globalization.DateTimeFormatInfo" or "System.Globalization.CultureInfo"
+            && reader.StringComparer.Equals(mr.Name, "get_CompareInfo"))
+        {
+            var compare = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsInvariantCompareInfoGetter(compare)) return compare;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "get_Calendar"))
+        {
+            var calendar = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoCalendar(calendar))
+                return calendar;
+        }
+        if (full == "System.AppContext" && reader.StringComparer.Equals(mr.Name, "OnProcessExit"))
+        {
+            var exit = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsAppContextOnProcessExit(exit))
+                return exit;
+        }
+        if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "ContainsGenericVariables"))
+        {
+            var variables = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStatic(variables)
+                || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariables(variables))
+                return variables;
+        }
+        if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "GetUtf8Name"))
+        {
+            var utf8Name = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsRuntimeTypeHandleUtf8Name(utf8Name))
+                return utf8Name;
+        }
+        if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "GetFields"))
+        {
+            var fields = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsRuntimeTypeHandleFields(fields))
+                return fields;
+        }
+        if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "GetArgumentTypesFromFunctionPointer"))
+        {
+            var arguments = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(arguments))
+                return arguments;
+        }
+        if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "GetInterfaces"))
+        {
+            var interfaces = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsRuntimeTypeHandleInterfaces(interfaces))
+                return interfaces;
+        }
+        if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "GetIntroducedMethods")
+            && CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactorySignature(reader.GetBlobReader(mr.Signature)))
+        {
+            var factory = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(factory))
+                return factory;
+        }
+        if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "CopyRuntimeTypeHandles"))
+        {
+            try
+            {
+                var copy = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.IsRuntimeTypeHandleCopy(copy))
+                    return copy;
+            }
+            catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.Reflection.CustomAttributeData" && reader.StringComparer.Equals(mr.Name, "GetCustomAttributes")
+            && CoreIntrinsics.IsCustomAttributeDataMemberSignature(reader.GetBlobReader(mr.Signature)))
+        {
+            var attributes = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.BrCustomAttributeDataMember.Matches(attributes))
+                return attributes;
+        }
+        if (full == "RuntimeTypeCache"
+            && reader.StringComparer.Equals(mr.Name, "<GetGenericTypeDefinition>g__CacheGenericDefinition|50_0")
+            && CoreIntrinsics.IsRuntimeTypeCacheGenericDefinitionSignature(reader.GetBlobReader(mr.Signature)))
+        {
+            var definition = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(definition))
+                return definition;
+        }
+        if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "GetDeclaringType")
+            && CoreIntrinsics.IsRuntimeTypeHandleDeclaringTypeSignature(reader.GetBlobReader(mr.Signature)))
+        {
+            var declaring = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(declaring))
+                return declaring;
+        }
+        if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "ConstructName")
+            && CoreIntrinsics.IsRuntimeTypeHandleConstructNameSignature(reader.GetBlobReader(mr.Signature)))
+        {
+            var naming = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(naming))
+                return naming;
+        }
+        if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "GetActivationInfo")
+            && CoreIntrinsics.IsCoreClrActivationInfoSignature(reader.GetBlobReader(mr.Signature)))
+        {
+            var bridge = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.BrCoreClrActivationInfo.Matches(bridge))
+                return bridge;
+        }
+        if (full == "System.RuntimeType" && reader.StringComparer.Equals(mr.Name, "CallDefaultStructConstructor")
+            && CoreIntrinsics.IsRuntimeTypeDefaultStructCtorSignature(reader.GetBlobReader(mr.Signature)))
+        {
+            var factory = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(factory))
+                return factory;
+        }
+        if (full == "System.RuntimeType" && reader.StringComparer.Equals(mr.Name, "CreateInstanceOfT")
+            && CoreIntrinsics.IsRuntimeTypeCreateInstanceOfTSignature(reader.GetBlobReader(mr.Signature)))
+        {
+            var factory = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(factory))
+                return factory;
+        }
+        if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "CreateInstanceForAnotherGenericParameter"))
+        {
+            var factory = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(factory))
+                return factory;
+        }
+        if (full == "System.Array" && reader.StringComparer.Equals(mr.Name, "get_NativeLength"))
+        {
+            var helper = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.BrArrayNativeLength.Matches(helper)) return helper;
+        }
+        if (full == "System.Runtime.InteropServices.GCHandle" && reader.StringComparer.Equals(mr.Name, "CheckUninitialized"))
+        {
+            var helper = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(helper)) return helper;
+        }
+        if (full == "System.RuntimeType" && reader.StringComparer.Equals(mr.Name, "CreateInstanceDefaultCtor")
+            && CoreIntrinsics.IsRuntimeTypeDefaultCtorSignature(reader.GetBlobReader(mr.Signature)))
+        {
+            var factory = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(factory))
+                return factory;
+        }
+        if (full == "System.Activator" && reader.StringComparer.Equals(mr.Name, "CreateInstance"))
+        {
+            var blob = reader.GetBlobReader(mr.Signature);
+            var header = blob.ReadSignatureHeader();
+            if (header.IsGeneric)
+                blob.ReadCompressedInteger();
+            if (blob.ReadCompressedInteger() is 2 or 3 or 8)
+            {
+                var named = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.BrActivatorNamed.Matches(named))
+                    return named;
+            }
+        }
+        if (full == "System.Activator" && reader.StringComparer.Equals(mr.Name, "CreateInstance")
+            && CoreIntrinsics.IsActivatorDefaultSignature(reader.GetBlobReader(mr.Signature)))
+        {
+            var factory = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.BrActivatorDefault.Matches(factory))
+                return factory;
+        }
+        if (full == "System.RuntimeMethodHandle"
+            && (reader.StringComparer.Equals(mr.Name, "ReboxFromNullable")
+                || reader.StringComparer.Equals(mr.Name, "ReboxToNullable")))
+        {
+            try
+            {
+                var rebox = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.BrNullableReboxing.Matches(rebox))
+                    return rebox;
+            }
+            catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.Reflection.MethodInfo" && reader.StringComparer.Equals(mr.Name, "get_GenericParameterCount"))
+        {
+            try
+            {
+                var getter = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.IsMethodGenericParameterCount(getter))
+                    return getter;
+            }
+            catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.RuntimeTypeHandle"
+            && (reader.StringComparer.Equals(mr.Name, "GetFirstIntroducedMethod")
+                || reader.StringComparer.Equals(mr.Name, "GetNextIntroducedMethod")
+                || reader.StringComparer.Equals(mr.Name, "GetRuntimeType")
+                || reader.StringComparer.Equals(mr.Name, "GetRuntimeTypeChecked")
+                || reader.StringComparer.Equals(mr.Name, "IsSZArray")
+                || reader.StringComparer.Equals(mr.Name, "IsFunctionPointer")
+                || reader.StringComparer.Equals(mr.Name, "IsUnmanagedFunctionPointer")
+                || reader.StringComparer.Equals(mr.Name, "IsGenericVariable")
+                || reader.StringComparer.Equals(mr.Name, "GetToken")
+                || reader.StringComparer.Equals(mr.Name, "GetAttributes")
+                || reader.StringComparer.Equals(mr.Name, "HasElementType")
+                || reader.StringComparer.Equals(mr.Name, "IsArray")
+                || reader.StringComparer.Equals(mr.Name, "IsByRef")
+                || reader.StringComparer.Equals(mr.Name, "IsPrimitive")
+                || reader.StringComparer.Equals(mr.Name, "IsPointer")
+                || reader.StringComparer.Equals(mr.Name, "GetElementType")
+                || reader.StringComparer.Equals(mr.Name, "IsTypeDefinition")
+                || reader.StringComparer.Equals(mr.Name, "GetAssembly")
+                || reader.StringComparer.Equals(mr.Name, "GetModule")
+                || reader.StringComparer.Equals(mr.Name, "GetInstantiationInternal")
+                || reader.StringComparer.Equals(mr.Name, "GetInstantiationPublic")
+                || reader.StringComparer.Equals(mr.Name, "GetGenericVariableIndex")
+                || reader.StringComparer.Equals(mr.Name, "ContainsGenericVariables")
+                || reader.StringComparer.Equals(mr.Name, "GetConstraints")
+                || reader.StringComparer.Equals(mr.Name, "MakePointer")
+                || reader.StringComparer.Equals(mr.Name, "MakeByRef")
+                || reader.StringComparer.Equals(mr.Name, "MakeSZArray")
+                || reader.StringComparer.Equals(mr.Name, "MakeArray")
+                || reader.StringComparer.Equals(mr.Name, "Instantiate")
+                || reader.StringComparer.Equals(mr.Name, "GetGCHandle")
+                || reader.StringComparer.Equals(mr.Name, "FreeGCHandle")
+                || reader.StringComparer.Equals(mr.Name, "VerifyInterfaceIsImplemented")
+                || reader.StringComparer.Equals(mr.Name, "GetMethodAt")
+                || reader.StringComparer.Equals(mr.Name, "GetInterfaceMethodImplementation")
+                || reader.StringComparer.Equals(mr.Name, "GetNumVirtuals")
+                || reader.StringComparer.Equals(mr.Name, "GetNumVirtualsAndStaticVirtuals")
+                || reader.StringComparer.Equals(mr.Name, ".ctor")
+                || reader.StringComparer.Equals(mr.Name, "GetRuntimeTypeFromHandle")
+                || reader.StringComparer.Equals(mr.Name, "GetRuntimeTypeFromHandleMaybeNull")
+                || reader.StringComparer.Equals(mr.Name, "GetRuntimeTypeFromHandleSlow")
+                || reader.StringComparer.Equals(mr.Name, "CompareCanonicalHandles")
+                || reader.StringComparer.Equals(mr.Name, "SatisfiesConstraints")
+                || reader.StringComparer.Equals(mr.Name, "GetDeclaringMethodForGenericParameter")
+                || reader.StringComparer.Equals(mr.Name, "IsCollectible")))
+        {
+            try
+            {
+                var enumeration = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(enumeration)
+                    || CoreIntrinsics.IsCoreClrTypeMaterialization(enumeration)
+                    || CoreIntrinsics.IsCoreClrCanonicalTypeComparison(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleAccessor(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleIsSZArray(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleIsGenericVariable(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleGetToken(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleGetAttributes(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleHasElementType(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleIsArray(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleIsByRef(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleIsPrimitive(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleIsPointer(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleGetElementType(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleIsTypeDefinition(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleGetAssembly(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleGetModule(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariables(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStatic(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleUtf8Name(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleConstraints(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleMakeCompound(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleMakeArray(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleInstantiate(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleConstructor(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeInterfaceCheck(enumeration)
+                    || CoreIntrinsics.IsCoreClrVirtualSlotCount(enumeration)
+                    || CoreIntrinsics.IsCoreClrMethodSlotLookup(enumeration)
+                    || CoreIntrinsics.IsCoreClrConstraintCheck(enumeration)
+                    || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(enumeration)
+                    || CoreIntrinsics.IsCoreClrTypeCollectibilityImport(enumeration))
+                    return enumeration;
+            }
+            catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
         if (full is not null && CoreIntrinsics.IsIntrinsicType(full))
             return null;
         ClassInfo? parentCls = mr.Parent.Kind == HandleKind.TypeDefinition

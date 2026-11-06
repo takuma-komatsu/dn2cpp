@@ -29,6 +29,10 @@
 # including flags and enums with no declared members.
 # A cursor-only enum retains its metadata, and AppendJoin keeps the partial
 # builder when Current or Dispose throws, including Dispose replacing Current's fault.
+# Retained Enum.InternalGetCorElementType is invoked through reflection for every
+# integral underlying width; the callable body must use native enum type-info.
+# InternalGetUnderlyingType retains its primitive table semantics, including null
+# holes and the bounds failure for a vector type.
 # Former gates: enum-flags, enum-interp, enum-tostring, enum-value-tostring,
 # external-enum.
 source "$(dirname "$0")/_common.sh"
@@ -93,6 +97,102 @@ gate_extra_asserts() {
         gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: EnumOps comparison coverage missing: $line" >&2; exit 1; }
     done
+
+    gate_capture_ok "$out/assert-before-element-type" run_bounded dotnet "$_CG_APP" before-enum-element-type || return 1
+    before="$out/assert-before-element-type.stdout"
+    prefix="$out/assert-prefix-element-type.stdout"
+    gate_output select "$native" "$prefix" --before '== enum primitive element type ==' --policy crlf || return 1
+    gate_output compare "$prefix" "$before" || return 1
+    for line in '== enum primitive element type ==' \
+        'i1:4:4' 'u1:5:5' 'i2:6:6' 'u2:7:7' \
+        'i4:8:8' 'u4:9:9' 'i8:10:10' 'u8:11:11' \
+        'type:i1:4' 'type:u8:11' 'type:bool:2' 'type:char:3' \
+        'type:float:12' 'type:double:13' 'type:nint:24' 'type:nuint:25' \
+        'type:void:1' 'type:decimal:17' 'type:object:18' 'type:string:18' \
+        'type:vector:29' 'type:matrix:20' 'type:typedref:22' \
+        'enum primitive element type end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
+
+    gate_capture_ok "$out/assert-before-underlying-type" run_bounded dotnet "$_CG_APP" before-enum-underlying-type || return 1
+    before="$out/assert-before-underlying-type.stdout"
+    prefix="$out/assert-prefix-underlying-type.stdout"
+    gate_output select "$native" "$prefix" --before '== enum internal underlying type ==' --policy crlf || return 1
+    gate_output compare "$prefix" "$before" || return 1
+    for line in '== enum internal underlying type ==' \
+        'underlying:i1:System.SByte' 'underlying:u1:System.Byte' \
+        'underlying:i2:System.Int16' 'underlying:u2:System.UInt16' \
+        'underlying:i4:System.Int32' 'underlying:u4:System.UInt32' \
+        'underlying:i8:System.Int64' 'underlying:u8:System.UInt64' \
+        'underlying:bool:System.Boolean' 'underlying:char:System.Char' \
+        'underlying:float:System.Single' 'underlying:double:System.Double' \
+        'underlying:nint:System.IntPtr' 'underlying:nuint:System.UIntPtr' \
+        'underlying:void:null' 'underlying:decimal:null' 'underlying:object:null' \
+        'underlying:string:null' 'underlying:matrix:null' 'underlying:typedref:null' \
+        'underlying:vector:IndexOutOfRangeException' 'underlying:null:NullReferenceException' \
+        'enum internal underlying type end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
+
+    gate_capture_ok "$out/assert-before-name-lookup" run_bounded dotnet "$_CG_APP" before-enum-name-lookup || return 1
+    gate_output select "$native" "$out/assert-prefix-name-lookup.stdout" --before '== enum name lookup ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-name-lookup.stdout" "$out/assert-before-name-lookup.stdout" || return 1
+    for line in '== enum name lookup ==' \
+        'name:I4:7:Neg:Neg:Neg' 'name:U1:10:null:null:null' \
+        'name:U8:7:Max:Max:Max' \
+        'name:Int32:24:ArgumentException/value:ArgumentException/value:ArgumentException/value' \
+        'name:null:NullReferenceException/:ArgumentNullException/enumType' \
+        'scalar:I4:16:Neg' 'scalar:U1:5:null' \
+        'scalar:null:NullReferenceException/' 'enum name lookup end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
+
+
+    gate_capture_ok "$out/assert-before-values-lookup" run_bounded dotnet "$_CG_APP" before-enum-values-lookup || return 1
+    gate_output select "$native" "$out/assert-prefix-values-lookup.stdout" --before '== enum values lookup ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-values-lookup.stdout" "$out/assert-before-values-lookup.stdout" || return 1
+    for line in '== enum values lookup ==' \
+        'values:I1:True:6:0,0,1,127,-128,-1,:0,0,1,127,-128,-1,' \
+        'values:U8:True:4:0,0,1,18446744073709551615,:0,0,1,18446744073709551615,' \
+        'enumerated:I8:0,0,1,9223372036854775807,-9223372036854775808,-1,' \
+        'fresh:I1:0,0,1,127,-128,-1,' 'values:Empty:True:0::' \
+        'dynamic:Dynamic[]:3:0,65535,65535,' 'dynamic-enumerated:0,65535,65535,' \
+        'field-only:0,0,65535,' 'cast:Min:18446744073709551615' \
+        'values:error:ArgumentException/enumType:NullReferenceException/' \
+        'enum values lookup end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
+
+
+    gate_capture_ok "$out/assert-before-defined-lookup" run_bounded dotnet "$_CG_APP" before-enum-defined-lookup || return 1
+    gate_output select "$native" "$out/assert-prefix-defined-lookup.stdout" --before '== enum defined lookup ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-defined-lookup.stdout" "$out/assert-before-defined-lookup.stdout" || return 1
+    for line in '== enum defined lookup ==' \
+        'defined:U8:max:True:True:True' 'defined:I1:unknown:False:False:False' \
+        'defined:I4:alias:True:True:True' 'defined:I4:unicode:True:True:True' \
+        'defined:I4:nul:False:False:False' \
+        'defined:I4:input-1:ArgumentException/:ArgumentException/:ArgumentException/' \
+        'defined:I4:input-21:InvalidOperationException/:InvalidOperationException/:InvalidOperationException/' \
+        'defined:Int32:null:ArgumentNullException/value:ArgumentNullException/value:ArgumentNullException/value' \
+        'defined:null:null:NullReferenceException/:ArgumentNullException/enumType:NullReferenceException/' \
+        'defined:message-unknown:Unknown enum type.' \
+        'enum defined lookup end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
+
+
+    gate_capture_ok "$out/assert-before-base-constructors" run_bounded dotnet "$_CG_APP" before-enum-base-constructors || return 1
+    gate_output select "$native" "$out/assert-prefix-base-constructors.stdout" --before '== enum base constructors ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-base-constructors.stdout" "$out/assert-before-base-constructors.stdout" || return 1
+    for line in '== enum base constructors ==' \
+        'ctor:enum-enum:True' 'enum-enum-payload:1234567890123' \
+        'ctor:enum-tiny:True' 'enum-tiny-payload:-128' \
+        'ctor:enum-null:TargetException' 'ctor:enum-object:TargetException' \
+        'ctor:enum-struct:TargetException' 'enum-struct-payload:-7:1234567890123' \
+        'enum base constructors end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
+
     gate_capture_ok "$out/enum-aliases-before" run_bounded dotnet "$_CG_APP" before-enum-aliases
     gate_output select "$out/native.stdout" "$out/enum-aliases-prefix.stdout" \
         --before '== enum alias metadata ==' --policy crlf
@@ -105,13 +205,27 @@ gate_extra_asserts() {
         'wide names generic=One,Alias,Top,TopAlias' \
         'wide names runtime=One,Alias,Top,TopAlias' \
         'wide values runtime=4:1:1:9223372036854775808:9223372036854775808' \
-        'boxed name wide source=null' \
-        'boxed name unsigned=High:Last' \
-        'boxed defined exact=True:False' \
+        'boxed name wide source=null' 'boxed name unsigned=High:Last' 'boxed defined exact=True:False' \
         'enum alias metadata end' \
         --count 1 --policy crlf
 
     narrow_enum_storage_asserts "$out"
 }
 
-corelib_diff_gate EnumOps
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/EnumInstanceFormatGuards.cs gates/fixtures/ldftn-local/EnumStaticIntegerFormatGuards.cs gates/fixtures/ldftn-local/EnumStaticIntegerFormatFixture.cs gates/_enum-static-integer-format.sh"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|enum-instance:owned-nine,static-negative,cold-purity|enum-static-integer:raw,diet,integer-eight,noalloc"
+corelib_diff_gate EnumOps --link-xml samples/dotnet/EnumOps/keep-element-type.xml
+
+build_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+enum_compiler_dir=$(dirname "${DN2CPP_CLI_DLL:-$PWD/src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}")
+gate_capture_ok "$_CG_OUT/enum-instance-format-guards" run_bounded dotnet \
+    "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" --enum-instance-format-guards \
+    "$enum_compiler_dir/Dn2Cpp.Transpiler.dll" "$(locate_corelib)" \
+    "$enum_compiler_dir/ildiet/ILDiet.dll" "samples/dotnet/EnumOps/bin/$CONFIG/$TFM/EnumOps.dll"
+gate_output byte-witness "$_CG_OUT/enum-instance-format-guards.stdout" \
+    'enum-instance-guards=386:nine-instances,two-static-negatives,cold-purity,owned-shapes,copied-parity' \
+    --count 1 --policy crlf
+
+
+source "$(dirname "$0")/_enum-static-integer-format.sh"
+enum_static_integer_format_gate

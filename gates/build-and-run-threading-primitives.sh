@@ -26,6 +26,17 @@
 # Registration object equality names its type-info without a box or typeof site.
 # Lock's runtime header preserves its CLR identity through typed and shared casts.
 source "$(dirname "$0")/_common.sh"
+case "${DN2CPP_THREADING_FULL:-0}" in
+    0|1) DN2CPP_THREADING_FULL=${DN2CPP_THREADING_FULL:-0} ;;
+    *) echo 'DN2CPP_THREADING_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|threading-full:$DN2CPP_THREADING_FULL"
+if [ "$DN2CPP_THREADING_FULL" = 1 ]; then
+    echo 'threading coverage: full aggregate and private-entry preprocessing matrix'
+else
+    echo 'threading coverage: synchronization, clock and registration equality'
+    echo 'threading extended checks: skipped (not selected); not counted as passed'
+fi
 registration_app="gates/fixtures/registration-object-equality/bin/$CONFIG/$TFM/RegistrationObjectEquality.dll"
 build_gate_proj gates/fixtures/registration-object-equality/RegistrationObjectEquality.csproj
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $registration_app ${registration_app%.dll}.runtimeconfig.json ${registration_app%.dll}.deps.json"
@@ -136,5 +147,12 @@ gate_extra_asserts() {
     done
 }
 
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ThreadingPrimitives/WaitHandleRawWaitSubset.cs gates/fixtures/ldftn-local/WaitHandleRawWaitFixture.cs gates/fixtures/ldftn-local/WaitHandleRawWaitGuards.cs gates/_wait-handle-raw-wait.sh"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|raw-wait:owned-wrappers,existing-QCall,binding-precedence,raw,diet"
 corelib_diff_gate ThreadingPrimitives
 corelib_diff_gate MonotonicClock
+
+if [ "$DN2CPP_THREADING_FULL" = 1 ]; then
+source gates/_wait-handle-raw-wait.sh
+wait_handle_raw_wait_gate
+fi

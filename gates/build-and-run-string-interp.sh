@@ -25,9 +25,33 @@
 # Decimal standard fixed formats round exact digits; explicit G precision rounds
 # significant digits without changing the unqualified exact layout.
 source "$(dirname "$0")/_common.sh"
+case "${DN2CPP_STRING_INTERP_FULL:-0}" in
+    0|1) DN2CPP_STRING_INTERP_FULL=${DN2CPP_STRING_INTERP_FULL:-0} ;;
+    *) echo 'DN2CPP_STRING_INTERP_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|string-interp-full:$DN2CPP_STRING_INTERP_FULL"
+if [[ "${1:-}" == --helpers-only ]]; then
+    echo 'string interpolation coverage: explicit helper route matrix only'
+elif [[ "${1:-}" == --bucket-only ]]; then
+    echo 'string interpolation coverage: explicit aggregate only'
+elif [ "$DN2CPP_STRING_INTERP_FULL" = 1 ]; then
+    echo 'string interpolation coverage: aggregate and full helper route matrix'
+else
+    echo 'string interpolation coverage: full aggregate parity and shared-binary assertions'
+    echo 'string interpolation helper routes: skipped (not selected); not counted as passed'
+fi
+source "$(dirname "$0")/_interpolation-helpers.sh"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_interpolation-helpers.sh gates/fixtures/interpolation-helpers gates/fixtures/ldftn-local/InterpolationHelpersFixture.cs gates/fixtures/ldftn-local/InterpolationHelpersGuards.cs"
+_STRING_INTERP_BUCKET_ONLY=0
+[[ "${1:-}" != --bucket-only ]] || _STRING_INTERP_BUCKET_ONLY=1
+if [[ "${1:-}" == --helpers-only ]]; then
+    interpolation_helpers_gate "artifacts/interpolation-helpers-${CONFIG}${DN2CPP_OUT_SUFFIX:-}"
+    exit $?
+fi
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|comma-scaling-prefix:before-comma-scaling|custom-matrix-prefix:before-custom-matrix"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|standard-nul-prefix:before-standard-nul"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|standard-decimal-prefix:before-standard-decimal"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|interpolation-helpers-bucket-only:$_STRING_INTERP_BUCKET_ONLY"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line long_sign
@@ -150,6 +174,9 @@ gate_extra_asserts() {
     long_sign=${long_sign// /+}
     gate_output witness "$native" "long exponent sign=[1.23E${long_sign}03]" --count any --policy crlf || {
         echo "FAIL: long decimal exponent sign witness missing" >&2; exit 1; }
+    if [[ "$_STRING_INTERP_BUCKET_ONLY" == 0 && "$DN2CPP_STRING_INTERP_FULL" == 1 ]]; then
+        interpolation_helpers_gate "$out/interpolation-helpers"
+    fi
 }
 
 corelib_diff_gate StringInterp

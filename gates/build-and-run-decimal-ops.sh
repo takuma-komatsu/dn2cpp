@@ -2,6 +2,8 @@
 # System.Decimal modeled as an intrinsic value type backed by the runtime's 96-bit
 # Dn2CppDecimal. Consolidated bucket — one sample project, one .cs per section,
 # driven in order by samples/dotnet/DecimalOps/Program.cs.
+# OLE currency conversion preserves ToEven rounding, signed bounds and decimal scale.
+# Scale reads the stored exponent, including signed zero and equal-value representations.
 #
 #   * DecimalSubset — the STATICALLY TYPED surface. The real corelib
 #     Decimal.ToString reaches Number.FormatDecimal -> ArrayPool -> EventSource ->
@@ -31,6 +33,20 @@
 # InvariantGlobalization pins the oracle's culture, which is what makes the diff
 # host-independent. See the csproj.
 source "$(dirname "$0")/_common.sh"
+case "${DN2CPP_DECIMAL_FULL:-0}" in
+    0|1) DN2CPP_DECIMAL_FULL=${DN2CPP_DECIMAL_FULL:-0} ;;
+    *) echo 'DN2CPP_DECIMAL_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|decimal-ops-full:$DN2CPP_DECIMAL_FULL"
+if [ "$DN2CPP_DECIMAL_FULL" = 1 ]; then
+    echo 'decimal coverage: aggregate and full fixture matrix'
+else
+    echo 'decimal coverage: full aggregate parity and shared-binary assertions'
+    echo 'decimal private fixture matrix: skipped (not selected); not counted as passed'
+fi
+source "$(dirname "$0")/_decimal-divmod-probe.sh"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-oa-currency|oa-currency-direct-and-delegate|decimal-scale-direct-and-delegate|decimal-divmod-exact-ref-raw-diet|cli:$(_gate_cli_hash)"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_decimal-divmod-probe.sh gates/fixtures/decimal-divmod gates/fixtures/ldftn-local/DecimalDivModFixture.cs gates/fixtures/ldftn-local/DecimalDivModGuards.cs"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
@@ -48,6 +64,41 @@ gate_extra_asserts() {
         gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: decimal bits witness missing: $line" >&2; exit 1; }
     done
+    gate_capture_ok "$out/assert-before-oa-currency" run_bounded dotnet "$_CG_APP" before-oa-currency || return 1
+    before="$out/assert-before-oa-currency.stdout"
+    prefix="$out/assert-prefix-oa-currency.stdout"
+    gate_output select "$native" "$prefix" --before '== decimal OLE currency ==' --policy crlf || return 1
+    gate_output compare "$prefix" "$before" || return 1
+    for line in '== decimal OLE currency ==' \
+        'to direct:0.00005=0' 'to delegate:0.00015=2' \
+        'to direct:-922337203685477.58085=-9223372036854775808' \
+        'from direct:0=0,0,0,262144:0' 'from delegate:10000=1,0,0,0:10000' \
+        'decimal OLE currency end'; do
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
+            || { echo "FAIL: OLE currency witness missing: $line" >&2; exit 1; }
+    done
+    gate_capture_ok "$out/assert-before-scale" run_bounded dotnet "$_CG_APP" before-decimal-scale || return 1
+    before="$out/assert-before-scale.stdout"
+    prefix="$out/assert-prefix-scale.stdout"
+    gate_output select "$native" "$prefix" --before '== decimal scale ==' --policy crlf || return 1
+    gate_output compare "$prefix" "$before" || return 1
+    for line in '== decimal scale ==' \
+        'scale:zero:False:0=0:0' 'scale:zero:True:28=28:28' \
+        'scale:96:False:28=28:28' 'scale:96:True:0=0:0' \
+        'scale:equal:1.00=2:2' 'decimal scale end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf \
+            || { echo "FAIL: decimal scale witness missing: $line" >&2; return 1; }
+    done
+    gate_capture_ok "$out/assert-before-divmod" run_bounded dotnet "$_CG_APP" before-decimal-divmod || return 1
+    gate_output select "$native" "$out/assert-prefix-divmod.stdout" --before '== decimal coefficient divmod ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-divmod.stdout" "$out/assert-before-divmod.stdout" || return 1
+    for line in '== decimal coefficient divmod ==' 'divmod magnitude/sign/scale cases:1044' \
+        'divmod repeated:543950335' 'divmod repeated:0' 'decimal coefficient divmod end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
+    if [ "$DN2CPP_DECIMAL_FULL" = 1 ]; then
+        decimal_divmod_probe "$out" "$native" || return 1
+    fi
 }
 
 corelib_diff_gate DecimalOps System.Linq System.Collections System.Runtime

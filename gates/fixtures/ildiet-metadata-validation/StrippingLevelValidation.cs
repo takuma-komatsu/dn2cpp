@@ -14,6 +14,34 @@ static partial class StrippingLevelValidation
 
     public static bool Run(string[] args)
     {
+        if (args.Length == 4 && args[0] == "--create-stripping-gc-generations-fixture")
+        {
+            CreateGcGenerations(args[1], args[2], args[3]);
+            Console.WriteLine("stripping-fixture=gc-generations:" + args[3]);
+            return true;
+        }
+        if (args.Length == 1 && args[0] == "--check-gc-memory-clr")
+        {
+            CheckGcMemoryClr();
+            return true;
+        }
+        if (args.Length == 4 && args[0] == "--create-stripping-gc-memory-fixture")
+        {
+            CreateGcMemory(args[1], args[2], args[3]);
+            Console.WriteLine("stripping-fixture=gc-memory:" + args[3]);
+            return true;
+        }
+        if (args.Length == 1 && args[0] == "--check-buffer-moves-clr")
+        {
+            CheckBufferMovesClr();
+            return true;
+        }
+        if (args.Length == 4 && args[0] == "--create-stripping-buffer-moves-fixture")
+        {
+            CreateBufferMoves(args[1], args[2], args[3]);
+            Console.WriteLine("stripping-fixture=buffer-moves:" + args[3]);
+            return true;
+        }
         if (args.Length == 4 && args[0] == "--create-stripping-intercept-fixture")
         {
             CreateRetainedIntercept(args[1], args[2], args[3]);
@@ -42,6 +70,18 @@ static partial class StrippingLevelValidation
         {
             CreateForwardedAttribute(args[1], args[2]);
             Console.WriteLine("stripping-fixture=forwarded-attribute");
+            return true;
+        }
+        if (args.Length == 4 && args[0] == "--create-stripping-globalization-fixture")
+        {
+            CreateUnavailablePal(args[1], args[2], args[3], kernel32: false);
+            Console.WriteLine("stripping-fixture=globalization:" + args[3]);
+            return true;
+        }
+        if (args.Length == 4 && args[0] == "--create-stripping-kernel32-fixture")
+        {
+            CreateUnavailablePal(args[1], args[2], args[3], kernel32: true);
+            Console.WriteLine("stripping-fixture=kernel32:" + args[3]);
             return true;
         }
         return false;

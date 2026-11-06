@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# Reuse leaf assertions and compiler-only controls; compile the aggregate twice.
+_datetime_family_check_generated() {
+    local out="$1"
+    gate_python gates/fixtures/abbreviated-day/check-generated.py "$out" --name abbreviated || return $?
+    gate_python gates/fixtures/abbreviated-day/check-generated.py "$out" --name full || return $?
+    gate_python gates/fixtures/abbreviated-month/check-generated.py "$out" --name abbreviated || return $?
+    gate_python gates/fixtures/abbreviated-month/check-generated.py "$out" --name full || return $?
+    local family
+    for family in dtfi-calendar dtfi-calendar-setter internal-month era-name format-flags force-two-digit-years all-datetime-patterns dateonly-deconstruct year-month-adjustment dtfi-parser-flags dtfi-name-arrays dtfi-compare-info dtfi-tokenize; do
+        gate_python "gates/fixtures/$family/check-generated.py" "$out" || return $?
+    done
+    gate_python gates/fixtures/era-name/check-generated.py "$out" --abbreviated || return $?
+    gate_python gates/fixtures/general-short-time-pattern/check-generated.py "$out" || return $?
+    gate_python gates/fixtures/general-short-time-pattern/check-generated.py "$out" --long || return $?
+    gate_python gates/fixtures/general-short-time-pattern/check-generated.py "$out" --offset || return $?
+}
+
+datetime_family_aggregate_gate() {
+    local root="$1"; shift
+    local original="gates/fixtures/datetime-family/bin/$CONFIG/$TFM"
+    local fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" corelib
+    local catalog=gates/fixtures/datetime-family/families.tsv
+    corelib=$(resolve_net10_corelib) || return $?
+    mkdir -p "$root/input"
+    shasum -a 256 "$original"/*.dll > "$root/original-before.sha256" || return $?
+    cp -R "$original/." "$root/input/" || return $?
+    dotnet "$fixture" --datetime-family-aggregate "$root/input/DateTimeFamily.dll" "$corelib" || return $?
+    shasum -a 256 "$original"/*.dll > "$root/original-after.sha256" || return $?
+    cmp "$root/original-before.sha256" "$root/original-after.sha256" || return $?
+    local folder assembly namespace flag reference
+    local flags=("$@")
+    while IFS=$'\t' read -r folder assembly namespace flag; do
+        [[ -n "$folder" && "$folder" != \#* ]] || continue
+        [[ "$folder" != datetime-tchar ]] || continue
+        flags+=(--link-xml "gates/fixtures/$folder/link.xml")
+    done < "$catalog"
+    while IFS= read -r reference; do flags+=(-r "$reference"); done < "$root/input/family-refs.txt"
+
+    # These existing public target fixtures have exact CLR/native output parity.
+    for folder in abbreviated-day full-day abbreviated-month full-month era-name dateonly-deconstruct; do
+        case "$folder" in
+            abbreviated-day) assembly=AbbreviatedDay ;; full-day) assembly=FullDay ;;
+            abbreviated-month) assembly=AbbreviatedMonth ;; full-month) assembly=FullMonth ;;
+            era-name) assembly=EraName ;;
+            dateonly-deconstruct) assembly=DateOnlyDeconstruct ;;
+        esac
+        mkdir -p "$root/oracles/$assembly/input"
+        cp -R "gates/fixtures/$folder/bin/$CONFIG/$TFM/." "$root/oracles/$assembly/input/" || return $?
+        dotnet "$fixture" "--$folder-oracle" "$root/oracles/$assembly/input/$assembly.dll" "$corelib" || return $?
+        gate_capture_ok "$root/oracles/$assembly/oracle" run_bounded dotnet "$root/oracles/$assembly/input/$assembly.dll" || return $?
+    done
+    dtfi_compare_info_validator_oracle_gate "$root/oracles/CultureNameValidator" "gates/fixtures/dtfi-compare-info/bin/$CONFIG/$TFM" || return $?
+    dtfi_compare_info_culture_oracle_gate "$root/oracles/InitializerCulture" "gates/fixtures/dtfi-compare-info/bin/$CONFIG/$TFM" || return $?
+    local axis out
+    for axis in raw diet; do
+        out="$root/$axis"
+        local axis_flags=("${flags[@]}") runner=()
+        [[ "$axis" != raw ]] || axis_flags+=(--no-ildiet)
+        invoke_cli "$root/input/DateTimeFamily.dll" --auto-ref "${axis_flags[@]}" -o "$out" || return $?
+        _datetime_family_check_generated "$out" || return $?
+        if [[ "${WASM:-0}" == 1 ]]; then
+            compile_console_wasm "$out" DateTimeFamily || return $?
+            runner=(node "$out/DateTimeFamily.js")
+        else
+            compile_console "$out" DateTimeFamily || return $?
+            runner=("$out/DateTimeFamily$EXE_EXT")
+        fi
+        gate_capture_ok "$out/native" run_bounded "${runner[@]}" || return $?
+        rm -rf "$out/sections" || return $?
+        gate_python gates/fixtures/datetime-family/check-output.py "$out/native.stdout" "$out/sections" || return $?
+        gate_python gates/fixtures/year-month-adjustment/check-output.py "$out/sections/YearMonthAdjustment.stdout" || return $?
+        gate_python gates/fixtures/datetime-trio/check-output.py "$out/sections/DateTimeTrio.stdout" || return $?
+        gate_python gates/fixtures/dtfi-parser-flags/check-output.py "$out/sections/DtfIParserFlags.stdout" || return $?
+        gate_python gates/fixtures/dtfi-name-arrays/check-output.py "$out/sections/DtfINameArrays.stdout" || return $?
+        gate_python gates/fixtures/dtfi-compare-info/check-output.py "$out/sections/DtfICompareInfo.stdout" --validator-output "$out/sections/CultureNameValidator.stdout" --culture-oracle "$root/oracles/InitializerCulture/result.stdout" || return $?
+        gate_output compare "$root/oracles/CultureNameValidator/result.stdout" "$out/sections/CultureNameValidator.stdout" --policy crlf || return $?
+        gate_python gates/fixtures/dtfi-tokenize/check-output.py "$out/sections/DtfITokenize.stdout" || return $?
+        for assembly in AbbreviatedDay FullDay AbbreviatedMonth FullMonth EraName DateOnlyDeconstruct; do
+            gate_output compare "$root/oracles/$assembly/oracle.stdout" "$out/sections/$assembly.stdout" --policy crlf || return $?
+        done
+    done
+}
+
+datetime_family_controls_gate() {
+    local root="$1" fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" corelib flag model
+    corelib=$(resolve_net10_corelib) || return $?
+    mkdir -p "$root"
+    # Shared day/month/three-pattern guards already enumerate all exact target names.
+    for flag in abbreviated-day abbreviated-month dtfi-calendar dtfi-calendar-setter internal-month era-name format-flags force-two-digit-years general-short-time-pattern all-datetime-patterns dateonly-deconstruct datetime-tchar year-month-adjustment datetime-trio dtfi-parser-flags dtfi-name-arrays dtfi-compare-info dtfi-tokenize; do
+        model=$(mktemp -d "$root/model-$flag-XXXXXX") || return $?
+        gate_capture_ok "$model/guards" run_bounded dotnet "$fixture" "--$flag-guards" "$(dirname "$DN2CPP_CLI_DLL")/Dn2Cpp.Transpiler.dll" "$corelib" "$model/input.dll" || return $?
+    done
+    local folder assembly namespace flag stem original
+    while IFS=$'\t' read -r folder assembly namespace flag; do
+        [[ -n "$folder" && "$folder" != \#* ]] || continue
+        stem=${folder//-/_}
+        original="gates/fixtures/$folder/bin/$CONFIG/$TFM"
+        "${stem}_negative_gate" "$root/malformed/$folder" "$original" || return $?
+        case "$folder" in
+            abbreviated-day|full-day|abbreviated-month|full-month|dtfi-calendar|internal-month|era-name|all-datetime-patterns|dtfi-name-arrays|dtfi-compare-info|dtfi-tokenize)
+                "${stem}_noalloc_gate" "$root/noalloc/$folder" "$original" || return $? ;;
+        esac
+    done < gates/fixtures/datetime-family/families.tsv
+    abbreviated_era_name_noalloc_gate "$root/abbreviated-era-noalloc" "gates/fixtures/era-name/bin/$CONFIG/$TFM" || return $?
+    abbreviated_era_name_negative_gate "$root/abbreviated-era-malformed" "gates/fixtures/era-name/bin/$CONFIG/$TFM" || return $?
+    datetime_tchar_closure_gate "$root/tchar-closure" "gates/fixtures/datetime-tchar/bin/$CONFIG/$TFM" || return $?
+    datetime_trio_oracle_gate "$root/datetime-trio-public" "gates/fixtures/datetime-trio/bin/$CONFIG/$TFM" || return $?
+    dtfi_parser_flags_oracle_gate "$root/dtfi-parser-flags-public" "gates/fixtures/dtfi-parser-flags/bin/$CONFIG/$TFM" || return $?
+    dtfi_name_arrays_setters_gate "$root/dtfi-name-arrays-setters" "gates/fixtures/dtfi-name-arrays/bin/$CONFIG/$TFM" || return $?
+    dtfi_name_arrays_oracle_gate "$root/dtfi-name-arrays-public" "gates/fixtures/dtfi-name-arrays/bin/$CONFIG/$TFM" || return $?
+    dtfi_compare_info_oracle_gate "$root/dtfi-compare-info-public" "gates/fixtures/dtfi-compare-info/bin/$CONFIG/$TFM" || return $?
+    dtfi_compare_info_subclass_gate "$root/dtfi-compare-info-subclass" "gates/fixtures/dtfi-compare-info/bin/$CONFIG/$TFM" || return $?
+    dtfi_tokenize_oracle_gate "$root/dtfi-tokenize-public" "gates/fixtures/dtfi-tokenize/bin/$CONFIG/$TFM" || return $?
+    all_datetime_patterns_zeroarg_gate "$root/zeroarg" "gates/fixtures/all-datetime-patterns/bin/$CONFIG/$TFM" || return $?
+}
+
+datetime_family_focused_gate() {
+    local root="$1"
+    build_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj || return $?
+    # One build command/DAG, not a claim that sixteen managed projects disappeared.
+    build_proj gates/fixtures/datetime-family/DateTimeFamily.csproj || return $?
+    build_proj gates/fixtures/abbreviated-day/minimal/MinimalDay.csproj || return $?
+    datetime_family_aggregate_gate "$root/aggregate" || return $?
+    datetime_family_controls_gate "$root/controls" || return $?
+    # Preserve the four previously persistent isolated native builds.
+    abbreviated_day_routes_gate "$root/day-reflection" "gates/fixtures/abbreviated-day/bin/$CONFIG/$TFM" reflection || return $?
+    abbreviated_day_minimal_gate "$root/day-minimal" "gates/fixtures/abbreviated-day/minimal/bin/$CONFIG/$TFM" || return $?
+}

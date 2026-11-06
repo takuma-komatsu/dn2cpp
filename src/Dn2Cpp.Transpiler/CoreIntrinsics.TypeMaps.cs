@@ -30,6 +30,9 @@ internal static class CoreIntrinsicTypeMaps
         _ => null,
     };
 
+    public static bool IsPrimitiveBigMulOwner(string? owner) => owner is
+        "System.Int32" or "System.UInt32" or "System.Int64" or "System.UInt64" or "System.IntPtr" or "System.UIntPtr";
+
     public static bool IsInlineLoweredPrimitiveMember(string? fullTypeName, string name) =>
         (fullTypeName is "System.Byte" or "System.SByte" or "System.Int16" or "System.UInt16"
             && name is "ToString" or "Parse" or "TryParse" or "TryFormat")
@@ -56,6 +59,191 @@ internal static class CoreIntrinsicTypeMaps
 
     public static bool IsDelegateBaseType(string? fullName) =>
         fullName is "System.Delegate" or "System.MulticastDelegate";
+
+    public static bool IsDelegateNamedConstructorMethod(string? assembly, string? owner, string name,
+        bool isFamily, bool isStatic, int genericArity, bool returnsVoid, int parameterCount,
+        string? target, bool stringName) => assembly == "System.Private.CoreLib"
+        && IsDelegateBaseType(owner) && name == ".ctor" && isFamily && !isStatic
+        && genericArity == 0 && returnsVoid && parameterCount == 2
+        && target is "System.Object" or "System.Type" && stringName;
+
+    public static int CoreClrDelegateVmConstructorArity(string? owner, string name) =>
+        owner != "System.MulticastDelegate" ? 0 : name switch
+        {
+            "CtorClosed" or "CtorClosedStatic" or "CtorRTClosed" => 2,
+            "CtorOpened" or "CtorVirtualDispatch" or "CtorCollectibleClosedStatic" => 3,
+            "CtorCollectibleOpened" or "CtorCollectibleVirtualDispatch" => 4,
+            _ => 0,
+        };
+
+    public static bool IsCoreClrDelegateVmConstructorMethod(string? assembly, string? owner, string name,
+        bool isPrivate, bool isStatic, int genericParameterCount, bool returnsVoid,
+        int parameterCount, bool objectTarget, bool nativeIntTail) =>
+        assembly == "System.Private.CoreLib" && isPrivate && !isStatic && genericParameterCount == 0
+        && returnsVoid && CoreClrDelegateVmConstructorArity(owner, name) is var arity && arity != 0
+        && parameterCount == arity && objectTarget && nativeIntTail;
+
+    // Raw CoreCLR type materialization is distinct from the native TypeInfo handle API.
+    public static bool IsCoreClrTypeMaterializationMethod(string? assembly, string? owner, string name,
+        bool isAssembly, bool isPrivate, bool isStatic, int genericArity, bool managedBody,
+        bool pinvoke, int parameterCount, string? result, string? first, string? second) =>
+        assembly == "System.Private.CoreLib" && owner == "System.RuntimeTypeHandle"
+        && isStatic && genericArity == 0 && (name switch
+        {
+            "GetRuntimeType" => isAssembly && managedBody && !pinvoke && parameterCount == 1
+                && result == "System.RuntimeType" && first == "System.Runtime.CompilerServices.MethodTable*",
+            "GetRuntimeTypeFromHandle" or "GetRuntimeTypeFromHandleMaybeNull" =>
+                isAssembly && managedBody && !pinvoke && parameterCount == 1
+                && result == "System.RuntimeType" && first == "System.IntPtr",
+            "GetRuntimeTypeFromHandleSlow" => isPrivate && first == "System.IntPtr"
+                && (managedBody && !pinvoke && parameterCount == 1 && result == "System.RuntimeType"
+                    || !managedBody && pinvoke && parameterCount == 2 && result == "System.Void"
+                        && second == "System.Runtime.CompilerServices.ObjectHandleOnStack"),
+            _ => false,
+        });
+
+    public static bool IsRuntimeTypeIntroducedMethodsFactoryMethod(string? assembly, string? owner, string name,
+        bool exactAttributes, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
+        int parameterCount, bool nestedValueResult, bool runtimeTypeInput) =>
+        assembly == "System.Private.CoreLib" && owner == "System.RuntimeTypeHandle"
+        && name == "GetIntroducedMethods" && exactAttributes && staticDefault && genericArity == 0
+        && managedBody && !pinvoke && parameterCount == 1 && nestedValueResult && runtimeTypeInput;
+
+    public static bool IsRuntimeTypeHandleCopyMethod(string? assembly, string? owner, string name,
+        bool isAssembly, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
+        int parameterCount, string? result, string? first, string? second) =>
+        assembly == "System.Private.CoreLib" && owner == "System.RuntimeTypeHandle"
+        && name == "CopyRuntimeTypeHandles" && isAssembly && staticDefault && genericArity == 0
+        && managedBody && !pinvoke && parameterCount == 2
+        && (result == "System.ReadOnlySpan<System.IntPtr>" && first == "System.RuntimeTypeHandle[]"
+                && second == "System.Span<System.IntPtr>"
+            || result == "System.IntPtr[]" && first == "System.Type[]" && second == "System.Int32&");
+
+    public static bool IsMemberMetadataDefinitionOwner(string? owner) => owner is
+        "System.Reflection.MemberInfo" or "System.RuntimeType" or "System.Reflection.RuntimeMethodInfo"
+        or "System.Reflection.RuntimeConstructorInfo" or "System.Reflection.RuntimeFieldInfo"
+        or "System.Reflection.RuntimePropertyInfo" or "System.Reflection.RuntimeEventInfo";
+
+    public static bool IsMemberMetadataDefinitionMethod(string? assembly, string? owner, string name,
+        bool publicVirtual, bool isFinal, bool instanceDefault, int genericArity, bool managedBody,
+        bool pinvoke, int parameterCount, bool returnsBoolean, string? parameter) =>
+        assembly == "System.Private.CoreLib" && IsMemberMetadataDefinitionOwner(owner)
+        && name == "HasSameMetadataDefinitionAs" && publicVirtual
+        && isFinal == (owner != "System.Reflection.MemberInfo") && instanceDefault
+        && genericArity == 0 && managedBody && !pinvoke && parameterCount == 1
+        && returnsBoolean && parameter == "System.Reflection.MemberInfo";
+
+    public static bool IsMemberNotFoundExceptionFactoryMethod(string? assembly, string? owner, string name,
+        bool isFamilyAndAssembly, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
+        int parameterCount, string? result, string? parameter) =>
+        assembly == "System.Private.CoreLib" && owner == "System.Type"
+        && name == "CreateGetMemberWithSameMetadataDefinitionAsNotFoundException"
+        && isFamilyAndAssembly && staticDefault && genericArity == 0
+        && managedBody && !pinvoke && parameterCount == 1
+        && result == "System.ArgumentException" && parameter == "System.Reflection.MemberInfo";
+
+    public static bool IsWaitHandleRawWaitWrapperMethod(string? assembly, string? owner, string name,
+        bool exactDeclaration, int parameterCount, bool exactSignature) =>
+        assembly == "System.Private.CoreLib" && owner == "System.Threading.WaitHandle"
+        && (name == "WaitMultipleIgnoringSyncContext" && parameterCount is 3 or 4
+            || name == "WaitMultipleIgnoringSyncContextCore" && parameterCount == 3)
+        && exactDeclaration && exactSignature;
+
+    public static bool IsCancellationInvokeMethod(string? assembly, string? owner, string name,
+        bool exactDeclaration, bool exactSignature) =>
+        assembly == "System.Private.CoreLib" && owner == "System.Threading.CancellationTokenSource"
+        && name == "Invoke" && exactDeclaration && exactSignature;
+
+    public static bool IsKnownConstantMethod(string? assembly, string? owner, string name,
+        bool exactAttributes, bool managedBody, bool parameterIdentity, bool constraints) =>
+        assembly == "System.Private.CoreLib" && owner == "System.Runtime.CompilerServices.RuntimeHelpers"
+        && name == "IsKnownConstant" && exactAttributes && managedBody && parameterIdentity && constraints;
+
+    public static bool IsStringPrivateEntryPointMethod(string? assembly, string? owner, string name,
+        bool exactDeclaration, bool exactSignature) =>
+        assembly == "System.Private.CoreLib" && owner == "System.String"
+        && name is "GetRawStringDataAsUInt8" or "wcslen" && exactDeclaration && exactSignature;
+
+    public static bool IsCultureInfoNameValidatorMethod(string? assembly, string? owner, string name,
+        bool exactDeclaration, bool exactSignature) =>
+        assembly == "System.Private.CoreLib" && owner == "System.Globalization.CultureInfo"
+        && name == "VerifyCultureName" && exactDeclaration && exactSignature;
+
+    public static bool IsSearchValuesShuffleMethod(string? assembly, string? owner, string name,
+        bool exactDeclaration, bool exactSignature) =>
+        assembly == "System.Private.CoreLib" && owner == "System.Buffers.SearchValues"
+        && name == "ShuffleNativeModified" && exactDeclaration && exactSignature;
+
+    public static bool IsPrimitiveElementHelperMethod(string? assembly, string? owner, string name,
+        bool isAssembly, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
+        int parameterCount, bool booleanResult, bool byteElementType) =>
+        assembly == "System.Private.CoreLib" && owner == "System.Runtime.CompilerServices.RuntimeHelpers"
+        && name is "IsPrimitiveType" or "CanPrimitiveWiden" && isAssembly && staticDefault && genericArity == 0
+        && managedBody && !pinvoke && parameterCount == (name == "IsPrimitiveType" ? 1 : 2)
+        && booleanResult && byteElementType;
+
+    public static bool IsAmbiguousMatchExceptionFactoryMethod(string? assembly, string? owner, string name,
+        bool isAssembly, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
+        int parameterCount, string? result, string? parameter) =>
+        assembly == "System.Private.CoreLib" && owner == "System.ThrowHelper"
+        && name == "GetAmbiguousMatchException" && isAssembly && staticDefault && genericArity == 0
+        && managedBody && !pinvoke && parameterCount == 1
+        && result == "System.Reflection.AmbiguousMatchException"
+        && parameter is "System.Reflection.MemberInfo" or "System.Attribute";
+
+    public static bool IsNullableReboxingMethod(string? assembly, string? owner, string name,
+        bool isAssembly, bool isStatic, int genericArity, bool managedBody, bool pinvoke,
+        int parameterCount, bool returnsObject, bool objectInput, bool runtimeTypeInput) =>
+        assembly == "System.Private.CoreLib" && owner == "System.RuntimeMethodHandle"
+        && isAssembly && isStatic && genericArity == 0 && managedBody && !pinvoke
+        && returnsObject && objectInput && (name switch
+        {
+            "ReboxFromNullable" => parameterCount == 1,
+            "ReboxToNullable" => parameterCount == 2 && runtimeTypeInput,
+            _ => false,
+        });
+
+    public static bool IsMulticastAccessorMember(string? owner, string name) =>
+        owner == "System.MulticastDelegate"
+        && name is "GetTarget" or "GetMethodImpl" or "GetInvocationList" or "get_HasSingleTarget" or "TryGetAt";
+
+    public static bool IsMulticastAccessorMethod(string? owner, string name, bool isStatic,
+        int genericParameterCount, int parameterCount, string? returnType, string? parameterType) =>
+        IsMulticastAccessorMember(owner, name) && !isStatic && genericParameterCount == 0 && (name switch
+        {
+            "GetTarget" => parameterCount == 0 && returnType == "System.Object",
+            "GetMethodImpl" => parameterCount == 0 && returnType == "System.Reflection.MethodInfo",
+            "GetInvocationList" => parameterCount == 0 && returnType == "System.Delegate[]",
+            "get_HasSingleTarget" => parameterCount == 0 && returnType == "System.Boolean",
+            "TryGetAt" => parameterCount == 1 && parameterType == "System.Int32" && returnType == "System.Object",
+            _ => false,
+        });
+
+    public static bool IsMulticastOperationMethod(string? owner, string name, bool isStatic,
+        int genericParameterCount, int parameterCount, string? returnType, string? valueType) =>
+        owner == "System.MulticastDelegate" && name is "CombineImpl" or "RemoveImpl"
+        && !isStatic && genericParameterCount == 0 && parameterCount == 1
+        && returnType == "System.Delegate" && valueType == "System.Delegate";
+
+    public static bool IsMulticastFactoryMethod(string? owner, string name, bool isStatic,
+        int genericParameterCount, int parameterCount, string? returnType,
+        string? entriesType, string? countType, string? stubFlagType) =>
+        owner == "System.MulticastDelegate" && name == "NewMulticastDelegate"
+        && !isStatic && genericParameterCount == 0 && returnType == "System.MulticastDelegate"
+        && entriesType == "System.Object[]" && countType == "System.Int32"
+        && (parameterCount == 2 || parameterCount == 3 && stubFlagType == "System.Boolean");
+
+    public static bool IsDelegateValueMember(string? owner, string name) =>
+        IsDelegateBaseType(owner) && name is "Equals" or "GetHashCode";
+
+    public static bool IsDelegateValueMethod(string? owner, string name, bool isStatic,
+        int genericParameterCount, int parameterCount, string? returnType, string? parameterType) =>
+        IsDelegateValueMember(owner, name) && !isStatic && genericParameterCount == 0 && (name switch
+        {
+            "Equals" => parameterCount == 1 && parameterType == "System.Object" && returnType == "System.Boolean",
+            "GetHashCode" => parameterCount == 0 && returnType == "System.Int32",
+            _ => false,
+        });
 
     private static readonly HashSet<string> s_intrinsicTypes = new()
     {
@@ -109,8 +297,8 @@ internal static class CoreIntrinsicTypeMaps
         "System.String",
         "System.Delegate",
         "System.Type",
-        // RuntimeTypeHandle is the type-info pointer itself. Its managed CoreLib field
-        // layout and member bodies must not leak into the emitted representation.
+        // RuntimeTypeHandle is the type-info pointer itself. Only selected field-free
+        // managed helpers may bypass its CoreCLR layout and member-body boundary.
         "System.RuntimeTypeHandle",
         "System.Reflection.MemberInfo",
         // Reflected field handles. FieldInfo is abstract in the BCL; we model
@@ -525,7 +713,7 @@ internal static class CoreIntrinsicTypeMaps
     /// delegate invoke, a List&lt;T&gt; or ReadOnlyCollection&lt;T&gt;, and calls to each
     /// other. System.Delegate's EnumerateInvocationList: the InvocationListEnumerator
     /// construction, whose MoveNext reaches the chain through
-    /// <c>MulticastDelegate.TryGetAt</c> (<see cref="LoweredRuntimePrimitive"/>). Their call
+    /// <c>MulticastDelegate.TryGetAt</c>, a retained native-chain body. Their call
     /// sites stay intercepted with the rest of the intrinsic type, but the lowering and an
     /// address-taken use both name the real transpiled body, so .NET's argument order and
     /// messages hold by construction.</summary>
@@ -710,7 +898,7 @@ internal static class CoreIntrinsicTypeMaps
     /// synthesized body (the <see cref="BrEnumInstanceFormat"/> BodyReplace row): the four
     /// ToString overloads (parameterless, string, IFormatProvider, string+IFormatProvider),
     /// GetTypeCode, the three value-comparison overrides Equals(object) / GetHashCode() /
-    /// CompareTo(object), and the private GetValue() (the boxer behind every IConvertible.To*
+    /// CompareTo(object), and the internal GetValue() (the boxer behind every IConvertible.To*
     /// override).
     ///
     /// <para>Their real bodies reach ToStringInlined/HandleRareTypes -> GetEnumInfo ->
@@ -721,18 +909,59 @@ internal static class CoreIntrinsicTypeMaps
     /// members is what removes that whole cascade, which is why they are here rather than
     /// call-site intrinsics.</para>
     ///
-    /// <para>Cut by NAME (which also catches the [Obsolete] ToString overloads) and lowered
-    /// by SHAPE in CompileEnumInstanceFormatBody, total over the set — an unmodeled overload
-    /// throws there rather than emitting a body that names the cut IL. The synthesized value
+    /// <para>Only the owned instance declaration shapes, including the obsolete provider
+    /// overloads, receive replacement bodies. Same-named static helpers keep their real IL.
+    /// The synthesized value
     /// bodies delegate to dn2cpp_object_gethashcode / dn2cpp_object_equals /
     /// dn2cpp_enum_compareto / dn2cpp_enum_get_value, which read the boxed enum's payload at
     /// its underlying width, so one body serves every enum across all storage widths.
     /// GetValue closes the whole IConvertible.To* family in one row: each member keeps its
     /// real body once GetValue no longer names the cut FCall.</para></summary>
-    public static bool IsEnumInstanceFormatMethod(string? declType, string name) =>
-        declType == "System.Enum"
-        && name is "ToString" or "GetTypeCode" or "Equals" or "GetHashCode" or "CompareTo"
-            or "GetValue";
+    public static bool IsEnumInstanceFormatMember(string? owner, string name) =>
+        owner == "System.Enum"
+        && name is "ToString" or "GetTypeCode" or "Equals" or "GetHashCode" or "CompareTo" or "GetValue";
+
+    public static bool IsEnumInstanceFormatMethod(string? assembly, string? owner, string name,
+        bool isStatic, int genericArity, int attributes, int implAttributes, int parameterCount,
+        string? returnType, string? firstType, string? secondType)
+    {
+        if (assembly != "System.Private.CoreLib" || !IsEnumInstanceFormatMember(owner, name)
+            || isStatic || genericArity != 0 || implAttributes != 0)
+            return false;
+        // Exact declaration flags distinguish overrides, final interface slots and the internal boxer.
+        int expected = (name, parameterCount, returnType, firstType, secondType) switch
+        {
+            ("ToString", 0, "System.String", null, null) => 0x00c6,
+            ("ToString", 1, "System.String", "System.String", null) => 0x0086,
+            ("ToString", 1, "System.String", "System.IFormatProvider", null) => 0x01e6,
+            ("ToString", 2, "System.String", "System.String", "System.IFormatProvider") => 0x01e6,
+            ("GetTypeCode", 0, "System.TypeCode", null, null) => 0x01e6,
+            ("Equals", 1, "System.Boolean", "System.Object", null) => 0x00c6,
+            ("GetHashCode", 0, "System.Int32", null, null) => 0x00c6,
+            ("CompareTo", 1, "System.Int32", "System.Object", null) => 0x01e6,
+            ("GetValue", 0, "System.Object", null, null) => 0x0083,
+            _ => 0,
+        };
+        return expected != 0 && attributes == expected;
+    }
+
+    public static bool IsEnumElementTypeMethod(string? declType, string name,
+        bool isStatic, int parameterCount, string? returnType, string? parameterType) =>
+        declType == "System.Enum" && name == "InternalGetCorElementType"
+        && returnType == "System.Reflection.CorElementType"
+        && (!isStatic && parameterCount == 0
+            || isStatic && parameterCount == 1 && parameterType == "System.RuntimeType");
+
+    public static bool IsEnumUnderlyingTypeMethod(string? declType, string name,
+        bool isStatic, int parameterCount, string? returnType, string? parameterType) =>
+        declType == "System.Enum" && name == "InternalGetUnderlyingType"
+        && isStatic && parameterCount == 1 && returnType == "System.RuntimeType"
+        && parameterType == "System.RuntimeType";
+
+    public static bool IsEnumScalarGetNameMethod(string? declType, string name,
+        bool isStatic, int parameterCount, string? returnType, string? firstType, string? secondType) =>
+        declType == "System.Enum" && name == "GetName" && isStatic && parameterCount == 2
+        && returnType == "System.String" && firstType == "System.RuntimeType" && secondType == "System.UInt64";
 
     public static bool IsEnumTryFormatMethod(string? declType, string name) =>
         declType == "System.Enum" && name == "System.ISpanFormattable.TryFormat";

@@ -54,6 +54,24 @@ checks outside the basic allowlist. Missing optional prerequisites remain
 reported as skips in its summary and logs. Scheduled and manual runs use a
 separate concurrency group, so a new push cannot cancel them.
 
+The Linux workflow also offers the manual `premerge-debug` mode. Unlike the
+wider smoke profile, it provisions the selected prerequisites and invokes the
+actual strict, uncached `gates/pre-merge.sh --skip-godot` in Debug. Dispatch it
+against the branch containing the workflow and supply the full commit SHA:
+
+```bash
+gh workflow run linux-smoke.yml --repo takuma-komatsu/dn2cpp \
+  --ref YOUR_BRANCH -f mode=premerge-debug -f expected_head=FULL_COMMIT_SHA
+```
+
+The input must match both the workflow's dispatched commit and checkout before
+provisioning or tests begin. The default manual mode remains `suite`; pull
+request, push and scheduled smoke checks are unchanged. The manual pre-merge
+uploads its setup evidence, exact source identity, full log root and receipt
+when produced, including failure logs. Hosted time or disk exhaustion is not a
+pass. Its non-Godot receipt does not replace human Godot-inclusive verification
+for Godot-specific changes.
+
 The Godot-inclusive merge gate — `./gates/pre-merge.sh` — does not run in
 hosted smoke CI. A human runs it on a provisioned desktop host. Xcode-dependent
 gates are excluded automatically when Xcode is unavailable, allowing Windows
@@ -86,6 +104,96 @@ except for the reported CRI skips when its SDK is absent. Xcode gates omitted
 by host selection or `--skip-xcode` are outside the selected suite. CultureInfoAPI
 is likewise outside the default selection unless `--with-culture` is supplied.
 
+Normal pre-merge validation uses the default High reachability policy and always
+checks basic High/Medium static closure, metadata-only retention, deferred
+initializers, and callable intercepts. The representative preservation profile
+uses rewritten DLLs; full mode adds the raw-input twin. Extended API retention
+matrices remain opt-in: their omission is recorded separately from the basic
+Medium regressions that ran. The pre-merge wrapper fixes these selections even
+when the invoking shell exports a different development profile.
+
+Normal gate profiles reuse their themed aggregate binaries for output, status,
+metadata and runtime assertions. The array gate also keeps isolated finite-search
+coverage. Preservation compares the default output with explicit High without
+recompiling identical C++; manifest-resource limits rerun the control binary.
+Reflection type checks retain the trimmed aggregate and ordinary leaves. The
+HTTP gate shares a transport image across live GET, request-body/header and
+trusted/untrusted TLS checks, running each mode in a separate process.
+Emit-order stability compares the shared-generics aggregate across representative
+combinations of worker count, strict completion, drain order and output location.
+Argument and culture variants reuse their compiled images. Native-asset publication
+reuses each SDK-built image for failure, atomic-switch and generation-pruning checks.
+
+Default-culture normally checks representative numeric cultures, environment
+precedence and frozen unknown-region currency. Its full profile adds the detailed
+locale, fallback, identifier, Windows user-setting and libc-injection matrices.
+
+Detailed isolation, preprocessing, backend and culture matrices are separate
+development checks. Their omission does not establish equivalent coverage:
+independent roots, raw/ILDiet pairs, authority rejection inventories, individual
+emit-order axes and specialized HTTP packaging contracts require the relevant
+full profile. Gate logs and the pre-merge receipt mark them **skipped (not
+selected)**, never passed.
+Pre-merge pins all of the following selectors to `0`, even if the invoking shell
+requests full coverage. Full development coverage remains explicitly selectable:
+
+```bash
+DN2CPP_DATETIME_FULL=1 CONFIG=Debug bash gates/build-and-run-datetime.sh
+DN2CPP_ARRAY_FULL=1 CONFIG=Debug bash gates/build-and-run-array-core.sh
+DN2CPP_MANIFEST_RESOURCES_FULL=1 CONFIG=Debug bash gates/build-and-run-manifest-resources.sh
+DN2CPP_PRESERVE_CONTROL_FULL=1 CONFIG=Debug bash gates/build-and-run-preserve-control.sh
+DN2CPP_REFLECT_INVOKE_FULL=1 CONFIG=Debug bash gates/build-and-run-reflect-invoke.sh
+DN2CPP_REFLECT_TYPES_FULL=1 CONFIG=Debug bash gates/build-and-run-reflect-types.sh
+DN2CPP_TRANSPILER_LIMITS_FULL=1 CONFIG=Debug bash gates/build-and-run-transpiler-limits.sh
+DN2CPP_EMIT_ORDER_FULL=1 CONFIG=Debug bash gates/build-and-run-emit-order-stability.sh
+DN2CPP_MATH_FULL=1 CONFIG=Debug bash gates/build-and-run-math-subset.sh
+DN2CPP_MARSHAL_FULL=1 CONFIG=Debug bash gates/build-and-run-marshal-pinning.sh
+DN2CPP_HTTP_FULL=1 CONFIG=Debug bash gates/build-and-run-http-get.sh
+DN2CPP_HOTUPDATE_FULL=1 CONFIG=Debug bash gates/build-and-run-hotupdate-subset.sh
+DN2CPP_THREADING_FULL=1 CONFIG=Debug bash gates/build-and-run-threading-primitives.sh
+DN2CPP_STRING_FULL=1 CONFIG=Debug bash gates/build-and-run-string-core.sh
+DN2CPP_STRING_INTERP_FULL=1 CONFIG=Debug bash gates/build-and-run-string-interp.sh
+DN2CPP_DECIMAL_FULL=1 CONFIG=Debug bash gates/build-and-run-decimal-ops.sh
+DN2CPP_DICT_FULL=1 CONFIG=Debug bash gates/build-and-run-dict-collections.sh
+DN2CPP_CUSTOM_ASYNC_TASK_FULL=1 CONFIG=Debug bash gates/build-and-run-custom-async-task.sh
+DN2CPP_EXCEPTION_MESSAGE_FULL=1 CONFIG=Debug bash gates/build-and-run-exception-message-subset.sh
+DN2CPP_MULTIASSEMBLY_FULL=1 CONFIG=Debug bash gates/build-and-run-multiassembly.sh
+DN2CPP_TRIM_REFLECTION_FULL=1 CONFIG=Debug bash gates/build-and-run-trim-reflection.sh
+DN2CPP_OBFUSCATION_FULL=1 CONFIG=Debug bash gates/build-and-run-obfuscation.sh
+DN2CPP_PLATFORM_ISA_FULL=1 CONFIG=Debug bash gates/build-and-run-platform-isa-native.sh
+DN2CPP_DEFAULT_CULTURE_FULL=1 CONFIG=Debug bash gates/build-and-run-default-culture.sh
+DN2CPP_WASM_CONSOLE_FULL=1 CONFIG=Debug bash gates/build-and-run-wasm-console.sh
+DN2CPP_VECTOR_FULL=1 CONFIG=Debug bash gates/build-and-run-vector-value-wasm.sh
+DN2CPP_VECTOR_FULL=1 CONFIG=Debug bash gates/build-and-run-vector-probe.sh
+DN2CPP_VECTOR_FULL=1 CONFIG=Debug bash gates/build-and-run-vector-probe-scalar.sh
+DN2CPP_SELFHOST_PRIM_FULL=1 CONFIG=Debug bash gates/build-and-run-selfhost-prim-subset.sh
+```
+
+The hotupdate aggregate reuses its native base for register and stack patches.
+The Wasm vector gate reuses its ILDiet image across numeric, fixed-width and
+unsupported-value checks; the raw-input twin requires the full profile.
+The Wasm console aggregate shares string, exception, weak-reference, clock and PAL
+drivers while keeping finalizer, HTTP and multidimensional-array images separate.
+The ISA gate shares its native X86+Arm image across architecture-selected process
+runs. Independent input-root isolation remains part of their full profiles.
+
+The vector gates retain full-driver output/status parity on Highway and scalar
+backends. The selfhost primitive gate retains the source-built aggregate and
+tool-process fixture. Completion witnesses ensure the aggregate drivers reach
+their final sections. No production optimization or selected comparison assertion
+is relaxed by choosing a representative profile.
+
+Extended Medium API matrices remain available separately, with their original
+assertions and failure status:
+
+```bash
+DN2CPP_SELFHOST_PRIM_FULL=1 DN2CPP_KNOWN_CONSTANT_LEVELS="High Medium" CONFIG=Debug bash gates/build-and-run-selfhost-prim-subset.sh
+DN2CPP_PRESERVE_CONTROL_FULL=1 DN2CPP_PRESERVE_CONTROL_MEDIUM=1 CONFIG=Debug bash gates/build-and-run-preserve-control.sh
+```
+
+These optional checks do not establish full Medium completion. Medium remains
+incomplete; preserve each failed run and its exact source/input identity.
+
 For a PR that changes no Godot-specific files, a passing default Debug
 `./gates/pre-merge.sh --skip-godot` is sufficient to merge. Coding agents may
 run this strict non-Godot check autonomously for any change. It omits the Godot
@@ -112,48 +220,16 @@ Gate stdout/stderr capture, byte parity and explicit semantic record assertions
 follow [the gate output contract](docs/GATE-OUTPUT.md). Run its lightweight
 helper regressions when changing shared runners or output checks.
 
-Normal gate profiles reuse themed aggregate binaries for output, status, metadata
-and runtime assertions. Argument and culture variants reuse their compiled image.
-The HTTP and Wasm console aggregates run each section in a separate process;
-finalizer-sensitive fixtures retain independent images. Native-asset publication
-reuses each SDK-built image for failure, atomic-switch and generation-pruning checks.
-
-Default-culture normally checks representative numeric cultures, environment
-precedence and frozen unknown-region currency. Its full profile adds the detailed
-locale, fallback, identifier, Windows user-setting and libc-injection matrices.
-
-The default stripping level remains High. Basic High/Medium static closure,
-metadata-only retention, deferred initializers and callable intercept regressions
-run in the preservation gate's normal profile. Its full profile adds raw emission
-alongside DLL rewriting.
-
-Detailed isolation, preprocessing, backend and culture matrices are explicit
-development checks. Omitting them does not establish equivalent coverage: independent roots,
-raw/ILDiet pairs, individual emit-order axes and HTTP packaging contracts require
-the relevant full profile. Gate logs and the pre-merge receipt mark these checks
-**skipped (not selected)**. Pre-merge pins these selectors to `0`, including when
-the invoking shell exports a full profile. Run full development checks directly:
-
-```bash
-DN2CPP_ARRAY_FULL=1 CONFIG=Debug bash gates/build-and-run-array-core.sh
-DN2CPP_MANIFEST_RESOURCES_FULL=1 CONFIG=Debug bash gates/build-and-run-manifest-resources.sh
-DN2CPP_PRESERVE_CONTROL_FULL=1 CONFIG=Debug bash gates/build-and-run-preserve-control.sh
-DN2CPP_REFLECT_INVOKE_FULL=1 CONFIG=Debug bash gates/build-and-run-reflect-invoke.sh
-DN2CPP_REFLECT_TYPES_FULL=1 CONFIG=Debug bash gates/build-and-run-reflect-types.sh
-DN2CPP_TRANSPILER_LIMITS_FULL=1 CONFIG=Debug bash gates/build-and-run-transpiler-limits.sh
-DN2CPP_EMIT_ORDER_FULL=1 CONFIG=Debug bash gates/build-and-run-emit-order-stability.sh
-DN2CPP_MARSHAL_FULL=1 CONFIG=Debug bash gates/build-and-run-marshal-pinning.sh
-DN2CPP_HTTP_FULL=1 CONFIG=Debug bash gates/build-and-run-http-get.sh
-DN2CPP_HOTUPDATE_FULL=1 CONFIG=Debug bash gates/build-and-run-hotupdate-subset.sh
-DN2CPP_CUSTOM_ASYNC_TASK_FULL=1 CONFIG=Debug bash gates/build-and-run-custom-async-task.sh
-DN2CPP_EXCEPTION_MESSAGE_FULL=1 CONFIG=Debug bash gates/build-and-run-exception-message-subset.sh
-DN2CPP_MULTIASSEMBLY_FULL=1 CONFIG=Debug bash gates/build-and-run-multiassembly.sh
-DN2CPP_TRIM_REFLECTION_FULL=1 CONFIG=Debug bash gates/build-and-run-trim-reflection.sh
-DN2CPP_OBFUSCATION_FULL=1 CONFIG=Debug bash gates/build-and-run-obfuscation.sh
-DN2CPP_WASM_CONSOLE_FULL=1 CONFIG=Debug bash gates/build-and-run-wasm-console.sh
-DN2CPP_PLATFORM_ISA_FULL=1 CONFIG=Debug bash gates/build-and-run-platform-isa-native.sh
-DN2CPP_DEFAULT_CULTURE_FULL=1 CONFIG=Debug bash gates/build-and-run-default-culture.sh
-```
+Gate-owned Python calls use `gate_python`, including calls passed to capture
+helpers. SDK-free tests and setup aids can source `gates/_python.sh` without
+loading the full host setup. The shared entry point selects a working Python 3,
+preserves launcher arguments and uses UTF-8 for child interpreters.
+`DN2CPP_PYTHON` accepts an executable path (including spaces) or a
+whitespace-separated command such as `py -3`; it is not evaluated as shell code.
+Selection is reused within a gate until that override or `PATH` changes. Use
+`gate_python_exec` only in child shells whose PID is used for server cleanup or
+a watchdog. Tool-owned interpreters, such as Emscripten's, retain their separate
+prerequisite checks.
 
 ## What to work on
 

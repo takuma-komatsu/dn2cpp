@@ -12,8 +12,78 @@ internal sealed partial class MethodCompiler
             ? $"dn2cpp_null_check({Cast(receiver, "Dn2CppObject*")})"
             : Cast(receiver, "Dn2CppObject*");
 
+    private bool TryEmitDelegateValueIntrinsic(string owner, string name, MethodSignature<TypeDesc> sig)
+    {
+        if (!CoreIntrinsicTypeMaps.IsDelegateValueMember(owner, name)
+            || !CoreIntrinsics.IsDelegateValueSignature(owner, name, sig))
+            return false;
+        if (name == "Equals")
+        {
+            var other = Pop();
+            var self = Pop();
+            Push(StackKind.I4, "int32_t", $"dn2cpp_delegate_equal({DelegateReceiver(self)}, {Cast(other, "Dn2CppObject*")})");
+            return true;
+        }
+        if (name == "GetHashCode")
+        {
+            var self = Pop();
+            Push(StackKind.I4, "int32_t", $"dn2cpp_delegate_hash({DelegateReceiver(self)})");
+            return true;
+        }
+        return false;
+    }
+
     private bool TryEmitStringsIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
+        if (CoreIntrinsics.IsMulticastAccessorSignature(declType, name, sig))
+        {
+            if (name == "TryGetAt")
+            {
+                var index = Pop();
+                var receiver = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*",
+                    $"dn2cpp_delegate_try_get_at({DelegateReceiver(receiver)}, {Cast(index, "int32_t")})");
+            }
+            else
+            {
+                // Replay the existing public projection, including Method's selected
+                // declaration-row retention and the invocation array's exact type.
+                string projection = name switch
+                {
+                    "GetTarget" => "get_Target",
+                    "GetMethodImpl" => "get_Method",
+                    _ => name,
+                };
+                if (!TryEmitStringsIntrinsic("System.Delegate", projection, sig))
+                    return false;
+            }
+            Top = Top with { StaticType = sig.ReturnType };
+            return true;
+        }
+        if (CoreIntrinsics.IsMulticastOperationSignature(declType, name, sig))
+        {
+            var value = Pop();
+            var receiver = Pop();
+            string helper = name == "CombineImpl" ? "dn2cpp_delegate_combine" : "dn2cpp_delegate_remove_impl";
+            Push(StackKind.Ref, "Dn2CppObject*",
+                $"{helper}({DelegateReceiver(receiver)}, {Cast(value, "Dn2CppObject*")})");
+            Top = Top with { StaticType = sig.ReturnType };
+            return true;
+        }
+        if (CoreIntrinsics.IsMulticastFactorySignature(declType, name, sig))
+        {
+            // CoreCLR's flag selects an invoke stub; native delegates use one layout.
+            if (sig.ParameterTypes.Length == 3) Pop();
+            var count = Pop();
+            var entries = Pop();
+            var receiver = Pop();
+            Push(StackKind.Ref, "Dn2CppObject*",
+                $"dn2cpp_delegate_from_invocation_prefix({DelegateReceiver(receiver)}, {Cast(entries, "Dn2CppArrayRef*")}, {Cast(count, "int32_t")})");
+            Top = Top with { StaticType = sig.ReturnType };
+            return true;
+        }
+        if (TryEmitDelegateValueIntrinsic(declType, name, sig))
+            return true;
         // Numeric Parse/TryParse (all integer widths + Double/Single, every
         // NumberStyles/provider/span shape) — consolidated below the switch.
         if (TryEmitParseIntrinsic(declType, name, sig))
@@ -399,20 +469,6 @@ internal sealed partial class MethodCompiler
                 var a = Pop();
                 string eq = $"dn2cpp_delegate_equal({Cast(a, "Dn2CppObject*")}, {Cast(b, "Dn2CppObject*")})";
                 Push(StackKind.I4, "int32_t", name == "op_Equality" ? eq : $"({eq} == 0 ? 1 : 0)");
-                return true;
-            }
-            case ("System.Delegate", "Equals") when sig.ParameterTypes.Length == 1:
-            {
-                var b = Pop();
-                var a = Pop();
-                Push(StackKind.I4, "int32_t",
-                    $"dn2cpp_delegate_equal({DelegateReceiver(a)}, {Cast(b, "Dn2CppObject*")})");
-                return true;
-            }
-            case ("System.Delegate", "GetHashCode") when sig.ParameterTypes.Length == 0:
-            {
-                var d = Pop();
-                Push(StackKind.I4, "int32_t", $"dn2cpp_delegate_hash({DelegateReceiver(d)})");
                 return true;
             }
             // Delegate.HasSingleTarget: a single-entry invocation chain (the
@@ -1933,6 +1989,10 @@ internal sealed partial class MethodCompiler
 
         if (intShape is { } iw)
         {
+            // All managed arguments are materialized. CoreLib validates explicit
+            // span styles before GetFormat, decoding, or writing the out slot.
+            if (hasStyles && !isString)
+                Emit($"dn2cpp_parse_validate_integer_styles({stylesExpr});");
             var prim = Compilation.WellKnownPrimitive(declType)!;
             string storeCt = CppTypes.StorageOf(prim);
             var kind = CppTypes.KindOf(prim);

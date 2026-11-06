@@ -1,0 +1,6 @@
+<linker>
+  <assembly fullname="System.Private.CoreLib">
+    <type fullname="System.Globalization.DateTimeFormatInfo"><method name="get_CompareInfo" /></type>
+    <type fullname="System.Globalization.CultureInfo"><method name="get_CompareInfo" /></type>
+  </assembly>
+</linker>

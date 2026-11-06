@@ -33,7 +33,7 @@ jobs:
       matrix:
         partition: ${{ fromJSON((github.event_name == 'pull_request' || github.event_name == 'push') && '["core","arrays","limits"]' || '["suite"]') }}
     runs-on: windows-2025-vs2026
-    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'push') && 30 || 240 }}
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'push') && (matrix.partition == 'core' && 60 || 30) || 240 }}
     env:
       SMOKE_PROFILE: ${{ (github.event_name == 'pull_request' || github.event_name == 'push') && 'primitives' || 'suite' }}
     steps:

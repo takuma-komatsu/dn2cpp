@@ -6,6 +6,7 @@ _DN2CPP_GATE_ROOT="$PWD"
 source gates/_python.sh
 eval "$(sed -n '/^gate_output() {/,/^}/p; /^gate_capture() {/,/^}/p; /^gate_capture_ok() {/,/^}/p; /^unzip_strip() {/,/^}/p; /^run_bounded() {/,/^}/p' gates/_common.sh)"
 source gates/_ildiet.sh
+source gates/_path-activation.sh
 fixture="$1"
 mkdir -p "$fixture"
 gate_python - "$fixture" <<'PY'
@@ -24,8 +25,14 @@ gate_output compare "$fixture/utf8.txt" "$fixture/unpacked/utf8.txt"
 generation=$(ildiet_generation "$fixture")
 gate_python -c 'from pathlib import Path; import sys; assert Path(sys.argv[1]).samefile(sys.argv[2])' \
     "$generation" "$fixture/g-0123456789abcdef"
-gate_capture_ok "$fixture/body" gate_python -c 'print("captured Python consumer")'
-gate_output witness "$fixture/body.stdout" 'captured Python consumer' --policy crlf
+cat > "$fixture/generated.cpp" <<'CPP'
+t_System_Runtime_Remoting_ObjectHandle* Activator_CreateInstanceFrom_m1(Dn2CppString* a0, Dn2CppString* a1)
+{
+[[maybe_unused]] t_System_Runtime_Remoting_ObjectHandle* t0; (void)(a0); (void)(a1); dn2cpp_throw_platform_not_supported("Assembly.LoadFrom is not available in AOT-compiled code (no assembly loading)"); t0 = nullptr; return t0;
+}
+CPP
+gate_capture_ok "$fixture/body" path_activation_body_check "$fixture"
+gate_output witness "$fixture/body.stdout" 'path-activation-body:exact-refusal' --policy crlf
 gate_capture "$fixture/failure" gate_python -c 'raise SystemExit(23)'
 gate_output status "$(cat "$fixture/failure.status")" 23
 # Background and watchdog jobs must replace their shell, so PID cleanup remains

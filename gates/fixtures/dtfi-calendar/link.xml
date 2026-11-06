@@ -1,0 +1,1 @@
+<linker><assembly fullname="System.Private.CoreLib"><type fullname="System.Globalization.DateTimeFormatInfo"><method name="get_Calendar" /></type></assembly></linker>

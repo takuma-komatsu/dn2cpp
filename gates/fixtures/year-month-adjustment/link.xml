@@ -1,0 +1,8 @@
+<linker>
+  <assembly fullname="System.Private.CoreLib">
+    <type fullname="System.Globalization.DateTimeFormatInfo">
+      <method signature="System.Boolean YearMonthAdjustment(System.Int32&amp;,System.Int32&amp;,System.Boolean)" />
+      <method name="get_HasYearMonthAdjustment" />
+    </type>
+  </assembly>
+</linker>

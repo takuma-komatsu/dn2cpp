@@ -852,7 +852,8 @@ echo "== 14/15 the exec bit on every script a doc tells you to run =="
 # exemption is the sourced libraries, and the first check is what licenses the
 # second: `gates/_` marks a file that is sourced and never run, so the exemption
 # stays exactly the set the tree sources.
-libs_sourced=$(git ls-files '*.sh' '.github/workflows/*.yml' \
+# Deferred reference sources are outside both active-script sets.
+libs_sourced=$(git ls-files '*.sh' '.github/workflows/*.yml' ':(exclude)deferred/**' \
     | while read -r f; do
         sed -e 's/^[[:space:]]*#.*$//' -e 's/[[:space:]]#[^"'"'"'`]*$//' "$f" \
             | grep -E '^[[:space:]]*(source|\.)[[:space:]]' \
@@ -862,7 +863,7 @@ set_eq "the sourced-library set against the gates/_ prefix" \
     "sourced somewhere" "$libs_sourced" \
     "named gates/_*.sh" "$(git ls-files 'gates/_*.sh' | sed 's|.*/||' | sort -u)"
 
-nonexec=$(git ls-files -s '*.sh' | awk '$1 != "100755" && $4 !~ /^gates\/_/ { print $4 }')
+nonexec=$(git ls-files -s '*.sh' ':(exclude)deferred/**' | awk '$1 != "100755" && $4 !~ /^gates\/_/ { print $4 }')
 eq "runnable scripts committed without their exec bit" \
    "0" "$(grep -c . <<<"$nonexec" || true)" \
    "each is: $(tr '\n' ' ' <<<"$nonexec"); fix with \`git update-index --chmod=+x <path>\`"

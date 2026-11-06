@@ -217,6 +217,8 @@ internal sealed class CanonicalGenerics
         // satellites like Stack<SortedSet<T>.Node>, and only the recursive form makes
         // the grouped user's C++ pointer type name the same struct. Intrinsic generics
         // (Task-family, SIMD vectors) lower to runtime structs and stay put.
+        // An unsupported vector has ordinary managed storage. Replacing
+        // its enum argument with an integer placeholder would select a mapped vector.
         if (cls.GenericArity == 0 || cls.Context.TypeArgs.Length != cls.GenericArity
             || cls.IntrinsicCppName is not null || CoreIntrinsics.IsVectorStorageOwner(cls))
             return t;
@@ -234,7 +236,8 @@ internal sealed class CanonicalGenerics
         // reasoning about interning (see TypeDesc.MakeClassUnshared).
         if (!changed) return t;
         var candidate = _c.Instantiate(cls.Module, cls.Handle, canon);
-        // Canonical signatures cannot replace managed vector fields with mapped storage.
+        // Inline wrappers must preserve the same storage boundary as owner links:
+        // a generic method signature cannot substitute a mapped vector field.
         return _c.SameVectorFieldStorage(cls, candidate) ? TypeDesc.MakeClassUnshared(candidate) : t;
     }
 

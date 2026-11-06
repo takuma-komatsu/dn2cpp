@@ -3,15 +3,40 @@
 # The default runs CLR parity and the untrimmed limits on one binary, then frozen
 # repeated-root and app-drop/root composition checks on separate binaries.
 # DN2CPP_MANIFEST_RESOURCES_FULL=1 also selects individual trim arms, satellite
-# fallback and local DateTime kind.
+# fallback, local DateTime kind, and the resource guard/formatter route matrices.
 # Frozen snapshots pin deliberate refusals that cannot be compared with CLR.
 source "$(dirname "$0")/_common.sh"
+source "$(dirname "$0")/_resource-type-guard.sh"
+source "$(dirname "$0")/_resource-formatter.sh"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_resource-type-guard.sh gates/fixtures/resource-type-guard gates/fixtures/ldftn-local/ResourceTypeGuardFixture.cs gates/fixtures/ldftn-local/ResourceTypeGuardGuards.cs"
+DN2CPP_GATE_EXTRA_INPUTS+=" gates/_resource-formatter.sh gates/fixtures/resource-formatter gates/fixtures/resource-formatter-guards gates/fixtures/ldftn-local/ResourceFormatterFixture.cs gates/fixtures/ldftn-local/ResourceFormatterGuards.cs"
+if [[ "${1:-}" == --formatter-permit-only ]]; then
+    resource_formatter_permit_gate
+    exit $?
+fi
+if [[ "${1:-}" == --formatter-only ]]; then
+    if [[ -n "${DN2CPP_RESOURCE_FORMATTER_OUT:-}" ]]; then
+        resource_formatter_gate "$DN2CPP_RESOURCE_FORMATTER_OUT"
+    else
+        resource_formatter_fresh_gate
+    fi
+    exit $?
+fi
+if [[ "${1:-}" == --type-guard-only ]]; then
+    if [[ -n "${DN2CPP_RESOURCE_GUARD_OUT:-}" ]]; then
+        resource_type_guard_gate "$DN2CPP_RESOURCE_GUARD_OUT"
+    else
+        resource_type_guard_fresh_gate
+    fi
+    exit $?
+fi
+
 case "${DN2CPP_MANIFEST_RESOURCES_FULL:-0}" in
     0|1) DN2CPP_MANIFEST_RESOURCES_FULL=${DN2CPP_MANIFEST_RESOURCES_FULL:-0} ;;
     *) echo 'DN2CPP_MANIFEST_RESOURCES_FULL must be 0 or 1' >&2; exit 1 ;;
 esac
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|manifest-resources-full:$DN2CPP_MANIFEST_RESOURCES_FULL"
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/expected/manifest-resources-limits.txt"
+DN2CPP_GATE_EXTRA_INPUTS+=" gates/expected/manifest-resources-limits.txt"
 if [ "$DN2CPP_MANIFEST_RESOURCES_FULL" = 1 ]; then
     echo 'manifest resource coverage: full trim, route and preprocessing matrix'
 else
@@ -262,3 +287,9 @@ else
         'resource local kind=Local' 'resource local kind end'
     gate_cache_commit
 fi
+
+resource_type_guard_fresh_gate
+
+resource_formatter_fresh_gate
+
+resource_formatter_permit_gate

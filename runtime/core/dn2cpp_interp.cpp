@@ -3902,6 +3902,7 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                         for (uint32_t j = b.argCount; j-- > 0;)
                             callArgs[j] = marshal_slot_to_object(b.args[j], pop());
                         const Dn2CppTypeInfo* ti = b.type;
+                        dn2cpp_require_allocation_supported(ti);
                         size_t sz = ti->instanceSize > static_cast<int32_t>(sizeof(Dn2CppObject))
                             ? static_cast<size_t>(ti->instanceSize)
                             : sizeof(Dn2CppObject);
@@ -5121,6 +5122,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                         for (uint32_t j = 0; j < b.argCount; j++)
                             callArgs[j] = marshal_slot_to_object(b.args[j], regs[r0 + j]);
                         const Dn2CppTypeInfo* ti = b.type;
+                        dn2cpp_require_allocation_supported(ti);
                         size_t sz = ti->instanceSize > static_cast<int32_t>(sizeof(Dn2CppObject))
                             ? static_cast<size_t>(ti->instanceSize)
                             : sizeof(Dn2CppObject);

@@ -30,8 +30,8 @@
 # Repeated allocations retain older arrays' defaults without widening array type identity.
 # Integer array and captured-field stores truncate before signed or unsigned reads.
 # Captured field reads retain zero/null defaults alongside later finite writes.
-# Medium keeps static type closure, including private members and known generic
-# arguments, while metadata-only roots and retained initializers remain inert.
+# Basic High/Medium checks retain static type closure while metadata-only roots
+# and retained initializers remain inert. Extended API matrices are full-only.
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_ildiet.sh"
 # The default profile shares aggregate outputs across runtime and metadata checks.
@@ -42,6 +42,27 @@ case "${DN2CPP_PRESERVE_CONTROL_FULL:-0}" in
 esac
 export DN2CPP_PRESERVE_CONTROL_FULL="${DN2CPP_PRESERVE_CONTROL_FULL:-0}"
 preserve_full() { [ "$DN2CPP_PRESERVE_CONTROL_FULL" = 1 ]; }
+case "${DN2CPP_PRESERVE_CONTROL_MEDIUM:-0}" in
+    0|1) ;;
+    *) echo 'DN2CPP_PRESERVE_CONTROL_MEDIUM must be 0 or 1' >&2; exit 1 ;;
+esac
+export DN2CPP_PRESERVE_CONTROL_MEDIUM="${DN2CPP_PRESERVE_CONTROL_MEDIUM:-0}"
+if [ "$DN2CPP_PRESERVE_CONTROL_MEDIUM" = 1 ] && ! preserve_full; then
+    echo 'DN2CPP_PRESERVE_CONTROL_MEDIUM=1 requires DN2CPP_PRESERVE_CONTROL_FULL=1' >&2
+    exit 1
+fi
+stripping_levels=high
+stripping_profile_args=()
+if [ "$DN2CPP_PRESERVE_CONTROL_MEDIUM" = 1 ]; then
+    stripping_levels="high medium"
+    stripping_profile_args=(--with-medium)
+fi
+stripping_modes="raw full"
+if ! preserve_full; then
+    stripping_modes=full
+    stripping_profile_args+=(--representative)
+fi
+echo "preserve-control-stripping=basic:high,medium extended:$stripping_levels"
 echo "preserve-control-profile=$([ "$DN2CPP_PRESERVE_CONTROL_FULL" = 1 ] && echo full || echo representative)"
 if ! preserve_full; then
     echo 'preserve-control coverage: aggregate preservation, basic High/Medium retention and ILDiet runtime parity'
@@ -53,9 +74,10 @@ DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/preserve-
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflected-event-operations:native-ildiet-and-no-ildiet|attribute-object-prefix:${DN2CPP_BEFORE_ATTRIBUTE_OBJECT:-}|named-reflection-prefix:${DN2CPP_BEFORE_NAMED_REFLECTION:-}|runtime-reflection-prefix:${DN2CPP_BEFORE_RUNTIME_REFLECTION:-}|metadata-lookup-prefix:${DN2CPP_BEFORE_METADATA_LOOKUP:-}|signature-construction-prefix:${DN2CPP_BEFORE_SIGNATURE_CONSTRUCTION:-}|signature-invocation-prefix:${DN2CPP_BEFORE_SIGNATURE_INVOCATION:-}|field-boxing-prefix:${DN2CPP_BEFORE_FIELD_BOXING:-}|field-context-prefix:${DN2CPP_BEFORE_FIELD_CONTEXT:-}|field-owner-prefix:${DN2CPP_BEFORE_FIELD_OWNER:-}|field-shape-prefix:${DN2CPP_BEFORE_FIELD_SHAPE:-}|construction-payload-prefix:${DN2CPP_BEFORE_CONSTRUCTION_PAYLOAD:-}|field-cycle-prefix:${DN2CPP_BEFORE_FIELD_CYCLE:-}|member-field-signature-prefix:${DN2CPP_BEFORE_MEMBER_FIELD_SIGNATURE:-}|member-construction-signature-prefix:${DN2CPP_BEFORE_MEMBER_CONSTRUCTION_SIGNATURE:-}|base-field-signature-prefix:${DN2CPP_BEFORE_BASE_FIELD_SIGNATURE:-}|base-construction-signature-prefix:${DN2CPP_BEFORE_BASE_CONSTRUCTION_SIGNATURE:-}|ctor-signature-invocation-prefix:${DN2CPP_BEFORE_CTOR_SIGNATURE_INVOCATION:-}|field-owner-signature-prefix:${DN2CPP_BEFORE_FIELD_OWNER_SIGNATURE:-}|interface-owner-signature-prefix:${DN2CPP_BEFORE_INTERFACE_OWNER_SIGNATURE:-}|ctor-field-owner-signature-prefix:${DN2CPP_BEFORE_CTOR_FIELD_OWNER_SIGNATURE:-}|captured-array-defaults-prefix:${DN2CPP_BEFORE_CAPTURED_ARRAY_DEFAULTS:-}|interface-array-defaults-prefix:${DN2CPP_BEFORE_INTERFACE_ARRAY_DEFAULTS:-}|external-array-defaults-prefix:${DN2CPP_BEFORE_EXTERNAL_ARRAY_DEFAULTS:-}|local-defaults-prefix:${DN2CPP_BEFORE_LOCAL_DEFAULTS:-}|reflection-depth-seeds-prefix:${DN2CPP_BEFORE_REFLECTION_DEPTH_SEEDS:-}|caller-depth-prefix:${DN2CPP_BEFORE_CALLER_DEPTH:-}|extended-depth-prefix:${DN2CPP_BEFORE_EXTENDED_DEPTH:-}|state-machine-signatures-prefix:${DN2CPP_BEFORE_STATE_MACHINE_SIGNATURES:-}|retained-absence-prefix:${DN2CPP_BEFORE_RETAINED_ABSENCE:-}|unknown-target-prefix:${DN2CPP_BEFORE_UNKNOWN_TARGET:-}|initonly-field-prefix:${DN2CPP_BEFORE_INITONLY_FIELD:-}|metadata-owners-prefix:${DN2CPP_BEFORE_METADATA_OWNERS:-}|assembly-construction-prefix:${DN2CPP_BEFORE_ASSEMBLY_CONSTRUCTION:-}|listed-owners-prefix:${DN2CPP_BEFORE_LISTED_OWNERS:-}|dispatched-target-prefix:${DN2CPP_BEFORE_DISPATCHED_TARGET:-}|written-target-prefix:${DN2CPP_BEFORE_WRITTEN_TARGET:-}|absence-values:${DN2CPP_JOINED_TARGET_NAME+set:$DN2CPP_JOINED_TARGET_NAME}:${DN2CPP_FORMED_ONLY+set:$DN2CPP_FORMED_ONLY}:${DN2CPP_CONSTRUCTED_TEMPLATE+set:$DN2CPP_CONSTRUCTED_TEMPLATE}:${DN2CPP_UNUSED_STATICS+set:$DN2CPP_UNUSED_STATICS}:${DN2CPP_USED_STATICS+set:$DN2CPP_USED_STATICS}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|repeated-arrays-prefix:${DN2CPP_BEFORE_REPEATED_ARRAYS:-}|integer-storage-prefix:${DN2CPP_BEFORE_ARRAY_NARROWING:-}|captured-scalar-defaults-prefix:${DN2CPP_BEFORE_CAPTURED_SCALAR_DEFAULTS:-}|slot-storage-prefix:${DN2CPP_BEFORE_SLOT_STORAGE:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/CutRequestCapture.cs gates/fixtures/ildiet-metadata-validation/cut_authority_admission.py gates/fixtures/ildiet-metadata-validation/selected_cut_admission.py gates/fixtures/ildiet-metadata-validation/cut_request_capture.py"
-DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.cs gates/fixtures/ildiet-metadata-validation/check-stripping.py"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|stripping-levels:high,medium"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.cs gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.Globalization.cs gates/fixtures/ildiet-metadata-validation/globalization_retention.py gates/fixtures/ildiet-metadata-validation/check-stripping.py gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.GcMemory.cs gates/fixtures/ildiet-metadata-validation/gc_memory.py gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.GcGenerations.cs gates/fixtures/ildiet-metadata-validation/gc_generations.py"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|basic-stripping:high,medium|extended-stripping:$stripping_levels"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.Intercepts.cs gates/fixtures/ildiet-metadata-validation/intercept_retention.py"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.BufferMoves.cs gates/fixtures/ildiet-metadata-validation/buffer_moves.py"
 gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for ILDiet validation"
 
 PROJECT=PreserveControl
@@ -472,16 +494,10 @@ done
 
 echo "== Basic High/Medium retention and inert initializers =="
 build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csproj
-stripping_profile_args=()
-stripping_modes=full
-if preserve_full; then
-    stripping_modes="raw full"
-else
-    stripping_profile_args=(--representative)
-fi
 gate_python gates/fixtures/ildiet-metadata-validation/check-stripping.py "$ILD_DLL" \
     "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
-    "$CLI_BIN/Dn2Cpp.Transpiler.dll" "artifacts/stripping-level-tests-$CONFIG" "$CLI_DLL" ${stripping_profile_args[@]+"${stripping_profile_args[@]}"}
+    "$CLI_BIN/Dn2Cpp.Transpiler.dll" "artifacts/stripping-level-tests-$CONFIG" "$CLI_DLL" \
+    ${stripping_profile_args[@]+"${stripping_profile_args[@]}"}
 stripping_assert_empty_output() {
     local out="$1" program="$2"
     gate_capture_ok "$out/assert-native" run_bounded "$out/$program$EXE_EXT" || return 1
@@ -1857,6 +1873,78 @@ echo "== ILDiet payload changes invalidate behavior gate caches =="
 
 echo "== Rewritten metadata, signed identity, resources and dead assemblies =="
 build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csproj
+for fixture in retained called; do
+    for level in $stripping_levels; do
+        for mode in raw full; do
+            move_out="artifacts/stripping-level-tests-$CONFIG/emission-buffer-moves-$fixture-$level-$mode"
+            compile_console "$move_out" BufferMoves
+            stripping_assert_empty_output "$move_out" BufferMoves
+            echo "buffer-moves=$fixture:$level:$mode:overlap-safe"
+        done
+    done
+done
+for fixture in retained called; do
+    for level in $stripping_levels; do
+        for mode in raw full; do
+            query_out="artifacts/stripping-level-tests-$CONFIG/emission-gc-memory-$fixture-$level-$mode"
+            compile_console "$query_out" GcMemory
+            stripping_assert_empty_output "$query_out" GcMemory
+            echo "gc-memory=$fixture:$level:$mode:noncollecting-query"
+        done
+    done
+done
+for fixture in retained called; do
+    for level in $stripping_levels; do
+        for mode in raw full; do
+            generation_out="artifacts/stripping-level-tests-$CONFIG/emission-gc-generations-$fixture-$level-$mode"
+            compile_console "$generation_out" GcGenerations
+            stripping_assert_empty_output "$generation_out" GcGenerations
+            echo "gc-generations=$fixture:$level:$mode:single-logical-generation"
+        done
+    done
+done
+if [ "$DN2CPP_PRESERVE_CONTROL_MEDIUM" = 1 ]; then
+# The ICU PAL is unavailable by default; retention alone must not execute it.
+for fixture in retained called alias managed; do
+    for mode in raw full; do
+        globalization_out="artifacts/stripping-level-tests-$CONFIG/emission-globalization-$fixture-$mode"
+        compile_console "$globalization_out" GlobalizationRetention
+        stripping_assert_empty_output "$globalization_out" GlobalizationRetention
+        echo "medium-globalization=$fixture:$mode:retained-and-callable"
+    done
+done
+fi
+for mode in raw full; do
+    globalization_out="artifacts/stripping-level-tests-$CONFIG/emission-globalization-managed-$mode-high"
+    compile_console "$globalization_out" GlobalizationRetention
+    stripping_assert_empty_output "$globalization_out" GlobalizationRetention
+    echo "high-globalization=managed:$mode:address-only-override"
+done
+if [ "$DN2CPP_PRESERVE_CONTROL_MEDIUM" = 1 ]; then
+# CoreCLR QCall imports stay retained and fail only when invoked.
+for fixture in retained called managed other-owner; do
+    for mode in raw full; do
+        kernel32_out="artifacts/stripping-level-tests-$CONFIG/emission-kernel32-$fixture-$mode"
+        compile_console "$kernel32_out" Kernel32Retention
+        stripping_assert_empty_output "$kernel32_out" Kernel32Retention
+        echo "medium-kernel32=$fixture:$mode:retained-and-callable"
+    done
+done
+fi
+for mode in raw full; do
+    kernel32_out="artifacts/stripping-level-tests-$CONFIG/emission-kernel32-managed-$mode-high"
+    compile_console "$kernel32_out" Kernel32Retention
+    stripping_assert_empty_output "$kernel32_out" Kernel32Retention
+    echo "high-kernel32=managed:$mode:address-only-override"
+done
+for level in $stripping_levels; do
+    for mode in raw full; do
+        kernel32_out="artifacts/stripping-level-tests-$CONFIG/emission-kernel32-primitive-$mode-$level"
+        compile_console "$kernel32_out" Kernel32Retention
+        stripping_assert_empty_output "$kernel32_out" Kernel32Retention
+        echo "$level-qcall-primitive=$mode:direct-and-address-zeroing"
+    done
+done
 gate_python gates/fixtures/ildiet-metadata-validation/check.py "$ILD_DLL" \
     "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
     "$DIET_APP" "$DIET_LIB" "$_CG_CORELIB" "artifacts/ildiet-metadata-tests-$CONFIG"

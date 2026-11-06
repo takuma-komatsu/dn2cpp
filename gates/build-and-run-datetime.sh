@@ -23,6 +23,61 @@
 # Former gates: datetime, datetime-now, datetime-parse, datetime-format,
 # datetime-tz, datetimeoffset.
 source "$(dirname "$0")/_common.sh"
+case "${DN2CPP_DATETIME_FULL:-0}" in
+    0|1) DN2CPP_DATETIME_FULL=${DN2CPP_DATETIME_FULL:-0} ;;
+    *) echo 'DN2CPP_DATETIME_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+if [ "$DN2CPP_DATETIME_FULL" = 1 ]; then
+    echo 'datetime coverage: full aggregate, isolated routes and authority matrix'
+else
+    echo 'datetime coverage: DateTimeOps full-driver parity and shared-binary assertions'
+    echo 'datetime detailed fixtures: skipped (not selected); not counted as passed'
+fi
+if [ "$DN2CPP_DATETIME_FULL" = 1 ]; then
+source "$(dirname "$0")/_abbreviated-day.sh"
+source "$(dirname "$0")/_abbreviated-month.sh"
+source "$(dirname "$0")/_dtfi-calendar.sh"
+source "$(dirname "$0")/_dtfi-calendar-setter.sh"
+source "$(dirname "$0")/_internal-month.sh"
+source "$(dirname "$0")/_era-name.sh"
+source "$(dirname "$0")/_format-flags.sh"
+source "$(dirname "$0")/_force-two-digit-years.sh"
+source "$(dirname "$0")/_general-short-time-pattern.sh"
+source "$(dirname "$0")/_all-datetime-patterns.sh"
+source "$(dirname "$0")/_datetime-family.sh"
+source "$(dirname "$0")/_datetime-tchar.sh"
+source "$(dirname "$0")/_dateonly-deconstruct.sh"
+source "$(dirname "$0")/_year-month-adjustment.sh"
+source "$(dirname "$0")/_datetime-trio.sh"
+source "$(dirname "$0")/_dtfi-parser-flags.sh"
+source "$(dirname "$0")/_dtfi-name-arrays.sh"
+source "$(dirname "$0")/_dtfi-compare-info.sh"
+source "$(dirname "$0")/_dtfi-tokenize.sh"
+fi
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_abbreviated-day.sh gates/fixtures/abbreviated-day samples/dotnet/DateTimeOps/AbbreviatedDaySubset.cs gates/fixtures/ldftn-local/AbbreviatedDayFixture.cs gates/fixtures/ldftn-local/AbbreviatedDayGuards.cs gates/fixtures/ldftn-local/RuntimeTypeDefaultCtorFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/full-day/FullDay.csproj gates/fixtures/full-day/minimal/MinimalFullDay.csproj gates/fixtures/full-day/link.xml samples/dotnet/DateTimeOps/FullDayPublicSubset.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_abbreviated-month.sh gates/fixtures/abbreviated-month samples/dotnet/DateTimeOps/AbbreviatedMonthSubset.cs samples/dotnet/DateTimeOps/AbbreviatedMonthPublicSubset.cs gates/fixtures/ldftn-local/AbbreviatedMonthFixture.cs gates/fixtures/ldftn-local/AbbreviatedMonthGuards.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/full-month/FullMonth.csproj gates/fixtures/full-month/minimal/MinimalFullMonth.csproj gates/fixtures/full-month/link.xml samples/dotnet/DateTimeOps/FullMonthPublicSubset.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_dtfi-calendar.sh gates/fixtures/dtfi-calendar gates/fixtures/ldftn-local/DtfICalendarFixture.cs gates/fixtures/ldftn-local/DtfICalendarGuards.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_internal-month.sh gates/fixtures/internal-month gates/fixtures/ldftn-local/InternalMonthFixture.cs gates/fixtures/ldftn-local/InternalMonthGuards.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_era-name.sh gates/fixtures/era-name gates/fixtures/ldftn-local/EraNameFixture.cs gates/fixtures/ldftn-local/DateTimeFixtureDeclaration.cs gates/fixtures/ldftn-local/EraNameGuards.cs samples/dotnet/DateTimeOps/EraNamePublicSubset.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_format-flags.sh gates/fixtures/format-flags gates/fixtures/ldftn-local/FormatFlagsFixture.cs gates/fixtures/ldftn-local/FormatFlagsGuards.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_force-two-digit-years.sh gates/fixtures/force-two-digit-years gates/fixtures/ldftn-local/ForceTwoDigitYearsFixture.cs gates/fixtures/ldftn-local/ForceTwoDigitYearsGuards.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_general-short-time-pattern.sh gates/fixtures/general-short-time-pattern gates/fixtures/ldftn-local/GeneralShortTimePatternFixture.cs gates/fixtures/ldftn-local/GeneralShortTimePatternGuards.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/general-long-time-pattern/GeneralLongTimePattern.csproj gates/fixtures/general-long-time-pattern/link.xml"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/datetime-offset-pattern/DateTimeOffsetPattern.csproj gates/fixtures/datetime-offset-pattern/link.xml"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_dtfi-calendar-setter.sh gates/fixtures/dtfi-calendar-setter gates/fixtures/ldftn-local/DtfICalendarSetterFixture.cs gates/fixtures/ldftn-local/DtfICalendarSetterGuards.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_datetime-family.sh gates/fixtures/datetime-family gates/fixtures/ldftn-local/DateTimeFamilyAggregateFixture.cs gates/_all-datetime-patterns.sh gates/fixtures/all-datetime-patterns gates/fixtures/ldftn-local/AllDateTimePatternsFixture.cs gates/fixtures/ldftn-local/AllDateTimePatternsGuards.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_datetime-tchar.sh gates/_dateonly-deconstruct.sh gates/fixtures/datetime-tchar gates/fixtures/dateonly-deconstruct gates/fixtures/ldftn-local/DateTimeTCharFixture.cs gates/fixtures/ldftn-local/DateTimeTCharGuards.cs gates/fixtures/ldftn-local/DateOnlyDeconstructFixture.cs gates/fixtures/ldftn-local/DateOnlyDeconstructGuards.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_year-month-adjustment.sh gates/fixtures/year-month-adjustment gates/fixtures/ldftn-local/YearMonthAdjustmentFixture.cs gates/fixtures/ldftn-local/YearMonthAdjustmentGuards.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_datetime-trio.sh gates/fixtures/datetime-trio gates/fixtures/ldftn-local/DateTimeTrioFixture.cs gates/fixtures/ldftn-local/DateTimeTrioGuards.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_dtfi-parser-flags.sh gates/fixtures/dtfi-parser-flags gates/fixtures/ldftn-local/DtfIParserFlagsFixture.cs gates/fixtures/ldftn-local/DtfIParserFlagsGuards.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_dtfi-name-arrays.sh gates/fixtures/dtfi-name-arrays gates/fixtures/ldftn-local/DtfINameArraysFixture.cs gates/fixtures/ldftn-local/DtfINameArraysGuards.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_dtfi-compare-info.sh gates/fixtures/dtfi-compare-info gates/fixtures/ldftn-local/DtfICompareInfoFixture.cs gates/fixtures/ldftn-local/DtfICompareInfoGuards.cs gates/fixtures/ldftn-local/CultureNameValidatorFixture.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_dtfi-tokenize.sh gates/fixtures/dtfi-tokenize gates/fixtures/ldftn-local/DtfITokenizeFixture.cs gates/fixtures/ldftn-local/DtfITokenizeGuards.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="dtfi-tokenize:immediate-refusal-v1,negative:${DN2CPP_DTFI_TOKENIZE_NEGATIVES:-mask-int parser-value address-mask-int address-parser-value}|dtfi-compare-info:rooted-two-getters-exact-initializers-validator-real-body-clr-parity-v3,negative:${DN2CPP_DTFI_COMPARE_INFO_NEGATIVES:-dtfi-return culture-byref address-dtfi-return address-culture-byref validator-return address-validator-byref}|era-name-family:full-and-abbreviated-v1,negative:${DN2CPP_ABBREVIATED_ERA_NAME_NEGATIVES:-return argument enum byref static modifier generic arity-two address-return address-byref}|dtfi-name-arrays:shared-full-abbr-seven-methods-v1,negative:${DN2CPP_DTFI_NAME_ARRAYS_NEGATIVES:-genitive-bool-int leap-return address-genitive-bool-int address-leap-return}|dtfi-parser-flags:${DN2CPP_DTFI_PARSER_FLAGS_NEGATIVES:-month-int day-byref address-month-int address-day-byref}|datetime-trio:${DN2CPP_DATETIME_TRIO_NEGATIVES:-add-out-value create-out-other ctor-kind-int address-add-out-value address-create-out-other address-ctor-kind-int newobj-ctor-bool-int}|datetime-family:aggregate-raw-diet+isolated-day-reflection-minimal-v2|year-month-adjustment:${DN2CPP_YEAR_MONTH_ADJUSTMENT_NEGATIVES:-year-value bool-int address-year-value address-bool-int has-return address-has-return}|all-datetime-patterns-negative:${DN2CPP_ALL_DATETIME_PATTERNS_NEGATIVES:-argument return-element address-argument address-return-element}|datetime-tchar:discard+noalloc-char-byte-raw-diet,negative:${DN2CPP_DATETIME_TCHAR_NEGATIVES:-return-owner unsupported-int address-return-owner address-unsupported-int}|dateonly-deconstruct:all-alias+reflection,negative:${DN2CPP_DATEONLY_DECONSTRUCT_NEGATIVES:-value element address-value address-element}|calendar-setter:exact-void-readonly-null-refusal,negative:${DN2CPP_DTFI_CALENDAR_SETTER_NEGATIVES:-default}|datetime-offset-pattern:exact-invariant-v1|${DN2CPP_GATE_EXTRA_CONTEXT:-}|abbreviated-day:invariant,raw,diet,reflection-only,minimal,NoAlloc-rejection|full-day:invariant,raw,diet,reflection-only,minimal,NoAlloc-rejection|abbreviated-month:exact-int32-scalar-v1|abbreviated-month-negatives:${DN2CPP_ABBREVIATED_MONTH_NEGATIVES:-return byref address-return address-byref}|month-name-modes:abbreviated,full|full-month:exact-int32-scalar-v1|dtfi-calendar:exact-null-first-refusal-v1|dtfi-calendar-negatives:${DN2CPP_DTFI_CALENDAR_NEGATIVES:-return byref address-return address-byref}|day-name-modes:abbreviated,full|abbreviated-day-negatives:${DN2CPP_ABBREVIATED_DAY_NEGATIVES:-return byref address-return address-byref}|internal-month:exact-invariant-selector,raw,diet,NoAlloc-rejection,negative:${DN2CPP_INTERNAL_MONTH_NEGATIVES:-default}|era-name:invariant,raw,diet,NoAlloc-rejection,negative:${DN2CPP_ERA_NAME_NEGATIVES:-default}|general-time-pattern-families:short,long,offset|general-short-time-pattern:exact-invariant-rooted-string,raw,diet,NoAlloc-leaf,negative:${DN2CPP_GENERAL_SHORT_TIME_PATTERN_NEGATIVES:-default}|force-two-digit-years:exact-invariant-boolean,raw,diet,NoAlloc-leaf,negative:${DN2CPP_FORCE_TWO_DIGIT_YEARS_NEGATIVES:-default}|format-flags:exact-invariant-enum,raw,diet,NoAlloc-leaf,negative:${DN2CPP_FORMAT_FLAGS_NEGATIVES:-default}"
+
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|datetime-full:$DN2CPP_DATETIME_FULL"
 
 # Constructors, arithmetic, offset parsing and microseconds preserve fault fields.
 gate_extra_asserts() {
@@ -92,6 +147,31 @@ gate_extra_asserts() {
             expected="$out/zone-$zone/assert-expected-11.stdout"
             gate_output compare "$native" "$expected"
         done
+    fi
+    gate_capture_ok "$out/day-before" run_bounded "./$out/DateTimeOps$EXE_EXT" before-abbreviated-day
+    gate_capture_ok "$out/day-full" run_bounded "./$out/DateTimeOps$EXE_EXT"
+    gate_output select "$out/day-full.stdout" "$out/day-prefix.stdout" --before '== Abbreviated invariant day names ==' --policy crlf
+    gate_output compare "$out/day-prefix.stdout" "$out/day-before.stdout"
+    gate_output witness "$out/day-full.stdout" '== Abbreviated invariant day names ==' 'abbreviated-day-array-copy-neighbor:True' 'abbreviated-day-separator-clone-neighbor:True' --count 1 --policy crlf
+    gate_capture_ok "$out/full-day-before" run_bounded "./$out/DateTimeOps$EXE_EXT" before-full-day
+    gate_output select "$out/day-full.stdout" "$out/full-day-prefix.stdout" --before '== Full invariant day public neighbor ==' --policy crlf
+    gate_output compare "$out/full-day-prefix.stdout" "$out/full-day-before.stdout"
+    gate_output witness "$out/day-full.stdout" '== Full invariant day public neighbor ==' 'full-day-public-0:True' 'full-day-public-6:True' 'Full invariant day public neighbor end' --count 1 --policy crlf
+    gate_capture_ok "$out/month-before" run_bounded "./$out/DateTimeOps$EXE_EXT" before-abbreviated-month
+    gate_output select "$out/day-full.stdout" "$out/month-prefix.stdout" --before '== Abbreviated invariant month public neighbor ==' --policy crlf
+    gate_output compare "$out/month-prefix.stdout" "$out/month-before.stdout"
+    gate_output witness "$out/day-full.stdout" '== Abbreviated invariant month public neighbor ==' 'abbreviated-month-public-1:True' 'abbreviated-month-public-13:True' 'abbreviated-month-public-empty:True' 'Abbreviated invariant month public neighbor end' --count 1 --policy crlf
+    gate_capture_ok "$out/full-month-before" run_bounded "./$out/DateTimeOps$EXE_EXT" before-full-month
+    gate_output select "$out/day-full.stdout" "$out/full-month-prefix.stdout" --before '== Full invariant month public neighbor ==' --policy crlf
+    gate_output compare "$out/full-month-prefix.stdout" "$out/full-month-before.stdout"
+    gate_output witness "$out/day-full.stdout" '== Full invariant month public neighbor ==' 'full-month-public-1:True' 'full-month-public-13:True' 'full-month-public-empty:True' 'Full invariant month public neighbor end' --count 1 --policy crlf
+    gate_capture_ok "$out/era-before" run_bounded "./$out/DateTimeOps$EXE_EXT" before-era-name
+    gate_output select "$out/day-full.stdout" "$out/era-prefix.stdout" --before '== Invariant era public neighbor ==' --policy crlf
+    gate_output compare "$out/era-prefix.stdout" "$out/era-before.stdout"
+    gate_output witness "$out/day-full.stdout" '== Invariant era public neighbor ==' 'era-name-public-0:True' 'era-name-public-1:True' 'Invariant era public neighbor end' --count 1 --policy crlf
+
+    if [ "$DN2CPP_DATETIME_FULL" = 1 ]; then
+        datetime_family_focused_gate "$out/datetime-family" || return $?
     fi
 }
 

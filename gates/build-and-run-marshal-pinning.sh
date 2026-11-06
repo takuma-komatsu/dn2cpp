@@ -45,16 +45,22 @@
 # GCHandle sections 13 and 17 read process-wide heap state. Run them after
 # every heap-sensitive section; any later section must be independent of prior
 # allocator and heap state.
+# The appended StructureToPtr block checks the exact object overload through
+# calls, managed function pointers, delegates and reflection on its own buffer.
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/MarshalStructureToPtrGuards.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj gates/_ildiet.sh gates/ildiet_manifest.py gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
 case "${DN2CPP_MARSHAL_FULL:-0}" in
     0|1) DN2CPP_MARSHAL_FULL=${DN2CPP_MARSHAL_FULL:-0} ;;
     *) echo 'DN2CPP_MARSHAL_FULL must be 0 or 1' >&2; exit 1 ;;
 esac
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|marshal-pinning-full:$DN2CPP_MARSHAL_FULL"
-if [ "$DN2CPP_MARSHAL_FULL" = 0 ]; then
-    echo 'marshal-pinning coverage: aggregate CLR parity and runtime assertions'
-    echo 'marshal-pinning isolated layout refusals: skipped (not selected); not counted as passed'
+if [ "$DN2CPP_MARSHAL_FULL" = 1 ]; then
+    echo 'marshal-pinning coverage: full fixture and preprocessing matrix'
+else
+    echo 'marshal-pinning coverage: representative aggregate checks'
+    echo 'marshal-pinning extended checks: skipped (not selected); not counted as passed'
 fi
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/GCHandleCheckUninitializedGuards.cs gates/fixtures/ldftn-local/GCHandleCheckUninitializedFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/gchandle-check-uninitialized-runtime/GCHandleCheckUninitializedWitness.csproj gates/fixtures/gchandle-check-uninitialized-runtime/Program.cs gates/fixtures/ldftn-local/check-gchandle-check-uninitialized-attachment.py"
 
 if [ "$DN2CPP_MARSHAL_FULL" = 1 ]; then
 echo "== Asserting [StructLayout(Size=N)] with N not a multiple of the alignment refuses =="
@@ -161,8 +167,39 @@ fi
 gate_capture_diff_files() {
     local out="$1" native="$3"
     printf 'known=31\nretained=1\nretained=47\n' > "$out/box-dispatch.expected"
-    gate_output suffix "$native" "$out/box-dispatch.expected" --policy crlf
+    gate_capture_ok "$out/before-typed" run_bounded "./$out/MarshalPinning$EXE_EXT" before-typed-handles
+    gate_output suffix "$out/before-typed.stdout" "$out/box-dispatch.expected" --policy crlf
+    gate_output prefix "$native" "$out/before-typed.stdout" --before '== Typed GC handles ==' --policy crlf
+    gate_output witness "$native" 'typed-action:1' --policy crlf
+    gate_output witness "$native" 'typed-boxed:True' --policy crlf
+    gate_output witness "$native" 'typed-array-enumeration:13' --policy crlf
+    gate_output witness "$native" 'typed-text-object:True' --policy crlf
+    gate_output witness "$native" 'typed-module-object:True' --policy crlf
+    gate_output witness "$native" 'typed-token-root:37' --policy crlf
+    gate_output witness "$native" 'Typed GC handles end' --policy crlf
+    gate_capture_ok "$out/before-structure-to-ptr" run_bounded "./$out/MarshalPinning$EXE_EXT" before-structure-to-ptr-routes
+    gate_output prefix "$native" "$out/before-structure-to-ptr.stdout" --before '== Marshal StructureToPtr callable routes ==' --policy crlf
+    for route in direct calli delegate reflection; do
+        gate_output witness "$native" "marshal-structure-to-ptr-route:$route:checks=7" --count 1 --policy crlf
+    done
+    gate_output witness "$native" 'marshal-structure-to-ptr-checks:30' --count 1 --policy crlf
+    gate_output witness "$native" 'Marshal StructureToPtr callable routes end' --count 1 --policy crlf
 }
+
+if [ "$DN2CPP_MARSHAL_FULL" = 1 ]; then
+echo "== Asserting the exact Marshal.StructureToPtr MethodDef cut and callable route =="
+build_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+_marshal_guard_root="artifacts/marshal-structure-to-ptr-guards-$CONFIG"
+mkdir -p "$_marshal_guard_root"
+_marshal_guard_model=$(mktemp -d "$_marshal_guard_root/model-XXXXXX")
+gate_capture_ok "$_marshal_guard_model/guards" run_bounded dotnet \
+    "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+    --marshal-structure-to-ptr-guards \
+    "$(dirname "${DN2CPP_CLI_DLL:-src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}")/Dn2Cpp.Transpiler.dll" \
+    "$(resolve_net10_corelib)" "$_marshal_guard_model/GuardInput.dll"
+gate_output witness "$_marshal_guard_model/guards.stdout" 'marshal-structure-to-ptr-guards:checks=124' --count 1 --policy crlf
+
+fi
 
 corelib_diff_gate MarshalPinning
 
@@ -177,3 +214,72 @@ grep -Fq "StructMarshalRoundtripSubset.UnpreparedBox" "$_native_box" \
     || { echo "FAIL: unprepared box refusal omitted the target" >&2; exit 1; }
 grep -Fq 'statically known typeof(T)' "$_native_box" \
     || { echo "FAIL: unprepared box refusal omitted the remedy" >&2; exit 1; }
+
+if [ "$DN2CPP_MARSHAL_FULL" != 1 ]; then
+    echo 'OK'
+    exit 0
+fi
+
+# Genuine private callable routes supplement the unchanged themed sample above.
+(
+    source gates/_ildiet.sh
+    gate_python -c 'pass' >/dev/null || exit $?
+    finite_core=$(resolve_net10_corelib)
+    finite_cli="${DN2CPP_CLI_DLL:-src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}"
+    build_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+    build_gate_proj gates/fixtures/gchandle-check-uninitialized-runtime/GCHandleCheckUninitializedWitness.csproj
+    finite_fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll"
+    finite_app="gates/fixtures/gchandle-check-uninitialized-runtime/bin/$CONFIG/$TFM/GCHandleCheckUninitializedWitness.dll"
+    mkdir -p "artifacts/gchandle-check-uninitialized-$CONFIG"
+    finite_root=$(mktemp -d "artifacts/gchandle-check-uninitialized-$CONFIG/run-XXXXXX")
+    gate_capture_ok "$finite_root/guards" run_bounded dotnet "$finite_fixture" --gchandle-check-uninitialized-guards \
+        "$(dirname "$finite_cli")/Dn2Cpp.Transpiler.dll" "$finite_core" "$finite_root/model.dll"
+    gate_output match-record "$finite_root/guards.stdout" 'gchandle-check-uninitialized-guards:(checks|passed)=[1-9][0-9]*.*' --count 1 --policy crlf
+    gate_capture_ok "$finite_root/lazy-owner-guards" run_bounded dotnet "$finite_fixture" --gchandle-check-uninitialized-lazy-owner-guards \
+        "$(dirname "$finite_cli")/Dn2Cpp.Transpiler.dll" "$finite_core" "$finite_root/lazy-owner-model.dll"
+    gate_output match-record "$finite_root/lazy-owner-guards.stdout" 'gchandle-check-uninitialized-lazy-owner-guards:checks=[1-9][0-9]*' --count 1 --policy crlf
+    for finite_route in direct-calli reflection-only; do
+        finite_args=()
+        [[ "$finite_route" == direct-calli ]] || finite_args=("$finite_route")
+        gate_capture_ok "$finite_root/$finite_route-oracle" run_bounded dotnet "$finite_app" ${finite_args[@]+"${finite_args[@]}"}
+        finite_end='GCHandle.CheckUninitialized genuine weak tokens end'
+        [[ "$finite_route" == direct-calli ]] || finite_end='GCHandle.CheckUninitialized named reflection only end'
+        gate_output byte-witness "$finite_root/$finite_route-oracle.stdout" "$finite_end" --count 1 --policy crlf
+        gate_capture_ok "$finite_root/$finite_route-generate" run_bounded dotnet "$finite_fixture" \
+            --gchandle-check-uninitialized-fixture "$finite_app" "$finite_core" "$finite_root/$finite_route.dll" "$finite_route"
+        for finite_axis in raw diet; do
+            finite_out="$finite_root/$finite_route-$finite_axis"
+            finite_flags=()
+            [[ "$finite_axis" != raw ]] || finite_flags=(--no-ildiet)
+            gate_capture_ok "$finite_root/$finite_route-$finite_axis-emit" invoke_cli "$finite_root/$finite_route.dll" \
+                -r "$finite_core" --auto-ref ${finite_flags[@]+"${finite_flags[@]}"} -o "$finite_out"
+            if [[ "$finite_axis" == diet ]]; then
+                gate_python - "$finite_out/ildiet" 'GCHandleCheckUninitializedWitness' "$finite_core" <<'PY_FINITE_DIET'
+from pathlib import Path
+import sys
+sys.path.insert(0, 'gates')
+from ildiet_manifest import manifest
+result, generation = manifest(sys.argv[1])
+assert result.get('fallback') == 'none' and result.get('cutsValidated') == 'true'
+assembly = next(a for a in result.findall('assembly') if a.get('name') == sys.argv[2])
+assert assembly.get('mode') == 'rewritten'
+core = next(a for a in result.findall('assembly') if a.get('name') == 'System.Private.CoreLib')
+assert core.get('mode') == 'copied'
+assert (generation / 'System.Private.CoreLib.dll').read_bytes() == Path(sys.argv[3]).read_bytes()
+PY_FINITE_DIET
+                finite_rewritten="$(ildiet_generation "$finite_out/ildiet")/GCHandleCheckUninitializedWitness.dll"
+                gate_capture_ok "$finite_out/diet-proof" run_bounded dotnet "$finite_fixture" \
+                    --gchandle-check-uninitialized-diet-proof "$finite_root/$finite_route.dll" "$finite_rewritten"
+                gate_capture_ok "$finite_out/diet-proof-negatives" run_bounded dotnet "$finite_fixture" \
+                    --gchandle-check-uninitialized-diet-proof-negatives "$finite_root/$finite_route.dll" "$finite_rewritten" "$finite_out/diet-negative-data"
+            fi
+            if [[ "$finite_route" == reflection-only ]]; then
+                gate_python gates/fixtures/ldftn-local/check-gchandle-check-uninitialized-attachment.py "$finite_out"
+            fi
+            compile_console "$finite_out" GCHandleCheckUninitializedWitness
+            gate_capture_ok "$finite_out/native" run_bounded "$finite_out/GCHandleCheckUninitializedWitness$EXE_EXT"
+            gate_output compare "$finite_root/$finite_route-oracle.stdout" "$finite_out/native.stdout" --policy crlf
+            gate_output compare "$finite_root/$finite_route-oracle.stderr" "$finite_out/native.stderr" --policy crlf
+        done
+    done
+)

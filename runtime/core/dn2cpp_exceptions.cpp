@@ -113,7 +113,7 @@ void dn2cpp_register_vcall_traps(const void* const* fns, int32_t count)
 // Whether `fn` is a vtable dispatch trap — the shared symbol or one of the image's
 // registered per-signature thunks. For probes that must not CALL a trapped slot to
 // find out (the trap aborts). Linear over a small set, on already-cold paths.
-static bool dn2cpp_is_vcall_trap(const void* fn)
+bool dn2cpp_is_vcall_trap(const void* fn)
 {
     if (fn == reinterpret_cast<const void*>(&dn2cpp_vcall_unimplemented))
         return true;
@@ -1019,6 +1019,13 @@ void dn2cpp_throw_platform_not_supported(const char* message)
 {
     dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_platform_not_supported_exception_type,
         dn2cpp_string_from_utf8(message, static_cast<int32_t>(std::strlen(message))), nullptr));
+}
+
+// A permanent capability boundary, independent of reflection preservation.
+void dn2cpp_require_allocation_supported(const Dn2CppTypeInfo* ti)
+{
+    if (ti != nullptr && (ti->reflection().activation & DN2CPP_TA_ALLOCATION_UNSUPPORTED) != 0)
+        dn2cpp_throw_platform_not_supported("Allocation of this runtime type is not supported");
 }
 
 // The DN2CPP_TF_LAYOUT_UNKNOWN guard. See the flag's doc in dn2cpp_core.h for why a

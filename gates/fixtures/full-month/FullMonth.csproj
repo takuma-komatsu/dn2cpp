@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable><DefineConstants>$(DefineConstants);FULL_MONTH</DefineConstants></PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="minimal/**/*.cs" />
+    <Compile Include="../abbreviated-month/Entry.cs" Link="Entry.cs" />
+    <Compile Include="../../../samples/dotnet/DateTimeOps/AbbreviatedMonthSubset.cs" Link="MonthNameSubset.cs" />
+  </ItemGroup>
+</Project>

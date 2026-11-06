@@ -15,6 +15,42 @@ internal sealed partial class MethodCompiler
     /// <c>Array.Empty&lt;T&gt;</c>).</summary>
     private bool TryTokenFreeGenericIntrinsic(string declType, string name, TypeDesc[] methodArgs, MethodSpecificationHandle specification = default)
     {
+        if (declType == "System.UInt128" && name == "CreateChecked")
+        {
+            var target = specification.IsNil ? _method : Comp.ResolveMethodSpec(Module, specification, Method.Context);
+            if (!CoreIntrinsics.IsUInt128Checked(target))
+                throw new NotSupportedException("UInt128.CreateChecked requires an exact closed integer or identity source");
+            EmitUInt128Checked(target);
+            return true;
+        }
+        if (declType == "System.Int128" && name == "CreateChecked")
+        {
+            var target = specification.IsNil ? _method : Comp.ResolveMethodSpec(Module, specification, Method.Context);
+            if (!CoreIntrinsics.IsInt128Checked(target))
+                throw new NotSupportedException("Int128.CreateChecked requires an exact closed integer or identity source");
+            EmitInt128Checked(target);
+            return true;
+        }
+        if (declType == "System.Globalization.DateTimeFormatInfo"
+            && CoreIntrinsics.IsDateTimeFormatInfoSpanName(name))
+        {
+            var target = specification.IsNil ? _method : Comp.ResolveMethodSpec(Module, specification, Method.Context);
+            if (!CoreIntrinsics.IsDateTimeFormatInfoSpan(target)
+                || methodArgs is not [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char or PrimitiveTypeCode.Byte }])
+                throw new NotSupportedException("DateTimeFormatInfo TChar accessor requires its exact Char or Byte signature");
+            if (!specification.IsNil)
+            {
+                var raw = Reader.GetMethodSpecification(specification).Method;
+                var blob = raw.Kind == HandleKind.MethodDefinition
+                    ? Reader.GetMethodDefinition((MethodDefinitionHandle)raw).Signature
+                    : Reader.GetMemberReference((MemberReferenceHandle)raw).Signature;
+                if (!CoreIntrinsics.IsDateTimeFormatInfoSpanSignature(Reader.GetBlobReader(blob))
+                    || !CoreIntrinsics.IsDateTimeFormatInfoSpanDecodedSignature(MethodSpecSig(specification, methodArgs), target.Module))
+                    throw new NotSupportedException("DateTimeFormatInfo TChar accessor requires its exact MethodSpec signature");
+            }
+            EmitDateTimeFormatSpan(target, methodArgs[0]);
+            return true;
+        }
         // Array.Empty<T> -> the per-element-type cached singleton (matches .NET's
         // EmptyArray<T>.Value: the same instance every call, no per-call allocation).
         if (declType == "System.Array" && name == "Empty")
@@ -78,6 +114,8 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", SimdHwAccelToken);
                 return;
             }
+            if (name == "MultiplyAddEstimate")
+                throw new NotSupportedException("Vector MultiplyAddEstimate requires its exact generic managed guard route");
             var vsig = MethodSpecSig(msh, methodArgs);
             if (TryVectorPrimary(vsig, out var vcpp, out var vw, out var velem))
             {
@@ -86,6 +124,8 @@ internal sealed partial class MethodCompiler
                 throw new NotSupportedException(
                     $"{Method.DeclaringClass.FullName}.{Method.Name}: vector helper {declType}::{name}<{methodArgs.Length}> is not supported");
             }
+            if (declType == "System.Numerics.Vector" && name == "As")
+                throw new NotSupportedException("Vector.As requires its exact managed guard or numeric reinterpret route");
             // No software-vector operand/result: the element is non-primitive (e.g.
             // Vector<Int128>). The software-vector runtime is primitive-only, and such a
             // helper is only ever called on the SIMD branch the portable getter gates off
@@ -1662,9 +1702,10 @@ internal sealed partial class MethodCompiler
         // ThrowKeyNotFoundException<TKey>(TKey)). Same as the non-generic ones:
         // drop the args and raise a catchable managed trap — and, for the same reason as
         // there, `ThrowIf*` is excluded: a GUARD returns normally on the happy path, so
-        // trapping one drops the test. No generic guard exists on this type today, so the
-        // exclusion sends one to the loud unsupported-shape throw instead of miscompiling it
-        // (the non-generic twin's arm carries the full argument).
+        // trapping one drops the test. The exact unsupported-vector guard retains
+        // its managed body before reaching this sink-only route.
+        if (declType == "System.ThrowHelper" && name == "ThrowAccessViolationException")
+            throw new NotSupportedException("ThrowAccessViolationException requires its exact nongeneric CoreLib declaration and managed body");
         if (declType == "System.ThrowHelper"
             && name.StartsWith("Throw") && !name.StartsWith("ThrowIf"))
         {
@@ -2238,14 +2279,9 @@ internal sealed partial class MethodCompiler
             return;
         }
 
-        // NumberFormatInfo / DateTimeFormatInfo generic span accessors
-        // (NegativeSignTChar<TChar>() and siblings) — the TChar forms of the string
-        // properties, reached from the transpiled formatting subtrees (Number.FormatFloat
-        // behind Half.ToString for char, the Utf8Formatter path for byte). BOTH widths read
-        // the SAME modeled culture: the byte arm transcodes the very string the char arm
-        // spans, so a non-invariant provider prints its own separators in UTF-8 too.
-        // DateTimeFormatInfo remains invariant-only, matching its property intercepts.
-        if ((declType is "System.Globalization.NumberFormatInfo" or "System.Globalization.DateTimeFormatInfo")
+        // NumberFormatInfo generic span accessors keep their modeled culture.
+        // DateTimeFormatInfo uses the exact token-free arm shared with retained bodies.
+        if (declType == "System.Globalization.NumberFormatInfo"
             && name.EndsWith("TChar", StringComparison.Ordinal))
         {
             bool isByte = methodArgs is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte }];
@@ -2259,18 +2295,6 @@ internal sealed partial class MethodCompiler
             string spanCt = CppTypes.Of(nfiSig.ReturnType);
             string symSpan = NewTemp(spanCt);
             string strExpr;
-            if (declType == "System.Globalization.DateTimeFormatInfo")
-                strExpr = Literals.GetOrAdd(name switch
-                {
-                    "DecimalSeparatorTChar" => ".",
-                    "DateSeparatorTChar" => "/",
-                    "TimeSeparatorTChar" => ":",
-                    "AMDesignatorTChar" => "AM",
-                    "PMDesignatorTChar" => "PM",
-                    _ => throw new NotSupportedException(
-                        $"{Method.DeclaringClass.FullName}.{Method.Name}: {declType}::{name} has no mapping yet"),
-                });
-            else
             {
                 string nfiPtr = $"({Cast(recv, "const Dn2CppNumberFormatInfo*")})";
                 strExpr = name switch

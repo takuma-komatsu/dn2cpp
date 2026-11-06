@@ -11,7 +11,7 @@
 # hyperbolics (Acosh/Asinh/Atanh, boolean anchors — transcendental values are
 # never printed raw), the IEEE-exact members (CopySign, IEEERemainder,
 # FusedMultiplyAdd, ScaleB, BitIncrement/BitDecrement, ILogB, Max/MinMagnitude)
-# and BigMul across all six overloads (the 128-bit results via their halves),
+# and Math.BigMul overloads plus primitive BigMul facades (wide results via halves),
 # plus the Reciprocal(Sqrt)Estimate pair (tolerance relations + the exact IEEE
 # special cases only — the finite results are platform-dependent estimates)
 # and the decimal members (Round across all five MidpointRounding modes with
@@ -53,6 +53,28 @@
 # resolve + tree-shake -> native binary -> run, diffed exactly against real
 # .NET (the program is deterministic, so `dotnet $app` is its own oracle).
 source "$(dirname "$0")/_common.sh"
+case "${DN2CPP_MATH_FULL:-0}" in
+    0|1) DN2CPP_MATH_FULL=${DN2CPP_MATH_FULL:-0} ;;
+    *) echo 'DN2CPP_MATH_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|math-full:$DN2CPP_MATH_FULL"
+if [ "${1:-}" = --math-bucket-only ]; then
+    echo 'math coverage: focused aggregate only'
+elif [ "${1:-}" = --primitive-bigmul-only ]; then
+    echo 'math coverage: focused primitive BigMul matrix'
+elif [ "$DN2CPP_MATH_FULL" = 1 ]; then
+    echo 'math coverage: full fixture and preprocessing matrix'
+else
+    echo 'math coverage: representative aggregate checks'
+    echo 'math extended checks: skipped (not selected); not counted as passed'
+fi
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/math-bigmul/MathBigMulFixture.csproj gates/fixtures/math-bigmul/Program.cs gates/fixtures/primitive-bigmul/PrimitiveBigMul.csproj gates/fixtures/primitive-bigmul/Entry.cs samples/dotnet/MathSubset/PrimitiveBigMulSubset.cs gates/fixtures/primitive-bigmul/check-generated.py gates/fixtures/ldftn-local/PrimitiveBigMulFixture.cs gates/fixtures/ldftn-local/PrimitiveBigMulGuards.cs"
+if [ "${WASM:-}" = 1 ]; then
+    dn2cpp_emsdk_resolve --no-bundled
+    for tool in em++ emcmake node; do
+        command -v "$tool" >/dev/null 2>&1 || gate_skip "$tool not found — no Emscripten toolchain to build wasm with"
+    done
+fi
 
 # Default order and equality preserve the earlier bucket and run the appended cases.
 # Direct integer DivRem calls cover every scalar width, zero divisors and signed minima.
@@ -119,6 +141,141 @@ gate_extra_asserts() {
             || { echo "FAIL: integer hash wrapping coverage missing: $line" >&2; exit 1; }
     done
 
+    gate_capture_ok "$out/assert-before-mixed-bigmul" run_bounded dotnet "$_CG_APP" before-mixed-bigmul
+    before="$out/assert-before-mixed-bigmul.stdout"
+    prefix="$out/assert-mixed-bigmul-prefix.stdout"
+    gate_output select "$native" "$prefix" --before '== mixed-width BigMul ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    for line in '== mixed-width BigMul ==' 'direct32-max=4294967294:18446744069414584321' \
+        'direct64-carry=1:0' 'mixed-width BigMul end'; do
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
+            || { echo "FAIL: mixed-width BigMul coverage missing: $line" >&2; exit 1; }
+    done
+    gate_capture_ok "$out/assert-before-primitive-bigmul" run_bounded dotnet "$_CG_APP" before-primitive-bigmul
+    gate_output select "$native" "$out/assert-primitive-bigmul-prefix.stdout" --before '== primitive BigMul ==' --policy crlf
+    gate_output compare "$out/assert-primitive-bigmul-prefix.stdout" "$out/assert-before-primitive-bigmul.stdout"
+    gate_output byte-witness "$native" 'primitive BigMul end' --count any --policy crlf
 }
 
-corelib_diff_gate MathSubset
+math_detailed() {
+    [ "$DN2CPP_MATH_FULL" = 1 ] || [ "${math_focused:-0}" = 1 ]
+}
+math_focused=0
+[ "${1:-}" != --primitive-bigmul-only ] || math_focused=1
+
+mixed_width_bigmul_gate() {
+    build_proj samples/dotnet/MathSubset/MathSubset.csproj
+    build_gate_proj gates/fixtures/math-bigmul/MathBigMulFixture.csproj
+    local app="samples/dotnet/MathSubset/bin/$CONFIG/$TFM/MathSubset.dll"
+    local fixture="gates/fixtures/math-bigmul/bin/$CONFIG/$TFM/MathBigMulFixture.dll"
+    local root="artifacts/math-mixed-bigmul-$CONFIG" core expected mode out diagnostic
+    if [ "${WASM:-}" = 1 ]; then
+        root="$root-wasm"
+        core=$(locate_corelib_cross_posix net10)
+    else
+        core=$(locate_corelib)
+    fi
+    mkdir -p "$root"
+    gate_capture_ok "$root/expected" run_bounded dotnet "$app" mixed-bigmul-only
+    expected="$root/expected.stdout"
+    gate_capture_ok "$root/oracle" run_bounded dotnet "$fixture" --oracle
+    gate_output compare "$root/oracle.stdout" "$expected"
+    gate_capture_ok "$root/create-mixed" run_bounded dotnet "$fixture" "$app" "$core" "$root/mixed/MathSubset.dll" mixed
+    for mode in raw full; do
+        if ! math_detailed && [ "$mode" != full ]; then continue; fi
+        out="$root/$mode"
+        local flags=()
+        [ "$mode" != raw ] || flags+=(--no-ildiet)
+        gate_capture_ok "$root/transpile-$mode" invoke_cli "$root/mixed/MathSubset.dll" -r "$core" --auto-ref --stripping-level high \
+            --no-metadata-compression --no-shared-generics ${flags[@]+"${flags[@]}"} -o "$out"
+        if [ "${WASM:-}" = 1 ]; then
+            compile_console_wasm "$out" MixedBigMul
+            gate_capture_ok "$out/native" run_bounded node "$out/MixedBigMul.js"
+            gate_output compare "$out/native.stdout" "$expected" --policy crlf
+        else
+            compile_console "$out" MixedBigMul
+            gate_capture_ok "$out/native" run_bounded "$out/MixedBigMul$EXE_EXT"
+            gate_output compare "$out/native.stdout" "$expected"
+        fi
+        echo "mixed-width-bigmul=$mode:direct-and-address"
+    done
+    math_detailed || return 0
+    for mode in bad-signed bad-value; do
+        gate_capture_ok "$root/create-$mode" run_bounded dotnet "$fixture" "$app" "$core" "$root/$mode/MathSubset.dll" "$mode"
+        diagnostic="$root/rejected-$mode"
+        gate_capture "$diagnostic" invoke_cli "$root/$mode/MathSubset.dll" -r "$core" --auto-ref --no-ildiet -o "$root/rejected-$mode-output" || return 1
+        gate_output status "$(cat "$diagnostic.status")" 2
+        gate_output match-record "$diagnostic.stderr" '.*BigMul.*' --count any --policy crlf
+    done
+}
+
+# The primitive lane uses width-independent assertions derived from fixed-width
+# products, not host64 native halves as a Wasm32 oracle.
+primitive_bigmul_gate() {
+    build_gate_proj gates/fixtures/primitive-bigmul/PrimitiveBigMul.csproj
+    build_gate_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+    local app="gates/fixtures/primitive-bigmul/bin/$CONFIG/$TFM/PrimitiveBigMul.dll"
+    local tool="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll"
+    local root="artifacts/math-primitive-bigmul-$CONFIG" core mode out
+    if [ "${WASM:-}" = 1 ]; then
+        root="$root-wasm"; core=$(locate_corelib_cross_posix net10)
+    else
+        core=$(locate_corelib)
+    fi
+    mkdir -p "$root"
+    gate_capture_ok "$root/oracle" run_bounded dotnet "$app"
+    gate_output byte-witness "$root/oracle.stdout" 'primitive BigMul end' --count any --policy crlf
+    gate_capture_ok "$root/guards" run_bounded dotnet "$tool" --primitive-bigmul-guards \
+        "src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/Dn2Cpp.Transpiler.dll" "$core" "$app"
+    gate_capture_ok "$root/address-fixture" run_bounded dotnet "$tool" --primitive-bigmul-fixture \
+        "$app" "$core" "$root/address/PrimitiveBigMul.dll" address
+    # Runtime-owned primitive TypeInfo does not expose a general method catalog;
+    # callable replacement coverage is distinct from reflection lookup support.
+    for mode in raw diet address; do
+        if ! math_detailed && [ "$mode" != diet ]; then continue; fi
+        out="$root/$mode-output"
+        local flags=() input="$app" expected="$root/oracle.stdout"
+        [ "$mode" != raw ] || flags+=(--no-ildiet)
+        if [ "$mode" = address ]; then
+            input="$root/address/PrimitiveBigMul.dll"
+            printf '%s\n' 'primitive all-six address=True' 'primitive all-six delegate=True' > "$root/address.expected"
+            expected="$root/address.expected"
+        fi
+        gate_capture_ok "$root/transpile-$mode" invoke_cli "$input" -r "$core" --auto-ref --stripping-level high \
+            --no-metadata-compression ${flags[@]+"${flags[@]}"} -o "$out"
+        gate_capture_ok "$root/generated-$mode" gate_python gates/fixtures/primitive-bigmul/check-generated.py "$out"
+        if [ "${WASM:-}" = 1 ]; then
+            compile_console_wasm "$out" PrimitiveBigMul
+            gate_capture_ok "$out/native" run_bounded node "$out/PrimitiveBigMul.js"
+        else
+            compile_console "$out" PrimitiveBigMul
+            gate_capture_ok "$out/native" run_bounded "$out/PrimitiveBigMul$EXE_EXT"
+        fi
+        gate_output compare "$out/native.stdout" "$expected" --policy crlf
+        echo "primitive-bigmul=$mode:executed"
+    done
+    math_detailed || return 0
+    for mode in call-signed call-return call-out call-value call-instance call-vararg call-modifier \
+        address-signed address-return address-out address-value address-instance address-vararg address-modifier; do
+        gate_capture_ok "$root/create-$mode" run_bounded dotnet "$tool" --primitive-bigmul-fixture \
+            "$app" "$core" "$root/$mode/PrimitiveBigMul.dll" "$mode"
+        gate_capture "$root/rejected-$mode" invoke_cli "$root/$mode/PrimitiveBigMul.dll" -r "$core" \
+            --auto-ref --no-ildiet -o "$root/rejected-$mode-output" || return 1
+        gate_output status "$(cat "$root/rejected-$mode.status")" 2
+        gate_output match-record "$root/rejected-$mode.stderr" '.*BigMul.*' --count any --policy crlf
+    done
+}
+
+# Focused lanes avoid rebuilding unrelated arithmetic during development.
+if [ "$DN2CPP_MATH_FULL" != 1 ] && [ -z "${1:-}" ] && [ "${WASM:-}" != 1 ]; then
+    corelib_diff_gate MathSubset
+elif [ "${1:-}" = --math-bucket-only ]; then
+    [ "${WASM:-}" != 1 ] || { echo "Math bucket is native-only; use the primitive lane on Wasm" >&2; exit 1; }
+    corelib_diff_gate MathSubset
+else
+    if [ "${1:-}" != --primitive-bigmul-only ]; then
+        if [ "${WASM:-}" != 1 ]; then corelib_diff_gate MathSubset; fi
+        mixed_width_bigmul_gate
+    fi
+    primitive_bigmul_gate
+fi
