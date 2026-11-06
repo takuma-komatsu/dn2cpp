@@ -299,6 +299,77 @@ check("corelib_freeze_gate" not in culture, "culture must reuse the aggregate")
 check(culture.count('\n_corelib_gate_core "$PROJECT" "$out"') == 1, "culture emits once")
 check(culture.count('\ncompile_console "$out" "$PROJECT"') == 1, "culture compiles once")
 check("shared-binary:culture-zz-currency" in culture, "culture cache context includes frozen run")
+culture_stubs = r'''
+DN2CPP_OS=${FAKE_CULTURE_OS:-macos}
+CMAKE=fake_culture_cmake
+fake_culture_cmake() { record "CMAKE:$*"; }
+default_culture_run() {
+    local result="$1" side="$2" path
+    shift 2
+    record "CULTURE_RUN:$side:$*"
+    if [ -n "${FAKE_CULTURE_RUN_FAIL:-}" ] && [[ "$side:$*" == *"$FAKE_CULTURE_RUN_FAIL"* ]]; then return 23; fi
+    CULTURE_SEQUENCE=$((${CULTURE_SEQUENCE:-0} + 1))
+    path="$PWD/culture-$CULTURE_SEQUENCE.stdout"
+    printf -v "$result" '%s' "$path"
+    if [[ "$*" == *culture-user-lcid* ]]; then
+        printf '1033\n' > "$path"
+    else
+        printf 'Name=ja-JP\n' > "$path"
+    fi
+}
+gate_output() {
+    record "ASSERT:$*"
+    if [ -n "${FAKE_ASSERT_FAIL:-}" ] && [[ "$*" == *"$FAKE_ASSERT_FAIL"* ]]; then return 31; fi
+    if [ "$1" = view ]; then cp "$2" "$3"; fi
+}
+gate_assert_text() { record "ASSERT_TEXT:$*"; }
+'''
+culture_env = culture[culture.index("run_locale_env() {"):
+                      culture.index("default_culture_diagnostics_self_test() {")]
+culture_profile = culture[culture.index('case "${DN2CPP_DEFAULT_CULTURE_FULL:-0}" in'):]
+culture_script = culture_stubs + culture_env + culture_profile
+for platform, value, expected in (("macos", None, 21), ("macos", "0", 21), ("macos", "1", 1413),
+                                  ("linux", "1", 1411), ("windows", "0", 27), ("windows", "1", 1523)):
+    extra = {"FAKE_CULTURE_OS": platform}
+    if value is not None:
+        extra["DN2CPP_DEFAULT_CULTURE_FULL"] = value
+    result, calls = run("culture-profile-" + platform + "-" + str(value), culture_script, extra)
+    check(result.returncode == 0, (platform, value, result.stderr))
+    check(sum(line.startswith("NATIVE:") for line in calls) == 1, (platform, value, "native builds"))
+    check(sum(line.startswith("EMIT:") for line in calls) == 1, (platform, value, "transpiles"))
+    runs = [line for line in calls if line.startswith(("CULTURE_RUN:", "CAPTURE:"))]
+    check(len(runs) == expected, (platform, value, len(runs), expected))
+    full = value == "1"
+    check(any(" culture-fallback " in line for line in runs) == full, (platform, value, "isolated fallbacks"))
+    check(any(" culture-user-numbers " in line for line in runs) == (full and platform == "windows"),
+          (platform, value, "Windows constructor order"))
+    check(any(line.startswith("CMAKE:") for line in calls) == (full and platform != "windows"),
+          (platform, value, "libc fixture"))
+    check(any("LANG=zz_ZZ.UTF-8" in line for line in runs), (platform, value, "ZZ environment"))
+    check(any("culture-zz-currency" in line for line in runs), (platform, value, "frozen currency"))
+    check(any(("full:" + (value or "0")) in line for line in calls if line.startswith("CACHE:")),
+          (platform, value, "cache profile"))
+    check(("skipped (not selected)" in result.stdout) == (not full), (platform, value, result.stdout))
+    check("COMMIT" in calls, (platform, value, "cache receipt"))
+for label, extra, expected in (
+        ("override", {"DN2CPP_CULTURE_LOCALES": "ja_JP.UTF-8"}, 0),
+        ("warm", {"FAKE_CACHE_HIT": "1"}, 0),
+        ("invalid", {"DN2CPP_DEFAULT_CULTURE_FULL": "bad"}, 1),
+        ("run-failure", {"FAKE_CULTURE_RUN_FAIL": "LANG=zz_ZZ.UTF-8"}, 23),
+        ("witness-failure", {"FAKE_ASSERT_FAIL": "default culture identities end"}, 1)):
+    result, calls = run("culture-profile-" + label, culture_script, extra)
+    check(result.returncode == expected, (label, result.returncode, result.stderr))
+    if expected:
+        check("COMMIT" not in calls, (label, "failed validation cached"))
+    if label == "override":
+        check(sum(line.startswith(("CULTURE_RUN:", "CAPTURE:")) for line in calls) == 17,
+              (label, "locale override ignored"))
+    elif label == "warm":
+        check("HIT" in calls and not any(line.startswith("NATIVE:") for line in calls), (label, calls))
+        check("skipped (not selected)" in result.stdout, (label, "warm profile note missing"))
+    elif label == "invalid":
+        check(not any(line.startswith(("EMIT:", "NATIVE:", "CULTURE_RUN:")) for line in calls),
+              (label, calls))
 frozen = culture[culture.index('echo "-- frozen unknown-region currency:') :]
 for platform in ("posix", "windows"):
     snapshot = GATES / "expected" / ("default-culture-zz-" + platform + ".txt")

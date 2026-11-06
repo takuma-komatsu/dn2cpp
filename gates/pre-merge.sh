@@ -372,6 +372,7 @@ export DN2CPP_TRIM_REFLECTION_FULL=0
 export DN2CPP_OBFUSCATION_FULL=0
 export DN2CPP_WASM_CONSOLE_FULL=0
 export DN2CPP_PLATFORM_ISA_FULL=0
+export DN2CPP_DEFAULT_CULTURE_FULL=0
 
 CONFIGS="$CONFIG"
 [ "$BOTH_CONFIGS" != "1" ] || CONFIGS="Release Debug"
@@ -677,6 +678,7 @@ premerge_argv() {
         "DN2CPP_OBFUSCATION_FULL=0"
         "DN2CPP_WASM_CONSOLE_FULL=0"
         "DN2CPP_PLATFORM_ISA_FULL=0"
+        "DN2CPP_DEFAULT_CULTURE_FULL=0"
         "DN2CPP_ALLOW_MISSING_CRI_SDK=1"
         "DN2CPP_GATE_CACHE=0"
         "SKIP_GODOT=$SKIP_GODOT"
@@ -2541,7 +2543,7 @@ fi
 note "configs: $CONFIGS"
 note "stripping: default High plus basic High/Medium retention and initializer regressions."
 note "coverage: representative aggregate gates; shared binaries retain runtime and output assertions."
-note "optional details: isolated roots, raw/preprocessed pairs, layout refusals and extended backend matrices skipped (not selected); not counted as passed."
+note "optional details: isolated roots, raw/preprocessed pairs, layout refusals, extended backend and detailed culture matrices skipped (not selected); not counted as passed."
 if [ "$SKIP_XCODE" = 1 ]; then
     note "Xcode:  $XCODE_EXCLUDED gate(s) excluded ($XCODE_SELECTION selection)."
 else
@@ -3020,7 +3022,7 @@ if [ "$OVERALL" -eq 0 ]; then
         printf 'configs: %s\n' "$CONFIGS"
         printf 'stripping: default High plus basic High/Medium retention and initializer regressions.\n'
         printf 'coverage: representative aggregate gates; shared binaries retain runtime and output assertions.\n'
-        printf 'optional details: isolated roots, raw/preprocessed pairs, layout refusals and extended backend matrices skipped (not selected); not counted as passed.\n'
+        printf 'optional details: isolated roots, raw/preprocessed pairs, layout refusals, extended backend and detailed culture matrices skipped (not selected); not counted as passed.\n'
         printf 'culture: %s\n' "$CULTURE_NOTE"
         printf 'strict culture reference: %s\n' "$STRICT_CULTURE_NOTE"
         # Which sources the binary the fork lane ran on was built from: a green

@@ -1,51 +1,22 @@
 #!/usr/bin/env bash
-# Failed locale probes retain the command, exit status and both output streams.
-# The DEFAULT CultureInfo.CurrentCulture — the one a program that never names a
-# culture formats and parses through — asserted against real .NET under
-# several FORCED locales.
+# Default CultureInfo numeric formatting and identity match real .NET under
+# the same locale environment. The driver must remain unpinned because its
+# initial CurrentCulture is the subject; per-culture date formatting is excluded.
+# The default profile covers aggregate behavior, environment precedence and
+# frozen unknown-region ZZ currency with one shared binary.
+# DN2CPP_DEFAULT_CULTURE_FULL=1 adds exhaustive locale/identifier combinations,
+# Windows constructor/cache ordering and injected libc locale queries.
+# Explicit fallback names run in fresh processes only in the full profile so
+# CultureData cache ordering cannot hide their independent behavior.
 #
-# WHY THIS GATE IS NOT A SECTION OF ANOTHER BUCKET. Every bucket driver in the
-# tree pins CurrentCulture to invariant as its first statement, because a gate
-# whose verdict moves with the developer's locale is not a gate (AGENTS.md,
-# "Host culture"). This is the one program whose subject matter IS the
-# developer's locale, so it cannot carry that pin — and it must not be a section
-# inside a driver that does.
-#
-# WHY IT IS STILL DETERMINISTIC. It never asserts a fixed string. For each
-# locale below it runs the native binary and `dotnet $app` under the SAME
-# LC_ALL/LANG and requires them byte-identical, so the expectation is real .NET's
-# answer on the checked-in target reference, not arbitrary installed ICU.
-# Native binaries never load deployment ICU (tools/check-culture-reference).
-# The sample's resource-key option prevents recursive exception-message lookup
-# without pinning or replacing the locale. On POSIX the
-# forced locales really move both sides (measured: ja-JP, de-DE, en-US, fr-FR all
-# resolve and all match); on Windows neither side reads the environment, so the
-# sweep collapses to four runs of the user's locale — still a real subject-vs-
-# oracle diff, just one locale's worth. That is why the gate never asserts that
-# the locales DIFFER: it would be asserting a property of the host.
-# The unknown-region ZZ currency is frozen ICU data. Its symbol is checked by
-# a frozen run of the same binary; the other foo-ZZ and zz-ZZ fields use the live CLR oracle.
-#
-# WHAT IT DOES NOT COVER. Per-culture DATE formatting is a standing carve-out
-# (docs/STATUS.md): dn2cpp's date formatters take no NumberFormatInfo and render
-# invariantly whatever the current culture is. The sample prints no date for
-# that reason — a date line here would fail for a divergence this gate never
-# claimed to close, and would say nothing about the one it did. The numeric half is the
-# whole subject: name, the NumberFormatInfo symbols the table carries, and
-# provider-less N/P/C/G formatting.
-# The appended fallback section pins both managed cultures before constructing
-# undefined-language and grandfathered identifiers. Their numeric profiles still
-# depend on ICU's host language and the identifier's region. Each explicit name
-# also runs in a fresh process to keep CultureData cache ordering out of the diff.
-# Windows numeric user settings compare every modeled NumberFormatInfo field,
-# constructor/cache order and mutation isolation against the live CLR. Other
-# locales must retain ICU data even when their constructors enable overrides.
-#
-# It gate_skips only where real .NET itself has no cultures — an ICU-less host
-# in invariant-globalization mode, where the oracle answers "" to every locale
-# while the subject, which needs no ICU, answers the host's. That is not a
-# divergence to report; it is an oracle that has been told there is nothing to
-# ask about.
+# Native binaries use the checked-in culture reference, never deployment ICU.
+# Output matches the live CLR byte-for-byte except frozen ZZ currency symbols.
+# Windows ignores locale environment variables, so runs cover its user locale.
+# The fallback section pins managed cultures before constructing explicit names;
+# their numeric data still depends on the host language and identifier region.
+# The resource-key option prevents recursive exception-message lookup without
+# replacing the default locale. An invariant-globalization CLR cannot provide
+# this gate's oracle and causes a skip. Failed runs retain command and output.
 source "$(dirname "$0")/_common.sh"
 
 gate_run_logs_init default_culture "DefaultCulture runs"
@@ -188,6 +159,17 @@ if [ "${1:-}" = --self-test ]; then
     exit 0
 fi
 
+case "${DN2CPP_DEFAULT_CULTURE_FULL:-0}" in
+    0|1) DN2CPP_DEFAULT_CULTURE_FULL=${DN2CPP_DEFAULT_CULTURE_FULL:-0} ;;
+    *) echo 'DN2CPP_DEFAULT_CULTURE_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+if [ "$DN2CPP_DEFAULT_CULTURE_FULL" = 1 ]; then
+    echo 'default-culture profile: full locale, identifier and initialization matrices'
+else
+    echo 'default-culture profile: representative aggregates, environment precedence and frozen ZZ currency'
+    echo 'default-culture exhaustive locale/identifier, Windows constructor/cache-order and libc injection checks: skipped (not selected); not counted as passed'
+fi
+
 # Only the frozen ZZ currency differs; every other byte remains oracle-owned.
 default_culture_assert_zz() {
     local mode="$1" native="$2" oracle="$3" frozen="$4"
@@ -247,24 +229,12 @@ PROJECT=DefaultCulture
 out="$(_corelib_gate_out "$PROJECT")"
 _corelib_gate_core "$PROJECT" "$out"
 
-# THE LOCALE LIST IS THE GATE. A list of locales the runtime's table already
-# carries makes the one gate whose subject is the host's locale unable to see the
-# failure it exists for — a host locale ABSENT from the table getting invariant
-# symbols under a correct name. en_GB, pt_BR and sv_SE are on the
-# list because they were absent from that table; keep at least one such locale
-# here whenever the table changes, or this gate stops being able to see the
-# difference between a table and a table with a hole in it. sv_SE earns its place
-# twice: its negative sign is U+2212 and its group separator U+00A0, so it also
-# fails if the row's non-ASCII columns are dropped rather than merely missing.
-#
-# hi_IN is the only locale here whose subject is the
-# SHAPE of the modeled NumberFormatInfo rather than its values: hi-IN groups
-# digits 3-then-2, which no row could express while the model carried one uniform
-# group size — so the culture was a candidate the table refused, and a host set to
-# it got invariant symbols under a correct name, the same hole en_GB stands for.
-# It is a real macOS `locale -a` entry, so this is a locale a
-# developer's machine can actually be in.
-LOCALES="${DN2CPP_CULTURE_LOCALES:-en_US.UTF-8 de_DE.UTF-8 fr_FR.UTF-8 ja_JP.UTF-8 en_GB.UTF-8 pt_BR.UTF-8 sv_SE.UTF-8 hi_IN.UTF-8}"
+# sv-SE exercises non-ASCII numeric symbols; hi-IN exercises nonuniform grouping.
+if [ "$DN2CPP_DEFAULT_CULTURE_FULL" = 1 ]; then
+    LOCALES="${DN2CPP_CULTURE_LOCALES:-en_US.UTF-8 de_DE.UTF-8 fr_FR.UTF-8 ja_JP.UTF-8 en_GB.UTF-8 pt_BR.UTF-8 sv_SE.UTF-8 hi_IN.UTF-8}"
+else
+    LOCALES="${DN2CPP_CULTURE_LOCALES:-en_US.UTF-8 sv_SE.UTF-8 hi_IN.UTF-8}"
+fi
 FALLBACK_CASES=(
     und-US und-DE und-FR und-JP und-Latn-US
     und-US-u-nu-arab und-US-u-nu-latn und-US-u-nu-native
@@ -411,6 +381,21 @@ VARIANT_LOCALES=(
     i-klingon-US-zzzzz-abcde
 )
 
+if [ "$DN2CPP_DEFAULT_CULTURE_FULL" = 0 ]; then
+    FALLBACK_CASES=()
+    ENV_VARIANTS=(
+        ""
+        "LANG=$A"
+        "LC_MESSAGES=$B LANG=$A"
+        "LC_ALL=$B LC_MESSAGES=$A LANG=$A"
+        "LC_ALL= LANG=$A"
+        "LANG=zz_ZZ.UTF-8"
+    )
+    POSIX_FALLBACK_VARIANTS=()
+    VARIANT_LOCALES=()
+    EXTENSION_LOCALES=()
+fi
+
 fixture="$(dirname "$0")/fixtures/default-culture-locale"
 zz_symbol=XAD
 zz_snapshot="$(dirname "$0")/expected/default-culture-zz-posix.txt"
@@ -418,7 +403,7 @@ if [ "$DN2CPP_OS" = windows ]; then
     zz_symbol=XAG
     zz_snapshot="$(dirname "$0")/expected/default-culture-zz-windows.txt"
 fi
-if _corelib_gate_check "$out" "default_culture|$PROJECT|$LOCALES|${ENV_VARIANTS[*]}|${POSIX_FALLBACK_VARIANTS[*]}|culture-fallback foo-US|${FALLBACK_CASES[*]}|culture-variant-order ${VARIANT_LOCALES[*]}|culture-extension-identities ${EXTENSION_LOCALES[*]}|user-number-digits|user-numeric-settings|zz-frozen:$zz_symbol|shared-binary:culture-zz-currency|$platform_default|query-and-initialize|$_CG_CORELIB" \
+if _corelib_gate_check "$out" "default_culture|full:$DN2CPP_DEFAULT_CULTURE_FULL|$PROJECT|$LOCALES|${ENV_VARIANTS[*]}|${POSIX_FALLBACK_VARIANTS[*]-}|culture-fallback foo-US|${FALLBACK_CASES[*]-}|culture-variant-order ${VARIANT_LOCALES[*]-}|culture-extension-identities ${EXTENSION_LOCALES[*]-}|user-number-digits|user-numeric-settings|zz-frozen:$zz_symbol|shared-binary:culture-zz-currency|$platform_default|query-and-initialize|$_CG_CORELIB" \
         "$fixture/CMakeLists.txt" "$fixture/locale.c" "$zz_snapshot"; then
     gate_cache_hit_msg
     exit 0
@@ -466,7 +451,7 @@ for L in $LOCALES; do
         gate_output compare "$prefix" "$before"
     fi
     LC_ALL=C sed 's/^/   /' "$native"
-    for name in "${FALLBACK_CASES[@]}"; do
+    for name in ${FALLBACK_CASES[@]+"${FALLBACK_CASES[@]}"}; do
         default_culture_run native native env LC_ALL="$L" LANG="$L" "./$out/$PROJECT$EXE_EXT" culture-fallback "$name"
         default_culture_run oracle oracle env LC_ALL="$L" LANG="$L" dotnet "$_CG_APP" culture-fallback "$name"
         if [ "$name" = foo-ZZ ]; then
@@ -501,7 +486,7 @@ echo 'OK: zz-ZZ default-culture env row'
 platform_default="${platform_default#Name=}"
 echo "env variants: $ran of ${#ENV_VARIANTS[@]} match real .NET except frozen ZZ currency (platform default: ${platform_default:-invariant})"
 
-if [ "$DN2CPP_OS" = windows ]; then
+if [ "$DN2CPP_OS" = windows ] && [ "$DN2CPP_DEFAULT_CULTURE_FULL" = 1 ]; then
     for name in "$platform_default" ja-JP en-US de-DE fr-FR hi-IN ca-AD ""; do
         default_culture_run lcid oracle dotnet "$_CG_APP" culture-user-lcid "$name"
         gate_output view "$lcid" "$lcid.records" --policy crlf
@@ -521,7 +506,7 @@ fi
 
 # Numeric resource fallback consumes the raw host's variant sequence independently
 # of the managed default culture's variant ordering.
-for V in "${POSIX_FALLBACK_VARIANTS[@]}"; do
+for V in ${POSIX_FALLBACK_VARIANTS[@]+"${POSIX_FALLBACK_VARIANTS[@]}"}; do
     echo "-- numeric fallback env: $V"
     run_locale_env native native "$V" "./$out/$PROJECT$EXE_EXT" culture-fallback foo-US
     run_locale_env oracle oracle "$V" dotnet "$_CG_APP" culture-fallback foo-US
@@ -530,7 +515,7 @@ for V in "${POSIX_FALLBACK_VARIANTS[@]}"; do
         || { echo "FAIL: numeric fallback for $V did not run" >&2; exit 1; }
 done
 
-for name in "${VARIANT_LOCALES[@]}"; do
+for name in ${VARIANT_LOCALES[@]+"${VARIANT_LOCALES[@]}"}; do
     echo "-- variant identity env: LANG=$name"
     run_locale_env native native "LANG=$name" "./$out/$PROJECT$EXE_EXT" culture-variant-order
     run_locale_env oracle oracle "LANG=$name" dotnet "$_CG_APP" culture-variant-order
@@ -539,7 +524,7 @@ for name in "${VARIANT_LOCALES[@]}"; do
         || { echo "FAIL: default variant identities for $name did not run" >&2; exit 1; }
 done
 
-for name in "${EXTENSION_LOCALES[@]}"; do
+for name in ${EXTENSION_LOCALES[@]+"${EXTENSION_LOCALES[@]}"}; do
     echo "-- extension identity env: LANG=$name"
     run_locale_env native native "LANG=$name" "./$out/$PROJECT$EXE_EXT" culture-extension-identities
     run_locale_env oracle oracle "LANG=$name" dotnet "$_CG_APP" culture-extension-identities
@@ -550,7 +535,7 @@ done
 
 # A controlled libc query makes this branch independent of installed locales.
 # Inject into both processes so the expectation still comes from real ICU/.NET.
-if [ "$DN2CPP_OS" != windows ]; then
+if [ "$DN2CPP_OS" != windows ] && [ "$DN2CPP_DEFAULT_CULTURE_FULL" = 1 ]; then
     "$CMAKE" -S "$fixture" -B "$out/locale-init-build" -G Ninja
     "$CMAKE" --build "$out/locale-init-build"
     if [ "$DN2CPP_OS" = macos ]; then
