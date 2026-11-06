@@ -64,6 +64,9 @@ namespace ConvertParse
             if (args.Length > 0 && args[0] == "before-change-type-faults")
                 return;
             ConvertChangeTypeSubset.Program.RunFaults();
+            if (args.Length > 0 && args[0] == "before-invalid-integer-utf8")
+                return;
+            IntegerUtf8ValidationSubset.Run();
         }
     }
 }
