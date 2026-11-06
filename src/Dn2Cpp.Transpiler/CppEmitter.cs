@@ -4331,7 +4331,7 @@ internal sealed partial class CppEmitter
     /// answer from.</summary>
     private static List<(long value, string name)> SortedEnumMembers(ClassInfo en)
     {
-        return MethodCompiler.EnumMembersModel(en).OrderBy(MethodCompiler.EnumSortKey(en)).ToList();
+        return MethodCompiler.EnumMetadataMembersModel(en).OrderBy(MethodCompiler.EnumSortKey(en)).ToList();
     }
 
     /// <summary>A type's public nested types that are emitted and non-generic —
