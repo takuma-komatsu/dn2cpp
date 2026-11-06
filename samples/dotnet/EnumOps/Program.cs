@@ -39,6 +39,9 @@ namespace EnumOps
             if (args.Length > 0 && args[0] == "before-narrow-storage")
                 return;
             NarrowEnumStorage.Run();
+            if (args.Length > 0 && args[0] == "before-enum-aliases")
+                return;
+            EnumAliasSubset.Run();
         }
     }
 }
