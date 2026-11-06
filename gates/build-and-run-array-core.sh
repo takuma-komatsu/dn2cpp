@@ -179,6 +179,15 @@
 # Array copy, clear, resize and slices preserve fault fields and validation precedence.
 # Default comparer concrete families preserve enum widths, boxed order and user comparisons.
 source "$(dirname "$0")/_common.sh"
+case "${DN2CPP_ARRAY_FULL:-0}" in
+    0|1) DN2CPP_ARRAY_FULL=${DN2CPP_ARRAY_FULL:-0} ;;
+    *) echo 'DN2CPP_ARRAY_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|array-full:$DN2CPP_ARRAY_FULL"
+if [ "$DN2CPP_ARRAY_FULL" = 0 ]; then
+    echo 'array coverage: ArrayCore aggregate and isolated finite-search parity'
+    echo 'array isolated route and backend matrices: skipped (not selected); not counted as passed'
+fi
 source "$(dirname "$0")/_ildiet.sh"
 source gates/_headerless-reference-identity.sh
 source gates/_md-readonly-byrefs.sh
@@ -497,8 +506,10 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|finite-local-searches:ildi
         fi
     }
     corelib_diff_gate ArrayFiniteSearchOnly
-    DN2CPP_OUT_SUFFIX=-no-ildiet
-    corelib_diff_gate ArrayFiniteSearchOnly --no-ildiet
+    if [ "$DN2CPP_ARRAY_FULL" = 1 ]; then
+        DN2CPP_OUT_SUFFIX=-no-ildiet
+        corelib_diff_gate ArrayFiniteSearchOnly --no-ildiet
+    fi
 )
 corelib_diff_gate ArrayCore System.Collections
 
@@ -772,6 +783,10 @@ for name in DirectDynamicMatch ConditionalFirstMatch ConditionalSecondMatch Inde
         exit 1
     fi
 done
+if [ "$DN2CPP_ARRAY_FULL" = 0 ]; then
+    exit 0
+fi
+
 echo '== isolated framework and reflection boxes =='
 box_root=artifacts/arraycore-box-provenance
 dotnet build samples/dotnet/ArrayCore/BoxProvenanceOnly.csproj -c "$CONFIG" \

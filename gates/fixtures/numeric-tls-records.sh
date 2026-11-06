@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-py=${1:-python3}
-resolve_python() { printf '%s\n' "$py"; }
-gate_output() { "$py" gates/gate-output.py "$@"; }
+source gates/_python.sh
+export DN2CPP_PYTHON="${1:-${DN2CPP_PYTHON:-}}"
+gate_output() { gate_python gates/gate-output.py "$@"; }
 eval "$(sed -n '/^suppress_stat_number() {/,/^}/p' gates/measure-suppress-scan.sh)"
 eval "$(sed -n '/^http_tls_served_record() {/,/^}/p' gates/build-and-run-http-get.sh)"
 fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT
-"$py" - "$fixture" <<'PY'
+gate_python - "$fixture" <<'PY'
 from pathlib import Path
 import sys
 root = Path(sys.argv[1])

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <StartupObject>WasmConsole.Program</StartupObject>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- PalSurface's Debug.Write call sites must survive in Release too. -->
+    <DefineConstants>$(DefineConstants);DEBUG</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="../StringCore/*.cs" Link="StringCore/%(Filename)%(Extension)" />
+    <Compile Include="../NestedFinallySubset/*.cs" Link="NestedFinallySubset/%(Filename)%(Extension)" />
+    <Compile Include="../WeakReferences/*.cs" Link="WeakReferences/%(Filename)%(Extension)" />
+    <Compile Include="../MonotonicClock/*.cs" Link="MonotonicClock/%(Filename)%(Extension)" />
+    <Compile Include="../PalSurface/*.cs" Link="PalSurface/%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

@@ -14,15 +14,15 @@ reflection_full_profile() {
 }
 
 reflection_assert_lines() {
-    "$py" gates/reflection-gate-inputs.py lines "$@"
+    gate_python gates/reflection-gate-inputs.py lines "$@"
 }
 
 reflection_assert_prefixes() {
-    "$py" gates/reflection-gate-inputs.py prefixes "$@"
+    gate_python gates/reflection-gate-inputs.py prefixes "$@"
 }
 
 reflection_assert_witnesses() {
-    "$py" gates/reflection-gate-inputs.py witnesses "$1" 1
+    gate_python gates/reflection-gate-inputs.py witnesses "$1" 1
 }
 
 reflection_build_once() {
@@ -65,7 +65,7 @@ gate_build_fixture() {
 
 reflection_oracle() {
     local key directory status
-    key=$("$py" gates/reflection-gate-inputs.py oracle-key "$@") || return 1
+    key=$(gate_python gates/reflection-gate-inputs.py oracle-key "$@") || return 1
     directory="$_reflection_inputs/oracle-$key"
     if [ ! -f "$directory/status" ]; then
         mkdir -p "$directory" || return 1

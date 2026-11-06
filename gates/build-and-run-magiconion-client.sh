@@ -52,7 +52,7 @@ done < "$DLLS_EXPECTED"
 echo "OK: ${#package_dlls[@]} pinned assemblies verified against $DLLS_EXPECTED"
 
 echo "== 3/7 Transpiling the real package =="
-build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
+prepare_cli
 refs=(-r "$corelib" "${package_refs[@]}")
 rm -rf "$out"
 ( export DN2CPP_MAX_INSTANTIATIONS=30000

@@ -105,7 +105,7 @@ imported managed providers end'
             gate_output select "$arm/$encoding.raw.stdout" "$arm/$encoding.patch.stdout" \
                 --from '== imported generic signature arguments ==' --policy crlf
             gate_output compare "$out/clr.raw.stdout" "$arm/$encoding.patch.stdout"
-            "$(resolve_python)" gates/fixtures/hotupdate-import-identity/set-bpi-version.py \
+            gate_python gates/fixtures/hotupdate-import-identity/set-bpi-version.py \
                 "$arm/$encoding/SignatureArgumentPatch.bpi" "$arm/$encoding/legacy.bpi" 2
             gate_capture_ok "$arm/$encoding.legacy" run_bounded "$arm/SignatureArgumentBase$EXE_EXT" "$arm/$encoding/legacy.bpi"
             gate_assert_text "$arm/$encoding.legacy.stdout" 'signature argument base ready

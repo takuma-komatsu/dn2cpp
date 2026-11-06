@@ -62,7 +62,7 @@ echo "OK: ${#package_dlls[@]} MagicOnion package assemblies pinned"
 
 echo "== 3/7 Transpiling the generated MagicOnion client =="
 corelib=$(resolve_net10_corelib)
-build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
+prepare_cli
 refs=(-r "$corelib" -r "$YAHA_MANAGED" -r "$YAHA_PIPELINES" "${package_refs[@]}")
 rm -rf "$OUT"
 ( export DN2CPP_MAX_INSTANTIATIONS=30000

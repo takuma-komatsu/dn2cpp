@@ -281,8 +281,8 @@ fi
 echo "no .NET runtime in the APK"
 
 if [ -n "${DN2CPP_DECLANG_COMPILER:-}" ]; then
-    PYTHON="$(resolve_python)" || gate_skip "Android DeClang validation requires Python"
-    $PYTHON gates/fixtures/declang-android-export-checks.py "$PWD" "$PROJ" "$OUT" "$FORK_EDITOR"
+    gate_python -c 'pass' >/dev/null || gate_skip "Android DeClang validation requires Python"
+    gate_python gates/fixtures/declang-android-export-checks.py "$PWD" "$PROJ" "$OUT" "$FORK_EDITOR"
 fi
 
 echo "== 7/7 Refusing an ABI set the backend cannot serve =="

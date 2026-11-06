@@ -174,7 +174,7 @@ delegate_identity_diff_axes() {
             gate_output match-record "$out/$native.raw.stdout" 'separate delegate method=.+/7' --policy crlf --count any \
                 || { echo "FAIL: separate delegate Method read missing: $axis/$native" >&2; return 1; }
         done
-        "$(resolve_python)" gates/fold-delegate-fixture.py "$out" > "$out/folding.log"
+        gate_python gates/fold-delegate-fixture.py "$out" > "$out/folding.log"
         grep -Eq '^folded delegate methods: [1-9][0-9]*; address references: [1-9][0-9]*$' "$out/folding.log"
         compile_console "$out" DelegateVirtualIdentityOnly
         gate_capture "$out/folded.raw" run_bounded "$out/DelegateVirtualIdentityOnly$EXE_EXT"

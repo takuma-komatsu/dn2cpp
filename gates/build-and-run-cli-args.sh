@@ -14,7 +14,8 @@
 # CLI arg handling: it transpiles (never compiles), so it needs no C++/Godot/
 # Emscripten/NDK toolchain and always RUNS (never gate_skip).
 #
-# Assertions, one flag family apart:
+# Accepted flags share the worker-count runs; rejections remain isolated.
+# Assertions:
 #   1. Baseline — the same input with correct flags transpiles and exits 0. The
 #      regression guard that keeps the unknown-arg check from over-rejecting valid
 #      flags (a check that rejected everything would pass 2-4 while being useless).
@@ -58,7 +59,7 @@ echo "corelib: $CORELIB"
 # make this gate permanently uncacheable since it clears OUT on every run.
 OUT=artifacts/cli-args-baseline
 rm -rf "$OUT"; mkdir -p "$OUT"
-if gate_cache_check "$OUT" "cli-args|cli:$(_gate_cli_hash)|$CORELIB" \
+if gate_cache_check "$OUT" "cli-args|combined-acceptance|cli:$(_gate_cli_hash)|$CORELIB" \
         "$APP" "$CONSOLE_CLI"; then
     gate_cache_hit_msg
     exit 0
@@ -117,10 +118,21 @@ assert_accepted() {
     echo "OK [$label]: exit 0"
 }
 
+assert_native_metadata() {
+    local frontend="$1"
+    if grep -Eq 'md_record_[[:alnum:]_]+\[\] =' "$OUT"/generated*.cpp; then
+        echo "FAIL: $frontend emitted packed metadata with compression disabled" >&2
+        exit 1
+    fi
+    grep -Eq 'md_native_[[:alnum:]_]+\[\] =' "$OUT"/generated*.cpp \
+        || { echo "FAIL: $frontend emitted no native metadata" >&2; exit 1; }
+}
+
 # ── Assertion 1: baseline — valid flags must still transpile (exit 0) ──────────
 echo "== 1/10 baseline: valid input + flags transpiles and exits 0 =="
 set +e
-invoke_cli "$APP" -r "$CORELIB" -o "$OUT" >/dev/null 2>&1
+invoke_cli "$APP" -r "$CORELIB" -o "$OUT" --jobs 1 \
+    --no-default-ref DnZlib --no-metadata-compression >/dev/null 2>&1
 base_rc=$?
 set -e
 if [ "$base_rc" -ne 0 ]; then
@@ -130,6 +142,7 @@ fi
 [ -f "$OUT/generated.cpp" ] \
     || { echo "FAIL: the valid transpile produced no $OUT/generated.cpp" >&2; exit 1; }
 echo "OK: valid transpile exit 0, emitted generated.cpp"
+assert_native_metadata full
 
 # ── Assertion 2: a bogus flag is a hard error naming the token ─────────────────
 echo "== 2/10 an unrecognized flag must fail loudly =="
@@ -154,7 +167,7 @@ assert_rejected "extra positional" "extra.dll" full "$APP" extra.dll -o "$OUT"
 # that ran only when the shim was live would let a typo through on every other
 # program.
 echo "== 5/10 --no-default-ref with a known shim name must be accepted (exit 0) =="
-assert_accepted "no-default-ref known" full "$APP" -r "$CORELIB" -o "$OUT" --no-default-ref DnZlib
+echo "OK: --no-default-ref DnZlib accepted by the baseline run"
 
 # ── Assertion 6: --no-default-ref with an UNKNOWN name is a hard error ─────────
 # A silently-accepted typo is the worst outcome available here: the caller
@@ -164,11 +177,12 @@ echo "== 6/10 --no-default-ref with an unknown name must fail loudly =="
 assert_rejected "no-default-ref unknown" "DnBogus" full "$APP" -r "$CORELIB" -o "$OUT" --no-default-ref DnBogus
 
 echo "== 7/10 full CLI accepts explicit sequential and parallel worker counts =="
-assert_accepted "full jobs 1" full "$APP" -r "$CORELIB" -o "$OUT" --jobs 1
+echo "OK: --jobs 1 accepted by the baseline run"
 assert_accepted "full jobs 2" full "$APP" -r "$CORELIB" -o "$OUT" --jobs 2
 
 echo "== 8/10 console CLI accepts explicit sequential and parallel worker counts =="
-assert_accepted "console jobs 1" console "$APP" -r "$CORELIB" -o "$OUT" --jobs 1
+assert_accepted "console jobs 1 and metadata opt-out" console "$APP" -r "$CORELIB" -o "$OUT" --jobs 1 --no-metadata-compression
+assert_native_metadata console
 assert_accepted "console jobs 2" console "$APP" -r "$CORELIB" -o "$OUT" --jobs 2
 
 echo "== 9/10 full CLI rejects malformed worker counts =="
@@ -183,17 +197,7 @@ assert_rejected "console jobs zero" "0" console "$APP" -r "$CORELIB" -o "$OUT" -
 assert_rejected "console jobs negative" "-2" console "$APP" -r "$CORELIB" -o "$OUT" --jobs -2
 assert_rejected "console jobs non-numeric" "many" console "$APP" -r "$CORELIB" -o "$OUT" --jobs many
 
-echo "== Both CLIs accept --no-metadata-compression =="
-for frontend in full console; do
-    assert_accepted "$frontend no metadata compression" "$frontend" \
-        "$APP" -r "$CORELIB" -o "$OUT" --no-metadata-compression
-    if grep -Eq 'md_record_[[:alnum:]_]+\[\] =' "$OUT"/generated*.cpp; then
-        echo "FAIL: $frontend emitted packed metadata with compression disabled" >&2
-        exit 1
-    fi
-    grep -Eq 'md_native_[[:alnum:]_]+\[\] =' "$OUT"/generated*.cpp \
-        || { echo "FAIL: $frontend emitted no native metadata" >&2; exit 1; }
-done
+echo "OK: both baseline worker-count runs verified --no-metadata-compression"
 
 gate_cache_commit
 echo "PASS: both CLIs accept worker counts and the metadata compression opt-out; invalid arguments remain hard errors"

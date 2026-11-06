@@ -86,14 +86,23 @@ platform_isa_join() {
     printf '%s\n' "$out"
 }
 
-PLATFORM_ISA_NATIVE_SHARDS="x86-base x86-avx x86-avx512 x86-avx10 arm"
-
-platform_isa_shard_arch() {
+platform_isa_shard_arches() {
     case "$1" in
+        native) printf 'x86 arm\n' ;;
         x86-*) printf 'x86\n' ;;
         arm)   printf 'arm\n' ;;
         *) echo "error: unknown native platform-ISA shard '$1'" >&2; return 1 ;;
     esac
+}
+
+# Concatenated isolated shards use the parser's families=all boundary.
+# Only the shared image needs an architecture selector.
+platform_isa_shard_selection() {
+    if [ "$1" = native ]; then
+        printf '%s\n' "$2"
+    else
+        printf 'all\n'
+    fi
 }
 
 platform_isa_exercise_body_markers() {
@@ -118,9 +127,7 @@ platform_isa_exercise_body_markers() {
 
 # ISA parsers consume once-normalized FILES, never shell text or text-mode tools.
 platform_isa_output() {
-    local python
-    python=$(resolve_python) || return 1
-    $python "$_DN2CPP_GATE_ROOT/gates/platform-isa-output.py" "$@"
+    gate_python "$_DN2CPP_GATE_ROOT/gates/platform-isa-output.py" "$@"
 }
 platform_isa_contract_block() {
     platform_isa_output contract "$1"
@@ -288,7 +295,7 @@ _platform_isa_arch_context() {
     [ "$invalid_count" -gt 0 ] \
         || { echo "error: generated exercises list no $isa invalid-immediate boundary" >&2; return 1; }
     [ "$arch" = x86 ] && optin_ctx="+O"
-    ctx="$arch|families:$all_csv|lowered:$lowered_csv"
+    ctx="$arch|selection:$isa|families:$all_csv|lowered:$lowered_csv"
     ctx="$ctx|runs:F+S+M+P+N+NM$optin_ctx|M=DN2CPP_CPU_FEATURES=none+DOTNET_EnableHWIntrinsic=0"
     ctx="$ctx|P=DN2CPP_CPU_FEATURES=$PLATFORM_ISA_P_MASK+$PLATFORM_ISA_P_KNOBS"
     ctx="$ctx|invalid-immediates:$invalid_csv|N=default+--invalid-immediates|NM=DN2CPP_CPU_FEATURES=none+--invalid-immediates"
@@ -343,9 +350,9 @@ _platform_isa_native_plan_self_check() {
 }
 
 # ── The native behaviour gate ────────────────────────────────────────────────
-# Compile-time shards execute the X86 and Arm contracts diffed against real
-# .NET. A shard omits every other family's table and exercise registration, so
-# the transpiler cannot retain their helpers through a run-time selection arm.
+# The shared native image executes the X86 and Arm contracts separately,
+# diffed against real .NET. The full profile also isolates reachability roots:
+# each shard omits other families' tables and exercise registrations.
 #
 # Runs, each ours-vs-oracle on stdout and exit code:
 #   F  foreign host only: every row of ARCH, no mask. Witness: no `=True`.
@@ -537,7 +544,7 @@ _platform_isa_run_arch() {
 
     local shard_names=() shard_outs=() shard_apps=() i
     for ((i = 0; i < ${#PLATFORM_ISA_BUILT_SHARDS[@]}; i++)); do
-        if [ "${PLATFORM_ISA_BUILT_ARCHES[$i]}" = "$arch" ]; then
+        if [[ " ${PLATFORM_ISA_BUILT_ARCHES[$i]} " == *" $arch "* ]]; then
             shard_names+=("${PLATFORM_ISA_BUILT_SHARDS[$i]}")
             shard_outs+=("${PLATFORM_ISA_BUILT_OUTS[$i]}")
             shard_apps+=("${PLATFORM_ISA_BUILT_APPS[$i]}")
@@ -546,12 +553,13 @@ _platform_isa_run_arch() {
     [ "${#shard_names[@]}" -gt 0 ] \
         || { echo "error: no compiled platform-ISA shard for $arch" >&2; exit 1; }
 
-    local p_shard="" p_plan p_true_here p_false_here
+    local p_shard="" p_plan p_prefix p_true_here p_false_here
     for ((i = 0; i < ${#shard_names[@]}; i++)); do
-        gate_capture_ok "${shard_outs[$i]}/partial-plan" run_bounded dotnet "${shard_apps[$i]}" --dump-plan || exit 1
-        gate_output view "${shard_outs[$i]}/partial-plan.stdout" "${shard_outs[$i]}/partial-plan.lf" --policy crlf || exit 1
-        platform_isa_output validate "${shard_outs[$i]}/partial-plan.lf" || exit 1
-        p_plan=$(cat "${shard_outs[$i]}/partial-plan.lf")
+        p_prefix="${shard_outs[$i]}/partial-plan-$arch"
+        gate_capture_ok "$p_prefix" run_bounded dotnet "${shard_apps[$i]}" --dump-plan || exit 1
+        gate_output view "$p_prefix.stdout" "$p_prefix.lf" --policy crlf || exit 1
+        platform_isa_output validate "$p_prefix.lf" || exit 1
+        p_plan=$(cat "$p_prefix.lf")
         p_true_here=$(grep -Fxc "row=$PLATFORM_ISA_P_TRUE" <<<"$p_plan" || true)
         p_false_here=$(grep -Fxc "row=$PLATFORM_ISA_P_FALSE" <<<"$p_plan" || true)
         if [ "$p_true_here" -ne 0 ] || [ "$p_false_here" -ne 0 ]; then
@@ -629,7 +637,7 @@ _platform_isa_run_arch() {
             shard="${shard_names[$i]}"
             out="${shard_outs[$i]}"
             app="${shard_apps[$i]}"
-            if [ "$label" = O ] && [ "$shard" != x86-avx10 ]; then
+            if [ "$label" = O ] && [ "$shard" != x86-avx10 ] && [ "$shard" != native ]; then
                 continue
             fi
             if [ "$label" = P ] && [ "$shard" != "$p_shard" ]; then
@@ -638,7 +646,7 @@ _platform_isa_run_arch() {
             if [ "$label" = O ] || [ "$label" = P ]; then
                 run_args=("$argv")
             else
-                run_args=(all)
+                run_args=("$(platform_isa_shard_selection "$shard" "$isa")")
             fi
             case "$label" in
                 F|M) run_args+=(--contract-only) ;;
@@ -708,7 +716,7 @@ _platform_isa_run_arch() {
             out="${shard_outs[$i]}"
             _platform_isa_run_native_shard "$label" "$shard" "$ours_env" \
                 "$log_dir/$label.$shard" "$ours_out" "$_PI_LOG" \
-                "./$out/$PLATFORM_ISA_PROJECT" all --invalid-immediates
+                "./$out/$PLATFORM_ISA_PROJECT" "$(platform_isa_shard_selection "$shard" "$isa")" --invalid-immediates
             shard_code=$_PI_SHARD_CODE
             [ "$ours_code" -ne 0 ] || ours_code=$shard_code
             [ "$shard_code" -eq 0 ] || break
@@ -866,6 +874,18 @@ _platform_isa_run_arch() {
 platform_isa_native_gate() {
     [ "$#" -eq 0 ] \
         || { echo "error: platform_isa_native_gate takes no arguments" >&2; return 1; }
+    case "${DN2CPP_PLATFORM_ISA_FULL:-0}" in
+        0|1) DN2CPP_PLATFORM_ISA_FULL=${DN2CPP_PLATFORM_ISA_FULL:-0} ;;
+        *) echo 'DN2CPP_PLATFORM_ISA_FULL must be 0 or 1' >&2; return 1 ;;
+    esac
+    local PLATFORM_ISA_NATIVE_SHARDS=native
+    if [ "$DN2CPP_PLATFORM_ISA_FULL" = 1 ]; then
+        PLATFORM_ISA_NATIVE_SHARDS="x86-base x86-avx x86-avx512 x86-avx10 arm"
+        echo 'platform-ISA profile: separate x86-family and Arm reachability roots'
+    else
+        echo 'platform-ISA profile: shared X86+Arm image with architecture-selected process runs'
+        echo 'platform-ISA independent x86-family/Arm reachability roots: skipped (not selected); not counted as passed'
+    fi
     _platform_isa_witness_normalization_self_check || return 1
     _platform_isa_native_plan_self_check || return 1
     _platform_isa_native_retry_self_check || return 1
@@ -873,7 +893,7 @@ platform_isa_native_gate() {
 
     local project="$PLATFORM_ISA_PROJECT" host_arch avx10v2_compiler=0
     local x86_ctx arm_ctx registry registry_csv registry_count ctx
-    local corelib project_file shard arch managed out app surface shard_surfaces=""
+    local corelib project_file shard arches managed out app surface shard_surfaces=""
     local expected_rows actual_rows expected_exercises actual_exercises
     local expected_invalid actual_invalid first_out="" i
     local plan plan_rows plan_exercises plan_invalid misplaced
@@ -896,7 +916,7 @@ platform_isa_native_gate() {
     PLATFORM_ISA_BUILT_OUTS=()
     PLATFORM_ISA_BUILT_APPS=()
     for shard in $PLATFORM_ISA_NATIVE_SHARDS; do
-        arch=$(platform_isa_shard_arch "$shard") || return 1
+        arches=$(platform_isa_shard_arches "$shard") || return 1
         managed="artifacts/platformisaprobe-managed-$shard"
         out="artifacts/platformisaprobe-isa-native-$shard"
         # The suite prebuild covers only the default all-family variant. These
@@ -909,7 +929,7 @@ platform_isa_native_gate() {
         [ -f "$app" ] \
             || { echo "error: $shard build produced no $app" >&2; return 1; }
         PLATFORM_ISA_BUILT_SHARDS+=("$shard")
-        PLATFORM_ISA_BUILT_ARCHES+=("$arch")
+        PLATFORM_ISA_BUILT_ARCHES+=("$arches")
         PLATFORM_ISA_BUILT_OUTS+=("$out")
         PLATFORM_ISA_BUILT_APPS+=("$app")
         key_inputs+=("$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json")
@@ -989,7 +1009,7 @@ platform_isa_native_gate() {
     [ "$registry_count" -gt 0 ] \
         || { echo "error: generated exercises list no invalid-immediate boundaries" >&2; return 1; }
     ctx="platform_isa_native|host:${host_arch:-other}|$_CG_CORELIB"
-    ctx="$ctx|shards:$PLATFORM_ISA_NATIVE_SHARDS|surfaces:$shard_surfaces"
+    ctx="$ctx|full:$DN2CPP_PLATFORM_ISA_FULL|shards:$PLATFORM_ISA_NATIVE_SHARDS|surfaces:$shard_surfaces"
     ctx="$ctx|invalid-registry-count:$registry_count|invalid-registry:$registry_csv"
     ctx="$ctx|$x86_ctx|$arm_ctx$(_gate_ctx_extras)"
     while IFS= read -r app; do key_inputs+=("$app"); done < <(_gate_extra_inputs)

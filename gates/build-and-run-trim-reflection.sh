@@ -16,6 +16,18 @@ DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/TrimRefle
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|delegate-method-prefix:${DN2CPP_BEFORE_DELEGATE_METHOD:-}|member-enum-prefix:${DN2CPP_BEFORE_MEMBER_ENUM:-}|object-virtual-prefix:${DN2CPP_BEFORE_OBJECT_VIRTUAL:-}|unrecorded-receiver-prefix:${DN2CPP_BEFORE_UNRECORDED_RECEIVER:-}|reflected-unrecorded-receiver-prefix:${DN2CPP_BEFORE_REFLECTED_UNRECORDED_RECEIVER:-}|runtime-template-prefix-argv:before-runtime-template-members|property-accessors-prefix-argv:before-property-accessors"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-name-bindings-prefix-argv:before-delegate-name-bindings|isolated-stripped-members:plain,trimmed,rooted|recognized-lookup-owners:plain,trimmed,rooted|recognized-lookup-prefix:${DN2CPP_BEFORE_RECOGNIZED_LOOKUP:-}"
 
+case "${DN2CPP_TRIM_REFLECTION_FULL:-0}" in
+    0|1) DN2CPP_TRIM_REFLECTION_FULL=${DN2CPP_TRIM_REFLECTION_FULL:-0} ;;
+    *) echo 'DN2CPP_TRIM_REFLECTION_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|trim-reflection-full:$DN2CPP_TRIM_REFLECTION_FULL"
+if [ "$DN2CPP_TRIM_REFLECTION_FULL" = 1 ]; then
+    echo 'trim-reflection profile: full policy and preprocessing matrices'
+else
+    echo 'trim-reflection profile: trimmed aggregate, rooted isolated members and unrooted lookup owners'
+    echo 'trim-reflection plain/root/preprocessing matrix checks: skipped (not selected); not counted as passed'
+fi
+
 PROJECT=TrimReflect
 LIBNAME=TrimReflectLib
 
@@ -162,6 +174,7 @@ assert_named_delegate_lines() {
     done
 }
 
+if [ "$DN2CPP_TRIM_REFLECTION_FULL" = 1 ]; then
 # ── Arm 1: no flag — live diff against real .NET ──────────────────────────────
 echo "== Arm 1/4: no flag, exact diff vs real .NET =="
 OUT=artifacts/trimreflect
@@ -209,8 +222,10 @@ else
     gate_cache_commit
 fi
 
+fi
+
 # ── Arm 2: --trim-reflection — live diff ─────────────────────────────────────────
-echo "== Arm 2/4: --trim-reflection with native metadata, live diff vs real .NET =="
+echo "== Trimmed aggregate: --trim-reflection with native metadata, live diff vs real .NET =="
 OUT=artifacts/trimreflect-trim
 invoke_cli "$APP" --no-ildiet -r "$CORELIB" -r "$LIBDLL" --link-xml "$TEMPLATE_KEEP" --trim-reflection \
     --reflection-metadata "$LIBNAME.LibWidget=native" -o "$OUT"
@@ -254,6 +269,7 @@ else
     gate_cache_commit
 fi
 
+if [ "$DN2CPP_TRIM_REFLECTION_FULL" = 1 ]; then
 # ── Arm 3: --trim-reflection with two roots — live diff ──────────────────────────
 echo "== Arm 3/4: --reflection-root (exact + arity-stripped def name), live diff vs real .NET =="
 OUT=artifacts/trimreflect-rooted
@@ -295,6 +311,8 @@ else
     gate_cache_commit
 fi
 
+fi
+
 # ── Arm 4: a root matching no loaded type is a hard error ──────────────────────
 # Not cached: it is a ~1s transpile that must NOT produce output, so there is nothing to key
 # a cache on, and re-running it every time is cheap insurance on the typo-is-loud contract.
@@ -321,6 +339,7 @@ grep -q "no loaded type is named $LIBNAME.NoSuchType" <<<"$typo_err" \
     || { echo "FAIL: the failed transpile still emitted C++: $(ls -1 "$OUT" | tr '\n' ' ')" >&2; exit 1; }
 echo "hard-error OK: exit $typo_code, named the missing root, emitted nothing"
 
+if [ "$DN2CPP_TRIM_REFLECTION_FULL" = 1 ]; then
 echo "== ILDiet accepts generic roots and rejects missing roots before emission =="
 for root in "$LIBNAME.LibBox" "$LIBNAME.LibBox_Int32"; do
     OUT="artifacts/trimreflect-ildiet-$root"
@@ -345,6 +364,7 @@ for root in "$LIBNAME.LibBox" "$LIBNAME.LibBox_Int32"; do
         echo "FAIL: a bodyless library template retained a body symbol: $root" >&2; exit 1
     fi
 done
+fi
 OUT=artifacts/trimreflect-ildiet-typo
 rm -rf "$OUT"
 set +e
@@ -361,7 +381,9 @@ dotnet build samples/dotnet/TrimReflect/StrippedMembersOnly.csproj -c "$CONFIG" 
 strip_app="samples/dotnet/TrimReflect/bin/$CONFIG/$TFM/StrippedMembersOnly.dll"
 strip_clr="$OUT/check-strip_clr-16.stdout"
 gate_capture_ok "${strip_clr%.stdout}" run_bounded dotnet "$strip_app"
-for mode in plain trimmed rooted; do
+strip_modes=rooted
+[ "$DN2CPP_TRIM_REFLECTION_FULL" != 1 ] || strip_modes="plain trimmed rooted"
+for mode in $strip_modes; do
     OUT="artifacts/trimreflect-stripped-members-$mode"
     strip_flags=()
     case "$mode" in
@@ -416,7 +438,9 @@ lookup_row=$(printf '%s\t' Metadata RecognizedLookupOnly 'TrimReflectLookup.Prog
 lookup_tail=$(printf '\t%s\t%s\t%s' 'System.Type.GetField(String)' \
     'the reflected value comes from the result of TrimReflectLib.Factory::Make' '--reflection-root TYPE')
 lookup_bodies() { cat "$1"/generated*.cpp "$1"/generated.h | grep -E '^// ' | LC_ALL=C sort; }
-for mode in plain trimmed rooted; do
+lookup_modes=trimmed
+[ "$DN2CPP_TRIM_REFLECTION_FULL" != 1 ] || lookup_modes="plain trimmed rooted"
+for mode in $lookup_modes; do
     OUT="artifacts/trimreflect-recognized-lookup-$mode"
     lookup_flags=()
     case "$mode" in

@@ -82,12 +82,22 @@
 #
 #   8. IT IS CORRECT. The auto-declined native binary must exact-diff real .NET too.
 #
-# Two more programs pin the contract boundary itself. One calls a same-name
+# The full profile adds isolated programs that pin the contract boundary itself. One calls a same-name
 # GetAwaiter(int) overload; the other declares a task in the app assembly whose awaiter is
 # the library task's awaiter, then calls an out-of-contract member on that shared role type.
 # The first must decline by signature, and the second must decline every owning task assembly
 # so a later candidate cannot re-adopt the shared handle.
 source "$(dirname "$0")/_common.sh"
+case "${DN2CPP_CUSTOM_ASYNC_TASK_FULL:-0}" in
+    0|1) DN2CPP_CUSTOM_ASYNC_TASK_FULL=${DN2CPP_CUSTOM_ASYNC_TASK_FULL:-0} ;;
+    *) echo 'DN2CPP_CUSTOM_ASYNC_TASK_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+if [ "$DN2CPP_CUSTOM_ASYNC_TASK_FULL" = 1 ]; then
+    echo 'custom async task coverage: adopted, manual override and full auto-decline matrix'
+else
+    echo 'custom async task coverage: adopted, manual override and independent auto-decline'
+    echo 'custom async task signature and shared-role isolation: skipped (not selected); not counted as passed'
+fi
 
 project=CustomAsyncTaskType
 project_exceed=CustomAsyncTaskTypeExceed
@@ -103,14 +113,17 @@ echo "corelib: $corelib"
 echo "== 2/10 Building the drivers + the custom-async-task library =="
 build_proj "samples/dotnet/$project/$project.csproj"
 build_proj "samples/dotnet/$project_exceed/$project_exceed.csproj"
-build_proj "samples/dotnet/$project_shape/$project_shape.csproj"
-build_proj "samples/dotnet/$project_shared/$project_shared.csproj"
+if [ "$DN2CPP_CUSTOM_ASYNC_TASK_FULL" = 1 ]; then
+    build_proj "samples/dotnet/$project_shape/$project_shape.csproj"
+    build_proj "samples/dotnet/$project_shared/$project_shared.csproj"
+fi
 app="samples/dotnet/$project/bin/$CONFIG/$TFM/$project.dll"
 app_exceed="samples/dotnet/$project_exceed/bin/$CONFIG/$TFM/$project_exceed.dll"
 app_shape="samples/dotnet/$project_shape/bin/$CONFIG/$TFM/$project_shape.dll"
 app_shared="samples/dotnet/$project_shared/bin/$CONFIG/$TFM/$project_shared.dll"
 lib="samples/dotnet/$project/bin/$CONFIG/$TFM/CustomAsyncTaskLib.dll"
 [ -f "$lib" ] || { echo "FAIL: the library was not built beside the app: $lib" >&2; exit 1; }
+prepare_cli
 
 echo "== 3/10 Transpiling app + library + real CoreLib, under the generic-instantiation bounds =="
 # The library must be passed explicitly: --auto-ref is scoped to the shared-framework
@@ -205,39 +218,41 @@ if ! grep -q "adoption declined: CustomAsyncTaskLib.CustomTask::Yield" <<<"$err_
 fi
 echo "OK (declined: the notice names CustomTask::Yield; bounded: <=12,000 instantiations)"
 
-rc=0
-# Preserve the unused candidate so this tests the adoption signature contract.
-err_shape=$( export DN2CPP_MAX_INSTANTIATIONS=12000
-       invoke_cli "$app_shape" "${refs[@]}" --no-ildiet --max-heap-mb 256 \
-           -o "$out-shape" 2>&1 >/dev/null ) || rc=$?
-if [ "$rc" -ne 0 ]; then
-    echo "FAIL: the same-name-overload program no longer transpiles with original metadata (exit $rc)." >&2
-    echo "$err_shape" >&2
-    exit 1
-fi
-if ! grep -q "adoption declined: CustomAsyncTaskLib.CustomTask::GetAwaiter" <<<"$err_shape"; then
-    echo "FAIL: GetAwaiter(int) was not rejected by the adoption signature contract." >&2
-    printf '%s\n' "$err_shape" >&2
-    exit 1
-fi
-echo "OK (declined: GetAwaiter(int) is not the parameterless await-pattern member)"
+if [ "$DN2CPP_CUSTOM_ASYNC_TASK_FULL" = 1 ]; then
+    rc=0
+    # Preserve the unused candidate so this tests the adoption signature contract.
+    err_shape=$( export DN2CPP_MAX_INSTANTIATIONS=12000
+           invoke_cli "$app_shape" "${refs[@]}" --no-ildiet --max-heap-mb 256 \
+               -o "$out-shape" 2>&1 >/dev/null ) || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "FAIL: the same-name-overload program no longer transpiles with original metadata (exit $rc)." >&2
+        echo "$err_shape" >&2
+        exit 1
+    fi
+    if ! grep -q "adoption declined: CustomAsyncTaskLib.CustomTask::GetAwaiter" <<<"$err_shape"; then
+        echo "FAIL: GetAwaiter(int) was not rejected by the adoption signature contract." >&2
+        printf '%s\n' "$err_shape" >&2
+        exit 1
+    fi
+    echo "OK (declined: GetAwaiter(int) is not the parameterless await-pattern member)"
 
-rc=0
-err_shared=$( export DN2CPP_MAX_INSTANTIATIONS=12000
-       invoke_cli "$app_shared" "${refs[@]}" --max-heap-mb 256 \
-           -o "$out-shared" 2>&1 >/dev/null ) || rc=$?
-if [ "$rc" -ne 0 ]; then
-    echo "FAIL: the shared-role program no longer transpiles with no flags (exit $rc)." >&2
-    echo "$err_shared" >&2
-    exit 1
+    rc=0
+    err_shared=$( export DN2CPP_MAX_INSTANTIATIONS=12000
+           invoke_cli "$app_shared" "${refs[@]}" --max-heap-mb 256 \
+               -o "$out-shared" 2>&1 >/dev/null ) || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "FAIL: the shared-role program no longer transpiles with no flags (exit $rc)." >&2
+        echo "$err_shared" >&2
+        exit 1
+    fi
+    if ! grep -q "Awaiter::Probe.*transpiling CustomAsyncTaskLib's real IL" <<<"$err_shared" \
+        || ! grep -q "Awaiter::Probe.*transpiling $project_shared's real IL" <<<"$err_shared"; then
+        echo "FAIL: the shared awaiter's out-of-contract member did not decline every owner." >&2
+        printf '%s\n' "$err_shared" >&2
+        exit 1
+    fi
+    echo "OK (declined: both task assemblies owning the shared awaiter)"
 fi
-if ! grep -q "Awaiter::Probe.*transpiling CustomAsyncTaskLib's real IL" <<<"$err_shared" \
-    || ! grep -q "Awaiter::Probe.*transpiling $project_shared's real IL" <<<"$err_shared"; then
-    echo "FAIL: the shared awaiter's out-of-contract member did not decline every owner." >&2
-    printf '%s\n' "$err_shared" >&2
-    exit 1
-fi
-echo "OK (declined: both task assemblies owning the shared awaiter)"
 
 # One cache key covers every transpile: gate_cache_check hashes $out's generated
 # surface itself, and the un-adopted + auto-declined surfaces fold in through the context
@@ -246,17 +261,23 @@ real_surface=$( (cd "$out-real" && ls -1 | LC_ALL=C sort | grep -E '^generated' 
     | tr '\n' '\0' | xargs -0 shasum -a 256) | shasum -a 256 | awk '{print $1}')
 exceed_surface=$( (cd "$out-exceed" && ls -1 | LC_ALL=C sort | grep -E '^generated' \
     | tr '\n' '\0' | xargs -0 shasum -a 256) | shasum -a 256 | awk '{print $1}')
-shape_surface=$( (cd "$out-shape" && ls -1 | LC_ALL=C sort | grep -E '^generated' \
-    | tr '\n' '\0' | xargs -0 shasum -a 256) | shasum -a 256 | awk '{print $1}')
-shared_surface=$( (cd "$out-shared" && ls -1 | LC_ALL=C sort | grep -E '^generated' \
-    | tr '\n' '\0' | xargs -0 shasum -a 256) | shasum -a 256 | awk '{print $1}')
+shape_surface=not-selected
+shared_surface=not-selected
+selected_apps=("$app" "$app_exceed")
+if [ "$DN2CPP_CUSTOM_ASYNC_TASK_FULL" = 1 ]; then
+    shape_surface=$( (cd "$out-shape" && ls -1 | LC_ALL=C sort | grep -E '^generated' \
+        | tr '\n' '\0' | xargs -0 shasum -a 256) | shasum -a 256 | awk '{print $1}')
+    shared_surface=$( (cd "$out-shared" && ls -1 | LC_ALL=C sort | grep -E '^generated' \
+        | tr '\n' '\0' | xargs -0 shasum -a 256) | shasum -a 256 | awk '{print $1}')
+    selected_apps+=("$app_shape" "$app_shared")
+fi
+cache_inputs=("$lib")
+for selected_app in "${selected_apps[@]}"; do
+    cache_inputs+=("$selected_app" "${selected_app%.dll}.runtimeconfig.json" "${selected_app%.dll}.deps.json")
+done
 if gate_cache_check "$out" \
-        "custom-async-task|$corelib|shape-mode:no-ildiet|plumbing:bodies-layouts|real:$real_surface|exceed:$exceed_surface|shape:$shape_surface|shared:$shared_surface" \
-        "$app" "$app_exceed" "$app_shape" "$app_shared" "$lib" \
-        "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json" \
-        "${app_exceed%.dll}.runtimeconfig.json" "${app_exceed%.dll}.deps.json" \
-        "${app_shape%.dll}.runtimeconfig.json" "${app_shape%.dll}.deps.json" \
-        "${app_shared%.dll}.runtimeconfig.json" "${app_shared%.dll}.deps.json"; then
+        "custom-async-task|full:$DN2CPP_CUSTOM_ASYNC_TASK_FULL|$corelib|shape-mode:no-ildiet|plumbing:bodies-layouts|real:$real_surface|exceed:$exceed_surface|shape:$shape_surface|shared:$shared_surface" \
+        "${cache_inputs[@]}"; then
     gate_cache_hit_msg
     exit 0
 fi
@@ -358,21 +379,25 @@ for sym in TaskPool Runner ITaskPoolNode AsyncCustomTaskMethodBuilder CustomTask
 done
 echo "OK (the library's real machinery is in the tree with no flag)"
 
-if ! grep -qh '^// SharedRoleSubset.SharedAwaiterTaskBuilder::' \
-        "$out-shared"/generated*.cpp "$out-shared/generated.h"; then
-    echo "FAIL: the shared awaiter's app-side owner was re-adopted after its decline." >&2
-    exit 1
+if [ "$DN2CPP_CUSTOM_ASYNC_TASK_FULL" = 1 ]; then
+    if ! grep -qh '^// SharedRoleSubset.SharedAwaiterTaskBuilder::' \
+            "$out-shared"/generated*.cpp "$out-shared/generated.h"; then
+        echo "FAIL: the shared awaiter's app-side owner was re-adopted after its decline." >&2
+        exit 1
+    fi
+    echo "OK (the shared awaiter's app-side builder transpiles as real IL)"
 fi
-echo "OK (the shared awaiter's app-side builder transpiles as real IL)"
 
-echo "== 9/10 Compiling C++ (all five) =="
+echo "== 9/10 Compiling selected C++ images =="
 compile_console "$out" "$project"
 compile_console "$out-real" "$project"
 compile_console "$out-exceed" "$project_exceed"
-compile_console "$out-shape" "$project_shape"
-compile_console "$out-shared" "$project_shared"
+if [ "$DN2CPP_CUSTOM_ASYNC_TASK_FULL" = 1 ]; then
+    compile_console "$out-shape" "$project_shape"
+    compile_console "$out-shared" "$project_shared"
+fi
 
-echo "== 10/10 Running (exact diff vs real .NET, all five) =="
+echo "== 10/10 Running selected images (exact output and status diff vs real .NET) =="
 gate_capture "$out/oracle" run_bounded dotnet "$app"
 gate_capture "$out/native" run_bounded "./$out/$project$EXE_EXT"
 gate_output compare "$out/native.stdout" "$out/oracle.stdout"
@@ -384,12 +409,14 @@ gate_capture "$out-exceed/oracle" run_bounded dotnet "$app_exceed"
 gate_capture "$out-exceed/native" run_bounded "./$out-exceed/$project_exceed$EXE_EXT"
 gate_output compare "$out-exceed/native.stdout" "$out-exceed/oracle.stdout"
 gate_output status "$(cat "$out-exceed/native.status")" "$(cat "$out-exceed/oracle.status")"
-gate_capture "$out-shape/oracle" run_bounded dotnet "$app_shape"
-gate_capture "$out-shape/native" run_bounded "./$out-shape/$project_shape$EXE_EXT"
-gate_output compare "$out-shape/native.stdout" "$out-shape/oracle.stdout"
-gate_output status "$(cat "$out-shape/native.status")" "$(cat "$out-shape/oracle.status")"
-gate_capture "$out-shared/oracle" run_bounded dotnet "$app_shared"
-gate_capture "$out-shared/native" run_bounded "./$out-shared/$project_shared$EXE_EXT"
-gate_output compare "$out-shared/native.stdout" "$out-shared/oracle.stdout"
-gate_output status "$(cat "$out-shared/native.status")" "$(cat "$out-shared/oracle.status")"
+if [ "$DN2CPP_CUSTOM_ASYNC_TASK_FULL" = 1 ]; then
+    gate_capture "$out-shape/oracle" run_bounded dotnet "$app_shape"
+    gate_capture "$out-shape/native" run_bounded "./$out-shape/$project_shape$EXE_EXT"
+    gate_output compare "$out-shape/native.stdout" "$out-shape/oracle.stdout"
+    gate_output status "$(cat "$out-shape/native.status")" "$(cat "$out-shape/oracle.status")"
+    gate_capture "$out-shared/oracle" run_bounded dotnet "$app_shared"
+    gate_capture "$out-shared/native" run_bounded "./$out-shared/$project_shared$EXE_EXT"
+    gate_output compare "$out-shared/native.stdout" "$out-shared/oracle.stdout"
+    gate_output status "$(cat "$out-shared/native.status")" "$(cat "$out-shared/oracle.status")"
+fi
 gate_cache_commit

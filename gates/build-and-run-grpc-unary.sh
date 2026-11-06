@@ -116,6 +116,9 @@ echo "OK: ${#grpc_refs[@]} pinned assemblies verified against $GRPC_SHA_EXPECTED
 refs=(-r "$corelib" -r "$nethttp" -r "$dnhttp" "${grpc_refs[@]}")
 preservation=samples/dotnet/GrpcUnary/link.xml
 
+# The measure pipeline must inherit the same CLI as the later native emission.
+prepare_cli
+
 echo "== 3/6 Measure: the whole Grpc.Net.Client closure, zero gaps, socket subtree cut =="
 mout="artifacts/grpcunary-measure"
 rm -rf "$mout"; mkdir -p "$mout"

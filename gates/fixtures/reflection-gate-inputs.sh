@@ -3,7 +3,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 _DN2CPP_GATE_ROOT="$PWD"
-py="$1"
+source gates/_python.sh
+export DN2CPP_PYTHON="${1:-${DN2CPP_PYTHON:-}}"
 CONFIG=Fixture
 # This SDK-free adapter fixture explicitly selects the ordinary Linux policy.
 DN2CPP_OS=linux
@@ -97,7 +98,6 @@ gate_capture_diff_files "$fixture" Driver "$fixture/native.raw" "$fixture/oracle
 reflection_native_full "$fixture" Driver > "$fixture/argument-run.stdout"
 grep -Fxq 'fixture native fallback' "$fixture/argument-run.stdout"
 eval "$(sed -n '/^corelib_diff_gate() {/,/^}/p; /^_corelib_diff_gate() {/,/^}/p; /^gate_capture() {/,/^}/p; /^gate_output() {/,/^}/p' gates/_common.sh)"
-resolve_python() { printf '%s\n' "$py"; }
 _corelib_gate_out() { printf '%s\n' "$fixture/corelib"; }
 _corelib_gate_core() { mkdir -p "$2"; _CG_APP="$fixture/third/Driver.dll"; _CG_CORELIB=Fixture; }
 _corelib_gate_check() { return 1; }
@@ -124,7 +124,7 @@ echo 'reflection input reuse OK'
 for exit_status in 0 1; do
     probe_record="$fixture/exit-$exit_status"
     status=0
-    bash gates/fixtures/reflection-gate-inputs.sh "$py" --exit-probe "$probe_record" "$exit_status" || status=$?
+    bash gates/fixtures/reflection-gate-inputs.sh "${DN2CPP_PYTHON:-}" --exit-probe "$probe_record" "$exit_status" || status=$?
     test "$status" = "$exit_status"
     read -r exited_inputs < "$probe_record"
     test ! -e "$exited_inputs"

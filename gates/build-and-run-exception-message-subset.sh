@@ -56,22 +56,37 @@
 # Reflective constructor reachability retains unused legacy aggregate serialization bodies.
 # MemberAccessException constructors retain messages, inner identity and the SystemException chain.
 source "$(dirname "$0")/_common.sh"
+case "${DN2CPP_EXCEPTION_MESSAGE_FULL:-0}" in
+    0|1) DN2CPP_EXCEPTION_MESSAGE_FULL=${DN2CPP_EXCEPTION_MESSAGE_FULL:-0} ;;
+    *) echo 'DN2CPP_EXCEPTION_MESSAGE_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+if [ "$DN2CPP_EXCEPTION_MESSAGE_FULL" = 1 ]; then
+    echo 'exception message coverage: aggregate and full isolated layout matrix'
+else
+    echo 'exception message coverage: aggregate, constructor-free fields and Message-only fallback'
+    echo 'exception ancestry and general BCL fallback isolation: skipped (not selected); not counted as passed'
+fi
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|exception-message-full:$DN2CPP_EXCEPTION_MESSAGE_FULL"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ExceptionMessageSubset/OrdinaryReflectionArgumentSubset.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-arguments:${DN2CPP_BEFORE_ORDINARY_REFLECTION_ARGUMENTS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-array-shape-fields|before-runtime-hresult|before-lazy-aggregate-message|before-aggregate-enumerable|before-derived-aggregate|before-aggregate-serialization"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|before-member-access-constructors"
 
 ancestry_app="gates/fixtures/runtime-exception-ancestry/bin/$CONFIG/$TFM/RuntimeExceptionAncestry.dll"
-build_gate_proj gates/fixtures/runtime-exception-ancestry/RuntimeExceptionAncestry.csproj
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $ancestry_app ${ancestry_app%.dll}.runtimeconfig.json ${ancestry_app%.dll}.deps.json"
 fields_app="gates/fixtures/runtime-argument-fields/bin/$CONFIG/$TFM/RuntimeArgumentFields.dll"
 fallback_app="gates/fixtures/runtime-argument-fallback/bin/$CONFIG/$TFM/RuntimeArgumentFallback.dll"
-fallback_bcl="$(dirname "$(resolve_net10_corelib)")/System.Collections.Concurrent.dll"
 general_app="gates/fixtures/general-argument-fallback/bin/$CONFIG/$TFM/GeneralArgumentFallback.dll"
 build_gate_proj gates/fixtures/runtime-argument-fields/RuntimeArgumentFields.csproj
 build_gate_proj gates/fixtures/runtime-argument-fallback/RuntimeArgumentFallback.csproj
-build_gate_proj gates/fixtures/general-argument-fallback/GeneralArgumentFallback.csproj
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $fields_app ${fields_app%.dll}.runtimeconfig.json ${fields_app%.dll}.deps.json $fallback_app ${fallback_app%.dll}.runtimeconfig.json ${fallback_app%.dll}.deps.json $fallback_bcl $general_app ${general_app%.dll}.runtimeconfig.json ${general_app%.dll}.deps.json"
+argument_apps=("$fields_app" "$fallback_app")
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $fields_app ${fields_app%.dll}.runtimeconfig.json ${fields_app%.dll}.deps.json $fallback_app ${fallback_app%.dll}.runtimeconfig.json ${fallback_app%.dll}.deps.json"
+if [ "$DN2CPP_EXCEPTION_MESSAGE_FULL" = 1 ]; then
+    build_gate_proj gates/fixtures/runtime-exception-ancestry/RuntimeExceptionAncestry.csproj
+    build_gate_proj gates/fixtures/general-argument-fallback/GeneralArgumentFallback.csproj
+    fallback_bcl="$(dirname "$(resolve_net10_corelib)")/System.Collections.Concurrent.dll"
+    argument_apps+=("$general_app")
+    DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS $ancestry_app ${ancestry_app%.dll}.runtimeconfig.json ${ancestry_app%.dll}.deps.json $fallback_bcl $general_app ${general_app%.dll}.runtimeconfig.json ${general_app%.dll}.deps.json"
+fi
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|runtime-argument-fixtures|cli:$(_gate_cli_hash)"
 
 gate_extra_asserts() {
@@ -250,21 +265,23 @@ gate_extra_asserts() {
     gate_output compare "$prefix" "$before"
     gate_output witness "$native" 'runtime exception ancestry end' --count any --policy crlf \
         || { echo 'FAIL: runtime exception ancestry section did not run' >&2; exit 1; }
-    fixture="$out/RuntimeExceptionAncestry"
-    DN2CPP_STRICT_COMPLETION=1 invoke_cli "$ancestry_app" -r "$_CG_CORELIB" -o "$fixture"
-    compile_console "$fixture" RuntimeExceptionAncestry
-    gate_capture_ok "$out/assert-expected-13" run_bounded dotnet "$ancestry_app"
-    expected="$out/assert-expected-13.stdout"
-    gate_capture_ok "$out/assert-actual-14" run_bounded "./$fixture/RuntimeExceptionAncestry"
-    actual="$out/assert-actual-14.stdout"
+    if [ "$DN2CPP_EXCEPTION_MESSAGE_FULL" = 1 ]; then
+        fixture="$out/RuntimeExceptionAncestry"
+        DN2CPP_STRICT_COMPLETION=1 invoke_cli "$ancestry_app" -r "$_CG_CORELIB" -o "$fixture"
+        compile_console "$fixture" RuntimeExceptionAncestry
+        gate_capture_ok "$out/assert-expected-13" run_bounded dotnet "$ancestry_app"
+        expected="$out/assert-expected-13.stdout"
+        gate_capture_ok "$out/assert-actual-14" run_bounded "./$fixture/RuntimeExceptionAncestry"
+        actual="$out/assert-actual-14.stdout"
 
-    gate_output compare "$actual" "$expected"
-    for line in 'array index: IndexOutOfRangeException > SystemException > Exception > Object' \
-        'no parameterless ctor: MissingMethodException > MissingMemberException > MemberAccessException > SystemException > Exception > Object' \
-        'HRESULT E_FAIL: COMException > ExternalException > SystemException > Exception > Object'; do
-        gate_output byte-witness "$actual" "$line" --count any --policy crlf \
-            || { echo "FAIL: runtime exception chain missing: $line" >&2; exit 1; }
-    done
+        gate_output compare "$actual" "$expected"
+        for line in 'array index: IndexOutOfRangeException > SystemException > Exception > Object' \
+            'no parameterless ctor: MissingMethodException > MissingMemberException > MemberAccessException > SystemException > Exception > Object' \
+            'HRESULT E_FAIL: COMException > ExternalException > SystemException > Exception > Object'; do
+            gate_output byte-witness "$actual" "$line" --count any --policy crlf \
+                || { echo "FAIL: runtime exception chain missing: $line" >&2; exit 1; }
+        done
+    fi
     gate_capture_ok "$out/assert-before-15" run_bounded dotnet "$_CG_APP" before-general-argument-fields
     before="$out/assert-before-15.stdout"
     prefix="$out/assert-prefix-30.stdout"
@@ -306,7 +323,7 @@ gate_extra_asserts() {
         gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: runtime Array fields witness missing: $line" >&2; exit 1; }
     done
-    for app in "$fields_app" "$fallback_app" "$general_app"; do
+    for app in "${argument_apps[@]}"; do
         name=$(basename "${app%.dll}")
         fixture="$out/$name"
         if [ "$name" = GeneralArgumentFallback ]; then

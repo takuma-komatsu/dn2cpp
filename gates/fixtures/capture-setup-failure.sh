@@ -4,9 +4,9 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 _DN2CPP_GATE_ROOT="$PWD"
 script="$PWD/gates/fixtures/capture-setup-failure.sh"
-py="${1:-python3}"
+source gates/_python.sh
+export DN2CPP_PYTHON="${1:-${DN2CPP_PYTHON:-}}"
 eval "$(sed -n '/^gate_capture() {/,/^}/p; /^gate_output() {/,/^}/p' gates/_common.sh)"
-resolve_python() { printf '%s\n' "$py"; }
 
 if [ "${2:-}" = --case ]; then
     kind="$3" fixture="$4"
@@ -54,7 +54,7 @@ for kind in limits trim; do
             mkdir "$run/observations/$prefix.stderr"
         fi
         status=0
-        bash "$script" "$py" --case "$kind" "$run" > "$run/log" 2>&1 || status=$?
+        bash "$script" "${DN2CPP_PYTHON:-}" --case "$kind" "$run" > "$run/log" 2>&1 || status=$?
         if [ "$failure" = none ]; then
             [ "$status" -eq 0 ] && [ -f "$run/ran-native" ] && [ -f "$run/ran-oracle" ] || {
                 cat "$run/log" >&2; echo "FAIL: $kind capture positive control" >&2; exit 1;

@@ -8,7 +8,7 @@ case "$stage" in
     *) echo "usage: $0 [emit|build|verify]" >&2; exit 1 ;;
 esac
 if [ "$stage" = verify ]; then
-    PYTHON=$(resolve_python) || gate_skip "no working Python 3 interpreter for ILDiet native parity"
+    gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for ILDiet native parity"
 fi
 
 mkdir -p artifacts
@@ -44,8 +44,7 @@ build_gate_proj gates/fixtures/preserve-control/MetadataProbe.csproj 2>&1 | tee 
 build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csproj \
     2>&1 | tee "$OUT/metadata-validation-build.log"
 APP="samples/dotnet/ILDietControl/bin/$CONFIG/$TFM"
-# shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
-$PYTHON gates/fixtures/ildiet-native/check.py "$DIET/ILDiet.dll" "$OUT/ILDiet" \
+gate_python gates/fixtures/ildiet-native/check.py "$DIET/ILDiet.dll" "$OUT/ILDiet" \
     "gates/fixtures/preserve-control/bin/$CONFIG/$TFM/MetadataProbe.dll" \
     "$APP/ILDietControl.dll" "$APP/ILDietControlLib.dll" "$APP/Dn2Cpp.Runtime.dll" \
     "$corelib" "$OUT/parity" \

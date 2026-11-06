@@ -87,7 +87,7 @@ fi
 echo "UniTask.dll: $unitask_sha (pinned 2.5.11)"
 
 echo "== 3/7 Transpiling for real (tier 2: NO flags — the adoption must auto-decline) =="
-build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
+prepare_cli
 refs=(-r "$corelib" -r "$unitask")
 rm -rf "$out"
 # Both caps ride the ONE transpile the diff uses; a cap can only turn a run into
