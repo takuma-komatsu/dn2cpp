@@ -1569,7 +1569,7 @@ internal sealed partial class MethodCompiler
 
         if (IsDelegateInvoke(callee))
         {
-            TranslateDelegateInvoke(callee);
+            TranslateDelegateInvoke(callee, isCallvirt);
             return;
         }
 
@@ -3163,7 +3163,7 @@ internal sealed partial class MethodCompiler
         return $"(void*)&{adapter.CppName}";
     }
 
-    private void TranslateDelegateInvoke(MethodInfo invoke)
+    private void TranslateDelegateInvoke(MethodInfo invoke, bool isCallvirt)
     {
         var cls = invoke.DeclaringClass;
         // This line NAMES dginvoke_<CppName>, so record the class for the invoker
@@ -3175,7 +3175,10 @@ internal sealed partial class MethodCompiler
         var callArgs = new string[ps.Length];
         for (int i = ps.Length - 1; i >= 0; i--)
             callArgs[i] = Cast(Pop(), CppTypes.Of(ps[i]));
-        var dg = Cast(Pop(), cls.CppStructName + "*");
+        var receiver = Pop();
+        var dg = Cast(receiver, cls.CppStructName + "*");
+        if (isCallvirt && !receiver.NonNull)
+            dg = $"dn2cpp_null_check({dg})";
 
         var allArgs = new List<string> { dg };
         allArgs.AddRange(callArgs);
