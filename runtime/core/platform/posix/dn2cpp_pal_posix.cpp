@@ -194,13 +194,20 @@ static int32_t dn2cpp_pal_locale_from_posix_id(const char* id, char* buf, size_t
                 }
                 break;
             }
-    // ICU accepts an empty trailing POSIX variant, unlike a constructed name.
+    bool trailingVariant = n > 0 && buf[n - 1] == '-';
     while (n > 0 && buf[n - 1] == '-')
         n--;
     // Skip the codeset, keep the modifier.
     while (id[i] != '\0' && id[i] != '@')
         i++;
     bool modifier = id[i] == '@' && id[i + 1] != '\0';
+#if defined(__linux__) && !defined(__ANDROID__)
+    // The Linux reference rejects empty trailing variants only for managed defaults.
+    if (!keepExtensions && trailingVariant && !modifier)
+        return 0;
+#else
+    (void)trailingVariant;
+#endif
     // ICU turns a C or POSIX base into en_US_POSIX, and real .NET reads
     // en_US_POSIX, like an empty base, as no locale at all.
     if (!modifier
