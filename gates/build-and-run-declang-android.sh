@@ -6,11 +6,11 @@ source "$(dirname "$0")/_common.sh"
 source gates/_declang.sh
 [ -f "${ANDROID_NDK_ROOT:-}/build/cmake/android.toolchain.cmake" ] \
     || gate_skip "set ANDROID_NDK_ROOT to an installed Android NDK"
-PYTHON="$(resolve_python)" || gate_skip "Android DeClang validation requires Python"
-$PYTHON gates/declang_discovery_checks.py "$PWD"
-$PYTHON gates/declang_android_host_checks.py "$PWD"
+gate_python -c 'pass' >/dev/null || gate_skip "Android DeClang validation requires Python"
+gate_python gates/declang_discovery_checks.py "$PWD"
+gate_python gates/declang_android_host_checks.py "$PWD"
 ensure_declang_android_compiler
 ensure_declang_android_ndk
-$PYTHON gates/declang_android_checks.py "$PWD" "$DN2CPP_DECLANG_COMPILER"
-DN2CPP_DECLANG_ANDROID=1 $PYTHON gates/declang_native_checks.py "$PWD" "$DN2CPP_DECLANG_COMPILER" \
+gate_python gates/declang_android_checks.py "$PWD" "$DN2CPP_DECLANG_COMPILER"
+DN2CPP_DECLANG_ANDROID=1 gate_python gates/declang_native_checks.py "$PWD" "$DN2CPP_DECLANG_COMPILER" \
     "$PWD/artifacts/declang-android-proof"

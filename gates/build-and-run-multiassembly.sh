@@ -18,8 +18,18 @@
 # Same-name application and library types keep the defining assembly in calls,
 # layouts, array elements and reflected signatures.
 source "$(dirname "$0")/_common.sh"
+case "${DN2CPP_MULTIASSEMBLY_FULL:-0}" in
+    0|1) DN2CPP_MULTIASSEMBLY_FULL=${DN2CPP_MULTIASSEMBLY_FULL:-0} ;;
+    *) echo 'DN2CPP_MULTIASSEMBLY_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+if [ "$DN2CPP_MULTIASSEMBLY_FULL" = 1 ]; then
+    echo 'multi-assembly coverage: full preprocessing, metadata layout and reference-load matrix'
+else
+    echo 'multi-assembly coverage: aggregate, inference and combined packed metadata image'
+    echo 'individual metadata selectors and copied-shim load isolation: skipped (not selected); not counted as passed'
+fi
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} "
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|library-enum-prefix:${DN2CPP_BEFORE_LIBRARY_ENUM_ATTRIBUTE:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|library-enum-prefix:${DN2CPP_BEFORE_LIBRARY_ENUM_ATTRIBUTE:-}|multiassembly-full:$DN2CPP_MULTIASSEMBLY_FULL"
 
 descriptor=samples/dotnet/MultiAssembly/link.xml
 app="samples/dotnet/MultiAssembly/bin/$CONFIG/$TFM/MultiAssembly.dll"
@@ -32,7 +42,7 @@ DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS $descriptor" \
 # This lane infers every recognized reflection target; it preserves only the members
 # reached through a helper's returned constructor, which no site resolves.
 helper_results=samples/dotnet/MultiAssembly/keep-helper-results.xml
-DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS $helper_results" \
+DN2CPP_SKIP_BUILD=1 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS $helper_results" \
     xasm_gate MultiAssembly MiniCorlib.dll artifacts/multiasm-inference -r "$aliaslib" --no-ildiet \
     --link-xml "$helper_results"
 
@@ -136,25 +146,36 @@ metadata_emit_layout() {
     invoke_cli "$app" -r "$lib" -r "$aliaslib" --no-ildiet --link-xml "$helper_results" -o "$out" "$@"
     shared_definition_layout "$out" "$format"
 }
-metadata_emit_layout first-packed record \
-    --reflection-metadata 'MiniCorlib::MetadataAssemblyCollision.Subject`1=packed'
-compile_console artifacts/multiasm-metadata-first-packed MultiAssembly
-metadata_section_parity artifacts/multiasm-metadata-first-packed
-metadata_emit_layout second-native native \
-    --reflection-metadata 'MultiAssemblyAlias::MetadataAssemblyCollision.Subject`1=native'
-metadata_emit_layout both-native native \
-    --reflection-metadata 'MiniCorlib::MetadataAssemblyCollision.Subject`1=native' \
-    --reflection-metadata 'MultiAssemblyAlias::MetadataAssemblyCollision.Subject`1=native'
-metadata_emit_layout policy-packed native \
-    --reflection-metadata 'MultiAssemblyAlias::MetadataCompressionCollision.SharedSubject`1=packed' \
-    --reflection-metadata 'MultiAssembly.MetadataExternalPolicy=packed' \
-    --reflection-metadata 'MiniBcl.MetadataMiddle=packed'
-policy_layout artifacts/multiasm-metadata-policy-packed gendef_MetadataCompressionCollision_SharedSubject_1 record
-policy_layout artifacts/multiasm-metadata-policy-packed ti_MultiAssembly_MetadataExternalPolicy record
-policy_layout artifacts/multiasm-metadata-policy-packed ti_MiniBcl_MetadataMiddle record
-policy_layout artifacts/multiasm-metadata-policy-packed ti_MultiAssembly_MetadataDerived native
-compile_console artifacts/multiasm-metadata-policy-packed MultiAssembly
-metadata_section_parity artifacts/multiasm-metadata-policy-packed
+if [ "$DN2CPP_MULTIASSEMBLY_FULL" = 1 ]; then
+    metadata_emit_layout first-packed record \
+        --reflection-metadata 'MiniCorlib::MetadataAssemblyCollision.Subject`1=packed'
+    compile_console artifacts/multiasm-metadata-first-packed MultiAssembly
+    metadata_section_parity artifacts/multiasm-metadata-first-packed
+    metadata_emit_layout second-native native \
+        --reflection-metadata 'MultiAssemblyAlias::MetadataAssemblyCollision.Subject`1=native'
+    metadata_emit_layout both-native native \
+        --reflection-metadata 'MiniCorlib::MetadataAssemblyCollision.Subject`1=native' \
+        --reflection-metadata 'MultiAssemblyAlias::MetadataAssemblyCollision.Subject`1=native'
+    metadata_emit_layout policy-packed native \
+        --reflection-metadata 'MultiAssemblyAlias::MetadataCompressionCollision.SharedSubject`1=packed' \
+        --reflection-metadata 'MultiAssembly.MetadataExternalPolicy=packed' \
+        --reflection-metadata 'MiniBcl.MetadataMiddle=packed'
+    packed_out=artifacts/multiasm-metadata-policy-packed
+else
+    # These storage selectors affect different types; their executable roots agree.
+    metadata_emit_layout combined-packed record \
+        --reflection-metadata 'MiniCorlib::MetadataAssemblyCollision.Subject`1=packed' \
+        --reflection-metadata 'MultiAssemblyAlias::MetadataCompressionCollision.SharedSubject`1=packed' \
+        --reflection-metadata 'MultiAssembly.MetadataExternalPolicy=packed' \
+        --reflection-metadata 'MiniBcl.MetadataMiddle=packed'
+    packed_out=artifacts/multiasm-metadata-combined-packed
+fi
+policy_layout "$packed_out" gendef_MetadataCompressionCollision_SharedSubject_1 record
+policy_layout "$packed_out" ti_MultiAssembly_MetadataExternalPolicy record
+policy_layout "$packed_out" ti_MiniBcl_MetadataMiddle record
+policy_layout "$packed_out" ti_MultiAssembly_MetadataDerived native
+compile_console "$packed_out" MultiAssembly
+metadata_section_parity "$packed_out"
 
 metadata_reject_layout() {
     local name="$1" diagnostic="$2" status=0
@@ -201,21 +222,21 @@ grep -qw "struct alignas(8) t_MiniBcl_LayoutAligned" "$hdr" \
 # Transpile-only re-run against a copied shim; the baseline transpile above
 # loads app + both libraries + auto shim, and the explicit copy must fold
 # into that same count. Deliberately outside the gate cache: a different OUT,
-# no gate_cache_check — it is a cheap transpile that asserts every run.
-echo "== -r on a copied Dn2Cpp.Runtime.dll dedupes by file name =="
-cli_dir="src/Dn2Cpp.Cli/bin/$CONFIG/$TFM"
-[ -n "${DN2CPP_CLI_DLL:-}" ] && cli_dir="$(dirname "$DN2CPP_CLI_DLL")"
-shimcopy_dir="artifacts/multiasm-shimcopy"
-rm -rf "$shimcopy_dir"
-mkdir -p "$shimcopy_dir"
-cp "$cli_dir/Dn2Cpp.Runtime.dll" "$shimcopy_dir/Dn2Cpp.Runtime.dll"
-dedupe_out=$(invoke_cli "$app" -r "$lib" -r "$aliaslib" -r "$shimcopy_dir/Dn2Cpp.Runtime.dll" \
-    --link-xml "$descriptor" -o "$shimcopy_dir/out")
-echo "$dedupe_out"
-if ! grep -q "^dn2cpp: 4 assemblies," <<<"$dedupe_out"; then
-    echo "FAIL: -r $shimcopy_dir/Dn2Cpp.Runtime.dll must dedupe against the" >&2
-    echo "CLI-sibling shim by file name (expected '4 assemblies' in the line above)" >&2
-    exit 1
+# no gate_cache_check; every full-profile run checks the explicit reference.
+if [ "$DN2CPP_MULTIASSEMBLY_FULL" = 1 ]; then
+    echo "== -r on a copied Dn2Cpp.Runtime.dll dedupes by file name =="
+    cli_dir="src/Dn2Cpp.Cli/bin/$CONFIG/$TFM"
+    [ -n "${DN2CPP_CLI_DLL:-}" ] && cli_dir="$(dirname "$DN2CPP_CLI_DLL")"
+    shimcopy_dir=$(mktemp -d "artifacts/multiasm-shimcopy.XXXXXX")
+    cp "$cli_dir/Dn2Cpp.Runtime.dll" "$shimcopy_dir/Dn2Cpp.Runtime.dll"
+    dedupe_out=$(invoke_cli "$app" -r "$lib" -r "$aliaslib" -r "$shimcopy_dir/Dn2Cpp.Runtime.dll" \
+        --link-xml "$descriptor" -o "$shimcopy_dir/out")
+    echo "$dedupe_out"
+    if ! grep -q "^dn2cpp: 4 assemblies," <<<"$dedupe_out"; then
+        echo "FAIL: -r $shimcopy_dir/Dn2Cpp.Runtime.dll must dedupe against the" >&2
+        echo "CLI-sibling shim by file name (expected '4 assemblies' in the line above)" >&2
+        exit 1
+    fi
 fi
 
 for enum_out in artifacts/multiasm artifacts/multiasm-inference; do

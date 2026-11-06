@@ -44,6 +44,8 @@ first_line() { local _l="${1%%$'\n'*}"; printf '%s' "${_l%$'\r'}"; }
 # Absolute path of the sourcing gate script, captured BEFORE the cd so a relative
 # invocation resolves; hashed as a gate-cache key input.
 DN2CPP_GATE_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd -P)/$(basename "${BASH_SOURCE[1]}")"
+# This dependency belongs to the helper even when its caller is outside gates/.
+source "$(dirname "${BASH_SOURCE[0]}")/_python.sh"
 # Physical paths (`pwd -P` / `cd -P`) throughout: a stale logical $PWD would
 # propagate a since-moved repo path into every build directory.
 cd -P "$(dirname "${BASH_SOURCE[1]}")/.."
@@ -266,25 +268,29 @@ resolve_net10_corelib() {
     printf '%s\n' "$best_path"
 }
 
-# invoke_cli ARGS... — run the dn2cpp CLI. `dotnet exec` on DN2CPP_CLI_DLL when
-# set (skips MSBuild), else build once without a parallel restore graph and run
-# that DLL. Some SDKs can fail a parallel graph build without reporting an
-# MSBuild error, so standalone gates use the same explicit artifact as the suite.
-invoke_cli() {
+# prepare_cli — build once and export the CLI path before entering subshells.
+# An explicitly supplied DLL is authoritative and never triggers MSBuild.
+prepare_cli() {
     if [ -n "${DN2CPP_CLI_DLL:-}" ]; then
-        dotnet exec "${DN2CPP_CLI_DLL}" "$@"
-    else
-        dotnet build src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj -c "${CONFIG}" \
-            --nologo -v q -p:BuildInParallel=false || return 1
-        local cli_dll="$PWD/src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll"
-        if [ ! -f "$cli_dll" ]; then
-            echo "error: CLI build produced no $cli_dll" >&2
-            return 1
-        fi
-        DN2CPP_CLI_DLL="$cli_dll"
         export DN2CPP_CLI_DLL
-        dotnet exec "$DN2CPP_CLI_DLL" "$@"
+        return 0
     fi
+    # Some SDKs fail parallel restore graphs without reporting an MSBuild error.
+    dotnet build src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj -c "${CONFIG}" \
+        --nologo -v q -p:BuildInParallel=false || return 1
+    local cli_dll="$PWD/src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll"
+    if [ ! -f "$cli_dll" ]; then
+        echo "error: CLI build produced no $cli_dll" >&2
+        return 1
+    fi
+    DN2CPP_CLI_DLL="$cli_dll"
+    export DN2CPP_CLI_DLL
+}
+
+# invoke_cli ARGS... — preserve lazy standalone preparation for ordinary gates.
+invoke_cli() {
+    prepare_cli || return $?
+    dotnet exec "$DN2CPP_CLI_DLL" "$@"
 }
 
 # build_proj CSPROJ — `dotnet build` with the gate's standard flags. No-op under
@@ -1003,10 +1009,7 @@ dn2cpp_host_tag() {
 # Execute bits do not survive: python's zipfile drops them. A caller unpacking a
 # POSIX executable has to chmod it back.
 unzip_strip() {
-    local py
-    py="$(resolve_python)" || return 1
-    # shellcheck disable=SC2086
-    $py - "$1" "$2" "$3" <<'PYEOF'
+    gate_python - "$1" "$2" "$3" <<'PYEOF'
 import os, sys, zipfile
 zip_path, dest, strip = sys.argv[1], sys.argv[2], int(sys.argv[3])
 with zipfile.ZipFile(zip_path) as z:
@@ -1204,27 +1207,6 @@ path_without_tools() {
         sep=":"
     done <<<"${PATH//:/$'\n'}"
     printf '%s\n' "$out"
-}
-
-# resolve_python — echo a Python 3 command that WORKS. Does not memoize;
-# DN2CPP_PYTHON is a caller-supplied override. Accepted only when
-# `-c 'print(1)'` exits 0: Windows's python3.exe alias stub resolves but fails.
-resolve_python() {
-    if [ -n "${DN2CPP_PYTHON:-}" ]; then
-        printf '%s\n' "$DN2CPP_PYTHON"
-        return 0
-    fi
-    local cand
-    for cand in python3 python "py -3"; do
-        # shellcheck disable=SC2086
-        if $cand -c 'print(1)' >/dev/null 2>&1; then
-            DN2CPP_PYTHON="$cand"
-            printf '%s\n' "$DN2CPP_PYTHON"
-            return 0
-        fi
-    done
-    echo "error: no working Python 3 interpreter found (tried: python3, python, py -3)" >&2
-    return 1
 }
 
 # ── Windows oracle console encoding ───────────────────────────────────────────
@@ -2225,13 +2207,7 @@ _dump_obj_symbols_nix() {
 # gate_output COMMAND... — byte comparison or explicit semantic records.
 # No policy is inferred from the host. See docs/GATE-OUTPUT.md.
 gate_output() {
-    if [ -z "${DN2CPP_PYTHON:-}" ]; then
-        DN2CPP_PYTHON="$(resolve_python)" || return 1
-    fi
-    local python="$DN2CPP_PYTHON"
-    # resolve_python may return the Windows launcher "py -3".
-    # shellcheck disable=SC2086
-    $python "$_DN2CPP_GATE_ROOT/gates/gate-output.py" "$@"
+    gate_python "$_DN2CPP_GATE_ROOT/gates/gate-output.py" "$@"
 }
 
 # gate_capture PREFIX COMMAND... — preserve stdout, stderr and exit status.
@@ -2817,7 +2793,8 @@ _corelib_gate_out() {
 # DN2CPP_SAMPLE_PROJECT_DIR can select a nested driver whose assembly name is PROJECT.
 # _corelib_gate_core PROJECT OUT [EXTRA_BCL_NAME | -r DLL | --link-xml FILE |
 #   --reflection-metadata TYPE=LAYOUT | --cut TYPE::METHOD | --stripping-level LEVEL |
-#   --no-metadata-compression | --no-shared-generics | --no-ildiet | --auto-ref]...
+#   --no-metadata-compression | --no-shared-generics | --no-ildiet | --auto-ref |
+#   --obfuscate]...
 # Extras name required references and preprocessing options. Sets _CG_CORELIB, _CG_APP,
 # _CG_OUT; the caller may preset _CG_CORELIB_IN to override the CoreLib flavour.
 # Assert on _CG_OUT: re-deriving _corelib_gate_out gives the DEFAULT dir, so on a
@@ -2848,7 +2825,8 @@ _corelib_gate_core() {
     while [ "$#" -gt 0 ]; do
         name="$1"; shift
         if [ "$name" = --no-ildiet ] || [ "$name" = --no-metadata-compression ] \
-                || [ "$name" = --no-shared-generics ] || [ "$name" = --auto-ref ]; then
+                || [ "$name" = --no-shared-generics ] || [ "$name" = --auto-ref ] \
+                || [ "$name" = --obfuscate ]; then
             refs+=("$name")
             continue
         fi

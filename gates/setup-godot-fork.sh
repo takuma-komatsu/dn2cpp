@@ -138,29 +138,7 @@ case "$DN2CPP_OS" in
         exit 1
         ;;
 esac
-# resolve_python — pick an interpreter by RUNNING a candidate, never by testing
-# its name or asking `command -v`. The probe is not defensiveness: a stock Windows
-# install answers `python3` with an app-execution-alias stub that resolves AND
-# launches, so both of the cheap tests report success on something that is not a
-# Python.
-#
-# This duplicates gates/_common.sh's copy, deliberately: that file is a *gate*
-# helper whose source-time effects (MSVC env import, console code page, node PATH)
-# have no business in a build aid, and this script must stay runnable without it.
-# The rule the two copies share is the probe, not the code. (The SCons resolver
-# has no such constraint and is shared for real — see godot_fork_scons below.)
-resolve_python() {
-    local cand
-    for cand in python3 python "py -3"; do
-        # shellcheck disable=SC2086
-        if $cand -c 'print(1)' >/dev/null 2>&1; then
-            printf '%s\n' "$cand"
-            return 0
-        fi
-    done
-    echo "error: no working Python 3 interpreter found (tried: python3, python, py -3)" >&2
-    return 1
-}
+source gates/_python.sh
 
 PY="$(resolve_python)"
 # The SCons launcher is godot_fork_scons (gates/_godot_fork.sh), shared with the
@@ -406,10 +384,7 @@ else
           "$ROOT"/nuget/Godot.SourceGenerators.*.nupkg \
           "$ROOT"/nuget/GodotSharp.*.nupkg "$ROOT"/nuget/GodotSharp.*.snupkg \
           "$ROOT"/nuget/GodotSharpEditor.*.nupkg "$ROOT"/nuget/GodotSharpEditor.*.snupkg
-    # $PY, never a bare `python3` — see resolve_python at the top of this file for
-    # what that name resolves to on a stock Windows box.
-    # shellcheck disable=SC2086
-    (cd "$FORK" && $PY modules/mono/build_scripts/build_assemblies.py \
+    (cd "$FORK" && gate_python modules/mono/build_scripts/build_assemblies.py \
         --godot-output-dir=bin \
         --godot-platform="$SCONS_PLATFORM" \
         --push-nupkgs-local "$ROOT/nuget" \

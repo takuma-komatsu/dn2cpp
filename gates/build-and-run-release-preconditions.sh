@@ -236,7 +236,7 @@ printf 'web release template fixture\n' > "$WORK/$WEB_RELEASE_NAME"
 printf 'web debug template fixture\n' > "$WORK/$WEB_DEBUG_NAME"
 WEB_RELEASE_SHA="$(shasum -a 256 "$WORK/$WEB_RELEASE_NAME" | awk '{print $1}')"
 WEB_DEBUG_SHA="$(shasum -a 256 "$WORK/$WEB_DEBUG_NAME" | awk '{print $1}')"
-PY="$(resolve_python)"
+gate_python -c 'pass' >/dev/null
 lane_asset_name() {
     case "$1" in
         editor-macos)   printf 'Godot-%s-macos-arm64.zip\n' "$V" ;;
@@ -252,8 +252,7 @@ for lane in editor-macos editor-windows web macos; do
     if [ "$lane" = web ]; then
         # Web is likewise a nested pair; release validation checks its exact
         # member set and hashes, not merely the outer digest.
-        # shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
-        $PY - "$PRISTINE/$asset" "$WORK/$WEB_RELEASE_NAME" "$WEB_RELEASE_NAME" \
+        gate_python - "$PRISTINE/$asset" "$WORK/$WEB_RELEASE_NAME" "$WEB_RELEASE_NAME" \
                 "$WORK/$WEB_DEBUG_NAME" "$WEB_DEBUG_NAME" <<'PY'
 import sys
 import zipfile
@@ -390,8 +389,7 @@ refused "a Web archive whose entry hash differs from metadata" \
 
 rel_reset
 web_asset="$(lane_asset_name web)"
-# shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
-$PY - "$REL/$web_asset" "$WORK/unexpected.txt" <<'PY'
+gate_python - "$REL/$web_asset" "$WORK/unexpected.txt" <<'PY'
 import sys
 import zipfile
 

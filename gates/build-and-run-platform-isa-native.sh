@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The X86 and Arm platform-ISA capability contracts, diffed against real .NET
-# from compile-time reachability shards of PlatformIsaProbe. On the matching
+# from a shared PlatformIsaProbe image (isolated shards in full mode). On the matching
 # host every Lowered family answers from run-time CPU detection and executes
 # the instruction results real .NET prints; on the foreign host every row is
 # false and every representative call throws PlatformNotSupportedException.

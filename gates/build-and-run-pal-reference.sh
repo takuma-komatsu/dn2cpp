@@ -278,10 +278,8 @@ fi
 { printf 'raw output\nraw error\n'; cat "$OUT/oracle.stdout"; } > "$sinkout/expected.raw"
 gate_output view "$sinkstderr" "$sinkout/tagged.lf" --policy crlf
 pal_remove_sink_tags() {
-    local python
-    python=$(resolve_python) || return 1
     # The view is already normalized; binary I/O preserves residual payload CR.
-    $python - "$1" "$2" <<'PYTHON'
+    gate_python - "$1" "$2" <<'PYTHON'
 from pathlib import Path
 import re
 import sys

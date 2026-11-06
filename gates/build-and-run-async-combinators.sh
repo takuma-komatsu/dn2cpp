@@ -69,15 +69,17 @@
 # Task sequences and cold scheduling.
 # Task and cancellation aggregate construction leaves virtual inner Messages unread.
 source "$(dirname "$0")/_common.sh"
-task_python=$(resolve_python) || gate_skip "no working Python 3 interpreter for task call fixtures"
+gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for task call fixtures"
 call_app="gates/fixtures/task-call-validation/bin/$CONFIG/$TFM/TaskCallValidation.dll"
 build_gate_proj gates/fixtures/task-call-validation/TaskCallValidation.csproj
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $call_app ${call_app%.dll}.runtimeconfig.json ${call_app%.dll}.deps.json gates/fixtures/task-call-validation/patch-call.py"
+deadline_snapshot="$(dirname "$0")/expected/async-delay-deadlines.txt"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $call_app ${call_app%.dll}.runtimeconfig.json ${call_app%.dll}.deps.json gates/fixtures/task-call-validation/patch-call.py $deadline_snapshot"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|task-call-validation|cli:$(_gate_cli_hash)"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-pending-task-joins"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-cancellation-callback-faults"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-lazy-aggregate-message"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-delay-synchronization"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|shared-binary:native-delay-deadlines"
 
 # The exception text is platform-owned; its record prefix is the boundary.
 async_lifecycle_prefix() {
@@ -91,6 +93,9 @@ async_lifecycle_prefix() {
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
+    # Only argv differs; keep the frozen run inside the aggregate's cache receipt.
+    gate_capture_ok "$out/native-deadlines" run_bounded "./$out/AsyncCombinators$EXE_EXT" native-delay-deadlines
+    gate_output compare "$out/native-deadlines.stdout" "$deadline_snapshot" --policy crlf
     native="$out/native.stdout"
     before="$out/before-delay-synchronization.stdout"
     gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-delay-synchronization
@@ -302,7 +307,7 @@ gate_extra_asserts() {
     mkdir -p "$oracle"
     cp "$call_app" "$oracle/TaskCallValidation.dll"
     cp "${call_app%.dll}.runtimeconfig.json" "${call_app%.dll}.deps.json" "$oracle/"
-    $task_python gates/fixtures/task-call-validation/patch-call.py "$oracle/TaskCallValidation.dll"
+    gate_python gates/fixtures/task-call-validation/patch-call.py "$oracle/TaskCallValidation.dll"
     invoke_cli "$oracle/TaskCallValidation.dll" -r "$_CG_CORELIB" --auto-ref -o "$fixture"
     compile_console "$fixture" TaskCallValidation
     expected="$fixture/oracle.stdout"
@@ -321,11 +326,3 @@ gate_extra_asserts() {
 }
 
 corelib_diff_gate AsyncCombinators
-
-(
-    unset -f gate_extra_asserts
-    deadline_out="$(_corelib_gate_out AsyncCombinators)${DN2CPP_OUT_SUFFIX:-}-native-deadlines"
-    _corelib_gate_out() { printf '%s\n' "$deadline_out"; }
-    DN2CPP_GATE_RUN_ARGS=native-delay-deadlines \
-        corelib_freeze_gate AsyncCombinators "$(dirname "$0")/expected/async-delay-deadlines.txt"
-)

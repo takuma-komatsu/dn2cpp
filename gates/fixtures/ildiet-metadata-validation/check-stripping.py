@@ -11,9 +11,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from ildiet_manifest import contract_digest, manifest
 
 companion, probe, transpiler, directory = (Path(value).resolve() for value in sys.argv[1:5])
-cli = Path(sys.argv[5]).resolve() if len(sys.argv) > 5 else (
+profile_args = sys.argv[5:]
+cli = Path(profile_args.pop(0)).resolve() if profile_args and not profile_args[0].startswith("--") else (
     Path(__file__).resolve().parents[3] / "src" / "Dn2Cpp.Cli" / "bin"
     / transpiler.parent.parent.name / transpiler.parent.name / "dn2cpp.dll")
+if profile_args not in ([], ["--representative"]):
+    raise SystemExit("expected an optional --representative profile")
+modes = ("full",) if profile_args else ("raw", "full")
 directory.mkdir(parents=True, exist_ok=True)
 original = directory / "original"
 
@@ -90,7 +94,7 @@ def emitted_files(output):
     return {path.name: path.read_bytes() for path in output.glob("generated*") if path.is_file()}
 
 
-for mode in ("raw", "full"):
+for mode in modes:
     defaults = None
     for level in ("default", "high", "medium"):
         output = directory / ("emission-" + level + "-" + mode)
@@ -160,7 +164,7 @@ for mode in ("raw", "full"):
 retained_equality = directory / "retained-equality"
 run(probe, "--create-stripping-fixture", retained_equality, "retained-equality")
 check_core(retained_equality, "medium")
-for mode in ("raw", "full"):
+for mode in modes:
     output = directory / ("emission-retained-equality-" + mode)
     arguments = [retained_equality / "MediumApp.dll", "-r", retained_equality / "MediumLib.dll", "-r",
                  retained_equality / "System.Private.CoreLib.dll", "--link-xml", retained_equality / "link.xml",
@@ -187,7 +191,7 @@ for mode in ("raw", "full"):
 
 forwarded = directory / "forwarded-attribute"
 run(probe, "--create-stripping-forwarder-fixture", original, forwarded)
-for mode in ("raw", "full"):
+for mode in modes:
     output = directory / ("emission-forwarded-attribute-" + mode)
     arguments = [forwarded / "MediumApp.dll", "-r", forwarded / "MediumLib.dll", "-r",
                  forwarded / "System.Private.CoreLib.dll", "-r", forwarded / "MediumFacade.dll",
@@ -213,7 +217,7 @@ assert missing.returncode == 2 and "Unhandled exception" not in diagnostic, "unr
 for fact in ("MediumFixture.ForwardedAttribute", "MediumLib", "MediumFixture.Used.Follow",
              "MediumFixture.WideFlags, MediumFacade", "encoded width is unknown", "Medium stripping while retaining"):
     assert fact in diagnostic, "missing attribute failure provenance: " + fact
-print("stripping-levels=high-compatible,medium-static-closure,raw-rewritten,metadata-inert,known-generics,all-assemblies,lazy-initializer,emitted-metadata")
+print("stripping-levels=high-compatible,medium-static-closure,metadata-inert,known-generics,all-assemblies,lazy-initializer,emitted-metadata;modes=" + ",".join(modes))
 
 from intercept_retention import validate_intercept_retention
-validate_intercept_retention(probe, cli, original, directory)
+validate_intercept_retention(probe, cli, original, directory, modes=modes)

@@ -38,7 +38,7 @@ fi
 echo "ZLinq.dll: $zlinq_sha (pinned 1.5.6)"
 
 echo "== 3/7 Transpiling the real package =="
-build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
+prepare_cli
 refs=(-r "$corelib" -r "$zlinq")
 rm -rf "$out"
 # A cap can only turn the run into an abort or back, never perturb a succeeding

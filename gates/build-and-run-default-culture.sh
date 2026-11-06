@@ -21,7 +21,7 @@
 # oracle diff, just one locale's worth. That is why the gate never asserts that
 # the locales DIFFER: it would be asserting a property of the host.
 # The unknown-region ZZ currency is frozen ICU data. Its symbol is checked by
-# corelib_freeze_gate; the other foo-ZZ and zz-ZZ fields use the live CLR oracle.
+# a frozen run of the same binary; the other foo-ZZ and zz-ZZ fields use the live CLR oracle.
 #
 # WHAT IT DOES NOT COVER. Per-culture DATE formatting is a standing carve-out
 # (docs/STATUS.md): dn2cpp's date formatters take no NumberFormatInfo and render
@@ -187,11 +187,8 @@ fi
 
 # Only the frozen ZZ currency differs; every other byte remains oracle-owned.
 default_culture_assert_zz() {
-    local mode="$1" native="$2" oracle="$3" frozen="$4" python
-    python=$(resolve_python) || return 1
-    # resolve_python can return the Windows launcher "py -3".
-    # shellcheck disable=SC2086
-    $python - "$mode" "$native" "$oracle" "$frozen" <<'PYTHON' || return 1
+    local mode="$1" native="$2" oracle="$3" frozen="$4"
+    gate_python - "$mode" "$native" "$oracle" "$frozen" <<'PYTHON' || return 1
 from pathlib import Path
 import re
 import sys
@@ -418,7 +415,7 @@ if [ "$DN2CPP_OS" = windows ]; then
     zz_symbol=XAG
     zz_snapshot="$(dirname "$0")/expected/default-culture-zz-windows.txt"
 fi
-if _corelib_gate_check "$out" "default_culture|$PROJECT|$LOCALES|${ENV_VARIANTS[*]}|${POSIX_FALLBACK_VARIANTS[*]}|culture-fallback foo-US|${FALLBACK_CASES[*]}|culture-variant-order ${VARIANT_LOCALES[*]}|culture-extension-identities ${EXTENSION_LOCALES[*]}|user-number-digits|user-numeric-settings|zz-frozen:$zz_symbol|$platform_default|query-and-initialize|$_CG_CORELIB" \
+if _corelib_gate_check "$out" "default_culture|$PROJECT|$LOCALES|${ENV_VARIANTS[*]}|${POSIX_FALLBACK_VARIANTS[*]}|culture-fallback foo-US|${FALLBACK_CASES[*]}|culture-variant-order ${VARIANT_LOCALES[*]}|culture-extension-identities ${EXTENSION_LOCALES[*]}|user-number-digits|user-numeric-settings|zz-frozen:$zz_symbol|shared-binary:culture-zz-currency|$platform_default|query-and-initialize|$_CG_CORELIB" \
         "$fixture/CMakeLists.txt" "$fixture/locale.c" "$zz_snapshot"; then
     gate_cache_hit_msg
     exit 0
@@ -581,10 +578,8 @@ if [ "$DN2CPP_OS" != windows ]; then
 fi
 
 echo "-- frozen unknown-region currency: foo-ZZ and zz-ZZ"
-(
-    LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 \
-        DN2CPP_OUT_SUFFIX=-zz-frozen DN2CPP_GATE_RUN_ARGS=culture-zz-currency \
-        corelib_freeze_gate "$PROJECT" "$zz_snapshot"
-)
+gate_capture_ok "$out/zz-frozen" run_bounded env LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 \
+    "./$out/$PROJECT$EXE_EXT" culture-zz-currency
+gate_output compare "$out/zz-frozen.stdout" "$zz_snapshot" --policy crlf
 
 gate_cache_commit

@@ -10,6 +10,6 @@ if [ "$DN2CPP_OS" != macos ]; then
 fi
 source "gates/_declang.sh"
 ensure_declang_compiler
-PYTHON="$(resolve_python)" || gate_skip "DeClang validation requires Python"
-"$PYTHON" "gates/declang_helper_checks.py" "$PWD" "$DN2CPP_DECLANG_COMPILER"
-"$PYTHON" "gates/declang_native_checks.py" "$PWD" "$DN2CPP_DECLANG_COMPILER"
+gate_python -c 'pass' >/dev/null || gate_skip "DeClang validation requires Python"
+gate_python "gates/declang_helper_checks.py" "$PWD" "$DN2CPP_DECLANG_COMPILER"
+gate_python "gates/declang_native_checks.py" "$PWD" "$DN2CPP_DECLANG_COMPILER"

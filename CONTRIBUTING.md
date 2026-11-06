@@ -112,6 +112,44 @@ Gate stdout/stderr capture, byte parity and explicit semantic record assertions
 follow [the gate output contract](docs/GATE-OUTPUT.md). Run its lightweight
 helper regressions when changing shared runners or output checks.
 
+Normal gate profiles reuse themed aggregate binaries for output, status, metadata
+and runtime assertions. Argument and culture variants reuse their compiled image.
+The HTTP and Wasm console aggregates run each section in a separate process;
+finalizer-sensitive fixtures retain independent images. Native-asset publication
+reuses each SDK-built image for failure, atomic-switch and generation-pruning checks.
+
+The default stripping level remains High. Basic High/Medium static closure,
+metadata-only retention, deferred initializers and callable intercept regressions
+run in the preservation gate's normal profile. Its full profile adds raw emission
+alongside DLL rewriting.
+
+Detailed isolation, preprocessing and backend matrices are explicit development
+checks. Omitting them does not establish equivalent coverage: independent roots,
+raw/ILDiet pairs, individual emit-order axes and HTTP packaging contracts require
+the relevant full profile. Gate logs and the pre-merge receipt mark these checks
+**skipped (not selected)**. Pre-merge pins these selectors to `0`, including when
+the invoking shell exports a full profile. Run full development checks directly:
+
+```bash
+DN2CPP_ARRAY_FULL=1 CONFIG=Debug bash gates/build-and-run-array-core.sh
+DN2CPP_MANIFEST_RESOURCES_FULL=1 CONFIG=Debug bash gates/build-and-run-manifest-resources.sh
+DN2CPP_PRESERVE_CONTROL_FULL=1 CONFIG=Debug bash gates/build-and-run-preserve-control.sh
+DN2CPP_REFLECT_INVOKE_FULL=1 CONFIG=Debug bash gates/build-and-run-reflect-invoke.sh
+DN2CPP_REFLECT_TYPES_FULL=1 CONFIG=Debug bash gates/build-and-run-reflect-types.sh
+DN2CPP_TRANSPILER_LIMITS_FULL=1 CONFIG=Debug bash gates/build-and-run-transpiler-limits.sh
+DN2CPP_EMIT_ORDER_FULL=1 CONFIG=Debug bash gates/build-and-run-emit-order-stability.sh
+DN2CPP_MARSHAL_FULL=1 CONFIG=Debug bash gates/build-and-run-marshal-pinning.sh
+DN2CPP_HTTP_FULL=1 CONFIG=Debug bash gates/build-and-run-http-get.sh
+DN2CPP_HOTUPDATE_FULL=1 CONFIG=Debug bash gates/build-and-run-hotupdate-subset.sh
+DN2CPP_CUSTOM_ASYNC_TASK_FULL=1 CONFIG=Debug bash gates/build-and-run-custom-async-task.sh
+DN2CPP_EXCEPTION_MESSAGE_FULL=1 CONFIG=Debug bash gates/build-and-run-exception-message-subset.sh
+DN2CPP_MULTIASSEMBLY_FULL=1 CONFIG=Debug bash gates/build-and-run-multiassembly.sh
+DN2CPP_TRIM_REFLECTION_FULL=1 CONFIG=Debug bash gates/build-and-run-trim-reflection.sh
+DN2CPP_OBFUSCATION_FULL=1 CONFIG=Debug bash gates/build-and-run-obfuscation.sh
+DN2CPP_WASM_CONSOLE_FULL=1 CONFIG=Debug bash gates/build-and-run-wasm-console.sh
+DN2CPP_PLATFORM_ISA_FULL=1 CONFIG=Debug bash gates/build-and-run-platform-isa-native.sh
+```
+
 ## What to work on
 
 Choose open work from [GitHub Issues](https://github.com/takuma-komatsu/dn2cpp/issues?q=is%3Aissue%20is%3Aopen).

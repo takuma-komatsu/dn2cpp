@@ -17,7 +17,9 @@ namespace HttpBeyondGet
     // printed, and the echo server masks the port inside the Host header.
     internal static class Program
     {
-        private static int Main(string[] args)
+        private static int Main(string[] args) => Run(args);
+
+        internal static int Run(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;

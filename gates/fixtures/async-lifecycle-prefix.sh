@@ -2,8 +2,9 @@
 # The full raw prefix must end at one exception-message-dependent boundary.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-python="${1:-python3}"
-gate_output() { "$python" gates/gate-output.py "$@"; }
+source gates/_python.sh
+export DN2CPP_PYTHON="${1:-${DN2CPP_PYTHON:-}}"
+gate_output() { gate_python gates/gate-output.py "$@"; }
 eval "$(sed -n '/^async_lifecycle_prefix() {/,/^}/p' gates/build-and-run-async-combinators.sh)"
 fixture=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp_async_prefix.XXXXXX")
 trap 'rm -rf "$fixture"' EXIT

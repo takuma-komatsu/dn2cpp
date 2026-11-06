@@ -302,6 +302,17 @@
 # Every other line matches real .NET (verified against `dotnet run` at capture
 # time).
 source "$(dirname "$0")/_common.sh"
+case "${DN2CPP_REFLECT_TYPES_FULL:-0}" in
+    0|1) DN2CPP_REFLECT_TYPES_FULL=${DN2CPP_REFLECT_TYPES_FULL:-0} ;;
+    *) echo 'DN2CPP_REFLECT_TYPES_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflect-types-full:$DN2CPP_REFLECT_TYPES_FULL"
+if [ "$DN2CPP_REFLECT_TYPES_FULL" = 1 ]; then
+    echo 'reflect-types coverage: full fixture and preprocessing matrix'
+else
+    echo 'reflect-types coverage: representative aggregate checks'
+    echo 'reflect-types extended checks: skipped (not selected); not counted as passed'
+fi
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectTypes/AttributeTypePropertySubset.cs samples/dotnet/ReflectTypes/DataOnlyAttributeRowsOnly.csproj samples/dotnet/ReflectTypes/DataOnlyAttributeRowsOnlyProgram.cs samples/dotnet/ReflectTypes/OrdinaryReflectionTypeLeaves.csproj samples/dotnet/ReflectTypes/OrdinaryReflectionTypeLeavesProgram.cs samples/dotnet/ReflectTypes/PropertyAccessorRowsSubset.cs samples/dotnet/ReflectTypes/ReflectAssemblyErrorSubset.cs samples/dotnet/ReflectTypes/ReflectAttrBoxedSubset.cs samples/dotnet/ReflectTypes/ReflectRuntimeTypeParitySubset.cs samples/dotnet/ReflectTypes/ReflectTypes.csproj samples/dotnet/ReflectTypes/UnreadAttributeRowsOnly.csproj samples/dotnet/ReflectTypes/UnreadAttributeRowsOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-nested-generic-names"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/NestedGenericTypeNameSubset.cs samples/dotnet/ReflectTypes/GenericDefinitionSymbolNeighbors.cs"
@@ -393,6 +404,7 @@ DN2CPP_GATE_RUN_ARGS=string-clone-copies \
     corelib_freeze_gate ReflectTypes "$EXPFILE" "${BCL[@]}" --no-ildiet "${ATTRIBUTE_ENUMERATION_KEEP[@]}"
 unset -f gate_extra_asserts
 
+if [ "$DN2CPP_REFLECT_TYPES_FULL" = 1 ]; then
 gate_extra_asserts() {
     local native
     native="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-native-5.stdout"
@@ -436,6 +448,8 @@ corelib_diff_gate TypeGetTypeIgnoreCaseForwarded \
     -r "samples/dotnet/TypeGetTypeIgnoreCaseForwarder/bin/$CONFIG/$TFM/TypeGetTypeIgnoreCaseForwarder.dll" \
     --no-ildiet
 unset -f gate_extra_asserts
+
+fi
 
 # --trim-reflection arm. The flag ships ON for the Godot Web export, and its whole promise
 # is that it touches only the reflection metadata of types the program cannot reflect over —
@@ -519,12 +533,8 @@ echo "OK — both mouths of CppEmitter.ArrayTypeInfoDeclared answered, none degr
 # links, and only a program that enumerates that array's interfaces disagrees. Read the
 # artifact instead — an interfaces field of `nullptr, 0` on a ti_arr_ IS the residue.
 echo "== every ti_arr_ carries interface rows, whenever its element was noted =="
-# resolve_python (_common.sh) picks an interpreter by RUNNING one: a bare `python3` on
-# Windows is the Store alias stub, which resolves and then fails. No gate_skip — these
-# two scans are source reads, so an absent interpreter is a broken box, not a missing
-# prerequisite, and the failed assignment must take the gate down.
-py="$(resolve_python)"
-arr_itf_missing=$($py - <<'PY'
+gate_python -c 'pass' >/dev/null
+arr_itf_missing=$(gate_python - <<'PY'
 import csv, re, glob
 # Resolve initializer positions from the ABI declaration so metadata compaction
 # cannot silently make this scan read a different pointer or count.
@@ -596,7 +606,7 @@ echo "OK — no array type-info left without interface rows."
 #
 # This is a source read, not a build: it costs the gate nothing and cannot skip.
 echo "== runtime type-info handles: every one is rowed or declared not-rowable =="
-ti_missing=$($py - <<'PY'
+ti_missing=$(gate_python - <<'PY'
 import re, glob, sys
 # Match definitions independently of their initializer: aggregate braces,
 # dn2cpp_ti_with_* wrappers and lambdas all define runtime-owned handles.
@@ -920,6 +930,10 @@ gate_extra_asserts() {
 ORDINARY_TYPE_LEAVES_KEEP=(--link-xml samples/dotnet/ReflectTypes/keep-ordinary-type-leaves.xml)
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
     System.Collections System.ComponentModel.Primitives --no-ildiet "${ORDINARY_TYPE_LEAVES_KEEP[@]}"
+if [ "$DN2CPP_REFLECT_TYPES_FULL" != 1 ]; then
+    echo 'OK'
+    exit 0
+fi
 DN2CPP_OUT_SUFFIX=-diet DN2CPP_STRICT_COMPLETION=1 \
     ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
     System.Collections System.ComponentModel.Primitives "${ORDINARY_TYPE_LEAVES_KEEP[@]}"
@@ -931,7 +945,7 @@ DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
 # Type argument. Interning may share that row with its generic definition.
 gate_extra_asserts() {
     local out="$1" native
-    $py gates/fixtures/unread-attribute-rows/check-chain.py "$out" || return $?
+    gate_python gates/fixtures/unread-attribute-rows/check-chain.py "$out" || return $?
     native="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-native-20.stdout"
     gate_capture_ok "${native%.stdout}" run_bounded "$out/UnreadAttributeRowsOnly$EXE_EXT" || return $?
     gate_output witness "$native" 'chain holder: ChainHolder' --count any --policy crlf \

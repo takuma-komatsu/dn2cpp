@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Default coverage selects representative depth/heap refusals, lazy signatures,
+# cuts and reflection-depth CLR parity. DN2CPP_TRANSPILER_LIMITS_FULL=1 selects
+# the complete diagnostic and isolated native matrix described below.
+#
 # Transpiler resource bounds: the transpiler must not consume unbounded memory on
 # a hostile or oversized input. It has to fail — fast, loudly, and with something
 # the caller can act on — rather than take the machine into swap.
@@ -108,6 +112,95 @@
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_ildiet.sh"
 
+case "${DN2CPP_TRANSPILER_LIMITS_FULL:-0}" in
+    0|1) DN2CPP_TRANSPILER_LIMITS_FULL=${DN2CPP_TRANSPILER_LIMITS_FULL:-0} ;;
+    *) echo 'DN2CPP_TRANSPILER_LIMITS_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|transpiler-limits-full:$DN2CPP_TRANSPILER_LIMITS_FULL"
+
+transpiler_limits_representative_gate() (
+    local root corelib sig_app rec_app big_app rc sym
+    mkdir -p artifacts
+    root=$(mktemp -d "artifacts/transpiler-limits-representative-${CONFIG}${DN2CPP_OUT_SUFFIX:-}.XXXXXXXX")
+    corelib=$(locate_corelib)
+    build_proj samples/dotnet/GenericRecursionBad/GenericRecursionBad.csproj
+    build_proj samples/dotnet/StringCore/StringCore.csproj
+    rec_app="samples/dotnet/GenericRecursionBad/bin/$CONFIG/$TFM/GenericRecursionBad.dll"
+    big_app="samples/dotnet/StringCore/bin/$CONFIG/$TFM/StringCore.dll"
+
+    echo '== Recursive call depth must fail with its member and remedy =='
+    rc=0
+    (export DN2CPP_MAX_GENERIC_DEPTH=32
+     invoke_cli "$rec_app" -r "$corelib" -o "$root/recursive") \
+        > "$root/recursive.stdout" 2> "$root/recursive.stderr" || rc=$?
+    printf '%s\n' "$rc" > "$root/recursive.status"
+    gate_output status "$rc" 2
+    for sym in 'past the 32-level limit' Descend DN2CPP_MAX_GENERIC_DEPTH; do
+        grep -q "$sym" "$root/recursive.stderr" \
+            || { echo "FAIL: recursive bound did not name $sym" >&2; cat "$root/recursive.stderr" >&2; return 1; }
+    done
+    if grep -q 'ILDiet depth summary' "$root/recursive.stderr"; then
+        echo 'FAIL: the companion consumed the transpiler recursion bound' >&2
+        return 1
+    fi
+    [ -f "$(ildiet_generation "$root/recursive/ildiet")/GenericRecursionBad.dll" ] \
+        || { echo 'FAIL: the definition graph did not finish before the transpiler bound' >&2; return 1; }
+
+    echo '== Heap budget must escape measure gap handling and name its phase =='
+    rc=0
+    invoke_cli "$big_app" -r "$corelib" --auto-ref --max-heap-mb 16 --measure \
+        -o "$root/heap" > "$root/heap.stdout" 2> "$root/heap.stderr" || rc=$?
+    printf '%s\n' "$rc" > "$root/heap.status"
+    gate_output status "$rc" 2
+    grep -q 'exceeded its 16 MB heap budget during' "$root/heap.stderr" \
+        || { echo 'FAIL: heap overrun did not name the budget and phase' >&2; cat "$root/heap.stderr" >&2; return 1; }
+
+    echo '== Uncalled recursive signatures remain shells; live CLR parity =='
+    gate_extra_asserts() {
+        local out="$1" boxes
+        boxes=$(grep -o 't_GenericSignatureRecursionBad_Box_[A-Za-z0-9_]*' "$out/generated.h" | sort -u | wc -l | tr -d ' ')
+        [ "$boxes" -eq 2 ] \
+            || { echo "FAIL: expected exactly 2 Box specializations, got $boxes" >&2; return 1; }
+        if grep -q '^// GenericSignatureRecursionBad\.Box.*::Deeper[[:space:]]*$' "$out"/generated*; then
+            echo 'FAIL: an unused signature rooted Deeper executable code' >&2
+            return 1
+        fi
+        gate_assert_text "$out/native.stdout" $'1\ntracker-helper\ntracked'
+    }
+    corelib_diff_gate GenericSignatureRecursionBad
+    sig_app="$_CG_APP"
+    unset -f gate_extra_asserts
+
+    echo '== Cut removes its subtree and returns the default at the call site =='
+    invoke_cli "$sig_app" -r "$corelib" --cut 'GenericSignatureRecursionBad.Tracker::Tracked' -o "$root/cut"
+    for sym in Tracked Helper; do
+        if grep -q "^// GenericSignatureRecursionBad.Tracker::${sym}$" "$root/cut"/generated*; then
+            echo "FAIL: --cut retained Tracker.$sym" >&2
+            return 1
+        fi
+    done
+    compile_console "$root/cut" GenericSignatureRecursionBad
+    gate_capture_ok "$root/cut/native" run_bounded "./$root/cut/GenericSignatureRecursionBad$EXE_EXT"
+    gate_assert_text "$root/cut/native.stdout" $'1\ncut'
+
+    echo '== Reflection depth aggregate retains its second field context; live CLR parity =='
+    build_gate_proj gates/fixtures/transpiler-limits/ReflectionDepthSummary/ReflectionDepthSummary.csproj
+    gate_extra_asserts() {
+        gate_output witness "$1/native.stdout" second --count any --policy crlf
+    }
+    DN2CPP_SAMPLE_PROJECT_DIR=gates/fixtures/transpiler-limits/ReflectionDepthSummary \
+        DN2CPP_SKIP_BUILD=1 corelib_diff_gate ReflectionDepthSummary
+    echo 'OK (representative transpiler bounds, lazy signatures, cuts and reflection depth)'
+)
+
+if [ "$DN2CPP_TRANSPILER_LIMITS_FULL" != 1 ]; then
+    echo 'transpiler limits coverage: representative bounds and CLR parity'
+    echo 'transpiler limits extended checks: skipped (not selected); not counted as passed'
+    transpiler_limits_representative_gate
+    exit $?
+fi
+echo 'transpiler limits coverage: full diagnostic and isolated native matrix'
+
 out="artifacts/transpiler-limits"
 sig_out="artifacts/transpiler-limits-sig"
 sig_diet_out="artifacts/transpiler-limits-sig-ildiet"
@@ -169,7 +262,7 @@ numerics_dll="$(dirname "$corelib")/System.Runtime.Numerics.dll"
 # gate_cache_check answers that with a warning and no key, which would
 # leave this gate uncacheable since it clears the dirs on every run.
 rm -rf "$out" "$sig_out" "$sig_diet_out" "$cut_out" "$mint_out"; mkdir -p "$out"
-if gate_cache_check "$out" "transpiler-limits|recursive-body:ildiet+no-ildiet|canonical-cap:no-ildiet:1,2|canonical-refs:none|wrapper-exceptions|mint-cap:no-ildiet|definition-graph-env:default,depth8,depth64,count128,count2m,depth1,count1,deep-default+64,budget-copy,uncalled-virtual,uncalled-interface,unallocated-receiver,construction-accessor,generic-accessor,generic-ctor,executed-generic-argument,event,late-construction-accessor:depth3-success,direct-accessor,direct-event-add,invoke-uncalled-virtual,generic-factory:direct,class,method,identity|unused-copied:low2,default32:ildiet+no-ildiet|ordinary-cut:ildiet+no-ildiet|execution-provenance:base-call,base-ctor,object-slot,primitive-dead-branch,abstract-app,abstract-library,nominal-dead-branch,methodimpl,constrained-primitive,const-getter,unused-default-interface,inherited-interface-map,protected-interface-map,class-newslot-map,isa-getter:Sve+Sve2+Arm64:optimize=true|attributes:unread-ctor,unread-getter,read,generic-read:depth3+depth4-success:field-boxes=ildiet,no-ildiet,no-shared-generics:prefix=before-reflected-field-boxes|late-array-equality:no-ildiet:emit+measure|sig:no-ildiet+ildiet|collision:no-ildiet,corelib+intrinsic|shared-summary-terms:no-ildiet:dump|repeated-alternatives:no-ildiet|cli:$(_gate_cli_hash)|$corelib" \
+if gate_cache_check "$out" "transpiler-limits|full:$DN2CPP_TRANSPILER_LIMITS_FULL|recursive-body:ildiet+no-ildiet|canonical-cap:no-ildiet:1,2|canonical-refs:none|wrapper-exceptions|mint-cap:no-ildiet|definition-graph-env:default,depth8,depth64,count128,count2m,depth1,count1,deep-default+64,budget-copy,uncalled-virtual,uncalled-interface,unallocated-receiver,construction-accessor,generic-accessor,generic-ctor,executed-generic-argument,event,late-construction-accessor:depth3-success,direct-accessor,direct-event-add,invoke-uncalled-virtual,generic-factory:direct,class,method,identity|unused-copied:low2,default32:ildiet+no-ildiet|ordinary-cut:ildiet+no-ildiet|execution-provenance:base-call,base-ctor,object-slot,primitive-dead-branch,abstract-app,abstract-library,nominal-dead-branch,methodimpl,constrained-primitive,const-getter,unused-default-interface,inherited-interface-map,protected-interface-map,class-newslot-map,isa-getter:Sve+Sve2+Arm64:optimize=true|attributes:unread-ctor,unread-getter,read,generic-read:depth3+depth4-success:field-boxes=ildiet,no-ildiet,no-shared-generics:prefix=before-reflected-field-boxes|late-array-equality:no-ildiet:emit+measure|sig:no-ildiet+ildiet|collision:no-ildiet,corelib+intrinsic|shared-summary-terms:no-ildiet:dump|repeated-alternatives:no-ildiet|cli:$(_gate_cli_hash)|$corelib" \
         "$rec_app" "$sig_app" "$fld_app" "$afld_app" "$big_app" "$arr_app" "$mint_app" "$tma_app" \
         gates/fixtures/transpiler-limits/CanonicalLink/Program.cs \
         gates/fixtures/transpiler-limits/CanonicalLink/CanonicalLinkBound.csproj \
