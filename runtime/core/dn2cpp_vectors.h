@@ -163,6 +163,26 @@ static inline Dn2CppString* dn2cpp_vec_box_tostring(Dn2CppObject* boxed)
     return dn2cpp_vec_tostring<T, N>(value, nullptr, nullptr, NumericsVector);
 }
 
+// Typed value equality treats paired NaNs as equal; comparison masks do not.
+template <class T, int N>
+static inline int32_t dn2cpp_vec_value_equals(const Dn2CppVec<N>& a, const Dn2CppVec<N>& b)
+{
+    for (int i = 0; i < N / (int)sizeof(T); ++i)
+    {
+        const T x = dn2cpp_vec_get<T>(a, i), y = dn2cpp_vec_get<T>(b, i);
+        if constexpr (std::is_same<T, float>::value)
+        {
+            if (!dn2cpp_single_equals(x, y)) return 0;
+        }
+        else if constexpr (std::is_same<T, double>::value)
+        {
+            if (!dn2cpp_double_equals(x, y)) return 0;
+        }
+        else if (x != y) return 0;
+    }
+    return 1;
+}
+
 // ---------------------------------------------------------------------------
 // Construction / constants
 // ---------------------------------------------------------------------------
@@ -788,18 +808,15 @@ static inline Dn2CppVec<N> dn2cpp_vec_hypot(const Dn2CppVec<N>& a, const Dn2CppV
 
 template <class T, int N>
 static inline Dn2CppVec<N> dn2cpp_vec_degrees_to_radians(const Dn2CppVec<N>& v) {
-    if constexpr (std::is_floating_point<T>::value) {
-        Dn2CppVec<N> r;
-        const int lanes = N / (int)sizeof(T);
-        for (int i = 0; i < lanes; ++i) {
-            T x = dn2cpp_vec_get<T>(v, i);
-            // Match the BCL's single multiply by the precomputed pi/180 factor.
-            dn2cpp_vec_set<T>(r, i, (T)(x * (T)(3.141592653589793238462643383279502884 / 180.0)));
-        }
-        return r;
-    } else {
-        return v;
+    static_assert(std::is_floating_point<T>::value, "DegreesToRadians requires floating-point lanes");
+    Dn2CppVec<N> r;
+    const T pi = (T)3.141592653589793238462643383279502884;
+    for (int i = 0; i < N / (int)sizeof(T); ++i) {
+        // CoreLib rounds the product before division, including intermediate overflow.
+        volatile T product = dn2cpp_vec_get<T>(v, i) * pi;
+        dn2cpp_vec_set<T>(r, i, product / (T)180);
     }
+    return r;
 }
 
 // ---------------------------------------------------------------------------
