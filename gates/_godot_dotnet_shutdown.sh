@@ -122,3 +122,34 @@ PY
         done
     done
 }
+
+godot_dotnet_shutdown_probe() {
+    local out="$1/shutdown-probe" export_file mode log expected_mode
+    mkdir -p "$out"
+    export_file="$(ensure_cmake_runtime)" || return 1
+    local probe_args=()
+    [ -n "${CMAKE_CXX_COMPILER:-}" ] && probe_args+=(-DCMAKE_CXX_COMPILER="$CMAKE_CXX_COMPILER")
+    _cmake_configure always "" "$out" "$out/dn2cpp-configure.log" \
+        "configuring the shutdown collection probe" \
+        "$CMAKE" -S samples/native/godotshutdown -B "$out" -G Ninja \
+        -DDN2CPP_RUNTIME_EXPORT="$export_file" ${probe_args[@]+"${probe_args[@]}"}
+    _cmake_step "$out/dn2cpp-build.log" "building the shutdown collection probe" \
+        "$CMAKE" --build "$out"
+    for mode in 0 1; do
+        log="$out/incremental-$mode"
+        DN2CPP_GC_INCREMENTAL="$mode" DN2CPP_GC_STATS=1 gate_capture_ok "$log" \
+            run_bounded "./$out/godotshutdown$EXE_EXT"
+        expected_mode=stop-the-world
+        [ "$mode" = 0 ] || expected_mode=incremental
+        if ! grep -qF "[dn2cpp] GC mode: $expected_mode" "$log.stderr"; then
+            echo "FAIL: shutdown collection probe did not use $expected_mode mode" >&2
+            cat "$log.stderr" >&2
+            return 1
+        fi
+        gate_assert_text "$log.stdout" "shutdown control: collection=observed target=finalized
+shutdown pause: pending=drained tracker=disposed collection=restored
+shutdown pause: nested=preserved collection=restored
+shutdown pause: exception=propagated collection=restored"
+        echo "   native shutdown collection probe: incremental=$mode verified"
+    done
+}

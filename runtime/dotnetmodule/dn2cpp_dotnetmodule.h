@@ -33,6 +33,7 @@ void dn2cpp_dm_frame_callback();
 // CSharpLanguage::finalize calls this on the main thread after scene teardown,
 // before releasing script bindings and rendering servers. Drain pending managed
 // finalizers before the tracker disposes StringName and other interop helpers.
+// Collections stay paused through the tracker so its weak targets remain usable.
 void dn2cpp_dm_set_managed_shutdown_callback(void (*callback)());
 void dn2cpp_dm_shutdown_callback();
 
