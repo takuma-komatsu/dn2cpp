@@ -5,10 +5,8 @@ using System.Runtime.Intrinsics;
 
 namespace VectorProbe;
 
-// The portable-SIMD vector lowering over int / byte / float, diffed against real
-// .NET. Only ops whose scalar emulation is bit-exact are printed:
-// IsHardwareAccelerated is deliberately not observed (it folds to false here) and
-// float Sum is avoided, being rounding-order dependent.
+// Portable vector results diffed against real .NET. Hardware-dependent
+// capabilities and rounding-order-dependent floating reductions are not printed.
 internal static partial class Program
 {
     private static void Main(string[] args)
@@ -16,6 +14,20 @@ internal static partial class Program
         // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+
+        if (args.Length != 0 && args[0] == "floating-point")
+        {
+            FloatingPoint();
+            return;
+        }
+        if (args.Length != 0 && args[0] == "fma-support")
+        {
+            Console.WriteLine(System.Runtime.Intrinsics.X86.Avx2.IsSupported
+                && System.Runtime.Intrinsics.X86.Fma.IsSupported
+                && System.Runtime.Intrinsics.X86.Bmi2.IsSupported ? "avx2"
+                : System.Runtime.Intrinsics.Arm.AdvSimd.Arm64.IsSupported ? "arm64" : "none");
+            return;
+        }
 
         Vector128<int> a = Vector128.Create(1, 2, 3, 4);   // element list
         Vector128<int> b = Vector128.Create(10);           // broadcast
@@ -208,6 +220,9 @@ internal static partial class Program
         if (args.Length != 0 && args[0] == "before-value-semantics")
             return;
         VectorExistingSemantics();
+        if (args.Length != 0 && args[0] == "before-floating-point")
+            return;
+        FloatingPoint();
     }
 
     private static void VectorCopyTargets()
