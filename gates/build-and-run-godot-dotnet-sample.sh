@@ -2,6 +2,7 @@
 # Script registration constructs framework attributes named by later body scans.
 # Code-created nested nodes retain bridge metadata methods on allocation.
 # ExitTree collections drain before shutdown disposes Godot's tracked helpers.
+# Tracker allocations cannot collect its remaining short-weak targets.
 # GDScript calls script statics and user-base statics through reflected delegates.
 # Godot .NET-module (mono module) scripted-node E2E gate: a real engine binary
 # built from the pinned godotengine/godot clone loads the dn2cpp-produced
@@ -131,11 +132,12 @@ fi
 # drifted clone still fails on a hit. The link is deliberately below the check:
 # a hit exits here and never names $DYLIB, so building it first is pure waste.
 if gate_cache_check "$OUT" \
-    "godot-dotnet-sample|ildiet|godot-class-root=Godot.Sprite3D,Godot.LightmapperRD|project-root=$GODOT_DOTNET_SAMPLE_DIR|pin=$(file_text "$ROOT/pin.txt")|editor=$(file_sig_deref "$GODOT_DOTNET_EDITOR")|template=$(file_sig_deref "$GODOT_DOTNET_TEMPLATE")" \
+    "godot-dotnet-sample|ildiet|godot-class-root=Godot.Sprite3D,Godot.LightmapperRD|project-root=$GODOT_DOTNET_SAMPLE_DIR|pin=$(file_text "$ROOT/pin.txt")|editor=$(file_sig_deref "$GODOT_DOTNET_EDITOR")|template=$(file_sig_deref "$GODOT_DOTNET_TEMPLATE")|shutdown-probe:DN2CPP_GC_INCREMENTAL=0+1,DN2CPP_GC_STATS=1" \
     "$GODOT_DOTNET_SAMPLE_DIR/.godot/mono/temp/bin/ExportRelease/DotnetSample.dll" \
     "$GODOT_DOTNET_GODOTSHARP" \
     "$GODOT_DOTNET_SAMPLE_DIR" \
     samples/godot-dotnet/GameExtensionProbe \
+    samples/native/godotshutdown \
     gates/stage-gdextension-libs.sh; then
     { gate_cache_hit_msg; exit 0; }
 fi
@@ -608,6 +610,9 @@ fi
 grep '^DN2CPP_DM_STATIC ' "$LOG" >"$RUN/static.markers"
 grep '^DN2CPP_DM_STATIC ' "$STATIC_CLR_LOG" >"$STATIC_CLR/static.markers"
 diff -u "$STATIC_CLR/static.markers" "$RUN/static.markers"
+
+echo "== Shutdown collections (pending finalizers and tracker) =="
+godot_dotnet_shutdown_probe "$OUT"
 
 gate_cache_commit
 echo "OK"

@@ -2253,6 +2253,20 @@ DN2CPP_NOINLINE void dn2cpp_keep_alive(const void* obj)
 #endif
 }
 
+Dn2CppGcCollectionPause::Dn2CppGcCollectionPause() noexcept
+{
+#ifdef DN2CPP_USE_BOEHM_GC
+    GC_disable();
+#endif
+}
+
+Dn2CppGcCollectionPause::~Dn2CppGcCollectionPause() noexcept
+{
+#ifdef DN2CPP_USE_BOEHM_GC
+    GC_enable();
+#endif
+}
+
 void dn2cpp_gc_collect()
 {
 #ifdef DN2CPP_USE_BOEHM_GC

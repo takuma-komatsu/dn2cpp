@@ -1,0 +1,23 @@
+cmake_minimum_required(VERSION 3.20)
+project(dn2cppgodotshutdown CXX)
+
+if(MSVC)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
+if(NOT DN2CPP_RUNTIME_EXPORT)
+    message(FATAL_ERROR "DN2CPP_RUNTIME_EXPORT must name the runtime's dn2cpp-targets.cmake")
+endif()
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+include("${DN2CPP_RUNTIME_EXPORT}")
+
+add_executable(godotshutdown shutdown.cpp)
+set_target_properties(godotshutdown PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+target_link_libraries(godotshutdown PRIVATE dn2cpp::dn2cpp_dotnetmodule)
+if(MSVC)
+    target_compile_options(godotshutdown PRIVATE /O2 /utf-8)
+else()
+    target_compile_options(godotshutdown PRIVATE -O2 -Wall)
+endif()

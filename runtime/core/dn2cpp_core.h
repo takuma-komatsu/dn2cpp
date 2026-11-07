@@ -3399,6 +3399,17 @@ void dn2cpp_register_finalizer(Dn2CppObject* obj);
 // ReRegisterForFinalize exists to undo (a resurrected object opting back in).
 void dn2cpp_gc_suppress_finalize(Dn2CppObject* obj);
 void dn2cpp_gc_reregister_for_finalize(Dn2CppObject* obj);
+// Pause collections, including completion of an incremental cycle, while still
+// permitting pending finalizers to drain. Nested scopes preserve earlier pauses;
+// leaving the scope restores collection without forcing one. Inert without GC.
+struct Dn2CppGcCollectionPause
+{
+    Dn2CppGcCollectionPause() noexcept;
+    ~Dn2CppGcCollectionPause() noexcept;
+    Dn2CppGcCollectionPause(const Dn2CppGcCollectionPause&) = delete;
+    Dn2CppGcCollectionPause& operator=(const Dn2CppGcCollectionPause&) = delete;
+};
+
 // System.GC.Collect(): forces a full collection and drains any finalizer
 // callbacks Boehm becomes ready to invoke as a result (queues them for the
 // finalizer thread; does not itself block on managed Finalize() bodies —

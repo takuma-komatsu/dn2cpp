@@ -72,8 +72,9 @@ void dn2cpp_dm_set_managed_shutdown_callback(void (*callback)())
 void dn2cpp_dm_shutdown_callback()
 {
     dn2cpp_dotnetmodule_thread_guard();
-    // Organic collections may still have Boehm callbacks awaiting invocation;
-    // Wait transfers them to the manual queue before draining its snapshot.
+    // Finalizers and tracker initialization allocate. Keep their collections
+    // from clearing weak tracker targets after the last finalizer drain.
+    Dn2CppGcCollectionPause collectionPause;
     dn2cpp_gc_wait_for_pending_finalizers();
     if (g_managed_shutdown_callback != nullptr)
         g_managed_shutdown_callback();
