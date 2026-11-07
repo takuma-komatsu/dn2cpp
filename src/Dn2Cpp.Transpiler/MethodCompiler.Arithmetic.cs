@@ -199,9 +199,9 @@ internal sealed partial class MethodCompiler
     /// pointer to <c>uint32_t</c> and lose the high half. The reference branch's
     /// <c>cgt.un</c>→<c>!=</c> rewrite is for reference "!= null" only and is NOT
     /// applied to pointers;</item>
-    /// <item>numerics — unsigned-integer compare (<c>.un</c> on non-float),
-    /// otherwise a plain ordered compare (for floats <c>.un</c> means "unordered",
-    /// not unsigned, so casting to an unsigned int would be wrong).</item>
+    /// <item>numeric ordering — <c>.un</c> compares integers as unsigned and
+    /// floats as unordered-or; otherwise the comparison is ordered. Equality
+    /// keeps the ordinary IEEE NaN behavior.</item>
     /// </list></summary>
     private static string CompareCond(StackEntry a, StackEntry b, string op, bool unsigned)
     {
@@ -221,6 +221,20 @@ internal sealed partial class MethodCompiler
         {
             string ut = (a.Kind == StackKind.I8 || b.Kind == StackKind.I8) ? "uint64_t" : "uint32_t";
             return $"(({ut}){a.Expr}) {op} (({ut}){b.Expr})";
+        }
+        if (unsigned && (a.Kind == StackKind.R8 || b.Kind == StackKind.R8)
+            && op is "<" or ">" or "<=" or ">=")
+        {
+            // Floating-point .un includes unordered pairs. Negating the inverse
+            // ordered relation makes NaN true without converting either operand.
+            string inverseOp = op switch
+            {
+                "<" => ">=",
+                ">" => "<=",
+                "<=" => ">",
+                _ => "<"
+            };
+            return $"!({a.Expr} {inverseOp} {b.Expr})";
         }
         // A SIGNED ordered IL compare (clt/cgt / blt/bgt/ble/bge, no `.un`) over an
         // operand whose C++ storage type is unsigned. Signedness lives only in the
@@ -242,10 +256,7 @@ internal sealed partial class MethodCompiler
             string st = (a.Kind == StackKind.I8 || b.Kind == StackKind.I8) ? "int64_t" : "int32_t";
             return $"(({st}){a.Expr}) {op} (({st}){b.Expr})";
         }
-        // Ordered comparison. For floating-point operands the `.un` suffix means
-        // "unordered" (NaN-aware), NOT unsigned integer — casting a float to
-        // uint32_t would truncate it (every value in [0,1) -> 0). A plain C++
-        // float comparison matches the IL for all non-NaN inputs.
+        // Equality and ordered comparisons retain ordinary C++ semantics.
         return $"{a.Expr} {op} {b.Expr}";
     }
 

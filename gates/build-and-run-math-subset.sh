@@ -46,7 +46,9 @@
 # variants keep tolerance/special-case anchors — and constrained-generic
 # T.Abs/T.Sin/... dispatch with T = Half through the static-abstract
 # interfaces), plus unchecked integer/FNV wrapping through narrowed char and byte
-# inputs, native-width multiplication, checked overflow and floating-point isolation.
+# inputs, native-width multiplication, checked overflow and floating-point isolation,
+# plus ordered/unordered floating-point comparisons and branches with NaN operands,
+# finite fractions, infinities and signed zeros, and integral/reference controls.
 # One section file per area in samples/dotnet/MathSubset, driven in order by
 # Program.cs.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly
@@ -118,7 +120,31 @@ gate_extra_asserts() {
         gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: integer hash wrapping coverage missing: $line" >&2; exit 1; }
     done
-
+    gate_capture_ok "$out/assert-before-floating-point-comparisons" run_bounded dotnet "$_CG_APP" before-floating-point-comparisons
+    before="$out/assert-before-floating-point-comparisons.stdout"
+    prefix="$out/assert-floating-point-comparisons-prefix.stdout"
+    gate_output select "$native" "$prefix" --before '== floating-point comparisons ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    for line in '== floating-point comparisons ==' \
+        'double nan-left compare=000001 branch=000001 negated=1111' \
+        'double nan-right compare=000001 branch=000001 negated=1111' \
+        'double nan-both compare=000001 branch=000001 negated=1111' \
+        'single nan-left compare=000001 branch=000001 negated=1111' \
+        'single nan-right compare=000001 branch=000001 negated=1111' \
+        'single nan-both compare=000001 branch=000001 negated=1111' \
+        'double fraction-less compare=110001 branch=110001 negated=0011' \
+        'single fraction-greater compare=001101 branch=001101 negated=1100' \
+        'double infinities-equal compare=010110 branch=010110 negated=1010' \
+        'single negative-zero-left compare=010110 branch=010110 negated=1010' \
+        'comparison i4=110001' 'comparison u4=001101' \
+        'comparison i8=110001' 'comparison u8=001101' \
+        'comparison native=110001' 'comparison unative=001101' \
+        'comparison same-reference=1011' 'comparison distinct-references=0111' \
+        'comparison null-left=0101' 'comparison null-right=0110' \
+        'comparison null-both=1000' 'floating-point comparisons end'; do
+        gate_output byte-witness "$native" "$line" --policy crlf \
+            || { echo "FAIL: floating-point comparison coverage missing: $line" >&2; exit 1; }
+    done
 }
 
 corelib_diff_gate MathSubset

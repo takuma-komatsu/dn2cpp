@@ -46,6 +46,9 @@ namespace MathSubset
             if (args.Length > 0 && args[0] == "before-integer-hash-wrapping")
                 return;
             IntegerHashWrapping.Program.__GateEntry();
+            if (args.Length > 0 && args[0] == "before-floating-point-comparisons")
+                return;
+            FloatingPointComparisons.Program.__GateEntry();
         }
     }
 }
