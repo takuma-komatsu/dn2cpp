@@ -11,16 +11,20 @@
 # integer SIMD is bit-exact regardless of vectorization, so the output is diffed
 # EXACT vs real .NET (corelib_diff_gate) — the same oracle as the default (Highway)
 # vector-probe gate.
+# FloatingPoint also compares NaN classification and exact float/double bits
+# for Min/Max/Clamp, division, and fused multiply-add across vector widths.
 #
 # The SCALAR axis uses separate runtime/app build dirs and a -scalar output dir
 # (gates/_common.sh), so this runs alongside the default gate without clobbering it.
 source "$(dirname "$0")/_common.sh"
+source "$(dirname "$0")/_vector-floating-point.sh"
 
 export SCALAR=1
 # dn2cpp fixes Vector<T> at 128 bits. Keep the hardware-dependent real-.NET
 # oracle at that width so exact output remains host-independent.
 export DN2CPP_ORACLE_DOTNET_ENABLE_AVX=0
-export DN2CPP_GATE_EXTRA_CONTEXT="dotnet-vector-width:128"
+export DN2CPP_GATE_EXTRA_CONTEXT="dotnet-vector-width:128|floating-point-prefix-and-witnesses"
+export DN2CPP_GATE_EXTRA_INPUTS="gates/_vector-floating-point.sh"
 
 source "$(dirname "$0")/_vector-regression-checks.sh"
 

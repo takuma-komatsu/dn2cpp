@@ -841,8 +841,21 @@ HWY_API Vec128<T, N> operator*(Vec128<T, N> a, Vec128<T, N> b) {
 
 template <typename T, size_t N, HWY_IF_FLOAT(T)>
 HWY_API Vec128<T, N> operator/(Vec128<T, N> a, Vec128<T, N> b) {
+  const T inf = PositiveInfOrHighestValue<T>();
   for (size_t i = 0; i < N; ++i) {
-    a.raw[i] = (b.raw[i] == T{0}) ? 0 : a.raw[i] / b.raw[i];
+    const T den = b.raw[i];
+    if (den == T{0}) {
+      // 0 / +-0 and NaN / +-0 are NaN; x / +-0 is +-Inf with sign(x) ^ sign(den).
+      // Neither divides by zero, which sanitizers flag.
+      if (ScalarIsNaN(a.raw[i]) || a.raw[i] == T{0}) {
+        a.raw[i] = a.raw[i] + (inf * T{0});
+      } else {
+        const bool sign = ScalarSignBit(a.raw[i]) ^ ScalarSignBit(den);
+        a.raw[i] = sign ? -inf : inf;
+      }
+    } else {
+      a.raw[i] = a.raw[i] / den;
+    }
   }
   return a;
 }

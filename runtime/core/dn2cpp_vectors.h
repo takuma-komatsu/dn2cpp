@@ -1,11 +1,9 @@
 #pragma once
 // dn2cpp_vectors.h
 //
-// Software (scalar) emulation of the portable SIMD vector types. There are NO
-// hardware intrinsics here: every operation is a plain scalar loop over the
-// elements, chosen for correctness and portability over speed. This header is
-// used when the transpiler lowers System.Runtime.Intrinsics.Vector64/128/256/512<T>
-// and System.Numerics.Vector<T>.
+// Portable SIMD vector operations, backed by Highway by default and scalar
+// loops when DN2CPP_USE_HIGHWAY is disabled. The transpiler uses these for
+// System.Runtime.Intrinsics.Vector64/128/256/512<T> and System.Numerics.Vector<T>.
 //
 // A fixed-width vector is a plain primitive-data POD byte buffer (no managed
 // references, never GC-scanned), returned BY VALUE. Element access goes through
@@ -39,9 +37,8 @@ using Dn2CppVector256 = Dn2CppVec<32>;
 using Dn2CppVector512 = Dn2CppVec<64>;
 using Dn2CppVectorT   = Dn2CppVec<16>;   // System.Numerics.Vector<T>, fixed at 128-bit
 
-// Optional Google Highway backing for a subset of the ops below (opt-in, default
-// OFF via the CMake option DN2CPP_USE_HIGHWAY). Requires Dn2CppVec<N> declared
-// above. The default scalar build never includes this and stays byte-for-byte.
+// Highway requires Dn2CppVec<N> declared above. DN2CPP_USE_HIGHWAY defaults ON;
+// scalar builds exclude its headers.
 #if defined(DN2CPP_USE_HIGHWAY)
 #include "dn2cpp_vectors_hwy.h"
 #endif
@@ -49,9 +46,8 @@ using Dn2CppVectorT   = Dn2CppVec<16>;   // System.Numerics.Vector<T>, fixed at 
 // Portable SIMD hardware-acceleration gate. The transpiler emits this token for
 // the IsSupported / IsHardwareAccelerated getters of the portable vector types
 // (System.Runtime.Intrinsics.Vector64/128/256/512<T> and System.Numerics.Vector<T>).
-// In the scalar build it resolves to 0, so the BCL keeps its software fallback and
-// behaviour is byte-for-byte identical; under the opt-in Highway backend it resolves
-// to 1, lighting up the BCL's vectorized fast paths against the SIMD-backed vec ops.
+// In the scalar build it resolves to 0, so the BCL keeps its software fallback;
+// under Highway it resolves to 1, enabling the BCL's vectorized fast paths.
 // Both builds emit the same token, so the self-host text fixpoint is preserved.
 #if defined(DN2CPP_USE_HIGHWAY)
 #define DN2CPP_SIMD_HW_ACCEL 1
@@ -467,39 +463,48 @@ static inline Dn2CppVec<N> dn2cpp_vec_sqrt(const Dn2CppVec<N>& v) {
     }
 }
 
-template <class T, int N>
+template <class T, int N, bool Native = false>
 static inline Dn2CppVec<N> dn2cpp_vec_min(const Dn2CppVec<N>& a, const Dn2CppVec<N>& b) {
 #if defined(DN2CPP_USE_HIGHWAY)
-    return dn2cpp_hwy::vec_min<T, N>(a, b);
+    return dn2cpp_hwy::vec_min<T, N, Native>(a, b);
 #endif
     Dn2CppVec<N> r;
     const int lanes = N / (int)sizeof(T);
     for (int i = 0; i < lanes; ++i) {
         T av = dn2cpp_vec_get<T>(a, i), bv = dn2cpp_vec_get<T>(b, i);
-        dn2cpp_vec_set<T>(r, i, av < bv ? av : bv);
+        if constexpr (std::is_floating_point<T>::value && !Native)
+            dn2cpp_vec_set<T>(r, i, dn2cpp_math_min(av, bv));
+        else
+            dn2cpp_vec_set<T>(r, i, av < bv ? av : bv);
     }
     return r;
 }
 
-template <class T, int N>
+template <class T, int N, bool Native = false>
 static inline Dn2CppVec<N> dn2cpp_vec_max(const Dn2CppVec<N>& a, const Dn2CppVec<N>& b) {
 #if defined(DN2CPP_USE_HIGHWAY)
-    return dn2cpp_hwy::vec_max<T, N>(a, b);
+    return dn2cpp_hwy::vec_max<T, N, Native>(a, b);
 #endif
     Dn2CppVec<N> r;
     const int lanes = N / (int)sizeof(T);
     for (int i = 0; i < lanes; ++i) {
         T av = dn2cpp_vec_get<T>(a, i), bv = dn2cpp_vec_get<T>(b, i);
-        dn2cpp_vec_set<T>(r, i, av < bv ? bv : av);
+        if constexpr (std::is_floating_point<T>::value && !Native)
+            dn2cpp_vec_set<T>(r, i, dn2cpp_math_max(av, bv));
+        else
+            dn2cpp_vec_set<T>(r, i, av < bv ? bv : av);
     }
     return r;
 }
 
-template <class T, int N>
+template <class T, int N, bool Native = false>
 static inline Dn2CppVec<N> dn2cpp_vec_clamp(const Dn2CppVec<N>& v, const Dn2CppVec<N>& lo, const Dn2CppVec<N>& hi) {
 #if defined(DN2CPP_USE_HIGHWAY)
-    return dn2cpp_hwy::vec_clamp<T, N>(v, lo, hi);
+    return dn2cpp_hwy::vec_clamp<T, N, Native>(v, lo, hi);
 #endif
+    // Vector Clamp evaluates Min(Max(v, lo), hi), even for reversed bounds.
+    if constexpr (std::is_floating_point<T>::value && !Native)
+        return dn2cpp_vec_min<T, N>(dn2cpp_vec_max<T, N>(v, lo), hi);
     // min(max(v, lo), hi)
     Dn2CppVec<N> r;
     const int lanes = N / (int)sizeof(T);
@@ -512,6 +517,21 @@ static inline Dn2CppVec<N> dn2cpp_vec_clamp(const Dn2CppVec<N>& v, const Dn2CppV
         dn2cpp_vec_set<T>(r, i, res);
     }
     return r;
+}
+
+template <class T, int N>
+static inline Dn2CppVec<N> dn2cpp_vec_min_native(const Dn2CppVec<N>& a, const Dn2CppVec<N>& b) {
+    return dn2cpp_vec_min<T, N, true>(a, b);
+}
+
+template <class T, int N>
+static inline Dn2CppVec<N> dn2cpp_vec_max_native(const Dn2CppVec<N>& a, const Dn2CppVec<N>& b) {
+    return dn2cpp_vec_max<T, N, true>(a, b);
+}
+
+template <class T, int N>
+static inline Dn2CppVec<N> dn2cpp_vec_clamp_native(const Dn2CppVec<N>& v, const Dn2CppVec<N>& lo, const Dn2CppVec<N>& hi) {
+    return dn2cpp_vec_clamp<T, N, true>(v, lo, hi);
 }
 
 template <class T, int N>
@@ -562,7 +582,9 @@ static inline T dn2cpp_vec_dot(const Dn2CppVec<N>& a, const Dn2CppVec<N>& b) {
 template <class T, int N>
 static inline Dn2CppVec<N> dn2cpp_vec_fma(const Dn2CppVec<N>& a, const Dn2CppVec<N>& b, const Dn2CppVec<N>& c) {
 #if defined(DN2CPP_USE_HIGHWAY)
-    return dn2cpp_hwy::vec_fma<T, N>(a, b, c);
+    // Highway MulAdd can round twice unless this target has native FMA.
+    if constexpr (!std::is_floating_point<T>::value || HWY_NATIVE_FMA)
+        return dn2cpp_hwy::vec_fma<T, N>(a, b, c);
 #endif
     Dn2CppVec<N> r;
     const int lanes = N / (int)sizeof(T);

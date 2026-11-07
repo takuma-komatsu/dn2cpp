@@ -16,4 +16,5 @@ gate_extra_asserts() {
         'typed NaN=True:True:True:True:True' 'comparison NaN=False:False' \
         'degrees overflow=True:True:True:True:True' '-- vector existing value semantics end --' \
         --count 1 --policy crlf
+    vector_floating_prefix "$out"
 }
