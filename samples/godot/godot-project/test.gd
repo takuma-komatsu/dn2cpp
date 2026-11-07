@@ -109,11 +109,11 @@ func _end_check():
 
 # Calls C# code that was transpiled to C++ and loaded as a GDExtension.
 func _initialize():
-	# ClassDB registration has no fixed class limit. This sample registers 78 classes, so
-	# reaching this line means the node-class loop passed 64 without aborting. Existence
-	# is not enough: a registry naming a class the engine cannot build would satisfy a
-	# count check and ship broken, so every one is also instantiated through ClassDB —
-	# the create_instance path — and freed.
+	# ClassDB registration has no fixed class limit: reaching this line means registering
+	# every GateManyClassNN node class the loop below checks did not abort the extension.
+	# Existence is not enough: a registry naming a class the engine
+	# cannot build would satisfy a count check and ship broken, so every one is also
+	# instantiated through ClassDB — the create_instance path — and freed.
 	var many_ok := 0
 	var many_bad := ""
 	for i in range(1, 71):
@@ -920,6 +920,16 @@ func _initialize():
 	assert(mr.DoubledTag() == 14, "MyResource.new() ctor ran (ClassDB-driven)")
 
 	print("GDScript: Godot.RefCounted ClassDB construction matches expected")
+
+	# Precise-init exports nothing touched before: the engine's first entry, a static bind
+	# or a ClassDB construction, runs the type initializer before the member's body.
+	var static_bind_first: bool = InitOrderApi.InitializedBeforeBody()
+	var construction_first: bool = MyInitOrderResource.new().InitializedBeforeConstructor()
+	if static_bind_first and construction_first:
+		print("GDScript: engine entries run precise-init initializers first")
+	else:
+		printerr("FAIL: precise-init initializer order: static bind=", static_bind_first,
+			" ClassDB construction=", construction_first)
 
 	GodotApi.HelloFromCSharp()
 

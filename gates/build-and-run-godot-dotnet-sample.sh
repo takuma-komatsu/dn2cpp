@@ -37,14 +37,14 @@
 # must cost its own call and nothing else. The failure mode is the second one
 # taking the whole process down, so the assertion is not that an error appears
 # but that EVERY marker above still does, in the same engine run, after it,
-# plus — in the same file but on a different subject — the STARTUP
-# STATIC-CONSTRUCTOR pass: a type whose .cctor fails is named in one end-of-init
-# summary line on the engine's error channel, with an exact count, while the
-# absent-class case that every headless template hits stays on the trace channel
-# where it cannot become a standing false alarm; and the disabled type is then
-# dead for real, its first use re-raising the original exception. Armed by
-# DN2CPP_DM_SAMPLE_CCTOR_FAULT, which this gate alone sets. This one is NOT a
-# boundary test and must not be pruned with the two above.
+# plus — in the same file but on a different subject — a STATIC CONSTRUCTOR
+# that fails at its first trigger: the deferred startup pass runs module
+# initializers only, so no startup report names the type, the touching code
+# gets the failure, a second touch re-raises the same one, and an engine
+# wrapper class the template lacks is never initialized because nothing
+# touches it. Armed by DN2CPP_DM_SAMPLE_CCTOR_FAULT, which this gate alone
+# sets. This one is NOT a boundary test and must not be pruned with the two
+# above.
 #
 # Parity record vs the GDExtension lane's sample gate
 # (gates/build-and-run-godot-sample.sh scene phase / MyNode.cs) — both lanes
@@ -112,6 +112,16 @@ for bridge_method in GetGodotMethodList GetGodotPropertyList InvokeGodotClassSta
         exit 1
     fi
 done
+# The engine run below asserts that the untouched LightmapperRD wrapper never runs
+# its initializer. That says something only while the explicit root retains the
+# initializer and the deferred startup pass does not name it.
+grep -qE "^void LightmapperRD__cctor_m[0-9]+\\(\\);" "$OUT/generated.h" \
+    || { echo "FAIL: the LightmapperRD root retained no initializer" >&2; exit 1; }
+if awk '/^static void dn2cpp_dm_run_startup_cctors\(\)/ { f = 1 } f && /LightmapperRD/ { found = 1 }
+        f && /^}/ { exit } END { exit !found }' "$OUT/generated.cpp"; then
+    echo "FAIL: the deferred startup pass runs the LightmapperRD initializer" >&2
+    exit 1
+fi
 # Everything past this point — the native link, import, export-pack, the engine
 # run and its marker asserts — is a pure function of the transpile surface in
 # $OUT, the gate-helper set the key hashes wholesale, the sample project,
@@ -180,8 +190,8 @@ echo "== 6/7 Running the scripted scene in the real engine =="
 LOG="$RUN/sample.log"
 rc=0
 # DN2CPP_DM_SAMPLE_CCTOR_FAULT arms res://FaultProbe.cs's CctorFaultProbe
-# — the deliberately-failing startup static constructor whose end-of-init summary
-# line this gate asserts below. It is set HERE and only here: the same assembly is
+# — the deliberately-failing static constructor whose first use this gate
+# asserts below. It is set HERE and only here: the same assembly is
 # transpiled by the handshake, trim and wasm gates, each of which asserts that a
 # clean init logs no error at all, so an unconditional failure would redden three
 # gates to assert one.
@@ -324,33 +334,36 @@ grep -q "^ERROR: System.InvalidOperationException: DN2CPP_DM_FAULT_INJECTED rais
     || { echo "FAIL: the script-call boundary did not report the _Process fault" >&2; exit 1; }
 grep -qF "DN2CPP_DM_FAULTPROBE posted=True method=True" "$LOG" \
     || { echo "FAIL: FaultProbe did not survive both faults (engine died, or a fault never fired)" >&2; exit 1; }
-# The startup static-constructor pass says at the END which types it left
-# unusable (res://FaultProbe.cs's CctorFaultProbe). Three separate claims,
-# and each of them can fail while the other two hold:
+# A static constructor runs at its first trigger (res://FaultProbe.cs's
+# CctorFaultProbe, touched from the engine-invoked _Process). Four separate
+# claims, and each of them can fail while the others hold:
 #
-#   - the per-failure report still fires and still names the TYPE, not just the
-#     exception — the per-fault behaviour the summary indexes, not replaces;
-#   - ONE summary line, on the engine's error channel, with an exact count. The
-#     count is asserted as `1` rather than matched loosely because the whole
-#     value of the line is that it is the only place the SET is visible: a
-#     summary that quietly dropped a type would still read as a summary. This
-#     run has exactly one loud cctor failure — the injected one — which is
-#     itself worth pinning, since a second would mean a real regression the
-#     other gates report as nothing at all;
-#   - and the type is then genuinely DEAD: the first use re-raises the original
-#     exception rather than reading a zeroed static or re-running the body.
-#     Without this the summary could be truthful about a type that still worked.
-grep -q "^ERROR: dn2cpp: unhandled managed exception in the startup static constructor of CctorFaultProbe$" "$LOG" \
-    || { echo "FAIL: the startup cctor failure was not reported, or did not name the type" >&2; exit 1; }
-grep -q "^ERROR: dn2cpp: 1 type(s) left unusable by a failed startup static constructor (every use of one re-raises its failure): CctorFaultProbe$" "$LOG" \
-    || { echo "FAIL: the startup pass emitted no end-of-init summary of the types it disabled" >&2; exit 1; }
-grep -qF "DN2CPP_DM_CCTORPROBE reraised=InvalidOperationException" "$LOG" \
-    || { echo "FAIL: a failed startup cctor did not re-raise at the first use of its type" >&2; exit 1; }
-# The explicit LightmapperRD root keeps an absent-class witness
-# in the template build. Its startup failure belongs on the trace channel;
-# treating an unavailable editor wrapper as an engine error would poison exports.
-grep -q "^dn2cpp-dm: [1-9][0-9]* type(s) unusable - class absent from this engine build: " "$LOG" \
-    || { echo "FAIL: the startup pass did not summarize the absent-class types on the trace channel" >&2; exit 1; }
+#   - the first touch gets the initializer's own failure, unwrapped from the
+#     TypeInitializationException .NET raises around it, and the second touch
+#     re-raises the SAME object rather than reading a zeroed static or
+#     re-running the body;
+#   - no startup report names any type: the deferred pass runs module
+#     initializers only, and this sample has none that fail;
+#   - the failure reaches the touching code and nothing else, so its message
+#     is in no log line — the probe caught it, and .NET reports nothing either;
+#   - the explicit LightmapperRD root keeps reachable an engine wrapper class
+#     the template build lacks, initializer included (asserted on the generated
+#     output above); nothing touches it, so that initializer, whose ClassDB
+#     constructor probe would throw, never runs.
+grep -qF "DN2CPP_DM_CCTORPROBE first=InvalidOperationException again=InvalidOperationException same=True" "$LOG" \
+    || { echo "FAIL: a failed static constructor did not fail its first touch and re-raise the same failure" >&2; exit 1; }
+if grep -q "the startup static constructor of" "$LOG"; then
+    echo "FAIL: the startup pass reported a failed initializer" >&2
+    exit 1
+fi
+if grep -qF "DN2CPP_DM_FAULT_INJECTED raised from a static constructor" "$LOG"; then
+    echo "FAIL: a static-constructor failure the probe caught was reported" >&2
+    exit 1
+fi
+if grep -q "NativeConstructorNotFoundException" "$LOG"; then
+    echo "FAIL: an untouched engine wrapper class ran its initializer" >&2
+    exit 1
+fi
 # Exactly-once markers: a double construction (the ctor-invoke risk: a
 # reflective ctor invoke allocating a NEW instance instead of running
 # in-place), a broken _Process latch, a double-dispatched signal handler or a
@@ -373,7 +386,7 @@ for once in "DN2CPP_DM_CTOR" "DN2CPP_DM_READY" "DN2CPP_DM_PROCESS" \
     "DN2CPP_DM_INPUT" "DN2CPP_DM_UNHANDLED" "DN2CPP_DM_PARITY_DONE" \
     "DN2CPP_DM_NOTIFY_EXIT_TREE" "DN2CPP_DM_EXIT_TREE" \
     "DN2CPP_DM_FAULTPOSTED" "DN2CPP_DM_FAULTCALL" "DN2CPP_DM_FAULTPROBE" \
-    "DN2CPP_DM_CCTORPROBE" "1 type(s) left unusable"; do
+    "DN2CPP_DM_CCTORPROBE"; do
     n="$(grep -c "$once" "$LOG" || true)"
     if [ "$n" -ne 1 ]; then
         echo "FAIL: marker $once appeared $n times (expected exactly 1)" >&2
@@ -392,14 +405,8 @@ done
 # shapes are unique to that section (the injected token, and the reporter's own
 # phrase), and GD.PushError's continuation lines carry no "ERROR" prefix, so
 # nothing else is taken with them.
-#
-# The third removed shape is the cctor summary line, which carries neither of the
-# other two markers — it names no exception (there is none: it is a fact about
-# the pass) and it is not itself a fault report. It is subtracted on the same
-# terms: asserted present, verbatim and exactly once, a few lines above.
 FILTERED="$RUN/sample.no-expected-faults.log"
-grep -v -e "DN2CPP_DM_FAULT_INJECTED" -e "unhandled managed exception in" \
-    -e "left unusable by a failed startup static constructor" "$LOG" >"$FILTERED" || true
+grep -v -e "DN2CPP_DM_FAULT_INJECTED" -e "unhandled managed exception in" "$LOG" >"$FILTERED" || true
 for bad in \
     "GodotPlugins initialization failed" \
     "Failed to load hostfxr" \
