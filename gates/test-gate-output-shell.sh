@@ -31,6 +31,46 @@ if [ "${1:-}" = --case ]; then
         return "$(cat "$fixture/$side.code")"
     }
     case "$scenario" in
+        brotli-reference)
+            source gates/_compression-reference.sh
+            resolve_net10_corelib() { printf '/runtime/%s/System.Private.CoreLib.dll\n' "$reference_version"; }
+            for reference_version in 10.0.0 10.0.13 10.0.14 10.0.20 9.0.99 11.0.0 10.0.14-preview.1 malformed; do
+                expected=1
+                case "$reference_version" in 10.0.14|10.0.20) expected=0 ;; esac
+                if compression_require_brotli_reference > "$fixture/reference.stdout" 2> "$fixture/reference.stderr"; then
+                    actual=0
+                else
+                    actual=$?
+                fi
+                test "$actual" = "$expected" || {
+                    echo "FAIL: Brotli reference $reference_version returned $actual, expected $expected" >&2
+                    exit 1
+                }
+            done
+            resolve_net10_corelib() { return 1; }
+            if compression_require_brotli_reference; then
+                echo 'FAIL: accepted an unresolved Brotli reference' >&2
+                exit 1
+            fi
+            ;;
+        brotli-security-*)
+            source gates/_compression-reference.sh
+            cat > "$fixture/native.stdout" <<'EOF'
+unchanged prefix
+Brotli invalid block switch oneshot rejected: True
+Brotli invalid block switch chunked rejected: True
+Brotli invalid block switch buffered rejected: True
+brotli-invalid-block-switch-stream: threw=True type=InvalidOperationException
+EOF
+            cp "$fixture/native.stdout" "$fixture/oracle.stdout"
+            case "$scenario" in
+                brotli-security-missing) sed '/chunked/d' "$fixture/native.stdout" > "$fixture/oracle.stdout" ;;
+                brotli-security-false) sed 's/rejected: True/rejected: False/' "$fixture/native.stdout" > "$fixture/oracle.stdout" ;;
+                brotli-security-extra) printf 'unexpected record\n' >> "$fixture/native.stdout" ;;
+                brotli-security-crlf) sed $'s/$/\r/' "$fixture/native.stdout" > "$fixture/oracle.stdout" ;;
+            esac
+            compression_assert_brotli_security "$fixture"
+            ;;
         abort-diff|abort-no-leak|abort-wrong-host|abort-cache)
             [ "$scenario" = abort-wrong-host ] || DN2CPP_OS=windows
             DN2CPP_GATE_SCRIPT="$script"
@@ -271,6 +311,12 @@ reset_inputs() {
     printf '0\n' > "$fixture/oracle.code"
 }
 run_case 0 capture
+run_case 0 brotli-reference
+run_case 0 brotli-security-valid
+run_case 0 brotli-security-crlf
+run_case 1 brotli-security-missing
+run_case 1 brotli-security-false
+run_case 1 brotli-security-extra
 run_case 1 capture-no-command
 run_case 1 capture-write-error
 run_case 0 capture-stale-status

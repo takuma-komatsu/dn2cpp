@@ -367,9 +367,9 @@ public sealed class EncoderFastPathTests
        EncoderZopfliTests. */
 
     [Fact]
-    public void EncoderVersion_Matches_1_1_0()
+    public void EncoderVersion_Matches_1_2_1()
     {
-        Assert.Equal((1u << 24) | (1u << 12) | 0u, RawBrotli.BrotliEncoderVersion());
+        Assert.Equal((1u << 24) | (2u << 12) | 1u, RawBrotli.BrotliEncoderVersion());
     }
 
     [Theory]

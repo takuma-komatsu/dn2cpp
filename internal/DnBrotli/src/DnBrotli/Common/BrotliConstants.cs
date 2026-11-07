@@ -5,8 +5,8 @@ namespace DnBrotli.Common;
 internal static class BrotliConstants
 {
     /// <summary><c>BROTLI_VERSION</c> of the reference implementation this port tracks
-    /// (1.1.0, encoded as <c>(major &lt;&lt; 24) | (minor &lt;&lt; 12) | patch</c>).</summary>
-    internal const uint Version = (1u << 24) | (1u << 12) | 0u;
+    /// (1.2.1, encoded as <c>(major &lt;&lt; 24) | (minor &lt;&lt; 12) | patch</c>).</summary>
+    internal const uint Version = (1u << 24) | (2u << 12) | 1u;
 
     internal const int MinWindowBits = 10;   // BROTLI_MIN_WINDOW_BITS
     internal const int MaxWindowBits = 24;   // BROTLI_MAX_WINDOW_BITS

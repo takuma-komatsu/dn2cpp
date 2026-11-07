@@ -1,4 +1,4 @@
-// Port of c/enc/entropy_encode_static.h (brotli v1.1.0): static entropy codes
+// Port of c/enc/entropy_encode_static.h (brotli v1.2.1): static entropy codes
 // used for faster meta-block encoding. Table data is generated mechanically
 // from the C header (values verified element-identical against the C source;
 // the DeterminismTests golden output hash pins them transitively).

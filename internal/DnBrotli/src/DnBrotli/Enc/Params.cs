@@ -1,4 +1,4 @@
-// Port of c/enc/params.h (brotli v1.1.0). The embedded
+// Port of c/enc/params.h (brotli v1.2.1). The embedded
 // SharedEncoderDictionary lives in EncoderDict.cs (c/enc/encoder_dict.h).
 
 namespace DnBrotli.Enc;

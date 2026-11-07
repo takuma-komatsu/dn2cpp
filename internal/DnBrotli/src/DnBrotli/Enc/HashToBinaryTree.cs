@@ -1,4 +1,4 @@
-// Port of c/enc/hash_to_binary_tree_inc.h (brotli v1.1.0).
+// Port of c/enc/hash_to_binary_tree_inc.h (brotli v1.2.1).
 //
 // The C template is expanded exactly once from hash.h (H10 at hash.h:246-250,
 // with BUCKET_BITS 17, MAX_TREE_SEARCH_DEPTH 64, MAX_TREE_COMP_LENGTH 128)
@@ -7,7 +7,7 @@
 // struct keeps the C name HashToBinaryTree and the function holder is the
 // static class H10. The buckets_ array lives in extra[0] and the forest_
 // array in extra[1] (see HashMemAllocInBytes + Initialize), mirroring the
-// v1.1.0 layout.
+// v1.2.1 layout.
 
 using System.Runtime.CompilerServices;
 

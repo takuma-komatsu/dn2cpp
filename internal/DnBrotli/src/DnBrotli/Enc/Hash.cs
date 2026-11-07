@@ -1,4 +1,4 @@
-// Port of c/enc/hash.h (brotli v1.1.0).
+// Port of c/enc/hash.h and hash_base.h (brotli v1.2.1).
 //
 // Ported: HasherCommon, the score model, the static-dictionary probes
 // (Hash14 / TestStaticDictionaryItem / SearchInStaticDictionary),
@@ -141,6 +141,13 @@ internal static unsafe class Hash
         /* The higher bits contain more mixture from the multiplication,
            so we take our results from there. */
         return h >> (32 - 14);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static uint Hash15(byte* data)
+    {
+        uint h = BROTLI_UNALIGNED_LOAD32LE(data) * kHashMul32;
+        return h >> (32 - 15);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

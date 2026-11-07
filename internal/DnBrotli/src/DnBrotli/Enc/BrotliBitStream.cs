@@ -1,4 +1,4 @@
-// Port of c/enc/brotli_bit_stream.{h,c} (brotli v1.1.0) — complete.
+// Port of c/enc/brotli_bit_stream.{h,c} (brotli v1.2.1) — complete.
 //
 // Everything the q0..q9 paths and the stream framing reach —
 // BrotliStoreHuffmanTree (plus its serialization helpers),

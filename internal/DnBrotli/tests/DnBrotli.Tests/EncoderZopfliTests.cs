@@ -217,15 +217,8 @@ public sealed class EncoderZopfliTests
         Assert.True(RawBrotli.BrotliEncoderEstimatePeakMemoryUsage(quality, 22, 1 << 20) > 0);
     }
 
-    /// <summary>DnBrotli's q10/q11 one-shot output is currently byte-identical to
-    /// native brotli v1.1.0 (the BCL encoder) for the whole corpus — a strong
-    /// fidelity signal for the Zopfli path (H10 tree search, the float cost model's
-    /// exact FP shapes, dist_cache propagation, command emission).
-    /// NOTE: byte-identity with native output is NOT part of DnBrotli's contract
-    /// (PORTING.md pins round-trip facts and DnBrotli's own determinism only); this
-    /// assertion MAY be relaxed to a round-trip check when a future BCL/brotli bump
-    /// legitimately changes native output. The "empty" entry is exempt only because
-    /// the one-shot C path special-cases it while the streaming oracle does not.</summary>
+    /// <summary>Additional byte-parity checks for this corpus. Interoperability
+    /// and DnBrotli's own determinism remain the encoder contract.</summary>
     [Theory]
     [InlineData("one-byte", 10)]
     [InlineData("one-byte", 11)]
@@ -257,8 +250,7 @@ public sealed class EncoderZopfliTests
         Assert.Equal(native, mine);
     }
 
-    /// <summary>Same byte-identity signal across the window sweep (the H10
-    /// window_mask_/forest sizing arms). Same relaxation caveat as above.</summary>
+    /// <summary>Additional byte-parity checks across the H10 window sweep.</summary>
     [Theory]
     [InlineData("english-200k", 10, 10)]
     [InlineData("english-200k", 10, 18)]

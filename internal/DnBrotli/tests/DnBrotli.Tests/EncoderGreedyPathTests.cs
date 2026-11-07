@@ -147,13 +147,8 @@ public sealed class EncoderGreedyPathTests
         Assert.True(RawBrotli.BrotliEncoderEstimatePeakMemoryUsage(quality, 22, 1 << 20) > 0);
     }
 
-    /// <summary>DnBrotli's q2/q3 one-shot output is currently byte-identical to native
-    /// brotli v1.1.0 (the BCL encoder) for these entries — a strong fidelity signal for
-    /// the whole greedy path (hasher, scoring, dictionary probe, entropy stores).
-    /// NOTE: byte-identity with native output is NOT part of DnBrotli's contract
-    /// (PORTING.md pins round-trip facts and DnBrotli's own determinism only); this
-    /// assertion MAY be relaxed to a round-trip check when a future BCL/brotli bump
-    /// legitimately changes native output.</summary>
+    /// <summary>Additional byte-parity checks for this corpus. Interoperability
+    /// and DnBrotli's own determinism remain the encoder contract.</summary>
     [Theory]
     [InlineData("hello", 2)]
     [InlineData("hello", 3)]

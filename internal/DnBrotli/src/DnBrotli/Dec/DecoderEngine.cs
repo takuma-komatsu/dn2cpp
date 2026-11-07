@@ -1,4 +1,4 @@
-// Port of c/dec/decode.c (brotli v1.1.0).
+// Port of c/dec/decode.c (brotli v1.2.1).
 //
 // Function-for-function, in the C source order, with the resumable
 // switch/goto structure preserved (PORTING.md): C fallthrough becomes
@@ -71,6 +71,7 @@ internal static unsafe class DecoderEngine
     private const BrotliDecoderErrorCode BROTLI_DECODER_ERROR_FORMAT_PADDING_1 = BrotliDecoderErrorCode.ErrorFormatPadding1;
     private const BrotliDecoderErrorCode BROTLI_DECODER_ERROR_FORMAT_PADDING_2 = BrotliDecoderErrorCode.ErrorFormatPadding2;
     private const BrotliDecoderErrorCode BROTLI_DECODER_ERROR_FORMAT_DISTANCE = BrotliDecoderErrorCode.ErrorFormatDistance;
+    private const BrotliDecoderErrorCode BROTLI_DECODER_ERROR_FORMAT_BLOCK_SWITCH = BrotliDecoderErrorCode.ErrorFormatBlockSwitch;
     private const BrotliDecoderErrorCode BROTLI_DECODER_ERROR_COMPOUND_DICTIONARY = BrotliDecoderErrorCode.ErrorCompoundDictionary;
     private const BrotliDecoderErrorCode BROTLI_DECODER_ERROR_DICTIONARY_NOT_SET = BrotliDecoderErrorCode.ErrorDictionaryNotSet;
     private const BrotliDecoderErrorCode BROTLI_DECODER_ERROR_INVALID_ARGUMENTS = BrotliDecoderErrorCode.ErrorInvalidArguments;
@@ -588,6 +589,40 @@ internal static unsafe class DecoderEngine
         }
         PreloadSymbol(0, table, br, bits, value);
         return result;
+    }
+
+    /* The caller bounds writes by the literal block and ring buffer. */
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int BrotliCopyPreloadedSymbolsToU8(HuffmanCode* table,
+        BrotliBitReader* br, nuint* bits, nuint* value, byte* ringbuffer,
+        int pos, int limit)
+    {
+        long new_lim = br->guard_in - br->next_in;
+        new_lim *= 8;
+        new_lim /= 15;
+        const int kMaximalOverread = 4;
+        int pos_limit = limit;
+        if ((new_lim - kMaximalOverread) <= limit)
+        {
+            pos_limit = (int)(new_lim - kMaximalOverread);
+        }
+        if (pos_limit < 0)
+        {
+            pos_limit = 0;
+        }
+        int copies = pos_limit;
+        pos_limit += pos;
+        for (; pos < pos_limit; pos++)
+        {
+            ringbuffer[pos] = (byte)ReadPreloadedSymbol(table, br, bits, value);
+        }
+        while (BrotliCheckInputAmount(br) != 0 && copies < limit)
+        {
+            ringbuffer[pos] = (byte)ReadPreloadedSymbol(table, br, bits, value);
+            pos++;
+            copies++;
+        }
+        return copies;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1341,7 +1376,7 @@ internal static unsafe class DecoderEngine
     /* Decodes a command or literal and updates block type ring-buffer.
        Reads 3..54 bits. */
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int DecodeBlockTypeAndLength(
+    private static BrotliDecoderErrorCode DecodeBlockTypeAndLength(
         int safe, BrotliDecoderState* s, int tree_type)
     {
         nuint max_block_type = (nuint)s->num_block_types[tree_type];
@@ -1354,7 +1389,7 @@ internal static unsafe class DecoderEngine
         nuint block_type;
         if (max_block_type <= 1)
         {
-            return BROTLI_FALSE;
+            return BROTLI_DECODER_ERROR_FORMAT_BLOCK_SWITCH;
         }
 
         /* Read 0..15 + 3..39 bits. */
@@ -1367,12 +1402,12 @@ internal static unsafe class DecoderEngine
         {
             BrotliBitReaderState memento;
             BrotliBitReaderSaveState(br, &memento);
-            if (SafeReadSymbol(type_tree, br, &block_type) == 0) return BROTLI_FALSE;
+            if (SafeReadSymbol(type_tree, br, &block_type) == 0) return BROTLI_DECODER_NEEDS_MORE_INPUT;
             if (SafeReadBlockLength(s, (nuint*)&s->block_length[tree_type], len_tree, br) == 0)
             {
                 s->substate_read_block_length = BROTLI_STATE_READ_BLOCK_LENGTH_NONE;
                 BrotliBitReaderRestoreState(br, &memento);
-                return BROTLI_FALSE;
+                return BROTLI_DECODER_NEEDS_MORE_INPUT;
             }
         }
 
@@ -1394,7 +1429,7 @@ internal static unsafe class DecoderEngine
         }
         ringbuffer[0] = ringbuffer[1];
         ringbuffer[1] = block_type;
-        return BROTLI_TRUE;
+        return BROTLI_DECODER_SUCCESS;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1441,23 +1476,24 @@ internal static unsafe class DecoderEngine
     /* Decodes the block type and updates the state for literal context.
        Reads 3..54 bits. */
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int DecodeLiteralBlockSwitchInternal(
+    private static BrotliDecoderErrorCode DecodeLiteralBlockSwitchInternal(
         int safe, BrotliDecoderState* s)
     {
-        if (DecodeBlockTypeAndLength(safe, s, 0) == 0)
+        BrotliDecoderErrorCode result = DecodeBlockTypeAndLength(safe, s, 0);
+        if (result != BROTLI_DECODER_SUCCESS)
         {
-            return BROTLI_FALSE;
+            return result;
         }
         PrepareLiteralDecoding(s);
-        return BROTLI_TRUE;
+        return BROTLI_DECODER_SUCCESS;
     }
 
-    private static void DecodeLiteralBlockSwitch(BrotliDecoderState* s)
+    private static BrotliDecoderErrorCode DecodeLiteralBlockSwitch(BrotliDecoderState* s)
     {
-        DecodeLiteralBlockSwitchInternal(0, s);
+        return DecodeLiteralBlockSwitchInternal(0, s);
     }
 
-    private static int SafeDecodeLiteralBlockSwitch(BrotliDecoderState* s)
+    private static BrotliDecoderErrorCode SafeDecodeLiteralBlockSwitch(BrotliDecoderState* s)
     {
         return DecodeLiteralBlockSwitchInternal(1, s);
     }
@@ -1465,23 +1501,24 @@ internal static unsafe class DecoderEngine
     /* Block switch for insert/copy length.
        Reads 3..54 bits. */
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int DecodeCommandBlockSwitchInternal(
+    private static BrotliDecoderErrorCode DecodeCommandBlockSwitchInternal(
         int safe, BrotliDecoderState* s)
     {
-        if (DecodeBlockTypeAndLength(safe, s, 1) == 0)
+        BrotliDecoderErrorCode result = DecodeBlockTypeAndLength(safe, s, 1);
+        if (result != BROTLI_DECODER_SUCCESS)
         {
-            return BROTLI_FALSE;
+            return result;
         }
         s->htree_command = s->insert_copy_hgroup.htrees[s->block_type_rb[3]];
-        return BROTLI_TRUE;
+        return BROTLI_DECODER_SUCCESS;
     }
 
-    private static void DecodeCommandBlockSwitch(BrotliDecoderState* s)
+    private static BrotliDecoderErrorCode DecodeCommandBlockSwitch(BrotliDecoderState* s)
     {
-        DecodeCommandBlockSwitchInternal(0, s);
+        return DecodeCommandBlockSwitchInternal(0, s);
     }
 
-    private static int SafeDecodeCommandBlockSwitch(BrotliDecoderState* s)
+    private static BrotliDecoderErrorCode SafeDecodeCommandBlockSwitch(BrotliDecoderState* s)
     {
         return DecodeCommandBlockSwitchInternal(1, s);
     }
@@ -1489,25 +1526,26 @@ internal static unsafe class DecoderEngine
     /* Block switch for distance codes.
        Reads 3..54 bits. */
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int DecodeDistanceBlockSwitchInternal(
+    private static BrotliDecoderErrorCode DecodeDistanceBlockSwitchInternal(
         int safe, BrotliDecoderState* s)
     {
-        if (DecodeBlockTypeAndLength(safe, s, 2) == 0)
+        BrotliDecoderErrorCode result = DecodeBlockTypeAndLength(safe, s, 2);
+        if (result != BROTLI_DECODER_SUCCESS)
         {
-            return BROTLI_FALSE;
+            return result;
         }
         s->dist_context_map_slice = s->dist_context_map +
             ((int)s->block_type_rb[5] << BROTLI_DISTANCE_CONTEXT_BITS);
         s->dist_htree_index = s->dist_context_map_slice[s->distance_context];
-        return BROTLI_TRUE;
+        return BROTLI_DECODER_SUCCESS;
     }
 
-    private static void DecodeDistanceBlockSwitch(BrotliDecoderState* s)
+    private static BrotliDecoderErrorCode DecodeDistanceBlockSwitch(BrotliDecoderState* s)
     {
-        DecodeDistanceBlockSwitchInternal(0, s);
+        return DecodeDistanceBlockSwitchInternal(0, s);
     }
 
-    private static int SafeDecodeDistanceBlockSwitch(BrotliDecoderState* s)
+    private static BrotliDecoderErrorCode SafeDecodeDistanceBlockSwitch(BrotliDecoderState* s)
     {
         return DecodeDistanceBlockSwitchInternal(1, s);
     }
@@ -1770,8 +1808,7 @@ internal static unsafe class DecoderEngine
         return BROTLI_TRUE;
     }
 
-    /* NB: the C function name typo ("Coumpound") is preserved. */
-    private static void EnsureCoumpoundDictionaryInitialized(BrotliDecoderState* state)
+    private static void EnsureCompoundDictionaryInitialized(BrotliDecoderState* state)
     {
         BrotliDecoderCompoundDictionary* addon = state->compound_dictionary;
         /* 256 = (1 << 8) slots in block map. */
@@ -1795,7 +1832,7 @@ internal static unsafe class DecoderEngine
     {
         BrotliDecoderCompoundDictionary* addon = s->compound_dictionary;
         int index;
-        EnsureCoumpoundDictionaryInitialized(s);
+        EnsureCompoundDictionaryInitialized(s);
         index = addon->block_map[address >> addon->block_bits];
         while (address >= addon->chunk_offsets[index + 1]) index++;
         if (addon->total_size < address + length) return BROTLI_FALSE;
@@ -2237,18 +2274,11 @@ internal static unsafe class DecoderEngine
         }
         if (s->block_length[1] == 0)
         {
-            /* BROTLI_SAFE(DecodeCommandBlockSwitch(s)); */
-            if (safe != 0)
+            /* BROTLI_SAFE_WITH_STATUS(DecodeCommandBlockSwitch(s)); */
+            result = safe != 0 ? SafeDecodeCommandBlockSwitch(s) : DecodeCommandBlockSwitch(s);
+            if (result != BROTLI_DECODER_SUCCESS)
             {
-                if (SafeDecodeCommandBlockSwitch(s) == 0)
-                {
-                    result = BROTLI_DECODER_NEEDS_MORE_INPUT;
-                    goto saveStateAndReturn;
-                }
-            }
-            else
-            {
-                DecodeCommandBlockSwitch(s);
+                goto saveStateAndReturn;
             }
             goto CommandBegin;
         }
@@ -2283,25 +2313,61 @@ internal static unsafe class DecoderEngine
             nuint bits;
             nuint value;
             PreloadSymbol(safe, s->literal_htree, br, &bits, &value);
-            do
+            if (safe == 0)
             {
-                if (CheckInputAmount(safe, br) == 0)
+                /* Keep the last literal in the checked loop so completion and
+                   ring-buffer wrapping still use the resumable state machine. */
+                int num_steps = i - 1;
+                if (num_steps > 0 && (nuint)num_steps > (nuint)s->block_length[0])
                 {
-                    s->state = BROTLI_STATE_COMMAND_INNER;
-                    result = BROTLI_DECODER_NEEDS_MORE_INPUT;
-                    goto saveStateAndReturn;
+                    num_steps = (int)s->block_length[0];
                 }
-                if (s->block_length[0] == 0)
+                if (s->ringbuffer_size >= pos &&
+                    (s->ringbuffer_size - pos) <= num_steps)
                 {
-                    goto NextLiteralBlock;
+                    num_steps = s->ringbuffer_size - pos - 1;
                 }
-                if (safe == 0)
+                if (num_steps < 0)
                 {
-                    s->ringbuffer[pos] =
-                        (byte)ReadPreloadedSymbol(s->literal_htree, br, &bits, &value);
+                    num_steps = 0;
                 }
-                else
+                num_steps = BrotliCopyPreloadedSymbolsToU8(s->literal_htree, br,
+                    &bits, &value, s->ringbuffer, pos, num_steps);
+                pos += num_steps;
+                s->block_length[0] -= (nuint)num_steps;
+                i -= num_steps;
+                do
                 {
+                    if (CheckInputAmount(safe, br) == 0)
+                    {
+                        s->state = BROTLI_STATE_COMMAND_INNER;
+                        result = BROTLI_DECODER_NEEDS_MORE_INPUT;
+                        goto saveStateAndReturn;
+                    }
+                    if (s->block_length[0] == 0)
+                    {
+                        goto NextLiteralBlock;
+                    }
+                    BrotliCopyPreloadedSymbolsToU8(s->literal_htree, br, &bits,
+                        &value, s->ringbuffer, pos, 1);
+                    --s->block_length[0];
+                    ++pos;
+                    if (pos == s->ringbuffer_size)
+                    {
+                        s->state = BROTLI_STATE_COMMAND_INNER_WRITE;
+                        --i;
+                        goto saveStateAndReturn;
+                    }
+                } while (--i != 0);
+            }
+            else
+            {
+                do
+                {
+                    if (s->block_length[0] == 0)
+                    {
+                        goto NextLiteralBlock;
+                    }
                     nuint literal;
                     if (SafeReadSymbol(s->literal_htree, br, &literal) == 0)
                     {
@@ -2309,16 +2375,16 @@ internal static unsafe class DecoderEngine
                         goto saveStateAndReturn;
                     }
                     s->ringbuffer[pos] = (byte)literal;
-                }
-                --s->block_length[0];
-                ++pos;
-                if (pos == s->ringbuffer_size)
-                {
-                    s->state = BROTLI_STATE_COMMAND_INNER_WRITE;
-                    --i;
-                    goto saveStateAndReturn;
-                }
-            } while (--i != 0);
+                    --s->block_length[0];
+                    ++pos;
+                    if (pos == s->ringbuffer_size)
+                    {
+                        s->state = BROTLI_STATE_COMMAND_INNER_WRITE;
+                        --i;
+                        goto saveStateAndReturn;
+                    }
+                } while (--i != 0);
+            }
         }
         else
         {
@@ -2389,18 +2455,11 @@ internal static unsafe class DecoderEngine
             /* Read distance code in the command, unless it was implicitly zero. */
             if (s->block_length[2] == 0)
             {
-                /* BROTLI_SAFE(DecodeDistanceBlockSwitch(s)); */
-                if (safe != 0)
+                /* BROTLI_SAFE_WITH_STATUS(DecodeDistanceBlockSwitch(s)); */
+                result = safe != 0 ? SafeDecodeDistanceBlockSwitch(s) : DecodeDistanceBlockSwitch(s);
+                if (result != BROTLI_DECODER_SUCCESS)
                 {
-                    if (SafeDecodeDistanceBlockSwitch(s) == 0)
-                    {
-                        result = BROTLI_DECODER_NEEDS_MORE_INPUT;
-                        goto saveStateAndReturn;
-                    }
-                }
-                else
-                {
-                    DecodeDistanceBlockSwitch(s);
+                    goto saveStateAndReturn;
                 }
             }
             /* BROTLI_SAFE(ReadDistance(s, br)); */
@@ -2627,18 +2686,11 @@ internal static unsafe class DecoderEngine
         }
 
     NextLiteralBlock:
-        /* BROTLI_SAFE(DecodeLiteralBlockSwitch(s)); */
-        if (safe != 0)
+        /* BROTLI_SAFE_WITH_STATUS(DecodeLiteralBlockSwitch(s)); */
+        result = safe != 0 ? SafeDecodeLiteralBlockSwitch(s) : DecodeLiteralBlockSwitch(s);
+        if (result != BROTLI_DECODER_SUCCESS)
         {
-            if (SafeDecodeLiteralBlockSwitch(s) == 0)
-            {
-                result = BROTLI_DECODER_NEEDS_MORE_INPUT;
-                goto saveStateAndReturn;
-            }
-        }
-        else
-        {
-            DecodeLiteralBlockSwitch(s);
+            goto saveStateAndReturn;
         }
         goto CommandInner;
 
@@ -3372,7 +3424,7 @@ internal static unsafe class DecoderEngine
             "_ERROR_FORMAT_PADDING_1",                /* -14 */
             "_ERROR_FORMAT_PADDING_2",                /* -15 */
             "_ERROR_FORMAT_DISTANCE",                 /* -16 */
-            null,                                     /* -17 is reserved */
+            "_ERROR_FORMAT_BLOCK_SWITCH",             /* -17 */
             "_ERROR_COMPOUND_DICTIONARY",             /* -18 */
             "_ERROR_DICTIONARY_NOT_SET",              /* -19 */
             "_ERROR_INVALID_ARGUMENTS",               /* -20 */

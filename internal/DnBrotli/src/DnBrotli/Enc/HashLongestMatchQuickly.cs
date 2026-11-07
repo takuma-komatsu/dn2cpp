@@ -1,4 +1,4 @@
-// Port of c/enc/hash_longest_match_quickly_inc.h (brotli v1.1.0).
+// Port of c/enc/hash_longest_match_quickly_inc.h (brotli v1.2.1).
 //
 // The C template is expanded four times from hash.h (H2/H3/H4/H54); here the
 // template parameters BUCKET_BITS / BUCKET_SWEEP_BITS / HASH_LEN /
@@ -11,7 +11,7 @@
 //   H4:  BUCKET_BITS 17, BUCKET_SWEEP_BITS 2, HASH_LEN 5, USE_DICTIONARY 1
 //   H54: BUCKET_BITS 20, BUCKET_SWEEP_BITS 2, HASH_LEN 7, USE_DICTIONARY 0
 // The bucket array lives in the hasher's extra[0] allocation (see
-// HashMemAllocInBytes + Initialize), mirroring the v1.1.0 layout.
+// HashMemAllocInBytes + Initialize), mirroring the v1.2.1 layout.
 
 using System.Runtime.CompilerServices;
 

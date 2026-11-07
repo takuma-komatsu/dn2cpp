@@ -8,6 +8,77 @@ namespace DnBrotli.Tests;
 /// and Huffman tree-group allocation over a state struct in unmanaged memory.</summary>
 public unsafe class DecoderStateTests
 {
+    [Theory]
+    [InlineData(0, 1)]
+    [InlineData(0, 64)]
+    [InlineData(1, 1)]
+    [InlineData(1, 64)]
+    [InlineData(2, 1)]
+    [InlineData(2, 64)]
+    public void ExhaustedSingleTypeBlockIsTerminalWithoutWriting(int treeType, int inputSize)
+    {
+        BrotliDecoderState* s = DecoderEngine.BrotliDecoderCreateInstance(0, 0, null);
+        Assert.True(s != null);
+        try
+        {
+            State.BrotliDecoderStateMetablockBegin(s);
+            // Reach each switch without decoding a block-cap worth of symbols.
+            // A single-type block has no switch trees to consult after exhaustion.
+            s->state = treeType switch
+            {
+                0 => BrotliRunningState.BROTLI_STATE_COMMAND_INNER,
+                1 => BrotliRunningState.BROTLI_STATE_COMMAND_BEGIN,
+                _ => BrotliRunningState.BROTLI_STATE_COMMAND_POST_DECODE_LITERALS,
+            };
+            s->block_length[treeType] = 0;
+            s->meta_block_remaining_len = 1;
+            s->loop_counter = 1;
+            s->distance_code = -1;
+            s->ringbuffer_size = 64;
+            s->ringbuffer_mask = 63;
+            s->ringbuffer = (byte*)NativeMemory.Alloc(64);
+            new Span<byte>(s->ringbuffer, 64).Fill(0xA5);
+            s->trivial_literal_context = 1;
+            HuffmanCode* literalTree = stackalloc HuffmanCode[256];
+            new Span<HuffmanCode>(literalTree, 256).Clear();
+            s->literal_htree = literalTree;
+
+            byte* input = stackalloc byte[64];
+            new Span<byte>(input, 64).Clear();
+            byte* output = stackalloc byte[18];
+            new Span<byte>(output, 18).Fill(0x5A);
+            byte* nextIn = input;
+            byte* nextOut = output + 1;
+            nuint availableIn = (nuint)inputSize;
+            nuint availableOut = 16;
+            nuint totalOut = 0;
+
+            // Tiny input takes SafeProcessCommands; ample input takes ProcessCommands.
+            Assert.Equal(BrotliDecoderResult.Error, DecoderEngine.BrotliDecoderDecompressStream(
+                s, &availableIn, &nextIn, &availableOut, &nextOut, &totalOut));
+            Assert.Equal((int)BrotliDecoderErrorCode.ErrorFormatBlockSwitch, s->error_code);
+            Assert.Equal((nuint)0, totalOut);
+            Assert.Equal((nuint)16, availableOut);
+            Assert.Equal(0, s->pos);
+            Assert.Equal(0ul, s->block_length[treeType]);
+            for (int i = 0; i < 64; i++) Assert.Equal((byte)0xA5, s->ringbuffer[i]);
+            for (int i = 0; i < 18; i++) Assert.Equal((byte)0x5A, output[i]);
+
+            byte* stoppedAt = nextIn;
+            nuint unconsumed = availableIn;
+            Assert.Equal(BrotliDecoderResult.Error, DecoderEngine.BrotliDecoderDecompressStream(
+                s, &availableIn, &nextIn, &availableOut, &nextOut, &totalOut));
+            Assert.True(nextIn == stoppedAt);
+            Assert.Equal(unconsumed, availableIn);
+            Assert.Equal((nuint)16, availableOut);
+            Assert.Equal((int)BrotliDecoderErrorCode.ErrorFormatBlockSwitch, s->error_code);
+        }
+        finally
+        {
+            DecoderEngine.BrotliDecoderDestroyInstance(s);
+        }
+    }
+
     [Fact]
     public void StateInitSetsCDefaults()
     {
