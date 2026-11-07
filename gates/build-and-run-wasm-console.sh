@@ -62,6 +62,7 @@
 # than passed (gate_skip in _common.sh).
 # Raw MD readonly aliases keep live interior roots and safe owner lookup on wasm32.
 # Runtime argument messages keep earlier generated operands live across later allocations.
+# IL locals survive collection after LLVM folds them into pending wasm operands.
 source "$(dirname "$0")/_common.sh"
 
 # --no-bundled: an -O-less link needs the -debug archives the frozen bundle lacks.
@@ -73,7 +74,7 @@ for tool in em++ emcmake node; do
 done
 
 export WASM=1
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|readonly-raw-md-live-alias-wasm32"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|readonly-raw-md-live-alias-wasm32|local-call-prefix+isolated"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_md-readonly-byrefs.sh gates/fixtures/md-readonly-byrefs/MdReadonlyByrefs.csproj gates/fixtures/md-readonly-byrefs/Program.cs gates/fixtures/md-readonly-byrefs/runtime-checks.cpp samples/dotnet/ArrayCore/ArrayCovariantStoreSubset.cs"
 wasm_corelib_diff_gate StringCore System.Linq
 gate_capture_ok "$_CG_OUT/argument-roots" run_bounded node "$_CG_OUT/StringCore.js"
@@ -86,6 +87,15 @@ wasm_corelib_diff_gate NestedFinallySubset
 wasm_corelib_diff_gate Finalizers --link-xml samples/dotnet/Finalizers/link.xml
 gate_expected_partial "FinalizerSuppressQueuedSubset's post-enqueue window never opens here: this build never collects an object first named inside a finalizer body while that frame is live, so nothing is observed queued and no setting on either side changes it — the section runs and folds the window into its booleans, and gates/build-and-run-finalizers.sh asserts that surface for real."
 wasm_corelib_diff_gate WeakReferences
+DN2CPP_BEFORE_LOCAL_CALL=1 gate_capture_ok "$_CG_OUT/before-local" run_bounded dotnet "$_CG_APP"
+gate_capture_ok "$_CG_OUT/local-oracle" run_bounded dotnet "$_CG_APP" local-call
+# Earlier stress sections can leave conservative roots even when spilling is broken.
+gate_capture_ok "$_CG_OUT/local-wasm" run_bounded node "$_CG_OUT/WeakReferences.js" local-call
+gate_output compare "$_CG_OUT/local-wasm.stdout" "$_CG_OUT/local-oracle.stdout" --policy crlf
+local_witness='local pending call: first=1 second=2 same=False'
+gate_output prefix "$_CG_OUT/native.stdout" "$_CG_OUT/before-local.stdout" --before "$local_witness" --policy crlf
+gate_output byte-witness "$_CG_OUT/native.stdout" "$local_witness" --count 1 --policy crlf
+gate_output byte-witness "$_CG_OUT/local-wasm.stdout" "$local_witness" --count 1 --policy crlf
 pending_barriers=$(awk '
     /\/\/ PendingCallArgumentSubset\.Program::__GateEntry/ { in_method = 1; next }
     in_method && /^\/\/ / { in_method = 0 }
