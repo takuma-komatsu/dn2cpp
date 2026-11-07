@@ -228,6 +228,10 @@ internal sealed class GodotBackend : IEmitBackend
                     _ => $"({cppType})a[{ai}].i",
                 });
             }
+            // The engine calls a static bind with no IL call site to run the initializer
+            // the call triggers.
+            if (emitter.InitializerGuard(m) is { } ensure)
+                sb.AppendLine($"    {ensure}();");
             string callee = emitter.RequireDefinedBodySymbol(
                 m, $"Godot method bind {m.DeclaringClass.Name}.{m.Name}");
             string call = $"{callee}({string.Join(", ", callArgs)})";
@@ -294,6 +298,8 @@ internal sealed class GodotBackend : IEmitBackend
             sb.AppendLine("// ---- Godot custom-callable dispatch bridge ----");
             sb.AppendLine("static void gw_callable_dispatch(void* c, void* args)");
             sb.AppendLine("{");
+            if (emitter.InitializerGuard(dispatch) is { } ensure)
+                sb.AppendLine($"    {ensure}();");
             string dispatchSym = emitter.RequireDefinedBodySymbol(
                 dispatch, "Godot custom-callable dispatch bridge");
             sb.AppendLine($"    {dispatchSym}(*({callableStruct}*)c, ({argsCpp})args);");
@@ -527,6 +533,15 @@ internal sealed class GodotBackend : IEmitBackend
             // on the second case, which would otherwise ship as a dead registration slot.
             string ctorExpr = ctor is null ? "nullptr"
                 : $"(void (*)(Dn2CppObject*))&{emitter.RequireDefinedBodySymbol(ctor, $"Godot ClassDB ctor slot for {cls.Name}")}";
+            // ClassDB construction enters the constructor with no IL call site, so the slot
+            // runs the initializer a newobj triggers first.
+            if (ctor is not null && emitter.InitializerGuard(ctor) is { } ensure)
+            {
+                string entry = $"gwctor_{cls.CppName}";
+                sb.AppendLine($"static void {entry}(Dn2CppObject* self) {{ {ensure}(); ({ctorExpr})(self); }}");
+                sb.AppendLine();
+                ctorExpr = "&" + entry;
+            }
             string notificationExpr = notification is null ? "nullptr"
                 : $"(void (*)(Dn2CppObject*, int32_t))&{emitter.RequireDefinedBodySymbol(notification, $"Godot ClassDB notification slot for {cls.Name}")}";
             // The ClassDB parent: an engine shim's engine name (via the same

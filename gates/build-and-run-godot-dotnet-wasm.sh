@@ -131,8 +131,10 @@ echo "== 4/7 Building the MAIN_MODULE host (the engine's role, without the engin
 # -fwasm-exceptions on the HOST too: the side module imports its __cpp_exception tag and
 # its __cxa_* runtime from here, so a main module without EH gives it nothing to unwind
 # through. NODERAWFS lets dlopen name the .so by its real path instead of a preloaded FS.
+# The host owns the shared linear stack, including the side module's spilled GC roots.
+# Use the console budget and detect exhaustion before an allocator fault obscures it.
 em++ -std=c++17 -O2 -fwasm-exceptions -sMAIN_MODULE=1 -sNODERAWFS=1 -sALLOW_MEMORY_GROWTH=1 \
-    "$HOST_SRC" -o "$OUT/dm_wasm_host.js"
+    -sSTACK_SIZE=1048576 -sSTACK_OVERFLOW_CHECK=2 "$HOST_SRC" -o "$OUT/dm_wasm_host.js"
 
 echo "== 5/7 Asserting the export surface =="
 exports=$(node gates/_wasm_symbols.js exports "$SO")
@@ -215,7 +217,7 @@ echo "-- Run B: the self-reported size (fresh process — 'initialized' latches)
 # This host is the engine's role WITH NO ENGINE IN IT, so it hands a ZEROED interop table
 # (dm_wasm_host.cpp) — and that cctor call is then a null indirect call. Completing a full
 # init here would mean the host emulating the subset of the ~180 godotsharp_* engine
-# functions the startup cctors call, correctly typed (a wrong signature is a wasm trap too) —
+# functions those static constructors call, correctly typed (a wrong signature is a wasm trap too) —
 # a real engine-stub layer, orthogonal to --trim-reflection and out of this gate's scope.
 #
 # So assert the progress this engineless host CAN observe, and DECLARE the engine-dependent
