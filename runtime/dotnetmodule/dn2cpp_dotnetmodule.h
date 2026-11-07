@@ -51,16 +51,16 @@ void dn2cpp_dm_shutdown_callback();
 Dn2CppObject* dn2cpp_dm_sync_ctx();
 void dn2cpp_dm_set_sync_ctx_pump(void (*pump)());
 
-// The deferred startup static-constructor pass. The module entry must NOT run
-// the eager cctor pass inside godotsharp_game_main_init: the engine copies the
+// The deferred module-initializer pass. The module entry must NOT run the
+// module initializers inside godotsharp_game_main_init: the engine copies the
 // managed-callback table into its GDMonoCache only after the entry returns, so
-// a cctor that reaches back into the engine (e.g. an Engine-singleton wrapper
-// creation, which the engine serves by calling the CreateManagedForGodot-
+// an initializer that reaches back into the engine (e.g. an Engine-singleton
+// wrapper creation, which the engine serves by calling the CreateManagedForGodot-
 // ObjectBinding managed callback) would jump through a still-null slot. The
 // entry registers the generated pass here instead; the wrapped frame callback
 // runs it exactly once, at the top of the first engine frame — the earliest
-// point where the engine-side callback cache is guaranteed live. Until then,
-// cctors run lazily through the use-site first-use guards, matching .NET.
+// point where the engine-side callback cache is guaranteed live. Every other
+// static constructor runs at its first trigger, matching .NET.
 void dn2cpp_dm_set_deferred_cctor_pass(void (*pass)());
 
 // Env-gated stage tracing (DN2CPP_DM_TRACE=1): the module entry and the frame
