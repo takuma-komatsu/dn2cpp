@@ -105,8 +105,9 @@ gate_output compare "$native" "$expected" || assertions_failed=1
 gate_output status "$native_code" 0 || assertions_failed=1
 gate_output status "$expected_code" 0 || assertions_failed=1
 
-# stdout matching hides everything the runtime writes to stderr — a swallowed
-# startup-cctor failure reports there and nowhere else. This corpus reports none.
+# stdout matching hides everything the runtime writes to stderr — a failed module
+# initializer the startup pass swallows reports there and nowhere else. This corpus
+# reports none.
 # The bar is two-sided: a divergence where only real .NET reports must fail too.
 if [ -s "$oracle_stderr" ]; then
     echo "FAIL: real .NET wrote to stderr; the diff only covers stdout:" >&2

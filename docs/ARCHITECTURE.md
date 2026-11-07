@@ -140,11 +140,22 @@ preservation or through `ReachCctor` on a use of its type. For a precise-init
 instance constructor, a value type's instance method), a constrained call that
 runs a value type's own method, an `Object` override included, or a static
 virtual implementation, a pointer to a static method, and a root or preserved
-member declared on the type (`ReachRootInitializer`). Reached
-non-generic `.cctor`s run in the startup pass, except one only a reflectively
-bound body reaches; that one and closed generic ones run behind the first-use
-`__ensure` guards that call, `ldftn` and static-field sites emit, and a shared
-body that would need a placeholder owner's guard taints. Reflection
+member declared on the type (`ReachRootInitializer`). The interface a constrained
+static call names is not a use: the body that runs, the implementation or the
+interface's default, triggers its own type. Reaching any member that
+`Compilation.IsInitializerTrigger` holds for (those shapes and an interface's
+default method) reaches its type's `.cctor`, because the member's compiled body
+runs the `__ensure` guard at entry: every route into the body, a continuation,
+runtime slot or lowered call included, triggers. A reached `.cctor` also runs
+behind the guards that call, `ldftn` and static-field sites emit. A call site's
+guard follows its argument evaluation, so the arguments' side effects precede the
+initializer as in .NET, and a shared body that would need a placeholder owner's
+guard taints.
+An entry with no IL call site (the entry point, an emitted construction, a
+reflection row's initializer hook) guards the initializer it triggers before
+entering, and `CppEmitter.InitializerGuard` asserts that reachability reached it. Only
+non-framework module initializers run in the startup pass, ordered by
+assembly-reference depth. Reflection
 admission lives in `Compilation.ReflectionTargets.cs`: `ScanBodyForGenerics`
 resolves each reached method's `ReflectionSummary` in that method's own
 instantiation, and each live site selects what its known operands name, per
@@ -201,9 +212,9 @@ construction and attribute instantiation reach the selected bodies, boxes and
 type initializers; a constant field's access reaches no initializer, and a
 construction whose flags set no lookup bit (`0xFF`) selects as
 `Public | Instance`, as .NET's `Activator` does.
-`RuntimeHelpers.GetUninitializedObject` allocates a known type and reaches its
-initializer but no constructor, and an unknown operand reports with a
-constructor remedy. Selections over generic
+`RuntimeHelpers.GetUninitializedObject` allocates a known type and reaches the
+precise-init initializers on its base chain but no constructor, and an unknown
+operand reports with a constructor remedy. Selections over generic
 definitions re-apply as new instantiations appear, inside the discovery fixpoint
 and each compile round. `ReflectionSummary.cs` interprets one method body over
 SRM and `ILDecoder`, and `ReflectionApis.cs` classifies the API and its operand
@@ -351,7 +362,9 @@ only what it needs.
 - `CallIntrinsics` — the `ICallIntrinsics` instance, or null.
 - `EmitEpilogue(CppEmitter, StringBuilder, IReadOnlyList<MethodInfo> cctors)` —
   the tail (`main`, the registration tables, the mono-module entry export);
-  `cctors` are the static constructors to run at startup.
+  `cctors` are the module initializers to run at startup, in dependency order;
+  an engine entry the backend emits guards the initializer it triggers
+  (`CppEmitter.InitializerGuard`).
 - `ShouldSkipMethodBody(ClassInfo, MethodInfo)` — emit no body, for an engine
   shim whose calls the intrinsics replace inline.
 

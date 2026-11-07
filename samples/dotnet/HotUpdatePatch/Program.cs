@@ -627,6 +627,7 @@ internal static class Program
 
         Counter.ConcatProbe = InterpretedConcatSubset.Run;
         Counter.AggregateProbe = InterpretedAggregateSubset.Run;
+        Counter.InitializerProbe = InterpretedInitializerSubset.Run;
         Counter.GenericIntImportProbe = GenericIntName;
         Counter.GenericStringImportProbe = GenericStringName;
         Counter.GenericVirtualProbe = GenericVirtualNames;

@@ -36,7 +36,6 @@ internal sealed class DotnetModuleBackend : IEmitBackend
     private static readonly (string Type, string Method, int Parameters) s_logException = ("Godot.NativeInterop.ExceptionUtils", "LogException", 1);
     private static readonly (string Type, string Method, int Parameters) s_pushError = ("Godot.NativeInterop.ExceptionUtils", "PushError", 1);
     private static readonly (string Parent, string Name) s_unmanagedCallbacks = (NativeFuncsType, "UnmanagedCallbacks");
-    private static readonly (string Parent, string Name) s_nativeConstructorException = ("Godot.GodotObject", "NativeConstructorNotFoundException");
 
     public void ConfigureILDiet(ILDietRootPolicy policy, IReadOnlyList<string> paths, TranspileOptions options)
     {
@@ -64,8 +63,7 @@ internal sealed class DotnetModuleBackend : IEmitBackend
             s_syncCtor, s_syncExecute, s_syncPost, s_syncSend, s_logException, s_pushError })
             policy.MethodRoots.Add(("GodotSharp", root.Type, root.Method));
         foreach (string type in new[] { NativeStringType, NativeStringNameType, NativePackedStringArrayType,
-            s_unmanagedCallbacks.Parent + "+" + s_unmanagedCallbacks.Name,
-            s_nativeConstructorException.Parent + "+" + s_nativeConstructorException.Name })
+            s_unmanagedCallbacks.Parent + "+" + s_unmanagedCallbacks.Name })
             policy.TypeRoots.Add(("GodotSharp", type));
         GodotProjectScripts.Configure(policy, metadata, options);
     }
@@ -174,7 +172,6 @@ internal sealed class DotnetModuleBackend : IEmitBackend
     private ClassInfo? _exceptionClass;
     private MethodInfo? _logException;
     private MethodInfo? _pushError;
-    private string? _nativeCtorNotFound;
     private int? _frameCallbackSlot;
     private int? _shutdownCallbackSlot;
     private string _appAssemblyName = "";
@@ -253,13 +250,6 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         _exceptionClass = c.FindClassByFullName("System.Exception")
             ?? throw new NotSupportedException(
                 "--dotnet-module: type System.Exception not found (no CoreLib in the load set?)");
-        // The ONE startup-cctor failure that is not news — see the emitted loop.
-        // Resolved from the model rather than spelled as a literal so a
-        // GodotSharp re-pin that renames or moves it fails the transpile here,
-        // where the remedy is one line, instead of turning the filter into a
-        // silent no-op that reports a guaranteed false error every frame-1.
-        _nativeCtorNotFound = Compilation.ReflectionTypeName(
-            ResolveNestedStruct(c, s_nativeConstructorException.Parent, s_nativeConstructorException.Name));
         var roots = new List<MethodInfo>
         {
             _nativeFuncsInitialize, _managedCallbacksCreate, _lookupScriptsInAssembly,
@@ -512,61 +502,6 @@ internal sealed class DotnetModuleBackend : IEmitBackend
                 $"--dotnet-module: method {typeFullName}.{methodName} ({paramCount} parameter(s)) not found");
     }
 
-    /// <summary>Emits the startup pass's name-list accumulator and the one loud line
-    /// it ends in. The list is a fixed-capacity buffer because it is filled from a
-    /// <c>catch</c> during init, where an allocation is the least welcome thing
-    /// available; the price is that a long enough list is elided, so <c>count</c> is
-    /// tracked apart from the text and the message says when the two disagree.</summary>
-    private static void EmitDisabledTypeReporter(StringBuilder sb, string pushErrorSym)
-    {
-        sb.AppendLine("// A \", \"-joined, fixed-capacity list of type names, with an EXACT count");
-        sb.AppendLine("// beside it: `named` is how many of `count` actually fit in `buf`.");
-        sb.AppendLine("struct Dn2CppDmTypeList { char buf[480]; int len; int count; int named; };");
-        sb.AppendLine("static void dn2cpp_dm_type_list_add(Dn2CppDmTypeList* __l, const char* __name)");
-        sb.AppendLine("{");
-        sb.AppendLine("    // The names come from the cctor table's baked C-string literals, so");
-        sb.AppendLine("    // they are never null and never move; only the capacity can refuse one.");
-        sb.AppendLine("    ++__l->count;");
-        sb.AppendLine("    int __n = (int)std::strlen(__name);");
-        sb.AppendLine("    int __sep = __l->len > 0 ? 2 : 0;");
-        sb.AppendLine("    if (__l->len + __sep + __n >= (int)sizeof(__l->buf))");
-        sb.AppendLine("        return;");
-        sb.AppendLine("    if (__sep != 0) { __l->buf[__l->len++] = ','; __l->buf[__l->len++] = ' '; }");
-        sb.AppendLine("    std::memcpy(__l->buf + __l->len, __name, (size_t)__n);");
-        sb.AppendLine("    __l->len += __n;");
-        sb.AppendLine("    __l->buf[__l->len] = '\\0';");
-        sb.AppendLine("    ++__l->named;");
-        sb.AppendLine("}");
-        sb.AppendLine("static void dn2cpp_dm_report_disabled_types(const Dn2CppDmTypeList* __l)");
-        sb.AppendLine("{");
-        sb.AppendLine("    char __msg[640];");
-        sb.AppendLine("    int __n = std::snprintf(__msg, sizeof(__msg),");
-        sb.AppendLine("        \"dn2cpp: %d type(s) left unusable by a failed startup static constructor \"");
-        sb.AppendLine("        \"(every use of one re-raises its failure): %s%s\",");
-        sb.AppendLine("        __l->count, __l->buf, __l->named < __l->count ? \", ...\" : \"\");");
-        sb.AppendLine("    if (__n < 0) __n = 0;");
-        sb.AppendLine("    if (__n > (int)sizeof(__msg) - 1) __n = (int)sizeof(__msg) - 1;");
-        sb.AppendLine("    // PushError directly, not dn2cpp_report_boundary_exception: there is no");
-        sb.AppendLine("    // exception here to report. Each failure already went through the");
-        sb.AppendLine("    // boundary reporter as it happened; this line is a fact about the PASS,");
-        sb.AppendLine("    // and it goes to the channel that reporter's own sink ends in, which is");
-        sb.AppendLine("    // where the per-failure lines it indexes are. By the time the deferred");
-        sb.AppendLine("    // pass runs (the first engine frame) the entry has returned, so");
-        sb.AppendLine("    // GodotSharp's statics and the interop table are live — the same");
-        sb.AppendLine("    // precondition the per-failure reports above already rely on.");
-        sb.AppendLine("    try {");
-        sb.AppendLine($"        {pushErrorSym}(dn2cpp_string_from_utf8(__msg, (int32_t)__n));");
-        sb.AppendLine("    } catch (Dn2CppException& __ex) {");
-        sb.AppendLine("        // A summary whose whole subject is that init went wrong must not be");
-        sb.AppendLine("        // the thing that takes the process down when the managed reporter is");
-        sb.AppendLine("        // part of what went wrong. stderr is the channel that cannot fail.");
-        sb.AppendLine("        dn2cpp_exc_inflight_pop(__ex.obj);");
-        sb.AppendLine("        std::fprintf(stderr, \"[dn2cpp] %s\\n\", __msg);");
-        sb.AppendLine("        std::fflush(stderr);");
-        sb.AppendLine("    }");
-        sb.AppendLine("}");
-    }
-
     public void EmitEpilogue(CppEmitter emitter, StringBuilder sb, IReadOnlyList<MethodInfo> cctors)
     {
         var initialize = _nativeFuncsInitialize
@@ -579,10 +514,9 @@ internal sealed class DotnetModuleBackend : IEmitBackend
             create, "--dotnet-module managed-callbacks table create");
         string lookupSym = emitter.RequireDefinedBodySymbol(
             lookup, "--dotnet-module script-class registration lookup");
-        // Both report entry points are spelled by two pieces of this epilogue, so they
-        // are resolved once here. An epilogue is emitted TEXT, not a compiled body, so
-        // the named-symbol backstop cannot see it: without this check a --cut on one of
-        // them gives a green transpile whose C++ does not link.
+        // An epilogue is emitted TEXT, not a compiled body, so the named-symbol backstop
+        // cannot see it: without this check a --cut on one of the report entry points
+        // gives a green transpile whose C++ does not link.
         string pushErrorSym = emitter.RequireDefinedBodySymbol(
             _pushError ?? throw new InvalidOperationException(
                 "AdditionalRootMethods did not run before EmitEpilogue"),
@@ -591,87 +525,31 @@ internal sealed class DotnetModuleBackend : IEmitBackend
             _logException ?? throw new InvalidOperationException(
                 "AdditionalRootMethods did not run before EmitEpilogue"),
             "--dotnet-module host-boundary report (ExceptionUtils.LogException)");
+        // The epilogue enters each member it calls with no IL call site, so the call first
+        // runs the initializer that entering the member triggers. Guard and call form one
+        // statement, as a braceless if needs.
+        string Entered(MethodInfo m, string call) =>
+            emitter.InitializerGuard(m) is { } ensure ? $"{{ {ensure}(); {call} }}" : call;
 
         sb.AppendLine("// ---- Godot .NET-module entry (mono-module NativeAOT drop-in ABI) ----");
         sb.AppendLine("// The engine loads this library in place of the hostfxr-managed game");
         sb.AppendLine("// assembly and calls godotsharp_game_main_init once at module init.");
         sb.AppendLine("//");
-        sb.AppendLine("// The eager startup cctor pass, deferred to the first engine frame (see");
+        sb.AppendLine("// The module-initializer pass, deferred to the first engine frame (see");
         sb.AppendLine("// dn2cpp_dm_set_deferred_cctor_pass): the engine copies the managed-callback");
-        sb.AppendLine("// table into GDMonoCache only after the entry returns, so a cctor that");
-        sb.AppendLine("// reaches back into the engine during init (an Engine-singleton wrapper, a");
-        sb.AppendLine("// method-bind resolve on a wrapped object) would jump through a still-null");
-        sb.AppendLine("// callback slot. Until the pass runs, cctors trigger lazily through the");
-        sb.AppendLine("// use-site first-use guards — the same ordering real .NET gives this code.");
+        sb.AppendLine("// table into GDMonoCache only after the entry returns, so a module");
+        sb.AppendLine("// initializer that reaches back into the engine during init (an");
+        sb.AppendLine("// Engine-singleton wrapper, a method-bind resolve on a wrapped object) would");
+        sb.AppendLine("// jump through a still-null callback slot. Every other static constructor");
+        sb.AppendLine("// runs at its first trigger, as in .NET, so an engine wrapper class this");
+        sb.AppendLine("// build lacks (editor-only, disabled module) fails only when touched.");
         sb.AppendLine("//");
-        sb.AppendLine("// Each cctor runs isolated: an engine wrapper class absent from this engine");
-        sb.AppendLine("// build (editor-only, disabled module — e.g. LightmapperRD in a headless");
-        sb.AppendLine("// template) throws NativeConstructorNotFoundException from its cctor's");
-        sb.AppendLine("// ClassDB constructor probe. Real .NET would only ever run that cctor on");
-        sb.AppendLine("// first use of the class; here the failure marks the type unusable — the");
-        sb.AppendLine("// runtime remembers it and every first-use guard re-raises it rather than");
-        sb.AppendLine("// rerunning the cctor or reading its half-set statics.");
-        sb.AppendLine("//");
-        sb.AppendLine("// Every such failure is reported loudly, through the shared host-boundary");
-        sb.AppendLine("// reporter (dn2cpp_core.h), and the pass ends with one line naming the whole");
-        sb.AppendLine("// set of types it left unusable — the per-failure lines print hundreds of");
-        sb.AppendLine("// engine lines before the first frame, and only the summary shows the SET.");
-        sb.AppendLine("//");
-        sb.AppendLine("// The absent-class case is the ONE exception, on both channels: it hits on");
-        sb.AppendLine("// every run of every headless template, so a loud report would be a standing");
-        sb.AppendLine("// false alarm, and it is not a fact about the program at all — real .NET");
-        sb.AppendLine("// would never run that cctor, and its first-use guard raises the same thing");
-        sb.AppendLine("// when something actually touches the class. It keeps its own summary line");
-        sb.AppendLine("// on the trace channel, so DN2CPP_DM_TRACE=1 shows the complete picture.");
-        if (cctors.Count > 0)
-        {
-            EmitDisabledTypeReporter(sb, pushErrorSym);
-            // Carry each cctor's declaring type name beside its function pointer so a
-            // throw names the type whose static init failed: the exception type alone
-            // does not identify it (an absent engine wrapper throws from deep in a
-            // ClassDB probe). The name is the CLR reflection name, baked as a
-            // C-string literal the same way type-infos carry it.
-            sb.AppendLine("struct Dn2CppDmCctorEntry { void (*fn)(); const char* type; };");
-            sb.AppendLine("static const Dn2CppDmCctorEntry dn2cpp_dm_startup_cctor_table[] = {");
-            foreach (var cctor in cctors)
-                sb.AppendLine($"    {{ &{cctor.CppName}__ensure, \"{Compilation.ReflectionTypeName(cctor.DeclaringClass)}\" }},");
-            sb.AppendLine("};");
-        }
+        sb.AppendLine("// Each module initializer runs isolated, and a failure is reported through");
+        sb.AppendLine("// the shared host-boundary reporter (dn2cpp_core.h), naming the module: no");
+        sb.AppendLine("// use site names `<Module>`, so nothing else would surface it.");
         sb.AppendLine("static void dn2cpp_dm_run_startup_cctors()");
         sb.AppendLine("{");
-        if (cctors.Count > 0)
-        {
-            sb.AppendLine("    Dn2CppDmTypeList __disabled{};");
-            sb.AppendLine("    Dn2CppDmTypeList __absent{};");
-            sb.AppendLine("    for (const Dn2CppDmCctorEntry& __e : dn2cpp_dm_startup_cctor_table)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        try {");
-            sb.AppendLine("            __e.fn();");
-            sb.AppendLine("        } catch (Dn2CppException& __ex) {");
-            sb.AppendLine("            const char* __tn = (__ex.obj != nullptr && __ex.obj->type != nullptr)");
-            sb.AppendLine("                ? __ex.obj->type->name : nullptr;");
-            sb.AppendLine($"            if (__tn != nullptr && std::strcmp(__tn, \"{_nativeCtorNotFound}\") == 0) {{");
-            sb.AppendLine("                // Swallowed, so drop the in-flight root the throw pushed —");
-            sb.AppendLine("                // the reporting arm does this inside the shared helper.");
-            sb.AppendLine("                dn2cpp_exc_inflight_pop(__ex.obj);");
-            sb.AppendLine("                dn2cpp_dm_trace(\"startup cctor for %s: class absent from this engine build\", __e.type);");
-            sb.AppendLine("                dn2cpp_dm_type_list_add(&__absent, __e.type);");
-            sb.AppendLine("            } else {");
-            sb.AppendLine("                dn2cpp_report_boundary_exception(__ex.obj, \"the startup static constructor of %s\", __e.type);");
-            sb.AppendLine("                dn2cpp_dm_type_list_add(&__disabled, __e.type);");
-            sb.AppendLine("            }");
-            sb.AppendLine("        }");
-            sb.AppendLine("    }");
-            sb.AppendLine("    // Both summaries are emitted only when they have something to say: a");
-            sb.AppendLine("    // \"0 types disabled\" line every run is a line people learn to skip, and");
-            sb.AppendLine("    // learning to skip THIS line is the failure mode it exists to prevent.");
-            sb.AppendLine("    if (__disabled.count > 0)");
-            sb.AppendLine("        dn2cpp_dm_report_disabled_types(&__disabled);");
-            sb.AppendLine("    if (__absent.count > 0)");
-            sb.AppendLine("        dn2cpp_dm_trace(\"%d type(s) unusable - class absent from this engine build: %s%s\",");
-            sb.AppendLine("                        __absent.count, __absent.buf,");
-            sb.AppendLine("                        __absent.named < __absent.count ? \", ...\" : \"\");");
-        }
+        emitter.EmitModuleInitializerCalls(sb, cctors);
         sb.AppendLine("}");
         sb.AppendLine();
         var syncCtxCls = (_syncCtxCtor ?? throw new InvalidOperationException(
@@ -694,7 +572,7 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         sb.AppendLine("    {");
         sb.AppendLine($"        auto* __ctx = ({ctxT}*)dn2cpp_alloc(sizeof({ctxT}));");
         sb.AppendLine($"        ((Dn2CppObject*)__ctx)->type = {emitter.TypeInfoRef(syncCtxCls, "main-thread SynchronizationContext singleton")};");
-        sb.AppendLine($"        {syncCtxCtorSym}(__ctx);");
+        sb.AppendLine($"        {Entered(_syncCtxCtor, $"{syncCtxCtorSym}(__ctx);")}");
         sb.AppendLine("        g_dn2cpp_dm_sync_ctx = __ctx;");
         sb.AppendLine("        // The creating thread's Current — by construction the engine main");
         sb.AppendLine("        // thread: the frame pump below is the first caller, on frame 1,");
@@ -706,7 +584,7 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         sb.AppendLine("}");
         sb.AppendLine("static void dn2cpp_dm_sync_ctx_pump()");
         sb.AppendLine("{");
-        sb.AppendLine($"    {syncCtxExecuteSym}(({ctxT}*)dn2cpp_dm_sync_ctx());");
+        sb.AppendLine($"    {Entered(_syncCtxExecute!, $"{syncCtxExecuteSym}(({ctxT}*)dn2cpp_dm_sync_ctx());")}");
         sb.AppendLine("}");
         sb.AppendLine();
         string excT = (_exceptionClass ?? throw new InvalidOperationException(
@@ -726,9 +604,9 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         sb.AppendLine("        \"dn2cpp: unhandled managed exception in %s\", __where != nullptr ? __where : \"<unknown>\");");
         sb.AppendLine("    if (__n < 0) __n = 0;");
         sb.AppendLine("    if (__n > (int)sizeof(__buf) - 1) __n = (int)sizeof(__buf) - 1;");
-        sb.AppendLine($"    {pushErrorSym}(dn2cpp_string_from_utf8(__buf, (int32_t)__n));");
+        sb.AppendLine($"    {Entered(_pushError!, $"{pushErrorSym}(dn2cpp_string_from_utf8(__buf, (int32_t)__n));")}");
         sb.AppendLine("    if (__exc != nullptr)");
-        sb.AppendLine($"        {logExceptionSym}(({excT}*)__exc);");
+        sb.AppendLine($"        {Entered(_logException!, $"{logExceptionSym}(({excT}*)__exc);")}");
         sb.AppendLine("}");
         sb.AppendLine();
         var unmanagedCallbacks = _unmanagedCallbacks
@@ -868,9 +746,9 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         sb.AppendLine("    // managed allocation would abort the collector. Enable the prologue's");
         sb.AppendLine("    // register-on-entry (RAII unregister at thread exit) for every such entry.");
         sb.AppendLine("    dn2cpp_set_native_callback_gc_registration(1);");
-        // Runtime + string-literal init only; no eager cctors here — the startup
-        // pass is deferred to the first frame (see dn2cpp_dm_run_startup_cctors),
-        // and anything init itself touches runs via the use-site guards.
+        // Runtime + string-literal init only: the module-initializer pass is deferred to
+        // the first frame (see dn2cpp_dm_run_startup_cctors), and every other initializer
+        // runs at its first trigger.
         emitter.EmitInitCalls(sb, Array.Empty<MethodInfo>());
         sb.AppendLine("    // The engine calls this on a thread Boehm has not seen; register it.");
         sb.AppendLine("    dn2cpp_dotnetmodule_thread_guard();");
@@ -879,8 +757,8 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         sb.AppendLine("        // Install the engine's interop function table FIRST: static");
         sb.AppendLine("        // constructors (StringName caches, method binds) already call");
         sb.AppendLine("        // through it, so it must be live before any cctor can trigger.");
-        sb.AppendLine($"        {initializeSym}((intptr_t)interop_funcs, interop_funcs_size_bytes);");
-        sb.AppendLine($"        {createSym}((intptr_t)out_managed_callbacks);");
+        sb.AppendLine($"        {Entered(initialize, $"{initializeSym}((intptr_t)interop_funcs, interop_funcs_size_bytes);")}");
+        sb.AppendLine($"        {Entered(create, $"{createSym}((intptr_t)out_managed_callbacks);")}");
         // The slot index is resolved by name in AdditionalRootMethods; the emitted
         // comment's slot-layout note describes the current GodotSharp pin, but the
         // INDEX itself always comes from the model.
@@ -903,8 +781,8 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         sb.AppendLine("        dn2cpp_dm_trace(\"managed callbacks written\");");
         sb.AppendLine("        // Register the game assembly's script classes. An Assembly is modeled");
         sb.AppendLine("        // as its simple-name handle (see CppTypes: System.Reflection.Assembly).");
-        sb.AppendLine($"        {lookupSym}(\"{_appAssemblyName}\");");
-        sb.AppendLine("        // Run the remaining startup cctors on the first engine frame — the");
+        sb.AppendLine($"        {Entered(lookup, $"{lookupSym}(\"{_appAssemblyName}\");")}");
+        sb.AppendLine("        // Run the module initializers on the first engine frame — the");
         sb.AppendLine("        // engine-side callback cache is not live until this entry returns.");
         sb.AppendLine("        dn2cpp_dm_set_deferred_cctor_pass(&dn2cpp_dm_run_startup_cctors);");
         sb.AppendLine("        // Per-frame drain of the main-thread SynchronizationContext; its");

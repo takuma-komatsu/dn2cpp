@@ -892,13 +892,13 @@ internal sealed partial class MethodCompiler
             {
                 string tmpF = NewTemp(ct);
                 Emit($"{tmpF} = {Cast(val, ct)};");
-                return $"{DirectCallSym(vhTsF)}({ArgsWithRgctx($"&{tmpF}, {formatExpr}", vhTsF)})";
+                return GuardEnteredCall(vhTsF, $"{DirectCallSym(vhTsF)}({ArgsWithRgctx($"&{tmpF}, {formatExpr}", vhTsF)})");
             }
             if (Compilation.EffectiveToString(vh) is { } vhTs)
             {
                 string tmp = NewTemp(ct);
                 Emit($"{tmp} = {Cast(val, ct)};");
-                return $"{DirectCallSym(vhTs)}({ArgsWithRgctx($"&{tmp}", vhTs)})";
+                return GuardEnteredCall(vhTs, $"{DirectCallSym(vhTs)}({ArgsWithRgctx($"&{tmp}", vhTs)})");
             }
         }
         throw new NotSupportedException(

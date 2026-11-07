@@ -6,7 +6,7 @@ using Godot;
 // and keeps running; the assertion is that the engine is still there afterwards.
 // Both faults are unhandled by design: a try/catch here would assert nothing,
 // since the exception would never reach a native frame. CctorFaultProbe below
-// rides along for the startup static-constructor pass, which shares the channel.
+// rides along for a static constructor that fails at its first trigger.
 public partial class FaultProbe : Node
 {
     // Distinctive enough that the gate's "no unexpected engine error" sweep can
@@ -60,30 +60,44 @@ public partial class FaultProbe : Node
         }
         _done = true;
         // Position is load-bearing: this branch runs only after the drain, a later
-        // stage of the same frame callback whose FIRST stage is the startup-cctor
-        // pass — so the pass has provably run and this observes what it left behind.
-        // The catch IS the assertion: a failed initializer must be re-raised by
-        // every later first-use guard, not replaced by a zeroed static or a rerun.
-        string cctorFault = "";
-        try
-        {
-            cctorFault = CctorFaultProbe.Value;
-        }
-        catch (System.Exception e)
-        {
-            // The simple NAME, not FullName: that is the surface this lane's
-            // trimmed run keeps, and the trim gate transpiles this same file.
-            cctorFault = e.GetType().Name;
-        }
-        GD.Print($"DN2CPP_DM_CCTORPROBE reraised={cctorFault}");
+        // stage of the same frame callback whose FIRST stage is the module-initializer
+        // pass, so the gate's check that no startup report names the probe covers the
+        // whole pass. Nothing touches the probe before this line, so the first touch
+        // runs its initializer, and the second must see the same failure, not a
+        // zeroed static or a rerun.
+        string first = TouchCctorProbe(out System.Exception firstFault);
+        string again = TouchCctorProbe(out System.Exception againFault);
+        GD.Print($"DN2CPP_DM_CCTORPROBE first={first} again={again} same={ReferenceEquals(firstFault, againFault)}");
         // Reaching this line at all is the result: _Process was called again after
         // throwing out of it, on a later frame than the one whose drain faulted.
         // The two flags tell a failure apart from a fault that never happened.
         GD.Print($"DN2CPP_DM_FAULTPROBE posted={s_postedCallbackRan} method={_methodFaulted}");
     }
+
+    // .NET wraps an initializer's failure in a TypeInitializationException and dn2cpp
+    // re-raises the original, so the touch reports the unwrapped failure. The simple
+    // NAME, not FullName: that is the surface this lane's trimmed run keeps, and the
+    // trim gate transpiles this same file.
+    private static string TouchCctorProbe(out System.Exception fault)
+    {
+        fault = null;
+        try
+        {
+            return CctorFaultProbe.Value;
+        }
+        catch (System.Exception e)
+        {
+            while (e is System.TypeInitializationException { InnerException: { } inner })
+            {
+                e = inner;
+            }
+            fault = e;
+            return e.GetType().Name;
+        }
+    }
 }
 
-// A type whose startup static constructor fails on demand. The failure is gated
+// A type whose static constructor fails on demand. The failure is gated
 // on an environment variable because four gates transpile this assembly and only
 // one asks for it; an always-failing initializer would put a permanent error in
 // the other three logs, whose assertion is that a clean init produces none. The
@@ -99,7 +113,7 @@ internal static class CctorFaultProbe
         if (System.Environment.GetEnvironmentVariable("DN2CPP_DM_SAMPLE_CCTOR_FAULT") is not null)
         {
             throw new System.InvalidOperationException(
-                "DN2CPP_DM_FAULT_INJECTED raised from a startup static constructor");
+                "DN2CPP_DM_FAULT_INJECTED raised from a static constructor");
         }
         return "ok";
     }

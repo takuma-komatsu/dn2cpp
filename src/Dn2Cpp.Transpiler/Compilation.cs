@@ -182,14 +182,20 @@ internal readonly record struct BoundedImport(
 /// the delegate invoker converts back; the two sides derive the erasure independently and
 /// cannot disagree, since the only spellings that can differ both erase to the same thing.
 /// It is why an INSTANCE target can need an adapter at all.</para>
-internal readonly record struct DelegateAdapter(MethodInfo Method, bool Closed, bool NfiErased = false)
+/// <para><see cref="Entered"/> is the value-type instance method a delegate binds when
+/// entering it triggers a precise-init initializer: binding boxes and takes an address,
+/// neither of which triggers, so the adapter runs that initializer at each invocation.
+/// <see cref="Method"/> may be the shared body serving several such methods, and each
+/// gets its own adapter, named after it.</para>
+internal readonly record struct DelegateAdapter(MethodInfo Method, bool Closed, bool NfiErased = false,
+    MethodInfo? Entered = null)
 {
     /// <summary>The adapter's C++ symbol — the single definition both mouths use (the
     /// <c>ldftn</c> site that names it and the emitter that defines it). A method's
     /// The adapter prefixes cannot collide with a plain method name because method
     /// symbols end their readable stem with <c>_m</c> plus a numeric identity.</summary>
     public string CppName => NfiErased
-        ? $"dgadapn_{(Closed ? "closed_" : "")}{Method.CppName}"
+        ? $"dgadapn_{(Closed ? "closed_" : "")}{(Entered ?? Method).CppName}"
         : Closed ? $"dgadap_closed_{Method.CppName}" : $"dgadap_{Method.CppName}";
 }
 
@@ -1423,13 +1429,9 @@ internal sealed partial class Compilation
             NoteConditionalPreservationUse(cls);
     }
 
-    /// <summary>Static constructors a method body injected a lazy first-use guard for
-    /// (a static-field access whose declaring type runs a .cctor on first use). dn2cpp
-    /// otherwise runs every .cctor eagerly at startup in reach order, which violates
-    /// .NET's guarantee that a type's statics are set before anything reads them — e.g.
-    /// a cctor that reads a static another (later-ordered) cctor sets observes its
-    /// default value. The emitter generates an idempotent <c>__ensure</c> wrapper per
-    /// target so the read site can run the target's cctor first.</summary>
+    /// <summary>Static constructors an emitted guard or initializer hook names: a trigger
+    /// in a compiled body, an emitted entry or a metadata row runs the type's initializer
+    /// first. The emitter generates an idempotent <c>__ensure</c> wrapper per target.</summary>
     public HashSet<MethodInfo> CctorEnsureTargets { get; } = new();
 
     public void NoteCctorEnsure(MethodInfo cctor) => CctorEnsureTargets.Add(cctor);
@@ -2239,7 +2241,7 @@ internal sealed partial class Compilation
                 // type, it would silently drop the initializer. Model the row exactly when
                 // it carries members, so an ordinary program pays nothing and a module
                 // initializer reaches its own cctor through the ordinary .cctor machinery
-                // (rooted in CompleteAndDiscover, run eagerly at startup).
+                // (rooted in CompleteAndDiscover, run in the startup pass).
                 if (name == "<Module>" && td.GetMethods().Count == 0 && td.GetFields().Count == 0)
                     continue;
                 if (td.GetGenericParameters().Count > 0)
@@ -4701,7 +4703,8 @@ internal sealed partial class Compilation
             {
                 if (m.Handle != ctor || Reachable.Contains(m) || _backend?.ShouldSkipMethodBody(cls, m) == true)
                     continue;
-                Reach(m);
+                // The row runs the initializer the constructor triggers.
+                ReachEntered(m);
                 reached = true;
             }
         }
@@ -5114,10 +5117,6 @@ internal sealed partial class Compilation
     // and a method name). Emits the initializer rows the runtime binder runs.
     private bool _reflectionNamedDelegateBindUsed;
     internal bool NamedDelegateBindingUsed => _reflectionNamedDelegateBindUsed;
-    private readonly HashSet<MethodInfo> _bindingOnlyInitializers = new();
-    private readonly HashSet<MethodInfo> _bindingOnlyBodies = new();
-    private bool _reachingBindingOnlyBody;
-    internal bool IsBindingOnlyInitializer(MethodInfo method) => _bindingOnlyInitializers.Contains(method);
 
     // Set when a reached body calls or binds Delegate.DynamicInvoke, which runs a
     // delegate type's Invoke row as MethodInfo.Invoke does. It or `_reflectionInvokeUsed`
@@ -5228,12 +5227,12 @@ internal sealed partial class Compilation
         // and `<Module>` is never used, so an initializer would silently never run).
         //
         // .NET runs a module initializer lazily, before the first access to anything in
-        // that module; dn2cpp runs every reached .cctor eagerly at startup, so a referenced
-        // library's initializer runs even when the program ends up touching nothing else in
-        // it. That over-approximates .NET, and deliberately: the alternative is to under-run
-        // it, and a registration hook that does not run is exactly the silent wrong answer
-        // this exists to prevent. It matches what the AOT peers do (IL2CPP runs module
-        // initializers for the assemblies it links).
+        // that module; no dn2cpp use site names `<Module>`, so module initializers run in
+        // the startup pass, and a referenced library's runs even when the program ends up
+        // touching nothing else in it. That over-approximates .NET, and deliberately: the
+        // alternative is to under-run it, and a registration hook that does not run is
+        // exactly the silent wrong answer this exists to prevent. It matches what the AOT
+        // peers do (IL2CPP runs module initializers for the assemblies it links).
         //
         // Framework assemblies are exempt, on the same bound as the [UnmanagedCallersOnly]
         // roots below: BCL module-level plumbing is the runtime's job, not transpiled IL's.
@@ -5417,7 +5416,9 @@ internal sealed partial class Compilation
                     || m.Module.Reader.GetMethodDefinition(m.Handle).GetGenericParameters().Count > 0
                     || _backend?.ShouldSkipMethodBody(cls, m) == true)
                     continue;
+                // A patch enters it through its row, which runs the initializer it triggers.
                 Reach(m);
+                ReachRootInitializer(m);
                 reached = true;
             }
         }
@@ -5488,14 +5489,6 @@ internal sealed partial class Compilation
                 NoteReflectionInvokeBoxes(invoke);
         _delegateInvokeBoxCursor = count;
         DrainReachability();
-    }
-
-    private void ReachBindingInitializer(MethodInfo method)
-    {
-        bool previous = _reachingBindingOnlyBody;
-        _reachingBindingOnlyBody = true;
-        try { Reach(method); }
-        finally { _reachingBindingOnlyBody = previous; }
     }
 
     /// <summary>Marks allocated the value type of a value the runtime boxes for
@@ -5751,7 +5744,9 @@ internal sealed partial class Compilation
             }
             if (reach)
             {
+                // The attribute factory enters the constructor with no IL call site.
                 Reach(da.Ctor);
+                ReachRootInitializer(da.Ctor);
                 // GetCustomAttributes(attrType[, bool]) returns an array whose RUNTIME type
                 // is attrType[] in .NET; the runtime helper stamps that identity via
                 // dn2cpp_find_array_ti, which only answers for elements the image emitted a
@@ -5880,8 +5875,6 @@ internal sealed partial class Compilation
                 var m = _toScan.Dequeue();
                 if (!_scanned.Add(m))
                     continue;
-                bool previous = _reachingBindingOnlyBody;
-                _reachingBindingOnlyBody = _bindingOnlyBodies.Contains(m);
                 _scanningBody = true;
                 _scanningPreserveOnlyBody = _preserveOnlyBodies.Contains(m);
                 try
@@ -5895,7 +5888,6 @@ internal sealed partial class Compilation
                 }
                 finally
                 {
-                    _reachingBindingOnlyBody = previous;
                     _scanningBody = _scanningPreserveOnlyBody = false;
                 }
                 if (_preserveRestored.Count > 0)
@@ -6844,7 +6836,7 @@ internal sealed partial class Compilation
         if (!CoreIntrinsics.IsInterceptedHttpHandlerMethod(m.DeclaringClass.FullName, m.Name))
             return;
         if (HttpShimTarget(m.Name) is { } shim)
-            Reach(shim);
+            ReachEntered(shim);
     }
 
     private void PopulateMethodImpls(ClassInfo cls, TypeDefinition td, Module module, GenericContext ctx)

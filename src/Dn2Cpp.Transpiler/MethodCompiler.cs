@@ -163,6 +163,9 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// grouped user then compiles its own body). Never set for real methods, so
     /// the checks cost nothing with sharing off.</summary>
     public bool SharedTrial { get; set; }
+    /// <summary>Set on a compiler a parallel body worker runs. Such a compiler must not
+    /// write shared compilation state (<see cref="RequireCoordinator"/>).</summary>
+    internal bool ParallelWorker { get; set; }
     /// <summary>When non-null (planning pass, canonical method), collects the
     /// canonical methods this body binds by symbol — direct calls, value-type
     /// ctor calls, devirtualized struct-override calls — the edges the
@@ -953,16 +956,64 @@ internal sealed partial class MethodCompiler : IEvalStack
                     + "and no hidden parameter");
         }
 
+        string? entryGuard = EntryInitializerGuard();
+
         // Planning keeps lowering's effects, but has no consumer for a finished function.
         if (_c.Phase == EmitPhase.Planning)
             return "";
-        string body = RenderBody(signature, synchronizedTypeInfo, rgctxAnchor);
+        string body = RenderBody(signature, synchronizedTypeInfo, rgctxAnchor, entryGuard);
         if (_method.IsObfuscationTarget)
             _method.ObfuscationHasIlBody = true;
         return body;
     }
 
-    private string RenderBody(string signature, string? synchronizedTypeInfo, string? rgctxAnchor)
+    /// <summary>The initializer guard a trigger's body runs at entry
+    /// (<see cref="Compilation.IsInitializerTrigger"/>), or null. Call sites guard after
+    /// evaluating the arguments, so their side effects precede the initializer as in .NET;
+    /// this one covers every route that reaches the body without such a site: a
+    /// continuation, a runtime slot, a lowered or reflective call, an inline-promoted
+    /// copy. A body that its own initializer enters, directly or through a nested call,
+    /// meets the guard while the run is in flight and returns to the partial state. A
+    /// shared body cannot name a placeholder owner's initializer, which belongs to the
+    /// instantiation, so such a trigger taints the body.</summary>
+    private string? EntryInitializerGuard()
+    {
+        var owner = _method.DeclaringClass;
+        if (_c.BodyEntryInitializer(_method) is not { } cc)
+            return null;
+        RequireCoordinator("an entry initializer guard");
+        TaintIfCanonical(owner, "type initializer");
+        if (!_c.Reachable.Contains(cc))
+        {
+            if (Compilation.IsFrameworkEventSourceProvider(owner))
+                return null;
+            throw new InvalidOperationException(
+                $"{owner.FullName}::{_method.Name}: a compiled trigger's initializer was not reached");
+        }
+        NoteCctorEnsure(cc);
+        return cc.CppName + "__ensure";
+    }
+
+    /// <summary>Records that this body names <paramref name="cctor"/>'s <c>__ensure</c>
+    /// wrapper. The target set is shared compilation state, which only the coordinator
+    /// writes.</summary>
+    private void NoteCctorEnsure(MethodInfo cctor)
+    {
+        RequireCoordinator("the initializer wrapper set");
+        _c.NoteCctorEnsure(cctor);
+    }
+
+    /// <summary>Throws when a parallel body worker reaches a write to shared compilation
+    /// state: the scheduler admits a body to a worker only when compiling it reads the
+    /// completed model and writes nothing outside its own result.</summary>
+    private void RequireCoordinator(string write)
+    {
+        if (ParallelWorker)
+            throw new InvalidOperationException(
+                $"{_method.DeclaringClass.FullName}::{_method.Name}: a parallel body worker reached {write}");
+    }
+
+    private string RenderBody(string signature, string? synchronizedTypeInfo, string? rgctxAnchor, string? entryGuard)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"// {_method.DeclaringClass.FullName}::{_method.Name}");
@@ -977,6 +1028,8 @@ internal sealed partial class MethodCompiler : IEvalStack
         // allocation or stack scan the body can trigger.
         if (_method.IsUnmanagedCallersOnly)
             sb.AppendLine("    dn2cpp_native_callback_prologue();");
+        if (entryGuard is not null)
+            sb.AppendLine($"    {entryGuard}();");
         // The shadow frame brackets the body and its synchronized exit.
         // The name is a raw C string literal, NOT a LiteralPool str_N entry: the pool
         // is numbered during the planning pass, and pooling the name would perturb
@@ -1748,18 +1801,13 @@ internal sealed partial class MethodCompiler : IEvalStack
 
     public void Emit(string line) => _body.AppendLine("    " + line);
 
-    /// <summary>Run <paramref name="cls"/>'s static constructor on first use of one of
-    /// its static fields. .NET initializes a type lazily — its .cctor runs before the
-    /// first read of any of its statics — so a cctor that reads a static another type's
-    /// .cctor sets is guaranteed to see the set value. dn2cpp instead runs every .cctor
-    /// eagerly at startup in reach order, which breaks that ordering when the producing
-    /// cctor is ordered after the consuming one (the consumer then reads a null
-    /// singleton). Emitting the target's idempotent <c>__ensure</c> wrapper at
-    /// the static-field access reproduces .NET's first-use ordering for the dependency.
+    /// <summary>Run <paramref name="cls"/>'s static constructor before a trigger: a use of
+    /// one of its static fields, or a call the type's initialization rules name. .NET
+    /// initializes a type lazily, and so does dn2cpp: emitting the target's idempotent
+    /// <c>__ensure</c> wrapper at the trigger is what runs it, at .NET's first-use point.
     /// Only the cctor's *own* body skips the guard (it is the initialization); every
     /// other method guards even its own class's statics — a static helper can be the
-    /// type's first-use entry when called out of another type's cctor during the eager
-    /// startup pass, before its own class's cctor was reached. Cross-type
+    /// type's first-use entry when another type's cctor calls it. Cross-type
     /// cycles are broken inside the wrapper's slow path, which recognizes a re-entrant
     /// access from the thread already running that cctor and returns to the partial
     /// state (.NET's recursive-initialization semantics). An initializer that THREW is
@@ -1774,7 +1822,7 @@ internal sealed partial class MethodCompiler : IEvalStack
         var cc = cls.StaticCctor;
         if (cc is null)
             return; // no static constructor — nothing to order
-        _c.NoteCctorEnsure(cc);
+        NoteCctorEnsure(cc);
         Emit($"{cc.CppName}__ensure();");
     }
 
@@ -3604,9 +3652,11 @@ internal sealed partial class MethodCompiler : IEvalStack
                     // symbol — the invoker's cast passes the receiver through the
                     // target slot and every other position renders alike. A
                     // headerless intrinsic position needs the NFI-erasing adapter;
-                    // a boxed value receiver needs it to reach the payload too.
+                    // a boxed value receiver needs it to reach the payload too, and
+                    // its initializer guard.
                     NoteFtnTargetBody(m.Emittable);
-                    var adapter = new DelegateAdapter(m.Emittable, false, NfiErased: true);
+                    var adapter = new DelegateAdapter(m.Emittable, false, NfiErased: true,
+                        AdapterEnteredTrigger(m));
                     if (!_c.DelegateAdapters.Contains(adapter))
                         _c.DelegateAdapters.Add(adapter);
                     _c.NoteNamedBodySymbol(_method, m.Emittable);

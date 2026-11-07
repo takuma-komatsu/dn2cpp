@@ -17,7 +17,10 @@
 #     remains live, exercising process static teardown without a runtime quiesce.
 #     The destroyed-mutex abort this guards against needs a non-trivial ~mutex
 #     (Apple libc++); where ~mutex is a no-op the run only proves the exit stays
-#     clean and bounded with the worker live.
+#     clean and bounded with the worker live,
+#   - separately enters a precise-init type's export first from a foreign thread:
+#     its allocating initializer runs at that entry, not at startup, on the thread
+#     the export registered, and once.
 source "$(dirname "$0")/_common.sh"
 
 OUT=artifacts/ucoshared
@@ -80,4 +83,14 @@ exit_worker_live OK'
 # Bounded: a teardown that deadlocks instead of aborting must fail, not hang.
 gate_capture_ok "$OUT/driver-exit" run_bounded "$OUT/driver$EXE_EXT" "$DYLIB" --exit-with-waitany
 gate_assert_text "$OUT/driver-exit.stdout" "$EXIT_EXPECTED"
+
+LAZY_EXPECTED='init=0
+lazy_runs_before=0
+lazy_answer_thread=77
+lazy_runs_after=1
+lazy_sum=1199997
+lazy_answer_again=77
+lazy_runs_again=1'
+gate_capture_ok "$OUT/driver-lazy" run_bounded "$OUT/driver$EXE_EXT" "$DYLIB" --lazy-initializer
+gate_assert_text "$OUT/driver-lazy.stdout" "$LAZY_EXPECTED"
 gate_cache_commit

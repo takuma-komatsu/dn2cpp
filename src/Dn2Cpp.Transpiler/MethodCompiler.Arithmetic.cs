@@ -1553,7 +1553,7 @@ internal sealed partial class MethodCompiler
             return inline;
         if (t is { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false } sc }
             && Compilation.TranspiledTypedCompareTo(sc) is { } tct)
-            return $"{DirectCallSym(tct)}({ArgsWithRgctx($"&{a.Expr}, {Cast(b, CppTypes.Of(t))}", tct)})";
+            return GuardEnteredCall(tct, $"{DirectCallSym(tct)}({ArgsWithRgctx($"&{a.Expr}, {Cast(b, CppTypes.Of(t))}", tct)})");
         return null;
     }
 

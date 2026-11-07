@@ -1377,7 +1377,7 @@ requirement: the shared library must be transpiled with `--gdextension` **and**
 `dn2cpp_base_image_abi_hash` / `dn2cpp_n2m_trampolines` from the generated
 code, so a loader call in a non-`--hotupdate-base` image fails to link.
 Calling the drivers from `_Ready` onward is safe: the GDExtension init has
-already run the runtime init + static constructors on the main thread. Paths
+already run the runtime init + module initializers on the main thread. Paths
 are **OS filesystem paths** — `res://` / `user://` virtual paths are never
 resolved inside `System.IO`, here or anywhere else in the Godot lane (a
 permanent non-goal; see the `System.IO` rule in `AGENTS.md`). Convert first

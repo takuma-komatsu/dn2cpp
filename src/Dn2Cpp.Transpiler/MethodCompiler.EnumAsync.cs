@@ -730,7 +730,7 @@ internal sealed partial class MethodCompiler
                 var mn = _c.StateMachineMoveNext(methodArgs[0])
                     ?? throw new NotSupportedException(
                         $"{_method.DeclaringClass.FullName}.{_method.Name}: async {name}<{methodArgs[0]}> found no MoveNext");
-                Emit($"{DirectCallSym(mn)}({ArgsWithRgctx(StateMachinePtr(methodArgs[0].Class!, sm), mn)});");
+                Emit($"{GuardEnteredCall(mn, $"{DirectCallSym(mn)}({ArgsWithRgctx(StateMachinePtr(methodArgs[0].Class!, sm), mn)})")};");
                 return;
             }
             // AwaitUnsafeOnCompleted<TAwaiter,TSM> (Task/ValueTask awaiters, which
@@ -774,6 +774,8 @@ internal sealed partial class MethodCompiler
                 // Every arm plants MoveNext's address as the continuation — the custom
                 // one through CustomAwaiterResume, which notes it itself — so this
                 // suspension needs MoveNext's body no less than a direct call would.
+                // The resumption enters that body, whose own entry guard runs the
+                // initializer a value type's method triggers.
                 _c.NoteNamedBodySymbol(_method, mn.Emittable);
                 // A BCL builder catches what the registration throws and re-raises it through
                 // Task.ThrowAsync, so the suspended method's own handlers never see it. An

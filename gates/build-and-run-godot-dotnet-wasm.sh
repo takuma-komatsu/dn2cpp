@@ -215,7 +215,7 @@ echo "-- Run B: the self-reported size (fresh process — 'initialized' latches)
 # This host is the engine's role WITH NO ENGINE IN IT, so it hands a ZEROED interop table
 # (dm_wasm_host.cpp) — and that cctor call is then a null indirect call. Completing a full
 # init here would mean the host emulating the subset of the ~180 godotsharp_* engine
-# functions the startup cctors call, correctly typed (a wrong signature is a wasm trap too) —
+# functions those static constructors call, correctly typed (a wrong signature is a wasm trap too) —
 # a real engine-stub layer, orthogonal to --trim-reflection and out of this gate's scope.
 #
 # So assert the progress this engineless host CAN observe, and DECLARE the engine-dependent

@@ -54,7 +54,9 @@ internal sealed partial class MethodCompiler
                 + $"({cra ?? "not blittable"}) vs implementation {impl.Signature.ReturnType} ({ira ?? "not blittable"})");
 
         var args = PopArgs(impl, hasThis: false);
-        string call = DirectCall(impl, args);
+        // Entering the implementation triggers its own type's initializer, which the
+        // import's call site does not name.
+        string call = GuardEnteredCall(impl, DirectCall(impl, args));
         // EmitCallResult pushes under the callee's declared return type (downstream IL
         // compares against the import's enum/IntPtr), so bridge a differing return
         // spelling here.
@@ -2108,7 +2110,8 @@ internal sealed partial class MethodCompiler
                         var impl = method.Emittable;
                         var adapter = new DelegateAdapter(impl,
                             method.IsStatic && IsClosedStaticDelegate(cls, impl),
-                            !method.IsStatic && method.DeclaringClass.IsValueType || NeedsNfiErasedAdapter(impl));
+                            !method.IsStatic && method.DeclaringClass.IsValueType || NeedsNfiErasedAdapter(impl),
+                            AdapterEnteredTrigger(method));
                         if (!_c.DelegateAdapters.Contains(adapter))
                             _c.DelegateAdapters.Add(adapter);
                         NoteFtnTargetBody(impl);

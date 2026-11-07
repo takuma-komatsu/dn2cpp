@@ -88,7 +88,7 @@ void dn2cpp_dm_set_sync_ctx_pump(void (*pump)())
     g_sync_ctx_pump = pump;
 }
 
-// The generated startup-cctor pass, deferred to the first frame — see the
+// The generated module-initializer pass, deferred to the first frame — see the
 // header for why it cannot run inside godotsharp_game_main_init. Written once
 // during init, consumed once on the main thread's first frame.
 static void (*g_deferred_cctor_pass)() = nullptr;
@@ -108,11 +108,11 @@ void dn2cpp_dm_set_deferred_cctor_pass(void (*pass)())
 // GodotTaskScheduler.Activate(), whose managed install stays cut — so a
 // continuation posted cross-thread (await Task.Run) or a pending Task.Delay
 // resumes on the main thread instead of sitting on the run queue forever.
-// Order: deferred cctors first (a resumed continuation sees initialized
-// statics), then the pump, then the finalizer drain (a final reference the
-// pump dropped is reclaimed the same frame, keeping the main-thread affinity
-// chosen at init); the original managed callback (script method scheduling)
-// runs last.
+// Order: deferred module initializers first (a resumed continuation is code of
+// a module whose initializer runs before it), then the pump, then the finalizer
+// drain (a final reference the pump dropped is reclaimed the same frame, keeping
+// the main-thread affinity chosen at init); the original managed callback
+// (script method scheduling) runs last.
 // Run one stage of the frame callback with the host-boundary contract applied:
 // a managed fault stops here, is reported through the engine's error log, and
 // the remaining stages still run.
@@ -170,7 +170,7 @@ void dn2cpp_dm_frame_callback()
     {
         void (*pass)() = g_deferred_cctor_pass;
         g_deferred_cctor_pass = nullptr; // clear first: the pass itself may pump a frame
-        dm_frame_stage("startup cctors", pass);
+        dm_frame_stage("module initializers", pass);
     }
     dm_frame_stage("scheduler pump", &dn2cpp_sched_pump);
     // Drain the main-thread SynchronizationContext after the scheduler pump: a

@@ -98,6 +98,10 @@ grep -q "Godot.RefCounted lifecycle matches expected" <<<"$SCRIPT_OUT" \
     || { echo "FAIL: RefCounted lifecycle marker missing (newobj construction + init_ref + return-value wrap)" >&2; exit 1; }
 grep -q "Godot.RefCounted ClassDB construction matches expected" <<<"$SCRIPT_OUT" \
     || { echo "FAIL: RefCounted ClassDB-driven construction marker missing (GDScript .new())" >&2; exit 1; }
+# InitOrderProbe.cs: a precise-init type first entered by the engine, through a static
+# bind or ClassDB construction, runs its initializer before the member's body.
+grep -q "GDScript: engine entries run precise-init initializers first" <<<"$SCRIPT_OUT" \
+    || { echo "FAIL: an engine entry ran a member before its precise-init type initializer" >&2; exit 1; }
 grep -q "Godot.RefCounted C#-new reclamation drained" <<<"$SCRIPT_OUT" \
     || { echo "FAIL: RefCounted C#-new reclamation drain marker missing" >&2; exit 1; }
 # Registered RefCounted built by C# `new` must be reclaimed, not leaked.

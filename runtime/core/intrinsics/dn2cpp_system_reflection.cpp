@@ -935,6 +935,11 @@ Dn2CppObject* dn2cpp_get_uninitialized_object(Dn2CppType* t)
         dn2cpp_throw_not_supported_msg("Cannot create boxed ByRef-like values.");
     if (dn2cpp_unallocated(ti))
         dn2cpp_throw_unallocated(ti, dn2cpp_utf8_of(dn2cpp_type_tostring(ti)), "GetUninitializedObject");
+    // The CLR runs every precise-init initializer on the base chain, the allocated
+    // type's first, even though no constructor runs. A beforefieldinit level's hook is
+    // null: its first static field access initializes it.
+    for (const Dn2CppTypeInfo* level = ti; level != nullptr; level = level->base)
+        dn2cpp_run_initializer(level->reflection().ensureInitializer);
     // An exception type floors at the exception prefix, not the bare header: an
     // opaque one (System.Exception itself) reports no instanceSize, yet throwing
     // the instance stamps the trace slot and a catch reads the prefix fields.
@@ -5267,13 +5272,16 @@ enum class Dn2CppInvokeMode { Invoke, Bound };
 // fnPtr, and boxes the result), wrapping what the target throws unless the
 // caller asked for DoNotWrapExceptions. This call's own refusal, raised by its
 // invoker stub or by a trap matching its slot scope `scope`, stays unwrapped.
+// The row's initializer guard runs first and inside the wrap, as the CLR runs a
+// type initializer the invoked member triggers.
 static Dn2CppObject* dn2cpp_invoke_target(void* thunk, void* fn, Dn2CppObject* self,
     Dn2CppObject** args, const Dn2CppTypeInfo* returnType, bool wrapExceptions,
-    const void* scope = nullptr)
+    const void* scope = nullptr, void (*initializer)() = nullptr)
 {
     auto invoker = reinterpret_cast<Dn2CppObject* (*)(void*, Dn2CppObject*, Dn2CppObject**, const Dn2CppTypeInfo*)>(thunk);
     try
     {
+        dn2cpp_run_initializer(initializer);
         return invoker(fn, self, args, returnType);
     }
     catch (Dn2CppInvokerMissing& refusal)
@@ -5481,6 +5489,8 @@ struct Dn2CppInvokePlan
     void* invoker;
     // The dispatcher a callvirt of a closed generic virtual row calls, or null.
     void* gvmDispatcher;
+    // The row's initializer guard (Dn2CppMethodInfo::initializer).
+    void (*initializer)();
     // A list longer than the inline array, kept with a published plan
     // (dn2cpp_invoke_plan_publish).
     const Dn2CppTypeInfo* const* paramTypeList;
@@ -5563,7 +5573,7 @@ static Dn2CppInvokePlan dn2cpp_invoke_plan(const Dn2CppMethodInfo& row, bool wit
     const Dn2CppGvmRowDispatch* dispatch = dn2cpp_gvm_row_dispatch_of(row);
     Dn2CppInvokePlan plan{ row.declaringType, row.returnType, row.returnPassType,
         row.parameters, row.fnPtr, row.invoker,
-        dispatch != nullptr ? dispatch->dispatcher : nullptr, nullptr,
+        dispatch != nullptr ? dispatch->dispatcher : nullptr, row.initializer, nullptr,
         row.paramCount, row.attrs, static_cast<uint16_t>(row.ilAttrs), 0, row.vtableSlot, {} };
     if (!withParamTypes)
         return plan;
@@ -5786,7 +5796,7 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
     {
         Dn2CppReflectiveSlotScope entered(fn, obj != nullptr ? obj->type : nullptr, mi);
         result = dn2cpp_invoke_target(row.invoker, fn, self, args, row.returnType, wrapExceptions,
-            &entered.slot);
+            &entered.slot, row.initializer);
     }
     if (!invoke)
         return result;
@@ -6308,6 +6318,9 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
     if (!staticVirtual && !bodiless && !answered
         && (row.invoker == nullptr || (row.fnPtr == nullptr && !slotBound)))
         dn2cpp_throw_invoke_unavailable(mi, m->reflectedType);
+    // Binding triggers the initializer a call would, as a compiled ldftn of the
+    // member does when it takes the pointer.
+    dn2cpp_run_initializer(row.initializer);
 
     auto* node = static_cast<Dn2CppReflBind*>(dn2cpp_alloc(sizeof(Dn2CppReflBind)));
     node->type = &dn2cpp_reflbind_type;
@@ -8163,7 +8176,8 @@ static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodIn
     Dn2CppObject* self = isValue
         ? reinterpret_cast<Dn2CppObject*>(reinterpret_cast<char*>(obj) + sizeof(Dn2CppObject))
         : obj;
-    dn2cpp_invoke_target(plan.invoker, plan.fnPtr, self, args, nullptr, wrapExceptions);
+    dn2cpp_invoke_target(plan.invoker, plan.fnPtr, self, args, nullptr, wrapExceptions, nullptr,
+        plan.initializer);
     if (passArgs)
         dn2cpp_invoke_write_back(args, callerArgs, argc);
     dn2cpp_invoke_write_defaults(plan.parameters, args, callerArgs, defaultCopyBack, argc);
@@ -8173,6 +8187,7 @@ static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodIn
 // Array.Initialize over a receiver whose element type only the object states. The
 // element type's parameterless constructor row runs in place on every element, in
 // storage order (row-major for an MD array), and what it throws propagates unwrapped.
+// The initializer the constructor triggers runs first, and not for an empty array.
 // An element type that declares no such constructor leaves the array unchanged. A row
 // without a body, or a declared constructor whose row the image omits, is a constructor
 // this image did not compile, never one that does not exist.
@@ -8207,6 +8222,8 @@ void dn2cpp_array_initialize(Dn2CppObject* a)
             size = sz->elemSize;
             count = sz->length;
         }
+        if (count != 0)
+            dn2cpp_run_initializer(row->initializer);
         for (int32_t j = 0; j < count; j++)
             dn2cpp_invoke_target(row->invoker, row->fnPtr,
                 reinterpret_cast<Dn2CppObject*>(data + static_cast<size_t>(j) * static_cast<size_t>(size)),
@@ -8332,6 +8349,8 @@ static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, int32_t nonP
         const auto ci = reflection.ctors[i];
         const auto row = ci.operator->();
         hasDefaultConstructor |= row->paramCount == 0;
+        // The constructor row's initializer hook runs inside the constructor's exception
+        // wrap, where the CLR reports a failed initializer.
         if (row->paramCount == 0
             && (nonPublic != 0 || (row->attrs & DN2CPP_MTHA_PUBLIC) != 0))
             return dn2cpp_ctor_invoke_argv(ci, nullptr, 0, wrapExceptions);
@@ -8343,6 +8362,7 @@ static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, int32_t nonP
             : DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR)) != 0)
         dn2cpp_throw_omitted_ctor(ti, "Void .ctor()");
     // A value type with no explicit parameterless ctor: zero-initialized boxed value.
+    // Running no constructor, it triggers no initializer, as on the CLR.
     if ((ti->flags & DN2CPP_TF_VALUETYPE) != 0)
     {
         if (dn2cpp_unallocated(ti))

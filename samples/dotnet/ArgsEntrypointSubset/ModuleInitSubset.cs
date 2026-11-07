@@ -4,8 +4,7 @@ using System.Runtime.CompilerServices;
 namespace ModuleInitSubset;
 
 // Sequence numbers handed out in program order. No static field INITIALIZER here, so
-// the type has no .cctor of its own and `s_next` is 0 before anything runs — under
-// real .NET's lazy type init and dn2cpp's eager one alike.
+// the type has no .cctor of its own and `s_next` is 0 before anything runs.
 internal static class Seq
 {
     private static int s_next;

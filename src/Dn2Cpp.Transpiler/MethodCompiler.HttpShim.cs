@@ -58,7 +58,7 @@ internal sealed partial class MethodCompiler
             // the shim at their own CLR types (same instantiation on both sides), so no
             // erased-pointer cast is due. a0 is passed, not dropped: the handler instance is
             // the ONLY carrier of SocketsHttpHandler's connection-pool settings.
-            Emit($"return {DirectCallSym(shim)}({ArgsWithRgctx("a0, a1, a2", shim)});");
+            Emit($"return {GuardEnteredCall(shim, $"{DirectCallSym(shim)}({ArgsWithRgctx("a0, a1, a2", shim)})")};");
         }
         // SocketsHttpHandler.Dispose(bool): empty body — void, no return.
         return RenderWrapperBody("dn2cpp HTTP shim");

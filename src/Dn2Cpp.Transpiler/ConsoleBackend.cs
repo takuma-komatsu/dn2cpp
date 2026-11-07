@@ -54,6 +54,10 @@ internal sealed class ConsoleBackend : IEmitBackend
         sb.AppendLine("{");
         emitter.EmitInitCalls(sb, cctors);
         sb.AppendLine("    try {");
+        // The entry point runs with no IL caller, so main triggers its type's initializer;
+        // inside the handler, a throwing one is unhandled as in .NET.
+        if (emitter.EntryInitializer is { } entryInitializer)
+            sb.AppendLine($"        {entryInitializer}();");
         sb.AppendLine(returnsInt
             ? $"        int32_t __rc = {ep.CppName}({callArgs});\n        dn2cpp_main_exit(__rc);\n        return __rc;"
             : $"        {ep.CppName}({callArgs});\n        dn2cpp_main_exit(0);\n        return 0;");

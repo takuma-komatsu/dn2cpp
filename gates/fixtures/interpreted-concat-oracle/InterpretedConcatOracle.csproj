@@ -10,6 +10,7 @@
   <ItemGroup>
     <Compile Include="../../../samples/dotnet/HotUpdatePatch/InterpretedConcatSubset.cs" Link="InterpretedConcatSubset.cs" />
     <Compile Include="../../../samples/dotnet/HotUpdatePatch/InterpretedAggregateSubset.cs" Link="InterpretedAggregateSubset.cs" />
+    <Compile Include="../../../samples/dotnet/HotUpdatePatch/InterpretedInitializerSubset.cs" Link="InterpretedInitializerSubset.cs" />
     <Compile Include="../../../samples/dotnet/HotUpdateCoreLibPatch/InterpretedAggregateCollectionSubset.cs" Link="InterpretedAggregateCollectionSubset.cs" />
     <ProjectReference Include="../../../samples/dotnet/HotUpdateBase/HotUpdateBase.csproj" />
     <ProjectReference Include="../../../samples/dotnet/HotUpdateCoreLibBase/HotUpdateCoreLibBase.csproj" />

@@ -73,7 +73,11 @@ internal interface IEmitBackend
     bool CoversReflectionSite(MethodInfo caller) => false;
 
     /// <summary>Emits the tail of the translation unit: the program entry point
-    /// (console) or the target's registration tables (GDExtension).</summary>
+    /// (console) or the target's registration tables (GDExtension).
+    /// <paramref name="cctors"/> are the module initializers to run before managed code,
+    /// in dependency order; every other initializer runs behind its first-use guards, so
+    /// an engine entry the backend emits guards the initializer it triggers
+    /// (<see cref="CppEmitter.InitializerGuard"/>).</summary>
     void EmitEpilogue(CppEmitter emitter, StringBuilder sb, IReadOnlyList<MethodInfo> cctors);
 
     /// <summary>Classes a backend instantiates outside the normal C# call graph
