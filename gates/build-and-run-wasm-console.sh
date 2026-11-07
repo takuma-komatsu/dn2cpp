@@ -237,3 +237,7 @@ fi
 
 source gates/_md-readonly-byrefs.sh
 (md_readonly_byrefs_gate wasm)
+
+# The same managed IEEE cases run through EMU128 and Web SIMD.
+source gates/_vector-floating-point.sh
+(vector_floating_wasm_gate)

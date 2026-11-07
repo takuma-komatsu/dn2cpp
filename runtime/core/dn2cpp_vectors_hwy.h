@@ -2,9 +2,8 @@
 // dn2cpp_vectors_hwy.h
 //
 // Google Highway backing for the portable-SIMD `dn2cpp_vec_*` ops. Included by
-// dn2cpp_vectors.h ONLY when the runtime is built with -DDN2CPP_USE_HIGHWAY
-// (CMake option DN2CPP_USE_HIGHWAY, default OFF). The default build never sees
-// this header and keeps the scalar emulation byte-for-byte.
+// dn2cpp_vectors.h when the runtime is built with -DDN2CPP_USE_HIGHWAY
+// (CMake option DN2CPP_USE_HIGHWAY, default ON). Opting out uses scalar loops.
 //
 // Static single-ISA dispatch (HWY_STATIC_DISPATCH): the ISA is fixed at compile
 // time by -march/-mcpu; this is header-only (no Highway .cc to link).
@@ -79,13 +78,35 @@ template <class T, int N>
 static inline Dn2CppVec<N> vec_multiply(const Dn2CppVec<N>& a, const Dn2CppVec<N>& b) {
     return map2<T, N>(a, b, [](auto d, auto x, auto y) { (void)d; return hn::Mul(x, y); });
 }
-template <class T, int N>
-static inline Dn2CppVec<N> vec_min(const Dn2CppVec<N>& a, const Dn2CppVec<N>& b) {
-    return map2<T, N>(a, b, [](auto d, auto x, auto y) { (void)d; return hn::Min(x, y); });
+// Strict floating-point Min/Max propagate NaN and order -0 below +0.
+// Native variants retain the target instruction's operand-selection rules.
+template <class T, bool Native, class V>
+static inline V min_lanes(V x, V y) {
+    if constexpr (std::is_floating_point<T>::value && !Native) {
+        auto choose_x = hn::Or(hn::Or(hn::Lt(x, y), hn::IsNaN(x)),
+            hn::And(hn::Eq(x, y), hn::IsNegative(x)));
+        return hn::IfThenElse(choose_x, x, y);
+    } else {
+        return hn::Min(x, y);
+    }
 }
-template <class T, int N>
+template <class T, bool Native, class V>
+static inline V max_lanes(V x, V y) {
+    if constexpr (std::is_floating_point<T>::value && !Native) {
+        auto choose_x = hn::Or(hn::Or(hn::Lt(y, x), hn::IsNaN(x)),
+            hn::And(hn::Eq(x, y), hn::IsNegative(y)));
+        return hn::IfThenElse(choose_x, x, y);
+    } else {
+        return hn::Max(x, y);
+    }
+}
+template <class T, int N, bool Native>
+static inline Dn2CppVec<N> vec_min(const Dn2CppVec<N>& a, const Dn2CppVec<N>& b) {
+    return map2<T, N>(a, b, [](auto d, auto x, auto y) { (void)d; return min_lanes<T, Native>(x, y); });
+}
+template <class T, int N, bool Native>
 static inline Dn2CppVec<N> vec_max(const Dn2CppVec<N>& a, const Dn2CppVec<N>& b) {
-    return map2<T, N>(a, b, [](auto d, auto x, auto y) { (void)d; return hn::Max(x, y); });
+    return map2<T, N>(a, b, [](auto d, auto x, auto y) { (void)d; return max_lanes<T, Native>(x, y); });
 }
 
 // --- bitwise (T selects lane width only; the result bits are identical) ---
@@ -162,7 +183,7 @@ static inline Dn2CppVec<N> vec_sqrt(const Dn2CppVec<N>& a) {
         else return x;
     });
 }
-template <class T, int N>
+template <class T, int N, bool Native>
 static inline Dn2CppVec<N> vec_clamp(const Dn2CppVec<N>& v, const Dn2CppVec<N>& lo, const Dn2CppVec<N>& hi) {
     Dn2CppVec<N> r;
     const hn::CappedTag<lane_t<T>, (size_t)(N / (int)sizeof(T))> d;
@@ -171,7 +192,8 @@ static inline Dn2CppVec<N> vec_clamp(const Dn2CppVec<N>& v, const Dn2CppVec<N>& 
         auto xv = hn::LoadU(d, reinterpret_cast<const lane_t<T>*>(v.b) + i);
         auto lov = hn::LoadU(d, reinterpret_cast<const lane_t<T>*>(lo.b) + i);
         auto hiv = hn::LoadU(d, reinterpret_cast<const lane_t<T>*>(hi.b) + i);
-        hn::StoreU(hn::Min(hn::Max(xv, lov), hiv), d, reinterpret_cast<lane_t<T>*>(r.b) + i);
+        hn::StoreU(min_lanes<T, Native>(max_lanes<T, Native>(xv, lov), hiv), d,
+            reinterpret_cast<lane_t<T>*>(r.b) + i);
     }
     return r;
 }
