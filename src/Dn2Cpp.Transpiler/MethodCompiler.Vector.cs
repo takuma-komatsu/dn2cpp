@@ -6,16 +6,16 @@ namespace Dn2Cpp;
 
 internal sealed partial class MethodCompiler
 {
-    // ---- portable SIMD vectors (software-emulated) ----
+    // ---- portable SIMD vectors ----
     //
     // The .NET portable-SIMD types (System.Runtime.Intrinsics.Vector64/128/256/512<T>
-    // and System.Numerics.Vector<T>) lower to the scalar-emulated dn2cpp_vec_* runtime
-    // (runtime/core/dn2cpp_vectors.h). The C++ vector type is keyed only on byte WIDTH
-    // (Dn2CppVector128 == Dn2CppVec<16> for every element type), so two same-width
+    // and System.Numerics.Vector<T>) lower to the dn2cpp_vec_* runtime, backed by
+    // Highway or scalar loops (runtime/core/dn2cpp_vectors.h). The C++ vector type
+    // is keyed only on byte WIDTH (Dn2CppVector128 == Dn2CppVec<16> for every element type), so two same-width
     // operands share a type regardless of element; the element only selects the template
     // T. This layer has no hardware intrinsics of its own: the portable
-    // IsSupported/IsHardwareAccelerated getters emit the DN2CPP_SIMD_HW_ACCEL token (0
-    // by default, so the BCL keeps its portable-vector fallback). The platform-ISA
+    // IsSupported/IsHardwareAccelerated getters emit the DN2CPP_SIMD_HW_ACCEL token
+    // (1 with Highway, 0 with scalar loops). The platform-ISA
     // facades (AdvSimd, Sse2, …) are a separate axis: a Lowered family's IsSupported is a
     // run-time token and its instructions call dn2cpp_isa_* helpers
     // (MethodCompiler.PlatformIsa.cs), so a BCL arm guarded by AdvSimd.IsSupported alone
@@ -435,10 +435,10 @@ internal sealed partial class MethodCompiler
             case "Add" or "op_Addition": return Bin("add");
             case "Subtract" or "op_Subtraction": return Bin("subtract");
             case "Divide" or "op_Division": return Bin("divide");
-            // *Native variants share our scalar semantics: a single emulated lane
-            // path has no platform-specific NaN/ordering quirk to differ from.
-            case "Min" or "MinNative": return Bin("min");
-            case "Max" or "MaxNative": return Bin("max");
+            case "Min": return Bin("min");
+            case "Max": return Bin("max");
+            case "MinNative": return Bin("min_native");
+            case "MaxNative": return Bin("max_native");
             case "AddSaturate": return Bin("add_saturate");
             case "SubtractSaturate": return Bin("subtract_saturate");
             case "CopySign": return Bin("copysign");
@@ -458,7 +458,7 @@ internal sealed partial class MethodCompiler
             case "Sum": { var v = Pop(); PushScalar($"{Vec("sum")}({Val(v, vecCpp)})"); return true; }
             case "Dot": { var b = Pop(); var a = Pop(); PushScalar($"{Vec("dot")}({Val(a, vecCpp)}, {Val(b, vecCpp)})"); return true; }
             case "Clamp" or "ClampNative":
-            { var hi = Pop(); var lo = Pop(); var v = Pop(); PushVec($"{Vec("clamp")}({Val(v, vecCpp)}, {Val(lo, vecCpp)}, {Val(hi, vecCpp)})"); return true; }
+            { var hi = Pop(); var lo = Pop(); var v = Pop(); PushVec($"{Vec(name == "ClampNative" ? "clamp_native" : "clamp")}({Val(v, vecCpp)}, {Val(lo, vecCpp)}, {Val(hi, vecCpp)})"); return true; }
             case "FusedMultiplyAdd":
             { var c = Pop(); var b = Pop(); var a = Pop(); PushVec($"{Vec("fma")}({Val(a, vecCpp)}, {Val(b, vecCpp)}, {Val(c, vecCpp)})"); return true; }
             case "Multiply" or "op_Multiply":
