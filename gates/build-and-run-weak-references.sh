@@ -21,6 +21,8 @@
 # string.Intern / IsInterned over a run-time-built string, whose only root is the
 # intern cell. PendingCallArgument keeps a Dictionary/string graph on the IL
 # evaluation stack while the next nested-call argument forces collection.
+# LocalCallArgument retains an IL local across collection, also in a fresh
+# process so earlier stress sections cannot leave incidental conservative roots.
 # ConditionalWeakTable holds each pair through a DependentHandle embedded in its
 # Entry[]; the runtime's dependent cell is ordinary collectible memory whose only
 # edge is that array, so the Entry[] must come from the scanned allocator even
@@ -103,7 +105,7 @@ if [ "$cwt_scanned" -lt 2 ] || [ "$cwt_atomic" -ne 0 ]; then
     exit 1
 fi
 
-ctx="weak_references|$_CG_CORELIB|runs:DN2CPP_GC_INCREMENTAL=0+1|DN2CPP_GC_STATS=1|assert:mode+diff+exit+generated-barriers+resize-ref+memmove-refs+pending-web-liveness+cwt-entry-scanned+cwt-section+immortal-weak-prefix+immortal-section"
+ctx="weak_references|$_CG_CORELIB|runs:DN2CPP_GC_INCREMENTAL=0+1|DN2CPP_GC_STATS=1|assert:mode+diff+exit+generated-barriers+resize-ref+memmove-refs+pending-web-liveness+cwt-entry-scanned+cwt-section+immortal-weak-prefix+immortal-section+local-call-prefix+local-call-isolated"
 ctx="$ctx$(_gate_ctx_extras)"
 if _corelib_gate_check "$out" "$ctx"; then
     gate_cache_hit_msg
@@ -136,6 +138,10 @@ DN2CPP_BEFORE_IMMORTAL_WEAK=1 gate_capture "$log_dir/before" run_bounded dotnet 
 before="$log_dir/before.stdout"
 before_code=$(cat "$log_dir/before.status")
 cp "$log_dir/before.stderr" "$log_dir/before.log"
+DN2CPP_BEFORE_LOCAL_CALL=1 gate_capture "$log_dir/before-local" run_bounded dotnet "$_CG_APP" \
+    ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}
+before_local="$log_dir/before-local.stdout"
+before_local_code=$(cat "$log_dir/before-local.status")
 _gate_run_argv
 DN2CPP_GC_INCREMENTAL=0 DN2CPP_GC_STATS=1 gate_capture "$log_dir/stw" run_bounded "./$out/$project" \
     ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}
@@ -150,16 +156,29 @@ incremental_code=$(cat "$log_dir/incremental.status")
 cp "$log_dir/incremental.stderr" "$log_dir/incremental.log"
 _gate_scratch_cleanup
 
+gate_capture_ok "$log_dir/local-oracle" run_bounded dotnet "$_CG_APP" local-call
+DN2CPP_GC_INCREMENTAL=0 gate_capture_ok "$log_dir/local-stw" run_bounded "./$out/$project$EXE_EXT" local-call
+DN2CPP_GC_INCREMENTAL=1 gate_capture_ok "$log_dir/local-incremental" run_bounded "./$out/$project$EXE_EXT" local-call
+
 assertions_failed=0
 gate_output status "$before_code" "$expected_code" || assertions_failed=1
+gate_output status "$before_local_code" "$expected_code" || assertions_failed=1
 printf '%s\n' 'immortal weak targets: True' > "$log_dir/immortal-final.expected"
-gate_output suffix "$expected" "$log_dir/immortal-final.expected" --policy crlf || assertions_failed=1
-gate_output select "$expected" "$log_dir/prefix.stdout" --before 'immortal weak targets: True' --policy crlf || assertions_failed=1
+gate_output suffix "$before_local" "$log_dir/immortal-final.expected" --policy crlf || assertions_failed=1
+gate_output select "$before_local" "$log_dir/prefix.stdout" --before 'immortal weak targets: True' --policy crlf || assertions_failed=1
 gate_output compare "$log_dir/prefix.stdout" "$before" || assertions_failed=1
 gate_output compare "$stw" "$expected" || assertions_failed=1
 gate_output status "$stw_code" "$expected_code" || assertions_failed=1
 gate_output compare "$incremental" "$expected" || assertions_failed=1
 gate_output status "$incremental_code" "$expected_code" || assertions_failed=1
+gate_output compare "$log_dir/local-stw.stdout" "$log_dir/local-oracle.stdout" || assertions_failed=1
+gate_output compare "$log_dir/local-incremental.stdout" "$log_dir/local-oracle.stdout" || assertions_failed=1
+local_witness='local pending call: first=1 second=2 same=False'
+for run in "$expected" "$stw" "$incremental"; do
+    gate_output prefix "$run" "$before_local" --before "$local_witness" --policy crlf || assertions_failed=1
+    gate_output byte-witness "$run" "$local_witness" --count 1 --policy crlf || assertions_failed=1
+done
+gate_output byte-witness "$log_dir/local-oracle.stdout" "$local_witness" --count 1 --policy crlf || assertions_failed=1
 if [ "$assertions_failed" -ne 0 ]; then
     gate_run_diag_once
     exit 1

@@ -224,13 +224,11 @@ if(EMSCRIPTEN)
     add_compile_options(-fwasm-exceptions)
     add_link_options(-fwasm-exceptions)
     if(DN2CPP_USE_GC)
-        # What makes conservative stack scanning sound on wasm: Binaryen's
-        # SpillPointers pass spills pointer-typed wasm locals to the linear-memory
-        # shadow stack at every call site, so the collector's stack scan can see
-        # them. Without it a pointer held only in a wasm local is invisible to the
-        # collector and its referent can be freed while still live. Directory-scoped
-        # so both the console executable and the dotnet-module side module inherit it.
-        add_link_options("-sBINARYEN_EXTRA_PASSES=--spill-pointers")
+        # Flatten pending operands into locals before SpillPointers computes
+        # liveness: the wasm operand stack is invisible to conservative GC.
+        # Reoptimize after spilling to remove flattening overhead while retaining
+        # the collector-visible stores. Directory scope covers every wasm target.
+        add_link_options("-sBINARYEN_EXTRA_PASSES=--flatten,--spill-pointers,-O3")
     endif()
     set(_dn2cpp_threads "")
 
