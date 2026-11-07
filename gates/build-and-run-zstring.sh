@@ -105,11 +105,10 @@ gate_output compare "$native" "$expected" || assertions_failed=1
 gate_output status "$native_code" 0 || assertions_failed=1
 gate_output status "$expected_code" 0 || assertions_failed=1
 
-# stdout matching hides everything the runtime writes to stderr — a swallowed
-# startup-cctor failure reports there and nowhere else. Eager static init runs every
-# monomorphized Cysharp.Text.EnumUtil<T> cctor, and the non-enum T ones throw; each is
-# recorded SILENTLY, exactly as real .NET is silent about an initializer it never runs.
-# This program never touches those types — a touch would report here and re-raise.
+# stdout matching hides everything the runtime writes to stderr — a failed module
+# initializer the startup pass swallows reports there and nowhere else. The
+# Cysharp.Text.EnumUtil<T> initializers for a non-enum T throw, but this program never
+# touches those types, so neither runtime runs them and neither reports.
 # The bar is two-sided: a divergence where only real .NET reports must fail too.
 if [ -s "$oracle_stderr" ]; then
     echo "FAIL: real .NET wrote to stderr; the diff only covers stdout:" >&2

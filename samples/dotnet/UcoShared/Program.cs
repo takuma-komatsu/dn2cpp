@@ -109,3 +109,40 @@ internal static unsafe class Exports
         return 1;
     }
 }
+
+// Precise-init (an explicit static constructor), so an entry into its export runs the
+// initializer, and the startup pass does not. The host enters it first from a thread the
+// collector has never seen, and the initializer allocates enough to collect, so it must
+// run on the thread the export registered. The export reads no static of its own: only
+// the export's guard triggers the initializer.
+internal static class LazyExports
+{
+    static LazyExports()
+    {
+        InitializerProbe.Runs++;
+        int sum = 0;
+        for (int i = 0; i < 400000; i++)
+        {
+            int[] arr = new int[16];
+            arr[5] = i;
+            sum += arr[5] % 7;
+        }
+        InitializerProbe.Sum = sum;
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "uco_lazy_answer")]
+    private static int Answer() => 77;
+}
+
+// No static constructor: reading the probe triggers nothing.
+internal static class InitializerProbe
+{
+    internal static int Runs;
+    internal static int Sum;
+
+    [UnmanagedCallersOnly(EntryPoint = "uco_initializer_runs")]
+    private static int GetRuns() => Runs;
+
+    [UnmanagedCallersOnly(EntryPoint = "uco_initializer_sum")]
+    private static int GetSum() => Sum;
+}

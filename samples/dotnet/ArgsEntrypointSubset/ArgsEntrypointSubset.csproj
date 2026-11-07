@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <Compile Remove="InitializerTriggersOnly/**/*.cs" />
+    <Compile Remove="ThrowingModuleInitializer/**/*.cs" />
   </ItemGroup>
 
 </Project>

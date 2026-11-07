@@ -24,6 +24,7 @@ internal sealed partial class CppEmitter
         internal string Initializer = "nullptr";
         internal ModeledSize? MarshalSize;
         internal int Activation;
+        internal string EnsureInitializer = "nullptr";
     }
 
     private void EmitTypeInfo(StringBuilder sb, string symbol, TypeMetadata data)
@@ -43,10 +44,12 @@ internal sealed partial class CppEmitter
                 ? "generic:" + data.Name : "type:" + symbol, out var genericMetadata) ? genericMetadata : "nullptr"),
             MetadataValue.Ref(data.Events), MetadataValue.Signed(data.EventCount),
         };
-        // Trailing and zero for almost every type, so it is spelled only when set and
-        // every other record keeps its bytes.
-        if (data.Activation != 0)
+        // Trailing and unset for most types, so they are spelled only up to the last one
+        // set and every other record keeps its bytes.
+        if (data.Activation != 0 || data.EnsureInitializer != "nullptr")
             coldValues.Add(MetadataValue.Signed(data.Activation));
+        if (data.EnsureInitializer != "nullptr")
+            coldValues.Add(MetadataValue.Ref(data.EnsureInitializer));
         MetadataValue[] cold = coldValues.ToArray();
         bool hasCold = cold.Any(value => value.Pointer is not null || value.StringValue is not null || value.Encoded != 0);
         string coldSymbol = "refl_" + symbol;

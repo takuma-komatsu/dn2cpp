@@ -426,7 +426,7 @@ internal sealed partial class MethodCompiler
                     var cc = rc.StaticCctor;
                     if (cc is not null)
                     {
-                        Comp.NoteCctorEnsure(cc);
+                        NoteCctorEnsure(cc);
                         Emit($"{cc.CppName}__ensure();");
                     }
                 }
@@ -1075,7 +1075,8 @@ internal sealed partial class MethodCompiler
 
     /// <summary>Array.Initialize over <paramref name="arr"/>. Only a value-type element that
     /// declares a parameterless constructor has one to run. A receiver whose static type
-    /// states the element calls that constructor directly, and an I4 or reference rep holds
+    /// states the element calls that constructor directly, after the initializer it
+    /// triggers, which an empty array does not run; an I4 or reference rep holds
     /// no struct. Any other receiver leaves the element to the array's run-time type:
     /// <c>dn2cpp_array_initialize</c> invokes that type's constructor row, whose body
     /// <see cref="Compilation.NoteRuntimeArrayInitialize"/> reaches.</summary>
@@ -1104,6 +1105,7 @@ internal sealed partial class MethodCompiler
             Emit($"dn2cpp_null_check({Cast(arr, "Dn2CppObject*")});");
             return;
         }
+        Comp.ReachLoweredInitializer(ctor);
         string cpp = md ? "Dn2CppMDArray*" : "Dn2CppArrayN*";
         string a = NewTemp(cpp);
         Emit($"{a} = ({cpp})dn2cpp_null_check({Cast(arr, "Dn2CppObject*")});");
@@ -1111,7 +1113,7 @@ internal sealed partial class MethodCompiler
         Emit($"{n} = {(md ? $"dn2cpp_md_total_length({a})" : $"{a}->length")};");
         string self = $"({ctor.DeclaringClass.CppStructName}*)({a}->data + (size_t){i} * {a}->elemSize)";
         Emit($"for ({i} = 0; {i} < {n}; {i}++)");
-        Emit($"    {DirectCall(ctor, new List<string> { self })};");
+        Emit($"    {GuardEnteredCall(ctor, DirectCall(ctor, new List<string> { self }))};");
     }
 
     /// <summary>The non-generic <c>System.Collections.IComparer</c>'s <c>ti_</c> and its

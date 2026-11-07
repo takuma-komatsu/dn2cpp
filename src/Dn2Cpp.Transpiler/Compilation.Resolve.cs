@@ -1785,6 +1785,15 @@ internal sealed partial class Compilation
                 is "System.Runtime.CompilerServices.AsyncTaskMethodBuilder"
                 or "System.Runtime.CompilerServices.AsyncValueTaskMethodBuilder");
 
+    /// <summary>Whether a MethodSpec is an async builder's synchronous driver, Start&lt;TSM&gt;
+    /// or an async iterator builder's MoveNext&lt;TSM&gt;, which lowers to a direct call of
+    /// the state machine's MoveNext.</summary>
+    private bool IsStateMachineDriverSpec(Module module, MethodSpecificationHandle msh, GenericContext ctx)
+    {
+        var ms = module.Reader.GetMethodSpecification(msh);
+        return MethodSpecMethodName(module, ms) is "Start" or "MoveNext" && IsAsyncBuilderSpec(module, ms, ctx);
+    }
+
     /// <summary>The class owning the generic method a MethodSpec instantiates, for the
     /// TypeRef (cross-assembly) and MethodDef (within-assembly) parent forms — the two
     /// shapes <see cref="TaskFamilyMethodSpecParent"/> (TypeSpec parents only) cannot

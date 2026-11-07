@@ -292,10 +292,9 @@ internal static partial class CoreIntrinsics
         // COM RCW ever created, TryGetComInstance answers false (a true answer: no COM
         // instance exists) and the zero-filled vftbls are never dispatched through.
         //
-        // Silent despite being bodyless QCalls, because of that .cctor: dn2cpp runs .cctors
-        // EAGERLY in reach order, so a throwing verdict would abort at static init every
-        // program that merely drags ComWrappers in — before a line of it runs, and for a
-        // vftbl nothing dispatches through.
+        // Silent despite being bodyless QCalls, because of that .cctor: a throwing verdict
+        // would fail ComWrappers' type initialization at its first use, in every program
+        // that touches it at all — for a vftbl nothing dispatches through.
         [("System.Runtime.InteropServices.ComWrappers", "GetTaggedImpl")] = BoundedVerdict.Silent,
         [("System.Runtime.InteropServices.ComWrappers", "GetDefaultIReferenceTrackerTargetVftbl")]
             = BoundedVerdict.Silent,

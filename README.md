@@ -204,19 +204,27 @@ an explicit entry names it, a recognized reflection site selects it, or a
 preservation rule keeps it. The explicit entries are the entry point, the
 methods a backend's contract calls, `[UnmanagedCallersOnly]` methods and
 non-framework module initializers; a public member is not one by itself. Any
-other static constructor is compiled, and runs, only when a preservation rule
-keeps it or a use of its type requires it: an allocation, a static field access,
-`RuntimeHelpers.RunClassConstructor`, or a reflection site that invokes or
-accesses a static member other than a constant, or constructs the type. A type
-that is not `beforefieldinit` is also initialized by a static call, a pointer to
-a static method, an instance constructor call, a call to a value type's instance
-method, a delegate bound by reflection to a static method of a non-generic type,
-and an explicit entry or a preserved member on the type wherever a call to it
-would. A reached
-static constructor of a non-generic type may run at startup, earlier than .NET
-runs it; a closed generic type's runs at its first use from compiled code. A
-hot-update base build keeps its export contract: every non-private application
-method and every application static constructor.
+other static constructor is compiled only when a preservation rule keeps it or a
+use of its type triggers it, and runs, as in .NET, at the first trigger. Every
+type's initializer is triggered by an access to a static field that is not a
+constant, compiled or through reflection, and by
+`RuntimeHelpers.RunClassConstructor`; a `beforefieldinit` type's by nothing
+else. A type that is not `beforefieldinit` is also initialized by a constructor
+call, compiled or through `Activator`, a `new()` constraint or reflection, by
+`RuntimeHelpers.GetUninitializedObject` of the type or of a type derived from it,
+a static call, a pointer to a static method, a call to a value type's instance
+method or to an interface's own default method, a static member invoked by
+reflection, a delegate bound by reflection to a static method, and an explicit
+entry or a preserved member on the type wherever a call to it would. Every such
+member's compiled body runs the initializer guard on entry, so a route that
+enters it without a call site, such as a continuation or a runtime callback,
+triggers too. Only module
+initializers run at startup, before the entry point; a referenced library's runs
+even when the program touches nothing else in it. A pointer to a static method,
+or a delegate bound by reflection, triggers the initializer when the pointer is
+taken or the delegate is bound, not at its first call. A hot-update base build
+keeps its export contract: every non-private application method and every
+application static constructor.
 
 A reflection site is recognized from the values that reach it within one
 method: constants, `typeof`, locals, captured closure variables, small arrays

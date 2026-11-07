@@ -1448,13 +1448,13 @@ echo "== Lookups, unselected overloads, unrelated field types, preserved constru
         # typeof names a type without triggering its initializer.
         assert_absence_case "$out" "an untouched type initializer" \
             'UnusedStatics::.cctor' 'UsedStatics::.cctor'
+        # The used one runs behind its first-use guard, never in the startup pass.
         grep -qw ti_ILDietAbsenceOnly_UnusedStatics "$out"/generated* \
             && grep -Eqw 'UsedStatics__cctor_m[0-9]+__done' "$out"/generated* \
-            && grep -Fq '"ILDietAbsenceOnly.UsedStatics")' "$out"/generated* \
             || { echo "FAIL: the type initializer witnesses lost their type or guard" >&2; exit 1; }
         if grep -Eqw 'UnusedStatics__cctor_m[0-9]+(__done|__ensure)' "$out"/generated* \
-                || grep -Fq '"ILDietAbsenceOnly.UnusedStatics")' "$out"/generated*; then
-            echo "FAIL: an untouched type initializer kept a guard or startup root" >&2; exit 1
+                || grep -Eq 'dn2cpp_cctor_run_startup\(&[A-Za-z0-9_]*UsedStatics' "$out"/generated*; then
+            echo "FAIL: an untouched type initializer kept a guard, or one became a startup root" >&2; exit 1
         fi
         # A name joined from a constant and an unresolved value admits the constant's
         # target and still reports the site for the unresolved one.
@@ -1790,14 +1790,15 @@ assert_output "$(strip_cr_win "$script_discovery")" \
     "godot-script-discovery=all-scenes,autoload,relative-autoload,const-path,triple-path,resource,uid,relative,root-relative,global,import-uid,ignored-strings,binary-image,binary-script,ignored-output,unknown-resource,indirect-uid,escaped-path,missing-project
 godot-script-escapes=controls,unicode-path,unicode-uid,supplementary,surrogates,continuation,raw,invalid,unterminated,zero-replacement,missing-autoload,project-fallback,diagnostics"
 
-echo "== A type initializer runs only after a type-use trigger or an explicit preserve =="
-# Neither an untouched type nor a signature-only rewrite yields a startup root.
+echo "== A type initializer is kept for a type-use trigger or an explicit preserve, and runs at its trigger =="
+# Neither an untouched type nor a signature-only rewrite keeps an initializer, and
+# none runs before Main.
 (
     DN2CPP_SKIP_BUILD=1
     eval "$(declare -f compile_console | sed '1s/compile_console/compile_initializer_console/')"
     compile_console() {
-        # Check the existing runtime completion flags after the eager pass and
-        # before Main; stdout parity alone cannot observe a swallowed failure.
+        # Check the runtime completion flags after the startup pass and before Main;
+        # stdout parity alone cannot observe an initializer that ran early.
         $PYTHON gates/fixtures/ildiet-metadata-validation/check.py --instrument-startup "$1" "$initializer_case"
         compile_initializer_console "$@"
     }

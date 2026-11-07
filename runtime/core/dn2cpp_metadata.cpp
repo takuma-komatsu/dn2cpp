@@ -34,6 +34,7 @@ constexpr Field Dn2CppTypeReflection_fields[] = {
     { offsetof(Dn2CppTypeReflection, events), Encoding::Pointer },
     { offsetof(Dn2CppTypeReflection, eventCount), Encoding::Signed32 },
     { offsetof(Dn2CppTypeReflection, activation), Encoding::Signed32 },
+    { offsetof(Dn2CppTypeReflection, ensureInitializer), Encoding::Pointer },
 };
 constexpr Field Dn2CppFieldInfo_fields[] = {
     { offsetof(Dn2CppFieldInfo, name), Encoding::Pointer },
@@ -88,6 +89,7 @@ constexpr Field Dn2CppMethodInfo_fields[] = {
     { offsetof(Dn2CppMethodInfo, returnBindingPointeeType), Encoding::Pointer },
     { offsetof(Dn2CppMethodInfo, returnReflectionSignature), Encoding::Pointer },
     { offsetof(Dn2CppMethodInfo, definitionSignature), Encoding::Pointer },
+    { offsetof(Dn2CppMethodInfo, initializer), Encoding::Pointer },
 };
 constexpr Field Dn2CppParamInfo_fields[] = {
     { offsetof(Dn2CppParamInfo, paramType), Encoding::Pointer },

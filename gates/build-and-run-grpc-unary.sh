@@ -222,12 +222,11 @@ grep -qF '[refl] after clear case=none' "$out/native.out" || {
 grep -qF '[refl] struct=' "$out/native.out" || {
     echo "FAIL: native output is missing the JsonFormatter struct rendering" >&2
     cat "$out/native.out" >&2; exit 1; }
-# The startup must be CLEAN. The wire path never consults the reflection
-# accessors, so a descriptor-.cctor failure leaves every diff above green while
-# spilling its stack traces here — stderr emptiness is the only assert that
-# sees that class of regression.
+# The run must be CLEAN. A failed module initializer the startup pass swallows, or
+# a failure reported at a native boundary, appears only here, so stderr emptiness
+# is the only assert that sees that class of failure.
 if [ -s "$out/native.err" ]; then
-    echo "FAIL: native GrpcUnary wrote to stderr — a startup static constructor failed:" >&2
+    echo "FAIL: native GrpcUnary wrote to stderr — the runtime reported a failure:" >&2
     cat "$out/native.err" >&2; exit 1
 fi
 

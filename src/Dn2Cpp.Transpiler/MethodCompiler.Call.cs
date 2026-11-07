@@ -284,7 +284,10 @@ internal sealed partial class MethodCompiler
     /// and decodes a TypeSpec parent only for those shapes; decoding parameter types here
     /// would grow the compilation for every call before the route decides whether it needs
     /// them. A shared body cannot name a placeholder owner's initializer, which belongs to
-    /// the instantiation, so a trigger on one taints the body.</summary>
+    /// the instantiation, so a trigger on one taints the body. The interface a constrained
+    /// static call names is not a trigger: only the body that runs triggers its type, the
+    /// resolved implementation through the dispatch's own guard and the interface's
+    /// default body through its entry guard.</summary>
     private void EnsureCallCctorBefore(EntityHandle handle)
     {
         if (handle.Kind == HandleKind.MethodSpecification)
@@ -332,7 +335,8 @@ internal sealed partial class MethodCompiler
         }
 
         if (cls is not { IsBeforeFieldInit: false, IntrinsicCppName: null }
-            || !isStatic && !isCtor && !cls.IsValueType)
+            || !isStatic && !isCtor && !cls.IsValueType
+            || isStatic && cls.IsInterface && _constrained is not null)
             return;
         EnsureTriggeredCctorBefore(cls);
     }
@@ -347,6 +351,45 @@ internal sealed partial class MethodCompiler
         if (owner.StaticCctor is not null)
             TaintIfCanonical(owner, "type initializer");
         EnsureCctorBefore(owner);
+    }
+
+    /// <summary><paramref name="call"/>, a lowered direct call into <paramref name="target"/>
+    /// that no IL call site names, behind the initializer guard entering a trigger runs
+    /// (<see cref="Compilation.IsInitializerTrigger"/>). The guard is a comma operand of the
+    /// call itself, so it runs only where the call does, inside a scan loop or a
+    /// captureless thunk alike. The lowering's reach site reached the initializer; a guard
+    /// whose initializer reachability dropped would run nothing, so that throws.</summary>
+    private string GuardEnteredCall(MethodInfo target, string call)
+    {
+        var owner = target.DeclaringClass;
+        if (!_c.IsInitializerTrigger(target) || owner.StaticCctor is not { } cc
+            || (ReferenceEquals(owner, _method.DeclaringClass) && _method.Name == ".cctor"))
+            return call;
+        TaintIfCanonical(owner, "type initializer");
+        if (!_c.Reachable.Contains(cc))
+        {
+            if (Compilation.IsFrameworkEventSourceProvider(owner))
+                return call;
+            throw new InvalidOperationException(
+                $"{owner.FullName}::{target.Name}: a lowered call enters a trigger whose initializer reachability did not reach");
+        }
+        NoteCctorEnsure(cc);
+        return $"({cc.CppName}__ensure(), {call})";
+    }
+
+    /// <summary>The value-type instance method <paramref name="target"/> whose delegate
+    /// adapter runs its precise-init initializer at each invocation
+    /// (<see cref="DelegateAdapter.Entered"/>), or null. The reachability scan reaches the
+    /// initializer from the method pointer. A shared body cannot name a placeholder
+    /// owner's initializer, which belongs to the instantiation, so such a target taints
+    /// the body.</summary>
+    private MethodInfo? AdapterEnteredTrigger(MethodInfo target)
+    {
+        if (target.IsStatic || !target.DeclaringClass.IsValueType || !_c.IsInitializerTrigger(target)
+            || target.DeclaringClass.StaticCctor is null)
+            return null;
+        TaintIfCanonical(target.DeclaringClass, "type initializer");
+        return target;
     }
 
     /// <summary>A constrained Object virtual that runs <paramref name="owner"/>'s own
@@ -3534,7 +3577,7 @@ internal sealed partial class MethodCompiler
             string ct = CppTypes.Of(keyType);
             string tmp = NewTemp(ct);
             Emit($"{tmp} = {Cast(key, ct)};");
-            return $"{DirectCallSym(gh)}({ArgsWithRgctx($"&{tmp}", gh)})";
+            return GuardEnteredCall(gh, $"{DirectCallSym(gh)}({ArgsWithRgctx($"&{tmp}", gh)})");
         }
         throw new NotSupportedException(
             $"{_method.DeclaringClass.FullName}.{_method.Name}: element type {keyType} has no hash mapping yet");
@@ -3747,14 +3790,14 @@ internal sealed partial class MethodCompiler
         {
             string ct = CppTypes.Of(keyType);
             if (Compilation.EffectiveTypedEquals(sc) is { } teq)
-                return $"({DirectCallSym(teq)}({ArgsWithRgctx($"&{a.Expr}, {Cast(b, ct)}", teq)}) ? 1 : 0)";
+                return $"({GuardEnteredCall(teq, $"{DirectCallSym(teq)}({ArgsWithRgctx($"&{a.Expr}, {Cast(b, ct)}", teq)})")} ? 1 : 0)";
             if (Compilation.EffectiveEquals(sc) is { } oeq)
             {
                 // Boxes the operand with the struct's own type-info — a
                 // placeholder-bearing struct key must not bake the owner's.
                 TaintIfCanonical(sc, "typeinfo");
                 string tinfo = "&" + sc.CppTypeInfoName;
-                return $"({DirectCallSym(oeq)}({ArgsWithRgctx($"&{a.Expr}, dn2cpp_box({tinfo}, &{b.Expr}, sizeof({ct}))", oeq)}) ? 1 : 0)";
+                return $"({GuardEnteredCall(oeq, $"{DirectCallSym(oeq)}({ArgsWithRgctx($"&{a.Expr}, dn2cpp_box({tinfo}, &{b.Expr}, sizeof({ct}))", oeq)})")} ? 1 : 0)";
             }
             // Neither: this key is what ValueType.Equals answers for, and that is a QCall
             // extern over the runtime's MethodTable — nothing to transpile, so the field
@@ -4756,9 +4799,7 @@ internal sealed partial class MethodCompiler
     /// (1) the return type is a primitive integer (its C++ spelling is the literal's;
     ///     enums/floats/pointers/refs are out of scope);
     /// (2) the declaring class has no static constructor, so the fold cannot skip a
-    ///     type-initialization trigger — dn2cpp actually runs every .cctor eagerly at
-    ///     startup regardless of call sites (the plain direct-call path emits no cctor
-    ///     guard), so ordering is unaffected either way, but this stays conservative;
+    ///     type-initialization trigger;
     /// (3) not taken under <see cref="SharedTrial"/>, where the callee resolution
     ///     could be instantiation-dependent (the literal itself is instantiation-
     ///     independent, but "when in doubt for shared bodies, don't fold");

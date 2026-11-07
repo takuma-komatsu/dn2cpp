@@ -9,15 +9,18 @@
 namespace dn2cpp_native_metadata {
 using Getter = Dn2CppObject* (*)(Dn2CppObject*);
 using Setter = void (*)(Dn2CppObject*, Dn2CppObject*);
+using Initializer = void (*)();
 union Pointer
 {
     const void* object;
     Getter getter;
     Setter setter;
+    Initializer initializer;
     constexpr Pointer() : object(nullptr) {}
     constexpr Pointer(const void* p) : object(p) {}
     constexpr Pointer(Getter p) : getter(p) {}
     constexpr Pointer(Setter p) : setter(p) {}
+    constexpr Pointer(Initializer p) : initializer(p) {}
 };
 static_assert(sizeof(Pointer) == sizeof(void*));
 
@@ -27,14 +30,19 @@ struct Source
     Getter getter = nullptr;
     Setter setter = nullptr;
     const char* text = nullptr;
+    Initializer initializer = nullptr;
     unsigned kind = 0;
     constexpr Source() = default;
     constexpr Source(const void* p) : object(p) {}
     constexpr Source(const char* p) : text(p), kind(3) {}
     constexpr Source(Getter p) : getter(p), kind(1) {}
     constexpr Source(Setter p) : setter(p), kind(2) {}
+    constexpr Source(Initializer p) : initializer(p), kind(4) {}
     constexpr bool empty() const
-    { return object == nullptr && getter == nullptr && setter == nullptr && text == nullptr; }
+    {
+        return object == nullptr && getter == nullptr && setter == nullptr && text == nullptr
+            && initializer == nullptr;
+    }
     constexpr bool operator==(const Source& other) const
     {
         if (kind != other.kind)
@@ -47,12 +55,14 @@ struct Source
             while (text[i] != 0 && text[i] == other.text[i]) i++;
             return text[i] == other.text[i];
         }
-        return object == other.object && getter == other.getter && setter == other.setter;
+        return object == other.object && getter == other.getter && setter == other.setter
+            && initializer == other.initializer;
     }
     constexpr Pointer pointer() const
     {
         return kind == 1 ? Pointer(getter) : kind == 2 ? Pointer(setter)
-            : kind == 3 ? Pointer(static_cast<const void*>(text)) : Pointer(object);
+            : kind == 3 ? Pointer(static_cast<const void*>(text))
+            : kind == 4 ? Pointer(initializer) : Pointer(object);
     }
 };
 
@@ -94,7 +104,7 @@ constexpr Value value(const Dn2CppFieldInfo& row, std::size_t field)
     }
     return {};
 }
-constexpr std::size_t field_count(const Dn2CppTypeReflection&) { return 27; }
+constexpr std::size_t field_count(const Dn2CppTypeReflection&) { return 28; }
 constexpr Value value(const Dn2CppTypeReflection& row, std::size_t field)
 {
     switch (field)
@@ -126,6 +136,7 @@ constexpr Value value(const Dn2CppTypeReflection& row, std::size_t field)
         case 24: return pointer(row.events.identity());
         case 25: return scalar(row.eventCount);
         case 26: return scalar(row.activation);
+        case 27: return Value(Source(row.ensureInitializer));
     }
     return {};
 }

@@ -3,35 +3,21 @@
 // dictionary built in its owning type's static constructor) must look up keys *by
 // value* — even though the dictionary is populated in a cctor.
 //
-// This is the divergence that trapped the native dn2cpp binary while it transpiled
-// dn2cpp itself. dn2cpp runs every static constructor eagerly at startup
-// (EmitInitCalls), whereas .NET runs each lazily on first use. That breaks exactly
-// one invariant — the *global hash seed*: `System.HashCode.s_seed` (set by
-// `System.HashCode..cctor`, consumed transitively via `HashCode.Combine` by every
-// ValueTuple / record / struct `GetHashCode`). `CoreIntrinsicTypeMaps.s_intrinsicNestedCpp`
-// is a static `Dictionary<(string,string),string>`; populated in a cctor that ran
-// *before* `System.HashCode..cctor`, its entries were bucketed with `s_seed==0`
-// while later lookups recomputed with the real seed and missed. The concrete
-// victim: `IntrinsicNestedCppType("System.Text.StringBuilder",
-// "AppendInterpolatedStringHandler")` returned null, so the
-// `StringBuilder.AppendLine(ref handler)` intrinsic guard no longer matched.
-//
-// The fix (CppEmitter) hoists `System.HashCode..cctor` — a dependency-free leaf
-// that only fills a deterministic seed — ahead of every other cctor.
+// ValueTuple / record / struct `GetHashCode` hashes through `HashCode.Combine`, which
+// reads the global seed `System.HashCode.s_seed`. A dictionary bucketed before that
+// seed's initializer ran would hash its entries with `s_seed == 0` and miss on every
+// later lookup, which hashes with the real seed. Reading the seed is a first-use
+// trigger of `System.HashCode..cctor`, so entries and lookups hash alike. dn2cpp's own
+// `CoreIntrinsicTypeMaps.s_intrinsicNestedCpp` is such a dictionary: a miss there makes
+// `IntrinsicNestedCppType("System.Text.StringBuilder", "AppendInterpolatedStringHandler")`
+// return null, and the `StringBuilder.AppendLine(ref handler)` intrinsic guard stops
+// matching when dn2cpp transpiles itself.
 //
 // The keys here are built at RUNTIME (concatenation), so each lookup tuple holds
 // distinct string references value-equal to the stored keys. The dict is a STATIC
-// FIELD (built in the type's cctor) — the path that regressed; a LOCAL dict (built
-// in `__GateEntry`, after all cctors) is the contrast that always worked.
-//
-// Former standalone gate: build-and-run-valuetuple-key-dict-subset.sh. Folding it
-// into this bucket does NOT weaken the cctor-order probe, and the reason is
-// structural rather than positional: `EmitInitCalls` orders cctors by
-// assembly-reference depth (CoreLib depth 0, the entry assembly deepest) *before*
-// reach order, and `System.HashCode` is hoisted ahead of even that. So this
-// section's cctor — an app-module cctor — runs after `System.HashCode..cctor` in
-// the bucket for exactly the same reason it did standalone, whatever else the
-// driver calls first. No other section here writes the hash seed.
+// FIELD (built in the type's cctor), the shape an out-of-order seed breaks; a LOCAL
+// dict (built in `__GateEntry`) is the contrast. No other section here writes the
+// hash seed.
 using System;
 using System.Collections.Generic;
 

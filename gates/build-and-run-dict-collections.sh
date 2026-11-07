@@ -19,11 +19,9 @@
 #     key (comparer devirtualization to those overrides; the sibling
 #     ValueStructKeySubset covers the struct that overrides neither);
 #   * ValueTupleKeyDictSubset — a ValueTuple-keyed dictionary populated in a STATIC
-#     CONSTRUCTOR, which pins the System.HashCode..cctor seed hoist. Its cctor-order
-#     probe survives the fold structurally, not by driver position: EmitInitCalls
-#     orders cctors by assembly-reference depth (CoreLib first, entry assembly last)
-#     with System.HashCode hoisted ahead of even that, so an app-module cctor always
-#     runs after the seed is set. See the note at the head of that .cs.
+#     CONSTRUCTOR must hash with the same System.HashCode seed as later lookups: the
+#     seed read triggers System.HashCode..cctor before the first entry is bucketed.
+#     See the note at the head of that .cs.
 # Also covers EqualityComparerDefaultSubset: Default is a non-null, stable per-T concrete
 # object implementing generic and non-generic IEqualityComparer, including interface calls
 # and a null-conditional equality call as used by reactive properties.

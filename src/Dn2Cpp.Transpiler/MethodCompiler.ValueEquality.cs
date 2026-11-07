@@ -25,8 +25,8 @@ internal sealed partial class MethodCompiler
     /// which satisfies the only contract a hash owes ("equal values hash equal").
     /// Spelled UNSIGNED (−1521134295 reinterpreted) and folded in <c>uint32_t</c>: the
     /// multiply overflows by design and signed overflow is UB in C++. <c>System.HashCode</c>
-    /// is unusable here — its <c>s_seed</c> is a .cctor fill, and dn2cpp runs .cctors eagerly
-    /// in reach order (AGENTS.md, self-host shapes).</summary>
+    /// is not used: the fold needs no seed, and its <c>s_seed</c> is a per-process .cctor
+    /// fill.</summary>
     private const string HashMultiplier = "2773833001u";
 
     /// <summary>The struct whose own method holds a non-virtual <c>ValueType</c> call —
@@ -153,7 +153,7 @@ internal sealed partial class MethodCompiler
                 TaintIfCanonical(fc, "typeinfo");
                 string ct = CppTypes.Of(t);
                 string args = $"&{x.Expr}, dn2cpp_box(&{fc.CppTypeInfoName}, &{y.Expr}, sizeof({ct}))";
-                return $"({DirectCallSym(feq)}({ArgsWithRgctx(args, feq)}) ? 1 : 0)";
+                return $"({GuardEnteredCall(feq, $"{DirectCallSym(feq)}({ArgsWithRgctx(args, feq)})")} ? 1 : 0)";
             }
             // No override: the field's own walk, reached at its typed shape — so unlike .NET,
             // which can only re-enter through Equals(object), no box is allocated.
@@ -206,7 +206,7 @@ internal sealed partial class MethodCompiler
             && IntrinsicValueTypeFn(t) is null)
         {
             if (Compilation.EffectiveGetHashCode(fc) is { } fgh)
-                return $"{DirectCallSym(fgh)}({ArgsWithRgctx($"&{x.Expr}", fgh)})";
+                return GuardEnteredCall(fgh, $"{DirectCallSym(fgh)}({ArgsWithRgctx($"&{x.Expr}", fgh)})");
             if (SynthesizedValueHash(fc) is { } fsyn)
                 return $"{DirectCallSym(fsyn)}({ArgsWithRgctx($"&{x.Expr}", fsyn)})";
             return null;

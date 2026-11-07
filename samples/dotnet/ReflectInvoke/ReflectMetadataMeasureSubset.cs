@@ -78,9 +78,12 @@ static class Program
 
     internal static void Run()
     {
-        // Initialize the counters before measuring the first reflection operation.
+        // Initialize the counters and this type's statics, which the first measured
+        // lambda's field store would otherwise initialize, before measuring the first
+        // reflection operation.
         GC.GetAllocatedBytesForCurrentThread();
         Stopwatch.GetTimestamp();
+        RuntimeHelpers.RunClassConstructor(typeof(Program).TypeHandle);
         Console.WriteLine("reflection-measure-managed-held-before," + GC.GetTotalMemory(true));
         Console.WriteLine("reflection-measure-frequency," + Stopwatch.Frequency);
         Console.WriteLine("reflection-measure-iterations,1000");

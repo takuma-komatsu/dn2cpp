@@ -22,6 +22,8 @@
 # AggregateException subclasses retain their inner snapshot beside user fields,
 # through imported AOT constructors and directly interpreted base constructors.
 # A real-CoreLib inspector also verifies cached InnerExceptions identity and order.
+# A patch that enters a precise-init AOT type first, through a static-method, a
+# constructor or a static-field import, runs its initializer there, as .NET does.
 # A patch whose IL is rewritten after build (callvirt -> call) matches .NET
 # running the same assembly in both code formats: a non-virtual call of an
 # interface or class import runs the named row's own body, a default interface
@@ -752,7 +754,10 @@ for line in '== AOT derived aggregates ==' 'AOT derived aggregates end' \
     'patch rewritten=direct (first) (second)/first=True/43/after' \
     'patch further=further (first) (second)/first=True/47/further/9/patch' \
     'patch empty=One or more errors occurred./first=True/17/empty' \
-    'interpreted derived aggregates end'; do
+    'interpreted derived aggregates end' '== interpreted initializer imports ==' \
+    'before imports=0/none' 'static method import=61/static' \
+    'constructor import=62/static,constructed' \
+    'static field import=63/static,constructed,field' 'interpreted initializer imports end'; do
     gate_output witness "$derived_aggregate_oracle" "$line" --count any --policy crlf \
         || { echo "FAIL: managed derived aggregate witness missing: $line" >&2; exit 1; }
 done

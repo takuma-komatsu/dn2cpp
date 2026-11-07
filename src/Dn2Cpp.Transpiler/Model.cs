@@ -96,10 +96,8 @@ internal sealed class TypeDesc
     /// primitives, so a fresh descriptor per occurrence was the largest single term in the
     /// model's heap. (The array is longer than the enum's member count — see
     /// <see cref="MakePrimitives"/> — because the codes are not densely numbered.)
-    /// <para>An ARRAY, not a Dictionary: a hash-keyed static populated before
-    /// System.HashCode's seed cctor buckets its entries against seed 0 and then misses every
-    /// later lookup (documented at <c>CppEmitter.EmitCctorEnsures</c>). Indexing by the enum
-    /// sidesteps hashing entirely.</para>
+    /// <para>An ARRAY, not a Dictionary: indexing by the enum makes a lookup no hash at
+    /// all.</para>
     /// <para>Sharing is sound because <see cref="TypeDesc"/> is never mutated after
     /// construction, and it must stay that way or interning silently aliases unrelated
     /// signatures. The one place reference identity carries meaning is
@@ -195,10 +193,9 @@ internal sealed class TypeDesc
 
     /// <summary>The interned generic-parameter placeholders, two rows (type <c>!n</c>
     /// / method <c>!!n</c>) indexed by parameter position. Real arities sit far under
-    /// the bound; past it the factory falls back to a fresh object. ARRAYS, for the
-    /// same reason <see cref="s_primitives"/> is one — a hash-keyed static populated
-    /// at static-init buckets its entries against System.HashCode's zero seed and
-    /// then misses every later lookup.</summary>
+    /// the bound; past it the factory falls back to a fresh object. ARRAYS, indexed
+    /// by position as <see cref="s_primitives"/> is by code, so a lookup hashes
+    /// nothing.</summary>
     private const int InternedGenericVars = 32;
     private static readonly TypeDesc[] s_genVarType = MakeGenVars(isMethod: false);
     private static readonly TypeDesc[] s_genVarMethod = MakeGenVars(isMethod: true);
@@ -1631,10 +1628,8 @@ internal static class CppNaming
         || name.StartsWith("Gfn", StringComparison.Ordinal);
 
     /// <summary>The <c>PrimitiveTypeCode.ToString()</c> renderings
-    /// <c>Compilation.MangleArg</c>'s primitive arm can produce. Written as a switch
-    /// rather than a hash-keyed static: a set populated at static-init is the
-    /// System.HashCode-seed trap the self-host already tripped over once (see the
-    /// s_primitives note above).</summary>
+    /// <c>Compilation.MangleArg</c>'s primitive arm can produce. A switch, so the test
+    /// needs no hash-keyed static.</summary>
     private static bool IsPrimitiveToken(string name) => name switch
     {
         "Void" or "Boolean" or "Char" or "SByte" or "Byte" or "Int16" or "UInt16"

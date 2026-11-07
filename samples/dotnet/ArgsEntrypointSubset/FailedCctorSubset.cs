@@ -24,9 +24,7 @@ internal static class Broken
 
 // The catch-and-fall-back caller — the AngleSharp shape. Its own initializer survives
 // Broken's failure, so it IS initialized; only Broken must stay unusable. It records
-// rather than prints, because the two runtimes run it at different times (dn2cpp's
-// eager startup pass vs .NET's first touch) and printing would order the output
-// differently on each while saying nothing extra.
+// rather than prints, so the output does not depend on when its initializer runs.
 internal static class Dependent
 {
     internal static readonly string Fallback = Probe();
