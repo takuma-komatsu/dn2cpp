@@ -345,4 +345,8 @@ else
     gate_capture_ok "$OUT/oracle" run_bounded env "$LIB_PATH_ENV=$LIBDIR" dotnet "$app"
 fi
 gate_output compare "$OUT/native.stdout" "$OUT/oracle.stdout"
+# NativeImplSubset's substituted call enters an implementation on a precise-init type of
+# its own, whose initializer must run before the body reads what it set.
+gate_output byte-witness "$OUT/native.stdout" 'nimpl precise-init implementation=1' --count any --policy crlf \
+    || { echo "FAIL: the substituted call skipped its implementation's type initializer" >&2; exit 1; }
 gate_cache_commit

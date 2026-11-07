@@ -237,6 +237,10 @@ internal sealed partial class CppEmitter
     /// empty in a normal build.</summary>
     private readonly HashSet<MethodInfo> _syntheticBodies = new();
 
+    /// <summary>The initializers <see cref="EmitCctorEnsures"/> gave a first-use wrapper and
+    /// a <c>__done</c> flag.</summary>
+    private readonly HashSet<MethodInfo> _ensureWrappers = new();
+
     /// <summary>Generic reflection: CLR open-definition FullName (e.g.
     /// "System.Collections.Generic.List`1") → the C++ symbol of its synthetic
     /// open-definition type-info. Populated in <see cref="EmitTypeInfos"/> so the closed
@@ -1136,49 +1140,24 @@ internal sealed partial class CppEmitter
         // the bodies (they only reference the header-declared method prototypes).
         EmitUnmanagedExports(o.Data, compiledMethods);
 
-        // Static constructors run eagerly at startup (EmitInitCalls), in reach/compile
-        // order; .NET runs each lazily on first use, which guarantees a type's statics are
-        // set before anything reads them. The startup subset and its remaining orderings
-        // have to be restored by hand.
-        //
-        // System.HashCode.s_seed is a .cctor fill consumed — transitively, via
-        // HashCode.Combine — by the GetHashCode of every ValueTuple / record / struct key,
-        // so a static-field Dictionary/HashSet keyed by such a type and populated inside its
-        // own cctor buckets its entries with s_seed==0 while every later lookup recomputes
-        // with the real seed and misses. HashCode..cctor is a dependency-free leaf, so
-        // hoisting it ahead of every other cctor is always correct. OrderBy is a stable
-        // sort, so all other cctors keep their relative order.
-        //
-        // The same hazard spans assemblies: a static initializer reads a static a
-        // *referenced* assembly's cctor sets, transitively through ordinary calls. A static
-        // dependency always points from a referencing assembly into its references, never
-        // back, so ordering by assembly-reference depth (CoreLib 0, the entry assembly
-        // deepest) matches .NET's first-use ordering across assemblies.
-        //
-        // Within one module the `<Module>` .cctor — which .NET runs before the first access
-        // to ANY type in that module — is hoisted ahead of that module's type cctors: the
-        // same "before its dependents" rule one level down. (The use-site guards make it
-        // safe either way; the hoist is what makes the order match .NET.)
+        // Static constructors run at their first trigger, as in .NET: compiled use sites,
+        // emitted entries and the metadata rows' initializer hooks all call the type's
+        // idempotent __ensure wrapper. Only module initializers run in the startup pass
+        // (EmitInitCalls): no use site names `<Module>`, so no guard could run one. A static
+        // dependency points from a referencing assembly into its references, never back, so
+        // ordering them by assembly-reference depth (CoreLib 0, the entry assembly deepest)
+        // runs a library's initializer before those of the assemblies that use it.
+        var allCctors = compiledMethods.Where(m => m.Name == ".cctor" && m.IsStatic).ToList();
         var modDepth = ModuleInitDepths();
-        var allCctors = compiledMethods
-            .Where(m => m.Name == ".cctor" && m.IsStatic)
-            .OrderBy(m => m.DeclaringClass.FullName == "System.HashCode" ? -1
-                        : modDepth.GetValueOrDefault(m.DeclaringClass.Module, 0))
-            .ThenBy(m => m.DeclaringClass.Name == "<Module>" ? 0 : 1)
-            .ToList();
-        // A closed generic's statics belong to that exact instantiation. Running every
-        // reached instantiation here turns first-use caches into pre-Main side effects;
-        // resolver caches in particular can freeze a registry before Main registers it.
-        // Their static-field mouths already call the idempotent __ensure wrapper, so leave
-        // closed generic cctors lazy while retaining the legacy startup pass for other types.
         var startupCctors = allCctors
-            .Where(m => m.DeclaringClass.GenericArity == 0 && !_c.IsBindingOnlyInitializer(m))
+            .Where(m => m.DeclaringClass.Name == "<Module>"
+                && !Compilation.IsFrameworkAssemblyName(m.DeclaringClass.Module.AssemblyName))
+            .OrderBy(m => modDepth.GetValueOrDefault(m.DeclaringClass.Module, 0))
             .ToList();
-        // Idempotent first-use wrappers for every static constructor: the eager init
-        // loop (EmitInitCalls) and the use-site guards (EnsureCctorBefore) both run a
-        // cctor only through its __ensure wrapper, so it runs at most once whichever
-        // fires first. The use-site guard reproduces .NET's "statics set before first
-        // read" ordering for the dependencies the eager reach order violates.
+        // The entry type's guard joins the wrappers below; its main runs it before Main.
+        EntryInitializer = _c.EntryPoint is { } entry && _c.Reachable.Contains(entry) ? InitializerGuard(entry) : null;
+        // A wrapper for every compiled initializer and every guarded one: guards, hooks and
+        // the startup pass all run an initializer only through it.
         EmitCctorEnsures(o, allCctors, compiledMethods);
         // Inline-promoted bodies (AggressiveInlining + tiny-IL) close the header —
         // after the cctor __ensure guards just above, the last header-declared
@@ -2103,7 +2082,10 @@ internal sealed partial class CppEmitter
     /// <summary>Conservative proof that compiling one static scalar IL body is a
     /// read-only operation on the completed model. Reference-bearing signatures,
     /// non-scalar locals, token-bearing instructions, exception regions, special
-    /// replacement bodies and lazily unprepared caches stay sequential.</summary>
+    /// replacement bodies and lazily unprepared caches stay sequential. So does a body
+    /// that guards its type's initializer at entry, since the guard records the
+    /// initializer's wrapper in shared state; a worker that reaches such a write throws
+    /// (<see cref="MethodCompiler.ParallelWorker"/>).</summary>
     private bool CanCompileBodyInParallel(ClassInfo cls, MethodInfo m)
     {
         // MemoryGuard's sampled tick and first over-budget exception are ordered
@@ -2113,7 +2095,7 @@ internal sealed partial class CppEmitter
             || m.Rva == 0 || m.IsSynthetic || m.SharedImpl is not null
             || !m.IsStatic || !m.SignatureReady
             || m.IsSynchronized || m.IsUnmanagedCallersOnly || m.IsHotPath
-            || HasReplacedBody(cls, m))
+            || HasReplacedBody(cls, m) || _c.BodyEntryInitializer(m) is not null)
             return false;
         return HasParallelPureShape(m);
     }
@@ -2137,7 +2119,7 @@ internal sealed partial class CppEmitter
         var result = new ParallelBodyResult();
         try
         {
-            var mc = new MethodCompiler(_c, m, literals, _backend);
+            var mc = new MethodCompiler(_c, m, literals, _backend) { ParallelWorker = true };
             if (_c.SharedGenericsEnabled && Compilation.IsCanonicalMethod(m))
             {
                 mc.SharedTrial = true;
@@ -2970,8 +2952,13 @@ internal sealed partial class CppEmitter
             string ret = m.Signature.ReturnType.IsVoid ? "void" : CppTypes.Of(m.Signature.ReturnType);
             string args = string.Join(", ", Enumerable.Range(0, ps.Count).Select(i => $"a{i}"));
             string call = $"{m.CppName}({args})";
+            // Native code enters with no managed call site to run the initializer. It runs
+            // on a thread the prologue registered, and what it throws leaves the export as
+            // an exception from the body does; the body's own prologue is then a no-op.
+            string guard = InitializerGuard(m) is { } ensure
+                ? $"dn2cpp_native_callback_prologue(); {ensure}(); " : "";
             sb.AppendLine($"DN2CPP_UCO_EXPORT {ret} {m.UnmanagedEntryPoint}({string.Join(", ", ps)}) "
-                + (m.Signature.ReturnType.IsVoid ? $"{{ {call}; }}" : $"{{ return {call}; }}"));
+                + (m.Signature.ReturnType.IsVoid ? $"{{ {guard}{call}; }}" : $"{{ {guard}return {call}; }}"));
         }
         sb.AppendLine();
     }
@@ -2979,7 +2966,8 @@ internal sealed partial class CppEmitter
     private readonly List<string> _signatureTypeArgumentInitializers = new();
 
     /// <summary>Emits the runtime-init prologue shared by backend epilogues
-    /// (runtime init, string literal table init, then static constructors).</summary>
+    /// (runtime init, string literal table init, then the module initializers in
+    /// <paramref name="cctors"/>).</summary>
     internal void EmitInitCalls(StringBuilder sb, IReadOnlyList<MethodInfo> cctors)
     {
         sb.AppendLine(_c.UsesPlatformIsa
@@ -3070,38 +3058,94 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    dn2cpp_set_missing_value_factory(&{missing.DeclaringClass.CppTypeInfoName}, []() -> Dn2CppObject* {{ {ensure}return (Dn2CppObject*){missing.CppStaticAccess}; }});");
         }
         // Compare singleton identity without reaching a comparer initializer for array searches.
+        // The acquire load of the initializer's flag orders the read after the initializer's
+        // write on another thread; until it latches, no caller holds the default instance.
+        // An initializer with no first-use wrapper never runs, so only null is the default.
         if (_c.FindClassByFullName("System.Collections.Comparer") is { } comparer
             && _emit.Contains(comparer) && !IsOpaque(comparer)
+            && comparer.StaticCctor is { } comparerInit && _ensureWrappers.Contains(comparerInit)
             && comparer.Fields.FirstOrDefault(f => f.IsStatic && f.Name == "Default") is { } defaultComparer)
-            sb.AppendLine($"    dn2cpp_array_set_default_comparer_getter([]() -> Dn2CppObject* {{ return (Dn2CppObject*){defaultComparer.CppStaticAccess}; }});");
+            sb.AppendLine($"    dn2cpp_array_set_default_comparer_getter([]() -> Dn2CppObject* {{ "
+                + $"return {comparerInit.CppName}__done.load(std::memory_order_acquire) "
+                + $"? (Dn2CppObject*){defaultComparer.CppStaticAccess} : nullptr; }});");
         foreach (string initializer in _signatureTypeArgumentInitializers)
             sb.AppendLine($"    {initializer}();");
         sb.AppendLine("    dn2cpp_init_strings();");
-        // Route the eager startup pass through the same idempotent wrappers the use-site
-        // guards call, so a cctor already run on first use is not run a second time here.
-        // dn2cpp_cctor_run_startup swallows a managed failure: this prologue sits AHEAD of
-        // the entry point's own try/catch, so an escaping exception reaches no handler and
-        // std::terminates the process — over a type real .NET, initializing lazily, might
-        // never have touched at all. The runtime remembers the failure and the first real
-        // use re-raises it, which is exactly where .NET raises it. The declaring type's
-        // reflection name rides beside the pointer because the swallowed failure is reported
-        // through the host-boundary sink, and a report that cannot name the type is not one
-        // anyone can act on.
-        foreach (var cctor in cctors)
-            sb.AppendLine($"    dn2cpp_cctor_run_startup(&{cctor.CppName}__ensure, "
-                + $"\"{Compilation.ReflectionTypeName(cctor.DeclaringClass)}\");");
+        EmitModuleInitializerCalls(sb, cctors);
     }
 
+    /// <summary>Emits the startup pass over the module initializers in
+    /// <paramref name="cctors"/>, for <see cref="EmitInitCalls"/> and for a backend that
+    /// defers the pass past its init prologue.</summary>
+    internal void EmitModuleInitializerCalls(StringBuilder sb, IReadOnlyList<MethodInfo> cctors)
+    {
+        // The startup pass runs module initializers only: every other initializer runs
+        // behind the first-use guards, and a module initializer is the one no use site
+        // names. dn2cpp_cctor_run_startup swallows and reports a managed failure: the
+        // console prologue sits AHEAD of the entry point's own try/catch, so an escaping
+        // exception would std::terminate the process, and a library's initializer may be
+        // one .NET never runs because the program never touches that module. The report
+        // names the module as an assembly-qualified `<Module>`, since a report that cannot
+        // name what failed is not one anyone can act on.
+        foreach (var cctor in cctors)
+        {
+            var owner = cctor.DeclaringClass;
+            if (owner.Name != "<Module>")
+                throw new InvalidOperationException(
+                    $"{owner.FullName}: only a module initializer runs in the startup pass");
+            sb.AppendLine($"    dn2cpp_cctor_run_startup(&{cctor.CppName}__ensure, "
+                + $"\"{Compilation.ReflectionTypeName(owner)}, {owner.Module.AssemblyName}\");");
+        }
+    }
+
+    /// <summary>The <c>__ensure</c> wrapper of <paramref name="cls"/>'s retained initializer,
+    /// as a function name, or null when it has none. A placeholder-bearing level has no
+    /// statics of its own: each instantiation's initializer is its own.</summary>
+    internal string? InitializerEnsure(ClassInfo cls)
+    {
+        if (cls.IntrinsicCppName is not null || Compilation.ContainsCanonPlaceholder(cls)
+            || Compilation.ContainsGenericVar(cls) || cls.StaticCctor is not { } cc || !_c.Reachable.Contains(cc))
+            return null;
+        _c.NoteCctorEnsure(cc);
+        return cc.CppName + "__ensure";
+    }
+
+    /// <summary>The initializer guard an emitted entry into <paramref name="m"/> runs before
+    /// entering it (<see cref="Compilation.IsInitializerTrigger"/>), or null. No startup
+    /// pass covers a guard that runs nothing, so an entry that enters <paramref name="m"/>
+    /// requires reachability to have reached the initializer; only a row whose body is
+    /// not retained (<paramref name="entered"/> false), and so never runs it, does not.
+    /// An interface's default method gets none: an entry naming it may dispatch to a
+    /// class's override, which triggers nothing, and its own body guards itself.</summary>
+    internal string? InitializerGuard(MethodInfo m, bool entered = true)
+    {
+        if (!_c.IsInitializerTrigger(m) || m.DeclaringClass.IsInterface && !m.IsStatic)
+            return null;
+        var cls = m.DeclaringClass;
+        if (InitializerEnsure(cls) is { } ensure)
+            return ensure;
+        if (entered && cls.StaticCctor is not null && !Compilation.ContainsCanonPlaceholder(cls)
+            && !Compilation.ContainsGenericVar(cls) && !Compilation.IsFrameworkEventSourceProvider(cls))
+            throw new InvalidOperationException(
+                $"{cls.FullName}::{m.Name}: an emitted entry triggers an initializer reachability did not reach");
+        return null;
+    }
+
+    /// <summary>The entry type's initializer guard when entering the entry point triggers
+    /// it, or null. A console <c>main</c> runs it inside its handler just before the entry
+    /// point, so a throwing initializer is unhandled there as in .NET.</summary>
+    internal string? EntryInitializer { get; private set; }
+
     /// <summary>Emits an idempotent first-use wrapper (<c>inline void X__ensure()</c>
-    /// over an <c>extern std::atomic&lt;int8_t&gt; X__done</c> flag) for every static
-    /// constructor that is either run at startup (<paramref name="cctors"/>) or guarded
-    /// at a use site (<see cref="Compilation.CctorEnsureTargets"/>). The wrapper
+    /// over an <c>extern std::atomic&lt;int8_t&gt; X__done</c> flag) for every compiled
+    /// static constructor (<paramref name="cctors"/>) and every one a guard or hook names
+    /// (<see cref="Compilation.CctorEnsureTargets"/>). The wrapper
     /// fast-paths on an acquire load of the flag and funnels first use through
     /// <c>dn2cpp_cctor_run_once</c>, which gives .NET's multithreaded cctor semantics:
     /// exactly one body run with a happens-before edge to every later reader, a thread
-    /// racing an in-flight init blocks until it completes, and a re-entrant access from
-    /// the initializing thread itself returns to see the partially-initialized state
-    /// (recursive-cctor semantics). A body that THROWS does not latch the flag — the
+    /// racing an in-flight init blocks until it completes, and an access whose wait would
+    /// close a cycle (on the initializing thread, or across threads each blocked on
+    /// another's init) sees the partial state. A body that THROWS does not latch the flag — the
     /// failure is remembered and re-raised by every later guard, so no use site ever
     /// reads a half-initialized type as ready. A target whose cctor body was tree-shaken (e.g. a
     /// ReachCctor skip) gets a nullptr body so any straggler use site still links. The
@@ -3113,12 +3157,13 @@ internal sealed partial class CppEmitter
     private void EmitCctorEnsures(CppOutput o, IReadOnlyList<MethodInfo> cctors, List<MethodInfo> compiledMethods)
     {
         var compiledSet = new HashSet<MethodInfo>(compiledMethods);
-        // Deterministic union: the ordered startup cctors first, then any extra use-site
-        // targets not among them (sorted by C++ name for stable output).
+        // Deterministic union: the compiled cctors in compile order first, then any extra
+        // guarded targets not among them (sorted by C++ name for stable output).
         var targets = new List<MethodInfo>(cctors);
         var seen = new HashSet<MethodInfo>(cctors);
         foreach (var cc in _c.CctorEnsureTargets.Where(cc => seen.Add(cc)).OrderBy(cc => cc.CppName, StringComparer.Ordinal))
             targets.Add(cc);
+        _ensureWrappers.UnionWith(targets);
         if (targets.Count == 0)
             return;
 
@@ -5069,6 +5114,9 @@ internal sealed partial class CppEmitter
         }
         var body = new StringBuilder();
         body.AppendLine("{");
+        // Constructing the attribute triggers its type's initializer, as newobj does.
+        if (InitializerGuard(ctor) is { } ensure)
+            body.AppendLine($"    {ensure}();");
         body.AppendLine($"    {cls.CppStructName}* o = ({cls.CppStructName}*)dn2cpp_alloc(sizeof({cls.CppStructName}));");
         body.AppendLine($"    ((Dn2CppObject*)o)->type = {TypeInfoRef(cls, "custom-attribute create function")};");
         foreach (var line in pre)
@@ -6625,7 +6673,8 @@ internal sealed partial class CppEmitter
     /// wrapped on the way out, so one delegate instance invoked through two delegate
     /// types — the variance case, which emits no IL to hook — reads the same bytes
     /// either way. Unlike the open/closed pair this shape also serves an INSTANCE
-    /// target, whose receiver comes out of the same target slot.</summary>
+    /// target, whose receiver comes out of the same target slot, and runs the initializer
+    /// a value type's method triggers (<see cref="DelegateAdapter.Entered"/>).</summary>
     private void EmitNfiErasedDelegateAdapter(CppOutput o, DelegateAdapter adapter)
     {
         var m = adapter.Method;
@@ -6671,6 +6720,8 @@ internal sealed partial class CppEmitter
         o.Header.AppendLine($"{head};");
         o.Data.AppendLine(head);
         o.Data.AppendLine("{");
+        if (adapter.Entered is { } entered && InitializerGuard(entered) is { } ensure)
+            o.Data.AppendLine($"    {ensure}();");
         o.Data.AppendLine(rt.IsVoid ? $"    {call};" : $"    return {call};");
         o.Data.AppendLine("}");
     }
@@ -7174,8 +7225,14 @@ internal sealed partial class CppEmitter
                 }
                 return $"{target.Emittable.CppName}({string.Join(", ", ca)})";
             }
-            string Stmt(MethodInfo target) =>
-                ret == "void" ? $"{ForwardCall(target)}; return;" : $"return ({ret}){ForwardCall(target)};";
+            // A boxed value type's body is entered here, where no compiled call site runs
+            // the initializer its instance method triggers.
+            string Stmt(MethodInfo target)
+            {
+                string guard = target.DeclaringClass.IsValueType && InitializerGuard(target) is { } ensure
+                    ? $"{ensure}(); " : "";
+                return guard + (ret == "void" ? $"{ForwardCall(target)}; return;" : $"return ({ret}){ForwardCall(target)};");
+            }
 
             o.Data.AppendLine(sig);
             o.Data.AppendLine("{");
@@ -7509,7 +7566,8 @@ internal sealed partial class CppEmitter
         return $"[[maybe_unused]] static {sig} {{ {body} }}";
     }
 
-    private static void EmitUnboxingThunk(StringBuilder sb, string thunk, ClassInfo cls, MethodInfo im, MethodInfo impl)
+    private static void EmitUnboxingThunk(StringBuilder sb, string thunk, ClassInfo cls, MethodInfo im, MethodInfo impl,
+        string guard)
     {
         string ret = im.Signature.ReturnType.IsVoid ? "void" : CppTypes.Of(im.Signature.ReturnType);
         var ps = im.Signature.ParameterTypes;
@@ -7534,7 +7592,7 @@ internal sealed partial class CppEmitter
             callArgs.Add(NfiSlotArg(implPs[k], $"a{k}"));
         string body = $"{impl.Emittable.CppName}({string.Join(", ", callArgs)})";
         string call = im.Signature.ReturnType.IsVoid ? $"{body};" : $"return ({ret}){body};";
-        sb.AppendLine($"static {ret} {thunk}({string.Join(", ", decl)}) {{ {call} }}");
+        sb.AppendLine($"static {ret} {thunk}({string.Join(", ", decl)}) {{ {guard}{call} }}");
     }
 
     /// <summary>One forwarded argument of an interface-slot thunk, cast to the
@@ -8721,9 +8779,10 @@ internal sealed partial class CppEmitter
             // the `ref ushort` an ldsflda hands out addresses the whole storage.
             string t = CppTypes.FieldOf(f);
             // [ThreadStatic] -> thread_local: each thread gets its own zero-initialized
-            // copy. The field initializer runs inside the .cctor, which executes only on
-            // the main thread, so only main's copy is initialized and every other thread
-            // sees default(T) — exactly .NET's [ThreadStatic] semantics.
+            // copy. The field initializer runs inside the .cctor, which runs once, on the
+            // thread that first touches the type, so only that thread's copy is
+            // initialized and every other thread sees default(T) — exactly .NET's
+            // [ThreadStatic] semantics.
             // External linkage (declare in the header, define once here) so a body in any
             // translation unit can read/write it. [[maybe_unused]]: a static of an emitted
             // class may be untouched by reachable code (e.g. RuntimeType's cached

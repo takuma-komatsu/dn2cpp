@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Threading;
 
 // Real OS threads exercising the synchronization primitives under genuine parallelism.
@@ -64,8 +65,74 @@ static class Program
         }
     }
 
-    static void Main()
+    // Two precise-init types whose initializers touch each other, first used on two
+    // threads at once. Each initializer waits until both are in flight before it
+    // crosses over, so the crossings always form a cycle; .NET lets one side proceed
+    // on the other type's partial state rather than deadlock. Which side proceeds
+    // depends on timing, so only the joined outcome and final values print.
+    static int s_cycleStarted;
+
+    static void CycleArrive()
     {
+        Interlocked.Increment(ref s_cycleStarted);
+        while (Volatile.Read(ref s_cycleStarted) < 2)
+            Thread.Yield();
+    }
+
+    static class CycleA
+    {
+        public static int Value;
+        public static int Seen;
+
+        static CycleA()
+        {
+            CycleArrive();
+            Seen = CycleB.Value;
+            Value = 1;
+        }
+    }
+
+    static class CycleB
+    {
+        public static int Value;
+        public static int Seen;
+
+        static CycleB()
+        {
+            CycleArrive();
+            Seen = CycleA.Value;
+            Value = 2;
+        }
+    }
+
+    // Background workers joined under a deadline: an initializer deadlock fails the
+    // run with a nonzero exit instead of hanging it.
+    static void RunInitCycle()
+    {
+        Console.WriteLine("== init cycle ==");
+        int readA = 0, readB = 0;
+        var a = new Thread(() => { readA = CycleA.Value; }) { IsBackground = true };
+        var b = new Thread(() => { readB = CycleB.Value; }) { IsBackground = true };
+        a.Start();
+        b.Start();
+        var limit = TimeSpan.FromSeconds(30);
+        if (!a.Join(limit) || !b.Join(limit))
+        {
+            Console.WriteLine("init cycle hung");
+            Environment.Exit(1);
+        }
+        Console.WriteLine("init cycle joined=True");
+        Console.WriteLine($"init cycle worker reads={readA}/{readB}");
+        Console.WriteLine($"init cycle values={CycleA.Value}/{CycleB.Value}");
+        Console.WriteLine("init cycle end");
+    }
+
+    static void Main(string[] args)
+    {
+        // Pin both cultures first: gate output must not depend on the host locale.
+        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+
         var threads = new Thread[N];
         for (int i = 0; i < N; i++)
             threads[i] = new Thread(Worker);
@@ -133,5 +200,9 @@ static class Program
             initTotal += initSeen[i];
         Console.WriteLine(LazyInit.Inits);                         // 1 (cctor ran exactly once)
         Console.WriteLine(initTotal);                              // 201277440 (N * 25159680)
+
+        if (args.Length != 0 && args[0] == "before-init-cycle")
+            return;
+        RunInitCycle();
     }
 }

@@ -240,6 +240,7 @@ struct ImportBinding
                         // callvirt enters to select the receiver's override
     void* fnPtr;
     void* invoker;
+    void (*initializer)(); // the bound row's initializer guard, run before each call
     const Dn2CppTypeInfo* type; // Type import: the resolved base type-info (may
                                 // be null — a declaring-type anchor an intrinsic
                                 // import binds by name needs no type-info).
@@ -1403,6 +1404,7 @@ void bind_method_import(const Dn2CppInterpImage* img, const Dn2CppBpiImport& imp
             {
                 b.fnPtr = exFound->fnPtr;
                 b.invoker = exFound->invoker;
+                b.initializer = exFound->initializer;
             }
             // A missing derived aggregate ctor cannot recover its collection from
             // positional seeds. Refuse instead of publishing an empty aggregate.
@@ -1497,6 +1499,7 @@ void bind_method_import(const Dn2CppInterpImage* img, const Dn2CppBpiImport& imp
     b.callShape = kShapeInvoker;
     b.fnPtr = found->fnPtr;
     b.invoker = found->invoker;
+    b.initializer = found->initializer;
     b.retType = found->returnType;
     b.method = found;
     b.type = declTi;
@@ -2598,6 +2601,7 @@ static void exc_init_aggregate(const ImportBinding& b, Dn2CppObject* self,
 static void exc_seed_and_run_base_ctor(const ImportBinding& b, Dn2CppObject* self,
     Dn2CppObject** callArgs)
 {
+    dn2cpp_run_initializer(b.initializer);
     if (b.aggregateCtor)
     {
         exc_init_aggregate(b, self, callArgs);
@@ -3693,6 +3697,7 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                                         fn = b.gvmDispatcher;
                                     }
                                 }
+                                dn2cpp_run_initializer(b.initializer);
                                 Dn2CppObject* r =
                                     reinterpret_cast<InvokerFn>(b.invoker)(fn, self, callArgs, b.retType);
                                 if (insn.b & 1)
@@ -3885,6 +3890,7 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                                 ? reinterpret_cast<Dn2CppString*>(callArgs[b.excMsgArg]) : nullptr;
                             Dn2CppObject* inner = b.excInnerArg >= 0
                                 ? callArgs[b.excInnerArg] : nullptr;
+                            dn2cpp_run_initializer(b.initializer);
                             Dn2CppObject* obj = dn2cpp_exception_new(b.type,
                                 b.aggregateCtor ? nullptr : message, b.aggregateCtor ? nullptr : inner);
                             if (b.aggregateCtor)
@@ -3901,6 +3907,7 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                         Dn2CppObject* callArgs[kMaxImportArgs];
                         for (uint32_t j = b.argCount; j-- > 0;)
                             callArgs[j] = marshal_slot_to_object(b.args[j], pop());
+                        dn2cpp_run_initializer(b.initializer);
                         const Dn2CppTypeInfo* ti = b.type;
                         size_t sz = ti->instanceSize > static_cast<int32_t>(sizeof(Dn2CppObject))
                             ? static_cast<size_t>(ti->instanceSize)
@@ -4952,6 +4959,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                         fn = b.gvmDispatcher;
                                     }
                                 }
+                                dn2cpp_run_initializer(b.initializer);
                                 Dn2CppObject* r =
                                     reinterpret_cast<InvokerFn>(b.invoker)(fn, self, callArgs, b.retType);
                                 if (insn.b & 1)
@@ -5106,6 +5114,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                 ? reinterpret_cast<Dn2CppString*>(callArgs[b.excMsgArg]) : nullptr;
                             Dn2CppObject* inner = b.excInnerArg >= 0
                                 ? callArgs[b.excInnerArg] : nullptr;
+                            dn2cpp_run_initializer(b.initializer);
                             Dn2CppObject* obj = dn2cpp_exception_new(b.type,
                                 b.aggregateCtor ? nullptr : message, b.aggregateCtor ? nullptr : inner);
                             if (b.aggregateCtor)
@@ -5120,6 +5129,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                         Dn2CppObject* callArgs[kMaxImportArgs];
                         for (uint32_t j = 0; j < b.argCount; j++)
                             callArgs[j] = marshal_slot_to_object(b.args[j], regs[r0 + j]);
+                        dn2cpp_run_initializer(b.initializer);
                         const Dn2CppTypeInfo* ti = b.type;
                         size_t sz = ti->instanceSize > static_cast<int32_t>(sizeof(Dn2CppObject))
                             ? static_cast<size_t>(ti->instanceSize)

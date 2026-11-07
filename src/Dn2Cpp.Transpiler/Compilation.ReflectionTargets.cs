@@ -709,7 +709,7 @@ internal sealed partial class Compilation
             case ReflectionOp.RunClassConstructor:
                 foreach (var cls in ClassesOf(target))
                     if (!ContainsCanonPlaceholder(cls) && !ContainsGenericVar(cls))
-                        ReachCctor(cls, m);
+                        ReachCctor(cls);
                 if (target.Unknown is not null)
                     RecordReflectionDiagnostic(app, site, ReflectionDiagnosticKind.Execution,
                         "Type comes from " + target.Unknown + " — no type initializer retained",
@@ -733,7 +733,7 @@ internal sealed partial class Compilation
                             NoteReflectionBoxed(f.Type);
                         // A constant answers from metadata without running the initializer.
                         if (f.IsStatic && !f.IsLiteral)
-                            ReachCctor(f.DeclaringClass, m);
+                            ReachCctor(f.DeclaringClass);
                     }
                     else if (e is { Kind: REntityKind.TemplateMember,
                                  Lookup: { Kind: LookupMemberKind.Field or null } })
@@ -794,7 +794,7 @@ internal sealed partial class Compilation
                         // CreateInstance ignores the name.
                         if ((flags & 0x200) != 0)
                             foreach (var e in SelectMembers(cls, LookupMemberKind.Constructor, null, flags, null, -1))
-                                ConstructSelected(e.Method!, m);
+                                ConstructSelected(e.Method!);
                     }
                     string? kind = (flags & 1) != 0 ? null : (flags & 0x3F00) switch
                     {
@@ -838,23 +838,22 @@ internal sealed partial class Compilation
 
     private void InvokeSelected(REntity e, ReflectionApplication app, ReflectionAccessor accessor, bool publicAccessors = false)
     {
-        var caller = app.Method;
         switch (e.Kind)
         {
             case REntityKind.Method:
-                InvokeTarget(e.Method!, caller);
+                InvokeTarget(e.Method!);
                 break;
             case REntityKind.Property:
             case REntityKind.Event:
                 foreach (var accessorMethod in AccessorsOf(e, accessor == ReflectionAccessor.None ? ReflectionAccessor.All : accessor,
                              publicAccessors))
-                    InvokeTarget(accessorMethod, caller);
+                    InvokeTarget(accessorMethod);
                 break;
             case REntityKind.Field when e.Field is { } f:
                 if (!f.IsLiteral)
                     NoteReflectionBoxed(f.Type);
                 if (f.IsStatic && !f.IsLiteral)
-                    ReachCctor(f.DeclaringClass, caller);
+                    ReachCctor(f.DeclaringClass);
                 break;
             case REntityKind.Delegate when e.Targets is { } targets:
                 foreach (var t in targets.Items)
@@ -868,14 +867,14 @@ internal sealed partial class Compilation
     }
 
     /// <summary>Set while a delegate binding selects its targets: binding runs no body, so
-    /// the initializers a bound body reaches keep their first-use timing instead of
-    /// joining startup.</summary>
+    /// a bound target reaches only the initializer its row runs at bind time.</summary>
     private bool _selectingBindTargets;
 
     /// <summary>Admits a method reflection runs: its body, the slot or generic virtual
-    /// dispatcher a receiver's override runs through, a static's initializer, and the
-    /// values Invoke boxes. A generic method definition is not invocable.</summary>
-    private void InvokeTarget(MethodInfo target, MethodInfo caller)
+    /// dispatcher a receiver's override runs through, the initializer its row runs on entry
+    /// and an invoked static's, and the values Invoke boxes. A generic method definition is
+    /// not invocable.</summary>
+    private void InvokeTarget(MethodInfo target)
     {
         var cls = target.DeclaringClass;
         if (IsOpenGenericMethod(target) || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls)
@@ -883,12 +882,7 @@ internal sealed partial class Compilation
             return;
         _reflectionSelectionCount++;
         if (target.Rva != 0 && cls.IntrinsicCppName is null)
-        {
-            if (_selectingBindTargets)
-                ReachBindingInitializer(target);
-            else
-                Reach(target);
-        }
+            Reach(target);
         if (target.IsVirtual && !target.IsStatic && CarriesReflectedSlots(cls))
         {
             if (IsGvmCall(target))
@@ -896,10 +890,10 @@ internal sealed partial class Compilation
             else
                 MarkReflectedSlot(target, named: true);
         }
-        // A bound static method of a precise-init type runs that type's initializer when
-        // the delegate first calls it. A bound initializer itself keeps first-use timing.
-        if (target.IsStatic && (!_selectingBindTargets || !cls.IsBeforeFieldInit && target.Name != ".cctor"))
-            ReachCctor(cls, caller);
+        // The row's initializer hook names the initializer of a trigger: a precise-init
+        // type's static method, constructor or value-type instance method.
+        if (IsInitializerTrigger(target) || target.IsStatic && !_selectingBindTargets)
+            ReachCctor(cls);
         try
         {
             // A runtime numeric row consumes a managed provider through the demanded
@@ -935,7 +929,7 @@ internal sealed partial class Compilation
                 var ctors = Operand(app, site, api.Target);
                 foreach (var e in ctors.Items)
                     if (e.Kind == REntityKind.Method && e.Method is { Name: ".ctor" } ctor)
-                        ConstructSelected(ctor, m);
+                        ConstructSelected(ctor);
                     else if (e is { Kind: REntityKind.TemplateMember, Lookup: { Kind: LookupMemberKind.Constructor } lookup })
                         SelectTemplateMember(e, lookup, ReflectionAccessor.None, construct: true, -1, app);
                 if (ctors.Unknown is not null)
@@ -945,8 +939,9 @@ internal sealed partial class Compilation
             }
             case ReflectionOp.GetUninitializedObject:
             {
-                // An allocation that runs the type's initializer and no constructor: the
-                // instance dispatches through the type's slots and interface map.
+                // An allocation that runs the precise-init initializers on the type's
+                // base chain and no constructor: the instance dispatches through the
+                // type's slots and interface map.
                 var allocated = Operand(app, site, api.Target);
                 string? unknown = allocated.Unknown;
                 foreach (var e in allocated.Items)
@@ -961,7 +956,9 @@ internal sealed partial class Compilation
                         NoteReflectionBoxed(TypeDesc.MakeClass(cls));
                     else if (!cls.IsAbstract && !cls.IsInterface)
                         ReachAllocatedType(cls);
-                    ReachCctor(cls, m);
+                    for (var level = cls; level is not null; level = level.BaseClass)
+                        if (!level.IsBeforeFieldInit)
+                            ReachCctor(level);
                 }
                 if (unknown is not null)
                     RecordReflectionDiagnostic(app, site, ReflectionDiagnosticKind.Execution,
@@ -1047,14 +1044,14 @@ internal sealed partial class Compilation
                 int count = ctor.Signature.ParameterTypes.Length;
                 if (!anyArity && count != arguments)
                     continue;
-                ConstructSelected(ctor, m);
+                ConstructSelected(ctor);
                 constructed = true;
             }
             if (!constructed && EnsureShape(cls).IsValueType)
             {
                 _reflectionSelectionCount++;
                 NoteReflectionBoxed(cls);
-                ReachCctor(cls, m);
+                ReachCctor(cls);
             }
         }
         if (types.Unknown is not null)
@@ -1062,7 +1059,7 @@ internal sealed partial class Compilation
                 "Type comes from " + types.Unknown + " — no constructor retained", null, null, ".ctor");
     }
 
-    private void ConstructSelected(MethodInfo ctor, MethodInfo caller)
+    private void ConstructSelected(MethodInfo ctor)
     {
         var cls = ctor.DeclaringClass;
         if (ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls) || _backend?.ShouldSkipMethodBody(cls, ctor) == true)
@@ -1074,7 +1071,7 @@ internal sealed partial class Compilation
             NoteReflectionBoxed(cls);
         else if (!cls.IsAbstract && !cls.IsInterface && cls.IntrinsicCppName is null)
             ReachAllocatedType(cls);
-        ReachCctor(cls, caller);
+        ReachCctor(cls);
         try
         {
             NoteReflectionInvokeBoxes(ctor);
@@ -1332,6 +1329,7 @@ internal sealed partial class Compilation
     private void ConstructAttributeRow(DecodedAttribute da)
     {
         Reach(da.Ctor);
+        ReachRootInitializer(da.Ctor);
         NoteArrayElementType(TypeDesc.MakeClass(da.AttrClass));
         if (!da.AttrClass.IsValueType && !da.AttrClass.IsAbstract)
             ReachAllocatedType(da.AttrClass);
@@ -2074,7 +2072,6 @@ internal sealed partial class Compilation
     private void SelectTemplateMember(REntity e, TemplateLookup lookup, ReflectionAccessor accessor, bool construct,
         int arguments, ReflectionApplication app, bool publicAccessors = false)
     {
-        var caller = app.Method;
         if (e.Assembly is not { } module)
             return;
         var def = e.Definition;
@@ -2094,7 +2091,7 @@ internal sealed partial class Compilation
                 foreach (var c in SelectMembers(cls, LookupMemberKind.Constructor, null, lookup.Flags | ReflectionApis.Instance,
                              lookup.Types, -1))
                     if (c.Method is { } ctor && (arguments < 0 || ctor.Signature.ParameterTypes.Length == arguments))
-                        ConstructSelected(ctor, caller);
+                        ConstructSelected(ctor);
             }
             else
                 foreach (var member in SelectLookupMembers(cls, lookup))

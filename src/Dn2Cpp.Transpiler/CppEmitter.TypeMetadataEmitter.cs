@@ -2411,6 +2411,11 @@ internal sealed partial class CppEmitter
             PooledSlotStub("slotmiss_", reporter + "\0" + desc, decl,
                 name => _e.NamedSlotMissStubDef(name, reporter, desc, decl));
 
+        // A boxed value type's override is entered through a type-info slot, where no
+        // compiled call site runs the initializer its instance method triggers.
+        private string BoxedEntryGuard(MethodInfo target) =>
+            _e.InitializerGuard(target) is { } ensure ? $"{ensure}(); " : "";
+
         // A slot whose sibling interface overrides leave no most specific body:
         // the stub throws .NET's AmbiguousImplementationException with its message.
         // A MakeGenericType instantiation copies its runtime template's table, so
@@ -2802,7 +2807,7 @@ internal sealed partial class CppEmitter
                         continue;
                     }
                     string thunk = $"ubthunk_{cls.CppName}_{itf.CppName}_{i}";
-                    EmitUnboxingThunk(_sb, thunk, cls, im, impl);
+                    EmitUnboxingThunk(_sb, thunk, cls, im, impl, BoxedEntryGuard(impl));
                     slots.Add($"(const void*)&{thunk}");
                 }
                 // A zero-length array is a GNU/clang extension MSVC rejects (C2466);
@@ -3226,9 +3231,7 @@ internal sealed partial class CppEmitter
                     string pointee = (pointerPass.Kind & PassFunctionPointer) != 0 ? "nullptr" : pointerPass.Type;
                     // A reflected static-field access must run the declaring type's
                     // .cctor first (.NET's lazy-initialization guarantee): unlike a
-                    // compiled use site, this thunk has no emitted first-use guard,
-                    // and under a deferred startup pass (the Godot mono-module
-                    // backend) it can otherwise observe a not-yet-initialized static.
+                    // compiled use site, this thunk has no emitted first-use guard.
                     // An initializer whose body was not retained refuses the access
                     // instead of exposing default storage as initialized.
                     string ensure = "";
@@ -3484,6 +3487,7 @@ internal sealed partial class CppEmitter
                 // name and signature, so the standard wiring applies.
                 string fnPtr = "nullptr";
                 string invoker = "nullptr";
+                bool bodyRow = false;
                 // A delegate's Invoke is supplied by the runtime: once MethodInfo.Invoke or
                 // Delegate.DynamicInvoke is in use, its row runs the type's multicast
                 // invoker (dginvoke_*), which takes the delegate as an instance body takes
@@ -3508,6 +3512,7 @@ internal sealed partial class CppEmitter
                     && !(_e._hotUpdateBase && _e._backend.HasPlaceholderBody(m.DeclaringClass, m)))
                 {
                     fnPtr = $"(void*)&{m.Emittable.CppName}";
+                    bodyRow = true;
                     // A template level's static body is the canonical one, which takes
                     // the generic context no forwarder of a clone could append.
                     bool contextArg = m.IsStatic && m.Emittable.RgctxParam && _e.IsRuntimeTemplateLevel(cls);
@@ -3566,6 +3571,10 @@ internal sealed partial class CppEmitter
                     invoker = "(void*)&dn2cpp_delegate_object_virtual_invoker";
                 }
                 bool preservable = fnPtr == "nullptr" && !symbolic && _c.IsPreservableTemplateRow(m);
+                // Reflection, a bound delegate and the interpreter enter the row with no
+                // compiled call site to run the initializer the entry triggers.
+                string initializer = !symbolic && invoker != "nullptr" && _e.InitializerGuard(m, bodyRow) is { } ensure
+                    ? "&" + ensure : "nullptr";
                 // The null-receiver run modes and a template level's
                 // DN2CPP_MTHA_NULLLOOKUP_* masks: only a CreateDelegate binding called
                 // with a null receiver (closed over null, or open over a non-virtual row)
@@ -3641,6 +3650,7 @@ internal sealed partial class CppEmitter
                     MetadataValue.Ref(symbolic ? "nullptr" : _e.ReflectionBindingPointee(m.Signature.ReturnType, _emittedEnums)),
                     MetadataValue.Ref(_e.EmitReflectionSignature(_sb, m, -1)),
                     MetadataValue.Ref(RenderMethodDefinitionSignature(m)),
+                    MetadataValue.Ref(initializer),
                 }));
             }
             // The trim can empty a table the member list did not. A zero-length array is
@@ -3976,7 +3986,7 @@ internal sealed partial class CppEmitter
                 else
                 {
                     string thunk = $"tsthunk_{cls.CppName}";
-                    _sb.AppendLine($"static Dn2CppString* {thunk}(Dn2CppObject* o) {{ return {ts.Emittable.CppName}(({cls.CppStructName}*)(o + 1)); }}");
+                    _sb.AppendLine($"static Dn2CppString* {thunk}(Dn2CppObject* o) {{ {BoxedEntryGuard(ts)}return {ts.Emittable.CppName}(({cls.CppStructName}*)(o + 1)); }}");
                     toStr = $"&{thunk}";
                 }
             }
@@ -4023,7 +4033,7 @@ internal sealed partial class CppEmitter
                     // Both shapes take the unboxed payload, so one thunk serves the real
                     // override and the minted walk alike.
                     string thunk = $"ghthunk_{cls.CppName}";
-                    _sb.AppendLine($"static int32_t {thunk}(Dn2CppObject* o) {{ return {gh.Emittable.CppName}(({cls.CppStructName}*)(o + 1)); }}");
+                    _sb.AppendLine($"static int32_t {thunk}(Dn2CppObject* o) {{ {BoxedEntryGuard(gh)}return {gh.Emittable.CppName}(({cls.CppStructName}*)(o + 1)); }}");
                     getHash = $"&{thunk}";
                 }
             }
@@ -4045,7 +4055,7 @@ internal sealed partial class CppEmitter
                     // the thunk independent of which type-info symbol it sits next to.
                     _sb.AppendLine(ReferenceEquals(eq, synEq)
                         ? $"static int32_t {thunk}(Dn2CppObject* a, Dn2CppObject* b) {{ return (b && b->type == a->type) ? {eq.Emittable.CppName}(({cls.CppStructName}*)(a + 1), *({cls.CppStructName}*)(b + 1)) : 0; }}"
-                        : $"static int32_t {thunk}(Dn2CppObject* a, Dn2CppObject* b) {{ return {eq.Emittable.CppName}(({cls.CppStructName}*)(a + 1), b); }}");
+                        : $"static int32_t {thunk}(Dn2CppObject* a, Dn2CppObject* b) {{ {BoxedEntryGuard(eq)}return {eq.Emittable.CppName}(({cls.CppStructName}*)(a + 1), b); }}");
                     equals = $"&{thunk}";
                 }
             }
@@ -4252,6 +4262,11 @@ internal sealed partial class CppEmitter
                 IlAttrs = unchecked((uint)tIlAttrs), MetadataToken = tToken, DefaultMemberName = DefaultMemberName(cls), MarshalSize = _c.MarshalStampSize(cls),
                 EventSourceName = EventSourceIdentity(cls)?.Name, EventSourceGuid = EventSourceIdentity(cls)?.Guid,
                 Activation = ActivationBits(cls),
+                // GetUninitializedObject runs this hook at every level of the allocated
+                // type's base chain, as the CLR does; a beforefieldinit level has none and
+                // waits for its first static field access.
+                EnsureInitializer = !cls.IsBeforeFieldInit && _e.InitializerEnsure(cls) is { } ensure
+                    ? "&" + ensure : "nullptr",
             });
             _sb.AppendLine($"const Dn2CppType ty_{cls.CppName} = {{ {{ &dn2cpp_type_type }}, {_e.TypeInfoRef(cls, "class ty_ companion")} }};");
             // A bind-kind type whose layout/vtable/metadata this emission knows: its handle

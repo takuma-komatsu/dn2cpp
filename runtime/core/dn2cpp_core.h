@@ -293,6 +293,10 @@ struct Dn2CppTypeReflection
     int32_t eventCount = 0;
     // DN2CPP_TA_* bits: what reflective construction cannot answer from the rows.
     int32_t activation = 0;
+    // A precise-init type's initializer guard: an allocation that runs no constructor
+    // still initializes it. Null for a beforefieldinit type, whose first static field
+    // access initializes it, and without a retained initializer.
+    void (*ensureInitializer)() = nullptr;
 };
 
 // Dn2CppTypeReflection::activation. The OMITTED bits state instance constructors the
@@ -1189,6 +1193,11 @@ struct Dn2CppMethodInfo
     const Dn2CppBindingSignature* returnReflectionSignature;
     // Symbolic query context; never evidence for an invoker or delegate ABI.
     const Dn2CppMethodDefinitionSignature* definitionSignature;
+    // The declaring type's initializer guard when entering this member triggers it
+    // (a precise-init type's static method, constructor or value-type instance
+    // method), else null. Invoker thunks are shared per signature, so the row
+    // carries it.
+    void (*initializer)();
 };
 
 // A synthesized constructor differs only in its allocation's declaring type.
@@ -3491,9 +3500,10 @@ void dn2cpp_reflective_slot_check(const void* slotFn, const Dn2CppTypeInfo* rece
 // Slow path behind the generated static-constructor first-use guards
 // (X__ensure): run `body` exactly once across threads, with a release store on
 // `flag` that pairs with the guard's inline acquire-load fast path. A thread
-// racing an in-flight init blocks until it completes; a re-entrant call from
-// the initializing thread itself returns immediately (recursive-cctor
-// semantics — it observes the partially-initialized statics, like real .NET).
+// racing an in-flight init blocks until it completes, unless that wait would
+// close a cycle (a re-entrant call from the initializing thread itself, or
+// threads each blocked on another's init): it then returns at once and
+// observes the partially-initialized statics, like real .NET.
 // A throwing body does NOT mark the flag: the failure is recorded against the flag's
 // address and every later call re-raises that same managed exception, so a
 // half-initialized type is never read as ready and the cctor is never retried (.NET's
@@ -3501,14 +3511,20 @@ void dn2cpp_reflective_slot_check(const void* slotFn, const Dn2CppTypeInfo* rece
 // `body` is null for a tree-shaken cctor (the guard then only latches the flag).
 void dn2cpp_cctor_run_once(std::atomic<int8_t>* flag, void (*body)());
 
-// One entry of the generated eager startup cctor pass: calls the type's
-// __ensure and swallows a managed failure, which dn2cpp_cctor_run_once has
-// already recorded for the first real use of the type to re-raise. Eager
-// initialization is dn2cpp's stand-in for .NET's lazy one, so it must not
-// terminate a program over a type .NET would never have initialized.
-// `type` is the declaring type's reflection name, baked by the emitter beside the
-// pointer (never null): a swallowed failure is REPORTED, and a report that cannot name
-// the type whose initializer failed names a class of bug rather than a bug.
+// Runs a metadata row's initializer guard (an X__ensure, or null for none) on an
+// entry no compiled call site guards: reflection, a bound delegate, the interpreter.
+inline void dn2cpp_run_initializer(void (*initializer)())
+{
+    if (initializer != nullptr)
+        initializer();
+}
+
+// One entry of the generated startup pass, which runs module initializers only:
+// calls the `<Module>` type's __ensure, then reports and swallows a managed failure,
+// so a library initializer .NET might never run cannot terminate the program and its
+// failure is not silent. `type` names the module (an assembly-qualified `<Module>`),
+// baked by the emitter beside the pointer: a report that cannot name what failed
+// names a class of bug rather than a bug.
 void dn2cpp_cctor_run_startup(void (*ensure)(), const char* type);
 
 [[noreturn]] void dn2cpp_throw_index_out_of_range();

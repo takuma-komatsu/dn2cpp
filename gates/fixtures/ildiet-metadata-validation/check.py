@@ -17,20 +17,20 @@ if len(sys.argv) == 4 and sys.argv[1] == "--instrument-startup":
     source = output / "generated.cpp"
     text = source.read_text(encoding="utf-8")
     checks = []
-    # A type initializer runs only after a type-use trigger or an explicit
-    # preserve. Nothing uses OrdinaryCell; SuppressedCell is preserved in the
-    # explicit mode and read by Main in the late mode.
+    # A type initializer is kept only for a type-use trigger or an explicit
+    # preserve, and runs at its first trigger. Nothing uses OrdinaryCell;
+    # SuppressedCell is preserved in the explicit mode and read by Main in the
+    # late mode. The fixture has no module initializer, so every mode's startup
+    # pass is empty and no initializer has run when Main starts.
+    assert "dn2cpp_cctor_run_startup(" not in text, "a type initializer became a startup root"
     for name in ("OrdinaryCell", "SuppressedCell"):
         done = re.search(r"extern std::atomic<int8_t> (" + name + r"__cctor_\w+__done);", header)
-        value = "sf_InitializerFixture_" + name + "_Value"
         if name == "OrdinaryCell" or mode not in ("explicit", "late"):
-            assert done is None, "untriggered initializer has a native startup guard: " + name
-            assert not re.search(r"dn2cpp_cctor_run_startup\([^;]*" + name, text), \
-                "untriggered initializer became a startup root: " + name
-            checks.append(f"{value} == 0")
+            assert done is None, "untriggered initializer has a native guard: " + name
         else:
             assert done is not None, "rooted initializer has no completion guard: " + name
-            checks.extend((f"{done[1]}.load(std::memory_order_acquire) == 1", f"{value} == 7"))
+            checks.append(f"{done[1]}.load(std::memory_order_acquire) == 0")
+        checks.append(f"sf_InitializerFixture_{name}_Value == 0")
     entry = text.index("    try {", text.index("int main("))
     witness = "    if (!(" + " && ".join(checks) + ")) {\n"
     witness += '        std::fprintf(stderr, "initializer startup state failed\\n");\n'

@@ -98,6 +98,7 @@ public class Counter
     public static Describer? GenericVirtualProbe;
     public static Describer? GenericVirtualRowProbe;
     public static Describer? AggregateProbe;
+    public static Describer? InitializerProbe;
     public static Describer? TypeGetterSignatureProbe;
     // A patch-constructed receiver below GlassShelf, which Main reflects over.
     public static Shelf? PatchShelf;
@@ -1300,6 +1301,8 @@ internal static class Program
             DerivedAggregateSubset.Run();
             Console.WriteLine(Counter.AggregateProbe());
         }
+        if (Counter.InitializerProbe is not null)
+            Console.WriteLine(Counter.InitializerProbe());
         if (args.Length > 1 && args[1] == "before-type-getter-signature")
             return;
         if (Counter.TypeGetterSignatureProbe is not null)

@@ -39,6 +39,7 @@ internal static class Program
         {
             HotUpdateBase.DerivedAggregateSubset.Run();
             Console.WriteLine(HotUpdatePatch.InterpretedAggregateSubset.Run());
+            Console.WriteLine(HotUpdatePatch.InterpretedInitializerSubset.Run());
             return;
         }
         if (args.Length > 0 && args[0] == "--aggregate-collection")

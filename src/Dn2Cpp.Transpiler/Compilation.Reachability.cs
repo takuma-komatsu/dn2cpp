@@ -14,23 +14,6 @@ internal sealed partial class Compilation
 
     private void Reach(MethodInfo m)
     {
-        // New callable constructor closures do not enroll initializers in startup.
-        // A later normal edge rescans that closure with the ordinary first-use rules.
-        if (_reachingBindingOnlyBody)
-        {
-            if (!Reachable.Contains(m))
-            {
-                _bindingOnlyBodies.Add(m);
-                if (m.Name == ".cctor")
-                    _bindingOnlyInitializers.Add(m);
-            }
-        }
-        else if (_bindingOnlyBodies.Remove(m))
-        {
-            _bindingOnlyInitializers.Remove(m);
-            if (_scanned.Remove(m))
-                _toScan.Enqueue(m);
-        }
         if (_reflectedTemplateBodies.Count > 0 && !_reachingReflectedTemplateBody)
             _reflectedTemplateBodies.Remove(m);
         if (NotePreserveReach(m) && _scanned.Remove(m))
@@ -246,6 +229,11 @@ internal sealed partial class Compilation
                     TrimNoteNamedType(p);
             }
             _toScan.Enqueue(m);
+            // The body runs its initializer guard at entry, whatever route enters it. A
+            // canonical owner's initializer belongs to each instantiation, whose own reach
+            // pulls it in.
+            if (!ContainsCanonPlaceholder(m.DeclaringClass))
+                ReachRootInitializer(m);
             if (_strippedGvmOverrides.Count > 0)
                 NoteStrippedGvmOverrideReached(m);
             // Canonical shared generics: a grouped specialization's method is a
@@ -282,6 +270,8 @@ internal sealed partial class Compilation
         // user code later allocates it.
         if (_godotClassTrim is not null)
             TrimNoteAllocated(c);
+        // Also the initializer a boxed value type's slot thunks and generic virtual
+        // dispatcher cases run: every boxed receiver is allocated here.
         ReachCctor(c);
         if (c.IsByRefLike)
             return;
@@ -420,16 +410,60 @@ internal sealed partial class Compilation
         }
     }
 
-    /// <summary>Reaches the initializer a run-time root triggers by running with no IL
-    /// caller (the entry point, a native export, a method a backend calls directly): the
-    /// declaring type's precise-init .cctor, exactly as a call to the root would.</summary>
+    /// <summary>Reaches the initializer an entry with no IL call site triggers (the entry
+    /// point, a native export, a method a backend calls directly, a constructor an emitted
+    /// construction runs, a member a lowered call or a runtime slot enters, a member
+    /// reflection or the interpreter enters): the declaring type's precise-init .cctor,
+    /// exactly as a call to the entry would. The emitter's guard at that entry asserts it
+    /// was reached.</summary>
     private void ReachRootInitializer(MethodInfo root)
     {
-        var cls = root.DeclaringClass;
-        if (!cls.IsBeforeFieldInit && cls.IntrinsicCppName is null
-            && (root.IsStatic || root.Name == ".ctor" || EnsureShape(cls).IsValueType))
-            ReachCctor(cls);
+        if (IsInitializerTrigger(root))
+            ReachCctor(root.DeclaringClass);
     }
+
+    /// <summary><see cref="ReachRootInitializer"/> for a lowering that reaches the member
+    /// it calls while bodies compile, drained as
+    /// <see cref="ReachManagedMethod(ClassInfo,string,System.Func{TypeDesc[],bool},bool,bool)"/>
+    /// drains.</summary>
+    internal void ReachLoweredInitializer(MethodInfo m)
+    {
+        int before = Reachable.Count;
+        ReachRootInitializer(m);
+        if (Reachable.Count != before)
+            DrainReachability();
+    }
+
+    /// <summary>Reaches a member a lowered call or a runtime slot enters with no IL call
+    /// site of its own, and the initializer that entry triggers.</summary>
+    private void ReachEntered(MethodInfo m)
+    {
+        Reach(m);
+        ReachRootInitializer(m);
+    }
+
+    /// <summary>Whether entering <paramref name="m"/> runs its declaring type's precise-init
+    /// initializer first, as a call to it does: a static method, an instance constructor, a
+    /// value type's instance method or an interface's default method of a type that is not
+    /// beforefieldinit. The initializer itself is not a trigger, nor is a minted body, which
+    /// stands in for a runtime method rather than one the type declares. Reaching a trigger
+    /// reaches its initializer, and its compiled body runs the initializer guard at entry,
+    /// so every route into the body triggers.</summary>
+    internal bool IsInitializerTrigger(MethodInfo m)
+    {
+        var cls = m.DeclaringClass;
+        return !cls.IsBeforeFieldInit && cls.IntrinsicCppName is null
+            && m.Name != ".cctor" && !m.IsSynthetic
+            && (m.IsStatic || m.Name == ".ctor" || EnsureShape(cls).IsValueType
+                || cls.IsInterface && !m.IsAbstract);
+    }
+
+    /// <summary>The initializer <paramref name="m"/>'s compiled body guards at entry: its
+    /// declaring type's static constructor when <paramref name="m"/> is a trigger, or null.
+    /// The body compiler and the parallel body scheduler both ask this, so a body that
+    /// records a guard never reaches a worker.</summary>
+    internal MethodInfo? BodyEntryInitializer(MethodInfo m) =>
+        IsInitializerTrigger(m) ? m.DeclaringClass.StaticCctor : null;
 
     /// <summary>Whether <paramref name="c"/>'s base chain reaches System.Exception
     /// (so it is an exception type). The corelib (via -r) gives
@@ -922,9 +956,10 @@ internal sealed partial class Compilation
     /// RuntimeHelpers.RunClassConstructor, and a reflection site that selects a static
     /// member or constructs the type. Static calls on beforefieldinit types do not: their
     /// initializer need only precede a static-field access, and reaching it here pulls
-    /// unwanted BCL initializers. Reached non-generic .cctors run at startup; closed
-    /// generic ones run through first-use guards.</summary>
-    private void ReachCctor(ClassInfo c, MethodInfo? caller = null)
+    /// unwanted BCL initializers. Reaching an initializer only compiles it: it runs behind
+    /// the first-use guard of whichever trigger comes first, and only a module initializer
+    /// runs in the startup pass.</summary>
+    private void ReachCctor(ClassInfo c)
     {
         EnsureCompleted(c);   // its .cctor is a member
         // A framework EventSource-derived tracing provider (ArrayPoolEventSource,
@@ -940,14 +975,8 @@ internal sealed partial class Compilation
         // TryEmitEventSourceNoOp.
         if (IsFrameworkEventSourceProvider(c))
             return;
-        var cctor = c.StaticCctor;
-        if (cctor is not null)
-        {
-            // A direct initializer body writing its own statics is not a first use.
-            if (caller != cctor && !_reachingBindingOnlyBody)
-                _bindingOnlyInitializers.Remove(cctor);
+        if (c.StaticCctor is { } cctor)
             Reach(cctor);
-        }
     }
 
     /// <summary>Whether a class is a framework diagnostics provider: defined in a
@@ -1054,27 +1083,28 @@ internal sealed partial class Compilation
 
     /// <summary>The loaded declaring class of a call or method-pointer token whose
     /// invocation is a type-initializer trigger (ECMA-335 II.10.5.3.1), before any
-    /// intrinsic or bounded route cuts its MethodInfo edge: a static method, or with
-    /// <paramref name="instanceCall"/> an instance constructor (a base-constructor call,
-    /// a struct constructor on a local) or any instance method of a value type. Null for
-    /// every other token. A precise-init cctor is a first-use edge even when emission
-    /// replaces the method body and returns before the ordinary managed-call path. Any
-    /// other instance call decodes its parent only for a value-type instantiation.</summary>
+    /// intrinsic or bounded route cuts its MethodInfo edge: a static method, an instance
+    /// constructor (a base-constructor call, a struct constructor on a local) or any
+    /// instance method of a value type. Null for every other token. A precise-init cctor
+    /// is a first-use edge even when emission replaces the method body and returns before
+    /// the ordinary managed-call path. Any other instance call decodes its parent only for
+    /// a value-type instantiation. The interface a <paramref name="constrainedCall"/> to a
+    /// static member names is not a trigger: only the body that runs triggers its type,
+    /// and reaching that body (<see cref="ReachStaticVirtualImpl"/>, or the interface's
+    /// default body) reaches its initializer.</summary>
     private ClassInfo? ResolveInitializerTriggerClass(Module module, EntityHandle handle, GenericContext ctx,
-        bool instanceCall)
+        bool constrainedCall)
     {
         var reader = module.Reader;
         if (handle.Kind == HandleKind.MethodSpecification)
             return ResolveInitializerTriggerClass(module,
-                reader.GetMethodSpecification((MethodSpecificationHandle)handle).Method, ctx, instanceCall);
+                reader.GetMethodSpecification((MethodSpecificationHandle)handle).Method, ctx, constrainedCall);
         ClassInfo? cls;
         bool isStatic, isCtor;
         if (handle.Kind == HandleKind.MethodDefinition)
         {
             var md = reader.GetMethodDefinition((MethodDefinitionHandle)handle);
             isStatic = (md.Attributes & MethodAttributes.Static) != 0;
-            if (!isStatic && !instanceCall)
-                return null;
             isCtor = !isStatic && reader.StringComparer.Equals(md.Name, ".ctor");
             var decl = md.GetDeclaringType();
             cls = module.ClassMap.TryGetValue(decl, out var mapped) ? mapped
@@ -1086,8 +1116,6 @@ internal sealed partial class Compilation
         {
             var mr = reader.GetMemberReference((MemberReferenceHandle)handle);
             isStatic = !reader.GetBlobReader(mr.Signature).ReadSignatureHeader().IsInstance;
-            if (!isStatic && !instanceCall)
-                return null;
             isCtor = !isStatic && reader.StringComparer.Equals(mr.Name, ".ctor");
             if (!isStatic && !isCtor && mr.Parent.Kind == HandleKind.TypeSpecification
                 && !IsValueTypeInstantiation(reader, (TypeSpecificationHandle)mr.Parent))
@@ -1109,8 +1137,10 @@ internal sealed partial class Compilation
         {
             return null;
         }
-        if (cls is null || isStatic || isCtor)
+        if (cls is null || isCtor)
             return cls;
+        if (isStatic)
+            return constrainedCall && cls.IsInterface ? null : cls;
         return EnsureShape(cls).IsValueType ? cls : null;
     }
 
@@ -1174,16 +1204,16 @@ internal sealed partial class Compilation
         if (CoreIntrinsics.IsIntrinsicType(sc.FullName) || sc.IntrinsicCppName is not null)
             return;
         if (includeHash && EffectiveGetHashCode(sc) is { } gh)
-            Reach(gh);
+            ReachEntered(gh);
         if (NullableUnderlying(keyType) is { } underlying)
         {
             ReachValueKeyEquality(underlying, includeHash: false);
             return;
         }
         if (EffectiveTypedEquals(sc) is { } teq)
-            Reach(teq);
+            ReachEntered(teq);
         else if (EffectiveEquals(sc) is { } oeq)
-            Reach(oeq);
+            ReachEntered(oeq);
         // A struct that overrides NEITHER — KeyValuePair<K,V>, a plain user struct, the
         // Asn1 family — is what ValueType.Equals/GetHashCode answer for, and those are
         // QCall externs (docs: AGENTS.md "BCL coverage"). Mint the field walk instead.
@@ -1542,7 +1572,7 @@ internal sealed partial class Compilation
         // The Object-virtual override ValueType.Equals/GetHashCode would dispatch through
         // the box — never the typed IEquatable<T>.Equals (see CanCompareStructuralField).
         if ((hash ? EffectiveGetHashCode(fc) : EffectiveEquals(fc)) is { } impl)
-            Reach(impl);
+            ReachEntered(impl);
         else
             ReachSynthesizedValueEquality(fc, includeHash: hash, includeEquals: !hash);
     }
@@ -1620,7 +1650,7 @@ internal sealed partial class Compilation
                 continue;
             MethodInfo? eq = EffectiveEquals(c);
             if (eq is not null)
-                Reach(eq);
+                ReachEntered(eq);
             else
             {
                 ReachSynthesizedValueEquality(c, includeHash: false);
@@ -2924,7 +2954,7 @@ internal sealed partial class Compilation
         // and devirtualized inside GenericComparer<T>.Compare.
         if (elem is { Kind: TypeKind.Class, Class: { IsValueType: true } sc }
             && TranspiledTypedCompareTo(sc) is { } tct)
-            Reach(tct);
+            ReachEntered(tct);
         if (ParameterlessCtor(gc) is { } gctor)
             Reach(gctor);
         ReachAllocatedType(gc);
@@ -5983,12 +6013,14 @@ internal sealed partial class Compilation
                             && insn.OpCode == ILOpCode.Ldvirtftn && objectFunction.Name is "Equals" or "GetHashCode")
                             NoteObjectEqualityDispatch();
                         // A method pointer to a static method runs the initializer before
-                        // the method does, wherever the pointer is invoked.
+                        // the method does, wherever the pointer is invoked, and a delegate
+                        // bound to a value type's instance method runs it when invoked.
                         if (insn.OpCode != ILOpCode.Ldvirtftn
                             && ResolveInitializerTriggerClass(module, handle, m.Context,
-                                instanceCall: insn.OpCode != ILOpCode.Ldftn) is
+                                constrainedCall: constrained is not null
+                                    && insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt) is
                                 { IsBeforeFieldInit: false, IntrinsicCppName: null } callCls)
-                            ReachCctor(callCls, m);
+                            ReachCctor(callCls);
 
                         // The member NAME gates the parent-name read
                         // (CoreIntrinsics.ScanNeedsParentTypeName, whose set is the scan
@@ -6061,7 +6093,7 @@ internal sealed partial class Compilation
                             {
                                 if (lastLdtokenType is { Kind: TypeKind.Class, Class: { } rcc }
                                     && rcc.StaticCctor is not null)
-                                    ReachCctor(rcc, m);
+                                    ReachCctor(rcc);
                                 constrained = null;
                                 continue;
                             }
@@ -6137,10 +6169,17 @@ internal sealed partial class Compilation
                         // A bodyless P/Invoke with a registered managed native
                         // implementation: the call site lowers to a direct call to the
                         // implementation (MethodCompiler.EmitNativeImplCall), so reach
-                        // it here — the Reach(t) below no-ops on Rva == 0.
+                        // it and the initializer it triggers here — the Reach(t) below
+                        // no-ops on Rva == 0.
                         if (t is { Rva: 0, PInvoke: { } tpinv } && NativeImplFor(tpinv) is { } timpl
                             && !ReferenceEquals(timpl, m))
-                            Reach(timpl);
+                            ReachEntered(timpl);
+                        // An async builder's Start, or an async iterator builder's
+                        // MoveNext, lowers to a direct call of the state machine's
+                        // MoveNext, which triggers the machine's initializer.
+                        if (t is { Name: "MoveNext" } && handle.Kind == HandleKind.MethodSpecification
+                            && IsStateMachineDriverSpec(module, (MethodSpecificationHandle)handle, m.Context))
+                            ReachRootInitializer(t);
                         // --trim-godot-classes, the scan-side CUT: the registry
                         // cctor's per-class allocate lambdas are deferred here
                         // instead of reached; an unrecognized shape falls through
@@ -6199,8 +6238,12 @@ internal sealed partial class Compilation
                                 // only a public parameterless ctor, so a non-public one
                                 // (Task<T>'s internal ctor) is not reached — emit routes that
                                 // T to the run-time MissingMethodException, not to a ctor call.
+                                // The emitted construction guards T's initializer itself.
                                 if (PublicParameterlessCtor(acls) is { } actor)
+                                {
                                     Reach(actor);
+                                    ReachRootInitializer(actor);
+                                }
                                 if (!acls.IsValueType)
                                     ReachAllocatedType(acls);
                             }
@@ -6417,13 +6460,13 @@ internal sealed partial class Compilation
                                 && fms.DecodeSignature(SigProvider, m.Context).ToArray() is [{ Kind: TypeKind.Class, Class: { IsValueType: true } fc }, ..])
                             {
                                 if (EffectiveToString(fc) is { } fts)
-                                    Reach(fts);
+                                    ReachEntered(fts);
                                 // A `$"{struct:fmt}"` hole routes through the struct's
                                 // ToString(string) overload when it has one (the emit
                                 // can't tell here whether the spec carries a format
                                 // component, so reach it whenever present).
                                 if (EffectiveToStringFormat(fc) is { } ftsf)
-                                    Reach(ftsf);
+                                    ReachEntered(ftsf);
                             }
                             // string.Join<T>(sep, IEnumerable<T>) / Concat<T>(IEnumerable<T>)
                             // and StringBuilder.AppendJoin<T> over an operand not statically
@@ -6658,7 +6701,7 @@ internal sealed partial class Compilation
                             string name = handle.Kind == HandleKind.MemberReference
                                 ? reader.GetString(reader.GetMemberReference((MemberReferenceHandle)handle).Name)
                                 : reader.GetString(reader.GetFieldDefinition((FieldDefinitionHandle)handle).Name);
-                            ReachCctor(ReflectionStaticFieldOwner(fc, name), m);
+                            ReachCctor(ReflectionStaticFieldOwner(fc, name));
                         }
                         continue;
                     }

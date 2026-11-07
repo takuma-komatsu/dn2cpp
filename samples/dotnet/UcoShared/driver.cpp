@@ -108,9 +108,11 @@ int main(int argc, char** argv)
 #endif
     const bool exitWithWaitAny =
         argc == 3 && std::strcmp(argv[2], "--exit-with-waitany") == 0;
-    if (argc < 2 || (argc > 2 && !exitWithWaitAny))
+    const bool lazyInitializer =
+        argc == 3 && std::strcmp(argv[2], "--lazy-initializer") == 0;
+    if (argc < 2 || (argc > 2 && !exitWithWaitAny && !lazyInitializer))
     {
-        std::fprintf(stderr, "usage: driver <shared-library> [--exit-with-waitany]\n");
+        std::fprintf(stderr, "usage: driver <shared-library> [--exit-with-waitany | --lazy-initializer]\n");
         return 2;
     }
     g_lib = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
@@ -128,6 +130,25 @@ int main(int argc, char** argv)
     // Enable foreign-thread GC registration before any off-main-thread call.
     auto set_reg = (void (*)(int))sym("dn2cpp_set_native_callback_gc_registration");
     set_reg(1);
+
+    // An export's type initializer runs at the first entry, after the export registered
+    // the calling thread: a foreign thread whose first managed code is that initializer.
+    if (lazyInitializer)
+    {
+        auto initializer_runs = (int32_t (*)())sym("uco_initializer_runs");
+        auto initializer_sum = (int32_t (*)())sym("uco_initializer_sum");
+        auto lazy_answer = (int32_t (*)())sym("uco_lazy_answer");
+        check("lazy_runs_before", initializer_runs(), 0);
+        int32_t t_answer = -1;
+        std::thread th([&] { t_answer = lazy_answer(); });
+        th.join();
+        check("lazy_answer_thread", t_answer, 77);
+        check("lazy_runs_after", initializer_runs(), 1);
+        check("lazy_sum", initializer_sum(), alloc_sum_expected(400000));
+        check("lazy_answer_again", lazy_answer(), 77);
+        check("lazy_runs_again", initializer_runs(), 1);
+        return 0;
+    }
 
     if (exitWithWaitAny)
     {

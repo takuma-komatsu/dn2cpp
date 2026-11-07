@@ -56,6 +56,9 @@ namespace NativeImplSubset
             return (byte*)p + delta;
         }
 
+        [DllImport("dn2cppnimpl")]
+        private static extern int nimpl_initialized();
+
         internal static void __GateEntry()
         {
             int* v = stackalloc int[3];
@@ -75,6 +78,27 @@ namespace NativeImplSubset
             try { off = nimpl_offset((nint)v, 8); }
             catch (DllNotFoundException) { off = (nint)Offset(v, 8); }
             Console.WriteLine($"nimpl offset-delta={off - (nint)v}");
+
+            Console.WriteLine($"nimpl precise-init before call={InitProbe.Ready}");
+            int initialized;
+            try { initialized = nimpl_initialized(); }
+            catch (DllNotFoundException) { initialized = PreciseInitImplementation.Initialized(); }
+            Console.WriteLine($"nimpl precise-init implementation={initialized}");
         }
+    }
+
+    internal static class InitProbe
+    {
+        internal static bool Ready;
+    }
+
+    // An implementation on a precise-init type of its own: the substituted call enters
+    // it, so its initializer runs first, as the direct call in the fallback runs it.
+    internal static class PreciseInitImplementation
+    {
+        static PreciseInitImplementation() => InitProbe.Ready = true;
+
+        [Dn2Cpp.Runtime.NativeImplementation("dn2cppnimpl", "nimpl_initialized")]
+        internal static int Initialized() => InitProbe.Ready ? 1 : 0;
     }
 }

@@ -721,6 +721,77 @@ static std::mutex& g_cctor_mtx = dn2cpp_never_destroyed<std::mutex>();
 static std::condition_variable& g_cctor_cv = dn2cpp_never_destroyed<std::condition_variable>();
 static Dn2CppCctorRun* g_cctor_running = nullptr; // guarded by g_cctor_mtx
 
+// A thread parked on another thread's in-flight run, linked from its own stack.
+struct Dn2CppCctorWait
+{
+    std::atomic<int8_t>* flag;
+    std::thread::id waiter;
+    Dn2CppCctorWait* next;
+};
+static Dn2CppCctorWait* g_cctor_waiting = nullptr; // guarded by g_cctor_mtx
+
+// Caller holds g_cctor_mtx.
+static Dn2CppCctorRun* dn2cpp_cctor_find_run(const std::atomic<int8_t>* flag)
+{
+    Dn2CppCctorRun* r = g_cctor_running;
+    while (r != nullptr && r->flag != flag)
+        r = r->next;
+    return r;
+}
+
+// Caller holds g_cctor_mtx. Follows run -> owner -> the run that owner waits on ...
+// Every wait is linked only after this test, so the chain ends or reaches `self`.
+static bool dn2cpp_cctor_wait_closes_cycle(const Dn2CppCctorRun* run, std::thread::id self)
+{
+    while (run != nullptr)
+    {
+        if (run->owner == self)
+            return true;
+        const Dn2CppCctorWait* w = g_cctor_waiting;
+        while (w != nullptr && w->waiter != run->owner)
+            w = w->next;
+        if (w == nullptr)
+            return false;
+        run = dn2cpp_cctor_find_run(w->flag);
+    }
+    return false;
+}
+
+// Holds this thread's wait record while it contends for `flag`. Built and destroyed
+// with g_cctor_mtx held, so every exit unlinks the record under the lock.
+class Dn2CppCctorWaitScope
+{
+public:
+    Dn2CppCctorWaitScope(std::atomic<int8_t>* flag, std::thread::id self) : node_{ flag, self, nullptr } {}
+    Dn2CppCctorWaitScope(const Dn2CppCctorWaitScope&) = delete;
+    Dn2CppCctorWaitScope& operator=(const Dn2CppCctorWaitScope&) = delete;
+    ~Dn2CppCctorWaitScope()
+    {
+        if (!linked_)
+            return;
+        for (Dn2CppCctorWait** pp = &g_cctor_waiting; *pp != nullptr; pp = &(*pp)->next)
+        {
+            if (*pp == &node_)
+            {
+                *pp = node_.next;
+                break;
+            }
+        }
+    }
+    void link()
+    {
+        if (linked_)
+            return;
+        node_.next = g_cctor_waiting;
+        g_cctor_waiting = &node_;
+        linked_ = true;
+    }
+
+private:
+    Dn2CppCctorWait node_;
+    bool linked_ = false;
+};
+
 // INVARIANT: a cctor that ends in an exception leaves its type PERMANENTLY
 // UNINITIALIZED, as on .NET. Latching the done flag on a throwing body would declare
 // a half-initialized type ready, so a caller that catches the failure and touches the
@@ -739,19 +810,11 @@ struct Dn2CppCctorFailure
 {
     std::atomic<int8_t>* flag; // identity of the type whose initializer failed
     Dn2CppObject* exc;         // the managed exception it threw (null: a non-managed failure)
-    const char* type;          // named only by the eager startup pass; null => never reported
-    bool reported;             // its first-use report has been made (guarded by g_cctor_mtx)
     Dn2CppCctorFailure* next;
 };
 // static => a GC root, so the recorded exception graph outlives the throw (the
 // DN2CPP_GC_STATIC_ROOT / dn2cpp_alloc'd-node discipline of the in-flight list).
 static DN2CPP_GC_STATIC_ROOT Dn2CppCctorFailure* g_cctor_failed = nullptr; // guarded by g_cctor_mtx
-
-// The eager pass hands the type it is about to initialize down to the run_once beneath
-// it, and marks its whole extent as not-a-real-use: a cctor the pass runs may first-use
-// another failed type, and that touch is the pass's, not the program's.
-static thread_local const char* t_startup_cctor_type = nullptr;
-static thread_local int t_startup_cctor_depth = 0;
 
 // Caller holds g_cctor_mtx.
 static Dn2CppCctorFailure* dn2cpp_cctor_find_failure(const std::atomic<int8_t>* flag)
@@ -806,57 +869,44 @@ static void dn2cpp_cctor_unlink(Dn2CppCctorRun* node, Dn2CppCctorFailure* failur
 
 void dn2cpp_cctor_run_once(std::atomic<int8_t>* flag, void (*body)())
 {
+    const std::thread::id self = std::this_thread::get_id();
     std::unique_lock<std::mutex> lk(g_cctor_mtx);
-    for (;;)
+    bool failed = false;
+    Dn2CppObject* failure = nullptr;
     {
-        if (flag->load(std::memory_order_acquire))
-            return; // completed while we contended for the lock / waited
-        if (Dn2CppCctorFailure* f = dn2cpp_cctor_find_failure(flag))
+        Dn2CppCctorWaitScope wait(flag, self);
+        for (;;)
         {
-            // Initialization already failed: re-raise, never re-run. This is also
-            // where a failure the eager pass swallowed becomes loud — the first real
-            // use is the only place .NET would have raised it, so it is the only
-            // place worth reporting it. Once: a caller that catches and retries must
-            // not turn one broken type into a stream. The flag is flipped under the
-            // lock we hold, which is what serializes racing first uses.
-            Dn2CppObject* exc = f->exc;
-            // The pass reaching a type that already failed underneath another cctor is
-            // the one chance to name that record — it is the only caller that knows the
-            // name, and it is here rather than in its own frame because only run_once
-            // maps a flag to a record.
-            if (f->type == nullptr && t_startup_cctor_type != nullptr)
-                f->type = t_startup_cctor_type;
-            const char* report = nullptr;
-            if (f->type != nullptr && !f->reported && t_startup_cctor_depth == 0)
+            if (flag->load(std::memory_order_acquire))
+                return; // completed while we contended for the lock / waited
+            if (Dn2CppCctorFailure* f = dn2cpp_cctor_find_failure(flag))
             {
-                f->reported = true;
-                report = f->type;
+                failed = true;
+                failure = f->exc;
+                break;
             }
-            // Outside the lock — the report and the replay both allocate (the
-            // in-flight root node, the message) and run arbitrary unwinding.
-            lk.unlock();
-            if (report != nullptr)
-                dn2cpp_report_boundary_exception(
-                    exc, "the startup static constructor of %s", report);
-            dn2cpp_cctor_replay_failure(exc);
+            Dn2CppCctorRun* r = dn2cpp_cctor_find_run(flag);
+            if (r == nullptr)
+                break; // no one is initializing this type — it is ours to run
+            // A wait that would close a cycle returns to the partial state, as on .NET:
+            // the owner is this thread, or is blocked on a chain of runs leading back
+            // to it. Re-tested on every wakeup, since the chain moves while we wait.
+            if (dn2cpp_cctor_wait_closes_cycle(r, self))
+                return;
+            wait.link();
+            g_cctor_cv.wait(lk); // another thread's init is in flight — block for it
         }
-        Dn2CppCctorRun* r = g_cctor_running;
-        while (r != nullptr && r->flag != flag)
-            r = r->next;
-        if (r == nullptr)
-            break; // no one is initializing this type — it is ours to run
-        if (r->owner == std::this_thread::get_id())
-            return; // re-entrant circular init: proceed on the partial state
-        g_cctor_cv.wait(lk); // another thread's init is in flight — block for it
     }
-    Dn2CppCctorRun node{ flag, std::this_thread::get_id(), g_cctor_running };
+    if (failed)
+    {
+        // Initialization already failed: re-raise, never re-run. Outside the lock —
+        // the replay allocates (the in-flight root node) and runs arbitrary unwinding.
+        lk.unlock();
+        dn2cpp_cctor_replay_failure(failure);
+    }
+    Dn2CppCctorRun node{ flag, self, g_cctor_running };
     g_cctor_running = &node;
     lk.unlock();
-    // Consume the eager pass's name here, where the type running is known to be the one
-    // it named: a first-use this body triggers reaches run_once again, and that type is
-    // a different one the pass has not named.
-    const char* startup_type = t_startup_cctor_type;
-    t_startup_cctor_type = nullptr;
     // The failure record is allocated in the handler — ordinary execution context,
     // the exception already caught — never while unwinding, the same safety class as
     // the in-flight node push. Re-entrancy is unaffected: the record is published only
@@ -872,8 +922,6 @@ void dn2cpp_cctor_run_once(std::atomic<int8_t>* flag, void (*body)())
         auto* f = static_cast<Dn2CppCctorFailure*>(dn2cpp_alloc(sizeof(Dn2CppCctorFailure)));
         f->flag = flag;
         f->exc = e.obj;
-        f->type = startup_type;
-        f->reported = false;
         dn2cpp_cctor_unlink(&node, f);
         throw;
     }
@@ -882,8 +930,6 @@ void dn2cpp_cctor_run_once(std::atomic<int8_t>* flag, void (*body)())
         auto* f = static_cast<Dn2CppCctorFailure*>(dn2cpp_alloc(sizeof(Dn2CppCctorFailure)));
         f->flag = flag;
         f->exc = nullptr;
-        f->type = startup_type;
-        f->reported = false;
         dn2cpp_cctor_unlink(&node, f);
         throw;
     }
@@ -892,51 +938,21 @@ void dn2cpp_cctor_run_once(std::atomic<int8_t>* flag, void (*body)())
 
 void dn2cpp_cctor_run_startup(void (*ensure)(), const char* type)
 {
-    // The eager startup pass is dn2cpp's stand-in for .NET's lazy first-use
-    // initialization, so it runs initializers .NET might never run at all. A failure
-    // in it must therefore not be the process's problem: letting the exception leave
-    // `main`'s init prologue (which sits ahead of the entry point's own handler)
-    // terminates via std::terminate — killing a program whose .NET twin runs fine
-    // because it never touches the type.
-    //
-    // INVARIANT: the pass is SILENT, because .NET is. A type nothing touches runs no
-    // initializer there and prints nothing, so a report here would be a diagnostic
-    // about dn2cpp's schedule rather than about the program — and a monomorphized
-    // instantiation the program can never reach (EnumUtil<non-enum> and its kind) makes
-    // that a standing false alarm. dn2cpp_cctor_run_once has recorded the failure
-    // against the type; the first real USE re-raises it AND reports it, naming the type,
-    // which is both where .NET raises and the one place the failure is about the
-    // program. That report is what keeps a use site whose caller catches the throw —
-    // or whose symptom is "that feature does nothing" three frames away — from having
-    // no first cause anywhere.
-    //
-    // The name is handed down rather than passed: only run_once knows which record a
-    // throw belongs to. The depth marks the pass's whole extent, so a first-use of an
-    // already-failed type from inside a cctor the pass is running stays silent too.
-    //
-    // Swallowing pops the in-flight root — the discipline every runtime site that
-    // swallows a managed exception follows.
-    struct Scope
-    {
-        const char* saved;
-        explicit Scope(const char* t) : saved(t_startup_cctor_type)
-        {
-            t_startup_cctor_type = t;
-            ++t_startup_cctor_depth;
-        }
-        ~Scope()
-        {
-            t_startup_cctor_type = saved;
-            --t_startup_cctor_depth;
-        }
-    } scope(type != nullptr ? type : "<unknown>");
+    // The startup pass runs module initializers, the one kind no use site names, so a
+    // failure in one surfaces nowhere else: report it at once, naming the module. It
+    // must not be the process's problem either — letting the exception leave `main`'s
+    // init prologue (which sits ahead of the entry point's own handler) terminates via
+    // std::terminate, and .NET runs a library's initializer only when the program first
+    // touches that module, which it may never do. The failure stays recorded against
+    // the initializer, as every failed one does.
     try
     {
         ensure();
     }
     catch (const Dn2CppException& e)
     {
-        dn2cpp_exc_inflight_pop(e.obj);
+        dn2cpp_report_boundary_exception(e.obj, "the startup static constructor of %s",
+            type != nullptr ? type : "<unknown>");
     }
 }
 

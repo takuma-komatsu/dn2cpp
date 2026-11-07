@@ -798,14 +798,15 @@ int main()
         == offsetof(Dn2CppMethodInfo, returnRequiredCustomModifierCount) + sizeof(int32_t));
     static_assert(offsetof(Dn2CppMethodInfo, returnOptionalCustomModifiers)
         == offsetof(Dn2CppMethodInfo, preservable) + sizeof(int32_t));
-    static_assert(sizeof(void*) != 8 || (sizeof(Dn2CppMethodInfo) == 240
+    static_assert(sizeof(void*) != 8 || (sizeof(Dn2CppMethodInfo) == 248
         && offsetof(Dn2CppMethodInfo, preservable) % alignof(void*) == sizeof(int32_t)));
     static_assert(sizeof(Dn2CppMethodInfo)
-        == offsetof(Dn2CppMethodInfo, definitionSignature) + sizeof(void*));
-    static_assert(std::size(Dn2CppMethodInfo_fields) == 36
+        == offsetof(Dn2CppMethodInfo, initializer) + sizeof(void*));
+    static_assert(std::size(Dn2CppMethodInfo_fields) == 37
         && Dn2CppMethodInfo_fields[19].offset == offsetof(Dn2CppMethodInfo, preservable)
         && Dn2CppMethodInfo_fields[20].offset == offsetof(Dn2CppMethodInfo, returnOptionalCustomModifiers)
-        && Dn2CppMethodInfo_fields[35].offset == offsetof(Dn2CppMethodInfo, definitionSignature));
+        && Dn2CppMethodInfo_fields[35].offset == offsetof(Dn2CppMethodInfo, definitionSignature)
+        && Dn2CppMethodInfo_fields[36].offset == offsetof(Dn2CppMethodInfo, initializer));
     auto event = packed_event.operator->();
     require(event->name == unicode && event->declaringType == &original_type
         && event->handlerType == &substituted_type && event->handlerRecipe == &field_signature
