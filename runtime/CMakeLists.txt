@@ -228,7 +228,12 @@ if(EMSCRIPTEN)
         # liveness: the wasm operand stack is invisible to conservative GC.
         # Reoptimize after spilling to remove flattening overhead while retaining
         # the collector-visible stores. Directory scope covers every wasm target.
-        add_link_options("-sBINARYEN_EXTRA_PASSES=--flatten,--spill-pointers,-O3")
+        set(_dn2cpp_wasm_gc_passes "--flatten,--spill-pointers,-O3")
+        if(DN2CPP_SHARED OR DN2CPP_DOTNET_MODULE)
+            # Side-module relocation initializers trigger quadratic LocalCSE effect scans.
+            string(APPEND _dn2cpp_wasm_gc_passes ",--skip-pass=local-cse")
+        endif()
+        add_link_options("-sBINARYEN_EXTRA_PASSES=${_dn2cpp_wasm_gc_passes}")
     endif()
     set(_dn2cpp_threads "")
 
