@@ -73,6 +73,8 @@ dotnet run --project src/Dn2Cpp.Cli -- <assembly.dll> [-r <ref.dll>] [-o <dir>] 
 ## Adding regression coverage
 
 - Add a section to the closest themed bucket; create a bucket only for a new area.
+- Keep each gate under five minutes in every mode, opt-in profiles included.
+  A longer gate needs maintainer approval.
 - New drivers first pin `CurrentCulture` and `CurrentUICulture` to invariant.
 - Prove the new block ran and the old output is an unchanged prefix.
 - Use `corelib_diff_gate` for .NET parity and `corelib_freeze_gate` only for an
