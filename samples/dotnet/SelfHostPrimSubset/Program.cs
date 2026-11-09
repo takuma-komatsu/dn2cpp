@@ -7,7 +7,7 @@ using System.IO;
 // exception's null StackTrace, and the process-image paths (asserted by property).
 internal static class Program
 {
-    private static void Main()
+    private static void Main(string[] args)
     {
         // Dictionary keyed on ValueTuple<string,string>: enumeration is insertion
         // order (no removals here), so the output is seed-independent.
@@ -56,5 +56,9 @@ internal static class Program
         // Driven last so nothing it does can perturb the sections above.
         MiscIntrinsicSubset.Program.__GateEntry();
         GcAllocatedBytesSubset.Program.__GateEntry();
+        if (args.Length > 0 && args[0] == "before-nullable-reboxing")
+            return;
+        NullableReboxingSubset.Program.Run();
+        ActivatorDefaultSubset.ActivatorChecks.Run();
     }
 }

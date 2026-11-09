@@ -4175,6 +4175,10 @@ internal sealed partial class Compilation
 
     public void NoteIntrinsicFtnTarget(MethodInfo m)
     {
+        if (CoreIntrinsics.IsInvariantCompareInfoGetter(m))
+        {
+            NoteInvariantCompareInfoFactory(m);
+        }
         if (CoreIntrinsics.BrLifetimeDispose.Matches(m.DeclaringClass.FullName, m.Name))
             Reach(m);
         if (_intrinsicTypeTranspiled.Contains(m))

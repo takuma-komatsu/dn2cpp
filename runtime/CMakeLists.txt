@@ -1267,6 +1267,9 @@ if(DN2CPP_APP_DIR)
     # default COFF object limit even though method bodies are split across TUs.
     if(MSVC)
         target_compile_options(${DN2CPP_APP_NAME} PRIVATE /bigobj)
+        # Representation reads must preserve signaling NaNs through optimized
+        # calls. /fp:precise can quiet them while folding float temporaries.
+        target_compile_options(${DN2CPP_APP_NAME} PRIVATE /fp:strict)
     endif()
     # generated.h lives next to the sources; dn2cpp.h comes from the runtime include
     # dir (also carried transitively, but listed for the from-source build too).

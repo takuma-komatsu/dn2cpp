@@ -92,6 +92,7 @@ internal sealed partial class Compilation
                 // receiver (which folds to the dispatching runtime helper) finds it. Over-
                 // reaching on the non-virtual form is harmless.
                 ReachExceptionGetMessage(mi);
+                if (CoreIntrinsics.IsInvariantCompareInfoGetter(mi)) return mi;
                 // Intrinsic-mapped types are emitted inline, not transpiled, so
                 // an intra-assembly call into one (e.g. corelib's Span<T> ->
                 // ThrowHelper) is not a reachability edge.
@@ -1332,6 +1333,13 @@ internal sealed partial class Compilation
                     : candidates.FirstOrDefault(x => ParameterIdentityKey(x.Signature.ParameterTypes) == want) ?? candidates[0];
             }
         }
+        if (name == "get_CompareInfo" && candidates.Any(CoreIntrinsics.IsInvariantCompareInfoGetter))
+        {
+            if (!CoreIntrinsics.IsInvariantCompareInfoGetterSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsInvariantCompareInfoGetterDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsInvariantCompareInfoGetter(resolved))
+                throw new NotSupportedException("Invariant CompareInfo requires its exact MemberRef signature");
+        }
         if (typeRefParent)
             _memberRefMethodsByTypeRef[(module.Index, SRME.GetToken(handle))] = resolved;
         else
@@ -1354,6 +1362,12 @@ internal sealed partial class Compilation
         if (mr.Parent.Kind is not (HandleKind.TypeReference or HandleKind.TypeDefinition))
             return null;
         string? full = MemberRefParentTypeName(module, handle);
+        if (full is "System.Globalization.DateTimeFormatInfo" or "System.Globalization.CultureInfo"
+            && reader.StringComparer.Equals(mr.Name, "get_CompareInfo"))
+        {
+            var compare = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsInvariantCompareInfoGetter(compare)) return compare;
+        }
         if (full is not null && CoreIntrinsics.IsIntrinsicType(full))
             return null;
         ClassInfo? parentCls = mr.Parent.Kind == HandleKind.TypeDefinition

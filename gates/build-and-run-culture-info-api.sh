@@ -261,6 +261,28 @@ DN2CPP_GATE_RUN_ARGS=before-culture-names
 corelib_freeze_gate CultureInfoApi "$(dirname "$0")/expected/culture-info-api.txt" \
     --link-xml samples/dotnet/CultureInfoApi/link.xml
 
+# A CultureInfo subclass overriding CompareInfo, dispatched virtually, is
+# refused at transpile time. The step reads only the fixture, CLI and CoreLib.
+override_fixture=gates/fixtures/compare-info-override
+override_out="artifacts/culture-compare-info-override-$CONFIG"
+override_corelib=$(locate_corelib)
+rm -rf "$override_out"
+mkdir -p "$override_out"
+if gate_cache_check "$override_out" \
+        "culture-compare-info-override|cli:$(_gate_cli_hash)|corelib:$override_corelib|flags:--no-ildiet" \
+        "$override_fixture/CompareInfoOverride.csproj" "$override_fixture/Program.cs"; then
+    gate_cache_hit_msg
+else
+    build_proj "$override_fixture/CompareInfoOverride.csproj"
+    gate_capture "$override_out/refusal" invoke_cli "$override_fixture/bin/$CONFIG/$TFM/CompareInfoOverride.dll" \
+        -r "$override_corelib" --no-ildiet -o "$override_out/emitted"
+    gate_output status "$(cat "$override_out/refusal.status")" 2
+    gate_output match-record "$override_out/refusal.stderr" \
+        '.*error: .*CultureInfo[.]CompareInfo override dispatch is not supported for OverridingCulture.*' \
+        --count 1 --policy crlf
+    gate_cache_commit
+fi
+
 LOCALE_CASES=(
     culture-locale-upper
     culture-locale-cache-true

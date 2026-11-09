@@ -93,6 +93,10 @@ gate_extra_asserts() {
             gate_output compare "$native" "$expected"
         done
     fi
+    gate_capture_ok "$out/dtfi-before" run_bounded "./$out/DateTimeOps$EXE_EXT" before-dtfi-names
+    gate_output select "$out/native.stdout" "$out/dtfi-prefix.stdout" --before '== DateTimeFormatInfo names ==' --policy crlf
+    gate_output compare "$out/dtfi-prefix.stdout" "$out/dtfi-before.stdout"
+    gate_output witness "$out/native.stdout" 'DateTimeFormatInfo names end' --count 1 --policy crlf
 }
 
 corelib_diff_gate DateTimeOps

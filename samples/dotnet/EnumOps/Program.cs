@@ -42,6 +42,9 @@ namespace EnumOps
             if (args.Length > 0 && args[0] == "before-enum-aliases")
                 return;
             EnumAliasSubset.Run();
+            if (args.Length > 0 && args[0] == "before-enum-lookup")
+                return;
+            EnumLookupSubset.Program.Run();
         }
     }
 }

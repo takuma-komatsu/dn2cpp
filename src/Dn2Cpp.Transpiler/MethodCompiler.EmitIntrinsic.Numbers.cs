@@ -1035,25 +1035,6 @@ internal sealed partial class MethodCompiler
             case ("System.Globalization.NumberFormatInfo", "ValidateParseStyleFloatingPoint"):
                 Emit($"{(name == "ValidateParseStyleInteger" ? "dn2cpp_parse_validate_integer_styles" : "dn2cpp_parse_validate_fp_styles")}((int32_t)({Pop().Expr}));");
                 return true;
-            // CultureInfo.CompareInfo — a synthesized zero-initialized instance of the
-            // transpiled CompareInfo. The real getter's `new CompareInfo(this)` reads
-            // fields of the intrinsic-mapped CultureInfo, so it cannot transpile; a zeroed
-            // instance is sound because under the invariant-globalization fold the
-            // reachable CompareInfo members run their pure-managed invariant arms, which
-            // read no instance state. Fresh per call — no reached path compares instances
-            // by identity. The type-info emits via the reach-side hook in
-            // Compilation.ScanBodyForGenerics.
-            case ("System.Globalization.CultureInfo", "get_CompareInfo")
-                when sig.ReturnType is { Kind: TypeKind.Class, Class: { } cmpCls }:
-            {
-                Pop(); // the CultureInfo receiver (the NFI model carries no comparer state)
-                NoteReferenceClass(sig.ReturnType);
-                string o = NewTemp(cmpCls.CppStructName + "*");
-                Emit($"{o} = ({cmpCls.CppStructName}*)dn2cpp_alloc(sizeof({cmpCls.CppStructName}));");
-                Emit($"((Dn2CppObject*){o})->type = &{cmpCls.CppTypeInfoName};");
-                Push(StackKind.Ref, cmpCls.CppStructName + "*", o);
-                return true;
-            }
             // CultureInfo.DateTimeFormat — the real getter reads fields of the intrinsic-
             // mapped CultureInfo (Dn2CppNumberFormatInfo) and cannot transpile; dn2cpp's
             // culture is always invariant, so synthesize a bare invariant DateTimeFormatInfo.
@@ -1218,8 +1199,9 @@ internal sealed partial class MethodCompiler
                 or ("System.Globalization.DateTimeFormatInfo", "get_AbbreviatedMonthGenitiveNames")
                 when sig.ReturnType is { Kind: TypeKind.SZArray, Element: { } me }:
             {
-                Pop();
-                Push(StackKind.Ref, "Dn2CppArrayRef*", $"dn2cpp_dtfi_invariant_abbrev_month_names({PreciseArrayTypeInfoExpr(me)})");
+                var receiver = Pop();
+                Emit($"dn2cpp_null_check({Cast(receiver, "Dn2CppObject*")});");
+                Push(StackKind.Ref, "Dn2CppArrayRef*", $"dn2cpp_array_clone_ref(dn2cpp_dtfi_invariant_month_names({PreciseArrayTypeInfoExpr(me)}, true))");
                 return true;
             }
             case ("System.Globalization.DateTimeFormatInfo", "get_AbbreviatedDayNames")

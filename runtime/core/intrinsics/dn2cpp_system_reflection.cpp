@@ -1106,6 +1106,42 @@ Dn2CppType* dn2cpp_nullable_get_underlying(Dn2CppType* t)
     return nullptr;
 }
 
+// The private RuntimeType/UInt64 overload consumes the source bits before narrowing.
+Dn2CppString* dn2cpp_enum_get_name_u64(Dn2CppType* t, uint64_t value)
+{
+    dn2cpp_type_require(t);
+    const Dn2CppTypeInfo* ti = dn2cpp_enum_type_require(t);
+    int32_t width;
+    bool isUnsigned;
+    enum_underlying_shape(ti, &width, &isUnsigned);
+    if (width < 8)
+    {
+        if (isUnsigned)
+        {
+            if (value > ((uint64_t{1} << (width * 8)) - 1)) return nullptr;
+        }
+        else
+        {
+            int64_t signedValue;
+            std::memcpy(&signedValue, &value, sizeof(signedValue));
+            int64_t limit = int64_t{1} << (width * 8 - 1);
+            if (signedValue < -limit || signedValue >= limit) return nullptr;
+        }
+    }
+    const auto reflection = ti->reflection();
+    for (int32_t i = 0; i < reflection.enumMemberCount; i++)
+    {
+        const auto member = reflection.enumMembers[i].operator->();
+        // Sub-64-bit enum metadata stores an int32 model value, including UInt32.
+        uint64_t memberValue = static_cast<uint64_t>(member->value);
+        if (isUnsigned && width < 8) memberValue &= (uint64_t{1} << (width * 8)) - 1;
+        if (memberValue == value)
+            return dn2cpp_string_from_utf8(member->name,
+                static_cast<int32_t>(std::strlen(member->name)));
+    }
+    return nullptr;
+}
+
 // Shared core for the non-generic Enum.Parse/TryParse(Type, …) over a non-null string.
 // Validates the TYPE (dn2cpp_enum_type_require — .NET's ValidateRuntimeType does this in
 // BOTH Parse and TryParse), builds the (int64 values, Dn2CppString* names) arrays the
@@ -4132,6 +4168,13 @@ static int32_t dn2cpp_meta_collect_family(const Dn2CppTypeInfo* type, int32_t fl
     return n;
 }
 
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_culture_compare_info_row;
+
+void dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method)
+{
+    g_culture_compare_info_row = method;
+}
+
 // The named-lookup hook: appends the rows a lookup on `queried` finds after the
 // emitted candidates, so dn2cpp_resolve_method_candidates lets an emitted override
 // hide the Object or ValueType member it overrides and reports an overload beside one
@@ -4148,7 +4191,10 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     int32_t genericParamCount, Dn2CppArrayRef* paramTypes, int32_t bindingFlags,
     Dn2CppMethodCandidates& cands)
 {
-    bool named = false;
+    const auto cultureCompareInfo = g_culture_compare_info_row;
+    const bool cultureCompareInfoNamed = cultureCompareInfo != nullptr
+        && dn2cpp_member_name_matches(cultureCompareInfo->name, name, bindingFlags, false);
+    bool named = cultureCompareInfoNamed;
     for (int32_t k = 0; k < g_meta_member_count && !named; k++)
         named = dn2cpp_member_name_matches(g_meta_members[k].methodName, name, bindingFlags, false);
     if (!named)
@@ -4157,6 +4203,14 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     for (const Dn2CppTypeInfo* ti = queried; ti != nullptr; ti = dn2cpp_meta_next_level(ti))
     {
         bool inherited = (ti != queried);
+        if (cultureCompareInfoNamed)
+        {
+            const auto row = cultureCompareInfo.operator->();
+            if (row->declaringType == ti && dn2cpp_member_matches(row->attrs, bindingFlags, inherited)
+                && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
+                && (paramTypes == nullptr || dn2cpp_params_match_types(cultureCompareInfo, paramTypes, queried)))
+                cands.push_back(cultureCompareInfo);
+        }
         for (int32_t k = 0; k < g_meta_member_count; k++)
         {
             const Dn2CppMetaMember* d = &g_meta_members[k];
@@ -5130,10 +5184,8 @@ static Dn2CppObject* dn2cpp_field_check_value(const Dn2CppFieldInfo* row, Dn2Cpp
 // hands back null or a boxed T.
 static Dn2CppObject* dn2cpp_invoke_box_result(const Dn2CppTypeInfo* returnType, Dn2CppObject* result)
 {
-    if (result == nullptr || result->type != returnType
-        || dn2cpp_nullable_underlying_ti(returnType) == nullptr)
-        return result;
-    return dn2cpp_array_box_element(returnType, result + 1, returnType->instanceSize, false);
+    return result != nullptr && result->type == returnType
+        ? dn2cpp_rebox_from_nullable(result) : result;
 }
 
 // A literal row without a getter: its constant's bits boxed at `type`, a primitive
@@ -8321,7 +8373,7 @@ static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, int32_t nonP
         auto* obj = static_cast<Dn2CppObject*>(
             dn2cpp_alloc(sizeof(Dn2CppObject) + static_cast<size_t>(ti->instanceSize)));
         obj->type = ti;
-        return obj;
+        return dn2cpp_rebox_from_nullable(obj);
     }
     if (binderMessage)
         dn2cpp_throw_missing_constructor(ti, false);
@@ -11201,63 +11253,51 @@ static bool dn2cpp_read_boxed_num(Dn2CppObject* v, int32_t* code, int64_t* i, do
     return true;
 }
 
-// Enum.GetName(Type, value): the member name for the value, or null if undefined.
-// Read the source box at its own width before checking the target enum's range.
-Dn2CppString* dn2cpp_enum_get_name(Dn2CppType* t, Dn2CppObject* value)
+// Read the source box at its own width; target enum validation follows value validation.
+static Dn2CppString* enum_get_name_boxed(Dn2CppType* t, Dn2CppObject* value)
 {
-    // .NET checks the value for null between the type's null and enum checks.
-    if (t == nullptr)
-        dn2cpp_throw_argument_null_param("enumType");
     if (value == nullptr)
         dn2cpp_throw_argument_null_param("value");
     int32_t code;
-    int64_t bits;
-    double unused;
-    if (!dn2cpp_read_boxed_num(value, &code, &bits, &unused)
+    int64_t i;
+    double r;
+    if (!dn2cpp_read_boxed_num(value, &code, &i, &r)
         || code == DN2CPP_PC_BOOL || code == DN2CPP_PC_R4 || code == DN2CPP_PC_R8)
         dn2cpp_throw_argument_param(DN2CPP_SR_MUST_BE_ENUM_BASE_TYPE_OR_ENUM, "value");
-    const Dn2CppTypeInfo* ti = dn2cpp_enum_type_require(t);
-    int32_t width;
-    bool isUnsigned;
-    enum_underlying_shape(ti, &width, &isUnsigned);
-    uint64_t target = static_cast<uint64_t>(bits);
-    if (width < 8)
-    {
-        if (isUnsigned)
-        {
-            if (target > ((uint64_t{1} << (width * 8)) - 1)) return nullptr;
-        }
-        else
-        {
-            int64_t limit = int64_t{1} << (width * 8 - 1);
-            if (bits < -limit || bits >= limit) return nullptr;
-        }
-    }
-    const auto reflection = ti->reflection();
-    for (int32_t i = 0; i < reflection.enumMemberCount; i++)
-    {
-        const auto member = reflection.enumMembers[i].operator->();
-        uint64_t memberValue = static_cast<uint64_t>(member->value);
-        if (isUnsigned && width < 8) memberValue &= (uint64_t{1} << (width * 8)) - 1;
-        if (memberValue == target)
-            return dn2cpp_string_from_utf8(member->name,
-                static_cast<int32_t>(std::strlen(member->name)));
-    }
-    return nullptr;
+    return dn2cpp_enum_get_name_u64(t, static_cast<uint64_t>(i));
 }
 
-// Enum.IsDefined(Type, value): whether the value names a declared member (value form;
-// the string-name form is a carve-out). Boxed for the reason GetName's is.
-int32_t dn2cpp_enum_is_defined(Dn2CppType* t, Dn2CppObject* value)
+Dn2CppString* dn2cpp_enum_get_name(Dn2CppType* t, Dn2CppObject* value)
 {
     if (t == nullptr)
         dn2cpp_throw_argument_null_param("enumType");
+    return enum_get_name_boxed(t, value);
+}
+
+// IsEnumDefined accepts a name, the exact underlying primitive, or the same enum.
+// Validate before reading a payload; unlike GetEnumName, integer widths do not coerce.
+static int32_t enum_is_defined_boxed(Dn2CppType* t, Dn2CppObject* value)
+{
     if (value == nullptr)
         dn2cpp_throw_argument_null_param("value");
     const Dn2CppTypeInfo* ti = dn2cpp_enum_type_require(t);
     const Dn2CppTypeInfo* source = value->type;
+    const auto reflection = ti->reflection();
     if (source == &dn2cpp_string_type)
-        dn2cpp_throw_not_supported_msg("Enum.IsDefined with a string name is not supported.");
+    {
+        auto* text = reinterpret_cast<Dn2CppString*>(value);
+        int32_t size = dn2cpp_string_to_utf8(text, nullptr, 0);
+        std::string name(static_cast<size_t>(size), '\0');
+        dn2cpp_string_to_utf8(text, name.data(), size);
+        // Literal field rows retain aliases, unlike the deduplicated value/name table.
+        for (int32_t n = 0; n < reflection.fieldCount; n++)
+        {
+            const auto field = reflection.fields[n].operator->();
+            if ((field->attrs & DN2CPP_FLDA_LITERAL) != 0 && name == field->name)
+                return 1;
+        }
+        return 0;
+    }
     if ((source->flags & DN2CPP_TF_ENUM) != 0)
     {
         if (source != ti)
@@ -11278,11 +11318,21 @@ int32_t dn2cpp_enum_is_defined(Dn2CppType* t, Dn2CppObject* value)
     int32_t width = dn2cpp_prim_storage_width(code);
     uint64_t mask = width == 8 ? UINT64_MAX : (uint64_t{1} << (width * 8)) - 1;
     uint64_t target = static_cast<uint64_t>(bits) & mask;
-    const auto reflection = ti->reflection();
-    for (int32_t i = 0; i < reflection.enumMemberCount; i++)
-        if ((static_cast<uint64_t>(reflection.enumMembers[i]->value) & mask) == target)
+    for (int32_t n = 0; n < reflection.fieldCount; n++)
+    {
+        const auto field = reflection.fields[n].operator->();
+        if ((field->attrs & DN2CPP_FLDA_LITERAL) != 0
+            && (static_cast<uint64_t>(field->literalValue) & mask) == target)
             return 1;
+    }
     return 0;
+}
+
+int32_t dn2cpp_enum_is_defined(Dn2CppType* t, Dn2CppObject* value)
+{
+    if (t == nullptr)
+        dn2cpp_throw_argument_null_param("enumType");
+    return enum_is_defined_boxed(t, value);
 }
 
 // Enum.ToObject(Type, object): the boxed-value form. .NET dispatches on
@@ -11383,6 +11433,21 @@ static bool dn2cpp_nullable_layout(const Dn2CppTypeInfo* nullable, const Dn2CppT
     *width = u->instanceSize;
     *uCode = DN2CPP_PC_NONE;
     return true;
+}
+
+// Exact nullable payload packing is shared by raw boxes and reflection's byref
+// cells. Numeric conversion here would alter signaling NaNs before copyback.
+static void dn2cpp_nullable_store_payload(void* destination, int32_t size,
+    int32_t offset, int32_t width, const void* payload)
+{
+    std::memset(destination, 0, static_cast<size_t>(size));
+    if (payload != nullptr)
+    {
+        *static_cast<uint8_t*>(destination) = 1;
+        dn2cpp_gc_memmove_refs(static_cast<char*>(destination) + offset, payload, static_cast<size_t>(width));
+    }
+    else
+        dn2cpp_gc_write_barrier_if_heap(destination);
 }
 
 [[noreturn]] static void dn2cpp_throw_array_store_mismatch()
@@ -11502,21 +11567,7 @@ void dn2cpp_array_store_boxed(Dn2CppObject* v, const Dn2CppTypeInfo* elem,
         if (!dn2cpp_nullable_layout(elem, u, &off, &w, &uc))
             dn2cpp_throw_platform_not_supported(
                 "Array.SetValue into a Nullable<T> element whose T has no known layout is not supported");
-        std::memset(dst, 0, static_cast<size_t>(elemSize));
-        *static_cast<uint8_t*>(dst) = 1;
-        if (uc < 0)
-        {
-            std::memcpy(static_cast<char*>(dst) + off, v + 1, static_cast<size_t>(w));
-        }
-        else
-        {
-            int32_t sc;
-            int64_t i;
-            double r;
-            dn2cpp_read_boxed_num(v, &sc, &i, &r);
-            dn2cpp_write_prim(static_cast<char*>(dst) + off, uc, sc, i, r);
-        }
-        dn2cpp_gc_write_barrier_if_heap(dst);
+        dn2cpp_nullable_store_payload(dst, elemSize, off, w, v + 1);
         return;
     }
     if ((elem->flags & DN2CPP_TF_ENUM) != 0)
@@ -11601,6 +11652,29 @@ Dn2CppObject* dn2cpp_array_box_element(const Dn2CppTypeInfo* elem, const void* s
         default: { uint16_t x; std::memcpy(&x, src, 2); payload = x; break; }
     }
     return dn2cpp_box(elem, &payload, 4);
+}
+
+Dn2CppObject* dn2cpp_rebox_from_nullable(Dn2CppObject* value)
+{
+    if (value == nullptr || dn2cpp_nullable_underlying_ti(value->type) == nullptr)
+        return value;
+    return dn2cpp_array_box_element(value->type, value + 1, value->type->instanceSize, false);
+}
+
+// The payload is already validated as U; copying its packed bytes preserves
+// floating-point bit patterns and managed references without binder conversions.
+static Dn2CppObject* dn2cpp_nullable_box_payload(const Dn2CppTypeInfo* nullable,
+    const Dn2CppTypeInfo* underlying, const void* payload)
+{
+    int32_t offset, width, code;
+    if (!dn2cpp_nullable_layout(nullable, underlying, &offset, &width, &code))
+        dn2cpp_throw_platform_not_supported(
+            "Reflection: binding a Nullable<T> argument whose T has no known layout is not supported");
+    int32_t size = nullable->instanceSize > 0 ? nullable->instanceSize : offset + width;
+    auto* box = static_cast<Dn2CppObject*>(dn2cpp_alloc(sizeof(Dn2CppObject) + static_cast<size_t>(size)));
+    box->type = nullable;
+    dn2cpp_nullable_store_payload(box + 1, size, offset, width, payload);
+    return box;
 }
 
 // ---- Array.Copy type compatibility ----
@@ -12038,6 +12112,8 @@ static Dn2CppObject* dn2cpp_binder_adapt_arg(Dn2CppObject* a, const Dn2CppTypeIn
         return a;
     if (const Dn2CppTypeInfo* u = dn2cpp_nullable_underlying_ti(p))
     {
+        if (a == nullptr || a->type == u)
+            return dn2cpp_nullable_box_payload(p, u, a != nullptr ? a + 1 : nullptr);
         int32_t off, w, uc;
         if (!dn2cpp_nullable_layout(p, u, &off, &w, &uc))
             dn2cpp_throw_platform_not_supported(

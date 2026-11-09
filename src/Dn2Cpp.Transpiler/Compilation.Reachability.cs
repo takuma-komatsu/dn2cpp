@@ -79,7 +79,8 @@ internal sealed partial class Compilation
             }
             return; // no _toScan.Enqueue -> the replaced IL is never scanned
         }
-        if (CoreIntrinsics.BrDelegateClone.Matches(m.DeclaringClass.FullName, m.Name))
+        if (CoreIntrinsics.BrDelegateClone.Matches(m.DeclaringClass.FullName, m.Name)
+            || CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(m))
         {
             if (AddReachable(m))
             {
@@ -88,7 +89,8 @@ internal sealed partial class Compilation
             }
             return;
         }
-        if (CoreIntrinsics.BrInvariantCompareInfoCallback.Matches(m.DeclaringClass.FullName, m.Name))
+        if (CoreIntrinsics.IsInvariantCompareInfoGetter(m)
+            || CoreIntrinsics.BrInvariantCompareInfoCallback.Matches(m.DeclaringClass.FullName, m.Name))
         {
             _predTrace.TryAdd(m, _currentScan);
             NoteIntrinsicFtnTarget(m);
@@ -1290,8 +1292,8 @@ internal sealed partial class Compilation
     /// <summary>Whether a value type is shaped so that a field walk is even meaningful.
     /// The carve-outs, and why each one is one:
     /// <list type="bullet">
-    /// <item>explicit layout — overlapping fields are a union; walking them double-counts
-    /// the bytes, and .NET's own memcmp fast path declines such a type too;</item>
+    /// <item>explicit layout — only fixed-width integral fields have a supported
+    /// field walk; overlapping aliases contribute redundant but consistent values;</item>
     /// <item><c>[InlineArray(N)]</c> — the one declared field stands for N elements;</item>
     /// <item>ref struct — never boxed, and never a key;</item>
     /// <item>intrinsic-mapped (BOTH tests: the name table misses a closed generic
@@ -1302,10 +1304,32 @@ internal sealed partial class Compilation
     /// emit site (MethodCompiler) is what routes those to per-instantiation bodies.</item>
     /// </list></summary>
     private static bool SynthesizableShape(ClassInfo c) =>
-        c.IsValueType && !c.IsEnum && !c.IsByRefLike && !c.IsExplicitLayout
+        c.IsValueType && !c.IsEnum && !c.IsByRefLike
         && c.InlineArrayLength == 0
         && !CoreIntrinsics.IsIntrinsicType(c.FullName) && c.IntrinsicCppName is null
-        && !ContainsCanonPlaceholder(c);
+        && !ContainsCanonPlaceholder(c)
+        && (!c.IsExplicitLayout || HasIntegralExplicitFields(c));
+
+    private static bool HasIntegralExplicitFields(ClassInfo c)
+    {
+        bool any = false;
+        foreach (var field in StructuralFields(c))
+        {
+            if (field.ExplicitOffset < 0 || field.ByValArraySize >= 0)
+                return false;
+            var t = field.Type;
+            var code = t.Kind == TypeKind.Primitive ? t.Primitive
+                : t is { Kind: TypeKind.Class, Class: { IsEnum: true } e }
+                    ? e.EnumUnderlying : PrimitiveTypeCode.Void;
+            if (code is not (PrimitiveTypeCode.SByte or PrimitiveTypeCode.Byte
+                or PrimitiveTypeCode.Int16 or PrimitiveTypeCode.UInt16
+                or PrimitiveTypeCode.Int32 or PrimitiveTypeCode.UInt32
+                or PrimitiveTypeCode.Int64 or PrimitiveTypeCode.UInt64))
+                return false;
+            any = true;
+        }
+        return any;
+    }
 
     // The two abstract roots System.Enum / System.ValueType need no carve-out here, and
     // the invariant that keeps it that way lives one level up: BOTH are modeled as
@@ -1372,6 +1396,9 @@ internal sealed partial class Compilation
         // Nullable<U> — so the walk compares/hashes U, and it is U that has to be walkable.
         if (NullableUnderlying(t) is { } nu)
             return CanCompareStructuralField(nu, hash, visiting);
+        // Raw data-pointer fields have address identity, not pointee value semantics.
+        if (t is { Kind: TypeKind.Pointer, IsFunctionPointer: false })
+            return true;
         if (t.IsString)
             return true;
         if (t.Kind == TypeKind.Primitive && !t.IsObject)
@@ -1387,9 +1414,9 @@ internal sealed partial class Compilation
         // helpers instead.
         if (MethodCompiler.IntrinsicValueTypeFn(t) is not null)
             return true;
-        // CancellationToken's emitted source pointer is its whole identity; its loaded
-        // fields and managed equality bodies are not emitted.
-        if (MethodCompiler.IsCancellationTokenValue(t))
+        // These opaque cell identities do not use their loaded managed field layout
+        // or equality bodies.
+        if (MethodCompiler.IsCancellationTokenValue(t) || MethodCompiler.IsGCHandleValue(t))
             return true;
         // Opaque pointer-backed handles compare and hash their entire representation;
         // their loaded managed fields do not describe the emitted runtime payload.
@@ -1401,8 +1428,8 @@ internal sealed partial class Compilation
         if (t is { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false } fc })
             return (hash ? EffectiveGetHashCode(fc) : EffectiveEquals(fc)) is not null
                 || CanSynthesizeValueEquality(fc, hash, visiting);
-        // A pointer, a function pointer, a byref, a TypedReference, an unresolved
-        // placeholder: no value semantics to build one from.
+        // A function pointer, a byref, a TypedReference, an unresolved placeholder:
+        // no structural field semantics to build one from.
         return false;
     }
 
@@ -1569,6 +1596,7 @@ internal sealed partial class Compilation
         if (t is not { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false } fc }
             || MethodCompiler.IntrinsicValueTypeFn(t) is not null
             || MethodCompiler.IsCancellationTokenValue(t)
+            || MethodCompiler.IsGCHandleValue(t)
             || MethodCompiler.IntrinsicPointerValueType(t) is not null)
             return;
         // The Object-virtual override ValueType.Equals/GetHashCode would dispatch through
@@ -6134,40 +6162,6 @@ internal sealed partial class Compilation
                                         ReachBaseValueCall(m.DeclaringClass, oname);
                                 }
                             }
-                        }
-                        // CultureInfo.CompareInfo -> a synthesized zero-initialized
-                        // CompareInfo (see the MethodCompiler intrinsic in
-                        // EmitIntrinsic.Numbers): mark the transpiled CompareInfo
-                        // allocated so its type-info emits. There is no ctor to
-                        // reach — the real ctor reads fields of the intrinsic-mapped
-                        // CultureInfo — and the invariant arms its reachable members
-                        // run read no instance state. CultureInfo is intrinsic-mapped,
-                        // so ResolveCallTarget returns null for both call forms.
-                        // EffectThenSkipResolve. The row's own NAME half is asked first
-                        // — through the shared predicate, never by reading the row's gate
-                        // field as a value — and the parent only behind it: obtaining the
-                        // parent on the MethodDefinition mouth builds a string, and every
-                        // call token of every reachable body passes here.
-                        if (insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt
-                            && (handle.Kind switch
-                                {
-                                    HandleKind.MethodDefinition => module.Reader.GetString(
-                                        module.Reader.GetMethodDefinition((MethodDefinitionHandle)handle).Name),
-                                    // Reuses the name read above ("get_CompareInfo" is in
-                                    // its parent-gate set, so mrParent is in hand too).
-                                    HandleKind.MemberReference => mrName,
-                                    _ => null,
-                                }) is { } cmpName
-                            && CoreIntrinsics.IsCultureCompareInfoMemberName(cmpName)
-                            && CoreIntrinsics.ScCultureCompareInfo.Matches(
-                                handle.Kind == HandleKind.MemberReference
-                                    ? mrParent : CallTargetTypeName(module, handle),
-                                cmpName)
-                            && FindClassByFullName("System.Globalization.CompareInfo") is { } cmpInfoCls)
-                        {
-                            ReachAllocatedType(cmpInfoCls);
-                            constrained = null;
-                            continue;
                         }
                         var t = ResolveCallTarget(module, handle, m.Context);
                         // A bodyless P/Invoke with a registered managed native

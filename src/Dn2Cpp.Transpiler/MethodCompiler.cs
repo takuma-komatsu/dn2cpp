@@ -182,6 +182,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     // (an intrinsic lowering calling a different method than the site named)
     // can never mis-key a slot.
     private int _callSiteToken;
+    private int _callSiteOffset = -1;
 
     /// <summary>Whether the call instruction currently being translated is a
     /// <c>callvirt</c> (set at <see cref="TranslateCall"/> entry). Read by the
@@ -697,6 +698,8 @@ internal sealed partial class MethodCompiler : IEvalStack
         if (SharedTrial && _method.IsHotPath)
             throw new SharedBodyTaintException("hotpath",
                 $"{_method.DeclaringClass.FullName}.{_method.Name}: [HotPath] bodies compile per instantiation");
+        if (CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(_method))
+            return CompileInvariantCompareInfoInitializer();
         var bodyBlock = _module.PE.GetMethodBody(_method.Rva);
         List<Instruction> insns;
         try
@@ -1235,6 +1238,10 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// Null when the method has no intrinsic lowering to synthesize from.</summary>
     internal string? CompileCoreIntrinsicWrapper()
     {
+        if (CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(_method))
+            return CompileInvariantCompareInfoInitializer();
+        if (CoreIntrinsics.IsInvariantCompareInfoGetter(_method))
+            return CompileInterceptWrapper();
         string dispatch = _c.RuntimeInterfaceLowerings.TryGetValue(_method, out var runtimeDispatch)
             ? runtimeDispatch
             : CoreIntrinsics.IsIntrinsicType(_method.DeclaringClass.FullName)

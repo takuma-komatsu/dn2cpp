@@ -4,6 +4,7 @@
 # (SortedDictionary/SortedList/SortedSet), the non-generic System.Collections.SortedList,
 # and FrozenDictionary (FrozenDictSubset).
 # Diffed exactly vs real .NET.
+# Structural data-pointer fields preserve address equality and matching hashes.
 # Also covers string.Join/Concat over a concrete IEnumerable<T> that is neither an
 # array nor a List<T> backing — a SortedSet<T>, a SortedDictionary Keys/Values view,
 # a Queue<T> — where the intrinsic emits an interface-enumeration loop instead of
@@ -58,6 +59,18 @@ gate_extra_asserts() {
 
     gate_output select "$native" "$prefix" --before '== nullable default equality ==' --policy crlf
     gate_output compare "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-pointer" run_bounded dotnet "$_CG_APP" before-structural-pointer
+    gate_output select "$native" "$out/assert-pointer-prefix.stdout" --before 'structural-pointer-reader-same:True' --policy crlf
+    gate_output compare "$out/assert-pointer-prefix.stdout" "$out/assert-before-pointer.stdout"
+    gate_output witness "$native" 'structural-pointer-checks:39' --count 1 --policy crlf
+    gate_capture_ok "$out/assert-before-gchandle" run_bounded dotnet "$_CG_APP" before-gchandle-equality
+    gate_output select "$native" "$out/assert-gchandle-prefix.stdout" --before 'gchandle-equality-copy:True' --policy crlf
+    gate_output compare "$out/assert-gchandle-prefix.stdout" "$out/assert-before-gchandle.stdout"
+    gate_output witness "$native" 'gchandle-equality-checks:39' --count 1 --policy crlf
+    gate_capture_ok "$out/assert-before-integral-union" run_bounded dotnet "$_CG_APP" before-integral-union
+    gate_output select "$native" "$out/assert-integral-union-prefix.stdout" --before 'integral-union-mirror-equal:True' --policy crlf
+    gate_output compare "$out/assert-integral-union-prefix.stdout" "$out/assert-before-integral-union.stdout"
+    gate_output witness "$native" 'integral-union-checks:38' --count 1 --policy crlf
     for line in '== default comparison validation ==' \
         '== default equality mouths ==' \
         'default equality mouths end' \
@@ -73,4 +86,17 @@ gate_extra_asserts() {
     done
 }
 
-corelib_diff_gate DictCollections System.Collections System.Collections.NonGeneric System.Collections.Immutable System.Linq
+corelib_diff_gate DictCollections System.Collections System.Collections.NonGeneric System.Collections.Immutable System.Linq System.Reflection.Metadata
+
+# A float overlapping an integer is not an integral union; its element equality
+# is refused at transpile time rather than compared bitwise.
+build_gate_proj gates/fixtures/integral-union-negative/IntegralUnionNegative.csproj
+union_negative="artifacts/integral-union-negative-$CONFIG"
+rm -rf "$union_negative"
+mkdir -p "$union_negative"
+gate_capture "$union_negative/emit" invoke_cli \
+    "gates/fixtures/integral-union-negative/bin/$CONFIG/$TFM/IntegralUnionNegative.dll" --auto-ref -o "$union_negative/generated"
+gate_output status "$(cat "$union_negative/emit.status")" 2
+gate_output match-record "$union_negative/emit.stderr" \
+    '.*Array[.]IndexOf<Bad> element equality is not supported yet [(]the element type has neither a typed Equals[(]T[)] nor an Equals[(]object[)] override[)].*' \
+    --count 1 --policy crlf

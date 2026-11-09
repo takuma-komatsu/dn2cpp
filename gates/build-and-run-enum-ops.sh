@@ -93,6 +93,11 @@ gate_extra_asserts() {
         gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: EnumOps comparison coverage missing: $line" >&2; exit 1; }
     done
+    gate_capture_ok "$out/assert-before-lookup" run_bounded dotnet "$_CG_APP" before-enum-lookup || return 1
+    gate_output select "$native" "$out/assert-prefix-lookup.stdout" --before '== enum defined lookup ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-lookup.stdout" "$out/assert-before-lookup.stdout" || return 1
+    gate_output byte-witness "$native" 'enum defined lookup end' --count 1 --policy crlf || return 1
+
     gate_capture_ok "$out/enum-aliases-before" run_bounded dotnet "$_CG_APP" before-enum-aliases
     gate_output select "$out/native.stdout" "$out/enum-aliases-prefix.stdout" \
         --before '== enum alias metadata ==' --policy crlf

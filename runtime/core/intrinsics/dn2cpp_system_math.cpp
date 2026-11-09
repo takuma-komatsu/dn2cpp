@@ -72,11 +72,12 @@ int32_t dn2cpp_math_ilogb_f(float x)
 
 // ---- Math.BigMul (64-bit overloads) ----
 // The full 128-bit product: the high half is returned, the low half goes
-// through *low. clang/gcc compute it through the native unsigned __int128;
-// real MSVC (cl.exe) has no 128-bit integer type at all, but its dn2cpp
-// targets are x64-only, so the <intrin.h> _umul128/_mul128 pair is always
-// available (the same MSVC/clang split as dn2cpp_system_decimal.cpp's
-// dec_u128).
+// through *low. Emitted callers pass managed output references unchecked, so
+// a null one raises NullReferenceException here, as the managed store does.
+// clang/gcc compute it through the native unsigned __int128; real MSVC
+// (cl.exe) has no 128-bit integer type at all, but its dn2cpp targets are
+// x64-only, so the <intrin.h> _umul128/_mul128 pair is always available (the
+// same MSVC/clang split as dn2cpp_system_decimal.cpp's dec_u128).
 
 #if !(defined(_MSC_VER) && !defined(__clang__))
 
@@ -84,7 +85,7 @@ int32_t dn2cpp_math_ilogb_f(float x)
 uint64_t dn2cpp_math_bigmul_u64(uint64_t a, uint64_t b, uint64_t* low)
 {
     unsigned __int128 p = (unsigned __int128)a * b;
-    *low = (uint64_t)p;
+    *dn2cpp_null_check(low) = (uint64_t)p;
     return (uint64_t)(p >> 64);
 }
 
@@ -93,7 +94,7 @@ uint64_t dn2cpp_math_bigmul_u64(uint64_t a, uint64_t b, uint64_t* low)
 int64_t dn2cpp_math_bigmul_i64(int64_t a, int64_t b, int64_t* low)
 {
     __int128 p = (__int128)a * b;
-    *low = (int64_t)(uint64_t)(unsigned __int128)p;
+    *dn2cpp_null_check(low) = (int64_t)(uint64_t)(unsigned __int128)p;
     return (int64_t)(uint64_t)((unsigned __int128)p >> 64);
 }
 
@@ -102,14 +103,14 @@ int64_t dn2cpp_math_bigmul_i64(int64_t a, int64_t b, int64_t* low)
 uint64_t dn2cpp_math_bigmul_u64(uint64_t a, uint64_t b, uint64_t* low)
 {
     unsigned __int64 hi;
-    *low = _umul128(a, b, &hi);
+    *dn2cpp_null_check(low) = _umul128(a, b, &hi);
     return hi;
 }
 
 int64_t dn2cpp_math_bigmul_i64(int64_t a, int64_t b, int64_t* low)
 {
     __int64 hi;
-    *low = _mul128(a, b, &hi);
+    *dn2cpp_null_check(low) = _mul128(a, b, &hi);
     return hi;
 }
 

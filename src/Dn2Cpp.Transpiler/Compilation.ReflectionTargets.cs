@@ -876,12 +876,14 @@ internal sealed partial class Compilation
     /// not invocable.</summary>
     private void InvokeTarget(MethodInfo target)
     {
+        NoteInvariantCompareInfoDispatchDemand(target);
         var cls = target.DeclaringClass;
         if (IsOpenGenericMethod(target) || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls)
             || _backend?.ShouldSkipMethodBody(cls, target) == true)
             return;
         _reflectionSelectionCount++;
-        if (target.Rva != 0 && cls.IntrinsicCppName is null)
+        if (CoreIntrinsics.IsInvariantCompareInfoGetter(target)
+            || target.Rva != 0 && cls.IntrinsicCppName is null)
             Reach(target);
         if (target.IsVirtual && !target.IsStatic && CarriesReflectedSlots(cls))
         {
