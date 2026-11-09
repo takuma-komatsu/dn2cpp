@@ -4483,6 +4483,7 @@ internal sealed partial class CppEmitter
     /// row or a closed generic-argument vector names.</summary>
     private string FieldTypeInfoExpr(TypeDesc t, HashSet<ClassInfo> emittedEnums)
     {
+        t = ReflectionIdentityType(t);
         if (t.Kind is TypeKind.SZArray or TypeKind.MDArray && HasSignatureShape(t))
             return "&dn2cpp_object_type";
         if (t is { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive or TypeKind.Class or TypeKind.External or TypeKind.SZArray or TypeKind.MDArray } el }
@@ -4525,10 +4526,13 @@ internal sealed partial class CppEmitter
 
     // A query-only intrinsic handle supplies identity, not Invoke marshalling or
     // delegate-binding evidence. Ordinary body/typeof references retain their ABI.
-    private string ReflectionAbiTypeInfoExpr(TypeDesc t, HashSet<ClassInfo> emittedEnums) =>
-        t is { Kind: TypeKind.Class, Class: { } cls } && IsQueryOnlyIntrinsic(cls)
+    private string ReflectionAbiTypeInfoExpr(TypeDesc t, HashSet<ClassInfo> emittedEnums)
+    {
+        t = ReflectionIdentityType(t);
+        return t is { Kind: TypeKind.Class, Class: { } cls } && IsQueryOnlyIntrinsic(cls)
             && CoreIntrinsics.RuntimeTypeInfoSymbol(cls) is null
             ? "&dn2cpp_object_type" : MemberTypeInfoExpr(t, emittedEnums);
+    }
 
     /// <summary>How Invoke passes an argument of type <paramref name="t"/>, or reads a
     /// return of it, that the invoker thunk cannot take as a box: the
@@ -4589,7 +4593,11 @@ internal sealed partial class CppEmitter
             }
             return (kind | PassPointer | (levels << PassPointerDepthShift), type);
         }
-        if (t is { Kind: TypeKind.Class, Class.IsByRefLike: true })
+        // TypedReference signatures decode as a primitive, without the TypeDef's
+        // IsByRefLike flag. Invoke still cannot manufacture or box that value.
+        if (t is { Kind: TypeKind.Class, Class.IsByRefLike: true }
+            or { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.TypedReference }
+            or { Kind: TypeKind.External, ExternalName: "System.TypedReference" })
             return (kind | PassByRefLike, ReflectionAbiTypeInfoExpr(t, emittedEnums));
         if (kind == 0)
             return (0, "nullptr");
@@ -6238,6 +6246,7 @@ internal sealed partial class CppEmitter
         int kind = signature.Kind;
         if (signature.Type is { } t)
         {
+            t = ReflectionIdentityType(t);
             if (kind == 4 && t is { Kind: TypeKind.Class, Class: { } generic }
                 && GenericDefInfo(generic) is { } definition)
             {
@@ -8026,7 +8035,9 @@ internal sealed partial class CppEmitter
         foreach (var cls in EmittedClasses)
         {
             if (!cls.IsEnum && fwdDeclared.Add(cls.CppStructName))
-                sb.AppendLine($"struct {cls.CppStructName};");
+                sb.AppendLine(cls.FullName == "System.TypedReference"
+                    ? $"using {cls.CppStructName} = Dn2CppTypedReference;"
+                    : $"struct {cls.CppStructName};");
         }
         sb.AppendLine();
 
@@ -8144,6 +8155,9 @@ internal sealed partial class CppEmitter
 
     private void EmitOneStruct(StringBuilder sb, ClassInfo cls, string? baseName)
     {
+        // Typedref signatures and CoreLib instance bodies share the runtime storage alias.
+        if (cls.FullName == "System.TypedReference")
+            return;
         (ModeledSize Size, ModeledSize Align)? opaqueLayout =
             IsOpaque(cls) && cls.IsValueType ? TryModeledStructLayout(cls) : null;
         // [StructLayout(Pack = N)] caps every field's alignment at N bytes; the

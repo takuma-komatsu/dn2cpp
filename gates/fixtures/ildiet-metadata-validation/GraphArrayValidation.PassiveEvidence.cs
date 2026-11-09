@@ -86,8 +86,10 @@ static class PassiveEvidenceInput
             reflected.Body.Instructions.Add(Instruction.Create(OpCodes.Pop));
             reflected.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
         }
+        reflected.CallingConvention = MethodCallingConvention.VarArg;
         reflected.Parameters.Add(new ParameterDefinition("unused", ParameterAttributes.None, module.TypeSystem.TypedReference));
-        Instruction[] prefix = { Instruction.Create(OpCodes.Ldarg_0), Instruction.Create(OpCodes.Refanytype),
+        Instruction[] prefix = { Instruction.Create(OpCodes.Arglist), Instruction.Create(OpCodes.Pop),
+            Instruction.Create(OpCodes.Ldarg_0), Instruction.Create(OpCodes.Refanytype),
             Instruction.Create(OpCodes.Call, importedGet), Instruction.Create(OpCodes.Pop) };
         for (int i = prefix.Length - 1; i >= 0; i--) reflected.Body.Instructions.Insert(0, prefix[i]);
         using var staged = new MemoryStream();
@@ -169,11 +171,12 @@ static class PassiveEvidenceInput
             Require(!allMethods.SelectMany(m => m.HasBody ? m.Body.Instructions : Enumerable.Empty<Instruction>())
                 .Any(i => i.Operand is MethodReference r && r.DeclaringType.FullName == owner.FullName), "Carrier has a caller");
         }
-        Require(wanted.Parameters.Count == 1 && wanted.Parameters[0].ParameterType.MetadataType == MetadataType.TypedByReference,
+        Require(wanted.CallingConvention == MethodCallingConvention.VarArg
+            && wanted.Parameters.Count == 1 && wanted.Parameters[0].ParameterType.MetadataType == MetadataType.TypedByReference,
             "refanytype input must be a real typed-reference signature");
-        Require(wanted.Body.Instructions.Take(4).Select(i => i.OpCode.Code).SequenceEqual(
-            new[] { Code.Ldarg_0, Code.Refanytype, Code.Call, Code.Pop }), "Unsupported sequence changed");
-        var get = (MethodReference)wanted.Body.Instructions[2].Operand;
+        Require(wanted.Body.Instructions.Take(6).Select(i => i.OpCode.Code).SequenceEqual(
+            new[] { Code.Arglist, Code.Pop, Code.Ldarg_0, Code.Refanytype, Code.Call, Code.Pop }), "Unsupported sequence changed");
+        var get = (MethodReference)wanted.Body.Instructions[4].Operand;
         Require(get.FullName == realGet && get.DeclaringType.Scope.Name == "System.Private.CoreLib"
             && get.Parameters[0].ParameterType.IsValueType, "RuntimeTypeHandle API identity changed");
         Require(core.Name.FullName == coreIdentity && core.MainModule.AssemblyReferences.Count == 0
@@ -264,7 +267,7 @@ static partial class GraphArrayValidation
             && !carrier.HasOverrides && carrier.Body.InitLocals && carrier.Body.ExceptionHandlers.Count == 0, "physical evidence carrier changed");
         var codes = carrier.Body.Instructions.Select(i => i.OpCode.Code).ToArray();
         Require(codes.SequenceEqual(mode.EndsWith("true-carrier", StringComparison.Ordinal)
-            ? new[] { Code.Ldarg_0, Code.Refanytype, Code.Call, Code.Pop, Code.Ldloca, Code.Call, Code.Pop, Code.Ret }
+            ? new[] { Code.Arglist, Code.Pop, Code.Ldarg_0, Code.Refanytype, Code.Call, Code.Pop, Code.Ldloca, Code.Call, Code.Pop, Code.Ret }
             : new[] { Code.Ldloca, Code.Call, Code.Pop, Code.Ret }), "physical evidence IL changed");
         Require(carrier.Body.Variables.Single().VariableType.FullName == "Graph.EagerBuilder`1<System.Int64>", "evidence local changed");
         var witness = (MethodReference)carrier.Body.Instructions.Single(i => i.Operand is MethodReference m && m.Name == "get_Task").Operand;

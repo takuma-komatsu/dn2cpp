@@ -56,7 +56,7 @@ static partial class GraphArrayValidation
             && !carrier.HasOverrides && carrier.Body.InitLocals && carrier.Body.ExceptionHandlers.Count == 0, "physical evidence carrier changed");
         var codes = carrier.Body.Instructions.Select(i => i.OpCode.Code).ToArray();
         Require(codes.SequenceEqual(mode.EndsWith("true-carrier", StringComparison.Ordinal)
-            ? new[] { Code.Ldarg_0, Code.Refanytype, Code.Call, Code.Pop, Code.Ldloca, Code.Call, Code.Pop, Code.Ret }
+            ? new[] { Code.Arglist, Code.Pop, Code.Ldarg_0, Code.Refanytype, Code.Call, Code.Pop, Code.Ldloca, Code.Call, Code.Pop, Code.Ret }
             : new[] { Code.Ldloca, Code.Call, Code.Pop, Code.Ret }), "physical evidence IL changed");
         Require(carrier.Body.Variables.Single().VariableType.FullName == "Graph.EagerBuilder`1<System.Int64>", "evidence local changed");
         var witness = (MethodReference)carrier.Body.Instructions.Single(i => i.Operand is MethodReference m && m.Name == "get_Task").Operand;

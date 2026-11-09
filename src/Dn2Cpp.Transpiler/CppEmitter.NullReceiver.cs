@@ -788,7 +788,8 @@ internal sealed partial class CppEmitter
             case >= ILOpCode.Conv_u2 and <= ILOpCode.Conv_ovf_u:
             case ILOpCode.Conv_r_un or ILOpCode.Conv_u or ILOpCode.Ldfld or ILOpCode.Ldflda or ILOpCode.Isinst
                 or ILOpCode.Castclass or ILOpCode.Box or ILOpCode.Unbox or ILOpCode.Unbox_any or ILOpCode.Ldlen
-                or ILOpCode.Ldobj or ILOpCode.Ldvirtftn or ILOpCode.Ckfinite or ILOpCode.Newarr:
+                or ILOpCode.Ldobj or ILOpCode.Ldvirtftn or ILOpCode.Ckfinite or ILOpCode.Newarr
+                or ILOpCode.Mkrefany or ILOpCode.Refanyval or ILOpCode.Refanytype:
                 pop = 1;
                 push = 1;
                 return true;

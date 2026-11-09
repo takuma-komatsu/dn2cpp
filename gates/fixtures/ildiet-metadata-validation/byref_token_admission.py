@@ -13,9 +13,6 @@ MODES = (
     "byref-token-boxable", "byref-token-preserved",
 )
 ARMED = frozenset(MODES[3:])
-NEGATIVE = frozenset(MODES[:3])
-REFANY = ("cannot decode reflection body System.Private.CoreLib::System.Int32 "
-          "System.TypedReference::GetHashCode(): Unsupported IL opcode: Refanytype (0xFE1D)")
 
 
 def command_run(command, area, label, extra=None, expected=0):
@@ -125,7 +122,7 @@ def primary(cli, original, refs, area, mode, integrated=False, expected=None, ex
     return {"observations": observations, "generated": {str(r["shared"]): r["generated_sha256"] for r in records}}
 
 
-def publish(companion, probe, original, refs, area, mode, observed=False, extra=None):
+def publish(companion, probe, original, refs, area, mode, extra=None):
     assert not area.exists()
     area.mkdir(parents=True)
     before = inputs(original, refs)
@@ -135,16 +132,7 @@ def publish(companion, probe, original, refs, area, mode, observed=False, extra=
     ET.SubElement(request, "linkXml", path=str(original / "link.xml"))
     request_path = area / "request.xml"
     ET.ElementTree(request).write(request_path, encoding="utf-8", xml_declaration=True)
-    execution = command_run(["dotnet", "exec", companion, "--request", request_path], area, "companion",
-                            extra=extra, expected=None if observed else 0)
-    if execution.returncode:
-        assert observed and mode == "byref-token-core" and execution.returncode == 1
-        assert execution.stderr.decode().strip() == "ILDiet: error: " + REFANY, execution.stderr.decode()
-        assert inputs(original, refs) == before
-        receipt = {"classification": "exact-refanytype-error", "exit_code": 1, "input_sha256": before}
-        (area / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
-        return receipt
-    assert not observed or mode != "byref-token-core", "Frozen failing payload no longer reproduces the token failure"
+    command_run(["dotnet", "exec", companion, "--request", request_path], area, "companion", extra=extra)
     root, published = manifest(area / "publication")
     assert root.get("fallback") == "none" and root.find("counters").get("decode.max-per-method") == "1"
     assert root.get("contract") == contract_digest(request)
@@ -162,17 +150,11 @@ def publish(companion, probe, original, refs, area, mode, observed=False, extra=
         if ref.name != "GraphLib.dll":
             assert (published / ref.name).read_bytes() == ref.read_bytes(), ref
     policy(published / "preservation.xml", mode, published=True)
-    state = "observed-before" if observed else "published"
-    checked = command_run(["dotnet", "exec", probe, "--check-copied-array-fixtures", published, mode, state], area, "retained-check", extra=extra)
+    checked = command_run(["dotnet", "exec", probe, "--check-copied-array-fixtures", published, mode, "published"], area, "retained-check", extra=extra)
     actual = evidence(checked.stdout)
     original_evidence = json.loads((original.parent / "original-evidence.json").read_text())
     assert actual["tokens"] == original_evidence["tokens"] and actual["code"] == original_evidence["code"]
-    if observed and mode in ("byref-token-copied", "byref-token-rewritten"):
-        assert actual["array"] is True and actual["dependency"] is True, (mode, "Expected exact overadmission was not observed", actual)
-        if mode == "byref-token-rewritten":
-            assert actual["rewrittenBody"] is True
-    else:
-        assert actual["array"] == (mode in ARMED)
+    assert actual["array"] == (mode in ARMED)
     closure = command_run(["dotnet", "exec", probe, "--check-token-closure", *sorted(published.glob("*.dll"))], area, "closure", extra=extra)
     assert b"token-closure=valid operands=" in closure.stdout
     for name in INPUTS:
@@ -180,7 +162,7 @@ def publish(companion, probe, original, refs, area, mode, observed=False, extra=
         later = set(command_run(["dotnet", "exec", probe, "--relations", published / name], area, "after-" + name, extra=extra).stdout.splitlines())
         assert later and later <= earlier, (mode, name, later - earlier)
     assert inputs(original, refs) == before
-    receipt = {"classification": "original-token-runtime-overadmission" if observed and mode in NEGATIVE else "retention",
+    receipt = {"classification": "retention",
                "observation": actual, "files": {p.name: digest(p) for p in published.iterdir() if p.is_file()},
                "generation": root.get("generation"), "input_sha256": before,
                "counters": dict(root.find("counters").attrib)}

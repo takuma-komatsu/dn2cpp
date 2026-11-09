@@ -1572,6 +1572,22 @@ internal static partial class CoreIntrinsics
     public static bool SharesOneRuntimeType(string strippedFullName) =>
         IntrinsicGenericCppType(strippedFullName) is "Dn2CppThreadLocal*" or "Dn2CppBlockingCollection*";
 
+    // Validate the concrete token before metadata can erase a compound's leaf.
+    internal static bool HasExactTypedReferenceIdentity(TypeDesc type)
+    {
+        if (type.FunctionSignature is { } signature)
+        {
+            foreach (var child in signature.Types)
+                if (!HasExactTypedReferenceIdentity(child))
+                    return false;
+        }
+        if (type.Kind is TypeKind.SZArray or TypeKind.MDArray or TypeKind.ByRef or TypeKind.Pointer)
+            return type.Element is null || HasExactTypedReferenceIdentity(type.Element);
+        if (type.Class is { } cls)
+            return cls.IntrinsicCppName is not ("Dn2CppThreadLocal*" or "Dn2CppBlockingCollection*");
+        return type.ExternalName is null || !SharesOneRuntimeType(type.ExternalName);
+    }
+
     /// <summary>Whether the runtime struct behind an intrinsic value type (an
     /// IntrinsicCppName without a trailing <c>*</c>) embeds a pointer into collectible
     /// GC memory. The replaced BCL type's IL fields describe the wrong layout —
@@ -1658,6 +1674,7 @@ internal static partial class CoreIntrinsics
         // CppTypes.KindOf special: the C++ type string is what the arms agree
         // on; the stack kind is arm-divergent (see there).
         ["System.RuntimeTypeHandle"] = "const Dn2CppTypeInfo*",
+        ["System.TypedReference"] = "Dn2CppTypedReference",
         // The degraded stack-trace objects and the Parallel.For/ForEach result
         // struct referenced without their defining IL (a signature naming them
         // in an assembly compiled against a CoreLib/facade the transpile did

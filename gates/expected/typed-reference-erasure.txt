@@ -1,0 +1,8 @@
+direct=PlatformNotSupportedException
+generic integer=PlatformNotSupportedException
+generic string=PlatformNotSupportedException
+generic queue=PlatformNotSupportedException
+generic matrix=PlatformNotSupportedException
+generic container=accepted
+target integer=PlatformNotSupportedException
+target matrix=PlatformNotSupportedException

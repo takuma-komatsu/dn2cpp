@@ -77,6 +77,9 @@ internal enum RgctxSlotKind
     /// <summary>The precise array type-info for newarr's element token. An array
     /// element retains its whole identity: newarr of T[] allocates T[][].</summary>
     NewArrayTypeInfo,
+    /// <summary>A typed-reference token's exact type-info, or null when the
+    /// concrete type uses an erased identity and must be refused.</summary>
+    TypedReferenceTypeInfo,
 }
 
 /// <summary>One runtime-generic-context slot of a canonical owner class: the
