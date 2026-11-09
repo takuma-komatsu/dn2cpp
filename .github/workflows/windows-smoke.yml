@@ -8,9 +8,19 @@ on:
   schedule:
     - cron: '17 18 * * *'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Manual verification scope
+        type: choice
+        options: [suite, premerge-debug]
+        default: suite
+      expected_head:
+        description: Full commit SHA required for premerge-debug
+        type: string
+        default: ""
 
 concurrency:
-  group: windows-smoke-${{ (github.event_name == 'pull_request' || github.event_name == 'push') && 'fast' || 'suite' }}-${{ github.ref }}
+  group: windows-smoke-${{ (github.event_name == 'pull_request' || github.event_name == 'push') && 'fast' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'premerge-debug' && 'premerge-debug' || 'suite') }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 defaults:
@@ -27,6 +37,7 @@ env:
 
 jobs:
   smoke:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'premerge-debug'
     name: ${{ matrix.partition == 'suite' && 'windows-suite' || matrix.partition == 'limits' && 'windows-transpiler-limits' || matrix.partition == 'arrays' && 'windows-arrays' || 'windows-primitives' }}
     strategy:
       fail-fast: false
@@ -37,15 +48,25 @@ jobs:
     env:
       SMOKE_PROFILE: ${{ (github.event_name == 'pull_request' || github.event_name == 'push') && 'primitives' || 'suite' }}
     steps:
+      - name: Validate manual mode
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          MANUAL_MODE: ${{ inputs.mode }}
+        run: |
+          case "$MANUAL_MODE" in
+            ''|suite) ;;
+            *) echo "Unsupported manual mode: $MANUAL_MODE" >&2; exit 1 ;;
+          esac
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      # setup-dotnet also installs latest LTS runtime, defeating the oracle pin.
-      - name: Install isolated exact culture reference SDK
-        run: python gates/setup-culture-reference.py
+      # Install only the pinned SDK and its bundled runtime.
+      - name: Install isolated exact CI SDK
+        run: python gates/setup-culture-reference.py --profile ci
 
       # Bash and upload-artifact must resolve the same Windows-visible directory.
       - name: Resolve a Windows-visible LOGDIR
@@ -170,3 +191,13 @@ jobs:
             ${{ runner.temp }}/dn2cpp-gate-output/**/*.err
           retention-days: 7
           if-no-files-found: warn
+
+  premerge-debug:
+    name: windows-premerge-debug
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'premerge-debug'
+    uses: ./.github/workflows/premerge-debug.yml
+    permissions:
+      contents: read
+    with:
+      host: windows
+      expected_head: ${{ inputs.expected_head }}

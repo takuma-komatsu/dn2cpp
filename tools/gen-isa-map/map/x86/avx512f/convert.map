@@ -8,13 +8,15 @@
 # input yields the integer indefinite, where the portable conversion saturates.
 target = avx512f,avx512bw,avx512dq,avx512vl
 ConvertToVector128Byte(v512{T}) @ref(Vector128.Narrow(Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetLower(), Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetUpper()).AsByte()) = _mm512_cvt{epi}_epi8($0) for T in i32,u32
-ConvertToVector128Byte(v512i64) @ref(Vector128.Narrow(Vector128.Narrow(Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetLower(), Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetUpper()), Vector128<short>.Zero).AsByte()) = _mm512_cvtepi64_epi8($0)
-ConvertToVector128Byte(v512u64) @ref(Vector128.Narrow(Vector128.Narrow(Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetLower(), Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetUpper()), Vector128<ushort>.Zero)) = _mm512_cvtepi64_epi8($0)
-ConvertToVector128ByteWithSaturation(v512{T}) = _mm512_cvtus{epi}_epi8($0) for T in u32,u64
+ConvertToVector128Byte(v512i64) @ref(Vector128.Narrow(Vector128.Narrow(Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetLower(), Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetUpper()), Vector128<short>.Zero).AsByte()) = dn2cpp_isa_zero_extend<8>(_mm512_cvtepi64_epi8($0))
+ConvertToVector128Byte(v512u64) @ref(Vector128.Narrow(Vector128.Narrow(Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetLower(), Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetUpper()), Vector128<ushort>.Zero)) = dn2cpp_isa_zero_extend<8>(_mm512_cvtepi64_epi8($0))
+ConvertToVector128ByteWithSaturation(v512u32) = _mm512_cvtusepi32_epi8($0)
+ConvertToVector128ByteWithSaturation(v512u64) = dn2cpp_isa_zero_extend<8>(_mm512_cvtusepi64_epi8($0))
 ConvertToVector128SByte(v512{T}) @ref(Vector128.Narrow(Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetLower(), Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetUpper()).AsSByte()) = _mm512_cvt{epi}_epi8($0) for T in i32,u32
-ConvertToVector128SByte(v512i64) @ref(Vector128.Narrow(Vector128.Narrow(Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetLower(), Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetUpper()), Vector128<short>.Zero)) = _mm512_cvtepi64_epi8($0)
-ConvertToVector128SByte(v512u64) @ref(Vector128.Narrow(Vector128.Narrow(Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetLower(), Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetUpper()), Vector128<ushort>.Zero).AsSByte()) = _mm512_cvtepi64_epi8($0)
-ConvertToVector128SByteWithSaturation(v512{T}) = _mm512_cvts{epi}_epi8($0) for T in i32,i64
+ConvertToVector128SByte(v512i64) @ref(Vector128.Narrow(Vector128.Narrow(Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetLower(), Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetUpper()), Vector128<short>.Zero)) = dn2cpp_isa_zero_extend<8>(_mm512_cvtepi64_epi8($0))
+ConvertToVector128SByte(v512u64) @ref(Vector128.Narrow(Vector128.Narrow(Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetLower(), Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetUpper()), Vector128<ushort>.Zero).AsSByte()) = dn2cpp_isa_zero_extend<8>(_mm512_cvtepi64_epi8($0))
+ConvertToVector128SByteWithSaturation(v512i32) = _mm512_cvtsepi32_epi8($0)
+ConvertToVector128SByteWithSaturation(v512i64) = dn2cpp_isa_zero_extend<8>(_mm512_cvtsepi64_epi8($0))
 ConvertToVector128Int16(v512{T}) @ref(Vector128.Narrow(Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetLower(), Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetUpper()).AsInt16()) = _mm512_cvt{epi}_epi16($0) for T in i64,u64
 ConvertToVector128Int16WithSaturation(v512i64) = _mm512_cvtsepi64_epi16($0)
 ConvertToVector128UInt16(v512{T}) @ref(Vector128.Narrow(Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetLower(), Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetUpper()).AsUInt16()) = _mm512_cvt{epi}_epi16($0) for T in i64,u64

@@ -3,6 +3,7 @@
 import hashlib
 import importlib.util
 import io
+import json
 from pathlib import Path
 import subprocess
 import tempfile
@@ -16,6 +17,10 @@ spec.loader.exec_module(setup)
 
 
 class ReferenceSetupTests(unittest.TestCase):
+    profile = 'culture'
+    sdk = '10.0.402'
+    runtime = '10.0.13'
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='reference test space ')
         self.addCleanup(self.temp.cleanup)
@@ -26,12 +31,14 @@ class ReferenceSetupTests(unittest.TestCase):
                             'DOTNET_ROOT_X64': 'old-global-root'}
         self.data = b'controlled offline installer fixture\n'
 
-    def invoke(self, platform='linux', sdk=b'10.0.402\n', runtimes=b'Microsoft.NETCore.App 10.0.13 [root]\n', fail=False, valid_hash=True):
+    def invoke(self, platform='linux', sdk=None, runtimes=None, fail=False, valid_hash=True):
+        sdk = sdk if sdk is not None else (self.sdk + '\n').encode()
+        runtimes = runtimes if runtimes is not None else f'Microsoft.NETCore.App {self.runtime} [root]\n'.encode()
         hashes = {key: hashlib.sha256(self.data).hexdigest() if valid_hash else 'wrong'
                   for key in ('sh', 'ps1')}
         with patch.object(setup.shutil, 'which', return_value=str(self.directory / 'PowerShell Space' / 'pwsh')), patch.object(setup.sys, 'platform', platform), patch.object(setup, 'INSTALLER_HASHES', hashes), patch.object(setup.urllib.request, 'urlopen', return_value=io.BytesIO(self.data)) as download, patch.object(setup.subprocess, 'run', side_effect=subprocess.CalledProcessError(1, []) if fail else None) as run, patch.object(setup.subprocess, 'check_output', side_effect=[sdk, runtimes]):
             self.installer_run = run
-            install = setup.install_reference(self.environment)
+            install = setup.install_reference(self.environment, **({'profile': self.profile} if self.profile != 'ci' else {}))
         return install, run.call_args, download.call_args
 
     def test_exact_sdk_only_all_hosts_and_isolated_exports(self):
@@ -41,7 +48,7 @@ class ReferenceSetupTests(unittest.TestCase):
                 install, run, download = self.invoke(platform)
                 installs.append(install)
                 command = run.args[0]
-                self.assertIn(setup.SDK, command)
+                self.assertIn(self.sdk, command)
                 self.assertIn(str(install), command)
                 self.assertFalse(any(arg.lower() in ('--channel', '-channel', '--runtime', '-runtime') for arg in command))
                 # Windows may expand a RUNNER~1 short temp parent to runneradmin.
@@ -79,23 +86,59 @@ class ReferenceSetupTests(unittest.TestCase):
         self.assertFalse((self.directory / 'env').exists())
 
     def test_wrong_or_additional_runtime_rejected(self):
-        for runtimes in (b'Microsoft.NETCore.App 10.0.14 [root]\n',
-                         b'Microsoft.NETCore.App 10.0.13 [root]\nMicrosoft.NETCore.App 10.0.14 [root]\n'):
+        for runtimes in (b'Microsoft.NETCore.App 10.0.12 [root]\n',
+                         f"Microsoft.NETCore.App {'10.0.14' if self.profile == 'culture' else '10.0.13'} [root]\n".encode(),
+                         f'Microsoft.NETCore.App {self.runtime} [root]\nMicrosoft.NETCore.App 10.0.12 [root]\n'.encode(),
+                         b'Microsoft.NETCore.App 10.0.14-preview.1 [root]\n'):
             with self.subTest(runtimes=runtimes), self.assertRaisesRegex(RuntimeError, 'Unexpected isolated'):
                 self.invoke(runtimes=runtimes)
         self.assertFalse((self.directory / 'env').exists())
 
     def test_wrong_sdk_rejected(self):
         with self.assertRaisesRegex(RuntimeError, 'Unexpected isolated'):
-            self.invoke(sdk=b'10.0.403\n')
+            self.invoke(sdk=b'10.0.401\n')
 
-    def test_workflows_keep_exact_setup_without_optional_icu_preflight(self):
+
+class CiSetupTests(ReferenceSetupTests):
+    profile = 'ci'
+    sdk = '10.0.403'
+    runtime = '10.0.14'
+
+    def test_unpatched_culture_runtime_rejected(self):
+        with self.assertRaisesRegex(RuntimeError, 'Unexpected isolated'):
+            self.invoke(runtimes=b'Microsoft.NETCore.App 10.0.13 [root]\n')
+        self.assertFalse((self.directory / 'env').exists())
+        self.assertFalse((self.directory / 'path').exists())
+
+    def test_workflows_share_exact_ci_setup_without_optional_icu_preflight(self):
+        setup_command = 'python gates/setup-culture-reference.py --profile ci'
         for platform in ('linux', 'macos', 'windows'):
             source = (ROOT / f'.github/workflows/{platform}-smoke.yml').read_text(encoding='utf-8')
-            self.assertNotIn('uses: actions/setup-dotnet', source)
-            self.assertIn('run: python gates/setup-culture-reference.py', source)
-            self.assertNotIn('bash gates/check-culture-reference.sh', source)
-            self.assertLess(source.index('actions/setup-python'), source.index('run: python gates/setup-culture-reference.py'))
+            smoke, premerge = source.split('\n  premerge-debug:\n')
+            with self.subTest(platform=platform):
+                self.assertIn('run: ' + setup_command, smoke)
+                self.assertLess(smoke.index('actions/setup-python'), smoke.index('run: ' + setup_command))
+                self.assertIn("if: github.event_name == 'workflow_dispatch' && inputs.mode == 'premerge-debug'", premerge)
+                self.assertIn('uses: ./.github/workflows/premerge-debug.yml', premerge)
+                self.assertNotIn('uses: actions/setup-dotnet', source)
+                self.assertNotIn('--profile culture', source)
+                self.assertNotIn('bash gates/check-culture-reference.sh', source)
+        source = (ROOT / '.github/workflows/premerge-debug.yml').read_text(encoding='utf-8')
+        capture_command = 'bash gates/ci-premerge.sh capture sdk ' + setup_command
+        self.assertIn('run: ' + capture_command, source)
+        self.assertLess(source.index('actions/setup-python'), source.index(capture_command))
+        self.assertNotIn('uses: actions/setup-dotnet', source)
+        self.assertNotIn('--profile culture', source)
+        self.assertNotIn('bash gates/check-culture-reference.sh', source)
+
+    def test_shim_sdk_policy_allows_patched_feature_band(self):
+        for name in ('DnBrotli', 'DnZlib'):
+            sdk = json.loads((ROOT / 'internal' / name / 'global.json').read_text())['sdk']
+            self.assertEqual(sdk['rollForward'], 'latestFeature')
+            minimum = tuple(map(int, sdk['version'].split('.')))
+            selected = tuple(map(int, self.sdk.split('.')))
+            self.assertEqual(selected[:2], minimum[:2])
+            self.assertGreaterEqual(selected, minimum)
 
 
 if __name__ == '__main__':

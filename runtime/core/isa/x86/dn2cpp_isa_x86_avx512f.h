@@ -1650,7 +1650,7 @@ DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2Cpp
 DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avx512f_converttovector128byte_v512i64(const Dn2CppVector512& a0)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx512F, "System.Runtime.Intrinsics.X86.Avx512F.ConvertToVector128Byte");
-    return dn2cpp_isa_vec<16>(_mm512_cvtepi64_epi8(dn2cpp_isa_bits<__m512i>(a0)));
+    return dn2cpp_isa_vec<16>(dn2cpp_isa_zero_extend<8>(_mm512_cvtepi64_epi8(dn2cpp_isa_bits<__m512i>(a0))));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avx512f_converttovector128byte_v512i64(const Dn2CppVector512&)
@@ -1676,7 +1676,7 @@ DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2Cpp
 DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avx512f_converttovector128byte_v512u64(const Dn2CppVector512& a0)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx512F, "System.Runtime.Intrinsics.X86.Avx512F.ConvertToVector128Byte");
-    return dn2cpp_isa_vec<16>(_mm512_cvtepi64_epi8(dn2cpp_isa_bits<__m512i>(a0)));
+    return dn2cpp_isa_vec<16>(dn2cpp_isa_zero_extend<8>(_mm512_cvtepi64_epi8(dn2cpp_isa_bits<__m512i>(a0))));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avx512f_converttovector128byte_v512u64(const Dn2CppVector512&)
@@ -1702,7 +1702,7 @@ DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2Cpp
 DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avx512f_converttovector128bytewithsaturation_v512u64(const Dn2CppVector512& a0)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx512F, "System.Runtime.Intrinsics.X86.Avx512F.ConvertToVector128ByteWithSaturation");
-    return dn2cpp_isa_vec<16>(_mm512_cvtusepi64_epi8(dn2cpp_isa_bits<__m512i>(a0)));
+    return dn2cpp_isa_vec<16>(dn2cpp_isa_zero_extend<8>(_mm512_cvtusepi64_epi8(dn2cpp_isa_bits<__m512i>(a0))));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avx512f_converttovector128bytewithsaturation_v512u64(const Dn2CppVector512&)
@@ -1767,7 +1767,7 @@ DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2Cpp
 DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avx512f_converttovector128sbyte_v512i64(const Dn2CppVector512& a0)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx512F, "System.Runtime.Intrinsics.X86.Avx512F.ConvertToVector128SByte");
-    return dn2cpp_isa_vec<16>(_mm512_cvtepi64_epi8(dn2cpp_isa_bits<__m512i>(a0)));
+    return dn2cpp_isa_vec<16>(dn2cpp_isa_zero_extend<8>(_mm512_cvtepi64_epi8(dn2cpp_isa_bits<__m512i>(a0))));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avx512f_converttovector128sbyte_v512i64(const Dn2CppVector512&)
@@ -1793,7 +1793,7 @@ DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2Cpp
 DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avx512f_converttovector128sbyte_v512u64(const Dn2CppVector512& a0)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx512F, "System.Runtime.Intrinsics.X86.Avx512F.ConvertToVector128SByte");
-    return dn2cpp_isa_vec<16>(_mm512_cvtepi64_epi8(dn2cpp_isa_bits<__m512i>(a0)));
+    return dn2cpp_isa_vec<16>(dn2cpp_isa_zero_extend<8>(_mm512_cvtepi64_epi8(dn2cpp_isa_bits<__m512i>(a0))));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avx512f_converttovector128sbyte_v512u64(const Dn2CppVector512&)
@@ -1819,7 +1819,7 @@ DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2Cpp
 DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avx512f_converttovector128sbytewithsaturation_v512i64(const Dn2CppVector512& a0)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx512F, "System.Runtime.Intrinsics.X86.Avx512F.ConvertToVector128SByteWithSaturation");
-    return dn2cpp_isa_vec<16>(_mm512_cvtsepi64_epi8(dn2cpp_isa_bits<__m512i>(a0)));
+    return dn2cpp_isa_vec<16>(dn2cpp_isa_zero_extend<8>(_mm512_cvtsepi64_epi8(dn2cpp_isa_bits<__m512i>(a0))));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avx512f_converttovector128sbytewithsaturation_v512i64(const Dn2CppVector512&)

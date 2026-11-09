@@ -182,6 +182,35 @@ PY
             _platform_isa_native_plan_self_check
             _platform_isa_native_retry_self_check
             ;;
+        isa-stack-reserve)
+            source gates/_platform_isa.sh
+            eval "$(sed -n '/^is_msvc_compiler() {/,/^}/p' gates/_common.sh)"
+            # Observe the probe's build context before any SDK/native work, then
+            # fail the gate to check that even its failure path restores callers.
+            _platform_isa_witness_normalization_self_check() {
+                printf '%s\n' "${DN2CPP_EXTRA_LINK_FLAGS:-}" > "$fixture/isa-link-flags"
+                return 1
+            }
+            check_isa_stack_scope() {
+                local DN2CPP_OS="$1" CMAKE_CXX_COMPILER="$2"
+                local DN2CPP_EXTRA_LINK_FLAGS="$3" expected="$4"
+                local DN2CPP_PLATFORM_ISA_FULL
+                for DN2CPP_PLATFORM_ISA_FULL in 0 1; do
+                    if platform_isa_native_gate; then
+                        echo 'FAIL: ISA probe ignored a failed prerequisite check' >&2
+                        return 1
+                    fi
+                    test "$(cat "$fixture/isa-link-flags")" = "$expected"
+                    test "$DN2CPP_EXTRA_LINK_FLAGS" = "$3"
+                done
+            }
+            check_isa_stack_scope windows cl '' '-STACK:8388608'
+            check_isa_stack_scope windows cl.exe '-DEBUG -OPT:REF' '-DEBUG -OPT:REF -STACK:8388608'
+            check_isa_stack_scope windows 'C:\MSVC\cl.exe' '-DEBUG' '-DEBUG -STACK:8388608'
+            check_isa_stack_scope windows clang++ '-Wl,--gc-sections' '-Wl,--gc-sections'
+            check_isa_stack_scope linux cl '-Wl,--gc-sections' '-Wl,--gc-sections'
+            check_isa_stack_scope macos clang++ '-Wl,-dead_strip' '-Wl,-dead_strip'
+            ;;
         cache-policy)
             _DN2CPP_GATE_ROOT="$fixture/cache-root"
             mkdir -p "$_DN2CPP_GATE_ROOT/gates" "$_DN2CPP_GATE_ROOT/docs"
@@ -330,6 +359,7 @@ run_case 1 range-missing
 run_case 1 range-duplicate
 run_case 1 range-reversed
 run_case 0 isa-helpers
+run_case 0 isa-stack-reserve
 run_case 0 cache-policy
 run_case 0 literal
 printf 'payload\r\n' > "$fixture/native.input"
