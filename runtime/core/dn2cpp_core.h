@@ -1411,6 +1411,8 @@ struct Dn2CppDelegateMethodCatalog
     int32_t methodCount;
 };
 void dn2cpp_set_delegate_method_catalog(const Dn2CppDelegateMethodCatalog* rows, int32_t count);
+// Exact retained CultureInfo getter; no general intrinsic-type metadata mutation.
+void dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 Dn2CppObject* dn2cpp_delegate_object_virtual_invoker(void* fn, Dn2CppObject* receiver,
     Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
 
@@ -1518,6 +1520,8 @@ struct Dn2CppDelegate : Dn2CppObject
     const Dn2CppDelegateMethodIdentity* identity;
     Dn2CppObject* entry;
     std::atomic<Dn2CppDelegateInvocationCache*> invocationCache;
+    // Monotonic: a chain node has copied this entry's binding.
+    std::atomic<bool> bindingSnapshotted;
 };
 
 // A reflection-bound delegate's context node (MethodInfo.CreateDelegate /
@@ -1876,6 +1880,7 @@ Dn2CppType* dn2cpp_nullable_get_underlying(Dn2CppType* t);
 // The value arrives BOXED: the enum type is chosen at run time at these call sites, so
 // only this side can read the payload at the enum's own model width.
 Dn2CppString* dn2cpp_enum_get_name(Dn2CppType* t, Dn2CppObject* value);
+Dn2CppString* dn2cpp_enum_get_name_u64(Dn2CppType* t, uint64_t value);
 int32_t dn2cpp_enum_is_defined(Dn2CppType* t, Dn2CppObject* value);
 Dn2CppObject* dn2cpp_enum_parse_type(Dn2CppType* t, Dn2CppString* s, int32_t ignoreCase);
 // Enum.TryParse(Type, string[, ignoreCase], out object): returns 1 + *out=boxed enum on
@@ -3444,6 +3449,12 @@ int64_t dn2cpp_gc_get_total_memory(int32_t forceFullCollection);
 // counter (GC_get_gc_no); 0 under the calloc fallback (no collections occur).
 int32_t dn2cpp_gc_collection_count();
 
+// Completed managed-execution pauses in 100 ns ticks, independent of diagnostic
+// reporting. Threaded collectors measure STW windows; synchronous nonthreaded
+// collectors measure full collections. Nonthreaded incremental mode is unsupported.
+// The calloc fallback has no collections and therefore no collection pauses.
+int64_t dn2cpp_gc_total_pause_ticks();
+
 // The two heap-accounting figures the vendored Boehm GC exposes directly, used
 // to fill the honest fields of System.GC.GetGCMemoryInfo()'s GCMemoryInfoData
 // (heap size, and the free/fragmented bytes within it); committed bytes mirror
@@ -4679,7 +4690,10 @@ Dn2CppObject* dn2cpp_template_unbox_any(Dn2CppObject* obj, const Dn2CppTypeInfo*
 Dn2CppObject* dn2cpp_template_box(Dn2CppObject* obj, const Dn2CppTypeInfo* ti);
 // The U of a closed Nullable<U> type-info, else null.
 const Dn2CppTypeInfo* dn2cpp_nullable_underlying_ti(const Dn2CppTypeInfo* ti);
-// Whether `ti` is Nullable<u>. No box of a Nullable exists, so a boxed U passes a
+// Internal invocation adapters exchange raw Nullable<T> boxes; ordinary boxing
+// exposes null or a boxed T instead. Reboxing preserves payload bits and references.
+Dn2CppObject* dn2cpp_rebox_from_nullable(Dn2CppObject* value);
+// Whether `ti` is Nullable<u>. Ordinary boxing produces a boxed U, which passes a
 // Nullable<U> type test and Type.IsAssignableFrom(Nullable<U>, U) holds. The rule
 // stays out of dn2cpp_typeinfo_assignable, whose callers also read an answer as
 // the same representation.
@@ -8090,6 +8104,8 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_current_ui();
 void dn2cpp_culture_set_current_ui(const Dn2CppNumberFormatInfo* c);
 const Dn2CppNumberFormatInfo* dn2cpp_culture_installed_ui();
 Dn2CppString* dn2cpp_culture_name(const Dn2CppNumberFormatInfo* c);
+Dn2CppString* dn2cpp_culture_sort_name(const Dn2CppNumberFormatInfo* c);
+void dn2cpp_compare_info_require_native_culture(const Dn2CppNumberFormatInfo* c);
 Dn2CppString* dn2cpp_culture_two_letter_iso_language_name(const Dn2CppNumberFormatInfo* c);
 Dn2CppString* dn2cpp_culture_tostring(const Dn2CppNumberFormatInfo* c);
 Dn2CppString* dn2cpp_textinfo_tostring(const Dn2CppNumberFormatInfo* c);
@@ -8708,7 +8724,7 @@ bool dn2cpp_datetimeoffset_try_parse_exact_multi(Dn2CppString* s, Dn2CppArrayRef
 // The invariant DTFI's abbreviated month/day names (string[]), for the synthesized
 // CultureInfo.DateTimeFormat — see dn2cpp_system_datetime.cpp. arrType is the precise
 // string[] type-info so the getter's castclass to it succeeds.
-Dn2CppArrayRef* dn2cpp_dtfi_invariant_abbrev_month_names(const Dn2CppTypeInfo* arrType);
+Dn2CppArrayRef* dn2cpp_dtfi_invariant_month_names(const Dn2CppTypeInfo* arrType, bool abbreviated);
 Dn2CppArrayRef* dn2cpp_dtfi_invariant_abbrev_day_names(const Dn2CppTypeInfo* arrType);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse(Dn2CppString* s);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse_exact(Dn2CppString* s, Dn2CppString* fmt);

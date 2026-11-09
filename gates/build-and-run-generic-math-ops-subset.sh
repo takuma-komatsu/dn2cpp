@@ -41,7 +41,7 @@
 # interface's own explicit static impls resolve the static abstract members, and
 # an unimplemented static-virtual default still binds the default body.
 source "$(dirname "$0")/_common.sh"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|static-impl-selection-prefix:${DN2CPP_BEFORE_STATIC_IMPL_SELECTION:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|static-impl-selection-prefix:${DN2CPP_BEFORE_STATIC_IMPL_SELECTION:-}|scalar-leaf-prefix:${DN2CPP_BEFORE_SCALAR_NUMERIC_LEAVES:-}"
 
 gate_extra_asserts() {
     local out="$1"
@@ -61,6 +61,15 @@ gate_extra_asserts() {
         --before '== Static interface implementation selection ==' --policy crlf
     gate_output compare "$out/static-selection-prefix.stdout" "$out/static-selection-before.stdout"
 
+    gate_output witness "$out/native.stdout" '== Primitive span parsing done ==' --count 1 --policy crlf
+    DN2CPP_BEFORE_SCALAR_NUMERIC_LEAVES=1 gate_capture_ok "$out/scalar-leaves-before" \
+        run_bounded "$out/GenericMathOpsSubset$EXE_EXT"
+    gate_output select "$out/native.stdout" "$out/scalar-leaves-prefix.stdout" \
+        --before '== Primitive span parsing managed bodies ==' --policy crlf
+    gate_output compare "$out/scalar-leaves-prefix.stdout" "$out/scalar-leaves-before.stdout"
+    DN2CPP_BEFORE_SCALAR_NUMERIC_LEAVES=1 gate_capture_ok "$out/scalar-leaves-oracle-before" \
+        run_bounded dotnet "$_CG_APP"
+    gate_output compare "$out/scalar-leaves-prefix.stdout" "$out/scalar-leaves-oracle-before.stdout"
 }
 
 corelib_diff_gate GenericMathOpsSubset System.Runtime

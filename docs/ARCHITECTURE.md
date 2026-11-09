@@ -379,6 +379,27 @@ Core invariants:
   equality keeps its slot empty, and the runtime array-search guard reports
   `NotSupportedException` if that equality is actually needed.
 
+- **Structural value equality compares unmanaged data-pointer fields by address**,
+  including nested ordinary structs. It never reads pointees or compares the
+  struct's raw bytes. The matching hash folds a pointer-sized unsigned address
+  after widening to 64 bits; equal values hash equally, without promising CLR
+  numeric hash parity or stability between processes. Function-pointer and byref
+  fields and unsupported structural layouts remain excluded. This field rule does not admit general pointer keys or ordering.
+- **Explicit-layout structural equality is limited to fixed-width integer and
+  integer-backed enum fields.** Each field is copied from its declared offset into
+  scalar storage before comparison or hashing, avoiding inactive C++ union reads.
+  Overlapping aliases may contribute repeatedly; padding never contributes.
+  Existing layout size, alignment and overlap validation remains authoritative.
+  Boolean, character, native-sized integer, floating, reference, pointer, nested
+  value and inline-array fields are outside this explicit-layout subset.
+- **Non-generic CoreLib GCHandle equality uses its opaque handle-cell identity**,
+  including comparer and structural-field paths. Copies compare equally; separate
+  handles to the same target do not. Equality and hashing use the existing token
+  conversion without reading the target or managed field layout. Hashing matches
+  the existing native GCHandle hash operation, not CLR numeric hash values.
+  Allocation, freeing, lifetime policy, generic handles and ordering are outside
+  this contract.
+
 ## 2. Modules and the core⇄target contract
 
 | C# project | Role |
@@ -708,6 +729,32 @@ An erased indirect read can materialize an identity wrapper; pending objects and
 on the IL evaluation stack therefore stay live across `ldind.ref` and `ldobj` on Web.
 Runtime argument-exception helpers likewise keep earlier managed operands live
 while constructing later message, parameter-name and boxed-value operands.
+
+The exact DateTimeFormatInfo and CultureInfo CompareInfo getters share a genuine
+managed CompareInfo under the native invariant-comparison policy. A single linked
+typed factory initializes its actual name fields to the rooted empty string and
+publishes only the complete object through a mutex-protected scanned pinned root.
+It neither invokes the managed constructor/InitSort nor re-enters the CompareInfo
+type initializer. Ordinary type initialization and the real Name, Equals and
+GetHashCode bodies remain intact. Null receivers fail before cache access; cold
+allocation is conservatively classified even for warmed callers. This does not
+initialize ICU/NLS handles or add arbitrary linguistic comparison capabilities.
+
+Native CultureInfo values have a headerless representation distinct from managed
+subclasses. An exact getter virtual/address/reflection demand combined with an
+actually allocated descendant overriding that slot is diagnosed as unsupported,
+not silently redirected to the invariant base result. A directly proven native
+InvariantCulture producer and explicit nonvirtual base calls remain valid. Merely
+loading or preserving subtype/getter metadata does not establish dispatch demand.
+Opaque reflection conservatively considers available getter rows when invocation
+or delegate binding is used; it does not infer which runtime method is selected.
+No general CultureInfo subclass ABI or virtual-dispatch framework is introduced.
+
+The existing public AbbreviatedMonthNames and AbbreviatedMonthGenitiveNames
+getters return fresh detached clones of shared, precise String[] backing arrays.
+The cache follows the precise-type keyed, mutex-protected pinned-root pattern;
+its scanned roots keep the arrays and their strings alive. First use allocates
+and is classified accordingly; warm lookup reuses the arrays.
 
 #### Platform ISA contract
 

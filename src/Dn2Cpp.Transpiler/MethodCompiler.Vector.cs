@@ -597,7 +597,10 @@ internal sealed partial class MethodCompiler
                     Push(StackKind.Struct, outCpp, expr);
                     return true;
                 }
-                Push(StackKind.Struct, outCpp, $"dn2cpp_vec_get_lower<{et}, {srcW}>({Val(src, srcCpp)})");
+                string narrowed = Val(src, srcCpp);
+                for (int width = srcW; width > outW; width /= 2)
+                    narrowed = $"dn2cpp_vec_get_lower<{et}, {width}>({narrowed})";
+                Push(StackKind.Struct, outCpp, narrowed);
                 return true;
             }
 

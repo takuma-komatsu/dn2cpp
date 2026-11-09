@@ -28,4 +28,9 @@ export DN2CPP_GATE_EXTRA_INPUTS="gates/_vector-floating-point.sh"
 source "$(dirname "$0")/_vector-regression-checks.sh"
 
 corelib_diff_gate VectorProbe
+# The narrowing regression runs after the existing unchanged output.
+DOTNET_EnableAVX=0 gate_capture_ok "$_CG_OUT/before-explicit" run_bounded dotnet "$_CG_APP" before-explicit
+gate_output prefix "$_CG_OUT/native.stdout" "$_CG_OUT/before-explicit.stdout" \
+    --before '-- vector block repetition and narrowing --' --policy crlf
+gate_output witness "$_CG_OUT/native.stdout" '-- vector probe complete --' --count 1 --policy crlf
 vector_fma_branches "$_CG_APP"

@@ -1264,7 +1264,8 @@ internal sealed partial class CppEmitter
                 // RenderMemberTables' guard + BuildMemberTable's row trim.
                 if (_e.IsCanonicalWorld(cls)
                     || _e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls)
-                        && !_e._constructorRowOwners.Contains(cls))
+                        && !_e._constructorRowOwners.Contains(cls)
+                        && !cls.Methods.Any(IsRetainedOpaqueMemberRow))
                     continue;
                 bool keepRefl = _c.KeepsReflectionMetadata(cls);
                 var propertyAccessors = ReflectionAccessorHandles(cls);
@@ -1272,7 +1273,8 @@ internal sealed partial class CppEmitter
                 foreach (var m in _e.ReflectionMethods(cls))
                 {
                     if (_e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls)
-                        && !_e._activationConstructorRows.Contains(m))
+                        && !_e._activationConstructorRows.Contains(m)
+                        && !IsRetainedOpaqueMemberRow(m))
                         continue;
                     bool methodRow = m.Name != ".ctor" && m.Name != ".cctor"
                         && !(_c.SharedGenericsEnabled
@@ -1420,6 +1422,8 @@ internal sealed partial class CppEmitter
                 _e._genericDefSyms[gi.DefName] = defSym;
                 var defFlagBits = new List<string> { "DN2CPP_TF_GENERICDEF" };
                 AddGenericDefKindFlags(defFlagBits, c.IsValueType, c.IsInterface, c.IsAbstract, c.IsSealed, c.IsDelegate);
+                if (IsNestedType(c))
+                    defFlagBits.Add("DN2CPP_TF_NESTED");
                 if (IsArrayGenericItfDef(gi.DefName))
                     defFlagBits.Add("DN2CPP_TF_ARRAY_GEN_ITF");
                 string defFlags = "(" + string.Join(" | ", defFlagBits) + ")";
@@ -1473,6 +1477,8 @@ internal sealed partial class CppEmitter
                     flagBits.Add("DN2CPP_TF_ABSTRACT");
                 if (c.IsSealed)
                     flagBits.Add("DN2CPP_TF_SEALED");
+                if (IsNestedType(c))
+                    flagBits.Add("DN2CPP_TF_NESTED");
                 string flags = flagBits.Count == 0 ? "0" : string.Join(" | ", flagBits);
                 string toString = _c.GenericDefFullName(c) == "System.Threading.Tasks.ValueTask"
                     && c.Context.TypeArgs.Length == 1
@@ -1720,6 +1726,8 @@ internal sealed partial class CppEmitter
                 // as real .NET does. An interface is also abstract, mirroring the
                 // closed-type flag rule above.
                 AddGenericDefKindFlags(flagBits, cls.IsValueType, cls.IsInterface, cls.IsAbstract, cls.IsSealed, cls.IsDelegate);
+                if (IsNestedType(cls))
+                    flagBits.Add("DN2CPP_TF_NESTED");
                 if (cls.IsByRefLike)
                     flagBits.Add("DN2CPP_TF_BYREFLIKE");
                 if (varMask != 0)
@@ -1918,7 +1926,12 @@ internal sealed partial class CppEmitter
                     _o.AppendMetadata(block.ToString());
             }
 
+            // These catalogs share the primary TU, not the last metadata chunk's local thunks.
+            _invokerThunks.Clear();
+            _invokerMissStubs.Clear();
+            _slotStubs.Clear();
             EmitDelegateMethodCatalog();
+            EmitCultureCompareInfoRow();
             _e.EmitArrayTypeInfos(_sb, _emittedEnums);
             _e.EmitMdArrayItfMap(_sb);
             _e.EmitArrayNongenericItfRows(_sb);
@@ -1940,6 +1953,27 @@ internal sealed partial class CppEmitter
             // the moment it returns (EmitTypeInfos keeps no field), so a census anywhere
             // later would report the pools as free rather than as big.
             Census();
+        }
+
+        // CultureInfo owns its runtime type-info. Attach only the exact retained getter.
+        private void EmitCultureCompareInfoRow()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.FullName != "System.Globalization.CultureInfo") continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsInvariantCompareInfoGetter(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "culturecompareinfotab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained CultureInfo.CompareInfo has no metadata row.");
+                    }
+                    _e._cultureCompareInfoRow = address;
+                    return;
+                }
+            }
         }
 
         private void EmitDelegateMethodCatalog()
@@ -3559,6 +3593,7 @@ internal sealed partial class CppEmitter
                         : m.Name == "Equals" ? "dn2cpp_object_equals_virtual" : "dn2cpp_object_gethashcode");
                     invoker = "(void*)&dn2cpp_delegate_object_virtual_invoker";
                 }
+                if (fnPtr != "nullptr") _c.NoteInvariantCompareInfoReflectionRow(m);
                 bool preservable = fnPtr == "nullptr" && !symbolic && _c.IsPreservableTemplateRow(m);
                 // Reflection, a bound delegate and the interpreter enter the row with no
                 // compiled call site to run the initializer the entry triggers.
@@ -3753,6 +3788,11 @@ internal sealed partial class CppEmitter
         // thunk per distinct C++ ABI shape. Emitted before the type-info
         // definition so the initializer can name them. GetMethods excludes ctors and
         // GetConstructors excludes methods, matching .NET's split.
+        private bool IsRetainedOpaqueMemberRow(MethodInfo method) =>
+            _c.KeepsReflectionMetadata(method.DeclaringClass)
+            && (_c.Reachable.Contains(method) || _c.KeepsUnreachedRow(method))
+            && CoreIntrinsics.IsInvariantCompareInfoGetter(method);
+
         private void RenderMemberTables(ClassInfo cls)
         {
             // Skip opaque/intrinsic types (System.Object/ValueType/Exception/…): their
@@ -3768,6 +3808,9 @@ internal sealed partial class CppEmitter
                 if (BuildMemberTable(cls, activationCtors, "ctortab") is { } table)
                     _ctorTabs[cls] = table;
                 NoteListedCtors(cls, activationCtors);
+                var valueMethods = cls.Methods.Where(m => m.Name != ".ctor" && IsRetainedOpaqueMemberRow(m)).ToList();
+                if (BuildMemberTable(cls, valueMethods, "methtab") is { } values)
+                    _methodTabs[cls] = values;
                 return;
             }
             // Dedupe by CppName: a class can list the same method twice (e.g. an

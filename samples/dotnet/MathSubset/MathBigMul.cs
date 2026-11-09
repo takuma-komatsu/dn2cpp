@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 
 // Math.BigMul across all six overloads: the widening 32-bit forms, the
 // 64-bit (a, b, out low) forms returning the high half, and the
@@ -58,6 +59,17 @@ static class Program
         PrintUInt128(Math.BigMul(ulong.MaxValue, ulong.MaxValue)); // 2^64-2, 1
         PrintUInt128(Math.BigMul(0UL, ulong.MaxValue));            // 0, 0
         PrintUInt128(Math.BigMul(1UL << 63, 4UL));                 // 2, 0
+    }
+
+    // A null output reference reaches the shared 64-bit helper unchecked.
+    internal static void RunNullOutput()
+    {
+        string unsigned, signed;
+        try { Math.BigMul(ulong.MaxValue, 3UL, out Unsafe.NullRef<ulong>()); unsigned = "none"; }
+        catch (Exception e) { unsigned = e.GetType().Name; }
+        try { Math.BigMul(long.MinValue, 3L, out Unsafe.NullRef<long>()); signed = "none"; }
+        catch (Exception e) { signed = e.GetType().Name; }
+        Console.WriteLine("math null output ulong=" + unsigned + " long=" + signed);
     }
 
     private static void PrintInt128(Int128 v)

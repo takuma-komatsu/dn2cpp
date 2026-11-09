@@ -497,6 +497,7 @@ ORDERED_PROJECTS=(
     # Shared fixture outside samples/: build once before array-core and
     # wasm-console consume it under DN2CPP_SKIP_BUILD.
     "gates/fixtures/md-readonly-byrefs/MdReadonlyByrefs.csproj"
+    "gates/fixtures/compare-info-override/CompareInfoOverride.csproj"
 )
 
 # Projects whose restore/build is part of the gate's asserted acquisition path.

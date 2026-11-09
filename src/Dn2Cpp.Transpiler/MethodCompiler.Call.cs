@@ -405,6 +405,7 @@ internal sealed partial class MethodCompiler
     {
         // The raw call token, for rgctx slot keying (verified before use).
         _callSiteToken = insn.Token;
+        _callSiteOffset = insn.Offset;
         _callIsVirtual = isCallvirt;
         var handle = SRME.EntityHandle(insn.Token);
         EnsureCallCctorBefore(handle);
@@ -538,6 +539,11 @@ internal sealed partial class MethodCompiler
                 // EmitRuntimePrimitive is TOTAL over the predicate — it still selects on the
                 // shape, but an unmodeled shape leaves through a throw, never through
                 // EmitManagedCall.
+                if (CoreIntrinsics.IsInvariantCompareInfoGetter(callee))
+                {
+                    EmitManagedCall(callee, isCallvirt);
+                    return;
+                }
                 if (TryEmitMethodDefIntercept(CoreIntrinsics.MdRuntimePrimitive, callee))
                     return;
                 // Framework EventSource tracing guards: EventSource.IsEnabled() ->
@@ -1178,6 +1184,11 @@ internal sealed partial class MethodCompiler
                     // Runtime primitives referenced across assemblies need the same
                     // route as an intra-CoreLib MethodDef. NativeLibrary is the
                     // important case: a user resolver calls Load through a MemberRef.
+                    if (CoreIntrinsics.IsInvariantCompareInfoGetter(real))
+                    {
+                        EmitManagedCall(real, isCallvirt);
+                        return;
+                    }
                     if (TryEmitMethodDefIntercept(CoreIntrinsics.MdRuntimePrimitive, real))
                         return;
                     // The framework EventSource tracing guards, reached as a
@@ -1559,6 +1570,14 @@ internal sealed partial class MethodCompiler
 
     private void EmitManagedCall(MethodInfo callee, bool isCallvirt)
     {
+        if (CoreIntrinsics.IsInvariantCompareInfoGetter(callee))
+        {
+            if (isCallvirt && !_c.IsNativeInvariantCompareInfoReceiver(_method, _callSiteOffset, callee))
+                _c.NoteInvariantCompareInfoDispatchDemand(callee);
+            EmitRuntimePrimitive(callee);
+            return;
+        }
+
         // Target-specific call intrinsics (e.g. Godot shim methods) get first
         // refusal; the core emitter itself has no target knowledge.
         if (_intrinsics is not null && _intrinsics.TryEmitCall(this, callee, isCallvirt))
@@ -2622,6 +2641,13 @@ internal sealed partial class MethodCompiler
                 };
                 EmitGenericMathCheckedOp(chk, al, Cast(a, ct), Cast(b, ct));
             }
+            else if (arith is "&" or "|" or "^" && al.Primitive is PrimitiveTypeCode.Single or PrimitiveTypeCode.Double)
+            {
+                // Float bitwise operators combine the raw IEEE bit patterns, like
+                // op_OnesComplement; C++ has no bitwise operators on floating types.
+                string w = al.Primitive is PrimitiveTypeCode.Single ? "r4" : "r8";
+                Push(StackKind.R8, ct, $"dn2cpp_bits_{w}(dn2cpp_{w}_bits({Cast(a, ct)}) {arith} dn2cpp_{w}_bits({Cast(b, ct)}))");
+            }
             else
             {
                 Push(CppTypes.KindOf(al), ct, WrapToStorage(al, $"(({Cast(a, ct)}) {arith} ({Cast(b, ct)}))"));
@@ -3541,6 +3567,14 @@ internal sealed partial class MethodCompiler
     internal static bool IsCancellationTokenValue(TypeDesc t) =>
         t is { Kind: TypeKind.Class, Class: { IsValueType: true, FullName: "System.Threading.CancellationToken" } };
 
+    // GCHandle's opaque cell is not described by its managed _handle field layout.
+    internal static bool IsGCHandleValue(TypeDesc t) =>
+        t is { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false,
+            FullName: "System.Runtime.InteropServices.GCHandle", GenericArity: 0,
+            IntrinsicCppName: "Dn2CppGCHandle" } c }
+        && c.Module.AssemblyName == "System.Private.CoreLib"
+        && c.Context.TypeArgs.Length == 0;
+
     private string EqualityHashExpr(TypeDesc keyType, StackEntry key)
     {
         if (keyType.IsCanonPlaceholder && !keyType.IsObject)
@@ -3553,6 +3587,12 @@ internal sealed partial class MethodCompiler
             return $"(int32_t)({Cast(key, "int32_t")})";
         if (IsCancellationTokenValue(keyType))
             return $"(int32_t)(uintptr_t)(({Cast(key, "Dn2CppCancelToken")}).source)";
+        if (IsGCHandleValue(keyType))
+        {
+            // Match the existing public GCHandle.GetHashCode token conversion.
+            string handle = $"(uint64_t)dn2cpp_gchandle_to_intptr({Cast(key, "Dn2CppGCHandle")})";
+            return $"(int32_t)(({handle}) ^ (({handle}) >> 32))";
+        }
         // A reference-type key (a record/class with value equality, System.Type for
         // a record's EqualityContract, or plain object identity) dispatches its
         // GetHashCode override via the type-info slot, else an identity hash.
@@ -3701,6 +3741,7 @@ internal sealed partial class MethodCompiler
             || IsReferenceKeyType(t)
             || IntrinsicValueTypeFn(t) is not null
             || IsCancellationTokenValue(t)
+            || IsGCHandleValue(t)
             || IntrinsicPointerValueType(t) is not null
             || (EqualityStructArm(t) is { } sc
                 && (Compilation.EffectiveTypedEquals(sc) is not null
@@ -3761,6 +3802,8 @@ internal sealed partial class MethodCompiler
         }
         if (IsCancellationTokenValue(keyType))
             return $"((({Cast(a, "Dn2CppCancelToken")}).source == ({Cast(b, "Dn2CppCancelToken")}).source) ? 1 : 0)";
+        if (IsGCHandleValue(keyType))
+            return $"(dn2cpp_gchandle_to_intptr({Cast(a, "Dn2CppGCHandle")}) == dn2cpp_gchandle_to_intptr({Cast(b, "Dn2CppGCHandle")}) ? 1 : 0)";
         // The closed element type decides whether GenericEqualityComparer<T> calls
         // IEquatable<T>.Equals. A shared body reads that type from its call-site
         // context; the receiver's runtime type may implement other instantiations.

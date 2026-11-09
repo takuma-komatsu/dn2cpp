@@ -145,6 +145,13 @@ gate_extra_asserts() {
         gate_output byte-witness "$native" "$line" --policy crlf \
             || { echo "FAIL: floating-point comparison coverage missing: $line" >&2; exit 1; }
     done
+
+    gate_capture_ok "$out/assert-before-mixed-bigmul" run_bounded dotnet "$_CG_APP" before-mixed-bigmul
+    before="$out/assert-before-mixed-bigmul.stdout"
+    prefix="$out/assert-mixed-bigmul-prefix.stdout"
+    gate_output select "$native" "$prefix" --before 'math null output ulong=NullReferenceException long=NullReferenceException' --policy crlf
+    gate_output compare "$prefix" "$before"
+    gate_output byte-witness "$native" 'math null output ulong=NullReferenceException long=NullReferenceException' --count 1 --policy crlf
 }
 
 corelib_diff_gate MathSubset

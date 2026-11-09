@@ -223,6 +223,9 @@ internal static partial class Program
         if (args.Length != 0 && args[0] == "before-floating-point")
             return;
         FloatingPoint();
+        if (args.Length > 0 && args[0] == "before-explicit") return;
+        BlockRepetition.Run();
+        Console.WriteLine("-- vector probe complete --");
     }
 
     private static void VectorCopyTargets()

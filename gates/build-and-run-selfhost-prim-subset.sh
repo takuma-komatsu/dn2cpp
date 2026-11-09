@@ -73,6 +73,16 @@
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
 source "$(dirname "$0")/_common.sh"
 
+gate_extra_asserts() {
+    local out="$1"
+    gate_output witness "$out/native.stdout" 'Nullable reboxing contract end' \
+        'Activator default construction end' --count 1 --policy crlf
+    gate_capture_ok "$out/nullable-before" run_bounded dotnet "$_CG_APP" before-nullable-reboxing
+    gate_output select "$out/native.stdout" "$out/nullable-prefix.stdout" \
+        --before '== Nullable reboxing contract ==' --policy crlf
+    gate_output compare "$out/nullable-prefix.stdout" "$out/nullable-before.stdout"
+}
+
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \
     System.Collections.Specialized
 

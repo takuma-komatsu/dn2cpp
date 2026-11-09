@@ -398,6 +398,20 @@ internal sealed partial class MethodCompiler
     /// runtime plumbing, so there is nothing worth falling through to.</para></summary>
     private void EmitRuntimePrimitive(MethodInfo callee)
     {
+        if (CoreIntrinsics.IsInvariantCompareInfoGetter(callee))
+        {
+            var receiver = Pop();
+            Emit($"if ({receiver.Expr} == nullptr) dn2cpp_throw_null_reference();");
+            _c.NoteInvariantCompareInfoFactory(callee);
+            var result = callee.Signature.ReturnType;
+            NoteReferenceClass(result);
+            string value = NewTemp(CppTypes.Of(result));
+            Emit($"{value} = {CoreIntrinsics.InvariantCompareInfoFactoryName(result.Class!)}();");
+            Push(StackKind.Ref, CppTypes.Of(result), value);
+            Top = Top with { StaticType = result };
+            return;
+        }
+
         if (TryEmitGcMemmoveMarshalPrimitive(callee))
             return;
         if (TryEmitRandomBytesEntryAssemblyPrimitive(callee))

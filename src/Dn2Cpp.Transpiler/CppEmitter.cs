@@ -840,6 +840,7 @@ internal sealed partial class CppEmitter
         _definedBodySymbols = new HashSet<string>(compiledMethods.Count, StringComparer.Ordinal);
         foreach (var m in compiledMethods)
             _definedBodySymbols.Add(m.CppName);
+        _c.ValidateInvariantCompareInfoDispatch();
         AssertCalledBodiesEmitted();
         AssertNoAllocClosures(compiledMethods);
         Timing.Mark("compile-bodies");
@@ -1025,6 +1026,7 @@ internal sealed partial class CppEmitter
         _c.ComputeReflectionKeepSet();
         EmitTypeInfos(o);
         EmitReflectionTypeTokens(o);
+        _c.ValidateInvariantCompareInfoDispatch();
         // Every ti_ an emitted body named is now either defined by the type-info emission
         // just run or a genuine hole; assert the former before the C++ link finds the latter.
         AssertNamedTypeInfosDefined();
@@ -1038,6 +1040,7 @@ internal sealed partial class CppEmitter
         // The Console.Error managed-writer singleton accessor: after the type
         // infos (ti_ handles) and method forward decls (the ctor prototype) it references.
         EmitConsoleErrorWriterAccessor(o);
+        EmitInvariantCompareInfoFactories(o);
         // Hot-update base build: hash the canonical ABI contract over the emitted
         // classes (now final — bodies compiled, opaque fill done) into the base
         // binary, pre-emit the N2M vtable trampolines the patch loader installs
@@ -2108,6 +2111,7 @@ internal sealed partial class CppEmitter
         || CoreIntrinsics.BrEnumInstanceFormat.Matches(cls.FullName, m.Name)
         || CoreIntrinsics.BrLifetimeDispose.Matches(cls.FullName, m.Name)
         || CoreIntrinsics.BrDelegateClone.Matches(cls.FullName, m.Name)
+        || CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(m)
         || _c.PInvokeFtnTargets.Contains(m) || _c.IntrinsicFtnTargets.Contains(m)
         || _c.InterceptFtnTargets.Contains(m) || CoreIntrinsics.MdComparerCompare.Matches(m)
         || _c.IsUnorderableComparerCompareBody(m)
@@ -2551,7 +2555,8 @@ internal sealed partial class CppEmitter
                             continue;
                         }
                         if (CoreIntrinsics.BrLifetimeDispose.Matches(cls.FullName, m.Name)
-                            || CoreIntrinsics.BrDelegateClone.Matches(cls.FullName, m.Name))
+                            || CoreIntrinsics.BrDelegateClone.Matches(cls.FullName, m.Name)
+                            || CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(m))
                         {
                             var wrapper = new MethodCompiler(_c, m, literals, _backend)
                                 .CompileCoreIntrinsicWrapper()
@@ -3019,6 +3024,8 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    dn2cpp_set_delegate_method_catalog({delegateMethods.Sym}, {delegateMethods.Count});");
         if (_objectVirtualInheritance is { } objectVirtuals)
             sb.AppendLine($"    dn2cpp_set_object_virtual_inheritance({objectVirtuals.Sym}, {objectVirtuals.Count});");
+        if (_cultureCompareInfoRow is { } cultureCompareInfoRow)
+            sb.AppendLine($"    dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({cultureCompareInfoRow}));");
         // The shared reference-element SZArray fallback table goes in before any managed
         // code too: a cctor can already dispatch a collection interface on an array it
         // reached through `object` (or on a runtime-built attribute array).
@@ -3778,6 +3785,7 @@ internal sealed partial class CppEmitter
     private readonly List<string> _runtimeHandleObjectRows = [];
     private (string Sym, int Count)? _objectVirtualInheritance;
     private (string Sym, int Count)? _delegateMethodCatalog;
+    private string? _cultureCompareInfoRow;
     private (string Sym, int Count)? _delegateInterfaceTargets;
 
     /// <summary>Records the base of each unbound reference-type runtime handle whose
@@ -5517,6 +5525,12 @@ internal sealed partial class CppEmitter
             && !_c.IsAllocated(c)
             ? c : null;
 
+    // This pointer spelling is a value payload, not a managed object reference.
+    private static bool IsRuntimeTypeHandleValue(TypeDesc type) =>
+        type is { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeTypeHandle",
+            Module.AssemblyName: "System.Private.CoreLib" } }
+        or { Kind: TypeKind.External, ExternalName: "System.RuntimeTypeHandle" };
+
     /// <summary>Emits (once per distinct C++ ABI shape) the signature-deduplicated
     /// invoker thunk for a reachable method and returns its name. The thunk
     /// unboxes/casts each boxed arg to the parameter's C++ type, calls the method's
@@ -5546,7 +5560,7 @@ internal sealed partial class CppEmitter
         static (bool Ptr, string Cpp) Classify(TypeDesc t)
         {
             string cpp = CppTypes.Of(t);
-            return (cpp.EndsWith("*"), cpp);
+            return (cpp.EndsWith("*") && !IsRuntimeTypeHandleValue(t), cpp);
         }
 
         // Build the shape key + the C++ pieces.
@@ -5595,7 +5609,8 @@ internal sealed partial class CppEmitter
             {
                 key.Append('_').Append(CppNaming.Sanitize(cpp));
                 sigParams.Add(cpp);
-                callArgs.Add($"(args[{i}] == nullptr ? {cpp}{{}} : *({cpp}*)((char*)args[{i}] + sizeof(Dn2CppObject)))");
+                string empty = IsRuntimeTypeHandleValue(ps[i]) ? "nullptr" : $"{cpp}{{}}";
+                callArgs.Add($"(args[{i}] == nullptr ? {empty} : *({cpp}*)((char*)args[{i}] + sizeof(Dn2CppObject)))");
             }
         }
         // A static body taking the generic context gets it last, from `self`
@@ -6907,7 +6922,7 @@ internal sealed partial class CppEmitter
         static (bool Ptr, string Cpp) Classify(TypeDesc t)
         {
             string cpp = MethodCompiler.NfiErasedAbi(CppTypes.Of(t));
-            return (cpp.EndsWith("*"), cpp);
+            return (cpp.EndsWith("*") && !IsRuntimeTypeHandleValue(t), cpp);
         }
 
         var key = new StringBuilder();
@@ -8082,6 +8097,7 @@ internal sealed partial class CppEmitter
                 sb.AppendLine("    const Dn2CppDelegateMethodIdentity* f_identity;");
                 sb.AppendLine("    Dn2CppObject* f_entry;");
                 sb.AppendLine("    std::atomic<Dn2CppDelegateInvocationCache*> f_invocationCache;");
+                sb.AppendLine("    std::atomic<bool> f_bindingSnapshotted;");
                 sb.AppendLine("};");
                 continue;
             }
