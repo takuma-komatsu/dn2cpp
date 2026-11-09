@@ -2235,6 +2235,12 @@ internal sealed partial class Compilation
         {
             case RgctxSlotKind.TypeInfo:
                 return RgctxTypeInfoEntry(RgctxResolveTypeToken(module, handle, ctx));
+            case RgctxSlotKind.TypedReferenceTypeInfo:
+            {
+                var type = RgctxResolveTypeToken(module, handle, ctx);
+                return CoreIntrinsics.HasExactTypedReferenceIdentity(type)
+                    ? RgctxTypeInfoEntry(type) : "nullptr";
+            }
             case RgctxSlotKind.TaskTypeInfo:
                 return RgctxTypeInfoEntry(RgctxTaskTypeForSite(module, handle, ctx, scope));
             case RgctxSlotKind.TypeArg0TypeInfo:

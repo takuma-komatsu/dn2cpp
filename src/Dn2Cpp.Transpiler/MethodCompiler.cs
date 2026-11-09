@@ -3192,6 +3192,49 @@ internal sealed partial class MethodCompiler : IEvalStack
                 Emit($"std::memset((void*)({addr.Expr}), (int)({val.Expr}), (size_t)({size.Expr}));");
                 break;
             }
+            case ILOpCode.Mkrefany:
+            case ILOpCode.Refanyval:
+            {
+                var value = Pop();
+                var target = ResolveCastTarget(insn.Token);
+                // The shared slot validates the actual substitution before its
+                // metadata can erase a ThreadLocal/BlockingCollection array leaf.
+                if (SharedTrial && Compilation.ContainsCanonPlaceholder(target))
+                    Push(StackKind.Ptr, "const Dn2CppTypeInfo*", "(const Dn2CppTypeInfo*)"
+                        + RgctxSlotAccess(RgctxSlotKind.TypedReferenceTypeInfo, insn.Token, "typedref-identity", target));
+                else if (!CoreIntrinsics.HasExactTypedReferenceIdentity(target))
+                    Push(StackKind.Ptr, "const Dn2CppTypeInfo*", "nullptr");
+                else
+                    // Share ldtoken's precise array and signature identity.
+                    Translate(new Instruction { Offset = insn.Offset, NextOffset = insn.NextOffset,
+                        OpCode = ILOpCode.Ldtoken, Token = insn.Token });
+                var handle = Pop();
+                Emit($"if ({handle.Expr} == nullptr) dn2cpp_throw_platform_not_supported(\"TypedReference requires an exact type identity; ThreadLocal<T> and BlockingCollection<T> use erased handles\");");
+                if (op == ILOpCode.Mkrefany)
+                {
+                    Push(StackKind.Struct, "Dn2CppTypedReference",
+                        $"Dn2CppTypedReference{{(uint8_t*)({value.Expr}), (intptr_t)({handle.Expr})}}");
+                    Top = Top with { StaticType = TypeDesc.MakePrimitive(PrimitiveTypeCode.TypedReference) };
+                }
+                else
+                {
+                    TaintIfCanonAnyValue(target, "refanyval");
+                    Emit($"if ((const Dn2CppTypeInfo*)({value.Expr}).f__type != {handle.Expr}) "
+                        + "dn2cpp_throw_sr0(&dn2cpp_invalid_cast_exception_type, DN2CPP_SR_INVALID_CAST);");
+                    string pointer = CppTypes.StorageOf(target) + "*";
+                    Push(StackKind.Ptr, pointer, $"({pointer})({value.Expr}).f__value");
+                    Top = Top with { StaticType = TypeDesc.MakeByRef(target) };
+                }
+                break;
+            }
+            case ILOpCode.Refanytype:
+            {
+                var value = Pop();
+                Push(StackKind.Ptr, "const Dn2CppTypeInfo*",
+                    $"(const Dn2CppTypeInfo*)({value.Expr}).f__type");
+                break;
+            }
+
             case ILOpCode.Sizeof:
             {
                 // Report the element's storage width (sizeof(char)==2, not the int32
@@ -4009,7 +4052,8 @@ internal sealed partial class MethodCompiler : IEvalStack
         foreach (var entry in _stack)
         {
             if (entry.Kind != StackKind.Ref
-                && !(entry.Kind == StackKind.Ptr && entry.StaticType?.Kind == TypeKind.ByRef))
+                && !(entry.Kind == StackKind.Ptr && entry.StaticType?.Kind == TypeKind.ByRef)
+                && entry.CppType != "Dn2CppTypedReference")
                 continue;
             pending ??= new List<StackEntry>();
             pending.Add(entry);
@@ -4031,7 +4075,11 @@ internal sealed partial class MethodCompiler : IEvalStack
                 }
             }
             if (remains)
-                Emit($"DN2CPP_WEB_GC_LIVENESS({entry.Expr});");
+            {
+                string pointer = entry.CppType == "Dn2CppTypedReference"
+                    ? $"({entry.Expr}).f__value" : entry.Expr;
+                Emit($"DN2CPP_WEB_GC_LIVENESS({pointer});");
+            }
         }
     }
 

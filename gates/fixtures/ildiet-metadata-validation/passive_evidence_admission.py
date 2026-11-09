@@ -141,7 +141,7 @@ def failure(companion, original, area, mode, env=None, descriptor=None):
     _, path = request(original, area, descriptor)
     result = run(['dotnet', 'exec', companion, '--request', path], area, 'companion', env)
     audit = json.loads((original / 'operand-audit.json').read_text())
-    diagnostic = 'cannot decode reflection body GraphApp::' + audit['failingCarrier'] + ': Unsupported IL opcode: Refanytype (0xFE1D)'
+    diagnostic = 'cannot decode reflection body GraphApp::' + audit['failingCarrier'] + ': Unsupported IL opcode: Arglist (0xFE00)'
     assert result.returncode != 0 and diagnostic in (result.stderr + result.stdout).decode(errors='replace'), (mode, area, result.returncode, diagnostic)
     assert not (area / 'publication/ildiet-result.xml').exists()
     assert files(original) == before
@@ -209,7 +209,7 @@ def executable_control(drivers, companions, original, area, mode):
                 command += ['-r', original / name]
             command += ['--link-xml', path, '--no-ildiet', '--shared-generics' if shared else '--no-shared-generics', '-o', destination / 'cpp']
             result = run(command, destination, 'unsupported-original', env)
-            diagnostic = 'Unsupported IL opcode: Refanytype (0xFE1D)'
+            diagnostic = 'Unsupported IL opcode: Arglist (0xFE00)'
             assert result.returncode != 0 and diagnostic in (result.stderr + result.stdout).decode(errors='replace'), (label, mode, result.stderr)
             records.append({'driver': label, 'shared': shared, 'returncode': result.returncode, 'expected_rejection': diagnostic})
     for label, companion, env in companions:

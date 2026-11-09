@@ -6,7 +6,7 @@ namespace UnsafeGeneral
     // Gate driver: runs each section's __GateEntry() in order.
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -24,6 +24,9 @@ namespace UnsafeGeneral
             UnsafeUnboxSubset.Program.__GateEntry();
             SafeHandleSubset.Program.__GateEntry();
             UnreachedStructSubset.Program.__GateEntry();
+            if (args.Length > 0 && args[0] == "before-typed-references")
+                return;
+            TypedReferenceSubset.Program.__GateEntry();
         }
     }
 }

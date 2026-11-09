@@ -7,8 +7,7 @@ internal struct SignatureMatch<T>
 {
     public override bool Equals(object? other)
     {
-        TypedReference reference = __makeref(other);
-        return __reftype(reference) == typeof(object);
+        return typeof(System.Numerics.Complex).Name == "Complex";
     }
 
     public override int GetHashCode() => 0;

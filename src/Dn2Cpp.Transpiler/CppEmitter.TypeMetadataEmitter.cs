@@ -1194,6 +1194,11 @@ internal sealed partial class CppEmitter
         /// record concrete intrinsic signature identities for the minimal type-info pass.</summary>
         private void NoteReflectedType(TypeDesc t, bool definitionSignature = false)
         {
+            if (t is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.TypedReference })
+            {
+                _e.NoteQueryIdentity(t);
+                return;
+            }
             if (CppEmitter.HasSignatureShape(t) && !Compilation.ContainsGenericVar(t)
                 && !Compilation.ContainsCanonPlaceholder(t))
             {
@@ -1477,6 +1482,10 @@ internal sealed partial class CppEmitter
                     flagBits.Add("DN2CPP_TF_ABSTRACT");
                 if (c.IsSealed)
                     flagBits.Add("DN2CPP_TF_SEALED");
+                if (c.IsByRefLike)
+                    flagBits.Add("DN2CPP_TF_BYREFLIKE");
+                if (c.FullName == "System.TypedReference" && !_c.KeepsReflectionMetadata(c))
+                    flagBits.Add("DN2CPP_TF_METADATA_STRIPPED");
                 if (IsNestedType(c))
                     flagBits.Add("DN2CPP_TF_NESTED");
                 string flags = flagBits.Count == 0 ? "0" : string.Join(" | ", flagBits);

@@ -83,6 +83,8 @@ internal sealed partial class CppEmitter
 
         private void NoteConstraintSignature(ConstraintSignature signature)
         {
+            if (signature.Primitive is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.TypedReference } typedReference)
+                _e.NoteQueryIdentity(typedReference);
             if (signature.Name is { } name)
                 NoteConstraintDefinition(name, signature.Primitive);
             foreach (var child in signature.Children)
@@ -176,7 +178,7 @@ internal sealed partial class CppEmitter
                 _sb.AppendLine($"static const Dn2CppBindingSignature {childExpr}[] = {{ {string.Join(", ", children)} }};");
             }
             string type = signature.Kind != 4 && signature.Primitive is { Kind: TypeKind.Primitive or TypeKind.Class } leaf
-                ? MethodCompiler.TypeInfoExprOf(leaf) ?? "nullptr" : "nullptr";
+                ? MethodCompiler.TypeInfoExprOf(_e.ReflectionIdentityType(leaf)) ?? "nullptr" : "nullptr";
             string name = signature.Name is { } n ? "\"" + CLiteral(n) + "\"" : "nullptr";
             _sb.AppendLine($"static const Dn2CppBindingSignature {symbol} = {{ {signature.Kind}, {type}, {signature.Value}, {childExpr}, {children.Length}, {name} }};");
             return "&" + symbol;

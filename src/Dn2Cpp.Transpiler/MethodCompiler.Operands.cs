@@ -8,7 +8,12 @@ internal sealed partial class MethodCompiler
 {
     private void PushVar((string Name, string CppType, StackKind Kind, TypeDesc? Type) v)
     {
-        Push(v.Kind, v.CppType, v.Name);
+        // A typed reference can write a promoted slot without retaining SlotAddr.
+        // Reload the declared width rather than stale sign-extension bytes.
+        string value = v.Kind == StackKind.I4
+            ? CoerceToSlot(new StackEntry(v.Name, v.Kind, v.CppType), v.Type, v.CppType)
+            : v.Name;
+        Push(v.Kind, v.CppType, value);
         if (v.Type is not null)
             _stack[^1] = _stack[^1] with { StaticType = v.Type };
     }

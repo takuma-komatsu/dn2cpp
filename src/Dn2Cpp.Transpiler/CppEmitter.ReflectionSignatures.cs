@@ -204,9 +204,31 @@ internal sealed partial class CppEmitter
             : new BindingSignature(type: type);
     }
 
+    private TypeDesc? _typedReferenceIdentity;
+
+    // ELEMENT_TYPE_TYPEDBYREF has no TypeRef, but reflection must share the
+    // loaded CoreLib TypeDef's identity with typeof(TypedReference).
+    private TypeDesc ReflectionIdentityType(TypeDesc type)
+    {
+        if (type is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.TypedReference })
+            return type;
+        if (_typedReferenceIdentity is null)
+        {
+            var cls = _c.Classes.FirstOrDefault(c => c.FullName == "System.TypedReference"
+                && c.Module.AssemblyName is "System.Private.CoreLib" or "mscorlib");
+            if (cls is null)
+                throw new NotSupportedException(
+                    "A TypedReference reflection signature requires the loaded CoreLib System.TypedReference definition; pass CoreLib with -r or --auto-ref");
+            _typedReferenceIdentity = TypeDesc.MakeClass(cls);
+        }
+        return _typedReferenceIdentity;
+    }
+
     private string EmitReflectionSignature(StringBuilder sb, MethodInfo method, int parameter)
     {
         var type = parameter < 0 ? method.Signature.ReturnType : method.Signature.ParameterTypes[parameter];
+        if (type is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.TypedReference })
+            return EmitBindingSignature(sb, new BindingSignature(type: type), query: true);
         if (!HasSignatureShape(type))
             return "nullptr";
         var signature = ReflectionSignature(method);
@@ -271,6 +293,7 @@ internal sealed partial class CppEmitter
 
     private void NoteQueryIdentity(TypeDesc type)
     {
+        type = ReflectionIdentityType(type);
         if (type.Class is { } cls)
         {
             if (cls.IntrinsicCppName is not null && CoreIntrinsics.RuntimeTypeInfoSymbol(cls) is null
