@@ -46,6 +46,7 @@ var linkFeatures = new List<string>();
 bool trimGodotClasses = false;
 var godotClassRoots = new List<string>();
 bool shadowStack = false;
+FloatingPointMode floatingPointMode = FloatingPointMode.Strict;
 int maxDegreeOfParallelism = 0;
 string? isaSurfaceDump = null;
 string godotApiPath = "";
@@ -143,6 +144,24 @@ for (int i = 0; i < args.Length; i++)
             return 1;
         }
         maxDegreeOfParallelism = jobs;
+    }
+    else if (args[i] == "--fp-mode")
+    {
+        if (i + 1 >= args.Length)
+        {
+            Console.Error.WriteLine("error: --fp-mode expects strict or precise");
+            return 1;
+        }
+        string value = args[++i];
+        if (value == "strict")
+            floatingPointMode = FloatingPointMode.Strict;
+        else if (value == "precise")
+            floatingPointMode = FloatingPointMode.Precise;
+        else
+        {
+            Console.Error.WriteLine($"error: --fp-mode expects strict or precise, got '{value}'");
+            return 1;
+        }
     }
     else if (args[i] == "--verbose")
     {
@@ -525,7 +544,7 @@ if (generateBindings)
 
 if (string.IsNullOrEmpty(input))
 {
-    Console.Error.WriteLine("Usage: dn2cpp <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--direct-pinvoke <module[!entrypoint]|*>] [--auto-ref] [--stripping-level <high|medium>] [--no-ildiet] [--ildiet-output <dir>] [--ildiet-skip-assembly <name>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--obfuscate] [--shadow-stack] [--no-metadata-compression] [--reflection-metadata <type>=native|packed] [--trim-reflection] [--reflection-root <Type.Full.Name>] [--no-manifest-resources <Assembly>] [--manifest-resource-root <manifest.name>] [--trim-godot-classes] [--godot-class-root <Godot.Full.Name>] [--max-heap-mb <n>] [--verbose] [--dump-isa-surface <file>] [--gdextension [--godot-api <extension_api.json>]] [--dotnet-module] [--hotupdate-base] [--emit-patch <patch.dll> --base-abi <base-abi.json> [--patch-version <n>] [--patch-stackcode]] [--generate-bindings <extension_api.json>] [--check-wasm-imports <side.wasm> <main.wasm> [<main.js>] [--peer-module <peer.wasm>]...] [--print-runtime-dir]");
+    Console.Error.WriteLine("Usage: dn2cpp <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--direct-pinvoke <module[!entrypoint]|*>] [--auto-ref] [--stripping-level <high|medium>] [--no-ildiet] [--ildiet-output <dir>] [--ildiet-skip-assembly <name>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--fp-mode <strict|precise>] [--no-shared-generics] [--obfuscate] [--shadow-stack] [--no-metadata-compression] [--reflection-metadata <type>=native|packed] [--trim-reflection] [--reflection-root <Type.Full.Name>] [--no-manifest-resources <Assembly>] [--manifest-resource-root <manifest.name>] [--trim-godot-classes] [--godot-class-root <Godot.Full.Name>] [--max-heap-mb <n>] [--verbose] [--dump-isa-surface <file>] [--gdextension [--godot-api <extension_api.json>]] [--dotnet-module] [--hotupdate-base] [--emit-patch <patch.dll> --base-abi <base-abi.json> [--patch-version <n>] [--patch-stackcode]] [--generate-bindings <extension_api.json>] [--check-wasm-imports <side.wasm> <main.wasm> [<main.js>] [--peer-module <peer.wasm>]...] [--print-runtime-dir]");
     return 1;
 }
 
@@ -627,5 +646,6 @@ return TranspileDriver.Run(new TranspileOptions
     ProjectRoots = projectRoots,
     LinkFeatures = linkFeatures,
     ShadowStack = shadowStack,
+    FloatingPointMode = floatingPointMode,
     IsaSurfaceDump = isaSurfaceDump,
 });

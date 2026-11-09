@@ -121,6 +121,20 @@ the export log records the final invocation. Skipping rewrite copies that DLL's
 original bytes but still applies normal transpiler reachability and explicit
 preservation. It does not preserve every body in the assembly.
 
+For MSVC exports, opt into `/fp:precise` through the same argument setting:
+
+```ini
+[dotnet]
+dn2cpp/extra_transpile_args=PackedStringArray("--fp-mode", "precise")
+```
+
+Append these tokens to any existing list. The installed CLI and runtime must
+support the option. The generated output carries the selection to CMake, so no
+dedicated export UI is needed. The default is `strict`; remove the pair or use
+`--fp-mode strict` to restore it on the next export. Precise mode allows
+optimizations that can quiet signaling NaNs and assumes the default
+floating-point environment. It leaves other native compilers unchanged.
+
 On every Incremental-GC-capable target, selecting `dn2cpp` also reveals the
 boolean `dotnet/dn2cpp/incremental_gc` option, default `true`. Web does not
 publish the option because its collector has no page-protection VDB and forces

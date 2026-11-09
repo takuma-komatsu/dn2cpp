@@ -72,6 +72,19 @@ foreach (string platform in OS.PlatformFeatureMap.Keys)
         Check(actual.Contains("com") == (platform == "windows"), "Windows argument path");
         runs++;
     }
+    foreach (string? mode in new string?[] { null, "strict", "precise" })
+    {
+        probe.Preset.Clear();
+        ProjectSettings.Extra = mode is null ? [] : ["--fp-mode", mode];
+        string[] actual = probe.Generate();
+        Check(actual.Count(value => value == "--fp-mode") == (mode is null ? 0 : 1), "floating-point mode is opt-in");
+        if (mode is not null)
+        {
+            int index = Array.IndexOf(actual, "--fp-mode");
+            Check(index + 1 < actual.Length && actual[index + 1] == mode, platform + " floating-point mode reaches CLI");
+        }
+        runs++;
+    }
     foreach (int? level in new int?[] { null, 0, 1 })
     foreach (bool? ildiet in values)
     foreach (bool duplicate in new[] { false, true })

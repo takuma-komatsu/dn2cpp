@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end pipeline: C# -> IL -> C++ -> native binary -> run.
+# Console pipeline, native floating-point mode selection and incremental rebuilds.
 source "$(dirname "$0")/_common.sh"
 
 OUT=artifacts/console
@@ -42,13 +42,13 @@ if grep -Eq 'dn2cpp_cpu_features|DN2CPP_ISA_|dn2cpp_isa_|#include "isa/' \
     exit 1
 fi
 if gate_cache_check "$OUT" "sample|console" \
-        "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json"; then
+        "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json" gates/assert-fp-mode.py; then
     gate_cache_hit_msg
     exit 0
 fi
 
 echo "== 3/4 Compiling C++ =="
-( export DN2CPP_EXTRA_CMAKE_ARGS="${DN2CPP_EXTRA_CMAKE_ARGS:-} -DDN2CPP_CPU_FEATURES=-Avx"
+( export DN2CPP_EXTRA_CMAKE_ARGS="${DN2CPP_EXTRA_CMAKE_ARGS:-} -DDN2CPP_CPU_FEATURES=-Avx -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
   compile_console "$OUT" HelloWorld )
 app_ninja="$(_cmake_app_builddir "$OUT")/build.ninja"
 [ -f "$app_ninja" ] || { echo "FAIL: HelloWorld native manifest missing: $app_ninja" >&2; exit 1; }
@@ -65,5 +65,42 @@ if grep -Eq 'dn2cpp_cpu_features|DN2CPP_CPU_FEATURES_DEFAULT' "$runtime_ninja"; 
 fi
 
 echo "== 4/4 Running native binary =="
-"./$OUT/HelloWorld"
+gate_capture_ok "$OUT/native" run_bounded "./$OUT/HelloWorld$EXE_EXT"
+gate_capture_ok "$OUT/oracle" run_bounded dotnet "$app"
+gate_output compare "$OUT/native.stdout" "$OUT/oracle.stdout"
+cat "$OUT/native.stdout"
+
+echo "== Floating-point mode changes reach incremental native builds =="
+app_build="$(_cmake_app_builddir "$OUT")"
+gate_python gates/assert-fp-mode.py "$app_build" strict
+cpp_surface=$(_gate_surface_lines "$OUT" | grep -v 'generated-fp-mode.txt$')
+invoke_cli "$app" -o "$OUT" --fp-mode precise > "$OUT/fp-precise-transpile.log"
+[ "$cpp_surface" = "$(_gate_surface_lines "$OUT" | grep -v 'generated-fp-mode.txt$')" ] \
+    || { echo 'FAIL: --fp-mode changed generated C++' >&2; exit 1; }
+_cmake_step "$OUT/fp-precise-build.log" 'rebuilding precise FP mode' "$CMAKE" --build "$app_build"
+gate_python gates/assert-fp-mode.py "$app_build" precise
+gate_capture_ok "$OUT/precise" run_bounded "$app_build/HelloWorld$EXE_EXT"
+gate_output compare "$OUT/precise.stdout" "$OUT/oracle.stdout"
+
+printf 'fast\n' > "$OUT/generated-fp-mode.txt"
+if "$CMAKE" --build "$app_build" > "$OUT/fp-invalid-build.log" 2>&1; then
+    echo 'FAIL: native build accepted an invalid floating-point mode' >&2
+    exit 1
+fi
+grep -q 'generated-fp-mode.txt must contain strict or precise' "$OUT/fp-invalid-build.log" \
+    || { cat "$OUT/fp-invalid-build.log" >&2; exit 1; }
+
+rm "$OUT/generated-fp-mode.txt"
+_cmake_step "$OUT/fp-legacy-build.log" 'rebuilding legacy output in strict FP mode' "$CMAKE" --build "$app_build"
+gate_python gates/assert-fp-mode.py "$app_build" strict
+gate_capture_ok "$OUT/legacy" run_bounded "$app_build/HelloWorld$EXE_EXT"
+gate_output compare "$OUT/legacy.stdout" "$OUT/oracle.stdout"
+
+invoke_cli "$app" -o "$OUT" > "$OUT/fp-default-transpile.log"
+printf 'strict\n' > "$OUT/fp-strict.expected"
+gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-strict.expected"
+_cmake_step "$OUT/fp-default-build.log" 'rebuilding default FP mode' "$CMAKE" --build "$app_build"
+gate_python gates/assert-fp-mode.py "$app_build" strict
+[ "$cpp_surface" = "$(_gate_surface_lines "$OUT" | grep -v 'generated-fp-mode.txt$')" ] \
+    || { echo 'FAIL: default FP reset changed generated C++' >&2; exit 1; }
 gate_cache_commit

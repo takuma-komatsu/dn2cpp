@@ -25,6 +25,15 @@ input .NET assembly (+ reference assemblies via -r)
         └─ clang++ + runtime/core (+ runtime/godot) → native binary / .dylib
 ```
 
+`TranspileOptions.FloatingPointMode` records `strict` or `precise` in
+`generated-fp-mode.txt`. CMake consumes it for the MSVC application target;
+the runtime libraries keep their own options, and FastMath translation units
+keep their per-source override. The sidecar is rewritten on each successful
+emission and removed with incomplete generated sources. Missing sidecars use
+strict mode for compatibility with older generated outputs. CMake tracks both
+the file's contents and presence so an incremental native build cannot retain
+a previous selection. Non-MSVC compilers retain their existing options.
+
 `TranspileOptions.StrippingLevel` selects the retention policy independently of
 `UseILDiet`. `High` preserves the existing member-level reachability. `Medium`
 adds a queue of intentionally used types in both the definition graph and the
