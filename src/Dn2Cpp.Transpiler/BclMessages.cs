@@ -180,6 +180,7 @@ internal static class BclMessages
         "Arg_CannotHaveNegativeValue",
         "Overflow_NegativeUnsigned",
         "Overflow_Decimal",
+        "Overflow_Currency",
         "Overflow_SByte",
         "Overflow_Byte",
         "Overflow_Int16",
