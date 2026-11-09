@@ -2,6 +2,8 @@
 # System.Decimal modeled as an intrinsic value type backed by the runtime's 96-bit
 # Dn2CppDecimal. Consolidated bucket — one sample project, one .cs per section,
 # driven in order by samples/dotnet/DecimalOps/Program.cs.
+# OLE currency conversion preserves ToEven rounding, signed bounds and decimal scale.
+# Scale reads the stored exponent, including signed zero and equal-value representations.
 #
 #   * DecimalSubset — the STATICALLY TYPED surface. The real corelib
 #     Decimal.ToString reaches Number.FormatDecimal -> ArrayPool -> EventSource ->
@@ -48,6 +50,20 @@ gate_extra_asserts() {
         gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: decimal bits witness missing: $line" >&2; exit 1; }
     done
+    gate_capture_ok "$out/assert-before-oa-currency" run_bounded dotnet "$_CG_APP" before-oa-currency || return 1
+    before="$out/assert-before-oa-currency.stdout"
+    prefix="$out/assert-prefix-oa-currency.stdout"
+    gate_output select "$native" "$prefix" --before '== decimal OLE currency ==' --policy crlf || return 1
+    gate_output compare "$prefix" "$before" || return 1
+    gate_output byte-witness "$native" 'decimal OLE currency end' --count 1 --policy crlf \
+        || { echo 'FAIL: OLE currency section did not run' >&2; return 1; }
+    gate_capture_ok "$out/assert-before-scale" run_bounded dotnet "$_CG_APP" before-decimal-scale || return 1
+    before="$out/assert-before-scale.stdout"
+    prefix="$out/assert-prefix-scale.stdout"
+    gate_output select "$native" "$prefix" --before '== decimal scale ==' --policy crlf || return 1
+    gate_output compare "$prefix" "$before" || return 1
+    gate_output byte-witness "$native" 'decimal scale end' --count 1 --policy crlf \
+        || { echo 'FAIL: decimal scale section did not run' >&2; return 1; }
 }
 
 corelib_diff_gate DecimalOps System.Linq System.Collections System.Runtime
