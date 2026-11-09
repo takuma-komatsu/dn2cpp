@@ -46,6 +46,8 @@
 #     inside the marked body and passes verification. This check applies to
 #     these two metadata reads; invocation remains a rejection case.
 source "$(dirname "$0")/_common.sh"
+DN2CPP_EXTRA_CMAKE_ARGS="${DN2CPP_EXTRA_CMAKE_ARGS:-} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/assert-fp-mode.py"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/HotPathNoAllocMixedBad/ReflectionNoAllocHelpersOnly.csproj samples/dotnet/HotPathNoAllocMixedBad/ReflectionNoAllocHelpersOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflection-noalloc-helpers-v1|covariant-store-prefix:${DN2CPP_BEFORE_COVARIANT_STORES:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|writable-vector-address|vector-address-prefix:${DN2CPP_BEFORE_VECTOR_ADDRESS:-}"
@@ -79,6 +81,7 @@ local hp_out hot hotfast
 hp_out="$1"
 hot="$hp_out/generated_hot.cpp"
 hotfast="$hp_out/generated_hot_fast.cpp"
+gate_python gates/assert-fp-mode.py "$(_cmake_app_builddir "$hp_out")" strict --require-fast
 local covariant_body line
 local native_file="$hp_out/hotpath-check.stdout"
 gate_capture_ok "$hp_out/hotpath-check" run_bounded "$hp_out/HotPath$EXE_EXT"

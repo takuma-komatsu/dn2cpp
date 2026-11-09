@@ -26,6 +26,7 @@ var linkXmlFiles = new List<string>();
 bool sharedGenerics = true;
 bool obfuscate = false;
 bool shadowStack = false;
+FloatingPointMode floatingPointMode = FloatingPointMode.Strict;
 bool compressMetadata = true;
 int maxDegreeOfParallelism = 0;
 var references = new List<string>();
@@ -75,6 +76,24 @@ for (int i = 0; i < args.Length; i++)
             return 1;
         }
         maxDegreeOfParallelism = jobs;
+    }
+    else if (args[i] == "--fp-mode")
+    {
+        if (i + 1 >= args.Length)
+        {
+            Console.Error.WriteLine("error: --fp-mode expects strict or precise");
+            return 1;
+        }
+        string value = args[++i];
+        if (value == "strict")
+            floatingPointMode = FloatingPointMode.Strict;
+        else if (value == "precise")
+            floatingPointMode = FloatingPointMode.Precise;
+        else
+        {
+            Console.Error.WriteLine($"error: --fp-mode expects strict or precise, got '{value}'");
+            return 1;
+        }
     }
     else if (args[i] == "--verbose")
     {
@@ -181,7 +200,7 @@ for (int i = 0; i < args.Length; i++)
 
 if (string.IsNullOrEmpty(input))
 {
-    Console.Error.WriteLine("Usage: dn2cpp-console <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--auto-ref] [--stripping-level <high|medium>] [--no-ildiet] [--ildiet-output <dir>] [--ildiet-skip-assembly <name>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--obfuscate] [--shadow-stack] [--no-metadata-compression] [--reflection-metadata <type>=native|packed] [--measure] [--verbose]");
+    Console.Error.WriteLine("Usage: dn2cpp-console <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--auto-ref] [--stripping-level <high|medium>] [--no-ildiet] [--ildiet-output <dir>] [--ildiet-skip-assembly <name>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--fp-mode <strict|precise>] [--no-shared-generics] [--obfuscate] [--shadow-stack] [--no-metadata-compression] [--reflection-metadata <type>=native|packed] [--measure] [--verbose]");
     return 1;
 }
 
@@ -198,6 +217,7 @@ return TranspileDriver.RunConsole(new TranspileOptions
     SharedGenerics = sharedGenerics,
     Obfuscate = obfuscate,
     ShadowStack = shadowStack,
+    FloatingPointMode = floatingPointMode,
     UseILDiet = useILDiet,
     StrippingLevel = strippingLevel,
     ILDietOutput = ildietOutput,

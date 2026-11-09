@@ -15,6 +15,7 @@
 # Emscripten/NDK toolchain and always RUNS (never gate_skip).
 #
 # Accepted flags share the worker-count runs; rejections remain isolated.
+# Floating-point mode selection must survive re-emission without a stale opt-in.
 # Assertions:
 #   1. Baseline — the same input with correct flags transpiles and exits 0. The
 #      regression guard that keeps the unknown-arg check from over-rejecting valid
@@ -64,6 +65,9 @@ if gate_cache_check "$OUT" "cli-args|combined-acceptance|cli:$(_gate_cli_hash)|$
     gate_cache_hit_msg
     exit 0
 fi
+
+printf 'strict\n' > "$OUT/fp-strict.expected"
+printf 'precise\n' > "$OUT/fp-precise.expected"
 
 # run_frontend FRONTEND -- CLI-ARGS...
 run_frontend() {
@@ -143,6 +147,7 @@ fi
     || { echo "FAIL: the valid transpile produced no $OUT/generated.cpp" >&2; exit 1; }
 echo "OK: valid transpile exit 0, emitted generated.cpp"
 assert_native_metadata full
+gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-strict.expected"
 
 # ── Assertion 2: a bogus flag is a hard error naming the token ─────────────────
 echo "== 2/10 an unrecognized flag must fail loudly =="
@@ -178,12 +183,18 @@ assert_rejected "no-default-ref unknown" "DnBogus" full "$APP" -r "$CORELIB" -o 
 
 echo "== 7/10 full CLI accepts explicit sequential and parallel worker counts =="
 echo "OK: --jobs 1 accepted by the baseline run"
-assert_accepted "full jobs 2" full "$APP" -r "$CORELIB" -o "$OUT" --jobs 2
+assert_accepted "full jobs 2 and precise FP" full "$APP" -r "$CORELIB" -o "$OUT" --jobs 2 --fp-mode precise
+gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-precise.expected"
+precise_surface=$(_gate_surface_lines "$OUT")
 
 echo "== 8/10 console CLI accepts explicit sequential and parallel worker counts =="
-assert_accepted "console jobs 1 and metadata opt-out" console "$APP" -r "$CORELIB" -o "$OUT" --jobs 1 --no-metadata-compression
+assert_accepted "console jobs 1, metadata opt-out and precise FP" console "$APP" -r "$CORELIB" -o "$OUT" --jobs 1 --no-metadata-compression --fp-mode precise
 assert_native_metadata console
-assert_accepted "console jobs 2" console "$APP" -r "$CORELIB" -o "$OUT" --jobs 2
+gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-precise.expected"
+assert_accepted "console jobs 2 and strict FP" console "$APP" -r "$CORELIB" -o "$OUT" --jobs 2 --fp-mode strict
+gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-strict.expected"
+[ "$precise_surface" != "$(_gate_surface_lines "$OUT")" ] \
+    || { echo 'FAIL: floating-point mode is absent from the gate-cache surface' >&2; exit 1; }
 
 echo "== 9/10 full CLI rejects malformed worker counts =="
 assert_rejected "full jobs missing" "--jobs" full "$APP" -r "$CORELIB" -o "$OUT" --jobs
@@ -199,5 +210,18 @@ assert_rejected "console jobs non-numeric" "many" console "$APP" -r "$CORELIB" -
 
 echo "OK: both baseline worker-count runs verified --no-metadata-compression"
 
+echo "== Floating-point modes reject invalid values and reset to strict =="
+for frontend in full console; do
+    assert_rejected "$frontend FP mode missing" '--fp-mode' "$frontend" "$APP" --fp-mode
+    assert_rejected "$frontend FP mode fast" 'fast' "$frontend" "$APP" --fp-mode fast
+    assert_rejected "$frontend FP mode typo" 'presice' "$frontend" "$APP" --fp-mode presice
+done
+assert_accepted 'full explicit strict FP' full "$APP" -r "$CORELIB" -o "$OUT" --fp-mode strict
+gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-strict.expected"
+assert_accepted 'console precise FP before reset' console "$APP" -r "$CORELIB" -o "$OUT" --fp-mode precise
+gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-precise.expected"
+assert_accepted 'console default FP reset' console "$APP" -r "$CORELIB" -o "$OUT"
+gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-strict.expected"
+
 gate_cache_commit
-echo "PASS: both CLIs accept worker counts and the metadata compression opt-out; invalid arguments remain hard errors"
+echo "PASS: both CLIs accept worker counts, metadata and floating-point options; invalid arguments remain hard errors"

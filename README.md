@@ -936,6 +936,27 @@ Planned: devirtualization and inlining hints, unused-method elimination
 via ILLink integration, incremental transpilation (per-method differential
 C++ generation), and `#line` debug info mapping generated C++ back to C#.
 
+### MSVC floating-point mode
+
+Generated applications use `/fp:strict` by default on MSVC to preserve
+signaling NaN representations through optimized calls. Pass `--fp-mode precise`
+to either CLI to opt into `/fp:precise`:
+
+```bash
+dotnet run --project src/Dn2Cpp.Cli -- MyApp.dll --auto-ref -o out --fp-mode precise
+```
+
+This can improve numerical hot loops but permits signaling NaNs to become quiet
+and does not preserve changes to the floating-point environment. It affects all
+generated application code, including transpiled BCL code. Methods explicitly
+marked `[HotPath(FastMath = true)]` keep their `/fp:fast` setting. Other native
+compilers retain their existing options.
+
+The generated output records the choice for CMake. Re-transpiling without the
+option, or with `--fp-mode strict`, restores the default on the next native
+build. For Godot, pass the pair through
+[`dotnet/dn2cpp/extra_transpile_args`](docs/EDITOR-EXPORT-DESIGN.md#3-export-ux-in-the-fork).
+
 ### Choosing reflection metadata storage
 
 Metadata compression is enabled by default in both CLIs. Pass

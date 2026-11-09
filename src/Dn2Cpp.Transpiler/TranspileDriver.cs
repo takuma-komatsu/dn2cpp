@@ -128,6 +128,11 @@ public static class TranspileDriver
             Console.Error.WriteLine("error: StrippingLevel must be High or Medium");
             return 1;
         }
+        if (options.FloatingPointMode != FloatingPointMode.Strict && options.FloatingPointMode != FloatingPointMode.Precise)
+        {
+            Console.Error.WriteLine("error: FloatingPointMode must be Strict or Precise");
+            return 1;
+        }
         if (!File.Exists(input))
         {
             Console.Error.WriteLine($"error: input assembly not found: {input}");
@@ -315,6 +320,8 @@ public static class TranspileDriver
             // coexist.
             File.WriteAllText(Path.Combine(outDir, "generated.h"), sources.Header.ToString());
             File.WriteAllText(outPath, sources.Data.ToString());
+            File.WriteAllText(Path.Combine(outDir, "generated-fp-mode.txt"),
+                options.FloatingPointMode == FloatingPointMode.Precise ? "precise\n" : "strict\n");
 
             // Hot-update base build: the ABI-contract sidecar the patch converter
             // stamps into each BPI. Rewrite-or-remove so a stale file from a prior
@@ -568,7 +575,7 @@ public static class TranspileDriver
         foreach (string fixedName in new[]
             {
                 "generated_hot.cpp", "generated_hot_fast.cpp", "generated_platform_isa.cpp",
-                "generated.h", "generated.cpp", "obfuscation-targets.json",
+                "generated.h", "generated.cpp", "generated-fp-mode.txt", "obfuscation-targets.json",
             })
         {
             string path = Path.Combine(outDir, fixedName);

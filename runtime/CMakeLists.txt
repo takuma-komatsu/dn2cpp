@@ -1063,6 +1063,18 @@ if(DN2CPP_APP_DIR)
         message(FATAL_ERROR "DN2CPP_APP_DIR has no generated*.cpp: ${DN2CPP_APP_DIR}")
     endif()
 
+    # Track both content changes and legacy outputs gaining or losing the sidecar.
+    file(GLOB _dn2cpp_fp_mode_file CONFIGURE_DEPENDS "${DN2CPP_APP_DIR}/generated-fp-mode.txt")
+    set(_dn2cpp_fp_mode "strict")
+    if(_dn2cpp_fp_mode_file)
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_dn2cpp_fp_mode_file}")
+        file(READ "${_dn2cpp_fp_mode_file}" _dn2cpp_fp_mode)
+        string(STRIP "${_dn2cpp_fp_mode}" _dn2cpp_fp_mode)
+        if(NOT _dn2cpp_fp_mode STREQUAL "strict" AND NOT _dn2cpp_fp_mode STREQUAL "precise")
+            message(FATAL_ERROR "generated-fp-mode.txt must contain strict or precise")
+        endif()
+    endif()
+
     if(DN2CPP_DECLANG_CONFIG)
         dn2cpp_declang_sources()
     endif()
@@ -1268,8 +1280,8 @@ if(DN2CPP_APP_DIR)
     if(MSVC)
         target_compile_options(${DN2CPP_APP_NAME} PRIVATE /bigobj)
         # Representation reads must preserve signaling NaNs through optimized
-        # calls. /fp:precise can quiet them while folding float temporaries.
-        target_compile_options(${DN2CPP_APP_NAME} PRIVATE /fp:strict)
+        # calls by default. --fp-mode precise opts out of that guarantee.
+        target_compile_options(${DN2CPP_APP_NAME} PRIVATE "/fp:${_dn2cpp_fp_mode}")
     endif()
     # generated.h lives next to the sources; dn2cpp.h comes from the runtime include
     # dir (also carried transitively, but listed for the from-source build too).

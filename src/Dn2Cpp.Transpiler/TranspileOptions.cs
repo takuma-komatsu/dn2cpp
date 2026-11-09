@@ -86,6 +86,10 @@ public sealed record TranspileOptions
     /// (<see cref="Compilation.ShadowStackEnabled"/>).</summary>
     public bool ShadowStack { get; init; }
 
+    /// <summary>MSVC floating-point model recorded for the native build.
+    /// Precise permits optimizations that can quiet signaling NaNs.</summary>
+    public FloatingPointMode FloatingPointMode { get; init; } = FloatingPointMode.Strict;
+
     /// <summary>Hot-update base build (<c>--hotupdate-base</c>): the emitter adds
     /// the ABI-contract hash constant, the driver writes the base-abi.json sidecar
     /// (docs/BPI-FORMAT.md), and the compilation takes the hot-update posture

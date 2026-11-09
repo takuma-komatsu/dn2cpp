@@ -39,6 +39,12 @@ the managed rewrite without changing that level. Runtime-only reflection targets
 still need a descriptor or `PreserveAttribute`; the stripped DLLs are intermediate
 build artifacts and do not replace managed publish inputs.
 
+For MSVC builds, append `--fp-mode precise` to `Dn2CppExtraArgs` to opt into
+`/fp:precise` instead of the default `/fp:strict`. The transpiler records the
+selection for CMake; no `Dn2CppCMakeArgs` override is needed. This permits
+optimizations that can quiet signaling NaNs and assumes the default
+floating-point environment. Remove the pair or use `--fp-mode strict` to reset.
+
 `Dn2Cpp.Build` accepts a host-default publish with no RID, plus
 `linux-x64`, `linux-arm64`, `osx-x64`, `osx-arm64`, `win-x64`, and
 `win-arm64` on their matching host
