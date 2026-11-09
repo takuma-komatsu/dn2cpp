@@ -34,7 +34,8 @@ if [ "${DN2CPP_NATIVE_ASSET_BRANCH_SELF_TEST:-}" = linux ]; then
     exit 0
 fi
 
-gate_python "$FIXTURE/test-published-image.py"
+# Windows Python resolves a bare bash to the System32/WSL launcher.
+DN2CPP_TEST_BASH="$(native_path "$BASH")" gate_python "$FIXTURE/test-published-image.py"
 "$CMAKE" -P "$FIXTURE/UniversalSelectionProbe.cmake"
 
 case "$DN2CPP_OS:$(uname -m)" in

@@ -78,6 +78,17 @@ static inline Dn2CppVec<N> dn2cpp_isa_vec(const From& x)
     return r;
 }
 
+// A narrowing intrinsic can fold into a partial-width memory store on MSVC.
+// Copy only its produced bytes and define the remaining managed lanes explicitly.
+template <size_t Bytes, class From>
+static inline Dn2CppVec<sizeof(From)> dn2cpp_isa_zero_extend(const From& x)
+{
+    static_assert(Bytes > 0 && Bytes < sizeof(From), "partial vector width required");
+    Dn2CppVec<sizeof(From)> r{};
+    std::memcpy(r.b, &x, Bytes);
+    return r;
+}
+
 #if DN2CPP_TARGET_X64
 // A 256- or 512-bit register leaves the conversion by value, and clang rejects a
 // by-value __m256 / __m512 between functions that disagree on AVX / AVX-512 (the

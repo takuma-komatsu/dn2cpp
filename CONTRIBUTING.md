@@ -44,15 +44,36 @@ libraries through the loader path and `DOTNET_ICU_VERSION_OVERRIDE`; another
 installed ICU is not another native compatibility profile. The strict gate
 retains its exact comparisons and intentional frozen divergences; there is no
 portable tolerance mode. Updating a reference requires reviewing CLR output and
-the corresponding frozen runtime profile together. Hosted workflows retain
-isolated exact SDK provisioning without making this optional ICU preflight a
-prerequisite for unrelated smoke gates.
+the corresponding frozen runtime profile together. Hosted smoke and manual
+pre-merge use the same isolated `ci` SDK profile, pinned to a stable
+SDK and runtime pair in `gates/setup-culture-reference.py`. Its explicit
+`--profile culture` option retains the separate optional culture oracle; the ICU
+preflight is not a prerequisite for unrelated smoke gates.
 
 Each OS runs the wider non-Godot suite in a single job daily and through
 `workflow_dispatch`. That profile retains the OSS integration gates and other
 checks outside the basic allowlist. Missing optional prerequisites remain
 reported as skips in its summary and logs. Scheduled and manual runs use a
 separate concurrency group, so a new push cannot cancel them.
+
+The Linux, Windows and macOS workflows also offer the manual `premerge-debug`
+mode. It provisions the selected prerequisites and invokes the actual strict,
+uncached `gates/pre-merge.sh --skip-godot` in Debug. Replace `PLATFORM` with
+`linux`, `windows` or `macos`, dispatch against the branch containing the
+workflow, and supply the full commit SHA:
+
+```bash
+gh workflow run PLATFORM-smoke.yml --repo takuma-komatsu/dn2cpp \
+  --ref YOUR_BRANCH -f mode=premerge-debug -f expected_head=FULL_COMMIT_SHA
+```
+
+The input must match both the workflow's dispatched commit and checkout before
+provisioning or tests begin. The default manual mode is `suite`; pull
+request, push and scheduled runs never select `premerge-debug`. The manual pre-merge
+uploads its setup evidence, exact source identity, full log root and receipt
+when produced, including failure logs. Hosted time or disk exhaustion is not a
+pass. Its non-Godot receipt does not replace human Godot-inclusive verification
+for Godot-specific changes.
 
 The Godot-inclusive merge gate — `./gates/pre-merge.sh` — does not run in
 hosted smoke CI. A human runs it on a provisioned desktop host. Xcode-dependent

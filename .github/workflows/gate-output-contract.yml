@@ -57,6 +57,8 @@ jobs:
             export DN2CPP_TEST_BASH="$BASH"
           fi
           python gates/fixtures/setup-culture-reference-test.py
+          python gates/fixtures/ci-premerge-test.py
+          python gates/fixtures/setup-premerge-test.py
           python gates/fixtures/bash-fixture-test.py
           python gates/fixtures/culture-gate-scope-test.py
           python gates/fixtures/reflection-gate-inputs-test.py

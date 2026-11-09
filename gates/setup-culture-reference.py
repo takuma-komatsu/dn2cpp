@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Install only the pinned SDK in a fresh CI root; never add latest LTS runtime."""
+import argparse
 import hashlib
 import os
 from pathlib import Path
@@ -9,8 +10,11 @@ import sys
 import tempfile
 import urllib.request
 
-SDK = '10.0.402'
-RUNTIME = '10.0.13'
+SDK = '10.0.403'
+RUNTIME = '10.0.14'
+# Bundled SDK/runtime pairs from Microsoft's release metadata:
+# https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json
+PROFILES = {'ci': (SDK, RUNTIME), 'culture': ('10.0.402', '10.0.13')}
 INSTALLER_COMMIT = 'e5cf1dd2d1540ed05ac84f8eb8c5cdec2807621e'
 INSTALLER_HASHES = {
     'sh': '082f7685e156738a1b2e2ed8381a621870d4ce8e8c59278034556f05c186eb2e',
@@ -18,23 +22,24 @@ INSTALLER_HASHES = {
 }
 
 
-def installer_command(script, install, windows):
+def installer_command(script, install, windows, sdk=SDK):
     if windows:
         powershell = shutil.which('pwsh')
         if not powershell:
             raise RuntimeError('PowerShell Core (pwsh) is required on the Windows runner')
         return [str(Path(powershell).resolve()), '-NoLogo', '-NoProfile', '-NonInteractive',
-                '-File', str(script), '-Version', SDK, '-InstallDir', str(install), '-NoPath']
-    return ['bash', str(script), '--version', SDK, '--install-dir', str(install), '--no-path']
+                '-File', str(script), '-Version', sdk, '-InstallDir', str(install), '-NoPath']
+    return ['bash', str(script), '--version', sdk, '--install-dir', str(install), '--no-path']
 
 
-def install_reference(environment):
+def install_reference(environment, profile='ci'):
+    sdk_version, runtime_version = PROFILES[profile]
     # Require CI output files before doing any network or filesystem work.
     runner_temp = Path(environment['RUNNER_TEMP']).resolve()
     env_file, path_file = Path(environment['GITHUB_ENV']), Path(environment['GITHUB_PATH'])
     windows = sys.platform == 'win32'
     extension = 'ps1' if windows else 'sh'
-    work = Path(tempfile.mkdtemp(prefix='dn2cpp-culture-reference-', dir=runner_temp))
+    work = Path(tempfile.mkdtemp(prefix=f'dn2cpp-{profile}-reference-', dir=runner_temp))
     install = work / 'dotnet'
     script = work / f'dotnet-install.{extension}'
     url = f'https://raw.githubusercontent.com/dotnet/install-scripts/{INSTALLER_COMMIT}/src/{script.name}'
@@ -48,16 +53,16 @@ def install_reference(environment):
     # Apphosts prefer architecture-specific ROOT variables over DOTNET_ROOT.
     for architecture in ('X64', 'ARM64', 'X86'):
         selected[f'DOTNET_ROOT_{architecture}'] = str(install)
-    subprocess.run(installer_command(script, install, windows), env=selected, check=True)
+    subprocess.run(installer_command(script, install, windows, sdk_version), env=selected, check=True)
     dotnet = install / ('dotnet.exe' if windows else 'dotnet')
     sdk = subprocess.check_output([str(dotnet), '--version'], env=selected).strip()
     runtimes = subprocess.check_output([str(dotnet), '--list-runtimes'], env=selected)
     versions = [line.split()[1] for line in runtimes.splitlines()
                 if line.startswith(b'Microsoft.NETCore.App ')]
-    if sdk != SDK.encode('ascii') or versions != [RUNTIME.encode('ascii')]:
+    if sdk != sdk_version.encode('ascii') or versions != [runtime_version.encode('ascii')]:
         raise RuntimeError(f'Unexpected isolated SDK/runtime: sdk={sdk!r}, runtimes={runtimes!r}')
-    # Existing check-culture-reference.sh subsequently verifies the actual CLR
-    # process Environment.Version and ICU, not merely these installed inventories.
+    # For the optional culture gate, check-culture-reference.sh also verifies
+    # the actual CLR Environment.Version and ICU, not just installed inventories.
     exports = ['DOTNET_ROOT', 'DOTNET_MULTILEVEL_LOOKUP', 'DOTNET_ROOT_X64',
                'DOTNET_ROOT_ARM64', 'DOTNET_ROOT_X86']
     with env_file.open('a', encoding='utf-8', newline='\n') as stream:
@@ -65,9 +70,11 @@ def install_reference(environment):
             stream.write(f'{key}={selected[key]}\n')
     with path_file.open('a', encoding='utf-8', newline='\n') as stream:
         stream.write(str(install) + '\n')
-    print(f'Installed exact SDK {SDK}, CoreLib {RUNTIME} at {install}')
+    print(f'Installed {profile} exact SDK {sdk_version}, CoreLib {runtime_version} at {install}')
     return install
 
 
 if __name__ == '__main__':
-    install_reference(os.environ)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--profile', choices=PROFILES, default='ci')
+    install_reference(os.environ, parser.parse_args().profile)

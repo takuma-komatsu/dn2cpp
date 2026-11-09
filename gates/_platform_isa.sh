@@ -874,6 +874,12 @@ _platform_isa_run_arch() {
 platform_isa_native_gate() {
     [ "$#" -eq 0 ] \
         || { echo "error: platform_isa_native_gate takes no arguments" >&2; return 1; }
+    local DN2CPP_EXTRA_LINK_FLAGS="${DN2CPP_EXTRA_LINK_FLAGS:-}"
+    if [ "$DN2CPP_OS" = windows ] && is_msvc_compiler; then
+        # The exhaustive AVX-512 exercise exceeds MSVC's default stack reserve.
+        # Scope this to the probe, including its cache key and every shard build.
+        DN2CPP_EXTRA_LINK_FLAGS="${DN2CPP_EXTRA_LINK_FLAGS:+$DN2CPP_EXTRA_LINK_FLAGS }-STACK:8388608"
+    fi
     case "${DN2CPP_PLATFORM_ISA_FULL:-0}" in
         0|1) DN2CPP_PLATFORM_ISA_FULL=${DN2CPP_PLATFORM_ISA_FULL:-0} ;;
         *) echo 'DN2CPP_PLATFORM_ISA_FULL must be 0 or 1' >&2; return 1 ;;
