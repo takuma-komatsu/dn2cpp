@@ -2234,7 +2234,12 @@ gate_capture() {
 # Failure diagnostics are replayed, while raw files remain available for review.
 gate_capture_ok() {
     local prefix="$1"
-    gate_capture "$@" || return 1
+    shift
+    if [ "${DN2CPP_RETRY_STATUS4:-0}" = 1 ] && [ "${1:-}" = run_bounded ]; then
+        shift
+        set -- run_bounded_retry_status4 "$(dirname "$prefix")" "$prefix" "$@"
+    fi
+    gate_capture "$prefix" "$@" || return 1
     if ! gate_output status "$(cat "$prefix.status")" 0; then
         cat "$prefix.stderr" >&2
         return 1
@@ -2581,6 +2586,7 @@ $simulator_sdk"
     key=$(
         {
             printf 'context:%s\n' "$context"
+            printf 'retry-status4:%s\n' "${DN2CPP_RETRY_STATUS4:-auto}"
             if [[ "$context" == *cli:* ]]; then
                 _gate_transpiler_env_term
             fi
@@ -3437,10 +3443,11 @@ run_bounded() {
 # Workaround for an unresolved Windows/MSYS status-4 anomaly under parallel gate
 # load. Opt in only for repeatable runs; retain the first result, and use the
 # second result as the verdict. A repeated 4 must still fail at the call site.
+# DN2CPP_RETRY_STATUS4=0 disables even callers that opt in by naming this helper.
 run_bounded_retry_status4() {
     local evidence_root="$1" label="$2" evidence code
     shift 2
-    if [ "$DN2CPP_OS" != windows ]; then
+    if [ "$DN2CPP_OS" != windows ] || [ "${DN2CPP_RETRY_STATUS4:-1}" != 1 ]; then
         run_bounded "$@"
         return $?
     fi

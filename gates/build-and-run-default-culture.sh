@@ -118,7 +118,7 @@ default_culture_diagnostics_self_test() {
             && grep -Fxq 'stderr: <empty>' "$diagnostics" \
             || { echo "FAIL: $side empty failed-run diagnostics are incomplete" >&2; cat "$diagnostics" >&2; return 1; }
     done
-    if [ "$DN2CPP_OS" = windows ]; then
+    if [ "$DN2CPP_OS" = windows ] && [ "${DN2CPP_RETRY_STATUS4:-1}" = 1 ]; then
         retry_counter="$_GATE_RUN_LOG_DIR/retry-counter"
         diagnostics="$_GATE_RUN_LOG_DIR/self-test-retry.stderr"
         child='

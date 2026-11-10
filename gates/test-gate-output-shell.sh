@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 script="$PWD/gates/test-gate-output-shell.sh"
 _DN2CPP_GATE_ROOT="$PWD"
 source gates/_python.sh
-eval "$(sed -n '/^gate_capture() {/,/^}/p; /^gate_capture_ok() {/,/^}/p; /^gate_assert_text() {/,/^}/p; /^_gate_helpers_hash() {/,/^}/p; /^gate_output() {/,/^}/p; /^corelib_diff_gate() {/,/^}/p; /^corelib_diff_abort_gate() {/,/^}/p; /^_corelib_diff_gate() {/,/^}/p; /^corelib_diff_split_gate() {/,/^}/p; /^corelib_subset_gate() {/,/^}/p; /^corelib_freeze_gate() {/,/^}/p; /^wasm_corelib_diff_gate() {/,/^}/p' gates/_common.sh)"
+eval "$(sed -n '/^gate_capture() {/,/^}/p; /^gate_capture_ok() {/,/^}/p; /^run_bounded_retry_status4() {/,/^}/p; /^gate_assert_text() {/,/^}/p; /^_gate_helpers_hash() {/,/^}/p; /^gate_output() {/,/^}/p; /^corelib_diff_gate() {/,/^}/p; /^corelib_diff_abort_gate() {/,/^}/p; /^_corelib_diff_gate() {/,/^}/p; /^corelib_diff_split_gate() {/,/^}/p; /^corelib_subset_gate() {/,/^}/p; /^corelib_freeze_gate() {/,/^}/p; /^wasm_corelib_diff_gate() {/,/^}/p' gates/_common.sh)"
 
 if [ "${1:-}" = --case ]; then
     scenario="$2" fixture="$3" py="$4"
@@ -32,6 +32,107 @@ if [ "${1:-}" = --case ]; then
         return "$(cat "$fixture/$side.code")"
     }
     case "$scenario" in
+        status4-cache)
+            eval "$(sed -n '/^gate_cache_check() {/,/^}/p; /^gate_cache_commit() {/,/^}/p' gates/_common.sh)"
+            DN2CPP_GATE_SCRIPT="$script"
+            DN2CPP_GATE_CACHE=1
+            DN2CPP_GATE_CACHE_DEBUG=1
+            mkdir -p "$fixture/status4-cache"
+            cd "$fixture/status4-cache"
+            _gate_surface_lines() { printf 'fixture-surface\n'; }
+            _gate_helpers_hash() { printf 'fixture-helpers\n'; }
+            _gate_runtime_env_term() { :; }
+            _gate_dotnet_env_term() { :; }
+            _gate_runtime_hash() { printf 'fixture-runtime\n'; }
+            _gate_dotnet_hash() { printf 'fixture-dotnet\n'; }
+            first_line() { printf '%s\n' "$1"; }
+            cc() { printf 'fixture-compiler\n'; }
+            unset WASM IOS_SIM IOS_DEV DN2CPP_RETRY_STATUS4
+            for selector in auto 1; do
+                if [ "$selector" = auto ]; then unset DN2CPP_RETRY_STATUS4; else DN2CPP_RETRY_STATUS4=1; fi
+                gate_cache_check run custom-context || :
+                gate_cache_commit
+                gate_cache_check run custom-context
+                if DN2CPP_RETRY_STATUS4=0 gate_cache_check run custom-context; then
+                    echo 'FAIL: retry-disabled run reused a retry-enabled cache receipt' >&2
+                    exit 1
+                fi
+            done
+            ;;
+        status4-*)
+            source gates/_ordinary-reflection.sh
+            eval "$(sed -n '/^_gate_extra_asserts() {/,/^}/p; /^_corelib_gate_check() {/,/^}/p' gates/_common.sh)"
+            unset DN2CPP_RETRY_STATUS4
+            DN2CPP_OS=windows
+            CONFIG=Debug
+            retry_root="$fixture/$scenario"
+            mkdir -p "$retry_root/attempts"
+            _CG_CORELIB_IN="$retry_root/System.Private.CoreLib.dll"
+            native_first=4 oracle_first=4 second_code=0
+            case "$scenario" in
+                status4-repeated) second_code=4 ;;
+                status4-other) native_first=7; oracle_first=7 ;;
+                status4-second-error) oracle_first=0; second_code=7 ;;
+                status4-disabled|status4-direct-disabled) DN2CPP_RETRY_STATUS4=0; oracle_first=0 ;;
+                status4-nonwindows) DN2CPP_OS=linux; oracle_first=0 ;;
+                status4-unrelated) oracle_first=0 ;;
+            esac
+            _corelib_gate_out() { printf '%s/run\n' "$retry_root"; }
+            _gate_extra_inputs() { :; }
+            gate_cache_check() { printf '%s\n' "${DN2CPP_RETRY_STATUS4:-auto}" >> "$retry_root/contexts"; return 1; }
+            gate_build_fixture() { mkdir -p "$2"; }
+            invoke_cli() { :; }
+            run_bounded() {
+                local side=native variant=main counter count=0 code
+                if [ "$1" = dotnet ]; then side=oracle; shift; fi
+                shift
+                if [ "$#" -gt 0 ]; then
+                    test "$#" = 2 && test "$1" = 'before fixture' && test "$2" = '' || return 91
+                    variant=extra
+                fi
+                counter="$retry_root/attempts/${DN2CPP_OUT_SUFFIX:-raw}-$side-$variant"
+                [ ! -f "$counter" ] || count=$(cat "$counter")
+                count=$((count + 1))
+                printf '%s\n' "$count" > "$counter"
+                code="$second_code"
+                if [ "$count" -eq 1 ]; then
+                    if [ "$side" = native ]; then code="$native_first"; else code="$oracle_first"; fi
+                fi
+                printf 'payload\000\r\n\n'
+                printf 'attempt %s\n' "$count" >&2
+                return "$code"
+            }
+            if [ "$scenario" = status4-fixture ]; then
+                gate_extra_asserts() {
+                    gate_capture_ok "$1/extra-native" run_bounded "$1/OrdinaryReflectionTypeLeaves$EXE_EXT" 'before fixture' '' || return 1
+                    gate_capture_ok "$1/extra-oracle" run_bounded dotnet "$_CG_APP" 'before fixture' '' || return 1
+                }
+                for mode in '' -diet -native; do
+                    flags=(--no-ildiet)
+                    case "$mode" in
+                        -diet) flags=() ;;
+                        -native) flags+=(--no-metadata-compression) ;;
+                    esac
+                    DN2CPP_OUT_SUFFIX="$mode" ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves ${flags[@]+"${flags[@]}"}
+                    test "${DN2CPP_RETRY_STATUS4+x}" != x
+                done
+                # Opting in must not repeat a command outside the final-run API.
+                single_shot() { printf 'ran\n' >> "$retry_root/single-shot-runs"; return 4; }
+                if DN2CPP_RETRY_STATUS4=1 gate_capture_ok "$retry_root/single-shot" single_shot; then
+                    echo 'FAIL: status 4 passed a success-only capture' >&2
+                    exit 1
+                fi
+                test "$(cat "$retry_root/single-shot.status")" = 4
+                test "$(cat "$retry_root/single-shot-runs")" = ran
+            elif [ "$scenario" = status4-direct-disabled ]; then
+                gate_capture "$retry_root/run/direct" run_bounded_retry_status4 "$retry_root/run" direct native
+                test "$(cat "$retry_root/run/direct.status")" = 4
+            else
+                subject=OrdinaryReflectionTypeLeaves
+                [ "$scenario" != status4-unrelated ] || subject=OtherFixture
+                ordinary_fixture_diff_gate ReflectTypes "$subject" --no-ildiet
+            fi
+            ;;
         brotli-reference)
             source gates/_compression-reference.sh
             resolve_net10_corelib() { printf '/runtime/%s/System.Private.CoreLib.dll\n' "$reference_version"; }
@@ -458,3 +559,52 @@ bash gates/fixtures/luacsharp-output.sh "$py"
 bash gates/fixtures/capture-setup-failure.sh "$py"
 DN2CPP_PYTHON="$py" bash gates/test-gate-python.sh
 printf 'OK: gate output shell contract\n'
+run_case 0 status4-cache
+run_case 0 status4-fixture
+run_case 1 status4-repeated
+run_case 0 status4-other
+run_case 1 status4-second-error
+run_case 1 status4-disabled
+run_case 0 status4-direct-disabled
+run_case 1 status4-nonwindows
+run_case 1 status4-unrelated
+gate_python - "$fixture" <<'PY'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+payload = b'payload\0\r\n\n'
+for mode in ('raw', '-diet', '-native'):
+    fixture = root / 'status4-fixture'
+    for side in ('native', 'oracle'):
+        for variant in ('main', 'extra'):
+            assert (fixture / 'attempts' / f'{mode}-{side}-{variant}').read_text().strip() == '2'
+    evidence = list((fixture / ('run' + (mode if mode != 'raw' else ''))).glob('retry4.*'))
+    assert len(evidence) == 4
+    for attempt in evidence:
+        assert (attempt / 'first.stdout').read_bytes() == payload
+        assert (attempt / 'second.stdout').read_bytes() == payload
+        assert (attempt / 'first.stderr').read_bytes() == b'attempt 1\n'
+        assert (attempt / 'second.stderr').read_bytes() == b'attempt 2\n'
+        assert (attempt / 'first.status').read_text().strip() == '4'
+        assert (attempt / 'second.status').read_text().strip() == '0'
+        assert 'OrdinaryReflectionTypeLeaves' in (attempt / 'command').read_text()
+    assert sum("before\\ fixture ''" in (attempt / 'command').read_text() for attempt in evidence) == 2
+contexts = (root / 'status4-fixture' / 'contexts').read_text().splitlines()
+assert contexts == ['1', '1', '1']
+for scenario in ('repeated', 'other', 'second-error', 'disabled', 'direct-disabled', 'nonwindows', 'unrelated'):
+    fixture = root / ('status4-' + scenario)
+    evidence = list((fixture / 'run').glob('retry4.*'))
+    native_count = 2 if scenario in ('repeated', 'second-error') else 1
+    assert (fixture / 'attempts' / 'raw-native-main').read_text().strip() == str(native_count)
+    if scenario != 'direct-disabled':
+        oracle_count = 2 if scenario == 'repeated' else 1
+        assert (fixture / 'attempts' / 'raw-oracle-main').read_text().strip() == str(oracle_count)
+    if scenario in ('repeated', 'second-error'):
+        assert len(evidence) == (2 if scenario == 'repeated' else 1)
+        for attempt in evidence:
+            assert (attempt / 'second.status').read_text().strip() == ('4' if scenario == 'repeated' else '7')
+    else:
+        assert not evidence
+PY
+printf 'OK: Windows status-4 retry policy\n'

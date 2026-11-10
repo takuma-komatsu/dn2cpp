@@ -4,6 +4,10 @@
 ordinary_fixture_diff_gate() {
     local fixture_bucket="$1" fixture_subject="$2" core_definition
     shift 2
+    if [ "$fixture_subject" = OrdinaryReflectionTypeLeaves ]; then
+        # Scope the workaround to this fixture, including its extra assertions.
+        local DN2CPP_RETRY_STATUS4="${DN2CPP_RETRY_STATUS4:-1}"
+    fi
     core_definition=$(declare -f _corelib_gate_core)
     _corelib_gate_core() {
         local project="$1" out="$2" bcl name

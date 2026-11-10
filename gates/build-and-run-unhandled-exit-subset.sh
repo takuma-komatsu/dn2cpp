@@ -15,7 +15,7 @@
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|trace-hook:fresh-wrapper-image|worker-modes:pool,thread,timer,cts-timer,async-void,local-continuation,nested-drain,generic-exception,message-override"
 # The Windows/MSYS status-4 workaround also covers the initial Main comparison.
-DN2CPP_RETRY_STATUS4=1
+DN2CPP_RETRY_STATUS4=${DN2CPP_RETRY_STATUS4:-1}
 
 gate_extra_asserts() {
 
