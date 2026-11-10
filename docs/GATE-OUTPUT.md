@@ -150,6 +150,23 @@ failure class. A timeout, missing executable or terminated runner is not
 evidence of matching program behavior. Intentional abort status `134` remains
 available to failure-parity gates.
 
+Repeatable runs can opt into the Windows/MSYS status-4 workaround with
+`DN2CPP_RETRY_STATUS4=1`. `corelib_diff_gate` applies it to the native and CLR
+runs; `gate_capture_ok` also applies it to `run_bounded` observations. Direct calls to
+`run_bounded_retry_status4` also opt in. Only an initial Windows status `4`
+triggers a retry; other statuses and hosts keep the original result. The
+`retry4.*` directory retains both attempts' raw stdout, stderr and status,
+the command and its label. The second result must satisfy the ordinary output
+and status checks; repeated status `4` fails even when both parity sides agree.
+
+`OrdinaryReflectionTypeLeaves` opts in through `ordinary_fixture_diff_gate`,
+covering its native and CLR runs and extra assertions in every fixture mode.
+That default is scoped to the fixture. Set `DN2CPP_RETRY_STATUS4=0` to disable
+the workaround everywhere, including DefaultCulture and UnhandledExitSubset.
+The selector is part of the common gate cache key, so a result
+obtained with retries cannot satisfy a run with retries disabled. Build and
+transpile steps do not opt in.
+
 `abort-parity ACTUAL_PREFIX EXPECTED_PREFIX --host HOST --witness RECORD
 --diagnostic RECORD` is a separate, explicit expected-abort contract over raw
 `.stdout`, `.stderr` and `.status` files. It requires exact stdout parity, a
