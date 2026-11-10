@@ -5322,6 +5322,8 @@ internal sealed partial class Compilation
             // Reference forms (Task<T> -> "Dn2CppTask*") stay reference types;
             // the value forms (builder/awaiter) are structs embedded by value.
             spec.IsValueType = !spec.IntrinsicCppName.EndsWith('*');
+            if (IsTypedGCHandle(spec))
+                CompleteTypedGCHandleInterfaces(spec);
             return;
         }
         var module = spec.Module;
@@ -6164,6 +6166,9 @@ internal sealed partial class Compilation
                             }
                         }
                         var t = ResolveCallTarget(module, handle, m.Context);
+                        if (t is null && insn.OpCode is ILOpCode.Ldftn or ILOpCode.Ldvirtftn
+                            && handle.Kind == HandleKind.MemberReference)
+                            RejectTypedGCHandleAddress(module, (MemberReferenceHandle)handle, m.Context);
                         // A bodyless P/Invoke with a registered managed native
                         // implementation: the call site lowers to a direct call to the
                         // implementation (MethodCompiler.EmitNativeImplCall), so reach

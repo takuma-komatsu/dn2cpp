@@ -45,15 +45,26 @@
 # GCHandle sections 13 and 17 read process-wide heap state. Run them after
 # every heap-sensitive section; any later section must be independent of prior
 # allocator and heap state.
+# Typed GCHandle<T> basics append direct/constrained calls, token rooting and
+# boxed IDisposable/IEquatable dispatch without changing the legacy prefix.
+# Isolated type tokens prove interface assignability without preparing a box.
+# Full mode adds a linked High driver, a generated-CoreLib High/Medium retention
+# probe and the full malformed-signature matrix. Address-taking and representative
+# signature refusals always run with both ILDiet and --no-ildiet.
 source "$(dirname "$0")/_common.sh"
+source gates/_typed-gchandle.sh
 case "${DN2CPP_MARSHAL_FULL:-0}" in
     0|1) DN2CPP_MARSHAL_FULL=${DN2CPP_MARSHAL_FULL:-0} ;;
     *) echo 'DN2CPP_MARSHAL_FULL must be 0 or 1' >&2; exit 1 ;;
 esac
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|marshal-pinning-full:$DN2CPP_MARSHAL_FULL"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|typed-gchandle:real-high,generated-high-medium|negative-preprocessing:ildiet,raw"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_typed-gchandle.sh gates/fixtures/typed-gchandle/basics/Program.cs gates/fixtures/typed-gchandle/basics/TypedGCHandleBasics.csproj gates/fixtures/typed-gchandle/type-only/Program.cs gates/fixtures/typed-gchandle/type-only/TypedGCHandleTypeOnly.csproj gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/Program.TypedGCHandle.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj samples/dotnet/MarshalPinning/TypedGCHandleSubset.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/typed-gchandle/retention/Program.cs gates/fixtures/typed-gchandle/retention/TypedGCHandleRetention.csproj gates/fixtures/ldftn-local/Program.TypedGCHandleCore.cs"
 if [ "$DN2CPP_MARSHAL_FULL" = 0 ]; then
     echo 'marshal-pinning coverage: aggregate CLR parity and runtime assertions'
     echo 'marshal-pinning isolated layout refusals: skipped (not selected); not counted as passed'
+    echo 'marshal-pinning typed isolated High, generated-CoreLib retention and full signature matrix: skipped (not selected); not counted as passed'
 fi
 
 if [ "$DN2CPP_MARSHAL_FULL" = 1 ]; then
@@ -74,8 +85,8 @@ echo "== Asserting [StructLayout(Size=N)] with N not a multiple of the alignment
 _neg_corelib=$(locate_corelib)
 build_proj samples/dotnet/LayoutSizeBad/LayoutSizeBad.csproj
 _neg_app="samples/dotnet/LayoutSizeBad/bin/$CONFIG/$TFM/LayoutSizeBad.dll"
-_neg_out="artifacts/marshalpinning-layoutsize-neg"
-rm -rf "$_neg_out"
+mkdir -p artifacts
+_neg_out=$(mktemp -d artifacts/marshalpinning-layoutsize-neg.XXXXXX)
 _neg_rc=0
 _neg_err=$(invoke_cli "$_neg_app" -r "$_neg_corelib" -o "$_neg_out" 2>&1) || _neg_rc=$?
 if [ "$_neg_rc" -ne 2 ]; then
@@ -97,8 +108,7 @@ echo "== Asserting a declared Size over fields ending off the alignment refuses 
 # so the verdict is target-independent.
 build_proj samples/dotnet/LayoutSizeBadNarrow/LayoutSizeBadNarrow.csproj
 _narrow_app="samples/dotnet/LayoutSizeBadNarrow/bin/$CONFIG/$TFM/LayoutSizeBadNarrow.dll"
-_narrow_out="artifacts/marshalpinning-layoutsize-narrow"
-rm -rf "$_narrow_out"
+_narrow_out=$(mktemp -d artifacts/marshalpinning-layoutsize-narrow.XXXXXX)
 _narrow_rc=0
 _narrow_err=$(invoke_cli "$_narrow_app" -r "$_neg_corelib" -o "$_narrow_out" 2>&1) || _narrow_rc=$?
 if [ "$_narrow_rc" -ne 2 ]; then
@@ -121,8 +131,7 @@ echo "== Asserting an explicit total only the 64-bit reading can express refuses
 # was building silently on x64.
 build_proj samples/dotnet/LayoutSizeBadNarrowExplicit/LayoutSizeBadNarrowExplicit.csproj
 _xnarrow_app="samples/dotnet/LayoutSizeBadNarrowExplicit/bin/$CONFIG/$TFM/LayoutSizeBadNarrowExplicit.dll"
-_xnarrow_out="artifacts/marshalpinning-layoutsize-narrow-explicit"
-rm -rf "$_xnarrow_out"
+_xnarrow_out=$(mktemp -d artifacts/marshalpinning-layoutsize-narrow-explicit.XXXXXX)
 _xnarrow_rc=0
 _xnarrow_err=$(invoke_cli "$_xnarrow_app" -r "$_neg_corelib" -o "$_xnarrow_out" 2>&1) || _xnarrow_rc=$?
 if [ "$_xnarrow_rc" -ne 2 ]; then
@@ -143,8 +152,7 @@ echo "== Asserting an explicit layout whose fields end past the declared Size re
 # error, so a second type inside LayoutSizeBadNarrowExplicit would never reach the grep.
 build_proj samples/dotnet/LayoutSizeBadExplicitOver/LayoutSizeBadExplicitOver.csproj
 _xover_app="samples/dotnet/LayoutSizeBadExplicitOver/bin/$CONFIG/$TFM/LayoutSizeBadExplicitOver.dll"
-_xover_out="artifacts/marshalpinning-layoutsize-over-explicit"
-rm -rf "$_xover_out"
+_xover_out=$(mktemp -d artifacts/marshalpinning-layoutsize-over-explicit.XXXXXX)
 _xover_rc=0
 _xover_err=$(invoke_cli "$_xover_app" -r "$_neg_corelib" -o "$_xover_out" 2>&1) || _xover_rc=$?
 if [ "$_xover_rc" -ne 2 ]; then
@@ -160,8 +168,26 @@ fi
 
 gate_capture_diff_files() {
     local out="$1" native="$3"
+    if [ "$2" = TypedGCHandleBasics ]; then
+        typed_gchandle_assert_output "$native"
+        return
+    fi
+    if [ "$2" = TypedGCHandleTypeOnly ]; then
+        typed_gchandle_assert_types "$native"
+        return
+    fi
+    if [ "$2" = TypedGCHandleRetention ]; then
+        gate_output witness "$native" 'Typed GC handle retention end' --count 1 --policy crlf
+        return
+    fi
     printf 'known=31\nretained=1\nretained=47\n' > "$out/box-dispatch.expected"
-    gate_output suffix "$native" "$out/box-dispatch.expected" --policy crlf
+    gate_capture_ok "$out/before-typed.native" run_bounded "./$out/MarshalPinning$EXE_EXT" before-typed-handles
+    gate_capture_ok "$out/before-typed.oracle" run_bounded dotnet "$_CG_APP" before-typed-handles
+    gate_output compare "$out/before-typed.native.stdout" "$out/before-typed.oracle.stdout" --policy crlf
+    gate_output suffix "$out/before-typed.native.stdout" "$out/box-dispatch.expected" --policy crlf
+    gate_output prefix "$native" "$out/before-typed.native.stdout" --before '== Typed GC handles ==' --policy crlf
+    gate_output prefix "$4" "$out/before-typed.oracle.stdout" --before '== Typed GC handles ==' --policy crlf
+    typed_gchandle_assert_output "$native"
 }
 
 corelib_diff_gate MarshalPinning
@@ -177,3 +203,5 @@ grep -Fq "StructMarshalRoundtripSubset.UnpreparedBox" "$_native_box" \
     || { echo "FAIL: unprepared box refusal omitted the target" >&2; exit 1; }
 grep -Fq 'statically known typeof(T)' "$_native_box" \
     || { echo "FAIL: unprepared box refusal omitted the remedy" >&2; exit 1; }
+
+typed_gchandle_regressions

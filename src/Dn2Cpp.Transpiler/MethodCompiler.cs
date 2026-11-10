@@ -3987,6 +3987,8 @@ internal sealed partial class MethodCompiler : IEvalStack
 
             case ILOpCode.Constrained:
                 _constrained = ResolveTypeToken(insn.Token);
+                if (_constrained.Class is { } typedHandle && IsTypedGCHandle(typedHandle))
+                    _c.ValidateTypedGCHandleTypeEncoding(_module, SRME.EntityHandle(insn.Token), _method.Context);
                 // A constrained dispatch takes the receiver by ADDRESS and may
                 // box it — value semantics the any-placeholder cannot carry.
                 TaintIfCanonAnyValue(_constrained, "constrained");

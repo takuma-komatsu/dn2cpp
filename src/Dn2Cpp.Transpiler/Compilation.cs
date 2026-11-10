@@ -1025,6 +1025,8 @@ internal sealed partial class Compilation
                     _identityOnlyReferences.Add(type.Class!);
                     NoteConditionalPreservationUse(type.Class!);
                 }
+                if (IsTypedGCHandle(type.Class!))
+                    NoteTypedGCHandleInterfaces(type.Class!, keepSeed);
                 foreach (var arg in type.Class!.Context.TypeArgs)
                     NoteTypeIdentityClosure(arg, keepSeed);
                 break;

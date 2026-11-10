@@ -5,6 +5,11 @@ using Mono.Cecil.Cil;
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+if (TryWriteTypedGCHandleFixture(args))
+    return;
+if (TryWriteTypedGCHandleCore(args))
+    return;
+
 void RewriteDelegateCloneSlots(ModuleDefinition module, bool required = false)
 {
     var names = new[] { "CloneOverrideDelegate", "CloneExplicitDelegate" };
