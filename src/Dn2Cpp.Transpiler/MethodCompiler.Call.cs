@@ -886,7 +886,11 @@ internal sealed partial class MethodCompiler
                     // context.
                     if (parent is { Kind: TypeKind.Class, Class: { IntrinsicCppName: not null } pc })
                     {
-                        var pcSig = mr.DecodeMethodSignature(_c.SigProvider, pc.Context);
+                        var pcSig = IsTypedGCHandle(pc)
+                            ? _c.DecodeTypedGCHandleMember(_module, mr, _method.Context, pc)
+                            : mr.DecodeMethodSignature(_c.SigProvider, pc.Context);
+                        if (TryEmitTypedGCHandleIntrinsic(pc, mrName, pcSig))
+                            return;
                         // A member/operator on a closed Vector64/128/256/512<T> / Vector<T>
                         // struct: the receiver supplies the element (instance get_Item /
                         // GetLower / get_Count have no vector in their signature), so dispatch
@@ -4244,6 +4248,10 @@ internal sealed partial class MethodCompiler
                     return true;
                 }
             }
+            if (IsTypedGCHandle(ivc))
+                _c.ValidateTypedGCHandleConstrainedEncoding(_module, handle, _method.Context, ivc);
+            if (TryEmitTypedGCHandleIntrinsic(ivc, name, csig))
+                return true;
             // A vector struct virtual reached via `constrained. callvirt` (e.g.
             // IEquatable<Vector128<T>>.Equals): dispatch with the closed element, like the
             // TypeSpec member path. Equals(object)/GetHashCode/ToString fall through.

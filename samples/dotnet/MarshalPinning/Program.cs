@@ -38,6 +38,8 @@ namespace MarshalPinning
             // following marshalling reads only its own native buffer.
             GCHandlePinSubset.Program.__GateEntry();    // was gchandle-pin-subset
             StructMarshalRoundtripSubset.Program.TypeBoxing();
+            if (args.Length == 1 && args[0] == "before-typed-handles") return;
+            TypedGCHandleSubset.Program.Run();
         }
     }
 }

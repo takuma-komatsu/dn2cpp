@@ -408,6 +408,14 @@ Core invariants:
   the existing native GCHandle hash operation, not CLR numeric hash values.
   Allocation, freeing, lifetime policy, generic handles and ordering are outside
   this contract.
+- **Typed CoreLib GCHandle<T> uses the existing strong handle cell.** Constructors,
+  Target, IsAllocated, Dispose and token conversions lower at call sites; direct,
+  constrained and boxed equality compare the cell identity. Boxed IDisposable and
+  IEquatable calls use typed interface thunks, and disposal clears the receiver's
+  own copy. The zero token is an unallocated typed handle: disposal is a no-op and
+  Target throws NullReferenceException. Tokens remain opaque, caller-managed
+  lifetime values. Taking a typed member's address is refused; a lambda can call
+  it instead. No managed field layout or new runtime ABI is involved.
 
 ## 2. Modules and the core⇄target contract
 

@@ -18,6 +18,23 @@ internal sealed partial class Compilation
         TryResolveMemberRefMethod(module, handle, context) ?? TryRuntimeObjectFunction(module, handle)
         ?? ResolveMemberRefMethod(module, handle, context);
 
+    // A typed GCHandle<T> is an intrinsic shell: every call lowers at its site, and
+    // no member has a body or symbol that a delegate or method pointer could name.
+    private static NotSupportedException TypedGCHandleAddressRefusal(ClassInfo owner, string name) =>
+        new($"{owner.FullName}::{name}: typed GCHandle<T> members are lowered only at call sites; "
+            + "taking a member's address is not supported, so call it from a lambda instead");
+
+    private void RejectTypedGCHandleAddress(Module module, MemberReferenceHandle handle, GenericContext context)
+    {
+        var reader = module.Reader;
+        var reference = reader.GetMemberReference(handle);
+        if (reference.Parent.Kind == HandleKind.TypeSpecification
+            && reader.GetTypeSpecification((TypeSpecificationHandle)reference.Parent).DecodeSignature(SigProvider, context)
+                is { Kind: TypeKind.Class, Class: { } owner }
+            && IsTypedGCHandle(owner))
+            throw TypedGCHandleAddressRefusal(owner, reader.GetString(reference.Name));
+    }
+
     private MethodInfo? TryRuntimeObjectFunction(Module module, MemberReferenceHandle handle,
         bool prepare = false)
     {
@@ -1296,7 +1313,8 @@ internal sealed partial class Compilation
             ? new List<MethodInfo>()
             : named.Where(x => x.Signature.ParameterTypes.Length == argc).ToList();
         if (candidates.Count == 0)
-            throw new NotSupportedException($"{cls.FullName}: no method {name}/{argc}");
+            throw IsTypedGCHandle(cls) ? TypedGCHandleAddressRefusal(cls, name)
+                : new NotSupportedException($"{cls.FullName}: no method {name}/{argc}");
         // A single same-arity candidate is the common case; only when overloads
         // collide on name+arity (e.g. String.Concat(string, string) vs
         // Concat(object, object)) do we disambiguate by parameter types so the

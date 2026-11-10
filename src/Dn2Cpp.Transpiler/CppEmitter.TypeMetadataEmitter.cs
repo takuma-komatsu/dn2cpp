@@ -1510,6 +1510,16 @@ internal sealed partial class CppEmitter
                     _sb.AppendLine($"static int32_t {eqThunk}(Dn2CppObject* a, Dn2CppObject* b) {{ return (b && b->type == a->type && ((Dn2CppCancelToken*)(a + 1))->source == ((Dn2CppCancelToken*)(b + 1))->source) ? 1 : 0; }}");
                     equals = $"&{eqThunk}";
                 }
+                if (_c.IsTypedGCHandle(c))
+                {
+                    string ghThunk = $"ghthunk_{c.CppName}";
+                    _sb.AppendLine($"static int32_t {ghThunk}(Dn2CppObject* o) {{ uint64_t h = (uint64_t)dn2cpp_gchandle_to_intptr(*(Dn2CppGCHandle*)(o + 1)); return (int32_t)(h ^ (h >> 32)); }}");
+                    getHash = $"&{ghThunk}";
+                    string eqThunk = $"eqthunk_{c.CppName}";
+                    _sb.AppendLine($"static int32_t {eqThunk}(Dn2CppObject* a, Dn2CppObject* b) {{ return (b && b->type == a->type && ((Dn2CppGCHandle*)(a + 1))->cell == ((Dn2CppGCHandle*)(b + 1))->cell) ? 1 : 0; }}");
+                    equals = $"&{eqThunk}";
+                    (interfaces, interfaceCount) = TypedGCHandleInterfaces(c);
+                }
                 string genericDef = "nullptr", genericArgs = "nullptr";
                 int genericCount = 0;
                 if (_e.GenericDefInfo(c) is { } gi && _e._genericDefSyms.TryGetValue(gi.DefName, out var defSym))
