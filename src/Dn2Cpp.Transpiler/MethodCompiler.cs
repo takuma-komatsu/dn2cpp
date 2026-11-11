@@ -153,6 +153,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     // reachability scanner computed the identical pass, so the offsets skipped
     // here were never scanned — emission and reachability stay in lockstep.
     private BranchLiveness? _liveness;
+    private EntityHandle _constrainedHandle;
     private TypeDesc? _constrained; // pending constrained. prefix for the next callvirt
     private bool _readonlyAddress;
 
@@ -686,6 +687,11 @@ internal sealed partial class MethodCompiler : IEvalStack
 
     public string Compile()
     {
+        CoreIntrinsics.ValidateScalarNumericLeaf(_method);
+        CoreIntrinsics.ValidateBinaryIntegerEndianBody(_method);
+        CoreIntrinsics.ValidatePrimitiveParseBody(_method);
+        CoreIntrinsics.ValidateDecimalBinaryBody(_method);
+        CoreIntrinsics.ValidatePrimitiveWideConversionBody(_method);
         // Decode the HotPath bits for every reachable body here. The planning pass compiles
         // all of them before the emission phase arms its recording, so this guarantees
         // Compilation.NoAllocMethods (populated by IsHotPath's decode) is complete at
@@ -1240,6 +1246,35 @@ internal sealed partial class MethodCompiler : IEvalStack
     {
         if (CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(_method))
             return CompileInvariantCompareInfoInitializer();
+        CoreIntrinsics.ValidateScalarNumericLeaf(_method);
+        CoreIntrinsics.ValidateBinaryIntegerEndianBody(_method);
+        CoreIntrinsics.ValidatePrimitiveParseBody(_method);
+        CoreIntrinsics.ValidateDecimalBinaryBody(_method);
+        CoreIntrinsics.ValidatePrimitiveWideConversionBody(_method);
+        if (CoreIntrinsics.BrNativeIntegerEndian.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                EmitNativeIntegerEndian(_method);
+                return true;
+            }, "target-width native integer endian read");
+        if (CoreIntrinsics.BrNativeIntegerParse.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+                TryEmitParseIntrinsic(_method.DeclaringClass.FullName, _method.Name, _method.Signature, nativeInteger: true),
+                "target-width native integer parsing");
+        if (CoreIntrinsics.BrPrimitiveBigMul.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                EmitPrimitiveBigMul(_method);
+                return true;
+            }, "primitive full-width multiplication");
+        if (CoreIntrinsics.IsUInt128Checked(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+                TryTokenFreeGenericIntrinsic(_method.DeclaringClass.FullName, _method.Name, _method.Context.MethodArgs),
+                "checked UInt128 integer widening");
+        if (CoreIntrinsics.IsInt128Checked(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+                TryTokenFreeGenericIntrinsic(_method.DeclaringClass.FullName, _method.Name, _method.Context.MethodArgs),
+                "checked Int128 integer widening");
         if (CoreIntrinsics.IsInvariantCompareInfoGetter(_method))
             return CompileInterceptWrapper();
         string dispatch = _c.RuntimeInterfaceLowerings.TryGetValue(_method, out var runtimeDispatch)
@@ -3140,7 +3175,9 @@ internal sealed partial class MethodCompiler : IEvalStack
             case ILOpCode.Ldind_u4: LoadIndirect("uint32_t", StackKind.I4, "int32_t"); break;
             case ILOpCode.Ldind_i8: LoadIndirect("int64_t", StackKind.I8, "int64_t"); break;
             case ILOpCode.Ldind_i: LoadIndirect("intptr_t", StackKind.I8, "int64_t"); break;
-            case ILOpCode.Ldind_r4: LoadIndirect("float", StackKind.R8, "double"); break;
+            case ILOpCode.Ldind_r4:
+                LoadIndirect("float", StackKind.R8, CoreIntrinsics.IsSingleStorageBitLoad(_method) ? "float" : "double");
+                break;
             case ILOpCode.Ldind_r8: LoadIndirect("double", StackKind.R8, "double"); break;
             case ILOpCode.Ldind_ref: LoadIndirectRef(); break;
 
@@ -3986,6 +4023,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             }
 
             case ILOpCode.Constrained:
+                _constrainedHandle = SRME.EntityHandle(insn.Token);
                 _constrained = ResolveTypeToken(insn.Token);
                 if (_constrained.Class is { } typedHandle && IsTypedGCHandle(typedHandle))
                     _c.ValidateTypedGCHandleTypeEncoding(_module, SRME.EntityHandle(insn.Token), _method.Context);

@@ -3810,7 +3810,8 @@ internal sealed partial class CppEmitter
         private bool IsRetainedOpaqueMemberRow(MethodInfo method) =>
             _c.KeepsReflectionMetadata(method.DeclaringClass)
             && (_c.Reachable.Contains(method) || _c.KeepsUnreachedRow(method))
-            && CoreIntrinsics.IsInvariantCompareInfoGetter(method);
+            && (CoreIntrinsics.IsScalarNumericLeaf(method)
+                || CoreIntrinsics.IsInvariantCompareInfoGetter(method));
 
         private void RenderMemberTables(ClassInfo cls)
         {

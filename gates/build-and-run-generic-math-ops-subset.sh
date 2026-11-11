@@ -8,8 +8,8 @@
 # primitive; MethodCompiler.TryEmitGenericMathIntrinsic emits the primitive op and
 # the constrained `call` to a static-abstract member devirtualizes to the concrete
 # impl. The app drives the patterns through generic methods; output diffs exact vs
-# real .NET. CoreLib only (no Linq shim). FloatingPointMath covers the floating-
-# point interfaces (IRootFunctions/ITrigonometricFunctions/IExponentialFunctions/
+# real .NET using genuine BCL assemblies (no Linq shim). FloatingPointMath covers
+# the floating-point interfaces (IRootFunctions/ITrigonometricFunctions/IExponentialFunctions/
 # ILogarithmicFunctions/IPowerFunctions/IHyperbolicFunctions/IFloatingPointIeee754/
 # IFloatingPoint) with TSelf closed to double/float/Half. ShiftModulusOps covers
 # op_Modulus (IModulusOperators; integers/float/double/decimal), the IShiftOperators
@@ -40,8 +40,11 @@
 # InterfaceStaticImpl covers an INTERFACE as the constrained type argument: the
 # interface's own explicit static impls resolve the static abstract members, and
 # an unimplemented static-virtual default still binds the default body.
+# Scalar leaves retain exponent/significand writers and signaling-NaN payloads.
+# Endian reads and primitive span parsing cover scalar storage, bounds and faults.
+# Finite-source wide conversions retain managed IL.
 source "$(dirname "$0")/_common.sh"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|static-impl-selection-prefix:${DN2CPP_BEFORE_STATIC_IMPL_SELECTION:-}|scalar-leaf-prefix:${DN2CPP_BEFORE_SCALAR_NUMERIC_LEAVES:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|static-impl-selection-prefix:${DN2CPP_BEFORE_STATIC_IMPL_SELECTION:-}|scalar-leaf-prefix:${DN2CPP_BEFORE_SCALAR_NUMERIC_LEAVES:-}|numeric-corelib-prefix:${DN2CPP_BEFORE_NUMERIC_CORELIB:-}"
 
 gate_extra_asserts() {
     local out="$1"
@@ -70,6 +73,20 @@ gate_extra_asserts() {
     DN2CPP_BEFORE_SCALAR_NUMERIC_LEAVES=1 gate_capture_ok "$out/scalar-leaves-oracle-before" \
         run_bounded dotnet "$_CG_APP"
     gate_output compare "$out/scalar-leaves-prefix.stdout" "$out/scalar-leaves-oracle-before.stdout"
+    DN2CPP_BEFORE_NUMERIC_CORELIB=1 gate_capture_ok "$out/numeric-corelib-before" \
+        run_bounded "$out/GenericMathOpsSubset$EXE_EXT"
+    DN2CPP_BEFORE_NUMERIC_CORELIB=1 gate_capture_ok "$out/numeric-corelib-oracle-before" \
+        run_bounded dotnet "$_CG_APP"
+    gate_output select "$out/native.stdout" "$out/numeric-corelib-prefix.stdout" \
+        --before '== scalar numeric managed leaves ==' --policy crlf
+    gate_output compare "$out/numeric-corelib-prefix.stdout" "$out/numeric-corelib-before.stdout"
+    gate_output compare "$out/numeric-corelib-prefix.stdout" "$out/numeric-corelib-oracle-before.stdout"
+    gate_output byte-witness "$out/native.stdout" --count 1 --policy crlf \
+        'scalar numeric managed leaves end' '== endian complete ==' \
+        '== Native and char span parsing done ==' 'wide.done' \
+        'leaf-write:f32-7F800001:2:4=True:4:A500800001A5' \
+        'leaf-write:f32-FF812345:2:4=True:4:A500812345A5' \
+        'leaf-sign:-2147483648=-1:-1:2'
 }
 
-corelib_diff_gate GenericMathOpsSubset System.Runtime
+corelib_diff_gate GenericMathOpsSubset System.Runtime System.Runtime.Numerics

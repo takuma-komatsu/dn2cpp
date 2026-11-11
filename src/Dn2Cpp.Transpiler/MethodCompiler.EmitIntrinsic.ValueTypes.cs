@@ -41,13 +41,31 @@ internal sealed partial class MethodCompiler
 
     /// <summary>Pops a Decimal ctor's args (pushed left-to-right) and returns the
     /// C++ expression constructing the Dn2CppDecimal — the (lo,mid,hi,isNeg,scale)
-    /// bit-pattern ctor and the numeric-widening single-arg ctors.</summary>
-    private string EmitDecimalCtorExpr(MethodSignature<TypeDesc> sig)
+    /// bit-pattern ctors and the numeric-widening single-arg ctors.</summary>
+    private string EmitDecimalCtorExpr(MethodSignature<TypeDesc> sig, EntityHandle site)
     {
         var ps = sig.ParameterTypes;
+        if (ps.Length == 4)
+        {
+            // A nil site is the synthesized address-taken body of the constructor
+            // itself. Refuse before popping.
+            var ctor = site.IsNil ? _method
+                : Comp.ResolveMethodHandle(_module, site, _method.Context, _method.DeclaringClass);
+            if (ctor is null || !CoreIntrinsics.IsDecimalBinaryConstructor(ctor)
+                || sig.Header.RawValue != 0x20 || sig.GenericParameterCount != 0
+                || sig.RequiredParameterCount != 4
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Void }
+                || ps.Any(p => p is not { Kind: TypeKind.Primitive,
+                    Primitive: PrimitiveTypeCode.Int32, IsCanonPlaceholder: false }))
+                throw new NotSupportedException("Decimal four-word construction requires its exact CoreLib constructor");
+        }
         var args = new StackEntry[ps.Length];
         for (int i = ps.Length - 1; i >= 0; i--)
             args[i] = Pop();
+        if (ps.Length == 4)
+            return "([&]() -> Dn2CppDecimal { int32_t words[4] = { "
+                + string.Join(", ", args.Select(a => $"(int32_t)({a.Expr})"))
+                + " }; return dn2cpp_decimal_from_bits(words, 4); })()";
         if (ps.Length == 5)
             return $"dn2cpp_decimal_from_parts((int32_t)({args[0].Expr}), (int32_t)({args[1].Expr}), " +
                    $"(int32_t)({args[2].Expr}), (int32_t)({args[3].Expr}), (int32_t)({args[4].Expr}))";
@@ -179,7 +197,8 @@ internal sealed partial class MethodCompiler
         // handled in TranslateNewobj. Args are above the `this` pointer on the stack.
         if (name == ".ctor")
         {
-            string expr = EmitDecimalCtorExpr(sig);
+            string expr = EmitDecimalCtorExpr(sig,
+                _callSiteToken == 0 ? default : SRME.EntityHandle(_callSiteToken));
             var addr = Pop();
             Emit($"*({Cast(addr, "Dn2CppDecimal*")}) = {expr};");
             return true;

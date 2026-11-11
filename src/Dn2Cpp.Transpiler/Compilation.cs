@@ -4177,6 +4177,11 @@ internal sealed partial class Compilation
 
     public void NoteIntrinsicFtnTarget(MethodInfo m)
     {
+        CoreIntrinsics.ValidateScalarNumericLeaf(m);
+        CoreIntrinsics.ValidateBinaryIntegerEndianBody(m);
+        CoreIntrinsics.ValidatePrimitiveParseBody(m);
+        CoreIntrinsics.ValidateDecimalBinaryBody(m);
+        CoreIntrinsics.ValidatePrimitiveWideConversionBody(m);
         if (CoreIntrinsics.IsInvariantCompareInfoGetter(m))
         {
             NoteInvariantCompareInfoFactory(m);
@@ -4186,7 +4191,12 @@ internal sealed partial class Compilation
         if (_intrinsicTypeTranspiled.Contains(m))
             return; // real body transpiled — the symbol already exists
         // Its calls already delegate to the real body, which serves the address too.
-        if (CoreIntrinsics.IsRealBodyGeneric(m.DeclaringClass.FullName, m.Name)
+        if (CoreIntrinsics.IsScalarNumericLeaf(m)
+            || CoreIntrinsics.IsBinaryIntegerEndianBody(m)
+            || CoreIntrinsics.IsPrimitiveParseBody(m)
+            || CoreIntrinsics.IsDecimalBinaryBody(m)
+            || CoreIntrinsics.IsPrimitiveWideConversionBody(m)
+            || CoreIntrinsics.IsRealBodyGeneric(m.DeclaringClass.FullName, m.Name)
             || CoreIntrinsics.IsArrayRealBodyMember(m.DeclaringClass.FullName, m.Name, m.Signature))
         {
             ReachIntrinsicTypeMethod(m);

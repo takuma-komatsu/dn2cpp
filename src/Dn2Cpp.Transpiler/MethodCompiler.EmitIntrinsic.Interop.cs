@@ -398,6 +398,18 @@ internal sealed partial class MethodCompiler
     /// runtime plumbing, so there is nothing worth falling through to.</para></summary>
     private void EmitRuntimePrimitive(MethodInfo callee)
     {
+        if (CoreIntrinsics.IsUInt128Checked(callee))
+        {
+            EmitUInt128Checked(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsInt128Checked(callee))
+        {
+            EmitInt128Checked(callee);
+            return;
+        }
+
         if (CoreIntrinsics.IsInvariantCompareInfoGetter(callee))
         {
             var receiver = Pop();

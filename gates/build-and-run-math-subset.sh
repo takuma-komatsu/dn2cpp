@@ -11,7 +11,7 @@
 # hyperbolics (Acosh/Asinh/Atanh, boolean anchors — transcendental values are
 # never printed raw), the IEEE-exact members (CopySign, IEEERemainder,
 # FusedMultiplyAdd, ScaleB, BitIncrement/BitDecrement, ILogB, Max/MinMagnitude)
-# and BigMul across all six overloads (the 128-bit results via their halves),
+# and Math.BigMul overloads plus primitive BigMul facades (wide results via halves),
 # plus the Reciprocal(Sqrt)Estimate pair (tolerance relations + the exact IEEE
 # special cases only — the finite results are platform-dependent estimates)
 # and the decimal members (Round across all five MidpointRounding modes with
@@ -50,14 +50,39 @@
 # plus ordered/unordered floating-point comparisons and branches with NaN operands,
 # finite fractions, infinities and signed zeros, and integral/reference controls.
 # One section file per area in samples/dotnet/MathSubset, driven in order by
-# Program.cs.
+# Program.cs. Retention-only roots keep callable BigMul bodies; malformed primitive
+# references are refused before emission with and without ILDiet.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly
 # resolve + tree-shake -> native binary -> run, diffed exactly against real
 # .NET (the program is deterministic, so `dotnet $app` is its own oracle).
 source "$(dirname "$0")/_common.sh"
+source "$(dirname "$0")/_numeric-signatures.sh"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/primitive-bigmul-retained gates/_numeric-signatures.sh gates/fixtures/numeric-signatures"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|cli:$(_gate_cli_hash)"
 
 # Default order and equality preserve the earlier bucket and run the appended cases.
 # Direct integer DivRem calls cover every scalar width, zero divisors and signed minima.
+
+primitive_bigmul_retention() (
+    local root="$1" mode
+    DN2CPP_SAMPLE_PROJECT_DIR=gates/fixtures/primitive-bigmul-retained
+    local descriptor="$DN2CPP_SAMPLE_PROJECT_DIR/link.xml"
+    build_gate_proj "$DN2CPP_SAMPLE_PROJECT_DIR/PrimitiveBigMulRetained.csproj"
+    for mode in full raw; do
+        local options=()
+        [ "$mode" != raw ] || options+=(--no-ildiet)
+        _corelib_gate_core PrimitiveBigMulRetained "$root/primitive-retained-$mode" \
+            --link-xml "$descriptor" ${options[@]+"${options[@]}"}
+        gate_python "$DN2CPP_SAMPLE_PROJECT_DIR/check-emission.py" "$_CG_OUT"
+        compile_console "$_CG_OUT" PrimitiveBigMulRetained
+        gate_capture_ok "$_CG_OUT/native" run_bounded "./$_CG_OUT/PrimitiveBigMulRetained$EXE_EXT"
+        gate_capture_ok "$_CG_OUT/oracle" run_bounded dotnet "$_CG_APP"
+        gate_output compare "$_CG_OUT/native.stdout" "$_CG_OUT/oracle.stdout"
+        gate_output byte-witness "$_CG_OUT/native.stdout" \
+            'primitive BigMul retained without calls' --count 1 --policy crlf
+    done
+)
+
 gate_extra_asserts() {
     local out="$1" native before prefix line
     gate_capture_ok "$out/assert-native-1" run_bounded "./$out/MathSubset"
@@ -152,6 +177,14 @@ gate_extra_asserts() {
     gate_output select "$native" "$prefix" --before 'math null output ulong=NullReferenceException long=NullReferenceException' --policy crlf
     gate_output compare "$prefix" "$before"
     gate_output byte-witness "$native" 'math null output ulong=NullReferenceException long=NullReferenceException' --count 1 --policy crlf
+    gate_capture_ok "$out/assert-before-primitive-bigmul" run_bounded dotnet "$_CG_APP" before-primitive-bigmul
+    gate_output select "$native" "$out/assert-primitive-bigmul-prefix.stdout" --before '== primitive BigMul ==' --policy crlf
+    gate_output compare "$out/assert-primitive-bigmul-prefix.stdout" "$out/assert-before-primitive-bigmul.stdout"
+    gate_output byte-witness "$native" --count 1 --policy crlf \
+        'primitive BigMul end' \
+        'primitive null output direct=NullReferenceException address=NullReferenceException'
+    primitive_bigmul_retention "$out"
+    numeric_signature_regressions bigmul
 }
 
 corelib_diff_gate MathSubset
