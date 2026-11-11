@@ -3890,54 +3890,49 @@ inline TTo dn2cpp_convert_to_integer_native(TFrom v)
     return static_cast<TTo>(v);
 }
 
-// IBinaryInteger<T>.ReadBigEndian(ReadOnlySpan<byte>, bool isUnsigned) -> T. The
-// static-virtual's default body calls the static-abstract TryReadBigEndian (an
-// InternalCall) and throws OverflowException when the value does not fit T; this
-// reproduces both. `src`/`n` are the span's {f__reference, f__length}. Reads the
-// source big-endian; `isUnsigned` selects zero- vs sign-extension of the source's
-// leading bit. Matches .NET exactly (verified against int/long/uint/ulong across
-// lengths 0..9): an empty span is 0; the low sizeof(T) bytes form the value with the
-// remaining high bytes sign/zero-filled; any leading byte past that window must be
-// redundant fill (else overflow). A NEGATIVE (signed-source) value never fits an
-// UNSIGNED target, at any length — so that overflows regardless of n. For a SIGNED
-// target, once the low-W window is full the assembled sign bit must agree with the
-// source's sign (an unsigned value exceeding T's signed range, or a mis-extended
-// signed one, overflows). Integer T only (T is the closed IBinaryInteger self type).
-template <typename T>
-inline T dn2cpp_read_big_endian(const uint8_t* src, int32_t n, int32_t isUnsigned)
+// Native integer CoreLib bodies contain host-width constants. Keep the range
+// check and both byte orders target-width, without throwing on TryRead failure.
+template <typename T, bool LittleEndian>
+inline int32_t dn2cpp_try_read_endian(const uint8_t* src, int32_t n, int32_t isUnsigned, T& value)
 {
-    static_assert(std::is_integral<T>::value, "dn2cpp_read_big_endian is integer-only");
+    static_assert(std::is_integral<T>::value, "dn2cpp_try_read_endian is integer-only");
     typedef typename std::make_unsigned<T>::type UT;
     constexpr int W = static_cast<int>(sizeof(T));
+    value = static_cast<T>(0);
     if (n <= 0)
-        return static_cast<T>(0);
-    bool neg = (isUnsigned == 0) && ((src[0] & 0x80) != 0);
+        return 1;
+    bool neg = (isUnsigned == 0) && ((src[LittleEndian ? n - 1 : 0] & 0x80) != 0);
     uint8_t fill = neg ? static_cast<uint8_t>(0xFF) : static_cast<uint8_t>(0x00);
-    // Leading bytes beyond the low-W window must be redundant sign/zero extension.
     if (n > W)
         for (int32_t i = 0; i < n - W; i++)
-            if (src[i] != fill)
-                dn2cpp_overflow();
+            if (src[LittleEndian ? n - 1 - i : i] != fill)
+                return 0;
     UT acc = neg ? static_cast<UT>(~static_cast<UT>(0)) : static_cast<UT>(0);
     int32_t start = (n > W) ? (n - W) : 0;
     for (int32_t i = start; i < n; i++)
-        acc = static_cast<UT>((acc << 8) | static_cast<UT>(src[i]));
+        acc = static_cast<UT>((acc << 8) | static_cast<UT>(src[LittleEndian ? n - 1 - i : i]));
     if constexpr (!std::is_signed<T>::value)
     {
-        // An unsigned target cannot hold a negative (signed-source) value at ANY
-        // length — the n < W short-span case included.
         if (neg)
-            dn2cpp_overflow();
+            return 0;
     }
     else if (n >= W)
     {
-        // Signed target: once the low-W window is full, the assembled sign bit must
-        // agree with the source's sign; otherwise the value is out of T's range.
         bool accTop = ((acc >> (8 * W - 1)) & 1) != 0;
         if (accTop != neg)
-            dn2cpp_overflow();
+            return 0;
     }
-    return static_cast<T>(acc);
+    value = static_cast<T>(acc);
+    return 1;
+}
+
+template <typename T>
+inline T dn2cpp_read_big_endian(const uint8_t* src, int32_t n, int32_t isUnsigned)
+{
+    T value;
+    if (!dn2cpp_try_read_endian<T, false>(src, n, isUnsigned, value))
+        dn2cpp_overflow();
+    return value;
 }
 
 // Math.Min/Max floating-point semantics (IEEE 754:2019 minimum/maximum),

@@ -1861,7 +1861,7 @@ internal sealed partial class MethodCompiler
     /// every one of these types, sub-word included, and a call site binds whichever it was
     /// handed. They differ only in how the runtime reaches the characters; ONE engine
     /// decides what a number is.</para></summary>
-    private bool TryEmitParseIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
+    private bool TryEmitParseIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig, bool nativeInteger = false)
     {
         if (name is not ("Parse" or "TryParse"))
             return false;
@@ -1875,6 +1875,8 @@ internal sealed partial class MethodCompiler
             "System.UInt32" => (32, 0),
             "System.Int64" => (64, 1),
             "System.UInt64" => (64, 0),
+            "System.IntPtr" when nativeInteger => (0, 1),
+            "System.UIntPtr" when nativeInteger => (0, 0),
             _ => null,
         };
         bool isFloat = declType is "System.Double" or "System.Single";
@@ -1918,7 +1920,19 @@ internal sealed partial class MethodCompiler
         string args, suffix;
         if (isString)
         {
-            args = $"{Cast(Pop(), "Dn2CppString*")}, {stylesExpr}, {nfiExpr}";
+            string text = Cast(Pop(), "Dn2CppString*");
+            if (nativeInteger)
+            {
+                string value = NewTemp("Dn2CppString*");
+                Emit($"{value} = {text};");
+                text = value;
+                // Parse checks a null string before styles; TryParse checks styles
+                // first, but does not query the provider for a null string.
+                if (!isTry) Emit($"if ({value} == nullptr) dn2cpp_throw_argument_null_param(\"s\");");
+                if (hasStyles) Emit($"dn2cpp_parse_validate_integer_styles({stylesExpr});");
+                if (isTry) nfiExpr = $"({value} == nullptr ? nullptr : {nfiExpr})";
+            }
+            args = $"{text}, {stylesExpr}, {nfiExpr}";
             suffix = "str";
         }
         else
@@ -1937,6 +1951,7 @@ internal sealed partial class MethodCompiler
             // span styles before GetFormat, decoding, or writing the out slot.
             if (hasStyles && !isString)
                 Emit($"dn2cpp_parse_validate_integer_styles({stylesExpr});");
+            string bits = nativeInteger ? "(int32_t)(sizeof(intptr_t) * 8)" : iw.Bits.ToString();
             var prim = Compilation.WellKnownPrimitive(declType)!;
             string storeCt = CppTypes.StorageOf(prim);
             var kind = CppTypes.KindOf(prim);
@@ -1947,8 +1962,10 @@ internal sealed partial class MethodCompiler
                 // real out width (0 on failure, matching .NET's default-on-failure).
                 string pv = NewTemp("int64_t");
                 string ok = NewTemp("int32_t");
-                Emit($"{ok} = dn2cpp_integer_tryparse_{suffix}({args}, {iw.Bits}, {iw.Signed}, &{pv});");
-                Emit($"*(({storeCt}*)({outRef})) = ({storeCt}){pv};");
+                Emit($"{ok} = dn2cpp_integer_tryparse_{suffix}({args}, {bits}, {iw.Signed}, &{pv});");
+                Emit(nativeInteger
+                    ? $"*dn2cpp_null_check(({storeCt}*)({outRef})) = ({storeCt}){pv};"
+                    : $"*(({storeCt}*)({outRef})) = ({storeCt}){pv};");
                 // The narrow store leaves an int32-promoted slot's upper bytes stale, so a
                 // negative sbyte/short read with `ldloc` came out zero-extended (a concat
                 // reads the slot's ADDRESS instead, which is why nothing saw it). The
@@ -1960,7 +1977,7 @@ internal sealed partial class MethodCompiler
             else
             {
                 Push(kind, stackCt,
-                    $"(({stackCt})({storeCt})dn2cpp_integer_parse_{suffix}({args}, {iw.Bits}, {iw.Signed}))");
+                    $"(({stackCt})({storeCt})dn2cpp_integer_parse_{suffix}({args}, {bits}, {iw.Signed}))");
             }
             return true;
         }

@@ -297,6 +297,9 @@ internal enum InterceptEmitArm
     /// re-asking the same two pure predicates the row's own <c>Extra</c> is built
     /// from — never a separate list.</summary>
     HttpShimBody,
+    PrimitiveBigMulBody,
+    NativeIntegerEndianBody,
+    NativeIntegerParseBody,
     InvariantCompareInfoInitializerBody,
     /// <summary>A synthesized System.Enum instance ToString/GetTypeCode body —
     /// <c>MethodCompiler.CompileEnumInstanceFormatBody</c>, emitted under the
@@ -1641,6 +1644,22 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.BodyReplace, InterceptEmitArm.DelegateCloneBody,
         typeGate: "System.Delegate", nameGate: "Clone");
 
+    /// <summary>Primitive products share a callable replacement; native operands
+    /// must use target-width halves instead of host-specialized CoreLib IL.</summary>
+    public static readonly MethodDefIntercept BrPrimitiveBigMul = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.PrimitiveBigMulBody,
+        nameGate: "BigMul", extra: static m => IsPrimitiveBigMul(m));
+
+    /// <summary>Native endian reads retain a callable symbol but use the target's width.</summary>
+    public static readonly MethodDefIntercept BrNativeIntegerEndian = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.NativeIntegerEndianBody,
+        extra: static m => IsNativeIntegerEndian(m));
+
+    /// <summary>Native parsing shares the NumberStyles engine with a target-sized output.</summary>
+    public static readonly MethodDefIntercept BrNativeIntegerParse = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.NativeIntegerParseBody,
+        extra: static m => IsNativeIntegerParse(m));
+
     /// <summary>Retained initialization uses the native culture identity and invariant
     /// comparison posture, not CultureInfo's incompatible managed fields or ICU handles.</summary>
     public static readonly MethodDefIntercept BrInvariantCompareInfoInitializer = new(
@@ -1784,6 +1803,19 @@ internal static partial class CoreIntrinsics
             BrInvariantCompareInfoInitializer.TypeGate, BrInvariantCompareInfoInitializer.NameGate);
         if (BrInvariantCompareInfoInitializer.CutKind != InterceptCutKind.BodyReplace)
             throw new InvalidOperationException("Invariant CompareInfo initialization must retain a callable body");
+
+        CheckRow(nameof(BrPrimitiveBigMul), 0, BrPrimitiveBigMul.EmitArm,
+            BrPrimitiveBigMul.TypeGate, BrPrimitiveBigMul.NameGate);
+        if (BrPrimitiveBigMul.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Primitive BigMul must retain a callable target-width body");
+
+        CheckRow(nameof(BrNativeIntegerEndian), 0, BrNativeIntegerEndian.EmitArm,
+            BrNativeIntegerEndian.TypeGate, BrNativeIntegerEndian.NameGate);
+        CheckRow(nameof(BrNativeIntegerParse), 0, BrNativeIntegerParse.EmitArm,
+            BrNativeIntegerParse.TypeGate, BrNativeIntegerParse.NameGate);
+        if (BrNativeIntegerEndian.CutKind != InterceptCutKind.BodyReplace
+            || BrNativeIntegerParse.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Native integer operations must retain callable target-width bodies");
 
         for (int i = 0; i < MethodDefIntercepts.Length; i++)
         {

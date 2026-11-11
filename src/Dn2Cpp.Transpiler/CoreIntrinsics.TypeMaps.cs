@@ -6,6 +6,9 @@ namespace Dn2Cpp;
 // The same data also bounds the original-definition retention graph.
 internal static class CoreIntrinsicTypeMaps
 {
+    public static bool IsPrimitiveBigMulOwner(string? owner) => owner is
+        "System.Int32" or "System.UInt32" or "System.Int64" or "System.UInt64" or "System.IntPtr" or "System.UIntPtr";
+
     public static PrimitiveTypeCode? WellKnownPrimitiveCode(string? fullName) => fullName switch
     {
         "System.Boolean" => PrimitiveTypeCode.Boolean,

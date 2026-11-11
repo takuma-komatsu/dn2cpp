@@ -1,0 +1,22 @@
+<linker>
+  <assembly fullname="System.Private.CoreLib">
+    <type fullname="System.Int32" preserve="nothing">
+      <method name="BigMul" />
+    </type>
+    <type fullname="System.UInt32" preserve="nothing">
+      <method name="BigMul" />
+    </type>
+    <type fullname="System.Int64" preserve="nothing">
+      <method name="BigMul" />
+    </type>
+    <type fullname="System.UInt64" preserve="nothing">
+      <method name="BigMul" />
+    </type>
+    <type fullname="System.IntPtr" preserve="nothing">
+      <method name="BigMul" />
+    </type>
+    <type fullname="System.UIntPtr" preserve="nothing">
+      <method name="BigMul" />
+    </type>
+  </assembly>
+</linker>

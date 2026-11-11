@@ -49,13 +49,21 @@
 # native integers, Half, Decimal and wide integers, invalid styles and custom symbols.
 # ChangeType forwards custom numeric providers only to consumed conversions.
 # Unsupported DateTime, Boolean, Char and object conversions retain CLR faults.
+# Checked Int128 and UInt128 widening runs through direct, constrained and delegate routes.
+# Malformed checked-wide signatures are refused with and without ILDiet.
 source "$(dirname "$0")/_common.sh"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|integer-utf8-prefix:before-invalid-integer-utf8"
+source "$(dirname "$0")/_numeric-signatures.sh"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_numeric-signatures.sh gates/fixtures/numeric-signatures"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|integer-utf8-prefix:before-invalid-integer-utf8|cli:$(_gate_cli_hash)"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
     # Primitive parse inputs contain NUL; parity is raw and witness needles are text-only.
     native="$out/native.stdout"
+    gate_capture_ok "$out/assert-before-int128" run_bounded dotnet "$_CG_APP" before-int128-checked
+    gate_output select "$native" "$out/assert-prefix-int128.stdout" --before '== Int128 checked widening ==' --policy crlf
+    gate_output compare "$out/assert-prefix-int128.stdout" "$out/assert-before-int128.stdout"
+    gate_output byte-witness "$native" 'Int128 checked widening end' 'UInt128 checked widening end' --count 1 --policy crlf
     gate_output status "$(cat "$out/native.status")" 0 || return 1
 
     gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-char-faults
@@ -219,6 +227,7 @@ gate_extra_asserts() {
         'integer UTF8 validation end' \
         --count 1 --policy crlf
 
+    numeric_signature_regressions checked
 }
 
 corelib_diff_gate ConvertParse System.Private.Uri System.ComponentModel.TypeConverter

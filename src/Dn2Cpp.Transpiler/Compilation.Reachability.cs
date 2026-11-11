@@ -20,6 +20,11 @@ internal sealed partial class Compilation
         if (NotePreserveReach(m) && _scanned.Remove(m))
             _toScan.Enqueue(m);
         NoteObfuscationMethod(m);
+        CoreIntrinsics.ValidateScalarNumericLeaf(m);
+        CoreIntrinsics.ValidateBinaryIntegerEndianBody(m);
+        CoreIntrinsics.ValidatePrimitiveParseBody(m);
+        CoreIntrinsics.ValidateDecimalBinaryBody(m);
+        CoreIntrinsics.ValidatePrimitiveWideConversionBody(m);
         // A minted body (a value type's structural equality/hash) has no IL: scanning it
         // would ask the PE for a MethodBody at a row that does not exist. Its call edges
         // are not discovered, they are CONSTRUCTED — ReachSynthesizedValueEquality walks
@@ -80,7 +85,10 @@ internal sealed partial class Compilation
             return; // no _toScan.Enqueue -> the replaced IL is never scanned
         }
         if (CoreIntrinsics.BrDelegateClone.Matches(m.DeclaringClass.FullName, m.Name)
-            || CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(m))
+            || CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(m)
+            || CoreIntrinsics.BrPrimitiveBigMul.Matches(m)
+            || CoreIntrinsics.BrNativeIntegerEndian.Matches(m)
+            || CoreIntrinsics.BrNativeIntegerParse.Matches(m))
         {
             if (AddReachable(m))
             {
@@ -89,7 +97,9 @@ internal sealed partial class Compilation
             }
             return;
         }
-        if (CoreIntrinsics.IsInvariantCompareInfoGetter(m)
+        if (CoreIntrinsics.IsInt128Checked(m)
+            || CoreIntrinsics.IsUInt128Checked(m)
+            || CoreIntrinsics.IsInvariantCompareInfoGetter(m)
             || CoreIntrinsics.BrInvariantCompareInfoCallback.Matches(m.DeclaringClass.FullName, m.Name))
         {
             _predTrace.TryAdd(m, _currentScan);
@@ -123,6 +133,12 @@ internal sealed partial class Compilation
         }
         if (m.Rva == 0)
             return;
+        if (CoreIntrinsics.IsScalarNumericLeaf(m)
+            || CoreIntrinsics.IsBinaryIntegerEndianBody(m)
+            || CoreIntrinsics.IsPrimitiveParseBody(m)
+            || CoreIntrinsics.IsDecimalBinaryBody(m)
+            || CoreIntrinsics.IsPrimitiveWideConversionBody(m))
+            _intrinsicTypeTranspiled.Add(m);
         // Methods of an intrinsic-mapped type are emitted inline, never
         // transpiled. Call edges already skip them (ResolveCallTarget), but an
         // allocated subtype's vtable can still surface an inherited intrinsic
@@ -1947,18 +1963,12 @@ internal sealed partial class Compilation
         }
     }
 
-    /// <summary>The <c>IBinaryInteger&lt;TSelf&gt;.ReadBigEndian(ReadOnlySpan&lt;byte&gt;|
-    /// Span&lt;byte&gt;, bool)</c> span overload on an integer-primitive TSelf — the shape
-    /// <see cref="MethodCompiler.TryEmitGenericMathIntrinsic"/> lowers to the runtime
-    /// <c>dn2cpp_read_big_endian</c>. It is a static-virtual whose DEFAULT interface body
-    /// calls the static-abstract <c>TryReadBigEndian</c> (an InternalCall with no IL that
-    /// dn2cpp cannot transpile), so the emit route replaces the whole call and the reach
-    /// side must delete that DIM body. This single predicate is asked by BOTH askers of the
-    /// constrained-static-virtual <c>call</c> pair (the reach cut before the ordinary
-    /// <c>Reach(t)</c> edge, and the emit route) so <c>cut ⟹ route</c> cannot drift. Name
-    /// first, so the signature decode runs only for methods actually named ReadBigEndian.</summary>
+    /// <summary>The remaining sub-word ReadBigEndian shortcut. Admitted endian
+    /// owners retain their real default and TryRead bodies; other existing integer
+    /// shapes still use the shared whole-call cut/lowering predicate.</summary>
     public bool IsInterceptedReadBigEndian(MethodInfo m) =>
         m.Name == "ReadBigEndian"
+        && !CoreIntrinsics.IsBinaryIntegerEndianDefault(m)
         && m.DeclaringClass.IsInterface
         && m.DeclaringClass.Namespace.StartsWith("System.Numerics", StringComparison.Ordinal)
         && m.Signature.ReturnType is { Kind: TypeKind.Primitive } rt
@@ -5939,6 +5949,7 @@ internal sealed partial class Compilation
         // chain so a failure deep in the BCL points back at the app call site.
         // The pending `constrained.` prefix type for the next callvirt.
         TypeDesc? constrained = null;
+        EntityHandle constrainedHandle = default;
         // The struct boxed by the immediately-preceding instruction whose ToString the
         // box did not reach, pending a formatting call that would dispatch it.
         ClassInfo? boxedForFormat = null;
@@ -5985,6 +5996,7 @@ internal sealed partial class Compilation
                 switch (insn.OpCode)
                 {
                     case ILOpCode.Constrained:
+                        constrainedHandle = handle;
                         constrained = ResolveTypeTokenForScan(module, handle, m.Context);
                         continue;
                     case ILOpCode.Ldtoken:
@@ -6278,6 +6290,24 @@ internal sealed partial class Compilation
                             constrained = null;
                             continue;
                         }
+                        if (t is not null && insn.OpCode == ILOpCode.Call
+                            && constrained is { Kind: TypeKind.Class, Class: { } unsignedCheckedSelf }
+                            && CoreIntrinsics.IsUInt128CheckedInterface(t))
+                        {
+                            ResolveUInt128CheckedInterface(t, unsignedCheckedSelf);
+                            ValidateInteger128CheckedConstrained(module, constrainedHandle, unsignedCheckedSelf);
+                            constrained = null;
+                            continue;
+                        }
+                        if (t is not null && insn.OpCode == ILOpCode.Call
+                            && constrained is { Kind: TypeKind.Class, Class: { } checkedSelf }
+                            && CoreIntrinsics.IsInt128CheckedInterface(t))
+                        {
+                            ResolveInt128CheckedInterface(t, checkedSelf);
+                            ValidateInteger128CheckedConstrained(module, constrainedHandle, checkedSelf);
+                            constrained = null;
+                            continue;
+                        }
                         // `constrained. Int128 call INumberBase<TSelf>::CreateTruncating<TOther>`
                         // (System.Number.ParseBinaryInteger<TInteger> -> Int128.Parse): emit
                         // lowers the whole call inline to the sign/zero-extending widening (the
@@ -6296,6 +6326,27 @@ internal sealed partial class Compilation
                             && t.DeclaringClass.IsInterface
                             && CoreIntrinsics.MsInt128CreateConversion.Matches(i128scn.FullName, t.Name))
                         {
+                            constrained = null;
+                            continue;
+                        }
+                        if (insn.OpCode == ILOpCode.Call && t is not null
+                            && TryResolveBinaryIntegerEndianCall(constrained, t) is { } endianBody)
+                        {
+                            ReachIntrinsicTypeMethod(endianBody);
+                            constrained = null;
+                            continue;
+                        }
+                        if (insn.OpCode == ILOpCode.Call && t is not null
+                            && TryResolvePrimitiveParseCall(constrained, t) is { } parseBody)
+                        {
+                            ReachIntrinsicTypeMethod(parseBody);
+                            constrained = null;
+                            continue;
+                        }
+                        if (insn.OpCode == ILOpCode.Call && t is not null
+                            && TryResolvePrimitiveWideConversionCall(constrained, t) is { } wideConversion)
+                        {
+                            ReachIntrinsicTypeMethod(wideConversion);
                             constrained = null;
                             continue;
                         }

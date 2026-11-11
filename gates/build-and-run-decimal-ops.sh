@@ -4,6 +4,7 @@
 # driven in order by samples/dotnet/DecimalOps/Program.cs.
 # OLE currency conversion preserves ToEven rounding, signed bounds and decimal scale.
 # Scale reads the stored exponent, including signed zero and equal-value representations.
+# Decimal binary I/O preserves coefficient, flags, span bounds and evaluation order.
 #
 #   * DecimalSubset — the STATICALLY TYPED surface. The real corelib
 #     Decimal.ToString reaches Number.FormatDecimal -> ArrayPool -> EventSource ->
@@ -64,6 +65,10 @@ gate_extra_asserts() {
     gate_output compare "$prefix" "$before" || return 1
     gate_output byte-witness "$native" 'decimal scale end' --count 1 --policy crlf \
         || { echo 'FAIL: decimal scale section did not run' >&2; return 1; }
+    gate_capture_ok "$out/assert-before-binary" run_bounded dotnet "$_CG_APP" before-decimal-binary
+    gate_output select "$native" "$out/assert-prefix-binary.stdout" --before '[DecimalBinarySubset]' --policy crlf
+    gate_output compare "$out/assert-prefix-binary.stdout" "$out/assert-before-binary.stdout"
+    gate_output byte-witness "$native" 'decimal-binary.done' --count 1 --policy crlf
 }
 
 corelib_diff_gate DecimalOps System.Linq System.Collections System.Runtime

@@ -101,6 +101,14 @@ internal sealed partial class Compilation
                 var h = (MethodDefinitionHandle)handle;
                 if (!module.MethodMap.TryGetValue(h, out var mi))
                     return null;
+                CoreIntrinsics.ValidateScalarNumericLeaf(mi);
+                CoreIntrinsics.ValidateBinaryIntegerEndianBody(mi);
+                CoreIntrinsics.ValidatePrimitiveParseBody(mi);
+                CoreIntrinsics.ValidateDecimalBinaryBody(mi);
+                CoreIntrinsics.ValidatePrimitiveWideConversionBody(mi);
+                if (CoreIntrinsics.BrPrimitiveBigMul.Matches(mi)
+                    || CoreIntrinsics.BrNativeIntegerEndian.Matches(mi)
+                    || CoreIntrinsics.BrNativeIntegerParse.Matches(mi)) return mi;
                 NoteObfuscationMethod(mi);
                 // System.Exception::get_Message is cut as intrinsic (below), but a call to
                 // it — even the non-virtual base.Message inside an override — means the
@@ -109,6 +117,11 @@ internal sealed partial class Compilation
                 // receiver (which folds to the dispatching runtime helper) finds it. Over-
                 // reaching on the non-virtual form is harmless.
                 ReachExceptionGetMessage(mi);
+                if (CoreIntrinsics.IsScalarNumericLeaf(mi)
+                    || CoreIntrinsics.IsBinaryIntegerEndianBody(mi)
+                    || CoreIntrinsics.IsPrimitiveParseBody(mi)
+                    || CoreIntrinsics.IsDecimalBinaryBody(mi)
+                    || CoreIntrinsics.IsPrimitiveWideConversionBody(mi)) return mi;
                 if (CoreIntrinsics.IsInvariantCompareInfoGetter(mi)) return mi;
                 // Intrinsic-mapped types are emitted inline, not transpiled, so
                 // an intra-assembly call into one (e.g. corelib's Span<T> ->
@@ -317,6 +330,7 @@ internal sealed partial class Compilation
             }
             case HandleKind.MethodSpecification:
             {
+                RejectScalarNumericLeafMethodSpecification(module, (MethodSpecificationHandle)handle, ctx);
                 // A generic method on an intrinsic-mapped type (e.g. Unsafe.Add<T>)
                 // is emitted inline, not transpiled, so it is not a reachability
                 // edge. The spec's method is a MemberRef when the call
@@ -441,6 +455,8 @@ internal sealed partial class Compilation
             }
             case HandleKind.MemberReference:
             {
+                ValidateNumericMemberRefOwner(module, (MemberReferenceHandle)handle, ctx);
+                if (TryResolveScalarNumericLeafReference(module, (MemberReferenceHandle)handle, ctx) is { } scalarNumericLeaf) return scalarNumericLeaf;
                 var mr = module.Reader.GetMemberReference((MemberReferenceHandle)handle);
                 string mrName = module.Reader.GetString(mr.Name);
                 if (mr.Parent.Kind == HandleKind.TypeSpecification)
@@ -703,6 +719,7 @@ internal sealed partial class Compilation
     /// referenced by a MethodSpec, in the caller's generic context.</summary>
     public MethodInfo ResolveMethodSpec(Module module, MethodSpecificationHandle handle, GenericContext callerCtx)
     {
+        RejectScalarNumericLeafMethodSpecification(module, handle, callerCtx);
         var reader = module.Reader;
         var ms = reader.GetMethodSpecification(handle);
         var methodArgs = ms.DecodeSignature(SigProvider, callerCtx).ToArray();
@@ -765,7 +782,9 @@ internal sealed partial class Compilation
                 $"Generic method instantiation via {ms.Method.Kind} is not supported yet");
         }
 
-        return InstantiateMethodOnClass(declClass, defModule, templateHandle, methodArgs);
+        var resolved = InstantiateMethodOnClass(declClass, defModule, templateHandle, methodArgs);
+        ValidateInteger128CheckedSpec(module, ms, resolved);
+        return resolved;
     }
 
     /// <summary>Instantiates a generic-method template (<paramref name="templateHandle"/>,
@@ -1266,6 +1285,8 @@ internal sealed partial class Compilation
     /// type, or a same-module non-generic definition.</summary>
     public MethodInfo ResolveMemberRefMethod(Module module, MemberReferenceHandle handle, GenericContext callerCtx)
     {
+        ValidateNumericMemberRefOwner(module, handle, callerCtx);
+        if (TryResolveScalarNumericLeafReference(module, handle, callerCtx) is { } scalarNumericLeaf) return scalarNumericLeaf;
         var reader = module.Reader;
         var mr = reader.GetMemberReference(handle);
         ClassInfo cls;
@@ -1358,6 +1379,11 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsInvariantCompareInfoGetter(resolved))
                 throw new NotSupportedException("Invariant CompareInfo requires its exact MemberRef signature");
         }
+        if ((CoreIntrinsics.IsNativeIntegerParseCandidate(cls.FullName, name)
+                || BinaryIntegerEndianContract.IsNativeOwner(cls.FullName)
+                    && BinaryIntegerEndianContract.IsLeafCandidate(cls.FullName, name))
+            && !CoreIntrinsics.IsNativeIntegerReference(resolved, sig, reader.GetBlobReader(mr.Signature)))
+            throw new NotSupportedException("Native integer entry point requires its exact CoreLib reference and declaration");
         if (typeRefParent)
             _memberRefMethodsByTypeRef[(module.Index, SRME.GetToken(handle))] = resolved;
         else
@@ -1375,11 +1401,20 @@ internal sealed partial class Compilation
     /// the member cannot be matched, so callers fall back to intrinsics.</summary>
     public MethodInfo? TryResolveMemberRefMethod(Module module, MemberReferenceHandle handle, GenericContext callerCtx)
     {
+        ValidateNumericMemberRefOwner(module, handle, callerCtx);
+        if (TryResolveScalarNumericLeafReference(module, handle, callerCtx) is { } scalarNumericLeaf) return scalarNumericLeaf;
         var reader = module.Reader;
         var mr = reader.GetMemberReference(handle);
         if (mr.Parent.Kind is not (HandleKind.TypeReference or HandleKind.TypeDefinition))
             return null;
         string? full = MemberRefParentTypeName(module, handle);
+        if (CoreIntrinsicTypeMaps.IsPrimitiveBigMulOwner(full) && reader.StringComparer.Equals(mr.Name, "BigMul"))
+        {
+            var multiply = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsPrimitiveBigMulReference(multiply, mr.DecodeMethodSignature(SigProvider, callerCtx), reader.GetBlobReader(mr.Signature)))
+                return multiply;
+            throw new NotSupportedException("Primitive BigMul requires its exact CoreLib reference and declaration");
+        }
         if (full is "System.Globalization.DateTimeFormatInfo" or "System.Globalization.CultureInfo"
             && reader.StringComparer.Equals(mr.Name, "get_CompareInfo"))
         {

@@ -646,8 +646,12 @@ internal sealed partial class MethodCompiler
             // with the array itself as the receiver (Roslyn elides the interface-typed
             // local), so the `this` slot is also an array->IEnumerable<T> coercion.
             var receiver = Pop();
-            args[0] = CoerceTo(receiver, TypeDesc.MakeClass(callee.DeclaringClass),
-                callee.DeclaringClass.CppStructName + "*");
+            // Retained mapped bodies use the callable declaration's receiver ABI,
+            // not an emitted managed struct layout.
+            string receiverType = CoreIntrinsics.IsScalarNumericLeaf(callee)
+                ? ReceiverCppType(callee.DeclaringClass)
+                : callee.DeclaringClass.CppStructName + "*";
+            args[0] = CoerceTo(receiver, TypeDesc.MakeClass(callee.DeclaringClass), receiverType);
         }
         return args.ToList();
     }
@@ -1563,7 +1567,7 @@ internal sealed partial class MethodCompiler
         if (NewobjTypeName(handle) == "System.Decimal"
             && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition)
         {
-            Push(StackKind.Struct, "Dn2CppDecimal", EmitDecimalCtorExpr(DecodeCtorSignature(handle)));
+            Push(StackKind.Struct, "Dn2CppDecimal", EmitDecimalCtorExpr(DecodeCtorSignature(handle), handle));
             return;
         }
         // new TimeSpan(...) / new DateTime(...) — both intrinsic value types, so the

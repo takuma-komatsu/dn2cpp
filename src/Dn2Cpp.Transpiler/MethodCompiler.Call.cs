@@ -521,6 +521,23 @@ internal sealed partial class MethodCompiler
             case HandleKind.MethodDefinition:
             {
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
+                CoreIntrinsics.ValidateScalarNumericLeaf(callee);
+                CoreIntrinsics.ValidateBinaryIntegerEndianBody(callee);
+                CoreIntrinsics.ValidatePrimitiveParseBody(callee);
+                CoreIntrinsics.ValidateDecimalBinaryBody(callee);
+                CoreIntrinsics.ValidatePrimitiveWideConversionBody(callee);
+                if (CoreIntrinsics.BrPrimitiveBigMul.Matches(callee)
+                    || CoreIntrinsics.BrNativeIntegerEndian.Matches(callee)
+                    || CoreIntrinsics.BrNativeIntegerParse.Matches(callee)
+                    || CoreIntrinsics.IsScalarNumericLeaf(callee)
+                    || CoreIntrinsics.IsBinaryIntegerEndianBody(callee)
+                    || CoreIntrinsics.IsPrimitiveParseBody(callee)
+                    || CoreIntrinsics.IsDecimalBinaryBody(callee)
+                    || CoreIntrinsics.IsPrimitiveWideConversionBody(callee))
+                {
+                    EmitManagedCall(callee, isCallvirt);
+                    return;
+                }
                 if (TryEmitSafeWaitHandleBase(callee, isCallvirt))
                     return;
                 // The intra-CoreLib runtime primitives reached only via in-CoreLib MethodDef
@@ -705,6 +722,7 @@ internal sealed partial class MethodCompiler
             }
             case HandleKind.MethodSpecification:
             {
+                _c.RejectScalarNumericLeafMethodSpecification(_module, (MethodSpecificationHandle)handle, _method.Context);
                 // A generic method on an intrinsic-mapped type (e.g. Unsafe.Add<T>)
                 // is emitted inline rather than transpiling its body. The
                 // spec's method is a MemberRef across assemblies and a MethodDef
@@ -732,6 +750,34 @@ internal sealed partial class MethodCompiler
                 {
                     TranslateAsyncGenericIntrinsic(_c.MethodSpecMethodName(_module, ms), (MethodSpecificationHandle)handle);
                     return;
+                }
+                if (_constrained is { Kind: TypeKind.Class, Class: { } unsignedCheckedSelf }
+                    && CoreIntrinsics.IsUInt128CheckedType(unsignedCheckedSelf)
+                    && _c.MethodSpecMethodName(_module, ms) == "CreateChecked")
+                {
+                    var factory = _c.ResolveMethodSpec(_module, (MethodSpecificationHandle)handle, _method.Context);
+                    if (CoreIntrinsics.IsUInt128CheckedInterface(factory))
+                    {
+                        var target = _c.ResolveUInt128CheckedInterface(factory, unsignedCheckedSelf);
+                        _c.ValidateInteger128CheckedConstrained(_module, _constrainedHandle, unsignedCheckedSelf);
+                        EmitUInt128Checked(target);
+                        _constrained = null;
+                        return;
+                    }
+                }
+                if (_constrained is { Kind: TypeKind.Class, Class: { } checkedSelf }
+                    && CoreIntrinsics.IsInt128CheckedType(checkedSelf)
+                    && _c.MethodSpecMethodName(_module, ms) == "CreateChecked")
+                {
+                    var factory = _c.ResolveMethodSpec(_module, (MethodSpecificationHandle)handle, _method.Context);
+                    if (CoreIntrinsics.IsInt128CheckedInterface(factory))
+                    {
+                        var target = _c.ResolveInt128CheckedInterface(factory, checkedSelf);
+                        _c.ValidateInteger128CheckedConstrained(_module, _constrainedHandle, checkedSelf);
+                        EmitInt128Checked(target);
+                        _constrained = null;
+                        return;
+                    }
                 }
                 // TSelf.Create{Checked,Truncating,Saturating}<TOther> reached through
                 // the closed interface instantiation (INumberBase<TSelf>.Create*, a
@@ -870,6 +916,12 @@ internal sealed partial class MethodCompiler
             }
             case HandleKind.MemberReference:
             {
+                _c.ValidateNumericMemberRefOwner(_module, (MemberReferenceHandle)handle, _method.Context);
+                if (_c.TryResolveScalarNumericLeafReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } scalarNumericLeaf)
+                {
+                    EmitManagedCall(scalarNumericLeaf, isCallvirt);
+                    return;
+                }
                 var mr = _reader.GetMemberReference((MemberReferenceHandle)handle);
                 string mrName = _reader.GetString(mr.Name);
                 if (mr.Parent.Kind == HandleKind.TypeSpecification)
@@ -1574,6 +1626,11 @@ internal sealed partial class MethodCompiler
 
     private void EmitManagedCall(MethodInfo callee, bool isCallvirt)
     {
+        CoreIntrinsics.ValidateScalarNumericLeaf(callee);
+        CoreIntrinsics.ValidateBinaryIntegerEndianBody(callee);
+        CoreIntrinsics.ValidatePrimitiveParseBody(callee);
+        CoreIntrinsics.ValidateDecimalBinaryBody(callee);
+        CoreIntrinsics.ValidatePrimitiveWideConversionBody(callee);
         if (CoreIntrinsics.IsInvariantCompareInfoGetter(callee))
         {
             if (isCallvirt && !_c.IsNativeInvariantCompareInfoReceiver(_method, _callSiteOffset, callee))
@@ -1905,6 +1962,45 @@ internal sealed partial class MethodCompiler
         if (_constrained is { } c && isCallvirt)
         {
             EmitConstrainedCall(callee, c);
+            return;
+        }
+
+        if (!isCallvirt && SharedTrial
+            && (CoreIntrinsics.IsBinaryIntegerEndianSlotCandidate(callee)
+                || BinaryIntegerEndianContract.IsDefault(callee.Name)
+                    && Comp.GenericDefFullName(callee.DeclaringClass) == "System.Numerics.IBinaryInteger")
+            && (Compilation.ContainsCanonPlaceholder(callee.DeclaringClass)
+                || _constrained is not null && Compilation.ContainsCanonPlaceholder(_constrained)))
+            ThrowSharedTaint("binary-integer-endian", callee.DeclaringClass.FullName);
+        if (!isCallvirt && _c.TryResolveBinaryIntegerEndianCall(_constrained, callee) is { } endianBody)
+        {
+            var arguments = PopArgs(callee, hasThis: false);
+            EmitCallResult(endianBody, DirectCall(endianBody, arguments));
+            EmitByRefSlotFixups();
+            return;
+        }
+
+        if (!isCallvirt && SharedTrial && CoreIntrinsics.IsPrimitiveParseSlotCandidate(callee)
+            && (Compilation.ContainsCanonPlaceholder(callee.DeclaringClass)
+                || _constrained is not null && Compilation.ContainsCanonPlaceholder(_constrained)))
+            ThrowSharedTaint("primitive-span-parse", callee.DeclaringClass.FullName);
+        if (!isCallvirt && _c.TryResolvePrimitiveParseCall(_constrained, callee) is { } parseBody)
+        {
+            var arguments = PopArgs(callee, hasThis: false);
+            EmitCallResult(parseBody, DirectCall(parseBody, arguments));
+            EmitByRefSlotFixups();
+            return;
+        }
+
+        if (!isCallvirt && SharedTrial && CoreIntrinsics.IsPrimitiveWideConversionSlotFamily(callee)
+            && (Compilation.ContainsCanonPlaceholder(callee.DeclaringClass)
+                || _constrained is not null && Compilation.ContainsCanonPlaceholder(_constrained)))
+            ThrowSharedTaint("primitive-wide-conversion", callee.DeclaringClass.FullName);
+        if (!isCallvirt && _c.TryResolvePrimitiveWideConversionCall(_constrained, callee) is { } wideConversion)
+        {
+            var arguments = PopArgs(callee, hasThis: false);
+            EmitCallResult(wideConversion, DirectCall(wideConversion, arguments));
+            EmitByRefSlotFixups();
             return;
         }
 
