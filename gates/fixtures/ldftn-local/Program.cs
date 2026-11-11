@@ -5,6 +5,9 @@ using Mono.Cecil.Cil;
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+if (VectorRefusalFixture.Run(args))
+    return;
+
 if (TryWriteTypedGCHandleFixture(args))
     return;
 if (TryWriteTypedGCHandleCore(args))

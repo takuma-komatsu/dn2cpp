@@ -773,6 +773,218 @@ The cache follows the precise-type keyed, mutex-protected pinned-root pattern;
 its scanned roots keep the arrays and their strings alive. First use allocates
 and is classified accordingly; warm lookup reuses the arrays.
 
+#### Portable vector lowering
+
+Portable-vector `IsSupported` describes the element type independently of the
+Highway or scalar backend. `IsHardwareAccelerated` retains its backend policy.
+Native-integer lane counts, sequences and copy bounds use target storage size,
+not the transpiler host width; emitted source stays target-independent.
+Copy destinations are measured in their own elements, so a byte span must hold
+the complete vector byte width even when the source has wider lanes.
+
+The public floating-point portable-vector `MultiplyAddEstimate` overloads use
+an explicit nonfused software profile: each lane's product rounds in its declared
+precision before addition, independently of the Highway backend. This is one
+permitted estimate, not bit parity with a CLR that selects fused hardware
+instructions. NaN payloads are not contractual. Ordinary IEEE compilation is
+required; an explicit `HotPath(FastMath = true)` retains its relaxed contract.
+The strict `FusedMultiplyAdd` and existing scalar routes remain independent.
+Exact CoreLib declaration and raw-reference authority guards the finite public
+family. Generic member references and method specifications are unsupported and
+cannot gain concrete overload authority through caller substitution or address
+resolution; internal
+generic declarations remain outside this intrinsic cut.
+Calls, addresses and retained wrappers share the same lane implementation.
+
+Public floating-point portable-vector `Lerp` uses the same nonfused estimate
+profile and exact declaration authority. Its composition is
+`MultiplyAddEstimate(left, One - amount, right * amount)`, with each intermediate
+rounded to the lane type. It neither clamps the amount nor shortcuts endpoints;
+exceptional operands still participate. Scalar Lerp and internal generic vector
+Lerp remain separate. Concrete Vector2/3/4 callers keep their managed wrappers.
+
+Public floating-point portable-vector `Log` and `Log2` use the corresponding
+typed scalar C++ operation independently for each lane. The scalar library's
+platform-dependent accuracy applies; accelerated CLR polynomial results need
+not be bit-identical. Ordinary IEEE semantics are required, including gradual
+underflow and domain classification; NaN payloads are not contractual. `Log2`
+is not computed by dividing `Log` by a rounded constant. Exact CoreLib unary
+declarations and raw references guard both direct and callable routes before
+cache reuse. Internal generic logarithms remain excluded. Concrete Vector2/3/4
+callers keep their managed wrappers, including positive-one padding.
+
+Portable-vector magnitude selection admits only exact public generic CoreLib
+`MaxMagnitude`, `MinMagnitude` and their `Number` declarations closed over
+float or double. Each lane reuses the scalar selection helper; NaN propagation
+versus numeric selection and signed-zero magnitude ties remain distinct.
+Operands are evaluated once, and concrete Vector2/3/4 callers retain their IL.
+Original generic signatures and method arguments are checked before cache reuse;
+other element types cannot fall through to a fabricated default result.
+For positively admitted unsupported managed value types, magnitude methods
+preserve the genuine managed Count/ThrowHelper path. The hardware and
+software prefixes must both reach that guard before any lane operation; the
+hardware prefix is checked through its exact VectorMath/Abs dispatch. This
+route neither enables unsupported arithmetic nor invents a vector result.
+Fixed-width paths authenticate lower-half descent to the actual Vector64 Count
+guard on both branches; an outer-width Count is not substituted.
+
+
+Portable-vector `MaxNumber` and `MinNumber` reuse the scalar numeric-selection
+helpers for exact public generic declarations closed over float or double.
+Their signed numeric ordering is distinct from magnitude selection. One NaN
+selects the number; signed-zero ties select positive zero for maximum and
+negative zero for minimum. Direct and callable routes validate original
+signatures before cache reuse and evaluate operands once. Unsupported
+managed-value routes validate both hardware and software branches before calling
+the genuine Count guard. The hardware proof follows MaxNumber through Max and
+GreaterThan, or MinNumber through Min and LessThan; comparison guards precede
+selection. Fixed-width branches authenticate strict lower-half descent to the
+closed Vector64 Count guard, including the comparison dependencies. Raw bridge
+and half-call arguments remain distinct, and cached models cannot replace their
+declaration or inner-body authority. These proof dependencies do not admit
+unsupported Max, Min or comparison arithmetic.
+
+The concrete `Vector.GetElement` / `WithElement` overloads over Vector2, Vector3
+and Vector4 use exact CoreLib declarations and named Single fields. Bounds are
+checked before selecting a field; byte copies preserve component bits and the
+source value is never mutated. Direct calls and retained callable targets share
+this finite adapter; generic vector operations and reflection discovery are not
+expanded. Exception behavior follows the managed software body: an invalid index
+throws ArgumentOutOfRangeException with parameter `index` and no actual value.
+The CLR JIT's hardware Vector4 intrinsic instead omits the parameter name. This
+bounded divergence is independent of the native Highway setting; strict software
+CLR comparisons disable hardware intrinsics, while separate hardware-oracle
+results retain the differing exception text.
+
+`Vector.As<TFrom,TTo>` keeps a bounded callable guard when either element is an
+admitted unsupported managed value. Exact declarations, raw MethodSpecs and
+caller contexts bind both elements before cache reuse. A scan may defer exact
+scoped numeric-width placeholders without constructing a callable; call and
+address taint requires a concrete body before emission. Strict resolution still
+rejects placeholders and malformed signatures cannot use this deferral. The
+original body must call the source guard before the destination guard; both calls
+must target the same genuine helper with their original generic argument. Its resource-bearing
+throw and pure supported-element whitelist are validated. The first unsupported
+guard is retained; a preceding known-supported guard has no effects, and later
+conversion code cannot execute. No unsupported vector layout, bit reinterpret or
+synthetic default result is produced. Numeric-to-numeric reinterpretation keeps
+its existing path. Calls, stored addresses and retained callable bodies share
+this authority without expanding reflection discovery.
+
+The finite Numerics `Vector<T>.op_Explicit` and `Vector.AsVector{numeric}<T>`
+forwarding families retain their ordinary managed IL for admitted unsupported
+managed sources, reusing this `As` guard. Exact owner, raw signature and caller
+context checks precede cache reuse; this adds no vector layout or numeric operation.
+
+#### Numeric vector value semantics
+
+Closed supported numeric `System.Numerics.Vector<T>` and
+`System.Runtime.Intrinsics.Vector64/128/256/512<T>` values share lane-value
+equality and hashing across direct calls, constrained calls, default comparers and boxed
+object hooks. Typed `Equals` accepts paired NaNs and signed zeros; numeric
+operators, equality masks and reductions retain numeric floating comparison.
+Floating hashes reuse the scalar normalization policy. Lane count follows target
+storage width within the existing vector ABI, not the host CLR's SIMD width.
+
+Metadata admission validates the original owner and signature before legacy
+vector dispatch or context-insensitive reference caches. Box hooks check exact
+managed type identity before reading payloads; boxed `IEquatable` dispatch has
+its own exact interface adapter. A typed method-group delegate binds the exact
+intrinsic wrapper through the existing boxed-receiver adapter, not a nonexistent
+managed vtable slot. Unsupported closures do not acquire numeric value
+semantics from a shared native representation. Fixed families have independent
+owner identity and width authority; a native alias does not establish managed
+family identity. Runtime helpers, comparator casts and interface/delegate
+arguments carry the admitted width together.
+
+Box payloads need not meet an over-aligned value's native alignment.
+`unbox.any` copies into aligned storage after the existing type/null checks;
+nullable copies use an underlying-value temporary before field assignment.
+`unbox` remains an alias to the original payload. Vector value-method receivers
+and box hooks likewise copy payload bytes rather than forming aligned loads.
+The VectorProbe gates cover value/numeric distinctions, boxed identities,
+callable routes and alignment-sensitive tuple/nullable copies.
+Non-intrinsic field accesses in ordinary emitted fixed-vector-bearing containers
+use byte-offset copies through managed pointers, including companion fields. Field
+addresses remain aliases to original storage; boxed methods do not run on a
+detached receiver copy. Indirect value copies and constrained boxing likewise
+use aligned temporaries without changing receiver mutation or GC barriers.
+This storage rule does not admit unsupported elements as numeric values or
+change intrinsic vector half-field and arithmetic pointer lowering.
+
+Fixed vector owners and containing inline layouts preserve the boundary between
+unmapped and intrinsic storage during canonical substitution. A fixed value
+operation on canonical elements specializes through its own shared-trial taint;
+its placeholder is never admitted as a supported numeric element. Speculative
+boxed interface resolution defers concrete admission, and real caller contexts
+validate raw references before cache hits. Numeric-only operation bodies may
+therefore specialize, while ordinary scalar/enum sharing and compatible numeric
+layouts remain available. Genuine unmapped fixed closures over closed,
+non-generic, non-byref-like value elements use separately validated CoreLib
+value-method bodies, not numeric lane helpers. Their Count and unsupported-element guards retain the
+real managed exception path; object equality still checks the boxed type before
+calling typed equality. Fixed owner and facade operations taint canonical element
+trials so an unsupported enum cannot borrow a numeric guard or representation.
+Mapped unsupported primitives, reference elements and generic value elements
+remain outside this bounded managed-body policy. Numeric operators and hardware
+capability reporting retain their existing policies.
+
+#### SIMD alignment defaults
+
+Retained `ISimdVector<TSelf,T>` aligned-memory defaults resolve their alignment
+slot only for authenticated closed numeric vector owners. The exact private
+`MethodImpl` body is materialized without opening the mapped owner's full method
+catalog. Fixed widths execute their installed constants; `Vector<T>` retains the
+existing target-profile `Vector.get_Alignment` to `Vector<byte>.Count` route.
+Raw slot, receiver, bridge and dependency authority is checked before cache reuse.
+Canonical trials specialize rather than borrowing a numeric closure. Unsupported
+element closures cannot fall through to ordinary static-interface resolution.
+The default body's alignment check and genuine `ThrowAccessViolationException`
+body remain managed IL, preserving exception type, argument order and memory
+effects without substituting the public aligned-memory facades.
+
+Exception ordering for unsupported aligned-memory defaults is outside this
+contract. `Vector<decimal>` and fixed-width vectors over `char`, `Int128` or
+`UInt128` are unsupported for these memory operations; the compiler rejects
+their alignment path rather than retaining a CLR-compatible exception sequence.
+Supported numeric memory operations keep their managed alignment guards, and
+unsupported elements are rejected.
+
+#### Unmapped vector value methods
+
+Genuine unmapped `System.Numerics.Vector<T>` closures over nongeneric,
+non-byref-like value types retain their managed `Equals`, `GetHashCode` and
+`Count` bodies. This is not numeric-lane support. Object equality first checks
+the exact boxed type, returning false for null or a different type. Typed
+equality and hashing reach `Count` before accessing elements. Its exact generic
+unsupported-type guard retains real IL and uses the existing resource-bearing
+`NotSupportedException` sink; it is not an unconditional `ThrowHelper` sink.
+Constructor bodies retain their own argument-validation order.
+The retained unsupported `GetElementUnsafe` fallback is not a lane-access
+implementation: the value-method loops must reach throwing `Count` before
+entering their lane bodies. No arithmetic or reinterpretation support follows
+from retaining this family.
+
+The numeric intrinsic predicates and box/address adapters remain separate from
+managed-body admission. Raw declarations, receiver types and references are
+validated before normal managed dispatch, including the installed owner's and
+interface's distinct generic-parameter attributes. Reference, nullable,
+generic-struct and byref-like arguments are outside this bounded fallback;
+that exclusion does not assert that the unconstrained vector owner forbids all
+such instantiations. Boolean and Char use their own mappings, not this fallback.
+
+An unmapped vector keeps its identity during canonical argument substitution.
+A containing type cannot share a canonical layout if an inline vector field
+would change between managed storage and the intrinsic representation. The
+check follows nested value storage and base storage, not arbitrary reference
+graphs. Canonical value arguments and generic-method return/value/byref
+signatures use the same storage boundary; ordinary enum and supported
+numeric-vector layouts can still share. Bodies performing Numerics vector
+operations on canonical element arguments specialize through shared-trial
+taint: an integer-width placeholder can also denote an unsupported enum. This
+conservatively specializes numeric-vector operation bodies too, without
+disabling ordinary scalar/enum sharing or changing constructor bodies.
+
 #### Platform ISA contract
 
 The `System.Runtime.Intrinsics.X86` / `.Arm` / `.Wasm` families are one

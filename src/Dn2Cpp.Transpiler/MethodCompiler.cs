@@ -687,11 +687,42 @@ internal sealed partial class MethodCompiler : IEvalStack
 
     public string Compile()
     {
+        _c.ValidateSimdAlignmentBody(_method);
+        CoreIntrinsics.ValidateConcreteVectorElement(_method);
+        TaintCanonicalVectorOwner(_method.DeclaringClass);
+        TaintCanonicalFixedVectorValueOwner(_method.DeclaringClass, _method.Name);
+        if (SharedTrial && IsFixedVectorFacade(_method.DeclaringClass))
+            foreach (var argument in _method.Context.MethodArgs)
+                TaintIfCanonical(argument, "fixed-vector-element");
+        if (SharedTrial && IsNumericsVectorFacade(_method.DeclaringClass))
+            foreach (var argument in _method.Context.MethodArgs)
+                TaintIfCanonical(argument, "numerics-vector-element");
+        CoreIntrinsics.ValidateVectorFloatingPointTernary(_method);
+        CoreIntrinsics.ValidateVectorLog(_method);
+        CoreIntrinsics.ValidateVectorMagnitude(_method);
         CoreIntrinsics.ValidateScalarNumericLeaf(_method);
         CoreIntrinsics.ValidateBinaryIntegerEndianBody(_method);
         CoreIntrinsics.ValidatePrimitiveParseBody(_method);
         CoreIntrinsics.ValidateDecimalBinaryBody(_method);
         CoreIntrinsics.ValidatePrimitiveWideConversionBody(_method);
+        CoreIntrinsics.ValidateVectorAlignment(_method);
+        CoreIntrinsics.ValidateConcreteVectorReduction(_method);
+        CoreIntrinsics.ValidateVectorAsCallable(_method);
+        if (CoreIntrinsics.IsGuardedVectorAs(_method))
+            return CompileGuardedVectorAs();
+        if (CoreIntrinsics.IsVectorMagnitudeManagedGuard(_method))
+            return CompileVectorMagnitudeManagedGuard();
+        if (CoreIntrinsics.IsGenericVectorEstimate(_method))
+            return CompileGenericVectorEstimateGuard();
+        if (CoreIntrinsics.IsVectorManagedCountCandidate(_method.DeclaringClass, _method.Name)
+            && !CoreIntrinsics.IsVectorManagedCount(_method))
+            throw new NotSupportedException("Vector<T>.Count requires an exact supported declaration");
+        if (CoreIntrinsics.IsVectorValueCandidate(_method.DeclaringClass, _method.Name)
+            && !CoreIntrinsics.IsVectorValueCallableMethod(_method))
+            throw new NotSupportedException("Vector<T> value methods require an exact supported declaration");
+        if (_method.Name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(_method.DeclaringClass)
+            && !CoreIntrinsics.IsVectorExplicit(_method) && !CoreIntrinsics.IsVectorManagedForwarder(_method))
+            throw new NotSupportedException($"Vector<T>.op_Explicit requires its exact supported CoreLib declaration (Compile: {_method.DeclaringClass.FullName} -> {_method.Signature.ReturnType})");
         // Decode the HotPath bits for every reachable body here. The planning pass compiles
         // all of them before the emission phase arms its recording, so this guarantees
         // Compilation.NoAllocMethods (populated by IsHotPath's decode) is complete at
@@ -1246,6 +1277,10 @@ internal sealed partial class MethodCompiler : IEvalStack
     {
         if (CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(_method))
             return CompileInvariantCompareInfoInitializer();
+        CoreIntrinsics.ValidateConcreteVectorElement(_method);
+        CoreIntrinsics.ValidateVectorFloatingPointTernary(_method);
+        CoreIntrinsics.ValidateVectorLog(_method);
+        CoreIntrinsics.ValidateVectorMagnitude(_method);
         CoreIntrinsics.ValidateScalarNumericLeaf(_method);
         CoreIntrinsics.ValidateBinaryIntegerEndianBody(_method);
         CoreIntrinsics.ValidatePrimitiveParseBody(_method);
@@ -1261,6 +1296,18 @@ internal sealed partial class MethodCompiler : IEvalStack
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
                 TryEmitParseIntrinsic(_method.DeclaringClass.FullName, _method.Name, _method.Signature, nativeInteger: true),
                 "target-width native integer parsing");
+        CoreIntrinsics.ValidateVectorAlignment(_method);
+        CoreIntrinsics.ValidateConcreteVectorReduction(_method);
+        CoreIntrinsics.ValidateVectorAsCallable(_method);
+        if (CoreIntrinsics.IsGuardedVectorAs(_method))
+            return CompileGuardedVectorAs();
+        if (CoreIntrinsics.IsVectorMagnitudeManagedGuard(_method))
+            return CompileVectorMagnitudeManagedGuard();
+        if (CoreIntrinsics.IsGenericVectorEstimate(_method))
+            return CompileGenericVectorEstimateGuard();
+        if (_method.Name == "op_Explicit" && CoreIntrinsics.IsVectorExplicitOwner(_method.DeclaringClass)
+            && !CoreIntrinsics.IsVectorExplicit(_method) && !CoreIntrinsics.IsVectorManagedForwarder(_method))
+            throw new NotSupportedException($"Vector<T>.op_Explicit requires its exact supported CoreLib declaration (CompileCoreIntrinsicWrapper: {_method.DeclaringClass.FullName} -> {_method.Signature.ReturnType})");
         if (CoreIntrinsics.BrPrimitiveBigMul.Matches(_method))
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
             {
@@ -1275,7 +1322,13 @@ internal sealed partial class MethodCompiler : IEvalStack
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
                 TryTokenFreeGenericIntrinsic(_method.DeclaringClass.FullName, _method.Name, _method.Context.MethodArgs),
                 "checked Int128 integer widening");
-        if (CoreIntrinsics.IsInvariantCompareInfoGetter(_method))
+        if (CoreIntrinsics.IsVectorExplicit(_method)
+            || CoreIntrinsics.IsConcreteVectorElement(_method)
+            || CoreIntrinsics.IsVectorFloatingPointTernary(_method)
+            || CoreIntrinsics.IsVectorLog(_method)
+            || CoreIntrinsics.IsVectorMagnitude(_method)
+            || CoreIntrinsics.IsVectorValueMethod(_method)
+            || CoreIntrinsics.IsInvariantCompareInfoGetter(_method))
             return CompileInterceptWrapper();
         string dispatch = _c.RuntimeInterfaceLowerings.TryGetValue(_method, out var runtimeDispatch)
             ? runtimeDispatch
@@ -3706,6 +3759,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // a call site resolves its target, then fed through the same delegate-
                 // adapter path below — so `ldftn` of a closed predicate-combiner or
                 // comparison helper is supported, not just a plain MethodDefinition.
+                TaintCanonicalVectorOperation(SRME.EntityHandle(insn.Token));
+                TaintCanonicalFixedVectorValueOperation(SRME.EntityHandle(insn.Token));
                 var m = ResolveMethodHandle(SRME.EntityHandle(insn.Token), "ldftn");
                 // --trim-godot-classes, the emit-side ROUTE: a deferred registry
                 // lambda's body is never emitted, so its symbol must never be named
@@ -3820,6 +3875,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // call site — so a virtual method group on a generic type bound to a
                 // delegate (e.g. the EnumerableSorter<T> comparison helpers) resolves to
                 // its vtable slot, rather than only a plain MethodDefinition.
+                TaintCanonicalVectorOperation(SRME.EntityHandle(insn.Token));
+                TaintCanonicalFixedVectorValueOperation(SRME.EntityHandle(insn.Token));
                 var m = ResolveMethodHandle(SRME.EntityHandle(insn.Token), "ldvirtftn");
                 if (Compilation.RuntimeNumericProviderConsumer(m))
                     _c.ReachFormatProviderGetFormat();
@@ -3896,6 +3953,32 @@ internal sealed partial class MethodCompiler : IEvalStack
                     expr = $"((void)dn2cpp_null_check({obj.Expr}), "
                         + $"(void*)+[](Dn2CppObject* receiver, Dn2CppObject* other) -> int32_t "
                         + $"{{ return {impl.CppName}(({virtualTarget.DeclaringClass.CppStructName}*)(receiver + 1), other); }})";
+                }
+                else if (CoreIntrinsics.IsVectorValueMethod(m) && m.Name == "Equals"
+                    && m.Signature.ParameterTypes[0].Class == m.DeclaringClass)
+                {
+                    // The final typed slot has no managed vtable on an intrinsic box.
+                    // Reuse the exact method wrapper and boxed-receiver adapter.
+                    bindsLowering = true;
+                    NoteFtnTargetBody(m.Emittable);
+                    _c.NoteNamedBodySymbol(_method, m.Emittable);
+                    var adapter = new DelegateAdapter(m.Emittable, false, NfiErased: true);
+                    if (!_c.DelegateAdapters.Contains(adapter))
+                        _c.DelegateAdapters.Add(adapter);
+                    expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{adapter.CppName})";
+                }
+                else if (CoreIntrinsics.IsVectorManagedValueMethod(m) && m.Name == "Equals"
+                    && m.Signature.ParameterTypes[0].Class == m.DeclaringClass)
+                {
+                    // A managed value box has interface/object hooks, not an ordinary
+                    // vtable. This exact final slot binds its real body over the payload.
+                    bindsLowering = true;
+                    NoteFtnTargetBody(m.Emittable);
+                    _c.NoteNamedBodySymbol(_method, m.Emittable);
+                    var adapter = new DelegateAdapter(m.Emittable, false, NfiErased: true);
+                    if (!_c.DelegateAdapters.Contains(adapter))
+                        _c.DelegateAdapters.Add(adapter);
+                    expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{adapter.CppName})";
                 }
                 else if (ObjectDispatchHelper(m) is { } helper)
                 {

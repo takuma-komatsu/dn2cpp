@@ -597,7 +597,13 @@ internal static partial class CoreIntrinsics
     public static readonly MethodDefIntercept MdRuntimePrimitive = new(
         InterceptCutKind.Cut, InterceptEmitArm.RuntimePrimitive,
         extra: static mi => LoweredRuntimePrimitive(mi.DeclaringClass.FullName, mi.Name)
-            || IsInvariantCompareInfoGetter(mi));
+            || IsInvariantCompareInfoGetter(mi)
+            || IsVectorExplicit(mi)
+            || IsConcreteVectorElement(mi)
+            || IsVectorFloatingPointTernary(mi)
+            || IsVectorLog(mi)
+            || IsVectorMagnitude(mi)
+            || IsVectorValueMethod(mi));
 
     /// <summary>EventSource.IsEnabled() folds to false, so the framework's
     /// `if (Log.IsEnabled()) Log.Event(…)` guards go dead and the EventSource

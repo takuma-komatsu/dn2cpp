@@ -70,17 +70,19 @@ vector_fma_branches() {
 }
 
 vector_floating_wasm_gate() {
-    local mode out _CG_CORELIB_IN DN2CPP_WASM_SIMD=
+    local mode out sections _CG_CORELIB_IN DN2CPP_WASM_SIMD=
     _CG_CORELIB_IN=$(locate_corelib_cross_posix net10)
     export DN2CPP_WASM_SIMD
     for mode in default simd; do
-        out="artifacts/vectorprobe-wasm-$mode"
+        out="artifacts/vectorprobe-wasm-$mode${DN2CPP_OUT_SUFFIX:-}"
         DN2CPP_WASM_SIMD=
+        sections=floating-point
         [ "$mode" = default ] || DN2CPP_WASM_SIMD=1
+        [ "$mode" != default ] || sections=floating-point,value-semantics-only
         _corelib_gate_core VectorProbe "$out"
-        if gate_cache_check "$out" "vector-floating-wasm|mode:$mode|$_CG_CORELIB|argv:floating-point|oracle:DOTNET_EnableAVX=0" \
+        if gate_cache_check "$out" "vector-probe-wasm|mode:$mode|$_CG_CORELIB|argv:$sections|oracle:DOTNET_EnableAVX=0" \
                 "$_CG_APP" "${_CG_APP%.dll}.runtimeconfig.json" "${_CG_APP%.dll}.deps.json" \
-                gates/_vector-floating-point.sh samples/dotnet/VectorProbe/FloatingPoint.cs; then
+                gates/_vector-floating-point.sh gates/_vector-corelib-checks.sh; then
             gate_cache_hit_msg
             continue
         fi
@@ -89,6 +91,9 @@ vector_floating_wasm_gate() {
         DOTNET_EnableAVX=0 gate_capture_ok "$out/oracle" run_bounded dotnet "$_CG_APP" floating-point
         gate_output compare "$out/native.stdout" "$out/oracle.stdout" --policy crlf
         vector_floating_witnesses "$out/native.stdout"
+        if [ "$mode" = default ]; then
+            vector_value_wasm_gate "$out" "$_CG_APP"
+        fi
         gate_cache_commit
     done
 }

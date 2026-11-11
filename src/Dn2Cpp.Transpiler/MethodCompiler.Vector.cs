@@ -6,6 +6,16 @@ namespace Dn2Cpp;
 
 internal sealed partial class MethodCompiler
 {
+    private void EmitVectorExplicit(MethodInfo callee)
+    {
+        // All element closures share the same sixteen-byte value representation.
+        // Push spills immediately, preserving once-only evaluation and copy semantics.
+        var source = Pop();
+        Push(StackKind.Struct, "Dn2CppVectorT", source.Kind == StackKind.Ptr
+            ? $"(*(Dn2CppVectorT*)({source.Expr}))" : Cast(source, "Dn2CppVectorT"));
+        Top = Top with { StaticType = callee.Signature.ReturnType };
+    }
+
     // ---- portable SIMD vectors ----
     //
     // The .NET portable-SIMD types (System.Runtime.Intrinsics.Vector64/128/256/512<T>
@@ -14,14 +24,15 @@ internal sealed partial class MethodCompiler
     // is keyed only on byte WIDTH (Dn2CppVector128 == Dn2CppVec<16> for every element type), so two same-width
     // operands share a type regardless of element; the element only selects the template
     // T. This layer has no hardware intrinsics of its own: the portable
-    // IsSupported/IsHardwareAccelerated getters emit the DN2CPP_SIMD_HW_ACCEL token
-    // (1 with Highway, 0 with scalar loops). The platform-ISA
+    // IsSupported reports element-type support independently of the backend;
+    // IsHardwareAccelerated emits DN2CPP_SIMD_HW_ACCEL (1 with Highway, 0 with scalar
+    // loops). The platform-ISA
     // facades (AdvSimd, Sse2, …) are a separate axis: a Lowered family's IsSupported is a
     // run-time token and its instructions call dn2cpp_isa_* helpers
     // (MethodCompiler.PlatformIsa.cs), so a BCL arm guarded by AdvSimd.IsSupported alone
     // runs, and the Dn2CppVec<N> values it hands those helpers come from this layer.
 
-    /// <summary>The token emitted for IsSupported / IsHardwareAccelerated of the portable
+    /// <summary>The token emitted for IsHardwareAccelerated of the portable
     /// vector types. Inside the System.Linq assembly this is the separate
     /// DN2CPP_SIMD_HW_ACCEL_LINQ token, so that lane's vectorized-vs-scalar choice stays an
     /// independent lever (runtime/core/dn2cpp_vectors.h); everywhere else the gate is
@@ -68,15 +79,16 @@ internal sealed partial class MethodCompiler
             or PrimitiveTypeCode.Single or PrimitiveTypeCode.Double,
     };
 
-    /// <summary>The byte size of a vector lane (vectors are over the blittable primitives).</summary>
-    private int VecElemBytes(TypeDesc elem) => elem.Kind == TypeKind.Primitive
+    /// <summary>The target-independent byte size used to match element-list Create
+    /// overloads. Native-sized elements have no fixed size or element-list overload.</summary>
+    private int? VecFixedElemBytes(TypeDesc elem) => elem.Kind == TypeKind.Primitive
         ? elem.Primitive switch
         {
             PrimitiveTypeCode.Byte or PrimitiveTypeCode.SByte or PrimitiveTypeCode.Boolean => 1,
             PrimitiveTypeCode.Int16 or PrimitiveTypeCode.UInt16 or PrimitiveTypeCode.Char => 2,
             PrimitiveTypeCode.Int32 or PrimitiveTypeCode.UInt32 or PrimitiveTypeCode.Single => 4,
-            PrimitiveTypeCode.Int64 or PrimitiveTypeCode.UInt64 or PrimitiveTypeCode.Double
-                or PrimitiveTypeCode.IntPtr or PrimitiveTypeCode.UIntPtr => 8,
+            PrimitiveTypeCode.Int64 or PrimitiveTypeCode.UInt64 or PrimitiveTypeCode.Double => 8,
+            PrimitiveTypeCode.IntPtr or PrimitiveTypeCode.UIntPtr => null,
             _ => throw new NotSupportedException(
                 $"{Method.DeclaringClass.FullName}.{Method.Name}: vector element {elem.Primitive} is not supported"),
         }
@@ -234,9 +246,16 @@ internal sealed partial class MethodCompiler
     private bool TryEmitVectorOp(string vecCpp, int widthBytes, TypeDesc elem, string name,
         MethodSignature<TypeDesc> sig, TypeDesc[]? methodArgs)
     {
+        // Instance value methods require original metadata authority; no name-only
+        // vector route may silently substitute numeric equality or object identity.
+        if (name is "Equals" or "GetHashCode"
+            && (sig.Header.IsInstance || VecCppName(sig.ReturnType) is null))
+            throw new NotSupportedException("Vector<T> value methods require an exact supported reference");
         string et = CppTypes.StorageOf(elem);   // the template element type T
         int n = widthBytes;
-        int lanes = n / VecElemBytes(elem);
+        int? fixedElemBytes = VecFixedElemBytes(elem);
+        // Resolve native-integer width in the target C++ compiler, not the transpiler host.
+        string lanes = $"({n} / (int32_t)sizeof({et}))";
         var ps = sig.ParameterTypes;
 
         // dn2cpp_vec_<fn><T, N>(...) and the width-only dn2cpp_vec_<fn><N>(...) prefixes.
@@ -249,6 +268,9 @@ internal sealed partial class MethodCompiler
         void PushScalar(string expr) => Push(CppTypes.KindOf(sig.ReturnType), CppTypes.Of(sig.ReturnType), expr);
         void PushBool(string boolExpr) => Push(StackKind.I4, "int32_t", $"({boolExpr} ? 1 : 0)");
         bool IsVec(TypeDesc t) => VecCppName(t) is not null;
+        bool SameNumericVector(TypeDesc t) => t is { Kind: TypeKind.Class, IsCanonPlaceholder: false }
+            && VecCppName(t) == vecCpp && VecElem(t) is
+                { Kind: TypeKind.Primitive, IsCanonPlaceholder: false } lane && lane.Primitive == elem.Primitive;
         bool signedElem = elem.Kind == TypeKind.Primitive && elem.Primitive is
             PrimitiveTypeCode.SByte or PrimitiveTypeCode.Int16 or PrimitiveTypeCode.Int32
             or PrimitiveTypeCode.Int64 or PrimitiveTypeCode.IntPtr;
@@ -272,6 +294,33 @@ internal sealed partial class MethodCompiler
         // (broadcast / array / span) are a subset of these.
         bool EmitCreate()
         {
+            // Fixed-width Create(smallerVector) repeats the complete source block.
+            // It is not scalar broadcast, zero-extension, or a Vector<T> constructor.
+            if (ps.Length == 1 && VecCppName(ps[0]) is { } sourceCpp)
+            {
+                bool pair = (sourceCpp, vecCpp) is ("Dn2CppVector64", "Dn2CppVector128" or "Dn2CppVector256" or "Dn2CppVector512")
+                    or ("Dn2CppVector128", "Dn2CppVector256" or "Dn2CppVector512")
+                    or ("Dn2CppVector256", "Dn2CppVector512");
+                if (!pair || sig.Header.RawValue != 0x10 || sig.GenericParameterCount != 1
+                    || methodArgs is not [var argument] || !CoreIntrinsics.IsVectorNumericElement(argument)
+                    || !CoreIntrinsics.IsVectorNumericElement(elem) || argument.Primitive != elem.Primitive
+                    || VecElem(ps[0]) is not { } sourceElement || !CoreIntrinsics.IsVectorNumericElement(sourceElement)
+                    || sourceElement.Primitive != elem.Primitive
+                    || ps[0].Class!.Module != sig.ReturnType.Class!.Module
+                    || ps[0].Class!.Module.AssemblyName != "System.Private.CoreLib")
+                    throw new NotSupportedException("Vector Create repetition requires a supported same-element fixed-width generic overload");
+                var source = Pop();
+                string value = NewTemp(sourceCpp);
+                Emit($"{value} = {Val(source, sourceCpp)};");
+                for (int width = VecWidthBytes(sourceCpp) * 2; width <= n; width *= 2)
+                {
+                    string next = NewTemp(width == 16 ? "Dn2CppVector128" : width == 32 ? "Dn2CppVector256" : "Dn2CppVector512");
+                    Emit($"{next} = dn2cpp_vec_with_upper<{et}, {width}>(dn2cpp_vec_with_lower<{et}, {width}>(dn2cpp_vec_zero<{et}, {width}>(), {value}), {value});");
+                    value = next;
+                }
+                PushVec(value);
+                return true;
+            }
             // Hierarchical Create(lower, upper) of two half-width vectors.
             if (ps.Length == 2 && IsVec(ps[0]) && IsVec(ps[1]))
             {
@@ -304,14 +353,14 @@ internal sealed partial class MethodCompiler
                 PushVec($"{Vec("create_broadcast")}({Cast(s, et)})");
                 return true;
             }
-            // Create(e0, e1, ..., e{lanes-1}) -> element list spilled to a temp array.
-            if (ps.Length == lanes)
+            // Element-list overloads use fixed-size lanes and a target-independent arity.
+            if (fixedElemBytes is { } size && ps.Length == n / size)
             {
-                string arr = NewLocalArray(et, lanes);
-                var vals = new StackEntry[lanes];
-                for (int i = lanes - 1; i >= 0; i--)
+                string arr = NewLocalArray(et, ps.Length);
+                var vals = new StackEntry[ps.Length];
+                for (int i = ps.Length - 1; i >= 0; i--)
                     vals[i] = Pop();
-                for (int i = 0; i < lanes; i++)
+                for (int i = 0; i < ps.Length; i++)
                     Emit($"{arr}[{i}] = {Cast(vals[i], et)};");
                 PushVec($"{Vec("create_elems")}({arr})");
                 return true;
@@ -353,12 +402,12 @@ internal sealed partial class MethodCompiler
             case "get_Indices": PushVec($"{Vec("create_indices")}()"); return true;
             // get_Count is Vector*<T>.Count; get_ElementCount is the same value as the
             // ISimdVector<TSelf,T> static-abstract member (the lane count).
-            case "get_Count" or "get_ElementCount": Push(StackKind.I4, "int32_t", lanes.ToString()); return true;
+            case "get_Count" or "get_ElementCount": Push(StackKind.I4, "int32_t", lanes); return true;
             // IsSupported is per-element (real .NET: false for char/bool even
             // though the software-vector runtime can carry them — see
             // VectorElemIsSupported); IsHardwareAccelerated is element-blind.
             case "get_IsSupported":
-                Push(StackKind.I4, "int32_t", VectorElemIsSupported(elem) ? SimdHwAccelToken : "0");
+                Push(StackKind.I4, "int32_t", VectorElemIsSupported(elem) ? "1" : "0");
                 return true;
             case "get_IsHardwareAccelerated":
                 Push(StackKind.I4, "int32_t", SimdHwAccelToken);
@@ -385,7 +434,7 @@ internal sealed partial class MethodCompiler
             { var s = Pop(); PushVec($"{Vec("create_scalar_unsafe")}({Cast(s, et)})"); return true; }
             case "CreateSequence":
             {
-                // start + i*step per lane; the lane count is known at compile time.
+                // start + i*step per lane; the target compiler supplies the lane count.
                 var stepE = Pop();
                 var startE = Pop();
                 string start = NewTemp(et);
@@ -394,8 +443,10 @@ internal sealed partial class MethodCompiler
                 Emit($"{step} = {Cast(stepE, et)};");
                 string r = NewTemp(vecCpp);
                 Emit($"{r} = {Vec("zero")}();");
-                for (int i = 0; i < lanes; i++)
-                    Emit($"dn2cpp_vec_set<{et}, {n}>({r}, {i}, ({et})({start} + ({et})({i}) * {step}));");
+                string lane = NewTemp("int32_t");
+                Emit($"for ({lane} = 0; {lane} < {lanes}; ++{lane}) {{");
+                Emit($"    dn2cpp_vec_set<{et}, {n}>({r}, {lane}, ({et})({start} + ({et})({lane}) * {step}));");
+                Emit("}");
                 Push(StackKind.Struct, vecCpp, r);
                 return true;
             }
@@ -452,13 +503,51 @@ internal sealed partial class MethodCompiler
             // Float-only transcendentals / unit conversion (scalar libm per lane).
             case "Asin": return Un("asin");
             case "Cos": return Un("cos");
+            case "Sin" or "SinCos":
+            {
+                bool SameVector(TypeDesc type) => VecCppName(type) == vecCpp
+                    && VecElem(type) is { Kind: TypeKind.Primitive, IsCanonPlaceholder: false } scalar
+                    && scalar.Primitive == elem.Primitive;
+                if (elem is not { Kind: TypeKind.Primitive, IsCanonPlaceholder: false,
+                        Primitive: PrimitiveTypeCode.Single or PrimitiveTypeCode.Double }
+                    || sig.Header.IsInstance || ps is not [var sourceType] || !SameVector(sourceType))
+                    throw new NotSupportedException("Vector trigonometry requires one float or double vector");
+                if (name == "Sin")
+                {
+                    if (!SameVector(sig.ReturnType))
+                        throw new NotSupportedException("Vector Sin requires the same result vector type");
+                    return Un("sin");
+                }
+                if (sig.ReturnType is not { Kind: TypeKind.Class, Class: { IsValueType: true } tupleCls }
+                    || Comp.GenericDefFullName(tupleCls) != "System.ValueTuple"
+                    || tupleCls.Context.TypeArgs is not [var sinType, var cosType]
+                    || !SameVector(sinType) || !SameVector(cosType))
+                    throw new NotSupportedException("Vector SinCos requires a pair of the input vector type");
+                Comp.EnsureCompleted(tupleCls);
+                var item1 = tupleCls.Fields.FirstOrDefault(f => f.Name == "Item1" && !f.IsStatic);
+                var item2 = tupleCls.Fields.FirstOrDefault(f => f.Name == "Item2" && !f.IsStatic);
+                if (item1 is null || item2 is null || !SameVector(item1.Type) || !SameVector(item2.Type))
+                    throw new NotSupportedException("Vector SinCos requires its two vector result fields");
+                // Both results consume the same staged operand; the managed tuple keeps
+                // its ordinary layout and field order rather than a new runtime ABI.
+                var input = Pop();
+                string value = NewTemp(vecCpp);
+                Emit($"{value} = {Val(input, vecCpp)};");
+                string tupleCpp = CppTypes.Of(sig.ReturnType);
+                string result = NewTemp(tupleCpp);
+                Emit($"{result} = {tupleCpp}{{}};");
+                Emit($"{result}.{item1.CppName} = {Vec("sin")}({value});");
+                Emit($"{result}.{item2.CppName} = {Vec("cos")}({value});");
+                Push(StackKind.Struct, tupleCpp, result);
+                return true;
+            }
             case "Exp": return Un("exp");
             case "Hypot": return Bin("hypot");
-            case "DegreesToRadians":
+            case "DegreesToRadians" or "RadiansToDegrees":
                 if (elem is not { Kind: TypeKind.Primitive,
                     Primitive: PrimitiveTypeCode.Single or PrimitiveTypeCode.Double })
                     throw new NotSupportedException("Vector angle conversion requires float or double lanes");
-                return Un("degrees_to_radians");
+                return Un(name == "DegreesToRadians" ? "degrees_to_radians" : "radians_to_degrees");
             case "Sum": { var v = Pop(); PushScalar($"{Vec("sum")}({Val(v, vecCpp)})"); return true; }
             case "Dot": { var b = Pop(); var a = Pop(); PushScalar($"{Vec("dot")}({Val(a, vecCpp)}, {Val(b, vecCpp)})"); return true; }
             case "Clamp" or "ClampNative":
@@ -559,6 +648,23 @@ internal sealed partial class MethodCompiler
             { var val = Pop(); var v = Pop(); PushBool($"{Vec("all")}({Val(v, vecCpp)}, {Cast(val, et)})"); return true; }
             case "Any":
             { var val = Pop(); var v = Pop(); PushBool($"{Vec("any")}({Val(v, vecCpp)}, {Cast(val, et)})"); return true; }
+            case "None" or "NoneWhereAllBitsSet":
+            {
+                bool bits = name == "NoneWhereAllBitsSet";
+                int count = bits ? 1 : 2;
+                if (!VectorElemIsSupported(elem) || elem.IsCanonPlaceholder || sig.Header.IsInstance
+                    || sig.RequiredParameterCount != count || ps.Length != count || !SameNumericVector(ps[0])
+                    || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean, IsCanonPlaceholder: false }
+                    || !bits && (ps[1] is not { Kind: TypeKind.Primitive, IsCanonPlaceholder: false }
+                        || ps[1].Primitive != elem.Primitive))
+                    throw new NotSupportedException("Vector None requires a supported numeric vector and matching predicate signature");
+                // Numeric NaNs never match; all-bits-set instead examines the raw lane bytes.
+                var value = bits ? null : Pop();
+                var vector = Pop();
+                PushBool(bits ? $"!{Vec("any_all_bits")}({Val(vector, vecCpp)})"
+                    : $"!{Vec("any")}({Val(vector, vecCpp)}, {Cast(value!, et)})");
+                return true;
+            }
 
             // --- reinterpret (As*) : byte-identical when widths match ---
             // The AsVector<elem> dozen is System.Numerics.Vector's own spelling of the
@@ -785,12 +891,43 @@ internal sealed partial class MethodCompiler
                     var span = Pop();
                     var v = Pop();
                     string sv = SpanValue(span, spanCt);
-                    Emit($"dn2cpp_vec_copy_span_check({sv}.f__length, {lanes});");
+                    // The byte-span overload needs N bytes, not the source's lane count.
+                    string destinationElement = CppTypes.StorageOf(ps[targetArg].Class!.Context.TypeArgs[0]);
+                    string count = $"({n} / (int32_t)sizeof({destinationElement}))";
+                    Emit($"dn2cpp_vec_copy_span_check({sv}.f__length, {count});");
                     Emit($"{VecW("store")}({Val(v, vecCpp)}, (void*)({sv}.f__reference));");
                     return true;
                 }
                 throw new NotSupportedException(
                     $"{Method.DeclaringClass.FullName}.{Method.Name}: Vector CopyTo target shape is not supported");
+            }
+            case "TryCopyTo":
+            {
+                int targetArg = sig.Header.IsInstance ? 0 : 1;
+                if (!VectorElemIsSupported(elem) || elem.IsCanonPlaceholder
+                    || ps.Length != targetArg + 1 || sig.RequiredParameterCount != ps.Length
+                    || (sig.Header.IsInstance ? vecCpp != "Dn2CppVectorT" : !SameNumericVector(ps[0]))
+                    || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean, IsCanonPlaceholder: false }
+                    || ps[targetArg] is not { Kind: TypeKind.Class, IsCanonPlaceholder: false, Class: { } spanClass }
+                    || Comp.GenericDefFullName(spanClass) != "System.Span"
+                    || spanClass.Context.TypeArgs is not [{ Kind: TypeKind.Primitive, IsCanonPlaceholder: false } destinationElement]
+                    || (destinationElement.Primitive != elem.Primitive
+                        && !(sig.Header.IsInstance && destinationElement.Primitive == PrimitiveTypeCode.Byte)))
+                    throw new NotSupportedException("Vector TryCopyTo requires a supported numeric vector and writable matching span");
+                string count = $"({n} / (int32_t)sizeof({CppTypes.StorageOf(destinationElement)}))";
+                var destination = Pop();
+                var vector = Pop();
+                string span = SpanValue(destination, CppTypes.Of(ps[targetArg]));
+                string copied = NewTemp("int32_t");
+                Emit($"{copied} = ({span}.f__length >= {count}) ? 1 : 0;");
+                Emit($"if ({copied}) {{");
+                // Snapshot an instance receiver before the store, including an aliasing destination.
+                string value = NewTemp(vecCpp);
+                Emit($"    {value} = {Val(vector, vecCpp)};");
+                Emit($"    {VecW("store")}({value}, (void*)({span}.f__reference));");
+                Emit("}");
+                Push(StackKind.I4, "int32_t", copied);
+                return true;
             }
 
             default:
