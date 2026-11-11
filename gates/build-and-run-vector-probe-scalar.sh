@@ -16,21 +16,28 @@
 #
 # The SCALAR axis uses separate runtime/app build dirs and a -scalar output dir
 # (gates/_common.sh), so this runs alongside the default gate without clobbering it.
+# It transpiles the app's raw metadata (--no-ildiet); the default gate transpiles
+# the ILDiet-rewritten metadata of the same program.
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_vector-floating-point.sh"
+source "$(dirname "$0")/_vector-corelib-checks.sh"
 
 export SCALAR=1
 # dn2cpp fixes Vector<T> at 128 bits. Keep the hardware-dependent real-.NET
 # oracle at that width so exact output remains host-independent.
 export DN2CPP_ORACLE_DOTNET_ENABLE_AVX=0
-export DN2CPP_GATE_EXTRA_CONTEXT="dotnet-vector-width:128|floating-point-prefix-and-witnesses"
-export DN2CPP_GATE_EXTRA_INPUTS="gates/_vector-floating-point.sh"
+export DN2CPP_GATE_EXTRA_CONTEXT="dotnet-vector-width:128|floating-point-prefix-and-witnesses|concrete-elements:DOTNET_EnableHWIntrinsic=0"
+export DN2CPP_GATE_EXTRA_INPUTS="gates/_vector-floating-point.sh gates/_vector-corelib-checks.sh"
 
 source "$(dirname "$0")/_vector-regression-checks.sh"
 
-corelib_diff_gate VectorProbe
-# The narrowing regression runs after the existing unchanged output.
+corelib_diff_gate VectorProbe --no-ildiet
+vector_section_witnesses "$_CG_OUT/native.stdout"
+vector_concrete_elements_gate "$_CG_OUT" "$_CG_APP"
+# A CLR may fuse MultiplyAddEstimate, so only the native nonfused profile is asserted.
+gate_output witness "$_CG_OUT/native.stderr" 'vector estimate nonfused profile passed' --count 1 --policy crlf
+# Sections after FloatingPoint leave the earlier output an unchanged prefix and
+# all run to the final marker.
 DOTNET_EnableAVX=0 gate_capture_ok "$_CG_OUT/before-explicit" run_bounded dotnet "$_CG_APP" before-explicit
 gate_output prefix "$_CG_OUT/native.stdout" "$_CG_OUT/before-explicit.stdout" \
-    --before '-- vector block repetition and narrowing --' --policy crlf
-gate_output witness "$_CG_OUT/native.stdout" '-- vector probe complete --' --count 1 --policy crlf
+    --before '-- vector explicit reinterprets --' --policy crlf

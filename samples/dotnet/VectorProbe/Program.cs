@@ -15,6 +15,21 @@ internal static partial class Program
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+        if (args.Length != 0 && args[0] == "concrete-elements-only")
+        {
+            ConcreteElements(strictExceptions: true);
+            return;
+        }
+        if (args.Length != 0 && args[0] == "value-semantics-only")
+        {
+            VectorValueSemantics();
+            VectorCopyBounds();
+            FixedValueSemantics();
+            FixedWidthValueSmoke();
+            FixedUnsupportedValueSemantics();
+            VectorUnsupportedSemantics();
+            return;
+        }
         if (args.Length != 0 && args[0] == "floating-point")
         {
             FloatingPoint();
@@ -224,7 +239,22 @@ internal static partial class Program
             return;
         FloatingPoint();
         if (args.Length > 0 && args[0] == "before-explicit") return;
-        BlockRepetition.Run();
+        ExplicitReinterprets.Run();
+        VectorValueSemantics();
+        VectorCopyBounds();
+        FixedValueSemantics();
+        FixedWidthValueSmoke();
+        FixedUnsupportedValueSemantics();
+        VectorUnsupportedSemantics();
+        ConcreteElements();
+        MultiplyAddEstimates();
+        AngleConversions();
+        Trigonometry();
+        PredicateCopy();
+        VectorLogSection();
+        MagnitudeSelectionSection();
+        VectorAsSection();
+        ConcreteReductionsSection();
         Console.WriteLine("-- vector probe complete --");
     }
 

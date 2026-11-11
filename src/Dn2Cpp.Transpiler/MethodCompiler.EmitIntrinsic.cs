@@ -346,11 +346,11 @@ internal sealed partial class MethodCompiler
         _stack[at] = receiver with { NonNull = true, KnownNull = false };
     }
 
-    /// <summary>The vector facades' hardware-acceleration constants. dn2cpp's vectors are
-    /// a software model, so both answer the same token.</summary>
+    /// <summary>The non-generic vector facades' hardware-acceleration token.
+    /// IsSupported belongs to a closed generic owner and needs its element type.</summary>
     private bool TryEmitVectorHardwareAccel(string name)
     {
-        if (name is not ("get_IsSupported" or "get_IsHardwareAccelerated"))
+        if (name != "get_IsHardwareAccelerated")
             return false;
         Push(StackKind.I4, "int32_t", SimdHwAccelToken);
         return true;

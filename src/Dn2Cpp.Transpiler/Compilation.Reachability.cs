@@ -20,11 +20,52 @@ internal sealed partial class Compilation
         if (NotePreserveReach(m) && _scanned.Remove(m))
             _toScan.Enqueue(m);
         NoteObfuscationMethod(m);
+        CoreIntrinsics.ValidateVectorFloatingPointTernary(m);
+        CoreIntrinsics.ValidateVectorLog(m);
+        CoreIntrinsics.ValidateVectorMagnitude(m);
         CoreIntrinsics.ValidateScalarNumericLeaf(m);
         CoreIntrinsics.ValidateBinaryIntegerEndianBody(m);
         CoreIntrinsics.ValidatePrimitiveParseBody(m);
         CoreIntrinsics.ValidateDecimalBinaryBody(m);
         CoreIntrinsics.ValidatePrimitiveWideConversionBody(m);
+        CoreIntrinsics.ValidateVectorAlignment(m);
+        ValidateSimdAlignmentBody(m);
+        CoreIntrinsics.ValidateConcreteVectorReduction(m);
+        CoreIntrinsics.ValidateVectorAsCallable(m);
+        if (CoreIntrinsics.IsVectorManagedForwarder(m)) _intrinsicTypeTranspiled.Add(m);
+        if (CoreIntrinsics.IsGuardedVectorAs(m))
+        {
+            var guards = ResolveGuardedVectorAsGuards(m);
+            _intrinsicTypeTranspiled.Add(m);
+            if (AddReachable(m.EnsureSignature()))
+            {
+                _predTrace.TryAdd(m, _currentScan);
+                foreach (var guard in guards) Reach(guard);
+            }
+            return;
+        }
+        if (CoreIntrinsics.IsVectorMagnitudeManagedGuard(m))
+        {
+            var guard = ResolveVectorMagnitudeManagedGuard(m);
+            _intrinsicTypeTranspiled.Add(m);
+            if (AddReachable(m.EnsureSignature()))
+            {
+                _predTrace.TryAdd(m, _currentScan);
+                Reach(guard);
+            }
+            return;
+        }
+        if (CoreIntrinsics.IsGenericVectorEstimate(m))
+        {
+            var guard = ResolveGenericVectorEstimateGuard(m);
+            _intrinsicTypeTranspiled.Add(m);
+            if (AddReachable(m.EnsureSignature()))
+            {
+                _predTrace.TryAdd(m, _currentScan);
+                Reach(guard);
+            }
+            return;
+        }
         // A minted body (a value type's structural equality/hash) has no IL: scanning it
         // would ask the PE for a MethodBody at a row that does not exist. Its call edges
         // are not discovered, they are CONSTRUCTED — ReachSynthesizedValueEquality walks
@@ -137,7 +178,10 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsBinaryIntegerEndianBody(m)
             || CoreIntrinsics.IsPrimitiveParseBody(m)
             || CoreIntrinsics.IsDecimalBinaryBody(m)
-            || CoreIntrinsics.IsPrimitiveWideConversionBody(m))
+            || CoreIntrinsics.IsPrimitiveWideConversionBody(m)
+            || CoreIntrinsics.IsVectorAlignmentManagedBody(m)
+            || CoreIntrinsics.IsConcreteVectorReduction(m)
+            || CoreIntrinsics.IsVectorManagedThrowHelper(m))
             _intrinsicTypeTranspiled.Add(m);
         // Methods of an intrinsic-mapped type are emitted inline, never
         // transpiled. Call edges already skip them (ResolveCallTarget), but an
@@ -1773,6 +1817,11 @@ internal sealed partial class Compilation
         if (constrained.IsObject && !constrained.IsCanonPlaceholder
             && ConstrainedCalleeName(module, calleeHandle) == "CompareTo")
             NoteNonGenericIComparableUsed();
+        // A vector first encountered through an inline generic field can still be
+        // an unshaped shell; emission completes this same receiver before dispatch.
+        if (constrained is { Kind: TypeKind.Class, Class: { } vector }
+            && CoreIntrinsics.IsVectorManagedValueCandidateClass(vector))
+            EnsureShape(vector);
         if (constrained is not { Kind: TypeKind.Class, Class: { IsValueType: true } c })
             return;
         string name;
@@ -6347,6 +6396,13 @@ internal sealed partial class Compilation
                             && TryResolvePrimitiveWideConversionCall(constrained, t) is { } wideConversion)
                         {
                             ReachIntrinsicTypeMethod(wideConversion);
+                            constrained = null;
+                            continue;
+                        }
+                        if (insn.OpCode == ILOpCode.Call && t is not null
+                            && TryResolveSimdAlignmentCall(module, handle, m.Context, constrainedHandle, constrained, t) is { } alignmentBody)
+                        {
+                            ReachIntrinsicTypeMethod(alignmentBody);
                             constrained = null;
                             continue;
                         }

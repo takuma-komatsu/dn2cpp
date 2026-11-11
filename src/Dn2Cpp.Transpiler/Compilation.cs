@@ -4177,11 +4177,17 @@ internal sealed partial class Compilation
 
     public void NoteIntrinsicFtnTarget(MethodInfo m)
     {
+        CoreIntrinsics.ValidateVectorFloatingPointTernary(m);
+        CoreIntrinsics.ValidateVectorLog(m);
+        CoreIntrinsics.ValidateVectorMagnitude(m);
         CoreIntrinsics.ValidateScalarNumericLeaf(m);
         CoreIntrinsics.ValidateBinaryIntegerEndianBody(m);
         CoreIntrinsics.ValidatePrimitiveParseBody(m);
         CoreIntrinsics.ValidateDecimalBinaryBody(m);
         CoreIntrinsics.ValidatePrimitiveWideConversionBody(m);
+        CoreIntrinsics.ValidateVectorAlignment(m);
+        CoreIntrinsics.ValidateConcreteVectorReduction(m);
+        CoreIntrinsics.ValidateVectorAsCallable(m);
         if (CoreIntrinsics.IsInvariantCompareInfoGetter(m))
         {
             NoteInvariantCompareInfoFactory(m);
@@ -4196,6 +4202,12 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsPrimitiveParseBody(m)
             || CoreIntrinsics.IsDecimalBinaryBody(m)
             || CoreIntrinsics.IsPrimitiveWideConversionBody(m)
+            || CoreIntrinsics.IsVectorAlignmentManagedBody(m)
+            || CoreIntrinsics.IsConcreteVectorReduction(m)
+            || CoreIntrinsics.IsVectorManagedThrowHelper(m)
+            || CoreIntrinsics.IsGenericVectorEstimate(m)
+            || CoreIntrinsics.IsGuardedVectorAs(m)
+            || CoreIntrinsics.IsVectorManagedForwarder(m)
             || CoreIntrinsics.IsRealBodyGeneric(m.DeclaringClass.FullName, m.Name)
             || CoreIntrinsics.IsArrayRealBodyMember(m.DeclaringClass.FullName, m.Name, m.Signature))
         {

@@ -2123,7 +2123,13 @@ internal sealed partial class CppEmitter
             && !CoreIntrinsics.IsBinaryIntegerEndianBody(m)
             && !CoreIntrinsics.IsPrimitiveParseBody(m)
             && !CoreIntrinsics.IsDecimalBinaryBody(m)
-            && !CoreIntrinsics.IsPrimitiveWideConversionBody(m);
+            && !CoreIntrinsics.IsPrimitiveWideConversionBody(m)
+            && !CoreIntrinsics.IsVectorAlignmentManagedBody(m)
+            && !CoreIntrinsics.IsConcreteVectorReduction(m)
+            && !CoreIntrinsics.IsVectorManagedThrowHelper(m)
+            && !CoreIntrinsics.IsGenericVectorEstimate(m)
+            && !CoreIntrinsics.IsGuardedVectorAs(m)
+            && !CoreIntrinsics.IsVectorManagedForwarder(m);
 
     private ParallelBodyResult CompileParallelBody(
         MethodInfo m, LiteralPool literals, bool planning)
@@ -2684,7 +2690,13 @@ internal sealed partial class CppEmitter
                             && !CoreIntrinsics.IsBinaryIntegerEndianBody(m)
                             && !CoreIntrinsics.IsPrimitiveParseBody(m)
                             && !CoreIntrinsics.IsDecimalBinaryBody(m)
-                            && !CoreIntrinsics.IsPrimitiveWideConversionBody(m))
+                            && !CoreIntrinsics.IsPrimitiveWideConversionBody(m)
+                            && !CoreIntrinsics.IsVectorAlignmentManagedBody(m)
+                            && !CoreIntrinsics.IsConcreteVectorReduction(m)
+                            && !CoreIntrinsics.IsVectorManagedThrowHelper(m)
+                            && !CoreIntrinsics.IsGenericVectorEstimate(m)
+                            && !CoreIntrinsics.IsGuardedVectorAs(m)
+                            && !CoreIntrinsics.IsVectorManagedForwarder(m))
                         {
                             string body;
                             if (new MethodCompiler(_c, m, literals, _backend)

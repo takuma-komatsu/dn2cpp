@@ -881,10 +881,21 @@ internal sealed partial class Compilation
         if (IsOpenGenericMethod(target) || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls)
             || _backend?.ShouldSkipMethodBody(cls, target) == true)
             return;
+        CoreIntrinsics.ValidateVectorFloatingPointTernary(target);
+        CoreIntrinsics.ValidateVectorLog(target);
+        CoreIntrinsics.ValidateVectorMagnitude(target);
         CoreIntrinsics.ValidateScalarNumericLeaf(target);
+        CoreIntrinsics.ValidateVectorAlignment(target);
+        CoreIntrinsics.ValidateConcreteVectorReduction(target);
         _reflectionSelectionCount++;
         if (CoreIntrinsics.IsScalarNumericLeaf(target)
             || CoreIntrinsics.IsInvariantCompareInfoGetter(target)
+            || CoreIntrinsics.IsVectorAlignmentManagedBody(target)
+            || CoreIntrinsics.IsConcreteVectorReduction(target)
+            || CoreIntrinsics.IsVectorManagedThrowHelper(target)
+            || CoreIntrinsics.IsGenericVectorEstimate(target)
+            || CoreIntrinsics.IsGuardedVectorAs(target)
+            || CoreIntrinsics.IsVectorManagedForwarder(target)
             || target.Rva != 0 && cls.IntrinsicCppName is null)
             Reach(target);
         if (target.IsVirtual && !target.IsStatic && CarriesReflectedSlots(cls))

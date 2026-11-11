@@ -44,7 +44,8 @@ using Dn2CppVectorT   = Dn2CppVec<16>;   // System.Numerics.Vector<T>, fixed at 
 #endif
 
 // Portable SIMD hardware-acceleration gate. The transpiler emits this token for
-// the IsSupported / IsHardwareAccelerated getters of the portable vector types
+// the IsHardwareAccelerated getters of the portable vector types. IsSupported
+// describes element-type support independently of this token
 // (System.Runtime.Intrinsics.Vector64/128/256/512<T> and System.Numerics.Vector<T>).
 // In the scalar build it resolves to 0, so the BCL keeps its software fallback;
 // under Highway it resolves to 1, enabling the BCL's vectorized fast paths.
@@ -159,8 +160,9 @@ static inline Dn2CppString* dn2cpp_vec_box_tostring(Dn2CppObject* boxed)
     return dn2cpp_vec_tostring<T, N>(value, nullptr, nullptr, NumericsVector);
 }
 
-// Typed value equality treats paired NaNs as equal; comparison masks do not.
-template <class T, int N>
+// Value equality is distinct from numeric masks/reductions: paired NaNs compare
+// equal. Lane access and hashing share scalar semantics, including signed zero.
+template <class T, int N = 16>
 static inline int32_t dn2cpp_vec_value_equals(const Dn2CppVec<N>& a, const Dn2CppVec<N>& b)
 {
     for (int i = 0; i < N / (int)sizeof(T); ++i)
@@ -177,6 +179,70 @@ static inline int32_t dn2cpp_vec_value_equals(const Dn2CppVec<N>& a, const Dn2Cp
         else if (x != y) return 0;
     }
     return 1;
+}
+
+template <class T, int N = 16>
+static inline int32_t dn2cpp_vec_value_hash(const Dn2CppVec<N>& value)
+{
+    uint32_t hash = 2166136261u;
+    for (int i = 0; i < N / (int)sizeof(T); ++i)
+    {
+        const T lane = dn2cpp_vec_get<T>(value, i);
+        uint32_t part;
+        if constexpr (std::is_same<T, float>::value)
+            part = (uint32_t)dn2cpp_single_hash(lane);
+        else if constexpr (std::is_same<T, double>::value)
+            part = (uint32_t)dn2cpp_double_hash(lane);
+        else if constexpr (sizeof(T) == 8)
+        {
+            const uint64_t bits = (uint64_t)lane;
+            part = (uint32_t)bits ^ (uint32_t)(bits >> 32);
+        }
+        else
+            part = (uint32_t)lane;
+        hash = (hash ^ part) * 16777619u;
+    }
+    return (int32_t)hash;
+}
+
+template <class T, int N = 16>
+static inline int32_t dn2cpp_vec_value_object_equals(
+    const Dn2CppVec<N>& value, Dn2CppObject* other, const Dn2CppTypeInfo* type)
+{
+    if (!other || other->type != type) return 0;
+    Dn2CppVec<N> payload;
+    std::memcpy(&payload, other + 1, sizeof(payload));
+    return dn2cpp_vec_value_equals<T, N>(value, payload);
+}
+
+// A managed receiver is read only after the argument's exact type matches, so a
+// null receiver answers false for a null or foreign argument, as CoreCLR does.
+template <class T, int N = 16>
+static inline int32_t dn2cpp_vec_value_object_equals(
+    const void* self, Dn2CppObject* other, const Dn2CppTypeInfo* type)
+{
+    if (!other || other->type != type) return 0;
+    if (!self) dn2cpp_throw_null_reference();
+    Dn2CppVec<N> value;
+    std::memcpy(&value, self, sizeof(value));
+    return dn2cpp_vec_value_object_equals<T, N>(value, other, type);
+}
+
+template <class T, int N = 16>
+static inline int32_t dn2cpp_vec_value_box_equals(Dn2CppObject* a, Dn2CppObject* b)
+{
+    if (!b || b->type != a->type) return 0;
+    Dn2CppVec<N> value;
+    std::memcpy(&value, a + 1, sizeof(value));
+    return dn2cpp_vec_value_object_equals<T, N>(value, b, a->type);
+}
+
+template <class T, int N = 16>
+static inline int32_t dn2cpp_vec_value_box_hash(Dn2CppObject* boxed)
+{
+    Dn2CppVec<N> value;
+    std::memcpy(&value, boxed + 1, sizeof(value));
+    return dn2cpp_vec_value_hash<T, N>(value);
 }
 
 // ---------------------------------------------------------------------------
@@ -579,6 +645,21 @@ static inline T dn2cpp_vec_dot(const Dn2CppVec<N>& a, const Dn2CppVec<N>& b) {
     }
 }
 
+// Estimate uses the deterministic software profile, independent of Highway.
+// The volatile product rounds before addition and prevents FMA contraction.
+// Explicit FastMath callers retain their relaxed floating-point contract.
+template <class T, int N>
+static inline Dn2CppVec<N> dn2cpp_vec_multiply_add_estimate(const Dn2CppVec<N>& a, const Dn2CppVec<N>& b, const Dn2CppVec<N>& c) {
+    static_assert(std::is_floating_point<T>::value, "MultiplyAddEstimate requires floating-point lanes");
+    Dn2CppVec<N> result;
+    for (int i = 0; i < N / (int)sizeof(T); ++i) {
+        volatile T product = dn2cpp_vec_get<T>(a, i) * dn2cpp_vec_get<T>(b, i);
+        T value = product + dn2cpp_vec_get<T>(c, i);
+        dn2cpp_vec_set<T>(result, i, value);
+    }
+    return result;
+}
+
 template <class T, int N>
 static inline Dn2CppVec<N> dn2cpp_vec_fma(const Dn2CppVec<N>& a, const Dn2CppVec<N>& b, const Dn2CppVec<N>& c) {
 #if defined(DN2CPP_USE_HIGHWAY)
@@ -790,6 +871,15 @@ static inline Dn2CppVec<N> dn2cpp_vec_asin(const Dn2CppVec<N>& v) {
 }
 
 template <class T, int N>
+static inline Dn2CppVec<N> dn2cpp_vec_sin(const Dn2CppVec<N>& v) {
+    static_assert(std::is_floating_point<T>::value, "Sin requires floating-point lanes");
+    Dn2CppVec<N> r;
+    for (int i = 0; i < N / (int)sizeof(T); ++i)
+        dn2cpp_vec_set<T>(r, i, (T)std::sin(dn2cpp_vec_get<T>(v, i)));
+    return r;
+}
+
+template <class T, int N>
 static inline Dn2CppVec<N> dn2cpp_vec_cos(const Dn2CppVec<N>& v) {
     if constexpr (std::is_floating_point<T>::value) {
         Dn2CppVec<N> r;
@@ -828,15 +918,28 @@ static inline Dn2CppVec<N> dn2cpp_vec_hypot(const Dn2CppVec<N>& a, const Dn2CppV
     }
 }
 
+// CoreLib rounds the product to the lane type before dividing. Combining the
+// constants changes both rounding and overflow for finite inputs.
 template <class T, int N>
 static inline Dn2CppVec<N> dn2cpp_vec_degrees_to_radians(const Dn2CppVec<N>& v) {
     static_assert(std::is_floating_point<T>::value, "DegreesToRadians requires floating-point lanes");
     Dn2CppVec<N> r;
     const T pi = (T)3.141592653589793238462643383279502884;
     for (int i = 0; i < N / (int)sizeof(T); ++i) {
-        // CoreLib rounds the product before division, including intermediate overflow.
         volatile T product = dn2cpp_vec_get<T>(v, i) * pi;
         dn2cpp_vec_set<T>(r, i, product / (T)180);
+    }
+    return r;
+}
+
+template <class T, int N>
+static inline Dn2CppVec<N> dn2cpp_vec_radians_to_degrees(const Dn2CppVec<N>& v) {
+    static_assert(std::is_floating_point<T>::value, "RadiansToDegrees requires floating-point lanes");
+    Dn2CppVec<N> r;
+    const T pi = (T)3.141592653589793238462643383279502884;
+    for (int i = 0; i < N / (int)sizeof(T); ++i) {
+        volatile T product = dn2cpp_vec_get<T>(v, i) * (T)180;
+        dn2cpp_vec_set<T>(r, i, product / pi);
     }
     return r;
 }

@@ -89,11 +89,13 @@ internal sealed partial class MethodCompiler
                 or "System.Runtime.Intrinsics.Vector256" or "System.Runtime.Intrinsics.Vector512"
                 or "System.Numerics.Vector")
         {
-            if (name is "get_IsSupported" or "get_IsHardwareAccelerated")
+            if (name == "get_IsHardwareAccelerated")
             {
                 Push(StackKind.I4, "int32_t", SimdHwAccelToken);
                 return;
             }
+            if (name == "MultiplyAddEstimate")
+                throw new NotSupportedException("Vector MultiplyAddEstimate requires its exact generic managed guard route");
             var vsig = MethodSpecSig(msh, methodArgs);
             if (TryVectorPrimary(vsig, out var vcpp, out var vw, out var velem))
             {
@@ -102,6 +104,8 @@ internal sealed partial class MethodCompiler
                 throw new NotSupportedException(
                     $"{Method.DeclaringClass.FullName}.{Method.Name}: vector helper {declType}::{name}<{methodArgs.Length}> is not supported");
             }
+            if (declType == "System.Numerics.Vector" && name == "As")
+                throw new NotSupportedException("Vector.As requires its exact managed guard or numeric reinterpret route");
             // No software-vector operand/result: the element is non-primitive (e.g.
             // Vector<Int128>). The software-vector runtime is primitive-only, and such a
             // helper is only ever called on the SIMD branch the portable getter gates off
@@ -1678,9 +1682,10 @@ internal sealed partial class MethodCompiler
         // ThrowKeyNotFoundException<TKey>(TKey)). Same as the non-generic ones:
         // drop the args and raise a catchable managed trap — and, for the same reason as
         // there, `ThrowIf*` is excluded: a GUARD returns normally on the happy path, so
-        // trapping one drops the test. No generic guard exists on this type today, so the
-        // exclusion sends one to the loud unsupported-shape throw instead of miscompiling it
-        // (the non-generic twin's arm carries the full argument).
+        // trapping one drops the test. The exact unsupported-vector guard retains
+        // its managed body before reaching this sink-only route.
+        if (declType == "System.ThrowHelper" && name == "ThrowAccessViolationException")
+            throw new NotSupportedException("ThrowAccessViolationException requires its exact nongeneric CoreLib declaration and managed body");
         if (declType == "System.ThrowHelper"
             && name.StartsWith("Throw") && !name.StartsWith("ThrowIf"))
         {

@@ -424,6 +424,42 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsVectorValueMethod(callee))
+        {
+            EmitVectorValue(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsVectorFloatingPointTernary(callee))
+        {
+            EmitVectorFloatingPointTernary(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsVectorMagnitude(callee))
+        {
+            EmitVectorMagnitude(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsVectorLog(callee))
+        {
+            EmitVectorLog(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsConcreteVectorElement(callee))
+        {
+            EmitConcreteVectorElement(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsVectorExplicit(callee))
+        {
+            EmitVectorExplicit(callee);
+            return;
+        }
+
         if (TryEmitGcMemmoveMarshalPrimitive(callee))
             return;
         if (TryEmitRandomBytesEntryAssemblyPrimitive(callee))
