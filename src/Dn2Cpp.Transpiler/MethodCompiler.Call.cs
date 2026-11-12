@@ -168,18 +168,9 @@ internal sealed partial class MethodCompiler
                         Emit($"dn2cpp_gc_reregister_for_finalize({Cast(o, "Dn2CppObject*")});");
                         return true;
                     }
-                    case "Collect":
-                        Emit("dn2cpp_gc_collect();");
-                        return true;
                     case "WaitForPendingFinalizers":
                         Emit("dn2cpp_gc_wait_for_pending_finalizers();");
                         return true;
-                    case "GetTotalMemory":
-                    {
-                        var force = Pop();
-                        Push(StackKind.I8, "int64_t", $"dn2cpp_gc_get_total_memory((int32_t)({force.Expr}))");
-                        return true;
-                    }
                     case "GetAllocatedBytesForCurrentThread":
                         Push(StackKind.I8, "int64_t", "dn2cpp_gc_allocated_bytes_current_thread()");
                         return true;
@@ -551,6 +542,7 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.BrPrimitiveBigMul.Matches(callee)
                     || CoreIntrinsics.BrNativeIntegerEndian.Matches(callee)
                     || CoreIntrinsics.BrNativeIntegerParse.Matches(callee)
+                    || CoreIntrinsics.IsWaitHandleTimeoutConversion(callee)
                     || CoreIntrinsics.IsDateTimeCultureManagedBody(callee)
                     || CoreIntrinsics.IsScalarNumericLeaf(callee)
                     || CoreIntrinsics.IsBinaryIntegerEndianBody(callee)
@@ -1163,8 +1155,8 @@ internal sealed partial class MethodCompiler
                 if (TryEmitMemberRefIntercept(CoreIntrinsics.MrMemoryMarshalArrayData, mr, mrParent, mrName, Sig))
                     return;
                 // The System.GC surface -> dn2cpp_gc_* helpers. The cut family
-                // (SuppressFinalize / ReRegisterForFinalize / Collect /
-                // WaitForPendingFinalizers / GetTotalMemory / GetAllocatedBytesFor-
+                // (SuppressFinalize / ReRegisterForFinalize /
+                // WaitForPendingFinalizers / GetAllocatedBytesFor-
                 // CurrentThread / GetTotalAllocatedBytes, shape-gated) shares its
                 // predicate with the reachability cut; KeepAlive is EMIT-ONLY
                 // (route-without-cut — an empty transpiled body is inlinable and -O2 erases
@@ -1393,6 +1385,16 @@ internal sealed partial class MethodCompiler
                     EmitManagedCall(real, isCallvirt);
                     return;
                 }
+                // ResolveCallTarget keeps the real public wrapper edge. With no
+                // CoreLib input there is no IL body to route, not a native shortcut.
+                if (mrParent == "System.GC" && mrName is "Collect" or "GetTotalMemory"
+                    && mr.Parent.Kind == HandleKind.TypeReference
+                    && !_c.Modules.Any(static module =>
+                        module.AssemblyName.Equals("System.Private.CoreLib", StringComparison.OrdinalIgnoreCase)
+                        || module.AssemblyName.Equals("mscorlib", StringComparison.OrdinalIgnoreCase))
+                    && _c.ResolveTypeRef(_module, (TypeReferenceHandle)mr.Parent) is null)
+                    throw new NotSupportedException(
+                        $"System.GC.{mrName} requires CoreLib IL; use --auto-ref or -r <path/to/System.Private.CoreLib.dll>.");
                 TranslateIntrinsic((MemberReferenceHandle)handle);
                 return;
             }

@@ -126,7 +126,8 @@ internal sealed partial class Compilation
                 ReachExceptionGetMessage(mi);
                 CoreIntrinsics.ValidateDelegateCallableBody(mi);
                 if (CoreIntrinsics.BrDelegateCallable.Matches(mi)) return mi;
-                if (CoreIntrinsics.IsDateTimeCultureManagedBody(mi)
+                if (CoreIntrinsics.IsWaitHandleTimeoutConversion(mi)
+                    || CoreIntrinsics.IsDateTimeCultureManagedBody(mi)
                     || CoreIntrinsics.IsScalarNumericLeaf(mi)
                     || CoreIntrinsics.IsBinaryIntegerEndianBody(mi)
                     || CoreIntrinsics.IsPrimitiveParseBody(mi)
@@ -518,6 +519,11 @@ internal sealed partial class Compilation
                 // Every cut below probes the same MemberReference's parent type
                 // name; read it once (a pure metadata read).
                 string? mrParent = MemberRefParentTypeName(module, (MemberReferenceHandle)handle);
+                if (mrParent == "System.Threading.WaitHandle" && mrName == "ToTimeoutMilliseconds")
+                {
+                    var helper = ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
+                    if (CoreIntrinsics.IsWaitHandleTimeoutConversion(helper)) return helper;
+                }
                 if (CoreIntrinsics.IsDateTimeCultureMemberName(mrParent, mrName)
                     && (mr.Parent.Kind == HandleKind.TypeDefinition
                         || mr.Parent.Kind == HandleKind.TypeReference
@@ -583,7 +589,7 @@ internal sealed partial class Compilation
                 if (CoreIntrinsics.MrMarshalInterop.Matches(mrParent, mrName, Sig))
                     return null;
                 // The System.GC CUT family (shape-gated: SuppressFinalize / ReRegisterForFinalize
-                // / GetTotalMemory / GetTotalAllocatedBytes take one arg, Collect /
+                // / GetTotalAllocatedBytes take one arg,
                 // WaitForPendingFinalizers / GetAllocatedBytesForCurrentThread none). The
                 // predicate is shared with the emit route, so the two cannot disagree about
                 // which overloads are lowered. KeepAlive is EMIT-ONLY (route-without-cut), so
@@ -1529,6 +1535,13 @@ internal sealed partial class Compilation
             && candidates.Any(m => CoreIntrinsics.IsDateTimeFormatInfoManagedBody(m) || CoreIntrinsics.IsDateTimeFormatInfoBoundary(m))
             && !CoreIntrinsics.IsDateTimeFormatInfoReference(resolved, sig, reader.GetBlobReader(mr.Signature)))
             throw new NotSupportedException("DateTimeFormatInfo member requires its exact CoreLib reference and declaration");
+        if (name is ".ctor" or "Finalize" && candidates.Any(CoreIntrinsics.IsGen2GcCallbackRefusal))
+        {
+            if (!CoreIntrinsics.IsGen2GcCallbackSignature(reader.GetBlobReader(mr.Signature), name)
+                || !CoreIntrinsics.IsGen2GcCallbackDecodedSignature(sig, resolved.Module, name)
+                || !CoreIntrinsics.IsGen2GcCallbackRefusal(resolved))
+                throw new NotSupportedException("Gen2GcCallback requires its exact MemberRef signature");
+        }
         if (name == "VerifyCultureName" && candidates.Any(CoreIntrinsics.IsCultureInfoNameValidator))
         {
             if (!CoreIntrinsics.IsCultureInfoNameValidatorSignature(reader.GetBlobReader(mr.Signature))
@@ -1637,6 +1650,11 @@ internal sealed partial class Compilation
         }
         // An unloaded owner still uses existing intrinsic fallbacks, including
         // public DateTime constructors; a managed body needs a loaded declaration.
+        if (full == "System.Threading.WaitHandle" && reader.StringComparer.Equals(mr.Name, "ToTimeoutMilliseconds"))
+        {
+            var helper = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsWaitHandleTimeoutConversion(helper)) return helper;
+        }
         if (CoreIntrinsics.IsDateTimeCultureMemberName(full, reader.GetString(mr.Name))
             && (mr.Parent.Kind == HandleKind.TypeDefinition
                 || ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class is not null))

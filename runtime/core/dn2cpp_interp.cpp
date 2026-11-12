@@ -232,6 +232,7 @@ struct ImportBinding
                         // from the same row, and unspecified (hence refused) elsewhere
     bool isInstance;    // a this slot precedes the args
     bool isCtor;        // a newobj target (bound from the type's ctors table)
+    bool allocationUnsupported; // a ctor whose type refuses allocation when newobj runs
     bool isInterface;   // an interface-typed callvirt: dispatch resolves the fn
                         // from the receiver's interface map (type = the interface,
                         // vtableSlot = the interface method slot)
@@ -1504,6 +1505,7 @@ void bind_method_import(const Dn2CppInterpImage* img, const Dn2CppBpiImport& imp
     b.method = found;
     b.type = declTi;
     b.isCtor = isCtor;
+    b.allocationUnsupported = isCtor && dn2cpp_allocation_unsupported(declTi);
     b.vtableSlot = found->vtableSlot;
     b.gvmDispatcher = gvm;
 }
@@ -3909,6 +3911,8 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                             callArgs[j] = marshal_slot_to_object(b.args[j], pop());
                         dn2cpp_run_initializer(b.initializer);
                         const Dn2CppTypeInfo* ti = b.type;
+                        if (b.allocationUnsupported)
+                            dn2cpp_throw_allocation_unsupported();
                         size_t sz = ti->instanceSize > static_cast<int32_t>(sizeof(Dn2CppObject))
                             ? static_cast<size_t>(ti->instanceSize)
                             : sizeof(Dn2CppObject);
@@ -5131,6 +5135,8 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                             callArgs[j] = marshal_slot_to_object(b.args[j], regs[r0 + j]);
                         dn2cpp_run_initializer(b.initializer);
                         const Dn2CppTypeInfo* ti = b.type;
+                        if (b.allocationUnsupported)
+                            dn2cpp_throw_allocation_unsupported();
                         size_t sz = ti->instanceSize > static_cast<int32_t>(sizeof(Dn2CppObject))
                             ? static_cast<size_t>(ti->instanceSize)
                             : sizeof(Dn2CppObject);

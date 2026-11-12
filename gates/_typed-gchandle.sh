@@ -93,6 +93,19 @@ typed_gchandle_negative_cases() {
     done
 }
 
+typed_gchandle_assert_collections() {
+    LC_ALL=C awk '
+        { sub(/\r$/, "") }
+        /^collections \(GC_no\): [0-9]+$/ { rows++; collections = $3 }
+        END {
+            if (rows != 1 || collections < 2) {
+                print "FAIL: typed GCHandle token-root retention needs at least two observed collections" > "/dev/stderr"
+                exit 1
+            }
+        }
+    ' "$1"
+}
+
 typed_gchandle_retention() {
     local fixture=gates/fixtures/typed-gchandle core_root level
     build_gate_proj "$fixture/retention/TypedGCHandleRetention.csproj"
@@ -111,7 +124,11 @@ typed_gchandle_retention() {
             local _CG_CORELIB_IN="$PWD/$core_root/System.Private.CoreLib.dll"
             DN2CPP_SAMPLE_PROJECT_DIR="$fixture/retention"
             DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-$level"
+            export DN2CPP_GC_STATS=1
+            local DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|typed-retention-gc-floor:2"
             corelib_diff_gate TypedGCHandleRetention --stripping-level "$level"
+            # The saved observation remains mandatory on a gate-cache hit.
+            typed_gchandle_assert_collections "$_CG_OUT/native.stderr"
         )
     done
 }

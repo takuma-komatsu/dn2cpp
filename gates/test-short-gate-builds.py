@@ -64,7 +64,7 @@ build_proj() { [ -z "${DN2CPP_SKIP_BUILD:-}" ] || return 0; fake_build "$1"; }
 build_gate_proj() { fake_build "$1"; }
 gate_python() { record "PYTHON:$*"; }
 gate_skip() { echo "unexpected skip: $*" >&2; exit 99; }
-invoke_cli() {
+fake_invoke_cli() {
     prepare_cli
     local args="$*" app="$1" dir= arg symbol storage
     while [ "$#" -gt 0 ]; do
@@ -141,11 +141,12 @@ HEADER
     fi
     echo 'dn2cpp: 4 assemblies, mock'
 }
+invoke_cli() { fake_invoke_cli "$@"; }
 compile_console() { record "NATIVE:$1:$2"; mkdir -p "$1"; }
 run_bounded() {
     if [ "$1" = invoke_cli ]; then "$@"; else record "RUN:$*"; fi
 }
-gate_capture() {
+fake_gate_capture() {
     local prefix="$1" status=0
     shift
     record "CAPTURE:$prefix:$*"
@@ -161,14 +162,15 @@ gate_capture() {
     : > "$prefix.stderr"
     printf '%s\n' "$status" > "$prefix.status"
 }
+gate_capture() { fake_gate_capture "$@"; }
 gate_capture_ok() {
     gate_capture "$@"
     [ "$(cat "$1.status")" = 0 ]
 }
-gate_output() {
+fake_gate_output() {
     record "ASSERT:$*"
     if [ -n "${FAKE_ASSERT_FAIL:-}" ] && [[ "$*" == *"$FAKE_ASSERT_FAIL"* ]]; then return 31; fi
-    if [ "$1" = status ]; then [ "$2" = "$3" ]; fi
+    if [ "$1" = status ]; then [ "$2" = "$3" ] || return 1; fi
     if [ "$1" = view ]; then
         printf '%s\n' 'enumerable snapshot count=2 first=True order=True' \
             'enumerable snapshot count=2 first=True order=True' \
@@ -177,6 +179,7 @@ gate_output() {
             'enumerable snapshot count=2 first=True order=True' > "$3"
     fi
 }
+gate_output() { fake_gate_output "$@"; }
 gate_cache_check() { record "CACHE:$*"; [ "${FAKE_CACHE_HIT:-0}" = 1 ]; }
 gate_cache_hit_msg() { record HIT; }
 gate_cache_commit() { record COMMIT; }
@@ -511,6 +514,9 @@ for label, extra, status in (("ok", {}, 0), ("failure", {"FAKE_PREPARE_FAIL": "1
 selfhost = source("selfhost-prim-subset").replace(
     'source "$(dirname "$0")/_delegate-callable-bodies.sh"',
     (GATES / "_delegate-callable-bodies.sh").read_text(encoding="utf-8"), 1)
+for helper in ("_gc-collector-contracts.sh", "_gen2-gate.sh"):
+    selfhost = selfhost.replace('source "$(dirname "$0")/' + helper + '"',
+                                (GATES / helper).read_text(encoding="utf-8"), 1)
 signature_helper = (GATES / "_delegate-signatures.sh").read_text(encoding="utf-8")
 signature_helper = signature_helper[:signature_helper.index('\nif [ "${BASH_SOURCE[0]}" = "$0" ]; then')]
 selfhost = selfhost.replace('source "$(dirname "$0")/_delegate-signatures.sh"',
@@ -519,6 +525,16 @@ selfhost_stubs = r'''
 for reference in System.Linq System.Diagnostics.TraceSource System.Collections.Specialized; do
     : > "runtime/$reference.dll"
 done
+prepare_gen2_projects() {
+    local base=gates/fixtures/gen2-callback/interpreter/Base/bin/$CONFIG/$TFM
+    mkdir -p "$base"
+    : > "$base/Gen2CallbackBase.dll"
+}
+build_proj() {
+    [ -z "${DN2CPP_SKIP_BUILD:-}" ] || return 0
+    fake_build "$1"
+    [[ "$1" != */Gen2CallbackPatch.csproj ]] || prepare_gen2_projects
+}
 gate_add_exit_hook() { :; }
 run_bounded() {
     record "RUN:$*"
@@ -527,24 +543,172 @@ run_bounded() {
 }
 gate_python() {
     record "PYTHON:$*"
-    [ "${FAKE_RETAINED_CHECK_FAIL:-0}" = 0 ] || return 37
+    if [[ "$1" == *check-delegate-callable-bodies.py ]]; then
+        [ "${FAKE_RETAINED_CHECK_FAIL:-0}" = 0 ] || return 37
+    else
+        "$FAKE_PYTHON" "$FAKE_GATES/${1#gates/}" "${@:2}"
+    fi
+}
+# Missing CoreLib and malformed private inputs refuse; positive emissions retain
+# their command/image count, including the two BPI encodings and metadata-only TI.
+invoke_cli() {
+    local args="$*" dir= name= diagnostic= suffix body leaf query collect wait backedge
+    local argv=("$@")
+    while [ "$#" -gt 0 ]; do
+        if [ "$1" = -o ]; then dir="$2"; break; fi
+        shift
+    done
+    case "$dir" in
+        */buffer-negative-internal/emitted|*/buffer-negative-batch/emitted)
+            name=${dir%/emitted}; name=${name##*/}
+            suffix=Internal
+            [[ "$name" != *batch ]] || suffix=Batch
+            diagnostic="System.Buffer::BulkMoveWithWriteBarrier$suffix(ref Byte, ref Byte, Int32) is unsupported" ;;
+        */gc-missing-corelib.*/collect/emitted|*/gc-missing-corelib.*/memory/emitted)
+            name=${dir%/emitted}; name=${name##*/}
+            suffix=Collect
+            [[ "$name" != memory ]] || suffix=GetTotalMemory
+            name=gc-missing-corelib-$name
+            diagnostic="System.GC.$suffix requires CoreLib IL; use --auto-ref or -r <path/to/System.Private.CoreLib.dll>." ;;
+        */gen2-retained.*/newobj)
+            name=gen2-newobj
+            diagnostic='newobj System.Gen2GcCallback — native allocation of Gen2 GC notification objects is not supported.' ;;
+        */gen2-retained.*/memberref)
+            name=gen2-memberref
+            diagnostic='Gen2GcCallback requires its exact MemberRef signature' ;;
+    esac
+    if [ -n "$name" ]; then
+        record "REJECT:$name:$args"
+        [ "${FAKE_GC_REFUSAL:-}" != "$name:accepted" ] || return 0
+        [ "${FAKE_GC_REFUSAL:-}" != "$name:diagnostic" ] || diagnostic='wrong diagnostic'
+        printf 'error: %s\n' "$diagnostic" >&2
+        return 2
+    fi
+    fake_invoke_cli "${argv[@]}" || return $?
+    if [[ "$dir" == */gen2-retained.*/minimal ]]; then
+        "$FAKE_PYTHON" "$FAKE_MINIMAL_WRITER" "$dir" "${FAKE_MINIMAL_FAIL:-}"
+    elif [[ "${argv[0]}" == */app/SelfHostPrimSubset.dll ]]; then
+        for suffix in Internal Batch; do
+            body='dn2cpp_gc_memmove_refs(dst, src, size);'
+            [ "${FAKE_BUFFER_BODY_FAIL:-}" != "$suffix" ] || body='std::memmove(dst, src, size);'
+            printf 'void Program_Move%s_m1() {\n    %s\n}\n' "$suffix" "$body" >> "$dir/generated.cpp"
+        done
+        leaf='dn2cpp_gc_get_total_memory(0)'
+        query="$leaf"
+        collect='GC_Collect_m1();'
+        wait='dn2cpp_gc_wait_for_pending_finalizers();'
+        backedge='goto IL_0010;'
+        case "${FAKE_GC_MEMORY_FAIL:-}" in
+            leaf) leaf=0 ;;
+            query) query=0 ;;
+            collect) collect= ;;
+            wait) wait= ;;
+            backedge) backedge= ;;
+        esac
+        printf 'int64_t GC_GetTotalMemory_m1() {\n    return %s;\n}\n' "$leaf" >> "$dir/generated.cpp"
+        printf 'int64_t GC_GetTotalMemory_m2(int32_t a0) {\n    auto before = dn2cpp_gc_get_total_memory(0);\nIL_0010:\n    %s\n    %s\n    auto after = %s;\n    %s\n}\n' \
+            "$collect" "$wait" "$query" "$backedge" >> "$dir/generated.cpp"
+    fi
+}
+gc_stdout() {
+    printf '%s\n' 'mock output' '== GC collection overloads ==' \
+        'GC collection overloads end' 'GC logical generations end' \
+        'GC memory query entry points end' 'GC notification validation end' \
+        'GC pause duration end' 'GC finalizer worker contract end' 'Buffer reference moves end'
+}
+gate_capture() {
+    local prefix="$1" status=0 label mode
+    if [ "$2" = invoke_cli ]; then
+        shift
+        record "CAPTURE:$prefix:$*"
+        mkdir -p "$(dirname "$prefix")"
+        "$@" > "$prefix.stdout" 2> "$prefix.stderr" || status=$?
+        printf '%s\n' "$status" > "$prefix.status"
+        return
+    fi
+    fake_gate_capture "$@"
+    case "$prefix" in
+        */selfhostprimsubset*/native|*/selfhostprimsubset*/oracle|*/buffer-unrewritten) gc_stdout > "$prefix.stdout" ;;
+        */buffer-fixture)
+            printf '%s\n' 'buffer-move-fixture:Internal:ref-byte,ref-byte,nuint' \
+                'buffer-move-fixture:Batch:ref-byte,ref-byte,nuint' > "$prefix.stdout" ;;
+        */gc-missing-corelib.*/collect/fixture)
+            printf '%s\n' 'gc-missing-corelib-fixture:collect:System.Void System.GC::Collect()' > "$prefix.stdout" ;;
+        */gc-missing-corelib.*/memory/fixture)
+            printf '%s\n' 'gc-missing-corelib-fixture:memory:System.Int64 System.GC::GetTotalMemory(System.Boolean)' > "$prefix.stdout" ;;
+        */gc-boundary)
+            : > "$prefix.stdout"
+            for label in fullgc-register-direct fullgc-register-delegate fullgc-register-pointer fullgc-cancel-direct fullgc-cancel-delegate; do
+                printf '%s\n' "$label:InvalidOperationException::This API is not available when the concurrent GC is enabled." >> "$prefix.stdout"
+            done
+            for label in fullgc-approach-default fullgc-complete-default fullgc-approach-zero fullgc-complete-positive fullgc-approach-pointer fullgc-approach-time fullgc-complete-time fullgc-approach-fraction fullgc-complete-upper; do
+                printf '%s\n' "$label:NotApplicable" >> "$prefix.stdout"
+            done
+            printf '%s\n' 'GC notification unavailable end' 'gc-max-generation:0' \
+                'gc-worker-refused:System.GC.RunFinalizers is a CoreCLR-owned worker entry point; dn2cpp owns finalization. Use GC.WaitForPendingFinalizers instead.' \
+                'GC finalizer worker refusal end' >> "$prefix.stdout" ;;
+        */gen2-retained.*/fixture-*)
+            mode=${prefix##*/fixture-}
+            printf 'gen2-fixture:%s\n' "$mode" > "$prefix.stdout" ;;
+        */gen2-retained.*/native-register|*/gen2-retained.*/native-stack)
+            printf '%s\n' gen2-ctor0-reflection:True gen2-ctor1-reflection:True gen2-uninitialized:True \
+                gen2-final-metadata:True gen2-final-reflection-null-target:True \
+                gen2-callbacks-untouched-reflection:True gen2-interp-base-ready \
+                gen2-interp-ctor0:True gen2-interp-ordinary:True gen2-interp-end \
+                > "$prefix.stdout" ;;
+    esac
+    if [ -n "${FAKE_GC_TAINT:-}" ] && [[ "$prefix" == *"$FAKE_GC_TAINT" ]]; then
+        printf 'wrong output\n' > "$prefix.stdout"
+    fi
+    if [ -n "${FAKE_GC_STDERR:-}" ] && [[ "$prefix" == *"$FAKE_GC_STDERR" ]]; then
+        printf 'unexpected stderr\n' > "$prefix.stderr"
+    fi
+}
+# Run the real contracts on the new fixture/boundary transcripts, prefix and
+# refusal diagnostics; a changed byte must fail, not merely call an assertion.
+gate_output() {
+    fake_gate_output "$@" || return $?
+    case "${2:-}:$*" in
+        */gc-*:*|*/buffer-*:*|*/gen2-retained.*:*|*:witness*'GC collection overloads end'*|*:prefix*'/gc-prefix.stdout'*)
+            "$FAKE_PYTHON" "$FAKE_OUTPUT_HELPER" "$@" ;;
+    esac
 }
 if [ -n "${DN2CPP_SKIP_BUILD:-}" ]; then
     fake_build samples/dotnet/SelfHostPrimSubset/SelfHostPrimSubset.csproj
     fake_build gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+    fake_build gates/fixtures/gen2-callback/interpreter/Patch/Gen2CallbackPatch.csproj
+    prepare_gen2_projects
     : > "$FAKE_LOG"
 fi
 '''
+selfhost_stubs += common[common.index("gate_assert_text() {"):
+                         common.index("# assert_output ACTUAL EXPECTED")]
+minimal_writer = root / "write-minimal.py"
+minimal_writer.write_text('''from pathlib import Path
+import sys
+output, failure = Path(sys.argv[1]), sys.argv[2]
+hot = ["nullptr"] * 22
+hot[15] = "0" if failure != "layout" else "24"
+hot[21] = "Dn2CppMetadataHandle<Dn2CppTypeReflection>::from_raw(md_native_refl_ti_System_Gen2GcCallback + 0)"
+cold = ["0", "0LL"] * 13 + ["8LL" if failure != "bit" else "0LL"]
+if failure == "ctor": cold[4] = "ctors"
+text = "const Dn2CppTypeInfo ti_System_Gen2GcCallback = { " + ", ".join(hot) + " };\\n"
+text += "static const Dn2CppTypeReflection md_native_refl_ti_System_Gen2GcCallback[] = {\\n{ " + ", ".join(cold) + " },\\n};\\n"
+(output / "generated.cpp").write_text(text)
+''', encoding="utf-8")
+selfhost_env = {"FAKE_PYTHON": os.sys.executable, "FAKE_OUTPUT_HELPER": str(GATES / "gate-output.py"),
+                "FAKE_GATES": str(GATES), "FAKE_MINIMAL_WRITER": str(minimal_writer)}
 for label, extra, expected in (
-        ("cold", {}, (3, 3, 3)),
-        ("suite", {"DN2CPP_SKIP_BUILD": "1"}, (3, 3, 1)),
-        ("suffix", {"DN2CPP_OUT_SUFFIX": "-probe", "HIGHWAY": "1"}, (3, 3, 3)),
+        ("cold", {}, (7, 4, 4)),
+        ("suite", {"DN2CPP_SKIP_BUILD": "1"}, (7, 4, 1)),
+        ("suffix", {"DN2CPP_OUT_SUFFIX": "-probe", "HIGHWAY": "1"}, (7, 4, 4)),
         ("warm", {"FAKE_CACHE_HIT": "1"}, (2, 1, 3))):
-    result, calls = run("selfhost-" + label, selfhost_stubs + selfhost, extra)
+    result, calls = run("selfhost-" + label, selfhost_stubs + selfhost, {**selfhost_env, **extra})
     check(result.returncode == 0, (label, result.returncode, result.stderr))
     emit = [line for line in calls if line.startswith("EMIT:")]
     native = [line for line in calls if line.startswith("NATIVE:")]
     builds = [line for line in calls if line.startswith("BUILD:")]
+    captures = [line for line in calls if line.startswith("CAPTURE:")]
     check((len(emit), len(native), len(builds)) == expected, (label, emit, native, builds))
     check(sum(line == "PREPARE" for line in calls) == 1, calls)
     check(not any("DelegateCallableBodies.csproj" in line for line in calls), calls)
@@ -552,12 +716,29 @@ for label, extra, expected in (
     cache = [line for line in calls if line.startswith("CACHE:")]
     check(any("delegate-callable-refusals.txt" in line and "keep-delegate-callable-bodies.xml" in line
               and "delegate-callable:reflection,call,calli,callvirt,ldvirtftn" in line for line in cache), cache)
+    for dependency in ("_gc-collector-contracts.sh", "check-gc-collector-bodies.py", "BufferReferenceMoveFixture.cs",
+                       "GcCoreLibInputFixture.cs", "gc-corelib-input:collect,memory",
+                       "_gen2-gate.sh", "Gen2CallbackFixture.cs", "check-minimal-metadata.py",
+                       "gc-collector:il-wrappers,finalizer-refusal", "buffer-reference-moves:internal,batch,overlap,barrier,wrong-count,standalone-clr",
+                       "gen2:reflection,register,stack,reference-only,newobj,memberref"):
+        check(any(dependency in line for line in cache), (label, dependency, cache))
+    raw_base = "samples/dotnet/SelfHostPrimSubset/bin/Debug/net10.0/SelfHostPrimSubset"
+    raw = [line for line in captures if "/buffer-unrewritten:" in line]
+    check(len(raw) == 1 and raw[0].endswith("run_bounded dotnet " + raw_base + ".dll"), raw)
+    delegate_fixture = next(line for line in captures if " --delegate-callable-bodies " in line)
+    buffer_fixture = next(line for line in captures if " --buffer-reference-moves " in line)
+    check(calls.index(raw[0]) < calls.index(delegate_fixture) < calls.index(buffer_fixture), captures)
+    for suffix in (".dll", ".runtimeconfig.json", ".deps.json"):
+        check(any(raw_base + suffix in line for line in cache), (label, suffix, cache))
+    check(any(raw[0].split(":")[1] + ".stdout" in line for line in cache), (label, raw, cache))
     if label == "warm":
         check("HIT" in calls and "COMMIT" not in calls, calls)
         check(not any("delegate-refusals " in line for line in calls if line.startswith("CAPTURE:")), calls)
+        check(not any("gen2-retained" in line for line in native + emit), calls)
+        check(not any(line.startswith("REJECT:") for line in calls), calls)
         continue
     target = next(line.split(":")[1] for line in native if line.endswith(":SelfHostPrimSubset"))
-    captures = [line for line in calls if line.startswith("CAPTURE:")]
+    check(f"ASSERT:compare {target}/buffer-unrewritten.stdout {target}/oracle.stdout" in calls, calls)
     for route in ("reflection", "call", "calli", "callvirt", "ldvirtftn"):
         for mode in ("delegate-callable", "delegate-refusals"):
             check(any(line.endswith(f"{target}/SelfHostPrimSubset {mode} {route}") for line in captures),
@@ -571,6 +752,38 @@ for label, extra, expected in (
     check(any(" before-nullable-reboxing" in line for line in captures), captures)
     check(sum(" delegate-callable before-virtual-delegates" in line for line in captures) == 2, captures)
     check("COMMIT" in calls and any(" --delegate-signatures " in line for line in captures), calls)
+    check(any(line.endswith(f"{target}/SelfHostPrimSubset gc-native-boundary") for line in captures), captures)
+    check(any(line.endswith(f"{target}/app/SelfHostPrimSubset.dll before-gc-contracts") for line in captures), captures)
+    check(any("--buffer-reference-moves " in line and f"{target}/app/SelfHostPrimSubset.dll " in line
+              for line in captures), captures)
+    check(sum("--buffer-reference-moves-negative-" in line for line in captures) == 2, captures)
+    gen2_native = [line for line in native if line.endswith(":Gen2CallbackBase")]
+    check(len(gen2_native) == 1, gen2_native)
+    gen2_base = gen2_native[0].split(":")[1]
+    for codec in ("register", "stack"):
+        patch = [line for line in emit if f"/patch-{codec}:" in line]
+        check(len(patch) == 1 and ":--emit-patch " in patch[0], patch)
+        check(("--patch-stackcode" in patch[0]) == (codec == "stack"), patch)
+        check(f"--base-abi {gen2_base}/base-abi.json" in patch[0], patch)
+        check(any(f"{gen2_base}/Gen2CallbackBase " in line and f"/patch-{codec}/Gen2CallbackPatch.bpi" in line
+                  for line in captures), captures)
+    minimal = [line for line in emit if "/minimal:" in line]
+    check(len(minimal) == 1 and "--reflection-metadata System.Gen2GcCallback=native" in minimal[0], minimal)
+    check(not any("/minimal:" in line for line in native), native)
+    check(not any("run_bounded dotnet " in line and "/input/" in line
+                  and "LdftnLocalFixture.dll" not in line for line in captures), captures)
+    refusals = [line for line in calls if line.startswith("REJECT:")]
+    check([line.split(":")[1] for line in refusals] == ["buffer-negative-internal", "buffer-negative-batch",
+          "gc-missing-corelib-collect", "gc-missing-corelib-memory", "gen2-newobj", "gen2-memberref"], refusals)
+    check(sum(line == "ASSERT:status 2 2" for line in calls) == 6, calls)
+    for mode in ("collect", "memory"):
+        missing = [line for line in refusals if line.startswith(f"REJECT:gc-missing-corelib-{mode}:")]
+        check(len(missing) == 1 and f"/{mode}/SelfHostPrimSubset.dll --no-ildiet -o " in missing[0], missing)
+        check(" -r " not in missing[0] and " --auto-ref" not in missing[0] and " --no-default-ref" not in missing[0], missing)
+        check(sum(f" --gc-missing-corelib-{mode} " in line for line in captures) == 1, captures)
+    check(sum("check-minimal-metadata.py" in line for line in calls if line.startswith("PYTHON:")) == 1, calls)
+    check(sum("check-gc-collector-bodies.py" in line for line in calls if line.startswith("PYTHON:")) == 1, calls)
+    check(sum("Gen2CallbackPatch.csproj" in line for line in builds) == (0 if label == "suite" else 1), builds)
 
 for label, extra in (
         ("fixture-status", {"FAKE_STATUS_FAIL": "/fixture"}),
@@ -582,7 +795,7 @@ for label, extra in (
         ("retained-emit", {"FAKE_EMIT_FAIL": "retained-only"}),
         ("retained-check", {"FAKE_RETAINED_CHECK_FAIL": "1"}),
         ("retained-status", {"FAKE_STATUS_FAIL": "retained-only/native"})):
-    result, calls = run("selfhost-failure-" + label, selfhost_stubs + selfhost, extra)
+    result, calls = run("selfhost-failure-" + label, selfhost_stubs + selfhost, {**selfhost_env, **extra})
     check(result.returncode != 0, (label, result.stderr))
     check("COMMIT" not in calls and not any(" --delegate-signatures " in line for line in calls), (label, calls))
     if label.startswith("fixture-"):
@@ -590,10 +803,83 @@ for label, extra in (
 
 for label, extra in (("signature-status", {"FAKE_STATUS_FAIL": "/boundaries"}),
                      ("signature-witness", {"FAKE_ASSERT_FAIL": "delegate-signature-boundaries:ok"})):
-    result, calls = run("selfhost-failure-" + label, selfhost_stubs + selfhost, extra)
+    result, calls = run("selfhost-failure-" + label, selfhost_stubs + selfhost, {**selfhost_env, **extra})
     check(result.returncode != 0, (label, result.stderr))
-    check(sum(line.startswith("EMIT:") for line in calls) == 3, calls)
-    check(sum(line.startswith("NATIVE:") for line in calls) == 3, calls)
+    check(sum(line.startswith("EMIT:") for line in calls) == 7, calls)
+    check(sum(line.startswith("NATIVE:") for line in calls) == 4, calls)
+
+for label, extra in (
+        ("raw-status", {"FAKE_STATUS_FAIL": "/buffer-unrewritten"}),
+        ("raw-status-warm", {"FAKE_STATUS_FAIL": "/buffer-unrewritten", "FAKE_CACHE_HIT": "1"}),
+        ("raw-bytes", {"FAKE_GC_TAINT": "/buffer-unrewritten"}),
+        ("buffer-fixture-status", {"FAKE_STATUS_FAIL": "/buffer-fixture"}),
+        ("buffer-fixture-bytes", {"FAKE_GC_TAINT": "/buffer-fixture"}),
+        ("gc-tail", {"FAKE_GC_TAINT": "selfhostprimsubset/native"}),
+        ("gc-prefix-status", {"FAKE_STATUS_FAIL": "/gc-prefix"}),
+        ("gc-prefix-bytes", {"FAKE_GC_TAINT": "/gc-prefix"}),
+        ("gc-boundary-status", {"FAKE_STATUS_FAIL": "/gc-boundary"}),
+        ("gc-boundary-bytes", {"FAKE_GC_TAINT": "/gc-boundary"}),
+        ("buffer-internal-body", {"FAKE_BUFFER_BODY_FAIL": "Internal"}),
+        ("buffer-batch-body", {"FAKE_BUFFER_BODY_FAIL": "Batch"}),
+        ("gc-memory-leaf", {"FAKE_GC_MEMORY_FAIL": "leaf"}),
+        ("gc-memory-query", {"FAKE_GC_MEMORY_FAIL": "query"}),
+        ("gc-memory-collect", {"FAKE_GC_MEMORY_FAIL": "collect"}),
+        ("gc-memory-wait", {"FAKE_GC_MEMORY_FAIL": "wait"}),
+        ("gc-memory-backedge", {"FAKE_GC_MEMORY_FAIL": "backedge"}),
+        ("buffer-internal-fixture", {"FAKE_STATUS_FAIL": "/buffer-negative-internal/fixture"}),
+        ("buffer-batch-fixture", {"FAKE_STATUS_FAIL": "/buffer-negative-batch/fixture"}),
+        ("gen2-base-emit", {"FAKE_EMIT_FAIL": "/base"}),
+        ("gen2-register-emit", {"FAKE_EMIT_FAIL": "/patch-register"}),
+        ("gen2-stack-emit", {"FAKE_EMIT_FAIL": "/patch-stack"}),
+        ("gen2-codec-bytes", {"FAKE_ASSERT_FAIL": "/native-register.stdout artifacts/"}),
+        ("gen2-codec-status", {"FAKE_ASSERT_FAIL": "/native-register.status"}),
+        ("gen2-minimal-emit", {"FAKE_EMIT_FAIL": "/minimal"}),
+        ("gen2-minimal-bit", {"FAKE_MINIMAL_FAIL": "bit"}),
+        ("gen2-minimal-layout", {"FAKE_MINIMAL_FAIL": "layout"}),
+        ("gen2-minimal-ctor", {"FAKE_MINIMAL_FAIL": "ctor"})):
+    result, calls = run("selfhost-gc-failure-" + label, selfhost_stubs + selfhost, {**selfhost_env, **extra})
+    check(result.returncode != 0, (label, result.stderr))
+    check("COMMIT" not in calls and not any(" --delegate-signatures " in line for line in calls), (label, calls))
+    if label.startswith("raw-status"):
+        check("HIT" not in calls and not any(line.startswith(("EMIT:", "NATIVE:")) for line in calls), calls)
+
+for witness in ("fullgc-register-direct", "fullgc-register-delegate", "fullgc-register-pointer",
+                "fullgc-cancel-direct", "fullgc-cancel-delegate", "fullgc-approach-default",
+                "fullgc-complete-default", "fullgc-approach-zero", "fullgc-complete-positive",
+                "fullgc-approach-pointer", "fullgc-approach-time", "fullgc-complete-time",
+                "fullgc-approach-fraction", "fullgc-complete-upper", "gc-max-generation:0", "gc-worker-refused:"):
+    result, calls = run("selfhost-gc-witness-" + witness.replace(":", "-"), selfhost_stubs + selfhost,
+                        {**selfhost_env, "FAKE_ASSERT_FAIL": witness})
+    check(result.returncode != 0 and "COMMIT" not in calls, (witness, calls))
+
+for mode in ("base", "patch", "minimal", "newobj", "memberref"):
+    for failure, variable in (("status", "FAKE_STATUS_FAIL"), ("bytes", "FAKE_GC_TAINT"), ("stderr", "FAKE_GC_STDERR")):
+        result, calls = run("selfhost-gen2-fixture-" + mode + "-" + failure, selfhost_stubs + selfhost,
+                            {**selfhost_env, variable: "/fixture-" + mode})
+        check(result.returncode != 0 and "COMMIT" not in calls, (mode, failure, calls))
+        check(not any(line.endswith(":Gen2CallbackBase") for line in calls if line.startswith("NATIVE:")), calls)
+
+for codec in ("register", "stack"):
+    for failure, variable in (("status", "FAKE_STATUS_FAIL"), ("bytes", "FAKE_GC_TAINT"), ("stderr", "FAKE_GC_STDERR")):
+        result, calls = run("selfhost-gen2-native-" + codec + "-" + failure, selfhost_stubs + selfhost,
+                            {**selfhost_env, variable: "/native-" + codec})
+        check(result.returncode != 0 and "COMMIT" not in calls, (codec, failure, calls))
+        check(not any("/minimal:" in line for line in calls if line.startswith("EMIT:")), calls)
+
+for mode in ("collect", "memory"):
+    for failure, variable in (("status", "FAKE_STATUS_FAIL"), ("bytes", "FAKE_GC_TAINT"), ("stderr", "FAKE_GC_STDERR")):
+        result, calls = run("selfhost-gc-input-fixture-" + mode + "-" + failure, selfhost_stubs + selfhost,
+                            {**selfhost_env, variable: "/" + mode + "/fixture"})
+        check(result.returncode != 0 and "COMMIT" not in calls, (mode, failure, calls))
+        check(not any(line.startswith("REJECT:gc-missing-corelib-" + mode + ":") for line in calls), calls)
+
+for name in ("buffer-negative-internal", "buffer-negative-batch", "gc-missing-corelib-collect",
+             "gc-missing-corelib-memory", "gen2-newobj", "gen2-memberref"):
+    for failure in ("accepted", "diagnostic"):
+        result, calls = run("selfhost-refusal-" + name + "-" + failure, selfhost_stubs + selfhost,
+                            {**selfhost_env, "FAKE_GC_REFUSAL": name + ":" + failure})
+        check(result.returncode != 0 and "COMMIT" not in calls, (name, failure, calls))
+        check(any(line.startswith("REJECT:" + name + ":") for line in calls), calls)
 
 (root / "results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
 print(f"short-gate-builds: {checks} checks passed; evidence: {root}")

@@ -197,8 +197,8 @@ internal enum InterceptEmitArm
     IntrinsicUnderDeclTypeNullCtx,
     /// <summary>The System.GC surface lowered inline to the dn2cpp_gc_* /
     /// dn2cpp_keep_alive helpers — the arm dispatches by member name+shape over
-    /// the whole family (SuppressFinalize / ReRegisterForFinalize / Collect /
-    /// WaitForPendingFinalizers / GetTotalMemory / GetAllocatedBytesForCurrentThread /
+    /// the whole family (SuppressFinalize / ReRegisterForFinalize /
+    /// WaitForPendingFinalizers / GetAllocatedBytesForCurrentThread /
     /// GetTotalAllocatedBytes / KeepAlive). Shared by the cut
     /// row (<see cref="CoreIntrinsics.MrGc"/>) and the emit-only KeepAlive row
     /// (<see cref="CoreIntrinsics.MrGcKeepAlive"/> — route-without-cut).</summary>
@@ -601,12 +601,40 @@ internal static partial class CoreIntrinsics
             || IsInvariantCompareInfoGetter(mi)
             || IsDateTimeFormatInfoBoundary(mi)
             || IsDateTimeLeapSecondSupport(mi)
+            || IsCoreClrGcMemoryQuery(mi)
+            || IsCoreClrFinalizerWorker(mi)
             || IsVectorExplicit(mi)
             || IsConcreteVectorElement(mi)
             || IsVectorFloatingPointTernary(mi)
             || IsVectorLog(mi)
             || IsVectorMagnitude(mi)
             || IsVectorValueMethod(mi));
+
+    // This is CoreCLR's native-worker callback, not a managed finalizer API.
+    // Match only its input declaration; neighboring GC methods keep their own routes.
+    internal static bool IsCoreClrFinalizerWorker(MethodInfo method)
+    {
+        if (method.DeclaringClass.FullName != "System.GC" || method.Name != "RunFinalizers"
+            || method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || !method.IsPrivate || !method.IsStatic)
+            return false;
+        var signature = method.Signature;
+        return signature.GenericParameterCount == 0 && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.UInt32 };
+    }
+
+    // Public GetTotalMemory(bool) keeps its stabilization loop over this native query.
+    internal static bool IsCoreClrGcMemoryQuery(MethodInfo method)
+    {
+        if (method.DeclaringClass.FullName != "System.GC" || method.Name != "GetTotalMemory"
+            || method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || !method.IsPrivate || !method.IsStatic)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 };
+    }
 
     /// <summary>EventSource.IsEnabled() folds to false, so the framework's
     /// `if (Log.IsEnabled()) Log.Event(…)` guards go dead and the EventSource
@@ -1054,9 +1082,10 @@ internal static partial class CoreIntrinsics
         extra: static (_, _, sig) => sig().GenericParameterCount == 0);
 
     /// <summary>The System.GC CUT family (shape-gated): SuppressFinalize /
-    /// ReRegisterForFinalize / GetTotalMemory / GetTotalAllocatedBytes take one
-    /// argument, Collect / WaitForPendingFinalizers /
-    /// GetAllocatedBytesForCurrentThread take none. KeepAlive is deliberately NOT here —
+    /// ReRegisterForFinalize / GetTotalAllocatedBytes take one argument;
+    /// WaitForPendingFinalizers / GetAllocatedBytesForCurrentThread take none.
+    /// Collect and GetTotalMemory retain their public IL wrappers.
+    /// KeepAlive is deliberately NOT here —
     /// it is route-without-cut (<see cref="MrGcKeepAlive"/>), because an empty
     /// transpiled body is inlinable and -O2 would erase the liveness barrier it
     /// exists to provide. The shape gate lives inside the predicate; sig() is
@@ -1067,10 +1096,9 @@ internal static partial class CoreIntrinsics
         typeGate: "System.GC",
         extra: static (_, n, sig) => n switch
         {
-            "SuppressFinalize" or "ReRegisterForFinalize" or "GetTotalMemory"
+            "SuppressFinalize" or "ReRegisterForFinalize"
                 or "GetTotalAllocatedBytes" => sig().ParameterTypes.Length == 1,
-            "Collect" or "WaitForPendingFinalizers"
-                or "GetAllocatedBytesForCurrentThread" => sig().ParameterTypes.Length == 0,
+            "WaitForPendingFinalizers" or "GetAllocatedBytesForCurrentThread" => sig().ParameterTypes.Length == 0,
             _ => false,
         });
 
@@ -1111,11 +1139,14 @@ internal static partial class CoreIntrinsics
     /// whose own body is RuntimeHelpers.GetMethodTable pointer math. Lowering them here
     /// rather than through that reference keeps the ELEMENT verdict at the emit site:
     /// Buffer must refuse a non-primitive element, and no header read answers that for an
-    /// imprecise array handle. The refusal precedes every extent.</summary>
+    /// imprecise array handle. The refusal precedes every extent. Internal reference
+    /// moves instead use the collector-aware move helper, including the CoreCLR
+    /// batching body whose polling protocol does not belong to this runtime.</summary>
     public static readonly MemberRefIntercept MrBufferExtent = new(
         InterceptCutKind.Cut, InterceptEmitArm.IntrinsicUnderDeclType,
         typeGate: "System.Buffer",
-        extra: static (_, n, _) => n is "BlockCopy" or "ByteLength" or "GetByte" or "SetByte");
+        extra: static (_, n, _) => n is "BlockCopy" or "ByteLength" or "GetByte" or "SetByte"
+            || IsBufferInternalReferenceMove(n));
 
     /// <summary>Encoding.GetString (Encoding / ASCIIEncoding / UTF8Encoding / UnicodeEncoding) —
     /// the core of the UTF-8-decode + SIMD cascade collapse. Symmetric and sound:

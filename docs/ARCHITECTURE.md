@@ -401,6 +401,29 @@ Core invariants:
   Existing layout size, alignment and overlap validation remains authoritative.
   Boolean, character, native-sized integer, floating, reference, pointer, nested
   value and inline-array fields are outside this explicit-layout subset.
+- **GC policy stays in CoreLib IL.** Collection overload validation, logical
+  generation queries, memory-query stabilization, pause-duration wrappers and
+  full-GC notification validation retain their managed bodies. Their native
+  leaves use the collector's whole-heap collection, accounting and pause clock.
+  Public `Collect` and `GetTotalMemory` require CoreLib input (`--auto-ref` or
+  `-r <path/to/System.Private.CoreLib.dll>`); neither has a native fallback when
+  CoreLib is absent.
+  Boehm has a single logical generation; full-GC notifications are unavailable.
+  The private CoreCLR `RunFinalizers` worker retains a callable signature but
+  throws `PlatformNotSupportedException`, including reflection invocation.
+  It cannot become a second consumer of dn2cpp's finalizer queue.
+- **Unsupported allocation capability is independent of retention.** The exact
+  sealed CoreLib `Gen2GcCallback` type carries a permanent activation refusal
+  bit in full metadata and minimal type handles. Reflective construction,
+  uninitialized allocation and imported interpreter `newobj` refuse before
+  allocating the target or registering its finalizer. Static `newobj` refuses
+  during transpilation. Retained constructors and finalizer have explicit
+  throwing bodies; `Register` remains a no-op, not Gen2 notification support.
+- **Private Buffer reference moves use the collector's write barrier.**
+  `BulkMoveWithWriteBarrierInternal` and its batching sibling accept only the
+  CoreLib byref-byte and native-unsigned byte-count signature. Both lower to
+  `dn2cpp_gc_memmove_refs`, preserving overlap and reference publication without
+  adopting CoreCLR's batching/polling protocol.
 - **Non-generic CoreLib GCHandle equality uses its opaque handle-cell identity**,
   including comparer and structural-field paths. Copies compare equally; separate
   handles to the same target do not. Equality and hashing use the existing token

@@ -7,7 +7,7 @@
 # barriered for a different reason. Five store systems — stfld, whole-struct
 # stobj, stelem of a reference-bearing struct element, Array.Fill of a reference
 # element, rank-2 accessor Set — each grepped for its barrier in the generated
-# C++ and then churned against real collection cycles in both GC modes.
+# C++ and then churned against allocation-driven collection cycles in both GC modes.
 # Former gates: none (new area).
 source "$(dirname "$0")/_common.sh"
 
@@ -129,7 +129,7 @@ md_store_barrier_asserts() {
 md_store_barrier_asserts "$OUT" runtime/core/intrinsics/dn2cpp_system_reflection.cpp
 
 ctx="external_ref_barrier|runs:DN2CPP_GC_INCREMENTAL=0+1|DN2CPP_GC_STATS=1"
-ctx="$ctx|assert:empty-refset+generated-barriers+md-reference-helper+mode+diff+exit+collection-floor"
+ctx="$ctx|assert:empty-refset+generated-barriers+md-reference-helper+mode+diff+exit+allocation-collection-floor"
 ctx="$ctx$(_gate_ctx_extras)"
 if gate_cache_check "$OUT" "$ctx" \
         "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json"; then
@@ -191,12 +191,11 @@ if ! grep -qF '[dn2cpp] GC mode: incremental' "$log_dir/incremental.log"; then
     exit 1
 fi
 
-# The churn is only coverage if it overlapped real cycles; a run that collected a
-# handful of times would diff green having exercised nothing.
+# The allocation stress must actually collect. Deterministic mutation-window
+# coverage belongs to gc-write-barrier; this bucket also checks every emitted store.
 collections=$(sed -n 's/^collections (GC_no): *//p' "$log_dir/incremental.log")
 if [ -z "$collections" ] || [ "$collections" -lt 100 ]; then
-    echo "FAIL: the incremental arm collected ${collections:-no} times — too few for the" >&2
-    echo "      mutation burst to have raced a mark phase" >&2
+    echo "FAIL: incremental allocation stress collected ${collections:-no} times; expected at least 100" >&2
     exit 1
 fi
 echo "OK: $collections collections during the incremental arm"

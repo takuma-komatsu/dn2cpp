@@ -14,10 +14,9 @@ namespace ExternalWriteBarrierSubset
         private const int HolderCount = 256;
         private const int PathCount = 5;
         private const int CycleCount = 4;
-        // GC.CollectionCount has no corelib-less mapping, so the cycle count
-        // cannot be checked from here; the gate reads it off DN2CPP_GC_STATS and
-        // asserts a floor. This budget is what puts that count in the hundreds,
-        // so the mutations above land inside cycles rather than between them.
+        // Public GC policy needs CoreLib, which this external-type fixture must
+        // not load. Allocation pressure drives the cycles; the gate checks their
+        // count through DN2CPP_GC_STATS rather than a managed collection query.
         private const int AllocationBudget = 30_000;
 
         private struct ExPair
@@ -99,13 +98,10 @@ namespace ExternalWriteBarrierSubset
             for (int i = 0; i < holders.Length; i++)
                 holders[i] = new Holder();
 
-            // The destinations must predate the incremental cycles. Mutations below
-            // then race the collector's scan of these already-reachable objects.
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-
             var expected = new int[HolderCount * PathCount];
             var pressure = new byte[64][];
+            // The same rooted holders survive every mutation/pressure round.
+            // Held incremental mark windows are tested by the native barrier gate.
             for (int cycle = 0; cycle < CycleCount; cycle++)
             {
                 for (int i = 0; i < HolderCount; i++)

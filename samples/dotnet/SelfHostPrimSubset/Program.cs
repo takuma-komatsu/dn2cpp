@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Globalization;
 
 // Console self-host runtime primitives, exercised exactly: the deterministic
 // HashCode seed (every line here is hash-value-independent), an un-thrown
@@ -9,6 +10,15 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        if (args.Length > 0 && args[0] == "gc-native-boundary")
+        {
+            GcNotificationSubset.Program.RunNativeUnavailable();
+            GcFinalizerWorkerSubset.Program.RunNativeRefusal();
+            Console.WriteLine("gc-max-generation:" + GC.MaxGeneration);
+            return;
+        }
         // Separate processes keep the primitive and GC observations unchanged.
         if (args.Length > 0 && (args[0] == "delegate-callable" || args[0] == "delegate-refusals"))
         {
@@ -67,5 +77,14 @@ internal static class Program
             return;
         NullableReboxingSubset.Program.Run();
         ActivatorDefaultSubset.ActivatorChecks.Run();
+        if (args.Length > 0 && args[0] == "before-gc-contracts")
+            return;
+        GcCollectionSubset.Program.Run();
+        GcGenerationSubset.Program.Run();
+        GcMemoryQuerySubset.Program.Run();
+        GcNotificationSubset.Program.Run();
+        GcPauseSubset.Program.Run();
+        GcFinalizerWorkerSubset.Program.Run();
+        BufferReferenceMoveSubset.Program.Run();
     }
 }

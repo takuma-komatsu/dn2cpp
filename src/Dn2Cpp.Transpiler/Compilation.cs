@@ -4197,7 +4197,8 @@ internal sealed partial class Compilation
         if (_intrinsicTypeTranspiled.Contains(m))
             return; // real body transpiled — the symbol already exists
         // Its calls already delegate to the real body, which serves the address too.
-        if (CoreIntrinsics.IsDateTimeCultureManagedBody(m)
+        if (CoreIntrinsics.IsWaitHandleTimeoutConversion(m)
+            || CoreIntrinsics.IsDateTimeCultureManagedBody(m)
             || CoreIntrinsics.IsScalarNumericLeaf(m)
             || CoreIntrinsics.IsBinaryIntegerEndianBody(m)
             || CoreIntrinsics.IsPrimitiveParseBody(m)

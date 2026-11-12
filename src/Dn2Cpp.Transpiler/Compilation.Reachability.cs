@@ -156,7 +156,16 @@ internal sealed partial class Compilation
             }
             return;
         }
-        if (CoreIntrinsics.IsInt128Checked(m)
+        // Retention/reflection cannot revive CoreCLR's native query or worker IL.
+        if (CoreIntrinsics.IsCoreClrGcMemoryQuery(m) || CoreIntrinsics.IsCoreClrFinalizerWorker(m))
+        {
+            _predTrace.TryAdd(m, _currentScan);
+            NoteInterceptFtnTarget(m);
+            return;
+        }
+        if (CoreIntrinsics.IsGen2GcCallbackRefusal(m)
+            || CoreIntrinsics.IsGen2GcCallbackRegister(m)
+            || CoreIntrinsics.IsInt128Checked(m)
             || CoreIntrinsics.IsUInt128Checked(m)
             || CoreIntrinsics.IsInvariantCompareInfoGetter(m)
             || CoreIntrinsics.IsDateTimeFormatInfoBoundary(m)
@@ -193,7 +202,8 @@ internal sealed partial class Compilation
         }
         if (m.Rva == 0)
             return;
-        if (CoreIntrinsics.IsDateTimeCultureManagedBody(m)
+        if (CoreIntrinsics.IsWaitHandleTimeoutConversion(m)
+            || CoreIntrinsics.IsDateTimeCultureManagedBody(m)
             || CoreIntrinsics.IsScalarNumericLeaf(m)
             || CoreIntrinsics.IsBinaryIntegerEndianBody(m)
             || CoreIntrinsics.IsPrimitiveParseBody(m)
