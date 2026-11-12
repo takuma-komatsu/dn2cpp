@@ -1426,6 +1426,12 @@ void dn2cpp_set_datetime_parser_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> addT
     Dn2CppMetadataHandle<Dn2CppMethodInfo> tryCreate, Dn2CppMetadataHandle<Dn2CppMethodInfo> localConstructor);
 Dn2CppObject* dn2cpp_delegate_object_virtual_invoker(void* fn, Dn2CppObject* receiver,
     Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
+// Signature invokers mark the exact Delegate value rows while honoring fn.
+// Only reflection's virtual dispatch substitutes their Multicast target.
+Dn2CppObject* dn2cpp_delegate_base_equals_invoker(void* fn, Dn2CppObject* receiver,
+    Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
+Dn2CppObject* dn2cpp_delegate_base_hash_invoker(void* fn, Dn2CppObject* receiver,
+    Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
 
 struct Dn2CppDelegateInterfaceInvocation
 {
@@ -1623,6 +1629,8 @@ extern const int32_t dn2cpp_delegate_refl_registry_count;
 Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
                                      Dn2CppMethodRef* m, int32_t closedForm,
                                      int32_t throwOnFailure, bool fromDelegate = false);
+void dn2cpp_delegate_initialize_named(Dn2CppObject* receiver, Dn2CppObject* target,
+    Dn2CppType* targetType, Dn2CppString* name, int32_t staticForm);
 Dn2CppObject* dn2cpp_delegate_create_named(Dn2CppType* dt, Dn2CppObject* target,
     Dn2CppType* targetType, Dn2CppString* name, int32_t staticForm,
     int32_t ignoreCase, int32_t throwOnFailure);
@@ -1687,8 +1695,10 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d);
 Dn2CppObject* dn2cpp_delegate_combine(Dn2CppObject* a, Dn2CppObject* b);
 Dn2CppObject* dn2cpp_delegate_combine_n(Dn2CppObject* const* items, int32_t count);
 Dn2CppObject* dn2cpp_delegate_combine_array(Dn2CppArrayRef* items);
+Dn2CppObject* dn2cpp_delegate_from_invocation_prefix(Dn2CppObject* receiver, Dn2CppArrayRef* items, int32_t count);
 Dn2CppObject* dn2cpp_delegate_remove(Dn2CppObject* source, Dn2CppObject* value);
 Dn2CppObject* dn2cpp_delegate_remove_all(Dn2CppObject* source, Dn2CppObject* value);
+Dn2CppObject* dn2cpp_delegate_remove_impl(Dn2CppObject* source, Dn2CppObject* value);
 // Delegate.GetInvocationList: the entries in invocation order as an `arrayType`
 // (System.Delegate[]) array, each the delegate Combine took.
 Dn2CppArrayRef* dn2cpp_delegate_invocation_list(Dn2CppObject* d, const Dn2CppTypeInfo* arrayType);
@@ -1699,19 +1709,23 @@ Dn2CppObject* dn2cpp_delegate_try_get_at(Dn2CppObject* d, int32_t index);
 // Invoke checks them, by-ref arguments are written back, the last entry's result is
 // returned and whatever an entry throws arrives in a TargetInvocationException.
 Dn2CppObject* dn2cpp_delegate_dynamic_invoke(Dn2CppObject* d, Dn2CppArrayRef* args);
-// Delegate value equality/hash: two delegates are equal iff they are the same
+// Virtual delegate value equality/hash: two delegates are equal iff they are the same
 // delegate type and their invocation chains match pairwise on target, code
-// address and method identity (matching .NET Delegate/MulticastDelegate
-// semantics). A null identity matches any, and a virtual binding compares only
+// address and method identity (MulticastDelegate override semantics).
+// A null identity matches any, and a virtual binding compares only
 // generic arguments, since different declarations can bind one override. The
 // hash folds only the chain's (target, method) pairs, so equal delegates always
 // agree (stable per process — the exact .NET number, which is type-identity
-// based, is not modeled). Backs Delegate.op_Equality/Equals/
-// GetHashCode and the DN2CPP_TF_DELEGATE branches of the object hash/equality
+// based, is not modeled). Backs Delegate.op_Equality and virtual Equals/
+// GetHashCode, including the DN2CPP_TF_DELEGATE branches of object hash/equality
 // helpers (e.g. GodotSharp's DelegateUtils callbacks, where the engine keys
 // Callable dedup on managed delegate identity).
 int32_t dn2cpp_delegate_equal(Dn2CppObject* a, Dn2CppObject* b);
 int32_t dn2cpp_delegate_hash(Dn2CppObject* d);
+// Nonvirtual System.Delegate bodies do not inspect a multicast invocation list.
+// Virtual entry, including reflection, uses the MulticastDelegate helpers above.
+int32_t dn2cpp_delegate_base_equal(Dn2CppObject* a, Dn2CppObject* b);
+int32_t dn2cpp_delegate_base_hash(Dn2CppObject* d);
 // Mutex-interned fallback for a type-info whose typeObject was never wired
 // (defensive: statically-emitted and runtime tis all bake/stamp one).
 Dn2CppType* dn2cpp_get_type_from_handle_slow(const Dn2CppTypeInfo* handle);

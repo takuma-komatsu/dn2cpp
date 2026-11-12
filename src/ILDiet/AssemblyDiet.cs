@@ -630,7 +630,8 @@ internal sealed partial class AssemblyDiet : IDisposable
             Require(type, TypeState.Runtime | TypeState.Explicit);
         }
         foreach (var method in type.Methods)
-            if ((kind & PreserveKind.Methods) != 0 || IsDelegate(type) && kind != PreserveKind.None
+            if ((kind & PreserveKind.Methods) != 0 || IsDelegate(type)
+                    && !CoreIntrinsicTypeMaps.IsDelegateBaseType(type.FullName) && kind != PreserveKind.None
                 || (kind & PreserveKind.DefaultConstructor) != 0 && method.IsConstructor && !method.IsStatic && method.Parameters.Count == 0
                 || methods.Contains(MetadataTokens.MethodDefinitionHandle((int)method.MetadataToken.RID)))
             {

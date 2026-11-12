@@ -2803,6 +2803,8 @@ _corelib_gate_out() {
 #   --obfuscate]...
 # Extras name required references and preprocessing options. Sets _CG_CORELIB, _CG_APP,
 # _CG_OUT; the caller may preset _CG_CORELIB_IN to override the CoreLib flavour.
+# gate_prepare_app PROJECT OUT may replace _CG_APP with a gate-private rewritten
+# copy after the build; it must leave the shared build output unchanged.
 # Assert on _CG_OUT: re-deriving _corelib_gate_out gives the DEFAULT dir, so on a
 # non-default axis the asserts read another build and pass.
 _corelib_gate_core() {
@@ -2822,6 +2824,9 @@ _corelib_gate_core() {
     local sample_dir="${DN2CPP_SAMPLE_PROJECT_DIR:-samples/dotnet/$project}"
     build_proj "$sample_dir/$project.csproj"
     _CG_APP="$sample_dir/bin/$CONFIG/$TFM/$project.dll"
+    if declare -F gate_prepare_app >/dev/null; then
+        gate_prepare_app "$project" "$out" || return $?
+    fi
 
     echo "== 3/4 Transpiling app + real CoreLib (tree-shaken) =="
     # Hard error, not a skip: the CONTEXT carries the REQUESTED names, so a

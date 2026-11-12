@@ -1,0 +1,32 @@
+<linker>
+  <assembly fullname="System.Private.CoreLib">
+    <type fullname="System.Delegate">
+      <method name="Equals" />
+      <method name="GetHashCode" />
+      <method signature="System.Void .ctor(System.Object,System.String)" />
+      <method signature="System.Void .ctor(System.Type,System.String)" />
+    </type>
+    <type fullname="System.MulticastDelegate">
+      <method name="Equals" />
+      <method name="GetHashCode" />
+      <method name="NewMulticastDelegate" />
+      <method name="CombineImpl" />
+      <method name="RemoveImpl" />
+      <method name="GetTarget" />
+      <method name="GetMethodImpl" />
+      <method name="GetInvocationList" />
+      <method name="get_HasSingleTarget" />
+      <method name="TryGetAt" />
+      <method signature="System.Void .ctor(System.Object,System.String)" />
+      <method signature="System.Void .ctor(System.Type,System.String)" />
+      <method name="CtorClosed" />
+      <method name="CtorClosedStatic" />
+      <method name="CtorRTClosed" />
+      <method name="CtorOpened" />
+      <method name="CtorVirtualDispatch" />
+      <method name="CtorCollectibleClosedStatic" />
+      <method name="CtorCollectibleOpened" />
+      <method name="CtorCollectibleVirtualDispatch" />
+    </type>
+  </assembly>
+</linker>

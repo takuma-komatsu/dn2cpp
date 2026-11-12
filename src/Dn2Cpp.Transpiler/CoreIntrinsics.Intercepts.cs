@@ -320,6 +320,7 @@ internal enum InterceptEmitArm
     LifetimeDisposeBody,
     /// <summary>Delegate.Clone's callable slot uses the same shallow-copy helper as a direct call.</summary>
     DelegateCloneBody,
+    DelegateCallableBody,
     DelegateCloneBinding,
     ArrayCloneBinding,
     /// <summary>SafeHandle lifetime calls and bindings recognize the runtime SafeWaitHandle layout.
@@ -1652,6 +1653,11 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.BodyReplace, InterceptEmitArm.DelegateCloneBody,
         typeGate: "System.Delegate", nameGate: "Clone");
 
+    // Retained bodies and ordinary calls use the same validated declaration.
+    public static readonly MethodDefIntercept BrDelegateCallable = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.DelegateCallableBody,
+        extra: static method => IsDelegateCallableBody(method));
+
     /// <summary>Primitive products share a callable replacement; native operands
     /// must use target-width halves instead of host-specialized CoreLib IL.</summary>
     public static readonly MethodDefIntercept BrPrimitiveBigMul = new(
@@ -1806,6 +1812,11 @@ internal static partial class CoreIntrinsics
     {
         if (!RegistrySelfCheckEnabled)
             return;
+
+        CheckRow(nameof(BrDelegateCallable), 0, BrDelegateCallable.EmitArm,
+            BrDelegateCallable.TypeGate, BrDelegateCallable.NameGate);
+        if (BrDelegateCallable.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Delegate members must retain callable bodies");
 
         CheckRow(nameof(BrInvariantCompareInfoInitializer), 0, BrInvariantCompareInfoInitializer.EmitArm,
             BrInvariantCompareInfoInitializer.TypeGate, BrInvariantCompareInfoInitializer.NameGate);

@@ -20,6 +20,7 @@ internal sealed partial class Compilation
         if (NotePreserveReach(m) && _scanned.Remove(m))
             _toScan.Enqueue(m);
         NoteObfuscationMethod(m);
+        CoreIntrinsics.ValidateDelegateCallableBody(m);
         CoreIntrinsics.ValidateVectorFloatingPointTernary(m);
         CoreIntrinsics.ValidateVectorLog(m);
         CoreIntrinsics.ValidateVectorMagnitude(m);
@@ -124,6 +125,23 @@ internal sealed partial class Compilation
                 m.EnsureSignature();
             }
             return; // no _toScan.Enqueue -> the replaced IL is never scanned
+        }
+        if (CoreIntrinsics.BrDelegateCallable.Matches(m))
+        {
+            if (AddReachable(m))
+            {
+                _predTrace.TryAdd(m, _currentScan);
+                m.EnsureSignature();
+                var virtualTarget = DelegateCallableVirtualTarget(m);
+                if (virtualTarget != m) Reach(virtualTarget);
+                if (m.Name == ".ctor")
+                {
+                    NoteReflectionDelegateBind(m.Module, named: true);
+                    NeedsReflectionDelegateBind = true;
+                    NeedsDelegateInvokeRows = true;
+                }
+            }
+            return;
         }
         if (CoreIntrinsics.BrDelegateClone.Matches(m.DeclaringClass.FullName, m.Name)
             || CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(m)
@@ -3139,9 +3157,10 @@ internal sealed partial class Compilation
     /// the lowering sets <see cref="NeedsReflectionDelegateBind"/>. A user body's binding
     /// also turns on the invoke emission switch; a framework library binding its own
     /// members does not.</summary>
-    private void NoteReflectionDelegateBind(Module module)
+    private void NoteReflectionDelegateBind(Module module, bool named = false)
     {
         _reflectionDelegateBindScanned = true;
+        if (named) _reflectionNamedDelegateBindUsed = true;
         NoteObjectEqualityDispatch();
         if (IsUserModule(module))
             _reflectionInvokeUsed = true;

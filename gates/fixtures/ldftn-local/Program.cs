@@ -5,6 +5,12 @@ using Mono.Cecil.Cil;
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+if (DelegateSignaturesFixture.Run(args))
+    return;
+
+if (DelegateCallableFixture.Run(args))
+    return;
+
 if (DateTimeInterceptFixture.Run(args))
     return;
 if (DateTimeTCharFixture.Run(args))

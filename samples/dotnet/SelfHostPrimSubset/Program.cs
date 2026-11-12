@@ -9,6 +9,13 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        // Separate processes keep the primitive and GC observations unchanged.
+        if (args.Length > 0 && (args[0] == "delegate-callable" || args[0] == "delegate-refusals"))
+        {
+            DelegateCallableBodies.Program.Run(args.Length > 1 ? args[1] : "reflection",
+                args[0] == "delegate-refusals");
+            return;
+        }
         // Dictionary keyed on ValueTuple<string,string>: enumeration is insertion
         // order (no removals here), so the output is seed-independent.
         var d = new Dictionary<(string, string), string>();

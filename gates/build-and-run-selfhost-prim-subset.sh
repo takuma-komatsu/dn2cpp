@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Companion process argument/stream/exit preservation and the console-self-host
-# runtime primitives whose behaviour can be exercised exactly.
+# Companion process argument/stream/exit preservation, delegate callable bodies
+# and the console-self-host runtime primitives exercised exactly.
 #
 #  #3 Interop.GetRandomBytes -> the non-cryptographic random source behind
 #     System.HashCode's process-global seed (the InternalCall
@@ -72,6 +72,12 @@
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
 source "$(dirname "$0")/_common.sh"
+prepare_cli
+source "$(dirname "$0")/_delegate-callable-bodies.sh"
+
+gate_prepare_app() {
+    delegate_callable_prepare_app "$@"
+}
 
 gate_extra_asserts() {
     local out="$1"
@@ -81,6 +87,8 @@ gate_extra_asserts() {
     gate_output select "$out/native.stdout" "$out/nullable-prefix.stdout" \
         --before '== Nullable reboxing contract ==' --policy crlf
     gate_output compare "$out/nullable-prefix.stdout" "$out/nullable-before.stdout"
+    delegate_callable_asserts "$out"
+    delegate_callable_retained_only "$out"
 }
 
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \
@@ -125,3 +133,6 @@ PATH="$PWD/$probe_out/child path 日本語:$PATH" \
     > "$probe_out/path-native.out" 2> "$probe_out/path-native.err"
 diff -u "$probe_out/managed.out" "$probe_out/path-native.out"
 diff -u "$probe_out/managed.err" "$probe_out/path-native.err"
+
+source "$(dirname "$0")/_delegate-signatures.sh"
+delegate_signature_regressions

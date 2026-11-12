@@ -1730,6 +1730,30 @@ Dn2CppObject* dn2cpp_delegate_combine_n(Dn2CppObject* const* items, int32_t coun
     return d;
 }
 
+// Public Combine/Remove call this private factory only for flattened prefixes of
+// at least two entries. Empty/single-entry private multicast states have different
+// CLR equality semantics and cannot be represented by the uniform native chain.
+Dn2CppObject* dn2cpp_delegate_from_invocation_prefix(Dn2CppObject* receiver, Dn2CppArrayRef* items, int32_t count)
+{
+    if (receiver == nullptr)
+        dn2cpp_throw_null_reference();
+    if (count < 2)
+        dn2cpp_throw_platform_not_supported("Empty or single-entry private multicast state is not represented by dn2cpp.");
+    if (items == nullptr || count > items->length)
+        dn2cpp_throw_platform_not_supported("Multicast construction requires an in-bounds invocation prefix.");
+    for (int32_t i = 0; i < count; ++i)
+    {
+        Dn2CppObject* item = items->data[i];
+        if (item == nullptr || item->type != receiver->type
+            || (item->type->flags & DN2CPP_TF_DELEGATE) == 0
+            || reinterpret_cast<Dn2CppDelegate*>(item)->prev != nullptr)
+            dn2cpp_throw_platform_not_supported("Multicast construction requires flattened entries of the receiver's exact delegate type.");
+    }
+    // At least two non-null single entries ensure a fresh result. Capacity beyond
+    // count is ignored, and the mutable source array is never retained.
+    return dn2cpp_delegate_combine_n(items->data, count);
+}
+
 Dn2CppObject* dn2cpp_delegate_combine_array(Dn2CppArrayRef* items)
 {
     return items != nullptr ? dn2cpp_delegate_combine_n(items->data, items->length) : nullptr;
@@ -1894,6 +1918,19 @@ Dn2CppObject* dn2cpp_delegate_remove(Dn2CppObject* source, Dn2CppObject* value)
     return source;
 }
 
+// The protected override treats another delegate type as a non-matching entry.
+// Public Delegate.Remove performs a separate type check and must still throw.
+Dn2CppObject* dn2cpp_delegate_remove_impl(Dn2CppObject* source, Dn2CppObject* value)
+{
+    if (value == nullptr)
+        return source;
+    if (source == nullptr)
+        dn2cpp_throw_null_reference();
+    if (source->type != value->type)
+        return source;
+    return dn2cpp_delegate_remove(source, value);
+}
+
 // Delegate.RemoveAll: Remove until it answers the delegate it was given, which it
 // does once no run matches.
 Dn2CppObject* dn2cpp_delegate_remove_all(Dn2CppObject* source, Dn2CppObject* value)
@@ -1948,5 +1985,36 @@ int32_t dn2cpp_delegate_hash(Dn2CppObject* d)
             target = reinterpret_cast<Dn2CppReflBind*>(target)->target;
         h = (h ^ reinterpret_cast<uintptr_t>(target)) * 1099511628211ull;
     }
+    return static_cast<int32_t>((h ^ (h >> 32)) & 0x7fffffff);
+}
+
+int32_t dn2cpp_delegate_base_equal(Dn2CppObject* a, Dn2CppObject* b)
+{
+    if (b == nullptr)
+        return 0;
+    if (a == nullptr)
+        dn2cpp_throw_null_reference();
+    if (a->type != b->type)
+        return 0;
+    const bool aMulticast = reinterpret_cast<Dn2CppDelegate*>(a)->prev != nullptr;
+    const bool bMulticast = reinterpret_cast<Dn2CppDelegate*>(b)->prev != nullptr;
+    // CoreCLR's ordinary multicast objects share their type's Invoke entry in
+    // _methodPtrAux. Delegate.Equals compares that entry, not the list itself.
+    if (aMulticast || bMulticast)
+        return aMulticast && bMulticast;
+    return dn2cpp_delegate_equal(a, b);
+}
+
+int32_t dn2cpp_delegate_base_hash(Dn2CppObject* d)
+{
+    if (d == nullptr)
+        dn2cpp_throw_null_reference();
+    if (reinterpret_cast<Dn2CppDelegate*>(d)->prev == nullptr)
+        return dn2cpp_delegate_hash(d);
+    // A multicast base hash is type-only, like an ordinary static binding's
+    // base hash. Keep the existing per-process hash encoding (not CLR numbers)
+    // while preserving that relationship and single base/override agreement.
+    uint64_t h = (1469598103934665603ull ^ reinterpret_cast<uintptr_t>(d->type)) * 1099511628211ull;
+    h *= 1099511628211ull;
     return static_cast<int32_t>((h ^ (h >> 32)) & 0x7fffffff);
 }
