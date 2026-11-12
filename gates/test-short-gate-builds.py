@@ -389,7 +389,7 @@ for platform in ("posix", "windows"):
 
 cli_stubs = r'''
 fake_frontend() {
-    local frontend="$1" args dir= jobs= no_metadata=0 rejected= token
+    local frontend="$1" args dir= jobs= no_metadata=0 rejected= token fp=strict
     shift
     args="$*"
     while [ "$#" -gt 0 ]; do
@@ -403,6 +403,12 @@ fake_frontend() {
                     1|2) shift ;;
                     '') rejected=--jobs ;;
                     *) rejected="$jobs"; shift ;;
+                esac ;;
+            --fp-mode)
+                case "${1:-}" in
+                    strict|precise) fp="$1"; shift ;;
+                    '') rejected=--fp-mode ;;
+                    *) rejected="$1"; shift ;;
                 esac ;;
             --no-default-ref)
                 [ "$1" = DnZlib ] || rejected="$1"
@@ -425,6 +431,7 @@ fake_frontend() {
     [ "${FAKE_ACCEPT_FAIL:-}" != "$frontend:$jobs" ] || return 29
     record "EMIT:$dir:$frontend:$args"
     mkdir -p "$dir"
+    printf '%s\n' "$fp" > "$dir/generated-fp-mode.txt"
     if [ "$no_metadata" = 0 ] || [ "${FAKE_METADATA_FAIL:-}" = "$frontend:packed" ]; then
         echo 'md_record_subject[] = {};' > "$dir/generated.cpp"
     elif [ "${FAKE_METADATA_FAIL:-}" = "$frontend:missing" ]; then
@@ -433,6 +440,7 @@ fake_frontend() {
         echo 'md_native_subject[] = {};' > "$dir/generated.cpp"
     fi
 }
+_gate_surface_lines() { cat "$1/generated-fp-mode.txt"; }
 invoke_cli() { prepare_cli; fake_frontend full "$@"; }
 dotnet() {
     [ "$1" = exec ] && [[ "$2" == *dn2cpp-console.dll ]] || return 97
@@ -445,15 +453,15 @@ result, calls = run("cli-args", cli)
 check(result.returncode == 0, result.stderr)
 accepted = [line for line in calls if line.startswith("ACCEPT:")]
 rejected = [line for line in calls if line.startswith("REJECT:")]
-check(len(accepted) == 4 and len(rejected) == 12, (accepted, rejected))
-check(sum(line.startswith("EMIT:") for line in calls) == 4, calls)
+check(len(accepted) == 7 and len(rejected) == 18, (accepted, rejected))
+check(sum(line.startswith("EMIT:") for line in calls) == 7, calls)
 check(not any(line.startswith("NATIVE:") for line in calls), calls)
 for frontend in ("full", "console"):
     for jobs in ("1", "2"):
         matching = [line for line in accepted if line.startswith("ACCEPT:" + frontend + ":") and "--jobs " + jobs in line]
         check(len(matching) == 1, (frontend, jobs, accepted))
         check(("--no-metadata-compression" in matching[0]) == (jobs == "1"), matching)
-    for token in ("--jobs", "0", "-2", "many"):
+    for token in ("--jobs", "0", "-2", "many", "--fp-mode", "fast", "presice"):
         check("REJECT:" + frontend + ":" + token in rejected, (frontend, token, rejected))
 check(any("--no-default-ref DnZlib" in line for line in accepted), accepted)
 for token in ("--bogus-flag", "--tirm-reflection", "extra.dll", "DnBogus"):
@@ -476,6 +484,116 @@ for failure in ("accepted", "diagnostic"):
 result, calls = run("cli-args-warm", cli, {"FAKE_CACHE_HIT": "1"})
 check(result.returncode == 0 and "HIT" in calls, calls)
 check(not any(line.startswith(("ACCEPT:", "REJECT:", "EMIT:")) for line in calls), calls)
+
+# A rewrite hook must use the built input without publishing it to other gates.
+prepare_app = r'''
+gate_prepare_app() {
+    record "PREPARE_APP:$1:$2:$_CG_APP:$_CG_CORELIB"
+    [ -f "$_CG_APP" ]
+    [ "${FAKE_PREPARE_FAIL:-0}" = 0 ] || return 23
+    mkdir -p "$2/private"
+    printf 'rewritten\n' > "$2/private/$1.dll"
+    _CG_APP="$2/private/$1.dll"
+}
+_corelib_gate_core PreparedApp artifacts/prepared System.Collections.Concurrent --no-ildiet
+test ! -s samples/dotnet/PreparedApp/bin/$CONFIG/$TFM/PreparedApp.dll
+'''
+for label, extra, status in (("ok", {}, 0), ("failure", {"FAKE_PREPARE_FAIL": "1"}, 23)):
+    result, calls = run("prepare-app-" + label, prepare_app, extra)
+    check(result.returncode == status, (label, result.returncode, result.stderr))
+    check(sum(line.startswith("PREPARE_APP:") for line in calls) == 1, calls)
+    emit = [line for line in calls if line.startswith("EMIT:")]
+    check(len(emit) == (1 if status == 0 else 0), calls)
+    if not status:
+        check("artifacts/prepared/private/PreparedApp.dll -r " in emit[0], emit)
+        check("System.Collections.Concurrent.dll --no-ildiet" in emit[0], emit)
+
+selfhost = source("selfhost-prim-subset").replace(
+    'source "$(dirname "$0")/_delegate-callable-bodies.sh"',
+    (GATES / "_delegate-callable-bodies.sh").read_text(encoding="utf-8"), 1)
+signature_helper = (GATES / "_delegate-signatures.sh").read_text(encoding="utf-8")
+signature_helper = signature_helper[:signature_helper.index('\nif [ "${BASH_SOURCE[0]}" = "$0" ]; then')]
+selfhost = selfhost.replace('source "$(dirname "$0")/_delegate-signatures.sh"',
+                            signature_helper, 1)
+selfhost_stubs = r'''
+for reference in System.Linq System.Diagnostics.TraceSource System.Collections.Specialized; do
+    : > "runtime/$reference.dll"
+done
+gate_add_exit_hook() { :; }
+run_bounded() {
+    record "RUN:$*"
+    printf '%s\n' 'child exit 23' 'launch failure caught' 'NUL argument rejected' 'tool process complete'
+    printf 'child stderr\n' >&2
+}
+gate_python() {
+    record "PYTHON:$*"
+    [ "${FAKE_RETAINED_CHECK_FAIL:-0}" = 0 ] || return 37
+}
+if [ -n "${DN2CPP_SKIP_BUILD:-}" ]; then
+    fake_build samples/dotnet/SelfHostPrimSubset/SelfHostPrimSubset.csproj
+    fake_build gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+    : > "$FAKE_LOG"
+fi
+'''
+for label, extra, expected in (
+        ("cold", {}, (3, 3, 3)),
+        ("suite", {"DN2CPP_SKIP_BUILD": "1"}, (3, 3, 1)),
+        ("suffix", {"DN2CPP_OUT_SUFFIX": "-probe", "HIGHWAY": "1"}, (3, 3, 3)),
+        ("warm", {"FAKE_CACHE_HIT": "1"}, (2, 1, 3))):
+    result, calls = run("selfhost-" + label, selfhost_stubs + selfhost, extra)
+    check(result.returncode == 0, (label, result.returncode, result.stderr))
+    emit = [line for line in calls if line.startswith("EMIT:")]
+    native = [line for line in calls if line.startswith("NATIVE:")]
+    builds = [line for line in calls if line.startswith("BUILD:")]
+    check((len(emit), len(native), len(builds)) == expected, (label, emit, native, builds))
+    check(sum(line == "PREPARE" for line in calls) == 1, calls)
+    check(not any("DelegateCallableBodies.csproj" in line for line in calls), calls)
+    check(any("/app/SelfHostPrimSubset.dll -r " in line for line in emit), emit)
+    cache = [line for line in calls if line.startswith("CACHE:")]
+    check(any("delegate-callable-refusals.txt" in line and "keep-delegate-callable-bodies.xml" in line
+              and "delegate-callable:reflection,call,calli,callvirt,ldvirtftn" in line for line in cache), cache)
+    if label == "warm":
+        check("HIT" in calls and "COMMIT" not in calls, calls)
+        check(not any("delegate-refusals " in line for line in calls if line.startswith("CAPTURE:")), calls)
+        continue
+    target = next(line.split(":")[1] for line in native if line.endswith(":SelfHostPrimSubset"))
+    captures = [line for line in calls if line.startswith("CAPTURE:")]
+    for route in ("reflection", "call", "calli", "callvirt", "ldvirtftn"):
+        for mode in ("delegate-callable", "delegate-refusals"):
+            check(any(line.endswith(f"{target}/SelfHostPrimSubset {mode} {route}") for line in captures),
+                  (label, route, mode, captures))
+        check(any(line.endswith(f"{target}/app/SelfHostPrimSubset.dll delegate-callable {route}")
+                  for line in captures), (label, route, captures))
+    check(any("--delegate-retained-only" in line and "/retained-app/SelfHostPrimSubset.dll " in line
+              for line in captures), captures)
+    check(sum("--link-xml samples/dotnet/SelfHostPrimSubset/keep-delegate-callable-bodies.xml" in line
+              for line in emit) == 1, emit)
+    check(any(" before-nullable-reboxing" in line for line in captures), captures)
+    check(sum(" delegate-callable before-virtual-delegates" in line for line in captures) == 2, captures)
+    check("COMMIT" in calls and any(" --delegate-signatures " in line for line in captures), calls)
+
+for label, extra in (
+        ("fixture-status", {"FAKE_STATUS_FAIL": "/fixture"}),
+        ("fixture-witness", {"FAKE_ASSERT_FAIL": "CallDelegateEquals=call:"}),
+        ("parity-status", {"FAKE_STATUS_FAIL": "delegate-reflection-native"}),
+        ("parity-bytes", {"FAKE_ASSERT_FAIL": "compare artifacts/selfhostprimsubset/delegate-calli-native.stdout"}),
+        ("refusals", {"FAKE_ASSERT_FAIL": "compare artifacts/selfhostprimsubset/delegate-refusals-ldvirtftn.stdout"}),
+        ("retained-fixture", {"FAKE_STATUS_FAIL": "retained-fixture"}),
+        ("retained-emit", {"FAKE_EMIT_FAIL": "retained-only"}),
+        ("retained-check", {"FAKE_RETAINED_CHECK_FAIL": "1"}),
+        ("retained-status", {"FAKE_STATUS_FAIL": "retained-only/native"})):
+    result, calls = run("selfhost-failure-" + label, selfhost_stubs + selfhost, extra)
+    check(result.returncode != 0, (label, result.stderr))
+    check("COMMIT" not in calls and not any(" --delegate-signatures " in line for line in calls), (label, calls))
+    if label.startswith("fixture-"):
+        check(not any(line.startswith(("EMIT:", "NATIVE:")) for line in calls), (label, calls))
+
+for label, extra in (("signature-status", {"FAKE_STATUS_FAIL": "/boundaries"}),
+                     ("signature-witness", {"FAKE_ASSERT_FAIL": "delegate-signature-boundaries:ok"})):
+    result, calls = run("selfhost-failure-" + label, selfhost_stubs + selfhost, extra)
+    check(result.returncode != 0, (label, result.stderr))
+    check(sum(line.startswith("EMIT:") for line in calls) == 3, calls)
+    check(sum(line.startswith("NATIVE:") for line in calls) == 3, calls)
 
 (root / "results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
 print(f"short-gate-builds: {checks} checks passed; evidence: {root}")

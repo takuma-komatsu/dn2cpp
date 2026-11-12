@@ -124,6 +124,8 @@ internal sealed partial class Compilation
                 // receiver (which folds to the dispatching runtime helper) finds it. Over-
                 // reaching on the non-virtual form is harmless.
                 ReachExceptionGetMessage(mi);
+                CoreIntrinsics.ValidateDelegateCallableBody(mi);
+                if (CoreIntrinsics.BrDelegateCallable.Matches(mi)) return mi;
                 if (CoreIntrinsics.IsDateTimeCultureManagedBody(mi)
                     || CoreIntrinsics.IsScalarNumericLeaf(mi)
                     || CoreIntrinsics.IsBinaryIntegerEndianBody(mi)
@@ -480,6 +482,7 @@ internal sealed partial class Compilation
             }
             case HandleKind.MemberReference:
             {
+                if (TryResolveDelegateCallableReference(module, (MemberReferenceHandle)handle, ctx) is { } delegateBody) return delegateBody;
                 ValidateNumericMemberRefOwner(module, (MemberReferenceHandle)handle, ctx);
                 if (TryResolveScalarNumericLeafReference(module, (MemberReferenceHandle)handle, ctx) is { } scalarNumericLeaf) return scalarNumericLeaf;
                 if (TryResolveVectorAlignmentReference(module, (MemberReferenceHandle)handle, ctx) is { } alignment) return alignment;
@@ -1512,6 +1515,9 @@ internal sealed partial class Compilation
                     : candidates.FirstOrDefault(x => ParameterIdentityKey(x.Signature.ParameterTypes) == want) ?? candidates[0];
             }
         }
+        if (DelegateCallableBodyContract.IsName(cls.FullName, name)
+            && !CoreIntrinsics.IsDelegateCallableReference(resolved, sig, reader.GetBlobReader(mr.Signature)))
+            throw new NotSupportedException("Delegate callable member requires its exact CoreLib reference and declaration");
         if (CoreIntrinsics.IsDateTimeManagedBody(resolved)
             && !CoreIntrinsics.IsDateTimeManagedBodyReference(resolved, sig, reader.GetBlobReader(mr.Signature)))
             throw new NotSupportedException("DateTime arithmetic member requires its exact CoreLib reference and declaration");
@@ -1607,6 +1613,7 @@ internal sealed partial class Compilation
     /// the member cannot be matched, so callers fall back to intrinsics.</summary>
     public MethodInfo? TryResolveMemberRefMethod(Module module, MemberReferenceHandle handle, GenericContext callerCtx)
     {
+        if (TryResolveDelegateCallableReference(module, handle, callerCtx) is { } delegateBody) return delegateBody;
         ValidateNumericMemberRefOwner(module, handle, callerCtx);
         if (TryResolveScalarNumericLeafReference(module, handle, callerCtx) is { } scalarNumericLeaf) return scalarNumericLeaf;
         if (TryResolveVectorAlignmentReference(module, handle, callerCtx) is { } alignment) return alignment;

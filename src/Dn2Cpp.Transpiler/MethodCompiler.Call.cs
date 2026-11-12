@@ -528,6 +528,7 @@ internal sealed partial class MethodCompiler
                 CoreIntrinsics.ValidateVectorFloatingPointTernary(callee);
                 CoreIntrinsics.ValidateVectorLog(callee);
                 CoreIntrinsics.ValidateVectorMagnitude(callee);
+                CoreIntrinsics.ValidateDelegateCallableBody(callee);
                 CoreIntrinsics.ValidateScalarNumericLeaf(callee);
                 CoreIntrinsics.ValidateBinaryIntegerEndianBody(callee);
                 CoreIntrinsics.ValidatePrimitiveParseBody(callee);
@@ -546,7 +547,8 @@ internal sealed partial class MethodCompiler
                         return;
                     }
                 }
-                if (CoreIntrinsics.BrPrimitiveBigMul.Matches(callee)
+                if (CoreIntrinsics.BrDelegateCallable.Matches(callee)
+                    || CoreIntrinsics.BrPrimitiveBigMul.Matches(callee)
                     || CoreIntrinsics.BrNativeIntegerEndian.Matches(callee)
                     || CoreIntrinsics.BrNativeIntegerParse.Matches(callee)
                     || CoreIntrinsics.IsDateTimeCultureManagedBody(callee)
@@ -969,6 +971,11 @@ internal sealed partial class MethodCompiler
             }
             case HandleKind.MemberReference:
             {
+                if (_c.TryResolveDelegateCallableReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } delegateBody)
+                {
+                    EmitManagedCall(delegateBody, isCallvirt);
+                    return;
+                }
                 _c.ValidateNumericMemberRefOwner(_module, (MemberReferenceHandle)handle, _method.Context);
                 if (_c.TryResolveScalarNumericLeafReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } scalarNumericLeaf)
                 {
@@ -2567,6 +2574,16 @@ internal sealed partial class MethodCompiler
                       + $"(Dn2CppObject*)({args[1]}), (Dn2CppObject*)({args[2]}))";
                 call = $"(dn2cpp_is_default_equality_comparer((Dn2CppObject*)({receiver})) ? {dflt} : {call})";
             }
+        }
+        else if (isCallvirt && callee.IsVirtual && CoreIntrinsics.BrDelegateCallable.Matches(callee))
+        {
+            // Delegate type-info has no vtable. The validated wrapper is the
+            // virtual implementation, except for Delegate's nonvirtual value
+            // bodies, whose slot selects MulticastDelegate's override instead.
+            var target = _c.DelegateCallableVirtualTarget(callee);
+            if (target != callee)
+                args[0] = $"({ReceiverCppType(target.DeclaringClass)})({args[0]})";
+            call = DirectCall(target, args);
         }
         else if (isCallvirt && callee.IsVirtual
             && CoreIntrinsics.BrEnumInstanceFormat.Matches(callee.DeclaringClass.FullName, callee.Name))

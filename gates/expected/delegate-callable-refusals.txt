@@ -1,0 +1,49 @@
+== Multicast factory refusals ==
+factory-refuse-null-0:True
+factory-refuse-empty-0:True
+factory-refuse-single-0:True
+factory-refuse-negative-0:True
+factory-refuse-bounds-0:True
+factory-refuse-null-entry-0:True
+factory-refuse-object-0:True
+factory-refuse-type-0:True
+factory-refuse-nested-0:True
+factory-refuse-null-1:True
+factory-refuse-empty-1:True
+factory-refuse-single-1:True
+factory-refuse-negative-1:True
+factory-refuse-bounds-1:True
+factory-refuse-null-entry-1:True
+factory-refuse-object-1:True
+factory-refuse-type-1:True
+factory-refuse-nested-1:True
+factory-refuse-null-2:True
+factory-refuse-empty-2:True
+factory-refuse-single-2:True
+factory-refuse-negative-2:True
+factory-refuse-bounds-2:True
+factory-refuse-null-entry-2:True
+factory-refuse-object-2:True
+factory-refuse-type-2:True
+factory-refuse-nested-2:True
+Multicast factory refusals end
+== Named delegate construction refusals ==
+named-multicast-refuse-Delegate-False:True
+named-snapshot-refuse-Delegate-False:True
+named-multicast-refuse-Delegate-True:True
+named-snapshot-refuse-Delegate-True:True
+named-multicast-refuse-MulticastDelegate-False:True
+named-snapshot-refuse-MulticastDelegate-False:True
+named-multicast-refuse-MulticastDelegate-True:True
+named-snapshot-refuse-MulticastDelegate-True:True
+Named delegate construction refusals end
+== CoreCLR delegate constructor refusals ==
+vm-ctor-refuse-CtorClosed:True
+vm-ctor-refuse-CtorClosedStatic:True
+vm-ctor-refuse-CtorRTClosed:True
+vm-ctor-refuse-CtorOpened:True
+vm-ctor-refuse-CtorVirtualDispatch:True
+vm-ctor-refuse-CtorCollectibleClosedStatic:True
+vm-ctor-refuse-CtorCollectibleOpened:True
+vm-ctor-refuse-CtorCollectibleVirtualDispatch:True
+CoreCLR delegate constructor refusals end

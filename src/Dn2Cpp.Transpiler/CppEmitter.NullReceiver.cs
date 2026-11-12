@@ -369,12 +369,17 @@ internal sealed partial class CppEmitter
     // called on a load of the receiver unless one may flow elsewhere (ReceivingCalls).
     // .NET's code for a reference type's instance method shared over a type argument looks
     // its generic dictionary up through the receiver, and dn2cpp's shared body reads its
-    // generic context there. Replaced bodies never run; System.Enum's replacements fault
-    // as .NET's bodies do, and a non-virtual call of Object's GetHashCode or Equals runs
+    // generic context there. Most replaced bodies cannot be assumed safe; Enum and
+    // validated delegate wrappers explicitly guard their receiver accesses. A
+    // non-virtual call of Object's GetHashCode or Equals runs
     // the identity hash or reference equality, which take a null receiver as .NET's do.
     private NullReceiverScan ScanOwnBodyUnderNullReceiver(ClassInfo cls, MethodInfo m)
     {
-        if (CoreIntrinsics.BrEnumInstanceFormat.Matches(cls.FullName, m.Name) || IsNullTolerantObjectMember(cls, m))
+        // Delegate wrappers guard their own field reads and retain early returns
+        // such as Equals(null) before touching this. A closed-null binding must
+        // enter that body, not be rejected before its argument-dependent branch.
+        if (CoreIntrinsics.BrDelegateCallable.Matches(m)
+            || CoreIntrinsics.BrEnumInstanceFormat.Matches(cls.FullName, m.Name) || IsNullTolerantObjectMember(cls, m))
             return NullOnlyScan;
         if (HasReplacedBody(cls, m) || _backend.ShouldSkipMethodBody(cls, m))
             return FaultingScan;

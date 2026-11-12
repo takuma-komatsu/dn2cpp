@@ -2110,6 +2110,7 @@ internal sealed partial class CppEmitter
         || CoreIntrinsics.BrHttpShim.Matches(cls.FullName, m.Name)
         || CoreIntrinsics.BrEnumInstanceFormat.Matches(cls.FullName, m.Name)
         || CoreIntrinsics.BrLifetimeDispose.Matches(cls.FullName, m.Name)
+        || CoreIntrinsics.BrDelegateCallable.Matches(m)
         || CoreIntrinsics.BrDelegateClone.Matches(cls.FullName, m.Name)
         || CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(m)
         || CoreIntrinsics.BrPrimitiveBigMul.Matches(m)
@@ -2570,6 +2571,7 @@ internal sealed partial class CppEmitter
                             continue;
                         }
                         if (CoreIntrinsics.BrLifetimeDispose.Matches(cls.FullName, m.Name)
+                            || CoreIntrinsics.BrDelegateCallable.Matches(m)
                             || CoreIntrinsics.BrDelegateClone.Matches(cls.FullName, m.Name)
                             || CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(m)
                             || CoreIntrinsics.BrPrimitiveBigMul.Matches(m)

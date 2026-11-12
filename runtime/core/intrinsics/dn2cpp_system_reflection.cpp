@@ -5832,8 +5832,17 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
     // abort.
     void* fn = row.fnPtr;
     const Dn2CppTypeInfo* declaring = row.declaringType;
+    const bool delegateBaseEquals = row.invoker == reinterpret_cast<void*>(&dn2cpp_delegate_base_equals_invoker);
+    const bool delegateBaseHash = row.invoker == reinterpret_cast<void*>(&dn2cpp_delegate_base_hash_invoker);
+    // Exact CoreLib rows carry signature invokers, not name-based recognition.
+    // The invoker still honors fn for the interpreter's nonvirtual call. Here,
+    // Invoke/CreateDelegate enter virtually unless bound over a null receiver.
+    if (obj != nullptr && (delegateBaseEquals || delegateBaseHash))
+        fn = delegateBaseEquals ? reinterpret_cast<void*>(&dn2cpp_delegate_equal)
+            : reinterpret_cast<void*>(&dn2cpp_delegate_hash);
     const bool objectVirtualInvoker = row.invoker == reinterpret_cast<void*>(&dn2cpp_delegate_object_virtual_invoker)
-        || row.invoker == reinterpret_cast<void*>(&dn2cpp_delegate_interface_invoker);
+        || row.invoker == reinterpret_cast<void*>(&dn2cpp_delegate_interface_invoker)
+        || delegateBaseEquals || delegateBaseHash;
     if (obj != nullptr && row.vtableSlot >= 0 && !objectVirtualInvoker && (declaring->flags & DN2CPP_TF_PATCH) == 0)
     {
         if ((declaring->flags & DN2CPP_TF_INTERFACE) != 0)
@@ -6767,6 +6776,33 @@ static bool dn2cpp_dgbind_named_signature(const Dn2CppMethodInfo& row, const Dn2
     return true;
 }
 
+void dn2cpp_delegate_initialize_named(Dn2CppObject* receiver, Dn2CppObject* target,
+    Dn2CppType* targetType, Dn2CppString* name, int32_t staticForm)
+{
+    if (receiver == nullptr)
+        dn2cpp_throw_null_reference();
+    auto* bound = reinterpret_cast<Dn2CppDelegate*>(dn2cpp_delegate_create_named(
+        dn2cpp_get_type_from_handle(receiver->type), target, targetType, name,
+        staticForm, staticForm != 0 ? 1 : 0, staticForm != 0 ? 0 : 1));
+    if (bound == nullptr)
+        return;
+    auto* self = reinterpret_cast<Dn2CppDelegate*>(receiver);
+    // CoreCLR can rebind invocation while preserving a stale multicast list.
+    // Our uniform invocation chain cannot represent that hybrid state.
+    if (self->prev != nullptr)
+        dn2cpp_throw_platform_not_supported(
+            "Named delegate constructors cannot reinitialize an existing multicast invocation list.");
+    if (self->bindingSnapshotted.load(std::memory_order_relaxed))
+        dn2cpp_throw_platform_not_supported(
+            "Named delegate constructors cannot reinitialize a binding previously copied into a multicast invocation list.");
+    dn2cpp_gc_store_ref(&self->target, bound->target);
+    self->method = bound->method;
+    self->identity = bound->identity;
+    dn2cpp_gc_store_ref(&self->prev, static_cast<Dn2CppObject*>(nullptr));
+    dn2cpp_gc_store_ref(&self->entry, static_cast<Dn2CppObject*>(nullptr));
+    dn2cpp_gc_store_ref(&self->invocationCache, static_cast<Dn2CppDelegateInvocationCache*>(nullptr));
+}
+
 Dn2CppObject* dn2cpp_delegate_create_named(Dn2CppType* dt, Dn2CppObject* target,
     Dn2CppType* targetType, Dn2CppString* name, int32_t staticForm,
     int32_t ignoreCase, int32_t throwOnFailure)
@@ -6996,6 +7032,22 @@ Dn2CppObject* dn2cpp_delegate_object_virtual_invoker(void* fn, Dn2CppObject* rec
     if (fn == reinterpret_cast<void*>(&dn2cpp_object_equals_virtual))
         return dn2cpp_meta_object_equals(nullptr, receiver, arguments);
     return dn2cpp_meta_object_gethashcode(nullptr, receiver, arguments);
+}
+
+Dn2CppObject* dn2cpp_delegate_base_equals_invoker(void* fn, Dn2CppObject* receiver,
+    Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType)
+{
+    auto body = reinterpret_cast<int32_t (*)(Dn2CppObject*, Dn2CppObject*)>(fn);
+    int32_t value = body(receiver, arguments[0]);
+    return dn2cpp_box(returnType, &value, sizeof(value));
+}
+
+Dn2CppObject* dn2cpp_delegate_base_hash_invoker(void* fn, Dn2CppObject* receiver,
+    Dn2CppObject**, const Dn2CppTypeInfo* returnType)
+{
+    auto body = reinterpret_cast<int32_t (*)(Dn2CppObject*)>(fn);
+    int32_t value = body(receiver);
+    return dn2cpp_box(returnType, &value, sizeof(value));
 }
 
 static const Dn2CppDelegateInterfaceTarget* g_delegate_interface_targets = nullptr;

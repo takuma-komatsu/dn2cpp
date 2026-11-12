@@ -31,6 +31,7 @@
     <Compile Include="../Dn2Cpp.Transpiler/PrimitiveParseContract.cs" Link="PrimitiveParseContract.cs" />
     <Compile Include="../Dn2Cpp.Transpiler/DecimalBinaryContract.cs" Link="DecimalBinaryContract.cs" />
     <Compile Include="../Dn2Cpp.Transpiler/PrimitiveWideConversionContract.cs" Link="PrimitiveWideConversionContract.cs" />
+    <Compile Include="../Dn2Cpp.Transpiler/DelegateCallableBodyContract.cs" Link="DelegateCallableBodyContract.cs" />
     <Compile Include="../Dn2Cpp.Transpiler/DateTimeManagedBodyContract.cs" Link="DateTimeManagedBodyContract.cs" />
     <Compile Include="../Dn2Cpp.Transpiler/DateTimeFormatInfoManagedBodyContract.cs" Link="DateTimeFormatInfoManagedBodyContract.cs" />
     <Compile Include="../Dn2Cpp.Transpiler/RangeThrowManagedBodyContract.cs" Link="RangeThrowManagedBodyContract.cs" />

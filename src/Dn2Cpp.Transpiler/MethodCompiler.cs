@@ -688,6 +688,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     public string Compile()
     {
         _c.ValidateSimdAlignmentBody(_method);
+        CoreIntrinsics.ValidateDelegateCallableBody(_method);
         CoreIntrinsics.ValidateConcreteVectorElement(_method);
         TaintCanonicalVectorOwner(_method.DeclaringClass);
         TaintCanonicalFixedVectorValueOwner(_method.DeclaringClass, _method.Name);
@@ -1275,8 +1276,10 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// Null when the method has no intrinsic lowering to synthesize from.</summary>
     internal string? CompileCoreIntrinsicWrapper()
     {
+        if (CoreIntrinsics.BrDelegateCallable.Matches(_method)) return CompileDelegateCallableBody();
         if (CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(_method))
             return CompileInvariantCompareInfoInitializer();
+        CoreIntrinsics.ValidateDelegateCallableBody(_method);
         CoreIntrinsics.ValidateConcreteVectorElement(_method);
         CoreIntrinsics.ValidateVectorFloatingPointTernary(_method);
         CoreIntrinsics.ValidateVectorLog(_method);
@@ -3932,6 +3935,18 @@ internal sealed partial class MethodCompiler : IEvalStack
                     NoteFtnTarget(m, virtFtn: false);
                     bindsLowering = true;
                     expr = DelegateInvokeAddress(m);
+                }
+                else if (m.IsVirtual && CoreIntrinsics.BrDelegateCallable.Matches(m))
+                {
+                    var target = _c.DelegateCallableVirtualTarget(m).Emittable;
+                    // Keep virtual provenance for delegate construction, also
+                    // when this address flows through a local. Its selected
+                    // Method identity is the override, not the base body.
+                    NoteFtnTargetBody(target);
+                    _c.NoteNamedBodySymbol(_method, target);
+                    expr = (m.Attributes & System.Reflection.MethodAttributes.Final) != 0
+                        ? $"(void*)&{target.CppName}"
+                        : $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{target.CppName})";
                 }
                 else if (CoreIntrinsics.MdDelegateCloneBinding.Matches(m))
                 {

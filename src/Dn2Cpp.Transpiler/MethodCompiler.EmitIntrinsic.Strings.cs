@@ -307,7 +307,7 @@ internal sealed partial class MethodCompiler
             }
             // The BCL bodies read MulticastDelegate's _invocationList, which the uniform
             // layout replaces with the chain the runtime helper walks.
-            case ("System.Delegate" or "System.MulticastDelegate", "GetInvocationList")
+            case ("System.Delegate", "GetInvocationList")
                 when sig.ParameterTypes.Length == 0 && sig.ReturnType is { Kind: TypeKind.SZArray } listType:
             {
                 var d = Pop();
@@ -399,20 +399,6 @@ internal sealed partial class MethodCompiler
                 var a = Pop();
                 string eq = $"dn2cpp_delegate_equal({Cast(a, "Dn2CppObject*")}, {Cast(b, "Dn2CppObject*")})";
                 Push(StackKind.I4, "int32_t", name == "op_Equality" ? eq : $"({eq} == 0 ? 1 : 0)");
-                return true;
-            }
-            case ("System.Delegate", "Equals") when sig.ParameterTypes.Length == 1:
-            {
-                var b = Pop();
-                var a = Pop();
-                Push(StackKind.I4, "int32_t",
-                    $"dn2cpp_delegate_equal({DelegateReceiver(a)}, {Cast(b, "Dn2CppObject*")})");
-                return true;
-            }
-            case ("System.Delegate", "GetHashCode") when sig.ParameterTypes.Length == 0:
-            {
-                var d = Pop();
-                Push(StackKind.I4, "int32_t", $"dn2cpp_delegate_hash({DelegateReceiver(d)})");
                 return true;
             }
             // Delegate.HasSingleTarget: a single-entry invocation chain (the

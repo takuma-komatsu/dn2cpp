@@ -124,7 +124,8 @@ internal sealed partial class AssemblyDiet
         Spend();
         string owner = Name(method.DeclaringType);
         bool traverse;
-        if (IsCopiedPrimitiveBigMul(method, owner)
+        if (IsCopiedDelegateCallableBody(method, owner)
+            || IsCopiedPrimitiveBigMul(method, owner)
             || IsCopiedNativeIntegerParse(method, owner)
             || BinaryIntegerEndianContract.IsNativeOwner(owner) && IsCopiedBinaryIntegerEndianBody(method, owner))
             traverse = false;

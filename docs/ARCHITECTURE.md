@@ -1366,6 +1366,19 @@ the CLR helper's requested generic arguments even when variance shares an
 execution row. Reflection trimming preserves known selected declaring rows.
 An unknown stripped level still refuses through `dn2cpp_require_metadata`.
 
+Retained delegate value members, multicast factories, operations and accessors
+use callable bodies over the uniform invocation chain. Exact CoreLib declarations
+and raw references share the same boundary with ILDiet; retention never scans
+the replaced CoreCLR field or invoke-stub implementation. Named constructors use
+the ordinary named binder and keep its invocation rows. Nonvirtual `Delegate`
+value bodies remain distinct from `MulticastDelegate` overrides; virtual calls,
+virtual addresses and reflection select the override without a native vtable.
+Reinitialization refuses
+a multicast receiver or a binding already snapshotted into another chain. Private
+multicast factories accept only a flattened prefix of the receiver's exact type,
+with enough entries to represent a multicast value; unsupported private states
+and CoreCLR VM constructor stubs throw without interpreting CLR-owned pointers.
+
 A recognized site that selects a virtual member marks its slot used, so every
 allocated receiver's override is reached as for a call site. Through any other
 reflective entry, a receiver's override runs only when a call site, a recognized

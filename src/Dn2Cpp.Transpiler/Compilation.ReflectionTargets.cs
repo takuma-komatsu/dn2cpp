@@ -885,10 +885,12 @@ internal sealed partial class Compilation
         CoreIntrinsics.ValidateVectorLog(target);
         CoreIntrinsics.ValidateVectorMagnitude(target);
         CoreIntrinsics.ValidateScalarNumericLeaf(target);
+        CoreIntrinsics.ValidateDelegateCallableBody(target);
         CoreIntrinsics.ValidateVectorAlignment(target);
         CoreIntrinsics.ValidateConcreteVectorReduction(target);
         _reflectionSelectionCount++;
-        if (CoreIntrinsics.IsDateTimeCultureManagedBody(target)
+        if (CoreIntrinsics.BrDelegateCallable.Matches(target)
+            || CoreIntrinsics.IsDateTimeCultureManagedBody(target)
             || CoreIntrinsics.IsScalarNumericLeaf(target)
             || CoreIntrinsics.IsInvariantCompareInfoGetter(target)
             || CoreIntrinsics.IsVectorAlignmentManagedBody(target)

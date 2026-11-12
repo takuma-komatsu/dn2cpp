@@ -711,6 +711,8 @@ internal sealed partial class Compilation
         "dn2cpp_delegate_remove",   // + _all; may allocate the shortened multicast copy
         "dn2cpp_delegate_invocation_list(", "dn2cpp_delegate_try_get_at(",
         "dn2cpp_delegate_for_fnptr_",
+        "dn2cpp_delegate_from_invocation_prefix(", // a fresh multicast chain
+        "dn2cpp_delegate_initialize_named(", // binds through a fresh delegate
         // System.Enum's metadata: fresh names, arrays and boxes.
         "dn2cpp_enum_get_name(",
         "dn2cpp_enum_get_names(",

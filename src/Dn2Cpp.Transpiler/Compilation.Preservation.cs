@@ -138,7 +138,10 @@ internal sealed partial class Compilation
     {
         bool conditional = _activatedConditionalPolicies.Contains(cls);
         PreserveKind kind = policy.Kind | (conditional ? policy.ConditionalKind : PreserveKind.None);
-        bool delegateAll = cls.IsDelegate && kind != PreserveKind.None;
+        // Generated delegate types need their runtime invocation surface together;
+        // the abstract CoreLib bases still honor member-specific preservation.
+        bool delegateAll = cls.IsDelegate && !CoreIntrinsicTypeMaps.IsDelegateBaseType(cls.FullName)
+            && kind != PreserveKind.None;
         if (kind != PreserveKind.None || policy.Fields.Count > 0 || policy.Methods.Count > 0
             || policy.Properties.Count > 0 || policy.Events.Count > 0
             || conditional && (policy.ConditionalFields.Count > 0 || policy.ConditionalMethods.Count > 0
