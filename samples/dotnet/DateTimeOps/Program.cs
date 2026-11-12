@@ -13,6 +13,17 @@ namespace DateTimeOps
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+            if (args.Length > 0 && args[0] == "dtfi-refusals")
+            {
+                DateTimeFormatInfoSubset.Program.RunRefusals();
+                DateTimePrivateSubset.Program.RunLeapSecondPolicy();
+                return;
+            }
+            if (args.Length > 0 && args[0] == "private-datetime-only")
+            {
+                DateTimePrivateSubset.Program.Run();
+                return;
+            }
             if (args.Length > 0 && args[0] == "daylight-only")
             {
                 DateTimeDaylightSubset.Program.Run();
@@ -57,6 +68,12 @@ namespace DateTimeOps
             if (args.Length > 0 && args[0] == "before-dtfi-names")
                 return;
             DateTimeFormatInfoSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-datetime-intercepts")
+                return;
+            DateTimeFormatInfoSubset.Program.RunIntercepts();
+            DateOnlySubset.Program.RunDeconstruct();
+            DateTimePrivateSubset.Program.Run();
+            DateTimePrivateSubset.Program.RunCultureNames();
         }
     }
 }

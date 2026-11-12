@@ -445,7 +445,8 @@ assert_noalloc_reject "$mixed_app" "directly-emitted allocation helpers" \
     "JoinPair" "dn2cpp_string_concat" \
     "ChopFirst" "dn2cpp_str_substring" \
     "CornerSum" "dn2cpp_newmdarr" \
-    "AdvanceInvocation" "dn2cpp_delegate_try_get_at("
+    "AdvanceInvocation" "dn2cpp_delegate_try_get_at(" \
+    "DayName" "dn2cpp_dtfi_invariant_"
 
 assert_noalloc_reject "$reflection_noalloc_app" "ordinary reflection allocation and dispatch helpers" \
     "HotPath(NoAlloc)" \

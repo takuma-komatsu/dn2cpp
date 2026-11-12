@@ -1986,6 +1986,9 @@ internal sealed partial class CppEmitter
             _slotStubs.Clear();
             EmitDelegateMethodCatalog();
             EmitCultureCompareInfoRow();
+            EmitCultureNameValidatorRow();
+            EmitDateOnlyDeconstructRow();
+            EmitDateTimeParserRows();
             _e.EmitArrayTypeInfos(_sb, _emittedEnums);
             _e.EmitMdArrayItfMap(_sb);
             _e.EmitArrayNongenericItfRows(_sb);
@@ -2026,6 +2029,69 @@ internal sealed partial class CppEmitter
                     }
                     _e._cultureCompareInfoRow = address;
                     return;
+                }
+            }
+        }
+
+        private void EmitCultureNameValidatorRow()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.FullName != "System.Globalization.CultureInfo") continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsCultureInfoNameValidator(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "culturenamevalidatortab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained CultureInfo.VerifyCultureName has no metadata row.");
+                    }
+                    _e._cultureNameValidatorRow = address;
+                    return;
+                }
+            }
+        }
+
+        private void EmitDateOnlyDeconstructRow()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.FullName != "System.DateOnly") continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsDateOnlyDeconstruct(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "dateonlydeconstructtab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained DateOnly.Deconstruct has no metadata row.");
+                    }
+                    _e._dateOnlyDeconstructRow = address;
+                    return;
+                }
+            }
+        }
+
+        private void EmitDateTimeParserRows()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.FullName != "System.DateTime") continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsDateTimeParserBoundary(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method },
+                            CoreIntrinsics.IsDateTimeTryAddTicks(method) ? "datetimeparseraddtab"
+                            : CoreIntrinsics.IsDateTimeTryCreate(method) ? "datetimeparsercreatetab" : "datetimeparserctortab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained DateTime parser member has no metadata row.");
+                    }
+                    if (CoreIntrinsics.IsDateTimeTryAddTicks(method)) _e._dateTimeTryAddTicksRow = address;
+                    else if (CoreIntrinsics.IsDateTimeTryCreate(method)) _e._dateTimeTryCreateRow = address;
+                    else _e._dateTimeLocalConstructorRow = address;
                 }
             }
         }
@@ -3845,7 +3911,9 @@ internal sealed partial class CppEmitter
         private bool IsRetainedOpaqueMemberRow(MethodInfo method) =>
             _c.KeepsReflectionMetadata(method.DeclaringClass)
             && (_c.Reachable.Contains(method) || _c.KeepsUnreachedRow(method))
-            && (CoreIntrinsics.IsScalarNumericLeaf(method)
+            && (CoreIntrinsics.IsDateTimeFormatInfoBoundary(method)
+                || CoreIntrinsics.IsDateTimeCultureManagedBody(method)
+                || CoreIntrinsics.IsScalarNumericLeaf(method)
                 || CoreIntrinsics.IsVectorAlignmentManagedBody(method)
                 || CoreIntrinsics.IsConcreteVectorReduction(method)
                 || CoreIntrinsics.IsVectorManagedThrowHelper(method)

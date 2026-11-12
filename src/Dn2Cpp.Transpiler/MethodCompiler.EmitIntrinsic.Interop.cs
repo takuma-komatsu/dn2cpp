@@ -398,6 +398,13 @@ internal sealed partial class MethodCompiler
     /// runtime plumbing, so there is nothing worth falling through to.</para></summary>
     private void EmitRuntimePrimitive(MethodInfo callee)
     {
+        if (TryEmitDateTimeFormatInfoBoundary(callee))
+            return;
+        if (CoreIntrinsics.IsDateTimeLeapSecondSupport(callee))
+        {
+            EmitDateTimeLeapSecondSupport();
+            return;
+        }
         if (CoreIntrinsics.IsUInt128Checked(callee))
         {
             EmitUInt128Checked(callee);

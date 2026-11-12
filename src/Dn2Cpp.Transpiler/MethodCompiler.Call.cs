@@ -549,6 +549,7 @@ internal sealed partial class MethodCompiler
                 if (CoreIntrinsics.BrPrimitiveBigMul.Matches(callee)
                     || CoreIntrinsics.BrNativeIntegerEndian.Matches(callee)
                     || CoreIntrinsics.BrNativeIntegerParse.Matches(callee)
+                    || CoreIntrinsics.IsDateTimeCultureManagedBody(callee)
                     || CoreIntrinsics.IsScalarNumericLeaf(callee)
                     || CoreIntrinsics.IsBinaryIntegerEndianBody(callee)
                     || CoreIntrinsics.IsPrimitiveParseBody(callee)
@@ -770,6 +771,11 @@ internal sealed partial class MethodCompiler
                 // spec's method is a MemberRef across assemblies and a MethodDef
                 // within one (e.g. corelib's Span<T> -> Unsafe.Add<T>).
                 var ms = _reader.GetMethodSpecification((MethodSpecificationHandle)handle);
+                if (_c.TryResolveRangeThrowManagedSpec(_module, (MethodSpecificationHandle)handle, _method.Context) is { } rangeThrow)
+                {
+                    EmitManagedCall(rangeThrow, isCallvirt);
+                    return;
+                }
                 if (_c.TryResolveVectorManagedThrowSpec(_module, (MethodSpecificationHandle)handle, _method.Context) is { } vectorGuard)
                 {
                     EmitManagedCall(vectorGuard, isCallvirt);

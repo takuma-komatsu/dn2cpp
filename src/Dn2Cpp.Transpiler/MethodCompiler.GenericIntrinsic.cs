@@ -31,6 +31,27 @@ internal sealed partial class MethodCompiler
             EmitInt128Checked(target);
             return true;
         }
+        if (declType == "System.Globalization.DateTimeFormatInfo"
+            && CoreIntrinsics.IsDateTimeFormatInfoSpanName(name))
+        {
+            var target = specification.IsNil ? _method : Comp.ResolveMethodSpec(Module, specification, Method.Context);
+            if (!CoreIntrinsics.IsDateTimeFormatInfoSpan(target)
+                || methodArgs is not [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char or PrimitiveTypeCode.Byte }])
+                throw new NotSupportedException("DateTimeFormatInfo TChar accessor requires its exact Char or Byte signature");
+            if (!specification.IsNil)
+            {
+                var raw = Reader.GetMethodSpecification(specification).Method;
+                var blob = raw.Kind == HandleKind.MethodDefinition
+                    ? Reader.GetMethodDefinition((MethodDefinitionHandle)raw).Signature
+                    : Reader.GetMemberReference((MemberReferenceHandle)raw).Signature;
+                if (!CoreIntrinsics.IsDateTimeFormatInfoSpanSignature(Reader.GetBlobReader(blob))
+                    || !CoreIntrinsics.IsDateTimeFormatInfoSpanDecodedSignature(MethodSpecSig(specification, methodArgs), target.Module))
+                    throw new NotSupportedException("DateTimeFormatInfo TChar accessor requires its exact MethodSpec signature");
+            }
+            if (!TryEmitDateTimeFormatInfoBoundary(target))
+                throw new InvalidOperationException("Validated DateTimeFormatInfo accessor has no boundary emitter");
+            return true;
+        }
         // Array.Empty<T> -> the per-element-type cached singleton (matches .NET's
         // EmptyArray<T>.Value: the same instance every call, no per-call allocation).
         if (declType == "System.Array" && name == "Empty")

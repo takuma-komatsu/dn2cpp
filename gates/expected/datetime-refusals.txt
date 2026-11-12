@@ -1,0 +1,10 @@
+== DateTimeFormatInfo explicit refusals ==
+calendar get=PlatformNotSupportedException message=DateTimeFormatInfo.Calendar is not supported
+calendar read-only null=InvalidOperationException message=Instance is read-only.
+calendar null=ArgumentNullException param=value message=Value cannot be null. (Parameter 'value')
+calendar set=PlatformNotSupportedException message=DateTimeFormatInfo.Calendar is not supported
+calendar null receiver=NullReferenceException message=Object reference not set to an instance of an object.
+tokenize=PlatformNotSupportedException message=DateTimeFormatInfo token-table parsing is not supported outputs=123/456
+tokenize null=NullReferenceException message=Object reference not set to an instance of an object. outputs=123/456
+DateTimeFormatInfo explicit refusals end
+native leap-second TryCreate=False before=123/Utc after=0/Unspecified

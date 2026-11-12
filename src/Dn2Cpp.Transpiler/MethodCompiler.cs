@@ -1328,7 +1328,9 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsVectorLog(_method)
             || CoreIntrinsics.IsVectorMagnitude(_method)
             || CoreIntrinsics.IsVectorValueMethod(_method)
-            || CoreIntrinsics.IsInvariantCompareInfoGetter(_method))
+            || CoreIntrinsics.IsInvariantCompareInfoGetter(_method)
+            || CoreIntrinsics.IsDateTimeFormatInfoBoundary(_method)
+            || CoreIntrinsics.IsDateTimeLeapSecondSupport(_method))
             return CompileInterceptWrapper();
         string dispatch = _c.RuntimeInterfaceLowerings.TryGetValue(_method, out var runtimeDispatch)
             ? runtimeDispatch

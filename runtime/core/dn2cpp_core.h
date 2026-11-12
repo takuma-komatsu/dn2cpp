@@ -1420,6 +1420,10 @@ struct Dn2CppDelegateMethodCatalog
 void dn2cpp_set_delegate_method_catalog(const Dn2CppDelegateMethodCatalog* rows, int32_t count);
 // Exact retained CultureInfo getter; no general intrinsic-type metadata mutation.
 void dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+void dn2cpp_set_culture_name_validator_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+void dn2cpp_set_dateonly_deconstruct_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+void dn2cpp_set_datetime_parser_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> addTicks,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> tryCreate, Dn2CppMetadataHandle<Dn2CppMethodInfo> localConstructor);
 Dn2CppObject* dn2cpp_delegate_object_virtual_invoker(void* fn, Dn2CppObject* receiver,
     Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
 
@@ -8728,10 +8732,11 @@ bool dn2cpp_datetimeoffset_try_parse(Dn2CppString* s, Dn2CppDateTimeOffset* out)
 bool dn2cpp_datetimeoffset_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, Dn2CppDateTimeOffset* out);
 // TryParseExact(input, string[] formats, ...): first format that matches wins.
 bool dn2cpp_datetimeoffset_try_parse_exact_multi(Dn2CppString* s, Dn2CppArrayRef* formats, Dn2CppDateTimeOffset* out);
-// The invariant DTFI's abbreviated month/day names (string[]), for the synthesized
-// CultureInfo.DateTimeFormat — see dn2cpp_system_datetime.cpp. arrType is the precise
-// string[] type-info so the getter's castclass to it succeeds.
+// Frozen DTFI tables use precise String[] identities. Managed getters clone the
+// shared name/pattern arrays before returning them through the public API.
 Dn2CppArrayRef* dn2cpp_dtfi_invariant_month_names(const Dn2CppTypeInfo* arrType, bool abbreviated);
+Dn2CppArrayRef* dn2cpp_dtfi_invariant_day_names(const Dn2CppTypeInfo* arrType, int32_t width);
+Dn2CppArrayRef* dn2cpp_dtfi_invariant_patterns(const Dn2CppTypeInfo* arrType, int32_t kind);
 Dn2CppArrayRef* dn2cpp_dtfi_invariant_abbrev_day_names(const Dn2CppTypeInfo* arrType);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse(Dn2CppString* s);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse_exact(Dn2CppString* s, Dn2CppString* fmt);

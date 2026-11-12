@@ -805,16 +805,25 @@ Dn2CppString* dn2cpp_datetimeoffset_to_string(Dn2CppDateTimeOffset d)
 // roots: pinned scanned cells own the arrays, including on Wasm.
 namespace
 {
-struct Dn2CppMonthNamePool
+struct Dn2CppDateTimeFormatPool
 {
     std::mutex mutex;
     std::unordered_map<const Dn2CppTypeInfo*, Dn2CppArrayRef**> entries;
 };
+
+void dn2cpp_dtfi_init_literal_array(Dn2CppArrayRef** root, const Dn2CppTypeInfo* arrType,
+    const char16_t* const* values, int32_t count)
+{
+    dn2cpp_gc_store_ref(root, dn2cpp_newarr_ref_t(count, arrType));
+    for (int32_t i = 0; i < count; ++i)
+        dn2cpp_gc_store_ref(&(*root)->data[i], reinterpret_cast<Dn2CppObject*>(
+            dn2cpp_string_literal(values[i], static_cast<int32_t>(std::char_traits<char16_t>::length(values[i])))));
+}
 }
 
 Dn2CppArrayRef* dn2cpp_dtfi_invariant_month_names(const Dn2CppTypeInfo* arrType, bool abbreviated)
 {
-    static Dn2CppMonthNamePool& pool = dn2cpp_never_destroyed<Dn2CppMonthNamePool>();
+    static Dn2CppDateTimeFormatPool& pool = dn2cpp_never_destroyed<Dn2CppDateTimeFormatPool>();
     std::lock_guard<std::mutex> lock(pool.mutex);
     auto found = pool.entries.find(arrType);
     if (found != pool.entries.end())
@@ -826,14 +835,54 @@ Dn2CppArrayRef* dn2cpp_dtfi_invariant_month_names(const Dn2CppTypeInfo* arrType,
     auto** roots = static_cast<Dn2CppArrayRef**>(dn2cpp_alloc_pinned(2 * sizeof(Dn2CppArrayRef*)));
     for (int variant = 0; variant < 2; ++variant)
     {
-        dn2cpp_gc_store_ref(&roots[variant], dn2cpp_newarr_ref_t(13, arrType));
         const char16_t* const* names = variant == 0 ? full : shortNames;
-        for (int32_t i = 0; i < 13; ++i)
-            dn2cpp_gc_store_ref(&roots[variant]->data[i], reinterpret_cast<Dn2CppObject*>(
-                dn2cpp_string_literal(names[i], static_cast<int32_t>(std::char_traits<char16_t>::length(names[i])))));
+        dn2cpp_dtfi_init_literal_array(&roots[variant], arrType, names, 13);
     }
     pool.entries.emplace(arrType, roots);
     return roots[abbreviated ? 1 : 0];
+}
+
+Dn2CppArrayRef* dn2cpp_dtfi_invariant_day_names(const Dn2CppTypeInfo* arrType, int32_t width)
+{
+    if (static_cast<uint32_t>(width) >= 3)
+        dn2cpp_throw_invalid_operation_msg("Invalid invariant day-name table");
+    static Dn2CppDateTimeFormatPool& pool = dn2cpp_never_destroyed<Dn2CppDateTimeFormatPool>();
+    std::lock_guard<std::mutex> lock(pool.mutex);
+    auto found = pool.entries.find(arrType);
+    if (found != pool.entries.end())
+        return found->second[width];
+    static const char16_t* const names[3][7] = {
+        {u"Sunday",u"Monday",u"Tuesday",u"Wednesday",u"Thursday",u"Friday",u"Saturday"},
+        {u"Sun",u"Mon",u"Tue",u"Wed",u"Thu",u"Fri",u"Sat"},
+        {u"Su",u"Mo",u"Tu",u"We",u"Th",u"Fr",u"Sa"}};
+    auto** roots = static_cast<Dn2CppArrayRef**>(dn2cpp_alloc_pinned(3 * sizeof(Dn2CppArrayRef*)));
+    for (int variant = 0; variant < 3; ++variant)
+        dn2cpp_dtfi_init_literal_array(&roots[variant], arrType, names[variant], 7);
+    pool.entries.emplace(arrType, roots);
+    return roots[width];
+}
+
+Dn2CppArrayRef* dn2cpp_dtfi_invariant_patterns(const Dn2CppTypeInfo* arrType, int32_t kind)
+{
+    if (static_cast<uint32_t>(kind) >= 5)
+        dn2cpp_throw_invalid_operation_msg("Invalid invariant date/time pattern table");
+    static Dn2CppDateTimeFormatPool& pool = dn2cpp_never_destroyed<Dn2CppDateTimeFormatPool>();
+    std::lock_guard<std::mutex> lock(pool.mutex);
+    auto found = pool.entries.find(arrType);
+    if (found != pool.entries.end())
+        return found->second[kind];
+    static const char16_t* const values[5][4] = {
+        {u"yyyy MMMM"},
+        {u"MM/dd/yyyy",u"yyyy-MM-dd"},
+        {u"dddd, dd MMMM yyyy"},
+        {u"HH:mm",u"hh:mm tt",u"H:mm",u"h:mm tt"},
+        {u"HH:mm:ss"}};
+    static constexpr int32_t counts[5] = {1, 2, 1, 4, 1};
+    auto** roots = static_cast<Dn2CppArrayRef**>(dn2cpp_alloc_pinned(5 * sizeof(Dn2CppArrayRef*)));
+    for (int variant = 0; variant < 5; ++variant)
+        dn2cpp_dtfi_init_literal_array(&roots[variant], arrType, values[variant], counts[variant]);
+    pool.entries.emplace(arrType, roots);
+    return roots[kind];
 }
 
 Dn2CppArrayRef* dn2cpp_dtfi_invariant_abbrev_day_names(const Dn2CppTypeInfo* arrType)

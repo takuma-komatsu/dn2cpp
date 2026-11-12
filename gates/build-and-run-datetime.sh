@@ -20,9 +20,36 @@
 # serialized zone with adjustment rules — the deserialize path routes a transition
 # time through the internal TimeOnly.ToDateTime().
 # FromBinary/ToBinary and daylight checks cover kind flags and local-zone overlaps.
+# DTFI names, patterns, private arithmetic and culture-name validation share one
+# image. Private calls/calli and closed span delegates use exact CoreLib
+# declarations; Calendar and Tokenize refusals have an explicitly frozen
+# native-only mode, not a CLR parity claim.
 # Former gates: datetime, datetime-now, datetime-parse, datetime-format,
 # datetime-tz, datetimeoffset.
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/DateTimeInterceptFixture.cs gates/fixtures/ldftn-local/DateTimeTCharFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj gates/expected/datetime-refusals.txt"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|datetime-private-calls:fixture,direct-only-emission|public-ctor:no-corelib,no-ildiet|refusals:native-frozen|tchar:malformed-return-owner|cli:$(_gate_cli_hash)"
+
+# Keep the rewritten input private to this gate; the suite prebuild stays intact.
+_corelib_gate_core() {
+    local project="$1" out="$2"; shift 2
+    _CG_OUT="$out"
+    _CG_CORELIB=$(locate_corelib)
+    _CG_EXTRA_REFERENCE_INPUTS=(samples/dotnet/DateTimeOps/keep-dtfi-intercepts.xml)
+    build_proj "samples/dotnet/$project/$project.csproj"
+    build_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+    mkdir -p "$out/app"
+    cp -R "samples/dotnet/$project/bin/$CONFIG/$TFM/." "$out/app/"
+    _CG_APP="$out/app/$project.dll"
+    gate_capture_ok "$out/fixture" run_bounded dotnet \
+        "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+        --datetime-intercepts "$_CG_APP" "$_CG_CORELIB"
+    gate_output witness "$out/fixture.stdout" \
+        'AddAddress=ldftn+calli:System.Boolean System.DateTime::TryAddTicks(System.Int64,System.DateTime&)' \
+        'DateSpanDelegate=ldftn+delegate:System.ReadOnlySpan`1<TChar> System.Globalization.DateTimeFormatInfo::DateSeparatorTChar()' \
+        --count 1 --policy crlf
+    invoke_cli "$_CG_APP" -r "$_CG_CORELIB" "$@" -o "$out"
+}
 
 # Constructors, arithmetic, offset parsing and microseconds preserve fault fields.
 gate_extra_asserts() {
@@ -97,6 +124,55 @@ gate_extra_asserts() {
     gate_output select "$out/native.stdout" "$out/dtfi-prefix.stdout" --before '== DateTimeFormatInfo names ==' --policy crlf
     gate_output compare "$out/dtfi-prefix.stdout" "$out/dtfi-before.stdout"
     gate_output witness "$out/native.stdout" 'DateTimeFormatInfo names end' --count 1 --policy crlf
+
+    gate_capture_ok "$out/intercepts-before" run_bounded dotnet "$_CG_APP" before-datetime-intercepts
+    gate_output select "$out/native.stdout" "$out/intercepts-prefix.stdout" \
+        --before '== DateTimeFormatInfo intercepts ==' --policy crlf
+    gate_output compare "$out/intercepts-prefix.stdout" "$out/intercepts-before.stdout"
+    gate_output witness "$out/native.stdout" 'DateTimeFormatInfo intercepts end' 'DTFI helpers end' \
+        'DateOnly deconstruct end' 'DateTime private arithmetic end' 'CultureInfo string validator end' --count 1 --policy crlf
+    for zone in Etc/UTC Asia/Tokyo America/New_York; do
+        TZ="$zone" gate_capture_ok "$out/zone-$zone/private-native" run_bounded "./$out/DateTimeOps$EXE_EXT" private-datetime-only
+        TZ="$zone" gate_capture_ok "$out/zone-$zone/private-oracle" run_bounded dotnet "$_CG_APP" private-datetime-only
+        gate_output compare "$out/zone-$zone/private-native.stdout" "$out/zone-$zone/private-oracle.stdout"
+    done
+    gate_capture_ok "$out/refusals-native" run_bounded "./$out/DateTimeOps$EXE_EXT" dtfi-refusals
+    gate_output compare "$out/refusals-native.stdout" gates/expected/datetime-refusals.txt --policy crlf
+
+    local isolated="$out/direct-only" method
+    mkdir -p "$isolated/input"
+    cp -R "$(dirname "$_CG_APP")/." "$isolated/input/"
+    gate_capture_ok "$isolated/fixture" run_bounded dotnet \
+        "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+        --datetime-direct-only "$isolated/input/DateTimeOps.dll" "$_CG_CORELIB"
+    gate_output witness "$isolated/fixture.stdout" 'datetime direct-only roots=Deconstruct,TryAddTicks,TryCreate,.ctor' --count 1 --policy crlf
+    gate_capture_ok "$isolated/cli" invoke_cli "$isolated/input/DateTimeOps.dll" -r "$_CG_CORELIB" -o "$isolated/out"
+    for method in 'System.DateOnly::Deconstruct' 'System.DateTime::TryAddTicks' 'System.DateTime::TryCreate' 'System.DateTime::.ctor'; do
+        grep -Fqx "// $method" "$isolated/out"/generated*.cpp \
+            || { echo "FAIL: direct MemberRef did not retain $method" >&2; return 1; }
+    done
+
+    local public_only="$out/public-only"
+    mkdir -p "$public_only/input"
+    cp -R "$(dirname "$_CG_APP")/." "$public_only/input/"
+    gate_capture_ok "$public_only/fixture" run_bounded dotnet \
+        "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+        --datetime-public-only "$public_only/input/DateTimeOps.dll" "$_CG_CORELIB"
+    gate_output witness "$public_only/fixture.stdout" \
+        'datetime public-only root=System.Void System.DateTime::.ctor(System.Int32,System.Int32,System.Int32)' --count 1 --policy crlf
+    gate_capture_ok "$public_only/cli" invoke_cli "$public_only/input/DateTimeOps.dll" --no-ildiet -o "$public_only/out"
+
+    local negative="$out/refusal-tchar"
+    mkdir -p "$negative/input"
+    cp -R "$(dirname "$_CG_APP")/." "$negative/input/"
+    gate_capture_ok "$negative/fixture" run_bounded dotnet \
+        "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+        --datetime-tchar-negative "$negative/input/DateTimeOps.dll" "$_CG_CORELIB"
+    gate_output witness "$negative/fixture.stdout" 'DateSeparatorTChar return-owner=System.Span`1' --count 1 --policy crlf
+    gate_capture "$negative/cli" invoke_cli "$negative/input/DateTimeOps.dll" --auto-ref --no-ildiet -o "$negative/out"
+    [ "$(cat "$negative/cli.status")" = 2 ] \
+        && grep -Fq 'DateTimeFormatInfo TChar accessor requires its exact MethodSpec MemberRef signature' "$negative/cli.stdout" "$negative/cli.stderr" \
+        || { echo 'FAIL: malformed DTFI TChar return owner was not refused' >&2; return 1; }
 }
 
-corelib_diff_gate DateTimeOps
+corelib_diff_gate DateTimeOps --link-xml samples/dotnet/DateTimeOps/keep-dtfi-intercepts.xml

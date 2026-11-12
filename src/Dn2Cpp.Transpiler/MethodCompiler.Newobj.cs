@@ -649,6 +649,7 @@ internal sealed partial class MethodCompiler
             // Retained mapped bodies use the callable declaration's receiver ABI,
             // not an emitted managed struct layout.
             string receiverType = CoreIntrinsics.IsScalarNumericLeaf(callee)
+                || CoreIntrinsics.IsDateTimeCultureManagedBody(callee)
                 ? ReceiverCppType(callee.DeclaringClass)
                 : callee.DeclaringClass.CppStructName + "*";
             args[0] = CoerceTo(receiver, TypeDesc.MakeClass(callee.DeclaringClass), receiverType);
@@ -1585,7 +1586,18 @@ internal sealed partial class MethodCompiler
         if (NewobjTypeName(handle) == "System.DateTime"
             && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition)
         {
-            Push(StackKind.Struct, "Dn2CppDateTime", EmitDateTimeCtorExpr(DecodeCtorSignature(handle)));
+            var signature = DecodeCtorSignature(handle);
+            if (CoreIntrinsics.IsPotentialDateTimeManagedConstructor(signature))
+            {
+                var constructor = handle.Kind == HandleKind.MethodDefinition
+                    ? ResolveMethodDef((MethodDefinitionHandle)handle)
+                    : _c.ResolveMemberRefMethod(_module, (MemberReferenceHandle)handle, _method.Context);
+                if (!CoreIntrinsics.IsDateTimeManagedBody(constructor))
+                    throw new NotSupportedException("DateTime private constructor requires its exact CoreLib declaration");
+                EmitDateTimeManagedConstructor(constructor);
+                return;
+            }
+            Push(StackKind.Struct, "Dn2CppDateTime", EmitDateTimeCtorExpr(signature));
             return;
         }
         // A MemberRef from an app assembly but a MethodDef when the newobj sits in

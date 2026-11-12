@@ -888,7 +888,8 @@ internal sealed partial class Compilation
         CoreIntrinsics.ValidateVectorAlignment(target);
         CoreIntrinsics.ValidateConcreteVectorReduction(target);
         _reflectionSelectionCount++;
-        if (CoreIntrinsics.IsScalarNumericLeaf(target)
+        if (CoreIntrinsics.IsDateTimeCultureManagedBody(target)
+            || CoreIntrinsics.IsScalarNumericLeaf(target)
             || CoreIntrinsics.IsInvariantCompareInfoGetter(target)
             || CoreIntrinsics.IsVectorAlignmentManagedBody(target)
             || CoreIntrinsics.IsConcreteVectorReduction(target)

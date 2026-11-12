@@ -102,6 +102,22 @@ internal sealed partial class AssemblyDiet
             && parameter.Attributes == GenericParameterAttributes.NonVariant && parameter.Constraints.Count == 0;
     }
 
+    private static bool IsCopiedCultureInfoNameValidator(MethodDefinition method, string owner) =>
+        CoreIntrinsicTypeMaps.IsCultureInfoNameValidatorMethod(method.Module.Assembly?.Name.Name, owner, method.Name,
+            method.DeclaringType.DeclaringType is null && !method.DeclaringType.HasGenericParameters
+                && !method.DeclaringType.IsValueType && !method.DeclaringType.IsInterface
+                && method.Attributes == (MethodAttributes.Assembly | MethodAttributes.Static | MethodAttributes.HideBySig)
+                && method.ImplAttributes == MethodImplAttributes.IL && method.HasBody && method.RVA != 0
+                && method.Body.Instructions.Count != 0 && !method.HasPInvokeInfo && !method.IsPInvokeImpl
+                && !method.HasGenericParameters,
+            !method.HasThis && !method.ExplicitThis && method.CallingConvention == MethodCallingConvention.Default
+                && method.ReturnType is not TypeSpecification && method.ReturnType.MetadataType == MetadataType.Boolean
+                && method.Parameters.Count == 2
+                && method.Parameters[0].ParameterType is not TypeSpecification
+                && method.Parameters[0].ParameterType.MetadataType == MetadataType.String
+                && method.Parameters[1].ParameterType is not TypeSpecification
+                && method.Parameters[1].ParameterType.MetadataType == MetadataType.Boolean);
+
     private bool TraverseCopiedBody(MethodDefinition method)
     {
         if (_copiedBodyTraversal.TryGetValue(method, out bool known)) return known;
@@ -112,7 +128,11 @@ internal sealed partial class AssemblyDiet
             || IsCopiedNativeIntegerParse(method, owner)
             || BinaryIntegerEndianContract.IsNativeOwner(owner) && IsCopiedBinaryIntegerEndianBody(method, owner))
             traverse = false;
-        else if (IsCopiedScalarNumericLeaf(method, owner)
+        else if (IsCopiedCultureInfoNameValidator(method, owner)
+            || IsCopiedDateTimeManagedBody(method, owner)
+            || IsCopiedDateTimeFormatInfoManagedBody(method, owner)
+            || IsCopiedRangeThrowManagedBody(method, owner)
+            || IsCopiedScalarNumericLeaf(method, owner)
             || IsCopiedBinaryIntegerEndianBody(method, owner)
             || IsCopiedPrimitiveParseBody(method, owner)
             || IsCopiedDecimalBinaryBody(method, owner)

@@ -124,7 +124,8 @@ internal sealed partial class Compilation
                 // receiver (which folds to the dispatching runtime helper) finds it. Over-
                 // reaching on the non-virtual form is harmless.
                 ReachExceptionGetMessage(mi);
-                if (CoreIntrinsics.IsScalarNumericLeaf(mi)
+                if (CoreIntrinsics.IsDateTimeCultureManagedBody(mi)
+                    || CoreIntrinsics.IsScalarNumericLeaf(mi)
                     || CoreIntrinsics.IsBinaryIntegerEndianBody(mi)
                     || CoreIntrinsics.IsPrimitiveParseBody(mi)
                     || CoreIntrinsics.IsDecimalBinaryBody(mi)
@@ -359,6 +360,8 @@ internal sealed partial class Compilation
                 var ms = module.Reader.GetMethodSpecification((MethodSpecificationHandle)handle);
                 if (TryResolveVectorManagedThrowSpec(module, (MethodSpecificationHandle)handle, ctx) is { } vectorGuard)
                     return vectorGuard;
+                if (TryResolveRangeThrowManagedSpec(module, (MethodSpecificationHandle)handle, ctx) is { } rangeThrow)
+                    return rangeThrow;
                 // AsyncTaskMethodBuilder.Start<TSM> / .AwaitUnsafeOnCompleted are
                 // emitted inline. Both drive TSM.MoveNext (Start synchronously,
                 // AwaitUnsafeOnCompleted by registering it as a continuation), so
@@ -512,6 +515,14 @@ internal sealed partial class Compilation
                 // Every cut below probes the same MemberReference's parent type
                 // name; read it once (a pure metadata read).
                 string? mrParent = MemberRefParentTypeName(module, (MemberReferenceHandle)handle);
+                if (CoreIntrinsics.IsDateTimeCultureMemberName(mrParent, mrName)
+                    && (mr.Parent.Kind == HandleKind.TypeDefinition
+                        || mr.Parent.Kind == HandleKind.TypeReference
+                            && ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class is not null))
+                {
+                    var helper = ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
+                    if (CoreIntrinsics.IsDateTimeCultureManagedBody(helper)) return helper;
+                }
                 // Some cuts below need the OVERLOAD, not just the name — an intercept that
                 // lowers one overload of a method must not cut the edge to the others.
                 // Decode the signature at most once per token, and only once a cut whose
@@ -819,6 +830,24 @@ internal sealed partial class Compilation
         }
 
         var resolved = InstantiateMethodOnClass(declClass, defModule, templateHandle, methodArgs);
+        if (declClass.FullName == "System.Globalization.DateTimeFormatInfo"
+            && defModule.AssemblyName == "System.Private.CoreLib"
+            && CoreIntrinsics.IsDateTimeFormatInfoSpanName(resolved.Name))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoSpan(resolved)
+                || methodArgs is not [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char or PrimitiveTypeCode.Byte }])
+                throw new NotSupportedException("DateTimeFormatInfo TChar accessor requires its exact Char or Byte signature");
+            if (ms.Method.Kind == HandleKind.MemberReference)
+            {
+                var reference = reader.GetMemberReference((MemberReferenceHandle)ms.Method);
+                var signature = reference.DecodeMethodSignature(SigProvider,
+                    new GenericContext(declClass.Context.TypeArgs, methodArgs));
+                if (!CoreIntrinsics.IsDateTimeFormatInfoSpanSignature(reader.GetBlobReader(reference.Signature))
+                    || !CoreIntrinsics.IsDateTimeFormatInfoSpanDecodedSignature(signature, defModule))
+                    throw new NotSupportedException("DateTimeFormatInfo TChar accessor requires its exact MethodSpec MemberRef signature");
+            }
+        }
+        ValidateRangeThrowManagedSpec(module, ms, resolved, callerCtx);
         ValidateVectorManagedThrowSpec(module, ms, resolved, callerCtx);
         ValidateInteger128CheckedSpec(module, ms, resolved);
         return resolved;
@@ -1483,6 +1512,24 @@ internal sealed partial class Compilation
                     : candidates.FirstOrDefault(x => ParameterIdentityKey(x.Signature.ParameterTypes) == want) ?? candidates[0];
             }
         }
+        if (CoreIntrinsics.IsDateTimeManagedBody(resolved)
+            && !CoreIntrinsics.IsDateTimeManagedBodyReference(resolved, sig, reader.GetBlobReader(mr.Signature)))
+            throw new NotSupportedException("DateTime arithmetic member requires its exact CoreLib reference and declaration");
+        if (CoreIntrinsics.IsDateTimeLeapSecondSupport(resolved)
+            && !CoreIntrinsics.IsDateTimeLeapSecondSupportReference(resolved, sig, reader.GetBlobReader(mr.Signature)))
+            throw new NotSupportedException("DateTime leap-second capability requires its exact CoreLib reference and declaration");
+        if (cls.FullName == "System.Globalization.DateTimeFormatInfo"
+            && CoreIntrinsics.IsDateTimeFormatInfoSupportedName(name)
+            && candidates.Any(m => CoreIntrinsics.IsDateTimeFormatInfoManagedBody(m) || CoreIntrinsics.IsDateTimeFormatInfoBoundary(m))
+            && !CoreIntrinsics.IsDateTimeFormatInfoReference(resolved, sig, reader.GetBlobReader(mr.Signature)))
+            throw new NotSupportedException("DateTimeFormatInfo member requires its exact CoreLib reference and declaration");
+        if (name == "VerifyCultureName" && candidates.Any(CoreIntrinsics.IsCultureInfoNameValidator))
+        {
+            if (!CoreIntrinsics.IsCultureInfoNameValidatorSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsCultureInfoNameValidatorDecodedSignature(sig)
+                || !CoreIntrinsics.IsCultureInfoNameValidator(resolved))
+                throw new NotSupportedException("CultureInfo name validation requires its exact String, Boolean signature");
+        }
         if (name == "get_CompareInfo" && candidates.Any(CoreIntrinsics.IsInvariantCompareInfoGetter))
         {
             if (!CoreIntrinsics.IsInvariantCompareInfoGetterSignature(reader.GetBlobReader(mr.Signature))
@@ -1581,6 +1628,17 @@ internal sealed partial class Compilation
                 return multiply;
             throw new NotSupportedException("Primitive BigMul requires its exact CoreLib reference and declaration");
         }
+        // An unloaded owner still uses existing intrinsic fallbacks, including
+        // public DateTime constructors; a managed body needs a loaded declaration.
+        if (CoreIntrinsics.IsDateTimeCultureMemberName(full, reader.GetString(mr.Name))
+            && (mr.Parent.Kind == HandleKind.TypeDefinition
+                || ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class is not null))
+        {
+            var method = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeCultureManagedBody(method) || CoreIntrinsics.IsDateTimeFormatInfoBoundary(method)
+                || CoreIntrinsics.IsDateTimeLeapSecondSupport(method))
+                return method;
+        }
         if (full is "System.Globalization.DateTimeFormatInfo" or "System.Globalization.CultureInfo"
             && reader.StringComparer.Equals(mr.Name, "get_CompareInfo"))
         {
@@ -1635,7 +1693,7 @@ internal sealed partial class Compilation
 
     /// <summary>The folded compile-time constant for a call token targeting a
     /// const-folded getter (see <see cref="CoreIntrinsics.ConstFoldedGetter"/>),
-    /// or null for any other call. Works on raw metadata names only — it must
+    /// or null for any other call. Works on raw metadata only — it must
     /// not resolve or reach the target — and name-checks before touching the
     /// declaring type so the per-call-site probe stays cheap. The const-folded table
     /// is asked first and always wins; the platform-ISA fold only answers a
@@ -1656,6 +1714,11 @@ internal sealed partial class Compilation
                     && MethodDefParentTypeName(module, h) is { } declType
                     && CoreIntrinsics.ConstFoldedGetter(declType, name) is { } folded)
                     return folded;
+                // Only an exact CoreLib definition grants this capability verdict;
+                // a namesake MemberRef cannot prune code before its declaration binds.
+                if (name == "get_SystemSupportsLeapSeconds"
+                    && CoreIntrinsics.IsDateTimeLeapSecondSupportDefinition(module.Reader, h))
+                    return false;
                 return name == "get_IsSupported" ? PlatformIsaGetterFold(module, handle) : null;
             }
             case HandleKind.MemberReference:
