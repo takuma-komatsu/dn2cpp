@@ -498,6 +498,7 @@ ORDERED_PROJECTS=(
     # wasm-console consume it under DN2CPP_SKIP_BUILD.
     "gates/fixtures/md-readonly-byrefs/MdReadonlyByrefs.csproj"
     "gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+    "gates/fixtures/gen2-callback/interpreter/Patch/Gen2CallbackPatch.csproj"
     "gates/fixtures/compare-info-override/CompareInfoOverride.csproj"
     "gates/fixtures/typed-reference-erasure/TypedReferenceErasure.csproj"
     "gates/fixtures/typed-reference-signature/TypedReferenceSignature.csproj"

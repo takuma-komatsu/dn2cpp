@@ -1325,7 +1325,9 @@ internal sealed partial class MethodCompiler : IEvalStack
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
                 TryTokenFreeGenericIntrinsic(_method.DeclaringClass.FullName, _method.Name, _method.Context.MethodArgs),
                 "checked Int128 integer widening");
-        if (CoreIntrinsics.IsVectorExplicit(_method)
+        if (CoreIntrinsics.IsGen2GcCallbackRefusal(_method)
+            || CoreIntrinsics.IsGen2GcCallbackRegister(_method)
+            || CoreIntrinsics.IsVectorExplicit(_method)
             || CoreIntrinsics.IsConcreteVectorElement(_method)
             || CoreIntrinsics.IsVectorFloatingPointTernary(_method)
             || CoreIntrinsics.IsVectorLog(_method)

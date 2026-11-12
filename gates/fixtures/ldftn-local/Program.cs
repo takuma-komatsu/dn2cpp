@@ -5,6 +5,13 @@ using Mono.Cecil.Cil;
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+if (Gen2CallbackFixture.Run(args))
+    return;
+if (BufferReferenceMoveFixture.Run(args))
+    return;
+if (GcCoreLibInputFixture.Run(args))
+    return;
+
 if (DelegateSignaturesFixture.Run(args))
     return;
 

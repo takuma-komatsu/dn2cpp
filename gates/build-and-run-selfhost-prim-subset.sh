@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Companion process argument/stream/exit preservation, delegate callable bodies
-# and the console-self-host runtime primitives exercised exactly.
+# Companion process preservation, delegate callable bodies, GC collector
+# boundaries and reference moves through the console-self-host primitives.
 #
 #  #3 Interop.GetRandomBytes -> the non-cryptographic random source behind
 #     System.HashCode's process-global seed (the InternalCall
@@ -52,8 +52,7 @@
 #       * two null-receiver runtime helpers (dn2cpp_unbox and
 #         dn2cpp_task_exception), which must raise a CATCHABLE NullReferenceException
 #         rather than abort — i.e. the section's tail is an EH-recovery test.
-#     It is driven LAST, after the sections above: it forces a GC.Collect() and prints
-#     process-wide GC facts, so nothing else may inherit its collection.
+#     It runs after the sections above, which must not inherit its collection.
 #
 #  GcAllocatedBytesSubset — GC.GetAllocatedBytesForCurrentThread and
 #     GC.GetTotalAllocatedBytes(bool), lowered to the runtime's thread_local
@@ -69,14 +68,24 @@
 #     precise total has no such carve-out and must cover the 1 MiB. It sits in
 #     this bucket because it starts a Thread: this gate is the bucket's sole
 #     driver, so no wasm axis reaches the section.
+#
+# GC validation and wrapper behavior compare to the CLR; logical generation and
+# unavailable notification/finalizer-worker behavior use native-only contracts.
+# Buffer copies assert overlap and reference survival plus collector-aware
+# lowering. A separate Gen2 base reuses one image for reflection and both patch
+# codecs; minimal metadata and malformed inputs need emission only.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
 source "$(dirname "$0")/_common.sh"
 prepare_cli
 source "$(dirname "$0")/_delegate-callable-bodies.sh"
+source "$(dirname "$0")/_gc-collector-contracts.sh"
+source "$(dirname "$0")/_gen2-gate.sh"
 
 gate_prepare_app() {
-    delegate_callable_prepare_app "$@"
+    gc_collector_capture_raw_app "$2" || return 1
+    delegate_callable_prepare_app "$@" || return 1
+    gc_collector_prepare_app "$2"
 }
 
 gate_extra_asserts() {
@@ -89,6 +98,8 @@ gate_extra_asserts() {
     gate_output compare "$out/nullable-prefix.stdout" "$out/nullable-before.stdout"
     delegate_callable_asserts "$out"
     delegate_callable_retained_only "$out"
+    gc_collector_asserts "$out"
+    gen2_retained_boundary_gate "$out/gen2-retained"
 }
 
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \

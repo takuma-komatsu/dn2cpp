@@ -2120,6 +2120,7 @@ internal sealed partial class CppEmitter
         || _c.InterceptFtnTargets.Contains(m) || CoreIntrinsics.MdComparerCompare.Matches(m)
         || _c.IsUnorderableComparerCompareBody(m)
         || CoreIntrinsics.IsIntrinsicType(cls.FullName)
+            && !CoreIntrinsics.IsWaitHandleTimeoutConversion(m)
             && !CoreIntrinsics.IsDateTimeCultureManagedBody(m)
             && !CoreIntrinsics.IsScalarNumericLeaf(m)
             && !CoreIntrinsics.IsBinaryIntegerEndianBody(m)
@@ -2689,6 +2690,7 @@ internal sealed partial class CppEmitter
                         // the slot is only reached because SOME type dispatches the decl,
                         // and a string may never flow there.
                         if (CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName)
+                            && !CoreIntrinsics.IsWaitHandleTimeoutConversion(m)
                             && !CoreIntrinsics.IsDateTimeCultureManagedBody(m)
                             && !CoreIntrinsics.IsScalarNumericLeaf(m)
                             && !CoreIntrinsics.IsBinaryIntegerEndianBody(m)

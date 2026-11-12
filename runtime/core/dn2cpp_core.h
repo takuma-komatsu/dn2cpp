@@ -316,6 +316,9 @@ struct Dn2CppTypeReflection
 #define DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR 0x1
 #define DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR 0x2
 #define DN2CPP_TA_UNALLOCATED 0x4
+// Permanent runtime capability refusal. Unlike UNALLOCATED, preserving methods
+// or enabling hot update cannot make this type safe to instantiate/finalize.
+#define DN2CPP_TA_ALLOCATION_UNSUPPORTED 0x8
 
 inline constexpr Dn2CppTypeReflection dn2cpp_empty_type_reflection{};
 
@@ -3670,6 +3673,11 @@ template <typename T>
 // genuinely field-less struct keeps answering 1. See the flag's own doc for why the
 // bit, not the number, is the test, and why allocation sizing does not call it.
 void dn2cpp_require_layout(const Dn2CppTypeInfo* ti);
+// Call before allocating an instance or registering its finalizer. The predicate
+// decodes the reflection row, so a hot path evaluates it once at bind time.
+void dn2cpp_require_allocation_supported(const Dn2CppTypeInfo* ti);
+bool dn2cpp_allocation_unsupported(const Dn2CppTypeInfo* ti);
+[[noreturn]] void dn2cpp_throw_allocation_unsupported();
 // Numeric/date parse failures (the NumberStyles engine's Parse forms).
 [[noreturn]] void dn2cpp_throw_format();
 // The same, carrying the input real .NET's own message quotes ("The input string 'x' was

@@ -117,7 +117,21 @@ internal partial class Program
         Method(culture, "set_CurrentCulture", types.Void, statik | MethodAttributes.SpecialName, culture);
         Method(culture, "set_CurrentUICulture", types.Void, statik | MethodAttributes.SpecialName, culture);
         var gc = Type("System", "GC", obj);
-        Method(gc, "Collect", types.Void, statik);
+        // Keep collection real when public GC wrappers execute as managed IL.
+        var collectLeaf = new MethodDefinition("_Collect", MethodAttributes.Private | MethodAttributes.Static
+            | MethodAttributes.HideBySig, types.Void) { ImplAttributes = MethodImplAttributes.InternalCall };
+        collectLeaf.Parameters.Add(new ParameterDefinition(types.Int32));
+        collectLeaf.Parameters.Add(new ParameterDefinition(types.Int32));
+        collectLeaf.Parameters.Add(new ParameterDefinition(types.Boolean));
+        gc.Methods.Add(collectLeaf);
+        var collect = Method(gc, "Collect", types.Void, statik);
+        collect.Body.Instructions.Clear();
+        var collectIl = collect.Body.GetILProcessor();
+        collectIl.Emit(OpCodes.Ldc_I4_M1);
+        collectIl.Emit(OpCodes.Ldc_I4_2);
+        collectIl.Emit(OpCodes.Ldc_I4_0);
+        collectIl.Emit(OpCodes.Call, collectLeaf);
+        collectIl.Emit(OpCodes.Ret);
         Method(gc, "WaitForPendingFinalizers", types.Void, statik);
         var console = Type("System", "Console", obj);
         Method(console, "WriteLine", types.Void, statik, types.String);

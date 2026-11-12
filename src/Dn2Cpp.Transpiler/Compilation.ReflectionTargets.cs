@@ -890,6 +890,9 @@ internal sealed partial class Compilation
         CoreIntrinsics.ValidateConcreteVectorReduction(target);
         _reflectionSelectionCount++;
         if (CoreIntrinsics.BrDelegateCallable.Matches(target)
+            || CoreIntrinsics.IsCoreClrGcMemoryQuery(target)
+            || CoreIntrinsics.IsCoreClrFinalizerWorker(target)
+            || CoreIntrinsics.IsWaitHandleTimeoutConversion(target)
             || CoreIntrinsics.IsDateTimeCultureManagedBody(target)
             || CoreIntrinsics.IsScalarNumericLeaf(target)
             || CoreIntrinsics.IsInvariantCompareInfoGetter(target)

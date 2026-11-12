@@ -467,6 +467,16 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsGen2GcCallbackRefusal(callee))
+        {
+            // Both arguments and the receiver were already evaluated. Never touch
+            // fields or construct a weak handle; allocation is fenced independently.
+            for (int i = 0; i < callee.Signature.ParameterTypes.Length + 1; i++)
+                Emit($"(void)({Pop().Expr});");
+            Emit("dn2cpp_throw_platform_not_supported(\"Gen2 GC notification objects are not supported\");");
+            return;
+        }
+
         if (TryEmitGcMemmoveMarshalPrimitive(callee))
             return;
         if (TryEmitRandomBytesEntryAssemblyPrimitive(callee))
@@ -710,6 +720,12 @@ internal sealed partial class MethodCompiler
     {
         switch (callee.DeclaringClass.FullName, callee.Name)
         {
+            case ("System.GC", "RunFinalizers") when CoreIntrinsics.IsCoreClrFinalizerWorker(callee):
+                // dn2cpp owns the finalizer consumer. Never pump a second queue or
+                // fabricate the CoreCLR callback's finalized-object count.
+                Emit("dn2cpp_throw_platform_not_supported(\"System.GC.RunFinalizers is a CoreCLR-owned worker entry point; dn2cpp owns finalization. Use GC.WaitForPendingFinalizers instead.\");");
+                Push(StackKind.I4, "uint32_t", "0"); // stack shape only; the throw is noreturn
+                return true;
             case ("System.GC", "SuppressFinalize")
                 when callee.Signature.ParameterTypes.Length == 1 && callee.IsStatic:
             {
@@ -728,24 +744,39 @@ internal sealed partial class MethodCompiler
                 Emit($"dn2cpp_gc_reregister_for_finalize({Cast(o, "Dn2CppObject*")});");
                 return true;
             }
-            case ("System.GC", "Collect")
-                when callee.Signature.ParameterTypes.Length == 0 && callee.IsStatic:
+            // Public overloads keep their real validation IL. The private leaf
+            // maps their scheduling/compaction hints to Boehm's whole-heap collect.
+            case ("System.GC", "_Collect")
+                when callee.IsStatic
+                    && callee.Signature.ParameterTypes is [
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }]
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Void }:
+                Pop();
+                Pop();
+                Pop();
                 Emit("dn2cpp_gc_collect();");
                 return true;
             case ("System.GC", "WaitForPendingFinalizers")
                 when callee.Signature.ParameterTypes.Length == 0 && callee.IsStatic:
                 Emit("dn2cpp_gc_wait_for_pending_finalizers();");
                 return true;
+            // CoreLib's private QCall sibling is the non-collecting query. Retained
+            // MethodDef bodies must replay it through the same runtime accounting.
             case ("System.GC", "GetTotalMemory")
-                when callee.Signature.ParameterTypes.Length == 1 && callee.IsStatic:
-            {
-                var force = Pop();
-                Push(StackKind.I8, "int64_t", $"dn2cpp_gc_get_total_memory((int32_t)({force.Expr}))");
+                when CoreIntrinsics.IsCoreClrGcMemoryQuery(callee):
+                Push(StackKind.I8, "int64_t", "dn2cpp_gc_get_total_memory(0)");
                 return true;
-            }
             case ("System.GC", "GetAllocatedBytesForCurrentThread")
                 when callee.Signature.ParameterTypes.Length == 0 && callee.IsStatic:
                 Push(StackKind.I8, "int64_t", "dn2cpp_gc_allocated_bytes_current_thread()");
+                return true;
+            case ("System.GC", "_GetTotalPauseDuration")
+                when callee.IsStatic && callee.Signature.GenericParameterCount == 0
+                    && callee.Signature.ParameterTypes.Length == 0
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 }:
+                Push(StackKind.I8, "int64_t", "dn2cpp_gc_total_pause_ticks()");
                 return true;
             case ("System.GC", "GetTotalAllocatedBytes")
                 when callee.Signature.ParameterTypes.Length == 1 && callee.IsStatic:
@@ -763,6 +794,45 @@ internal sealed partial class MethodCompiler
                 Emit($"dn2cpp_keep_alive({Cast(o, "Dn2CppObject*")});");
                 return true;
             }
+            // This runtime has no full-GC notification capability. Preserve public
+            // validation and its existing failure contract; never register fake events.
+            case ("System.GC", "_RegisterForFullGCNotification")
+                when callee.IsStatic && callee.Signature.GenericParameterCount == 0
+                    && callee.Signature.ParameterTypes is [
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }:
+                Pop();
+                Pop();
+                Push(StackKind.I4, "int32_t", "0");
+                return true;
+            case ("System.GC", "_CancelFullGCNotification")
+                when callee.IsStatic && callee.Signature.GenericParameterCount == 0
+                    && callee.Signature.ParameterTypes.Length == 0
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }:
+                Push(StackKind.I4, "int32_t", "0");
+                return true;
+            case ("System.GC", "_WaitForFullGCApproach" or "_WaitForFullGCComplete")
+                when callee.IsStatic && callee.Signature.GenericParameterCount == 0
+                    && callee.Signature.ParameterTypes is [
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }:
+                Pop();
+                Push(StackKind.I4, "int32_t", "4"); // GCNotificationStatus.NotApplicable: never registered
+                return true;
+            // Boehm and the calloc fallback have one logical generation. Keep the
+            // public overloads as IL so their object/WeakReference validation survives.
+            case ("System.GC", "GetGenerationInternal")
+                when callee.IsStatic && callee.Signature.ParameterTypes is [{ IsObject: true }]
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }:
+                Pop();
+                Push(StackKind.I4, "int32_t", "0");
+                return true;
+            case ("System.GC", "GetMaxGeneration")
+                when callee.IsStatic && callee.Signature.ParameterTypes.Length == 0
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }:
+                Push(StackKind.I4, "int32_t", "0");
+                return true;
             case ("System.GC", "_CollectionCount")
                 when callee.Signature.ParameterTypes.Length == 2 && callee.IsStatic:
             {
@@ -980,10 +1050,10 @@ internal sealed partial class MethodCompiler
     /// heuristic consumes it, degrading trimming to time-based-only;</item>
     /// <item><c>Gen2GcCallback.Register(Func&lt;bool&gt;)</c> /
     /// <c>Register(Func&lt;object,bool&gt;, object)</c> → a no-op (drop the delegate).
-    /// Boehm has no gen2-notification hook; the only framework use is ArrayPool trim
-    /// scheduling, and pool trimming is QoS, not contract — parked buffers simply stay
-    /// parked. Cutting the class also keeps its CriticalFinalizerObject/WeakGCHandle
-    /// machinery out of the tree.</item>
+    /// Boehm has no gen2-notification hook. Existing ArrayPool and ThreadPool callers
+    /// keep this bounded policy; it is not a claim of Gen2 notification parity.
+    /// The separately retained constructors/finalizer refuse, and allocation is
+    /// prohibited before finalizer registration.</item>
     /// </list></summary>
     private bool TryEmitArrayPoolRuntimePrimitive(MethodInfo callee)
     {
@@ -1624,7 +1694,17 @@ internal sealed partial class MethodCompiler
         }
         // Buffer.BulkMoveWithWriteBarrier(ref byte dst, ref byte src, nuint byteCount) —
         // the overlap-safe move plus the collector notification its contract names.
-        if (name == "BulkMoveWithWriteBarrier" && sig.ParameterTypes.Length == 3)
+        // Its internal and batched entries have the same byte-count contract;
+        // CoreCLR chunk polling is replaced along with the move and write barrier.
+        if ((name == "BulkMoveWithWriteBarrier" && sig.ParameterTypes.Length == 3)
+            || (CoreIntrinsics.IsBufferInternalReferenceMove(name)
+                && sig.Header.RawValue == 0 && sig.GenericParameterCount == 0 && sig.ReturnType.IsVoid
+                && sig.ParameterTypes is
+                [
+                    { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte } },
+                    { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte } },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.UIntPtr },
+                ]))
         {
             var count = Pop();
             var src = Pop();

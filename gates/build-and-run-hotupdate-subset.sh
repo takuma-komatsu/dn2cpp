@@ -54,8 +54,8 @@
 # --hotupdate-base (ABI-contract hash constant + base-abi.json sidecar), the
 # patch assembly is baked into a Baked Patch Image by --emit-patch, and the
 # native base binary loads the BPI at run time and executes its entry method in
-# the runtime IL interpreter. This is the only gate that reaches
-# dn2cpp_interp.cpp at all.
+# the runtime IL interpreter. The selfhost primitive gate separately covers
+# the retained Gen2 allocation boundary in both codecs.
 #
 # What the patch exercises, in transcript order:
 #   - the scalar-instruction surface (args/locals, branches, arithmetic,
