@@ -1,6 +1,8 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 
 // System.DateOnly as an intrinsic value type (Dn2CppDateOnly), modeled like
 // System.DateTime / DateTimeOffset. The real corelib type reaches Number
@@ -73,5 +75,84 @@ static class Program
         map[d] = "first";
         map[new DateOnly(2026, 6, 27)] = "overwritten"; // same value -> same key
         Console.WriteLine("count=" + map.Count + " value=" + map[d]);
+    }
+
+    private static DateOnly producerDate;
+    private static int producerYear, producerMonth, producerDay, trace;
+    private delegate void DeconstructDate(out int year, out int month, out int day);
+
+    private static ref DateOnly ReceiverProducer()
+    {
+        trace = trace * 10 + 1;
+        return ref producerDate;
+    }
+
+    private static ref int YearProducer() { trace = trace * 10 + 2; return ref producerYear; }
+    private static ref int MonthProducer() { trace = trace * 10 + 3; return ref producerMonth; }
+
+    private static ref int DayProducer(bool throws)
+    {
+        trace = trace * 10 + 4;
+        if (throws) throw new FormatException("day output producer");
+        return ref producerDay;
+    }
+
+    private static string Outputs(int year, int month, int day) => year + "," + month + "," + day;
+
+    // January/February correction reloads already-written outputs, so aliases
+    // must remain observable rather than becoming independent property reads.
+    internal static void RunDeconstruct()
+    {
+        Console.WriteLine("== DateOnly deconstruct ==");
+        MethodInfo metadata = typeof(DateOnly).GetMethod(nameof(DateOnly.Deconstruct))!;
+        int[] dates = { 1, 1, 1, 2024, 2, 29, 2001, 12, 31, 1, 2, 28, 1, 3, 1, 1900, 2, 28, 2000, 2, 29, 2000, 3, 1, 9999, 12, 31 };
+        for (int k = 0; k < dates.Length; k += 3)
+        {
+            var date = new DateOnly(dates[k], dates[k + 1], dates[k + 2]);
+            date.Deconstruct(out int year, out int month, out int day);
+            string line = date.ToString("yyyy-MM-dd") + " separate=" + Outputs(year, month, day);
+            int a, b;
+            date.Deconstruct(out a, out a, out a);
+            line += " all=" + a;
+            date.Deconstruct(out a, out a, out b);
+            line += " ym=" + a + "," + b;
+            date.Deconstruct(out a, out b, out a);
+            line += " yd=" + a + "," + b;
+            date.Deconstruct(out b, out a, out a);
+            line += " md=" + b + "," + a;
+            for (int slot = 0; slot < 3; slot++)
+            {
+                var target = date;
+                int y = -1, m = -2, d = -3;
+                ref int storage = ref Unsafe.As<DateOnly, int>(ref target);
+                if (slot == 0) target.Deconstruct(out storage, out m, out d);
+                if (slot == 1) target.Deconstruct(out y, out storage, out d);
+                if (slot == 2) target.Deconstruct(out y, out m, out storage);
+                line += " receiver" + slot + "=" + storage + ":" + Outputs(y, m, d);
+            }
+            object[] values = { -1, -2, -3 };
+            object? result = metadata.Invoke(date, values);
+            DeconstructDate deconstruct = date.Deconstruct;
+            deconstruct(out int delegateYear, out int delegateMonth, out int delegateDay);
+            Console.WriteLine(line + " reflect=" + (result is null) + ":" + Outputs((int)values[0], (int)values[1], (int)values[2])
+                + " delegate=" + Outputs(delegateYear, delegateMonth, delegateDay));
+        }
+        for (int mode = 0; mode < 2; mode++)
+        {
+            producerDate = new DateOnly(2024, 2, 29);
+            producerYear = -1; producerMonth = -2; producerDay = -3; trace = 0;
+            string error = "none";
+            try { ReceiverProducer().Deconstruct(out YearProducer(), out MonthProducer(), out DayProducer(mode == 1)); }
+            catch (Exception caught) { error = caught.GetType().Name + ":" + caught.Message; }
+            Console.WriteLine("producer" + mode + "=" + error + " trace=" + trace + " " + Outputs(producerYear, producerMonth, producerDay));
+        }
+        string parameters = "";
+        foreach (var parameter in metadata.GetParameters())
+            parameters += parameter.ParameterType.Name + " ";
+        string nullTarget = "none";
+        try { metadata.Invoke(null, new object[] { -1, -2, -3 }); }
+        catch (TargetException) { nullTarget = "TargetException"; }
+        Console.WriteLine("reflect signature=" + metadata.ReturnType.Name + "(" + parameters.TrimEnd() + ") null target=" + nullTarget);
+        Console.WriteLine("DateOnly deconstruct end");
     }
 }

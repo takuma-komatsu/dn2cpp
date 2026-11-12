@@ -60,6 +60,11 @@ internal static class CoreIntrinsicTypeMaps
     public static bool IsDelegateBaseType(string? fullName) =>
         fullName is "System.Delegate" or "System.MulticastDelegate";
 
+    public static bool IsCultureInfoNameValidatorMethod(string? assembly, string? owner, string name,
+        bool exactDeclaration, bool exactSignature) =>
+        assembly == "System.Private.CoreLib" && owner == "System.Globalization.CultureInfo"
+        && name == "VerifyCultureName" && exactDeclaration && exactSignature;
+
     private static readonly HashSet<string> s_intrinsicTypes = new()
     {
         "System.Object",

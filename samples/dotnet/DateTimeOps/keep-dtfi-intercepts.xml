@@ -1,0 +1,19 @@
+<!-- Retained parser getters compile their real IL even when the driver does not
+     call them. Execution coverage is provided separately by the aggregate. -->
+<linker>
+  <assembly fullname="System.Private.CoreLib">
+    <type fullname="System.Globalization.DateTimeFormatInfo">
+      <method name="InternalGetGenitiveMonthNames" />
+      <method name="InternalGetLeapYearMonthNames" />
+      <method name="get_CompareInfo" />
+      <method name="get_FormatFlags" />
+      <method name="get_HasForceTwoDigitYears" />
+      <method name="get_HasSpacesInMonthNames" />
+      <method name="get_HasSpacesInDayNames" />
+      <method name="get_HasYearMonthAdjustment" />
+      <method name="get_GeneralShortTimePattern" />
+      <method name="get_GeneralLongTimePattern" />
+      <method name="get_DateTimeOffsetPattern" />
+    </type>
+  </assembly>
+</linker>

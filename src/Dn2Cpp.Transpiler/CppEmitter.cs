@@ -2119,6 +2119,7 @@ internal sealed partial class CppEmitter
         || _c.InterceptFtnTargets.Contains(m) || CoreIntrinsics.MdComparerCompare.Matches(m)
         || _c.IsUnorderableComparerCompareBody(m)
         || CoreIntrinsics.IsIntrinsicType(cls.FullName)
+            && !CoreIntrinsics.IsDateTimeCultureManagedBody(m)
             && !CoreIntrinsics.IsScalarNumericLeaf(m)
             && !CoreIntrinsics.IsBinaryIntegerEndianBody(m)
             && !CoreIntrinsics.IsPrimitiveParseBody(m)
@@ -2686,6 +2687,7 @@ internal sealed partial class CppEmitter
                         // the slot is only reached because SOME type dispatches the decl,
                         // and a string may never flow there.
                         if (CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName)
+                            && !CoreIntrinsics.IsDateTimeCultureManagedBody(m)
                             && !CoreIntrinsics.IsScalarNumericLeaf(m)
                             && !CoreIntrinsics.IsBinaryIntegerEndianBody(m)
                             && !CoreIntrinsics.IsPrimitiveParseBody(m)
@@ -3052,6 +3054,12 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    dn2cpp_set_delegate_method_catalog({delegateMethods.Sym}, {delegateMethods.Count});");
         if (_objectVirtualInheritance is { } objectVirtuals)
             sb.AppendLine($"    dn2cpp_set_object_virtual_inheritance({objectVirtuals.Sym}, {objectVirtuals.Count});");
+        if (_dateTimeTryAddTicksRow is not null || _dateTimeTryCreateRow is not null || _dateTimeLocalConstructorRow is not null)
+            sb.AppendLine($"    dn2cpp_set_datetime_parser_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeTryAddTicksRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeTryCreateRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeLocalConstructorRow ?? "nullptr"}));");
+        if (_dateOnlyDeconstructRow is { } dateOnlyRow)
+            sb.AppendLine($"    dn2cpp_set_dateonly_deconstruct_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({dateOnlyRow}));");
+        if (_cultureNameValidatorRow is { } cultureNameValidatorRow)
+            sb.AppendLine($"    dn2cpp_set_culture_name_validator_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({cultureNameValidatorRow}));");
         if (_cultureCompareInfoRow is { } cultureCompareInfoRow)
             sb.AppendLine($"    dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({cultureCompareInfoRow}));");
         // The shared reference-element SZArray fallback table goes in before any managed
@@ -3814,6 +3822,11 @@ internal sealed partial class CppEmitter
     private (string Sym, int Count)? _objectVirtualInheritance;
     private (string Sym, int Count)? _delegateMethodCatalog;
     private string? _cultureCompareInfoRow;
+    private string? _cultureNameValidatorRow;
+    private string? _dateOnlyDeconstructRow;
+    private string? _dateTimeTryAddTicksRow;
+    private string? _dateTimeTryCreateRow;
+    private string? _dateTimeLocalConstructorRow;
     private (string Sym, int Count)? _delegateInterfaceTargets;
 
     /// <summary>Records the base of each unbound reference-type runtime handle whose

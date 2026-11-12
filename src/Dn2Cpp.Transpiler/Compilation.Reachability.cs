@@ -141,6 +141,7 @@ internal sealed partial class Compilation
         if (CoreIntrinsics.IsInt128Checked(m)
             || CoreIntrinsics.IsUInt128Checked(m)
             || CoreIntrinsics.IsInvariantCompareInfoGetter(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoBoundary(m)
             || CoreIntrinsics.BrInvariantCompareInfoCallback.Matches(m.DeclaringClass.FullName, m.Name))
         {
             _predTrace.TryAdd(m, _currentScan);
@@ -174,7 +175,8 @@ internal sealed partial class Compilation
         }
         if (m.Rva == 0)
             return;
-        if (CoreIntrinsics.IsScalarNumericLeaf(m)
+        if (CoreIntrinsics.IsDateTimeCultureManagedBody(m)
+            || CoreIntrinsics.IsScalarNumericLeaf(m)
             || CoreIntrinsics.IsBinaryIntegerEndianBody(m)
             || CoreIntrinsics.IsPrimitiveParseBody(m)
             || CoreIntrinsics.IsDecimalBinaryBody(m)

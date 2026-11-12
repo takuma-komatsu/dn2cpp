@@ -15,7 +15,7 @@ namespace HotPathNoAllocMixedBad
 {
     using Dn2Cpp.Runtime;
 
-    /// <summary>Four [HotPath(NoAlloc = true)] methods, each allocating through a
+    /// <summary>[HotPath(NoAlloc = true)] methods, each allocating through a
     /// directly-emitted runtime helper the verifier must detect: ToString on an
     /// object receiver (dn2cpp_object_tostring — a runtime-internal dispatch that
     /// returns a fresh string), two-string concat (dn2cpp_string_concat2),
@@ -60,6 +60,12 @@ namespace HotPathNoAllocMixedBad
             return entries.MoveNext();
         }
 
+        [HotPath(NoAlloc = true)]
+        private static string DayName(System.Globalization.DateTimeFormatInfo info, DayOfWeek day)
+        {
+            return info.GetDayName(day);
+        }
+
         private static void Empty() { }
 
         private static void Main()
@@ -71,6 +77,7 @@ namespace HotPathNoAllocMixedBad
             Action supplied = Empty;
             supplied += Empty;
             Console.WriteLine(AdvanceInvocation(supplied));
+            Console.WriteLine(DayName(System.Globalization.DateTimeFormatInfo.InvariantInfo, DayOfWeek.Monday));
         }
     }
 }

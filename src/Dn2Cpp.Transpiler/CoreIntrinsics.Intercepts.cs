@@ -598,6 +598,8 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.Cut, InterceptEmitArm.RuntimePrimitive,
         extra: static mi => LoweredRuntimePrimitive(mi.DeclaringClass.FullName, mi.Name)
             || IsInvariantCompareInfoGetter(mi)
+            || IsDateTimeFormatInfoBoundary(mi)
+            || IsDateTimeLeapSecondSupport(mi)
             || IsVectorExplicit(mi)
             || IsConcreteVectorElement(mi)
             || IsVectorFloatingPointTernary(mi)

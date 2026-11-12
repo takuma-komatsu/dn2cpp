@@ -767,11 +767,31 @@ Opaque reflection conservatively considers available getter rows when invocation
 or delegate binding is used; it does not infer which runtime method is selected.
 No general CultureInfo subclass ABI or virtual-dispatch framework is introduced.
 
-The existing public AbbreviatedMonthNames and AbbreviatedMonthGenitiveNames
-getters return fresh detached clones of shared, precise String[] backing arrays.
-The cache follows the precise-type keyed, mutex-protected pinned-root pattern;
-its scanned roots keep the arrays and their strings alive. First use allocates
-and is classified accordingly; warm lookup reuses the arrays.
+DateTimeFormatInfo name lookup, public array cloning and pattern composition
+retain their CoreLib IL above frozen invariant-data leaves. Shared precise
+String[] backing arrays use mutex-protected scanned pinned roots; public name
+arrays remain detached clones. First use can allocate. Pattern setters and
+per-culture date formatting remain unsupported. The Char/Byte TChar accessors
+read the existing mutable DateSeparator; other text stays invariant. Char spans
+borrow string storage, while Byte spans use GC-managed UTF-8 buffers, without
+promising CoreCLR cache identity.
+
+Native DateTimeFormatInfo values do not construct CultureData or Calendar state.
+Calendar access refuses explicitly; its setter preserves receiver, read-only and
+null-value checks before refusing a nonnull change. Tokenize is a capability
+boundary: it throws PlatformNotSupportedException without reading parser state
+or changing output references. Ordinary callvirt still checks its receiver.
+Retaining that callable body does not make token-table parsing functional.
+
+DateOnly.Deconstruct and the selected private DateTime arithmetic helpers retain
+their original IL over the mapped day-number and date-data value fields.
+The native date model does not represent leap seconds. Its Windows CoreLib
+capability leaf is false, leaving the OS-dependent leap-second branch unreachable.
+CultureInfo.VerifyCultureName(String, Boolean) likewise retains its field-free
+managed body; its CultureInfo overload depends on unmodeled inheritance state.
+Only the exact retained DateOnly, DateTime and CultureInfo rows are attached to
+named lookup on their runtime-owned type identities. This does not expose an
+unmodeled reflection surface or imply general member enumeration support.
 
 #### Portable vector lowering
 
