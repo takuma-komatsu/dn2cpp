@@ -1851,6 +1851,24 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_get_enum_underlying({Cast(a, "Dn2CppType*")})");
                 return true;
             }
+            case ("System.Type", "IsEnumDefined") when sig.Header.IsInstance
+                && sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }]:
+            {
+                var value = Pop();
+                var type = Pop();
+                Push(StackKind.I4, "int32_t",
+                    $"dn2cpp_type_is_enum_defined({Cast(type, "Dn2CppType*")}, {Cast(value, "Dn2CppObject*")})");
+                return true;
+            }
+            case ("System.Type", "GetEnumName") when sig.Header.IsInstance
+                && sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }]:
+            {
+                var value = Pop();
+                var type = Pop();
+                Push(StackKind.Ref, "Dn2CppString*",
+                    $"dn2cpp_type_get_enum_name({Cast(type, "Dn2CppType*")}, {Cast(value, "Dn2CppObject*")})");
+                return true;
+            }
             case ("System.Type", "GetEnumNames") when sig.ParameterTypes.Length == 0:
             {
                 var a = Pop();
@@ -2460,18 +2478,6 @@ internal sealed partial class MethodCompiler
                     $"(intptr_t)dn2cpp_alloc_type_associated({Cast(t, "Dn2CppType*")}, {Cast(size, "int32_t")})");
                 return true;
             }
-            // Enum.InternalGetCorElementType: the CorElementType of the boxed enum's
-            // underlying primitive, read from the type-info header (the real body is
-            // MethodTable pointer math).
-            case ("System.Enum", "InternalGetCorElementType") when sig.ParameterTypes.Length == 0:
-            {
-                var e = Pop();
-                string ct = CppTypes.Of(sig.ReturnType);
-                Push(CppTypes.KindOf(sig.ReturnType), ct,
-                    $"({ct})dn2cpp_enum_cor_element_type({Cast(e, "Dn2CppObject*")})");
-                return true;
-            }
-
             default:
                 return false;
         }

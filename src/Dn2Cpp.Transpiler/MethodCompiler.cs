@@ -692,6 +692,9 @@ internal sealed partial class MethodCompiler : IEvalStack
         CoreIntrinsics.ValidateConcreteVectorElement(_method);
         TaintCanonicalVectorOwner(_method.DeclaringClass);
         TaintCanonicalFixedVectorValueOwner(_method.DeclaringClass, _method.Name);
+        if (SharedTrial && CoreIntrinsics.IsEnumStaticFormatSharedCandidate(_method))
+            throw new SharedBodyTaintException("enum-raw-format",
+                "Enum raw integer formatting requires a closed primitive identity");
         if (SharedTrial && IsFixedVectorFacade(_method.DeclaringClass))
             foreach (var argument in _method.Context.MethodArgs)
                 TaintIfCanonical(argument, "fixed-vector-element");
@@ -836,7 +839,9 @@ internal sealed partial class MethodCompiler : IEvalStack
                 }
                 if (!virtFtn && _c.TrimLdftnRedirect(target) is { } redirect)
                     target = redirect;
-                _ftnOrigins.Add(insn.Offset + 1, (target, virtFtn && target.IsVirtual, virtFtn));
+                _ftnOrigins.Add(insn.Offset + 1, (target, virtFtn && target.IsVirtual
+                    && !CoreIntrinsics.IsRuntimeTypeEnumName(target)
+                    && !CoreIntrinsics.IsRuntimeTypeEnumDefined(target), virtFtn));
             }
 
         foreach (var insn in insns)
@@ -1325,7 +1330,8 @@ internal sealed partial class MethodCompiler : IEvalStack
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
                 TryTokenFreeGenericIntrinsic(_method.DeclaringClass.FullName, _method.Name, _method.Context.MethodArgs),
                 "checked Int128 integer widening");
-        if (CoreIntrinsics.IsGen2GcCallbackRefusal(_method)
+        if (CoreIntrinsics.IsRuntimeTypeEnumName(_method) || CoreIntrinsics.IsRuntimeTypeEnumDefined(_method)
+            || CoreIntrinsics.IsGen2GcCallbackRefusal(_method)
             || CoreIntrinsics.IsGen2GcCallbackRegister(_method)
             || CoreIntrinsics.IsVectorExplicit(_method)
             || CoreIntrinsics.IsConcreteVectorElement(_method)
@@ -4038,7 +4044,15 @@ internal sealed partial class MethodCompiler : IEvalStack
                         + $"dn2cpp_bind_interface_slot(dn2cpp_resolve_interface({receiver}->type, "
                         + $"&{itf.CppTypeInfoName})[{clone.VtableSlot}], {receiver}))";
                 }
-                else if (m.IsVirtual && CoreIntrinsics.BrEnumInstanceFormat.Matches(m.DeclaringClass.FullName, m.Name))
+                else if (CoreIntrinsics.IsRuntimeTypeEnumName(m) || CoreIntrinsics.IsRuntimeTypeEnumDefined(m))
+                {
+                    // RuntimeType is sealed; its native header has no CoreCLR virtual slots.
+                    bindsLowering = true;
+                    NoteFtnTargetBody(m.Emittable);
+                    _c.NoteNamedBodySymbol(_method, m.Emittable);
+                    expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{m.Emittable.CppName})";
+                }
+                else if (m.IsVirtual && CoreIntrinsics.BrEnumInstanceFormat.Matches(m))
                 {
                     _c.NoteEnumInterfaces();
                     bindsLowering = true;

@@ -45,6 +45,10 @@ namespace EnumOps
             if (args.Length > 0 && args[0] == "before-enum-lookup")
                 return;
             EnumLookupSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-enum-corelib")
+                return;
+            EnumCoreLibQueriesSubset.Program.Run();
+            EnumStaticIntegerFormatSubset.Program.Run();
         }
     }
 }

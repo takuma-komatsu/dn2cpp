@@ -2108,7 +2108,11 @@ internal sealed partial class CppEmitter
     private bool HasReplacedBody(ClassInfo cls, MethodInfo m) =>
         m.Rva == 0 || m.IsSynthetic
         || CoreIntrinsics.BrHttpShim.Matches(cls.FullName, m.Name)
-        || CoreIntrinsics.BrEnumInstanceFormat.Matches(cls.FullName, m.Name)
+        || CoreIntrinsics.BrEnumStaticFormat.Matches(m)
+        || CoreIntrinsics.BrEnumInstanceFormat.Matches(m)
+        || CoreIntrinsics.BrEnumElementType.Matches(m)
+        || CoreIntrinsics.BrEnumScalarGetName.Matches(m)
+        || CoreIntrinsics.BrEnumUnderlyingType.Matches(m)
         || CoreIntrinsics.BrLifetimeDispose.Matches(cls.FullName, m.Name)
         || CoreIntrinsics.BrDelegateCallable.Matches(m)
         || CoreIntrinsics.BrDelegateClone.Matches(cls.FullName, m.Name)
@@ -2564,7 +2568,17 @@ internal sealed partial class CppEmitter
                         // emit the synthesized enum-format body in place of the real IL that
                         // reachability cut. Like the HTTP shim above, the planning pass leaves emitBody
                         // null so the null-conditional skips the compile.
-                        if (CoreIntrinsics.BrEnumInstanceFormat.Matches(cls.FullName, m.Name))
+                        if (CoreIntrinsics.BrEnumStaticFormat.Matches(m))
+                        {
+                            emitBody?.Invoke(m, new MethodCompiler(_c, m, literals, _backend)
+                                .CompileEnumStaticFormatBody());
+                            compiledMethods.Add(m);
+                            continue;
+                        }
+                        if (CoreIntrinsics.BrEnumInstanceFormat.Matches(m)
+                            || CoreIntrinsics.BrEnumElementType.Matches(m)
+                            || CoreIntrinsics.BrEnumScalarGetName.Matches(m)
+                            || CoreIntrinsics.BrEnumUnderlyingType.Matches(m))
                         {
                             emitBody?.Invoke(m, new MethodCompiler(_c, m, literals, _backend)
                                 .CompileEnumInstanceFormatBody());

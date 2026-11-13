@@ -1402,6 +1402,16 @@ multicast factories accept only a flattened prefix of the receiver's exact type,
 with enough entries to represent a multicast value; unsupported private states
 and CoreCLR VM constructor stubs throw without interpreting CLR-owned pointers.
 
+Enum instance body replacement is declaration- and signature-specific; a static
+helper with the same name does not acquire a boxed-receiver ABI. Closed integer
+`Enum.ToString<TUnderlying,TStorage>` helpers read the raw underlying width and
+share the existing native formatter. Their names/flags branches, scalar name
+lookup and element/underlying-type queries read native enum metadata rather than
+CoreCLR MethodTables or RuntimeType caches. Canonical width placeholders
+specialize before selecting a primitive identity; other managed Enum bodies
+remain outside this replacement family. Callable private leaves and RuntimeType enum query delegates use the same
+native contracts as direct calls; stripping changes retention, not representation.
+
 A recognized site that selects a virtual member marks its slot used, so every
 allocated receiver's override is reached as for a call site. Through any other
 reflective entry, a receiver's override runs only when a call site, a recognized

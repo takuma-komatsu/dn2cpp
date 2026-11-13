@@ -718,7 +718,7 @@ internal static class CoreIntrinsicTypeMaps
     /// synthesized body (the <see cref="BrEnumInstanceFormat"/> BodyReplace row): the four
     /// ToString overloads (parameterless, string, IFormatProvider, string+IFormatProvider),
     /// GetTypeCode, the three value-comparison overrides Equals(object) / GetHashCode() /
-    /// CompareTo(object), and the private GetValue() (the boxer behind every IConvertible.To*
+    /// CompareTo(object), and the internal GetValue() (the boxer behind every IConvertible.To*
     /// override).
     ///
     /// <para>Their real bodies reach ToStringInlined/HandleRareTypes -> GetEnumInfo ->
@@ -729,18 +729,50 @@ internal static class CoreIntrinsicTypeMaps
     /// members is what removes that whole cascade, which is why they are here rather than
     /// call-site intrinsics.</para>
     ///
-    /// <para>Cut by NAME (which also catches the [Obsolete] ToString overloads) and lowered
-    /// by SHAPE in CompileEnumInstanceFormatBody, total over the set — an unmodeled overload
-    /// throws there rather than emitting a body that names the cut IL. The synthesized value
+    /// <para>Only the owned instance declaration shapes, including the obsolete provider
+    /// overloads, receive instance replacement bodies. Static helpers have a separate contract.
+    /// The synthesized value
     /// bodies delegate to dn2cpp_object_gethashcode / dn2cpp_object_equals /
     /// dn2cpp_enum_compareto / dn2cpp_enum_get_value, which read the boxed enum's payload at
     /// its underlying width, so one body serves every enum across all storage widths.
     /// GetValue closes the whole IConvertible.To* family in one row: each member keeps its
     /// real body once GetValue no longer names the cut FCall.</para></summary>
-    public static bool IsEnumInstanceFormatMethod(string? declType, string name) =>
-        declType == "System.Enum"
-        && name is "ToString" or "GetTypeCode" or "Equals" or "GetHashCode" or "CompareTo"
-            or "GetValue";
+    public static bool IsEnumInstanceFormatMember(string? owner, string name) =>
+        owner == "System.Enum"
+        && name is "ToString" or "GetTypeCode" or "Equals" or "GetHashCode" or "CompareTo" or "GetValue";
+
+    public static bool IsEnumInstanceFormatMethod(string? assembly, string? owner, string name,
+        bool isStatic, int genericArity, int attributes, int implAttributes, int parameterCount,
+        string? returnType, string? firstType, string? secondType)
+    {
+        if (assembly != "System.Private.CoreLib" || !IsEnumInstanceFormatMember(owner, name)
+            || isStatic || genericArity != 0 || implAttributes != 0)
+            return false;
+        // Exact declaration flags distinguish overrides, final interface slots and the internal boxer.
+        int expected = (name, parameterCount, returnType, firstType, secondType) switch
+        {
+            ("ToString", 0, "System.String", null, null) => 0x00c6,
+            ("ToString", 1, "System.String", "System.String", null) => 0x0086,
+            ("ToString", 1, "System.String", "System.IFormatProvider", null) => 0x01e6,
+            ("ToString", 2, "System.String", "System.String", "System.IFormatProvider") => 0x01e6,
+            ("GetTypeCode", 0, "System.TypeCode", null, null) => 0x01e6,
+            ("Equals", 1, "System.Boolean", "System.Object", null) => 0x00c6,
+            ("GetHashCode", 0, "System.Int32", null, null) => 0x00c6,
+            ("CompareTo", 1, "System.Int32", "System.Object", null) => 0x01e6,
+            ("GetValue", 0, "System.Object", null, null) => 0x0083,
+            _ => 0,
+        };
+        return expected != 0 && attributes == expected;
+    }
+
+    public static bool IsEnumRuntimeLeafDeclaration(string? assembly, string? owner, string name,
+        bool isStatic, int genericArity, int attributes, int implAttributes) =>
+        assembly == "System.Private.CoreLib" && owner == "System.Enum" && genericArity == 0
+        && (name, isStatic, attributes, implAttributes) is
+            ("InternalGetCorElementType", false, 0x0081, 0x0100)
+            or ("InternalGetCorElementType", true, 0x0091, 0x0100)
+            or ("InternalGetUnderlyingType", true, 0x0093, 0x0100)
+            or ("GetName", true, 0x0093, 0);
 
     public static bool IsEnumTryFormatMethod(string? declType, string name) =>
         declType == "System.Enum" && name == "System.ISpanFormattable.TryFormat";

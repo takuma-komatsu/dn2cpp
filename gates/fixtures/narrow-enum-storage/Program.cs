@@ -45,6 +45,8 @@ foreach (string suffix in new[] { "U8", "I8", "U16", "I16", "I32" })
     }
 }
 module.EntryPoint = owner.Methods.Single(m => m.Name == "Run");
+EnumContractGuardAssertions.Run(args[2], args[3]);
+EnumRuntimeContractFixture.Rewrite(module, args[2]);
 // CLR probing must not resolve the sibling native EnumOps.exe as this assembly.
 module.Assembly.Name.Name = Path.GetFileNameWithoutExtension(args[1]);
 module.Name = Path.GetFileName(args[1]);

@@ -379,7 +379,7 @@ internal sealed partial class CppEmitter
         // such as Equals(null) before touching this. A closed-null binding must
         // enter that body, not be rejected before its argument-dependent branch.
         if (CoreIntrinsics.BrDelegateCallable.Matches(m)
-            || CoreIntrinsics.BrEnumInstanceFormat.Matches(cls.FullName, m.Name) || IsNullTolerantObjectMember(cls, m))
+            || CoreIntrinsics.BrEnumInstanceFormat.Matches(m) || IsNullTolerantObjectMember(cls, m))
             return NullOnlyScan;
         if (HasReplacedBody(cls, m) || _backend.ShouldSkipMethodBody(cls, m))
             return FaultingScan;

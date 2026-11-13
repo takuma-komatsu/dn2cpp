@@ -2588,7 +2588,7 @@ internal sealed partial class MethodCompiler
             call = DirectCall(target, args);
         }
         else if (isCallvirt && callee.IsVirtual
-            && CoreIntrinsics.BrEnumInstanceFormat.Matches(callee.DeclaringClass.FullName, callee.Name))
+            && CoreIntrinsics.BrEnumInstanceFormat.Matches(callee))
         {
             // An enum's virtual-final ToString(IFormatProvider) / ToString(string,
             // IFormatProvider) / GetTypeCode / CompareTo(object) reached as a callvirt on a

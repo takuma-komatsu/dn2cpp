@@ -29,6 +29,8 @@
 # including flags and enums with no declared members.
 # A cursor-only enum retains its metadata, and AppendJoin keeps the partial
 # builder when Current or Dispose throws, including Dispose replacing Current's fault.
+# Type.GetEnumName and IsEnumDefined cover direct and bound delegates at every
+# integral width; Enum.Format covers flags, aliases, numeric and hex formatting.
 # Former gates: enum-flags, enum-interp, enum-tostring, enum-value-tostring,
 # external-enum.
 source "$(dirname "$0")/_common.sh"
@@ -115,6 +117,12 @@ gate_extra_asserts() {
         'boxed defined exact=True:False' \
         'enum alias metadata end' \
         --count 1 --policy crlf
+
+    gate_capture_ok "$out/enum-corelib-before" run_bounded dotnet "$_CG_APP" before-enum-corelib
+    gate_output select "$native" "$out/enum-corelib-prefix.stdout" --before '== enum name lookup ==' --policy crlf
+    gate_output compare "$out/enum-corelib-prefix.stdout" "$out/enum-corelib-before.stdout" --policy crlf
+    gate_output witness "$native" 'enum name lookup end' 'enum definition routes end' \
+        'enum static integer format end' --count 1 --policy crlf
 
     narrow_enum_storage_asserts "$out"
 }
