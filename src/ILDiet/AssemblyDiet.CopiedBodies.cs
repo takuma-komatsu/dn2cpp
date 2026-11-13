@@ -144,13 +144,107 @@ internal sealed partial class AssemblyDiet
             traverse = CoreIntrinsicTypeMaps.IsRealBodyGeneric(owner, method.Name) || CopiedArrayRealBodyMember(method);
         else
             traverse = !CoreIntrinsicTypeMaps.IsInlineLoweredPrimitiveMember(owner, method.Name)
-                && !CoreIntrinsicTypeMaps.IsEnumInstanceFormatMethod(owner, method.Name)
+                && !IsCopiedEnumInstanceFormat(method, owner)
+                && !IsCopiedEnumRuntimeLeaf(method, owner)
                 && !CoreIntrinsicTypeMaps.IsEnumTryFormatMethod(owner, method.Name)
                 && (!CopiedIntrinsicType(method.DeclaringType)
                     || CoreIntrinsicTypeMaps.IntrinsicManagedBodyFamily(owner)
                     || ClassifyReflectionTarget(method) is null && CopiedInterfaceImplementation(method));
         _copiedBodyTraversal.Add(method, traverse);
         return traverse;
+    }
+
+    private static bool IsCopiedEnumRuntimeLeaf(MethodDefinition method, string owner)
+    {
+        var type = method.DeclaringType;
+        if (!CoreIntrinsicTypeMaps.IsEnumRuntimeLeafDeclaration(method.Module.Assembly?.Name.Name, owner, method.Name,
+                method.IsStatic, method.GenericParameters.Count, (int)method.Attributes, (int)method.ImplAttributes)
+            || type.Module != method.Module || type.FullName != owner || type.DeclaringType is not null || type.HasGenericParameters
+            || !type.IsAbstract || type.IsSealed || type.IsInterface || type.IsEnum || type.IsValueType
+            || method.HasThis == method.IsStatic || method.ExplicitThis || method.CallingConvention != MethodCallingConvention.Default
+            || !method.HasBody || method.RVA == 0 || method.Body.Instructions.Count == 0 || method.HasPInvokeInfo || method.IsPInvokeImpl)
+            return false;
+        int count = method.IsStatic ? method.Name == "GetName" ? 2 : 1 : 0;
+        if (method.Parameters.Count != count) return false;
+        bool scalar = method.Name == "GetName";
+        return (scalar ? method.ReturnType is not TypeSpecification && method.ReturnType.MetadataType == MetadataType.String
+                : CopiedEnumRuntimeLeafType(method.ReturnType, method.Module, method.Name == "InternalGetCorElementType"))
+            && (count == 0 || CopiedEnumRuntimeLeafType(method.Parameters[0].ParameterType, method.Module, element: false))
+            && (!scalar || method.Parameters[1].ParameterType is not TypeSpecification
+                && method.Parameters[1].ParameterType.MetadataType == MetadataType.UInt64);
+    }
+
+    private static bool CopiedEnumRuntimeLeafType(TypeReference type, ModuleDefinition module, bool element)
+    {
+        if (type is not TypeDefinition definition || definition.Module != module
+            || definition.DeclaringType is not null || definition.HasGenericParameters
+            || definition.IsInterface || definition.IsAbstract || !definition.IsSealed)
+            return false;
+        if (!element) return definition.FullName == "System.RuntimeType" && !definition.IsValueType && !definition.IsEnum;
+        if (definition.FullName != "System.Reflection.CorElementType" || !definition.IsEnum || !definition.IsValueType
+            || definition.BaseType is not TypeDefinition parent || parent.Module != module || parent.FullName != "System.Enum")
+            return false;
+        bool found = false;
+        foreach (var field in definition.Fields)
+        {
+            if (field.IsStatic) continue;
+            if (found || field.Name != "value__" || field.FieldType is TypeSpecification || field.FieldType.MetadataType != MetadataType.Byte)
+                return false;
+            found = true;
+        }
+        return found;
+    }
+
+    private static bool IsCopiedEnumInstanceFormat(MethodDefinition method, string owner)
+    {
+        var type = method.DeclaringType;
+        if (!CoreIntrinsicTypeMaps.IsEnumInstanceFormatMember(owner, method.Name)
+            || method.Module.Assembly?.Name.Name != "System.Private.CoreLib" || type.Module != method.Module
+            || type.FullName != owner || type.DeclaringType is not null || type.HasGenericParameters
+            || !type.IsAbstract || type.IsSealed || type.IsInterface || type.IsEnum
+            || method.IsStatic || !method.HasThis || method.ExplicitThis
+            || method.CallingConvention != MethodCallingConvention.Default || method.HasGenericParameters
+            || !method.HasBody || method.RVA == 0 || method.Body.Instructions.Count == 0
+            || method.HasPInvokeInfo || method.IsPInvokeImpl || method.Parameters.Count > 2)
+            return false;
+        string? result = CopiedEnumInstanceFormatType(method.ReturnType, method.Module);
+        string? first = method.Parameters.Count > 0 ? CopiedEnumInstanceFormatType(method.Parameters[0].ParameterType, method.Module) : null;
+        string? second = method.Parameters.Count > 1 ? CopiedEnumInstanceFormatType(method.Parameters[1].ParameterType, method.Module) : null;
+        return result is not null && (method.Parameters.Count == 0 || first is not null) && (method.Parameters.Count < 2 || second is not null)
+            && CoreIntrinsicTypeMaps.IsEnumInstanceFormatMethod(method.Module.Assembly.Name.Name, owner, method.Name,
+                method.IsStatic, method.GenericParameters.Count, (int)method.Attributes, (int)method.ImplAttributes,
+                method.Parameters.Count, result, first, second);
+    }
+
+    private static string? CopiedEnumInstanceFormatType(TypeReference type, ModuleDefinition module)
+    {
+        if (type is TypeSpecification) return null;
+        switch (type.MetadataType)
+        {
+            case MetadataType.Boolean: return "System.Boolean";
+            case MetadataType.Int32: return "System.Int32";
+            case MetadataType.String: return "System.String";
+            case MetadataType.Object: return "System.Object";
+        }
+        if (type is not TypeDefinition definition || definition.Module != module
+            || definition.DeclaringType is not null || definition.HasGenericParameters)
+            return null;
+        if (definition.FullName == "System.IFormatProvider" && definition.IsInterface
+            && definition.IsAbstract && !definition.IsSealed && !definition.IsValueType)
+            return "System.IFormatProvider";
+        if (definition.FullName != "System.TypeCode" || !definition.IsEnum || !definition.IsValueType
+            || definition.IsInterface || definition.IsAbstract || !definition.IsSealed
+            || definition.BaseType is not TypeDefinition parent || parent.Module != module || parent.FullName != "System.Enum")
+            return null;
+        bool found = false;
+        foreach (var field in definition.Fields)
+        {
+            if (field.IsStatic) continue;
+            if (found || field.Name != "value__" || field.FieldType is TypeSpecification || field.FieldType.MetadataType != MetadataType.Int32)
+                return null;
+            found = true;
+        }
+        return found ? "System.TypeCode" : null;
     }
 
     private static bool CopiedArrayRealBodyMember(MethodDefinition method)

@@ -1908,8 +1908,12 @@ Dn2CppType* dn2cpp_nullable_get_underlying(Dn2CppType* t);
 // The value arrives BOXED: the enum type is chosen at run time at these call sites, so
 // only this side can read the payload at the enum's own model width.
 Dn2CppString* dn2cpp_enum_get_name(Dn2CppType* t, Dn2CppObject* value);
+Dn2CppString* dn2cpp_type_get_enum_name(Dn2CppType* t, Dn2CppObject* value);
+Dn2CppString* dn2cpp_runtime_type_get_enum_name(Dn2CppType* t, Dn2CppObject* value);
 Dn2CppString* dn2cpp_enum_get_name_u64(Dn2CppType* t, uint64_t value);
 int32_t dn2cpp_enum_is_defined(Dn2CppType* t, Dn2CppObject* value);
+int32_t dn2cpp_runtime_type_is_enum_defined(Dn2CppType* t, Dn2CppObject* value);
+int32_t dn2cpp_type_is_enum_defined(Dn2CppType* t, Dn2CppObject* value);
 Dn2CppObject* dn2cpp_enum_parse_type(Dn2CppType* t, Dn2CppString* s, int32_t ignoreCase);
 // Enum.TryParse(Type, string[, ignoreCase], out object): returns 1 + *out=boxed enum on
 // success, 0 + *out=null on a value parse miss; the TYPE is still validated (null / non-enum
@@ -1931,6 +1935,10 @@ Dn2CppObject* dn2cpp_enum_to_object_boxed(Dn2CppType* t, Dn2CppObject* value);
 // x and X uppercase, as .NET does). Null type/value/format throw ArgumentNullException,
 // a non-enum type ArgumentException, an unrecognized format string FormatException.
 Dn2CppString* dn2cpp_enum_format(Dn2CppType* t, Dn2CppObject* value, Dn2CppString* format);
+// Closed integer generic Enum formatters: read exactly the primitive's raw width first.
+// D/X ignore type; G/F require canonical matching enum metadata, never CLR cache fields.
+Dn2CppString* dn2cpp_enum_format_raw_integer(Dn2CppType* type, const void* rawData,
+    const Dn2CppTypeInfo* underlying, char16_t format);
 // The Span<char> / ReadOnlySpan<char> an emitted interface-dispatch site passes BY
 // VALUE, i.e. the shape an ISpanFormattable.TryFormat slot is called with.
 struct Dn2CppItfCharSpan { char16_t* ptr; int32_t length; };
@@ -2943,6 +2951,8 @@ Dn2CppArrayRef* dn2cpp_paramref_custom_modifiers(Dn2CppParamRef* p, int32_t requ
 // Enum.InternalGetCorElementType: the CorElementType code of the boxed enum's
 // underlying primitive (read from the type-info's enumUnderlying handle).
 int32_t dn2cpp_enum_cor_element_type(Dn2CppObject* e);
+int32_t dn2cpp_enum_type_cor_element_type(Dn2CppType* type);
+Dn2CppType* dn2cpp_enum_internal_get_underlying_type(Dn2CppType* type);
 // Enum.GetValue(): boxes the enum's underlying primitive value under the
 // underlying primitive's type-info (Byte/Int16/Int32/.../UInt64), matching what
 // `box <underlying>` emits. Backs the IConvertible.To* overrides (which hand the

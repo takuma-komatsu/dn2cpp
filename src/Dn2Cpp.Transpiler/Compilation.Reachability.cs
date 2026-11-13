@@ -117,7 +117,13 @@ internal sealed partial class Compilation
         // calls, so replacing it closes that whole family (each To* keeps its real
         // Convert.ToXxx(GetValue(), …) body). The synthesized body names only runtime helpers, so
         // unlike BrHttpShim there is no managed edge to reach.
-        if (CoreIntrinsics.BrEnumInstanceFormat.Matches(m.DeclaringClass.FullName, m.Name))
+        // Canonical formatters are tainted during planning, not scanned into CLR caches.
+        if (CoreIntrinsics.IsEnumStaticFormatSharedCandidate(m)
+            || CoreIntrinsics.BrEnumStaticFormat.Matches(m)
+            || CoreIntrinsics.BrEnumInstanceFormat.Matches(m)
+            || CoreIntrinsics.BrEnumElementType.Matches(m)
+            || CoreIntrinsics.BrEnumScalarGetName.Matches(m)
+            || CoreIntrinsics.BrEnumUnderlyingType.Matches(m))
         {
             if (AddReachable(m))
             {
@@ -163,7 +169,8 @@ internal sealed partial class Compilation
             NoteInterceptFtnTarget(m);
             return;
         }
-        if (CoreIntrinsics.IsGen2GcCallbackRefusal(m)
+        if (CoreIntrinsics.IsRuntimeTypeEnumName(m) || CoreIntrinsics.IsRuntimeTypeEnumDefined(m)
+            || CoreIntrinsics.IsGen2GcCallbackRefusal(m)
             || CoreIntrinsics.IsGen2GcCallbackRegister(m)
             || CoreIntrinsics.IsInt128Checked(m)
             || CoreIntrinsics.IsUInt128Checked(m)

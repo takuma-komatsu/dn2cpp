@@ -1267,33 +1267,9 @@ Dn2CppString* enum_flags_format(const Dn2CppTypeInfo* ti, uint64_t mask, uint64_
     return dn2cpp_string_from_utf8(out.c_str(), static_cast<int32_t>(out.size()));
 }
 
-} // namespace
-
-// Enum.Format(Type, object value, string format): the static enum formatter
-// EnumConverter.ConvertTo drives. See the header for the per-specifier contract.
-Dn2CppString* dn2cpp_enum_format(Dn2CppType* t, Dn2CppObject* value, Dn2CppString* format)
+Dn2CppString* enum_format_value(const Dn2CppTypeInfo* ti, int64_t ev, uint64_t uv,
+    int32_t byteWidth, bool isUnsigned, uint64_t mask, char16_t fc)
 {
-    // .NET checks value and format for null before the type.
-    if (value == nullptr)
-        dn2cpp_throw_argument_null_param("value");
-    if (format == nullptr)
-        dn2cpp_throw_argument_null_param("format");
-    const Dn2CppTypeInfo* ti = dn2cpp_enum_type_require(t);
-    if (format->length != 1)
-        dn2cpp_throw_format();
-    char16_t fc = format->chars[0];
-
-    int32_t byteWidth;
-    bool isUnsigned;
-    enum_underlying_shape(ti, &byteWidth, &isUnsigned);
-    uint64_t mask = byteWidth >= 8 ? ~0ULL : ((1ULL << (8 * byteWidth)) - 1);
-    // The box payload sits right after the header; a 64-bit underlying carries an
-    // 8-byte payload, every narrower one the int32 model width (see dn2cpp_object_tostring).
-    const void* payload = value + 1;
-    int64_t ev = byteWidth == 8 ? *reinterpret_cast<const int64_t*>(payload)
-                                : *reinterpret_cast<const int32_t*>(payload);
-    uint64_t uv = static_cast<uint64_t>(ev) & mask;
-
     switch (fc)
     {
         case u'G': case u'g':
@@ -1341,6 +1317,95 @@ Dn2CppString* dn2cpp_enum_format(Dn2CppType* t, Dn2CppObject* value, Dn2CppStrin
             dn2cpp_throw_format();
     }
     return nullptr; // unreachable (all arms return or throw)
+}
+
+} // namespace
+
+// Enum.Format(Type, object value, string format): the static enum formatter
+// EnumConverter.ConvertTo drives. See the header for the per-specifier contract.
+Dn2CppString* dn2cpp_enum_format(Dn2CppType* t, Dn2CppObject* value, Dn2CppString* format)
+{
+    // .NET checks value and format for null before the type.
+    if (value == nullptr)
+        dn2cpp_throw_argument_null_param("value");
+    if (format == nullptr)
+        dn2cpp_throw_argument_null_param("format");
+    const Dn2CppTypeInfo* ti = dn2cpp_enum_type_require(t);
+    if (format->length != 1)
+        dn2cpp_throw_format();
+    char16_t fc = format->chars[0];
+
+    int32_t byteWidth;
+    bool isUnsigned;
+    enum_underlying_shape(ti, &byteWidth, &isUnsigned);
+    uint64_t mask = byteWidth >= 8 ? ~0ULL : ((1ULL << (8 * byteWidth)) - 1);
+    // The box payload sits right after the header; a 64-bit underlying carries an
+    // 8-byte payload, every narrower one the int32 model width (see dn2cpp_object_tostring).
+    const void* payload = value + 1;
+    int64_t ev = byteWidth == 8 ? *reinterpret_cast<const int64_t*>(payload)
+                                : *reinterpret_cast<const int32_t*>(payload);
+    uint64_t uv = static_cast<uint64_t>(ev) & mask;
+
+    return enum_format_value(ti, ev, uv, byteWidth, isUnsigned, mask, fc);
+}
+
+// The generic declaration fixes width/sign; rawData is read before any format or Type check.
+Dn2CppString* dn2cpp_enum_format_raw_integer(Dn2CppType* type, const void* rawData,
+    const Dn2CppTypeInfo* underlying, char16_t format)
+{
+    int32_t width;
+    bool isUnsigned;
+    if (underlying == &dn2cpp_sbyte_type)       { width = 1; isUnsigned = false; }
+    else if (underlying == &dn2cpp_byte_type)   { width = 1; isUnsigned = true; }
+    else if (underlying == &dn2cpp_int16_type)  { width = 2; isUnsigned = false; }
+    else if (underlying == &dn2cpp_uint16_type) { width = 2; isUnsigned = true; }
+    else if (underlying == &dn2cpp_int32_type)  { width = 4; isUnsigned = false; }
+    else if (underlying == &dn2cpp_uint32_type) { width = 4; isUnsigned = true; }
+    else if (underlying == &dn2cpp_int64_type)  { width = 8; isUnsigned = false; }
+    else if (underlying == &dn2cpp_uint64_type) { width = 8; isUnsigned = true; }
+    else dn2cpp_throw_argument_param("Unsupported enum formatter underlying type.", "underlying");
+
+    const void* data = dn2cpp_null_check(rawData);
+    uint64_t uv;
+    switch (width)
+    {
+        case 1: { uint8_t v; std::memcpy(&v, data, sizeof(v)); uv = v; break; }
+        case 2: { uint16_t v; std::memcpy(&v, data, sizeof(v)); uv = v; break; }
+        case 4: { uint32_t v; std::memcpy(&v, data, sizeof(v)); uv = v; break; }
+        default: std::memcpy(&uv, data, sizeof(uv)); break;
+    }
+    int64_t ev = 0;
+    if (!isUnsigned)
+    {
+        if (width == 8) std::memcpy(&ev, &uv, sizeof(ev));
+        else
+        {
+            ev = static_cast<int64_t>(uv);
+            if ((uv & (1ULL << (width * 8 - 1))) != 0)
+                ev -= 1LL << (width * 8);
+        }
+    }
+    const Dn2CppTypeInfo* ti = nullptr;
+    switch (format)
+    {
+        case u'D': case u'd': case u'X': case u'x':
+            break; // These IL branches never inspect enumType.
+        case u'G': case u'g': case u'F': case u'f':
+            type = dn2cpp_null_check(type);
+            // Invalid private-call inputs are native safety boundaries, not CLR cache emulation.
+            if (type->type != &dn2cpp_type_type)
+                dn2cpp_throw_platform_not_supported("Enum formatter requires a canonical RuntimeType");
+            ti = dn2cpp_type_require(type);
+            if ((ti->flags & DN2CPP_TF_ENUM) == 0)
+                dn2cpp_throw_argument_param(DN2CPP_SR_MUST_BE_ENUM, "enumType");
+            if (ti->enumUnderlying != underlying)
+                dn2cpp_throw_argument_param("Enum formatter underlying type does not match enumType.", "enumType");
+            break;
+        default:
+            dn2cpp_throw_format();
+    }
+    uint64_t mask = width == 8 ? ~0ULL : (1ULL << (width * 8)) - 1;
+    return enum_format_value(ti, ev, uv, width, isUnsigned, mask, format);
 }
 
 // The boxed-enum interface map's ISpanFormattable.TryFormat slot. It lives here
@@ -11172,22 +11237,52 @@ Dn2CppArrayRef* dn2cpp_paramref_custom_modifiers(Dn2CppParamRef* p, int32_t requ
     return arr;
 }
 
-// Enum.InternalGetCorElementType: the CorElementType code of a boxed enum's
-// underlying primitive, read from its type-info. The model default is I4.
+// CoreCLR's primitive MethodTable element type unwraps enums, but reports
+// ordinary classes (including String/Object) as CLASS rather than signature codes.
+static int32_t enum_cor_element_type(const Dn2CppTypeInfo* type)
+{
+    if (type == nullptr || dn2cpp_signature_kind(type) != 0
+        || (type->flags & DN2CPP_TF_GENERICPARAM) != 0)
+        dn2cpp_throw_not_supported_msg("Enum element type requires a runtime MethodTable type");
+    if ((type->flags & DN2CPP_TF_ENUM) != 0)
+        type = type->enumUnderlying != nullptr ? type->enumUnderlying : &dn2cpp_int32_type;
+    int32_t primitive = dn2cpp_prim_code(type);
+    if (primitive >= 0) return primitive + 2;
+    if (type == &dn2cpp_void_type) return 0x01;
+    if ((type->flags & DN2CPP_TF_VALUETYPE) != 0
+        && type->name != nullptr && std::strcmp(type->name, "System.TypedReference") == 0) return 0x16;
+    if (type == &dn2cpp_intptr_type) return 0x18;
+    if (type == &dn2cpp_uintptr_type) return 0x19;
+    if ((type->flags & DN2CPP_TF_ARRAY) != 0)
+        return dn2cpp_is_md_array(type) ? 0x14 : 0x1D;
+    return (type->flags & DN2CPP_TF_VALUETYPE) != 0 ? 0x11 : 0x12;
+}
+
 int32_t dn2cpp_enum_cor_element_type(Dn2CppObject* e)
 {
     dn2cpp_memberref_require(e);
-    const Dn2CppTypeInfo* u = e->type != nullptr ? e->type->enumUnderlying : nullptr;
-    if (u == &dn2cpp_bool_type) return 0x02;   // ELEMENT_TYPE_BOOLEAN
-    if (u == &dn2cpp_char_type) return 0x03;   // ELEMENT_TYPE_CHAR
-    if (u == &dn2cpp_sbyte_type) return 0x04;  // ELEMENT_TYPE_I1
-    if (u == &dn2cpp_byte_type) return 0x05;   // ELEMENT_TYPE_U1
-    if (u == &dn2cpp_int16_type) return 0x06;  // ELEMENT_TYPE_I2
-    if (u == &dn2cpp_uint16_type) return 0x07; // ELEMENT_TYPE_U2
-    if (u == &dn2cpp_uint32_type) return 0x09; // ELEMENT_TYPE_U4
-    if (u == &dn2cpp_int64_type) return 0x0A;  // ELEMENT_TYPE_I8
-    if (u == &dn2cpp_uint64_type) return 0x0B; // ELEMENT_TYPE_U8
-    return 0x08;                               // ELEMENT_TYPE_I4
+    return enum_cor_element_type(e->type);
+}
+
+int32_t dn2cpp_enum_type_cor_element_type(Dn2CppType* type)
+{
+    dn2cpp_type_require(type);
+    return enum_cor_element_type(type->typeInfo);
+}
+
+// Enum's private primitive-type table has null holes and no SZARRAY entry.
+// Unlike its public counterpart, this query does not validate an enum argument.
+Dn2CppType* dn2cpp_enum_internal_get_underlying_type(Dn2CppType* type)
+{
+    int32_t code = dn2cpp_enum_type_cor_element_type(type);
+    if (static_cast<uint32_t>(code) >= 26)
+        dn2cpp_throw_index_out_of_range();
+    if (!((code >= 2 && code <= 13) || code == 0x18 || code == 0x19))
+        return nullptr;
+    const Dn2CppTypeInfo* underlying = type->typeInfo;
+    if ((underlying->flags & DN2CPP_TF_ENUM) != 0)
+        underlying = underlying->enumUnderlying != nullptr ? underlying->enumUnderlying : &dn2cpp_int32_type;
+    return dn2cpp_get_type_from_handle(underlying);
 }
 
 // Enum.GetValue(): boxes the enum's underlying primitive value. The result box's
@@ -11393,6 +11488,18 @@ Dn2CppString* dn2cpp_enum_get_name(Dn2CppType* t, Dn2CppObject* value)
     return enum_get_name_boxed(t, value);
 }
 
+Dn2CppString* dn2cpp_type_get_enum_name(Dn2CppType* t, Dn2CppObject* value)
+{
+    dn2cpp_type_require(t);
+    return enum_get_name_boxed(t, value);
+}
+
+// An explicit call to the retained managed body validates value before using this.
+Dn2CppString* dn2cpp_runtime_type_get_enum_name(Dn2CppType* t, Dn2CppObject* value)
+{
+    return enum_get_name_boxed(t, value);
+}
+
 // IsEnumDefined accepts a name, the exact underlying primitive, or the same enum.
 // Validate before reading a payload; unlike GetEnumName, integer widths do not coerce.
 static int32_t enum_is_defined_boxed(Dn2CppType* t, Dn2CppObject* value)
@@ -11451,6 +11558,21 @@ int32_t dn2cpp_enum_is_defined(Dn2CppType* t, Dn2CppObject* value)
 {
     if (t == nullptr)
         dn2cpp_throw_argument_null_param("enumType");
+    return enum_is_defined_boxed(t, value);
+}
+
+// Raw retained calls validate value before dereferencing this; callvirt checks at entry.
+int32_t dn2cpp_runtime_type_is_enum_defined(Dn2CppType* t, Dn2CppObject* value)
+{
+    if (value == nullptr)
+        dn2cpp_throw_argument_null_param("value");
+    dn2cpp_type_require(t);
+    return enum_is_defined_boxed(t, value);
+}
+
+int32_t dn2cpp_type_is_enum_defined(Dn2CppType* t, Dn2CppObject* value)
+{
+    dn2cpp_type_require(t);
     return enum_is_defined_boxed(t, value);
 }
 

@@ -316,6 +316,7 @@ internal enum InterceptEmitArm
     /// <c>dn2cpp_type_get_type_code</c>), which dispatch on the boxed enum's runtime
     /// type, so one synthesized body serves every enum.</summary>
     EnumInstanceFormatBody,
+    EnumStaticFormatBody,
     /// <summary>Inherited lifetime wrappers and their protected base implementations.</summary>
     LifetimeDisposeBody,
     /// <summary>Delegate.Clone's callable slot uses the same shallow-copy helper as a direct call.</summary>
@@ -598,6 +599,7 @@ internal static partial class CoreIntrinsics
     public static readonly MethodDefIntercept MdRuntimePrimitive = new(
         InterceptCutKind.Cut, InterceptEmitArm.RuntimePrimitive,
         extra: static mi => LoweredRuntimePrimitive(mi.DeclaringClass.FullName, mi.Name)
+            || IsRuntimeTypeEnumName(mi) || IsRuntimeTypeEnumDefined(mi)
             || IsInvariantCompareInfoGetter(mi)
             || IsDateTimeFormatInfoBoundary(mi)
             || IsDateTimeLeapSecondSupport(mi)
@@ -1009,9 +1011,10 @@ internal static partial class CoreIntrinsics
     public static readonly MemberRefIntercept MrEnumStatics = new(
         InterceptCutKind.Cut, InterceptEmitArm.IntrinsicUnderDeclTypeNullCtx,
         typeGate: "System.Enum",
-        extra: static (_, n, _) => n is "GetNames" or "GetName" or "IsDefined"
+        extra: static (_, n, sig) => n is "GetNames" or "IsDefined"
             or "Parse" or "TryParse" or "Format" or "GetUnderlyingType" or "GetValues"
-            or "GetValuesAsUnderlyingType" or "ToObject");
+            or "GetValuesAsUnderlyingType" or "ToObject"
+            || n == "GetName" && IsEnumPublicGetNameSignature(sig()));
 
     /// <summary>Nullable.GetUnderlyingType(Type) — the real reflection body is not
     /// an edge; lowered to the runtime helper (NULL-context decode, like
@@ -1649,6 +1652,12 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.BodyReplace, InterceptEmitArm.HttpShimBody,
         extra: static (dt, n) => IsBodyReplacedHttpMethod(dt, n));
 
+    /// <summary>Closed integer static formatters consume native enum metadata, not a CLR cache.</summary>
+    public static readonly MethodDefIntercept BrEnumStaticFormat = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.EnumStaticFormatBody,
+        typeGate: "System.Enum", nameGate: "ToString",
+        extra: static m => IsEnumStaticFormatMethod(m));
+
     /// <summary>The System.Enum instance ToString/GetTypeCode family
     /// (<see cref="IsEnumInstanceFormatMethod"/>): real IL cut from the SCAN, body
     /// synthesized by <c>MethodCompiler.CompileEnumInstanceFormatBody</c> under the
@@ -1667,9 +1676,29 @@ internal static partial class CoreIntrinsics
     /// body. The synthesized body calls only runtime helpers that dispatch on the boxed enum's
     /// runtime type, so it reaches no managed edge — unlike <see cref="BrHttpShim"/> there is
     /// no <c>ReachXxxEdges</c> companion.</para></summary>
-    public static readonly NameKeyedIntercept BrEnumInstanceFormat = new(
+    public static readonly MethodDefIntercept BrEnumInstanceFormat = new(
         InterceptCutKind.BodyReplace, InterceptEmitArm.EnumInstanceFormatBody,
-        extra: static (dt, n) => IsEnumInstanceFormatMethod(dt, n));
+        typeGate: "System.Enum", extra: static m => IsEnumInstanceFormatMethod(m));
+
+    /// <summary>The boxed and RuntimeType enum leaves read native type-info rather
+    /// than CoreCLR MethodTable layout.</summary>
+    public static readonly MethodDefIntercept BrEnumElementType = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.EnumInstanceFormatBody,
+        typeGate: "System.Enum", nameGate: "InternalGetCorElementType",
+        extra: static m => IsEnumRuntimeLeafMethod(m));
+
+    /// <summary>The internal underlying-type query projects the runtime primitive
+    /// element code, without CoreCLR MethodTable access.</summary>
+    public static readonly MethodDefIntercept BrEnumUnderlyingType = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.EnumInstanceFormatBody,
+        typeGate: "System.Enum", nameGate: "InternalGetUnderlyingType",
+        extra: static m => IsEnumRuntimeLeafMethod(m));
+
+    /// <summary>The scalar enum-name lookup uses native enum metadata rather than RuntimeType caches.</summary>
+    public static readonly MethodDefIntercept BrEnumScalarGetName = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.EnumInstanceFormatBody,
+        typeGate: "System.Enum", nameGate: "GetName",
+        extra: static m => IsEnumRuntimeLeafMethod(m));
 
     /// <summary>Retains callable inherited disposal slots while replacing the runtime-only
     /// cleanup. Public wrappers dispatch Dispose(bool); a base bool call never redispatches.</summary>
@@ -1790,7 +1819,6 @@ internal static partial class CoreIntrinsics
     public static readonly NameKeyedIntercept[] BoundedIntercepts =
     [
         BrHttpShim,
-        BrEnumInstanceFormat,
         BrLifetimeDispose,
         BrDelegateClone,
         BrInvariantCompareInfoCallback,
@@ -1866,6 +1894,31 @@ internal static partial class CoreIntrinsics
         if (BrNativeIntegerEndian.CutKind != InterceptCutKind.BodyReplace
             || BrNativeIntegerParse.CutKind != InterceptCutKind.BodyReplace)
             throw new InvalidOperationException("Native integer operations must retain callable target-width bodies");
+
+        CheckRow(nameof(BrEnumStaticFormat), 0, BrEnumStaticFormat.EmitArm,
+            BrEnumStaticFormat.TypeGate, BrEnumStaticFormat.NameGate);
+        if (BrEnumStaticFormat.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Enum static formatting must remain callable");
+
+        CheckRow(nameof(BrEnumInstanceFormat), 0, BrEnumInstanceFormat.EmitArm,
+            BrEnumInstanceFormat.TypeGate, BrEnumInstanceFormat.NameGate);
+        if (BrEnumInstanceFormat.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Enum instance formatting must remain callable");
+
+        CheckRow(nameof(BrEnumElementType), 0, BrEnumElementType.EmitArm,
+            BrEnumElementType.TypeGate, BrEnumElementType.NameGate);
+        if (BrEnumElementType.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Enum element-type body must remain callable");
+
+        CheckRow(nameof(BrEnumScalarGetName), 0, BrEnumScalarGetName.EmitArm,
+            BrEnumScalarGetName.TypeGate, BrEnumScalarGetName.NameGate);
+        if (BrEnumScalarGetName.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Enum scalar name body must remain callable");
+
+        CheckRow(nameof(BrEnumUnderlyingType), 0, BrEnumUnderlyingType.EmitArm,
+            BrEnumUnderlyingType.TypeGate, BrEnumUnderlyingType.NameGate);
+        if (BrEnumUnderlyingType.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Enum underlying-type body must remain callable");
 
         for (int i = 0; i < MethodDefIntercepts.Length; i++)
         {

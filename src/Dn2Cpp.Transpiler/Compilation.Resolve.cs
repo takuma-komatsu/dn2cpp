@@ -327,18 +327,6 @@ internal sealed partial class Compilation
                 // (MethodCompiler.TranslateCall) asks THIS SAME row.
                 if (CoreIntrinsics.MdMemoryMarshalArrayData.Matches(mi))
                     return null;
-                // System.Enum.InternalGetCorElementType() (the 0-arg instance form): the emit
-                // route reads the CorElementType from the boxed enum's type-info header
-                // (dn2cpp_enum_cor_element_type — MethodCompiler.EmitIntrinsic.Reflection), so
-                // its real body — MethodTable pointer math over the InternalCalls
-                // GetMethodTable / GetPrimitiveCorElementType — must NOT be a reachability
-                // edge. Reached from Enum.GetTypeCode / Enum.CompareTo / the ToString rare-type
-                // path, so the leaf is cut here for every caller. The name gate short-circuits
-                // before the signature decode (0-arg discriminates it from the static
-                // InternalGetCorElementType(RuntimeType), which keeps its body).
-                if (mi.Name == "InternalGetCorElementType" && mi.DeclaringClass.FullName == "System.Enum"
-                    && mi.Signature.ParameterTypes.Length == 0)
-                    return null;
                 return mi;
             }
             case HandleKind.MethodSpecification:
@@ -1520,6 +1508,20 @@ internal sealed partial class Compilation
                 resolved = exact.Count == 1 ? exact[0]
                     : candidates.FirstOrDefault(x => ParameterIdentityKey(x.Signature.ParameterTypes) == want) ?? candidates[0];
             }
+        }
+        if (CoreIntrinsics.IsRuntimeTypeEnumName(resolved))
+        {
+            var blob = reader.GetBlobReader(mr.Signature);
+            if (blob.RemainingBytes != 4 || blob.ReadByte() != 0x20 || blob.ReadByte() != 1
+                || blob.ReadByte() != (byte)SignatureTypeCode.String || blob.ReadByte() != (byte)SignatureTypeCode.Object)
+                throw new NotSupportedException("RuntimeType enum name query requires its exact MemberRef signature");
+        }
+        if (CoreIntrinsics.IsRuntimeTypeEnumDefined(resolved))
+        {
+            var blob = reader.GetBlobReader(mr.Signature);
+            if (blob.RemainingBytes != 4 || blob.ReadByte() != 0x20 || blob.ReadByte() != 1
+                || blob.ReadByte() != (byte)SignatureTypeCode.Boolean || blob.ReadByte() != (byte)SignatureTypeCode.Object)
+                throw new NotSupportedException("RuntimeType enum defined query requires its exact MemberRef signature");
         }
         if (DelegateCallableBodyContract.IsName(cls.FullName, name)
             && !CoreIntrinsics.IsDelegateCallableReference(resolved, sig, reader.GetBlobReader(mr.Signature)))

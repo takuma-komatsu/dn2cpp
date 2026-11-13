@@ -405,6 +405,30 @@ internal sealed partial class MethodCompiler
             EmitDateTimeLeapSecondSupport();
             return;
         }
+        if (CoreIntrinsics.IsRuntimeTypeEnumName(callee))
+        {
+            string value = Cast(Pop(), "Dn2CppObject*");
+            string receiver = CallIsVirtual && _constrained is not null
+                ? DerefReceiver("Dn2CppType*") : Cast(Pop(), "Dn2CppType*");
+            // callvirt checks before entry; the raw managed body validates value first.
+            if (CallIsVirtual)
+                receiver = $"dn2cpp_null_check({receiver})";
+            Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_runtime_type_get_enum_name({receiver}, {value})");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeEnumDefined(callee))
+        {
+            string value = Cast(Pop(), "Dn2CppObject*");
+            string receiver = CallIsVirtual && _constrained is not null
+                ? DerefReceiver("Dn2CppType*") : Cast(Pop(), "Dn2CppType*");
+            // callvirt checks before entry; the raw managed body validates value first.
+            if (CallIsVirtual)
+                receiver = $"dn2cpp_null_check({receiver})";
+            Push(StackKind.I4, "int32_t", $"dn2cpp_runtime_type_is_enum_defined({receiver}, {value})");
+            return;
+        }
+
         if (CoreIntrinsics.IsUInt128Checked(callee))
         {
             EmitUInt128Checked(callee);
