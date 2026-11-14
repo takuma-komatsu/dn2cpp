@@ -58,11 +58,12 @@ gate_python() { printf 'DRIVER:%s\n' "$*"; }
 compile_console() { printf 'NATIVE:%s\n' "$1"; mkdir -p "$1"; }
 gate_capture_ok() { :; }
 gate_output() { :; }
+gate_assert_text() { :; }
 run_bounded() { :; }
 '''
 with tempfile.TemporaryDirectory(prefix="dn2cpp-stripping-profile-test-") as temp:
     for value, modes in [("0", ("full",)), ("1", ("raw", "full"))]:
-        expected = {f"emission-{fixture}-{axis}" for fixture in ("medium", "retained-equality", "forwarded-attribute") for axis in modes}
+        expected = {f"emission-{fixture}-{axis}" for fixture in ("medium", "retained-equality", "forwarded-attribute", "high") for axis in modes}
         expected |= {f"emission-intercept-{kind}-{level}-{axis}" for kind in ("retained", "called") for level in ("high", "medium") for axis in modes}
         result = shell(stubs + profile + section, temp, {"DN2CPP_PRESERVE_CONTROL_FULL": value})
         check(result.returncode == 0, (value, result.stderr))

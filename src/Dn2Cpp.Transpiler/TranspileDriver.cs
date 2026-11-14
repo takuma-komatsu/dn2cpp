@@ -9,7 +9,7 @@ namespace Dn2Cpp;
 /// <summary>The shared console-transpile driver: builds a <see cref="Compilation"/>
 /// from the input assembly + reference assemblies and emits C++ through the given
 /// backend (console or GDExtension), or — in <c>--measure</c> mode — collects and
-/// reports every reachable transpilation gap. A Godot-free console CLI and the full
+/// reports observed transpilation gaps. A Godot-free console CLI and the full
 /// CLI share this one implementation.</summary>
 public static class TranspileDriver
 {
@@ -243,10 +243,11 @@ public static class TranspileDriver
 
             if (measure)
             {
-                // Enumerate every reachable transpilation gap in one pass. Writes a
-                // per-method TSV report plus a grouped summary; emits no C++.
+                // Failed scans can hide dependencies. These are observed gaps, not a
+                // complete inventory of every failure a future transpile might expose.
                 var result = new CppEmitter(compilation, backend).MeasureGaps();
                 Directory.CreateDirectory(outDir);
+                MeasureReport.Write(result, outDir);
                 string reportPath = Path.Combine(outDir, "s0-gaps.tsv");
                 // Byte-for-byte equal to File.WriteAllLines (each line + Environment.NewLine,
                 // including a trailing newline; empty -> ""), but routed through the
@@ -282,7 +283,7 @@ public static class TranspileDriver
                 Console.WriteLine(result.NamedSymbols is { } namedSyms
                     ? $"  dangling-symbol sweep: {namedSyms} named symbols diffed, "
                         + $"{result.Gaps.Count(g => g.Phase == "dangling")} dangling"
-                    : "  dangling-symbol sweep: skipped (a compile-spec gap truncated the body pass)");
+                    : "  dangling-symbol sweep: skipped (a layout/specialization gap truncated a pass)");
                 Console.WriteLine($"  full per-gap report -> {reportPath}");
                 Console.WriteLine("  -- gaps by phase --");
                 foreach (var grp in result.Gaps.GroupBy(g => g.Phase).OrderByDescending(g => g.Count()))

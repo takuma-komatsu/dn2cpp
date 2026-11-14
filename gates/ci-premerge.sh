@@ -101,6 +101,7 @@ PY
         valid_receipt=0
         receipt="$DN2CPP_PREMERGE_LOGROOT/_receipt.txt"
         if [ "$PREMERGE_OUTCOME" = success ]; then
+            # A hexadecimal SHA can be a numeric string to awk.
             short_head=$(git rev-parse --short HEAD)
             if [ "$(git rev-parse HEAD)" = "$EXPECTED_HEAD" ] \
                 && [ "$EXPECTED_HEAD" = "$GITHUB_SHA" ] \
@@ -108,7 +109,7 @@ PY
                 && [ -s "$receipt" ] \
                 && grep -Fxq 'dn2cpp NON-GODOT PRE-MERGE PASSED' "$receipt" \
                 && grep -Fxq 'configs: Debug' "$receipt" \
-                && awk -v sha="$short_head" '$1 == "commit:" && $NF == sha { found=1 } END { exit !found }' "$receipt"; then
+                && awk -v sha="$short_head" '$1 == "commit:" && ("x" $NF) == ("x" sha) { found=1 } END { exit !found }' "$receipt"; then
                 valid_receipt=1
             fi
         fi

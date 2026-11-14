@@ -3,8 +3,12 @@
 import json
 import os
 from pathlib import Path
+import re
+import shlex
 import subprocess
+import sys
 import tempfile
+import xml.etree.ElementTree as ET
 
 
 GATES = Path(__file__).resolve().parent
@@ -41,6 +45,7 @@ _gate_cli_hash() { printf 'fake-cli'; }
 prepare_cli() {
     if [ -z "${DN2CPP_CLI_DLL:-}" ]; then
         record PREPARE
+        [ "${FAKE_PREPARE_CLI_FAIL:-0}" = 0 ] || return 23
         DN2CPP_CLI_DLL="$PWD/cli/dn2cpp.dll"
         export DN2CPP_CLI_DLL
         mkdir -p cli
@@ -213,6 +218,378 @@ def run(name, script, extra=None):
 def source(gate):
     script = (GATES / ("build-and-run-" + gate + ".sh")).read_text(encoding="utf-8")
     return script.replace('source "$(dirname "$0")/_common.sh"', "", 1)
+
+
+# Exercise the real fixture's source extraction, not only the mocked gate.
+diagnostic_dir = root / "diagnostic-record-matches"
+diagnostic_dir.mkdir()
+diagnostic = subprocess.run([BASH, "gates/fixtures/diagnostic-record-matches.sh", sys.executable],
+                            cwd=GATES.parent, env=ENV, capture_output=True)
+(diagnostic_dir / "stdout.log").write_bytes(diagnostic.stdout)
+(diagnostic_dir / "stderr.log").write_bytes(diagnostic.stderr)
+(diagnostic_dir / "status").write_text(str(diagnostic.returncode) + "\n", encoding="utf-8")
+results.append({"name": "diagnostic-record-matches", "status": diagnostic.returncode,
+                "native": 0, "emit": 0})
+check(diagnostic.returncode == 0, ("diagnostic-record-matches", diagnostic.stderr))
+check(b"OK: actual diagnostic adapters retain payload CR" in diagnostic.stdout, diagnostic.stdout)
+
+
+# Shared fixtures have one verification owner and one orchestrator build root.
+gen2_owners = [path.name for path in GATES.glob("build-and-run-*.sh")
+               if re.search(r"^\s*gen2_retained_boundary_gate\s", path.read_text(encoding="utf-8"), re.M)]
+check(gen2_owners == ["build-and-run-selfhost-prim-subset.sh"], gen2_owners)
+hotupdate = source("hotupdate-subset")
+for obsolete in ("_gen2-gate.sh", "GEN2_GATE_INPUTS", "gen2-retained:"):
+    check(obsolete not in hotupdate, f"hotupdate retains removed Gen2 ownership: {obsolete}")
+orchestrator = (GATES / "run-all-gates.sh").read_text(encoding="utf-8")
+ordered_text = re.search(r"^ORDERED_PROJECTS=\(\n(.*?)^\)", orchestrator, re.M | re.S)
+check(ordered_text is not None, "missing ordered project roots")
+ordered_projects = re.findall(r'^\s*"([^"]+[.]csproj)"\s*$', ordered_text[1], re.M)
+check(ordered_projects and len(ordered_projects) == len(set(ordered_projects)), ordered_projects)
+gen2_patch = "gates/fixtures/gen2-callback/interpreter/Patch/Gen2CallbackPatch.csproj"
+gen2_base = "gates/fixtures/gen2-callback/interpreter/Base/Gen2CallbackBase.csproj"
+check(ordered_projects.count(gen2_patch) == 1 and gen2_base not in ordered_projects, ordered_projects)
+project = GATES.parent / gen2_patch
+references = [(project.parent / reference.attrib["Include"]).resolve()
+              for reference in ET.parse(project).iter("ProjectReference")]
+check((GATES.parent / gen2_base).resolve() in references, references)
+
+
+# Array observations are reused only inside the complete wrapper's cache region.
+array_source = source("array-core")
+array_helpers = {name: (GATES / name).read_text(encoding="utf-8")
+                 for name in ("_headerless-reference-identity.sh", "_md-readonly-byrefs.sh")}
+
+def array_script(source_text, headerless=None):
+    script = source_text[:source_text.index("echo '== isolated framework and reflection boxes =='")]
+    script = script.replace('source "$(dirname "$0")/_common.sh"', "")
+    script = script.replace('source "$(dirname "$0")/_ildiet.sh"', "")
+    for name, helper in array_helpers.items():
+        script = script.replace("source gates/" + name,
+                                headerless if name == "_headerless-reference-identity.sh" and headerless else helper)
+    return script + "\nrecord FULL_ARRAY_PROFILE\n"
+
+array_stubs = r'''
+: > runtime/System.Collections.dll
+array_record() { printf '%s\0' "$@" >> "$FAKE_ARRAY_ACTIONS"; printf '\0' >> "$FAKE_ARRAY_ACTIONS"; }
+assert_output() { record "SOURCE_ASSERT:$*"; [ "$1" = "$2" ]; }
+grep() {
+    record "SOURCE_GREP:$*"
+    if [[ "$*" == *Unsearched_Equals* ]]; then [ "${FAKE_ARRAY_FAIL:-}" = unsearched ]; return; fi
+    if [ "${FAKE_ARRAY_FAIL:-}" = selected ] && [[ "$*" == *Selected_Equals* ]]; then return 1; fi
+    if [ "${FAKE_ARRAY_FAIL:-}" = guard ] && [[ "$*" == *dn2cpp_array_search_equals* ]]; then return 1; fi
+    return 0
+}
+awk() {
+    record "SOURCE_AWK:$*"
+    local expected
+    for expected in 'shared SZ address identities' 'shared readonly MD reads' \
+            'pending indirect references rooted' 'shared reference store' 'shared array allocation' \
+            'shared multidimensional store' 'shared MD identities'; do
+        if [[ "$*" == *"$expected"* ]]; then
+            [ "${FAKE_ARRAY_FAIL:-}" != "$expected" ] || return 0
+            printf '%s\n' "$expected"
+            return
+        fi
+    done
+    return 97
+}
+gate_capture() {
+    record "CAPTURE:$1:${*:2}"
+    array_record capture "$@"
+    "$FAKE_PYTHON" "$FAKE_ARRAY_RUNNER" capture "$@"
+}
+gate_output() {
+    record "ASSERT:$*"
+    array_record output "$@"
+    [ "${FAKE_ARRAY_DISCOVER:-0}" != 1 ] || return 0
+    "$FAKE_PYTHON" "$FAKE_OUTPUT_HELPER" "$@"
+}
+gate_cache_check() {
+    record "CACHE:$*"
+    case "${FAKE_ARRAY_CACHE:-}" in
+        all) return 0 ;;
+        finite) [[ "$1" == *arrayfinitesearchonly* ]] ;;
+        aggregate) [[ "$1" == *arraycore* ]] ;;
+        *) return 1 ;;
+    esac
+}
+if [ -n "${DN2CPP_SKIP_BUILD:-}" ]; then
+    fake_build samples/dotnet/ArrayCore/ArrayCore.csproj
+    fake_build samples/dotnet/ArrayCore/ArrayFiniteSearchOnly.csproj
+    : > "$FAKE_LOG"
+fi
+'''
+array_runner = root / "array-observation.py"
+array_runner.write_text(r'''import json
+import os
+from pathlib import Path
+import sys
+_, prefix, *command = sys.argv[1:]
+prefix = Path(prefix)
+prefix.parent.mkdir(parents=True, exist_ok=True)
+project = "finite" if "arrayfinitesearchonly" in prefix.as_posix() else "aggregate"
+mode = command[-1] if project == "aggregate" and command[-1].startswith("before-") else ""
+oracle = "dotnet" in command
+records = json.loads(Path(os.environ["FAKE_ARRAY_FIXTURE"]).read_text())
+data = records[project]
+if mode and os.environ.get("FAKE_ARRAY_DISCOVER") != "1":
+    marker = records["modes"][mode]
+    data = data[:data.index(marker)]
+status = int(os.environ.get("FAKE_ARRAY_WRAPPER_STATUS", "0")) if prefix.name in ("native", "oracle") else 0
+failure = os.environ.get("FAKE_ARRAY_FAIL", "")
+subject = os.environ.get("FAKE_ARRAY_SUBJECT", "aggregate")
+active = project == subject and os.environ.get("FAKE_ARRAY_TARGET_SUFFIX", "") in prefix.as_posix()
+if os.environ.get("FAKE_ARRAY_STAGE") == "argless": active = active and prefix.name == "argless-native"
+if active:
+    if mode and failure == "prefix" and mode == "before-default-comparison": data = ["wrong prefix"]
+    if mode and failure == "prefix-status" and mode == "before-default-comparison": status = 23
+    if not mode:
+        if failure in ("missing-witness", "duplicate-witness"):
+            marker = os.environ.get("FAKE_ARRAY_WITNESS") or ("finite local array searches end" if project == "finite" else "copy:0:0:-1:-1:-1 param=sourceArray")
+            data = [line for line in data if line != marker] if failure == "missing-witness" else [*data, marker]
+        if failure == "any-duplicate": data = [*data, "plain copied=handle:17:17"]
+        if failure in ("prefix-marker-missing", "prefix-marker-duplicate"):
+            marker = "== Array validation fields =="
+            data = [line for line in data if line != marker] if failure == "prefix-marker-missing" else [*data, marker]
+        if failure == "native-status" and not oracle or failure == "oracle-status" and oracle: status = 23
+        if failure == "both-status": status = 2
+raw = ("\n".join(data) + "\n").encode() if data else b""
+if active and not mode and not oracle:
+    raw += {"nul": b"\0", "cr": b"\r", "newline": b"\n"}.get(failure, b"")
+    if failure == "capture-error": raise SystemExit(19)
+for stream, data in (("stdout", raw), ("stderr", b"native diagnostic\n" if active and not oracle and failure == "stderr" else b""),
+                     ("status", (str(status) + "\n").encode())):
+    if active and not mode and not oracle and failure == "missing-" + stream: continue
+    Path(str(prefix) + "." + stream).write_bytes(data)
+''', encoding="utf-8")
+array_fixture = root / "array-transcript.json"
+array_fixture.write_text(json.dumps({"finite": ["mock output"], "aggregate": ["mock output"], "modes": {}}))
+array_env = {"FAKE_PYTHON": os.sys.executable, "FAKE_OUTPUT_HELPER": str(GATES / "gate-output.py"),
+             "FAKE_ARRAY_RUNNER": str(array_runner), "FAKE_ARRAY_FIXTURE": str(array_fixture)}
+
+
+def array_run(name, script, extra=None):
+    actions = root / (name + ".actions")
+    actions.touch(exist_ok=False)
+    result, calls = run(name, array_stubs + script,
+                        {**array_env, "FAKE_ARRAY_ACTIONS": str(actions), **(extra or {})})
+    observed = [entry.decode().split("\0") for entry in actions.read_bytes().split(b"\0\0") if entry]
+    return result, calls, observed
+
+
+def array_contract(actions):
+    captures, witnesses, prefixes, patterns, data, modes = {}, [], [], [], {"finite": [], "aggregate": []}, {}
+    for kind, *args in actions:
+        if kind == "capture":
+            captures[args[0] + ".stdout"] = args[1:]
+            continue
+        operation, actual, *tail = args
+        project = "finite" if "arrayfinitesearchonly" in actual else "aggregate"
+        if operation == "witness":
+            count, policy = tail[tail.index("--count") + 1], tail[tail.index("--policy") + 1]
+            for record in tail[:tail.index("--count")]:
+                witnesses.append((project, record, count, policy))
+                if record not in data[project]: data[project].append(record)
+        elif operation == "prefix":
+            marker = tail[tail.index("--before") + 1]
+            argv = captures[tail[0]]
+            mode = argv[-1]
+            prefixes.append((project, marker, "oracle" if "dotnet" in argv else "native", mode))
+            modes[mode] = marker
+            if marker not in data[project]: data[project].append(marker)
+        elif operation == "match-record":
+            patterns.append((project, *tail))
+            label = tail[0].split("=", 1)[0].removeprefix("^")
+            data[project].append(label + "=System.TypeLoadException/80131522:'Type' from assembly 'Assembly' has too many dimensions.")
+    return {"witnesses": sorted(witnesses), "prefixes": sorted(prefixes), "patterns": sorted(patterns)}, {**data, "modes": modes}
+
+# Discover the declared records, not executable output. Real helper assertions
+# below validate those synthetic bytes and deliberately corrupted observations.
+array_prefix = array_script(array_source)
+for full in ("0", "1"):
+    name = "array-discover-" + full
+    result, calls, actions = array_run(name, array_prefix, {"DN2CPP_ARRAY_FULL": full, "FAKE_ARRAY_DISCOVER": "1"})
+    check(result.returncode == 0, (name, result.stderr))
+    contract, transcript = array_contract(actions)
+    (root / (name + ".contract.json")).write_text(json.dumps(contract, indent=2) + "\n")
+    digest = __import__("hashlib").sha256(json.dumps(contract, sort_keys=True).encode()).hexdigest()
+    # Pin record text/count/policy and prefix argv independently of batching.
+    # The full-profile producer checks belong to the cached aggregate contract.
+    expected = {"0": "806886c2fbe3db376925bd5972b2530cc7e26fa0a803099657f3530be9eeef72",
+                "1": "27fa2b3ecbda837d805040cede8d0a16970ed5fd04308af8387ede0815c363e8"}[full]
+    check(digest == expected, (name, digest, "witness/prefix contract changed"))
+    if full == "1": array_fixture.write_text(json.dumps(transcript))
+
+for label, extra, images in (
+        ("cold", {}, 2), ("empty-argv", {"DN2CPP_GATE_RUN_ARGS": ""}, 2),
+        ("explicit-cli", {"DN2CPP_CLI_DLL": "provided/dn2cpp.dll"}, 2),
+        ("suite", {"DN2CPP_SKIP_BUILD": "1"}, 2),
+        ("suffix", {"DN2CPP_OUT_SUFFIX": "-probe", "HIGHWAY": "1", "SCALAR": "1"}, 2),
+        ("full", {"DN2CPP_ARRAY_FULL": "1"}, 3),
+        ("full-suite", {"DN2CPP_ARRAY_FULL": "1", "DN2CPP_SKIP_BUILD": "1", "DN2CPP_CLI_DLL": "provided/dn2cpp.dll"}, 3),
+        ("full-suffix", {"DN2CPP_ARRAY_FULL": "1", "DN2CPP_OUT_SUFFIX": "-probe", "HIGHWAY": "1"}, 3),
+        ("warm", {"FAKE_ARRAY_CACHE": "all"}, 0),
+        ("warm-full", {"DN2CPP_ARRAY_FULL": "1", "FAKE_ARRAY_CACHE": "all", "DN2CPP_CLI_DLL": "provided/dn2cpp.dll"}, 0),
+        ("finite-warm", {"FAKE_ARRAY_CACHE": "finite"}, 1),
+        ("aggregate-warm", {"FAKE_ARRAY_CACHE": "aggregate"}, 1),
+        ("any-duplicate", {"FAKE_ARRAY_FAIL": "any-duplicate"}, 2),
+        ("native-diagnostic", {"FAKE_ARRAY_FAIL": "stderr"}, 2),
+        ("finite-diagnostic", {"FAKE_ARRAY_FAIL": "stderr", "FAKE_ARRAY_SUBJECT": "finite"}, 2)):
+    result, calls, actions = array_run("array-" + label, array_prefix, extra)
+    check(result.returncode == 0, (label, result.stderr))
+    check(calls.count("PREPARE") == (0 if extra.get("DN2CPP_CLI_DLL") else 1), (label, calls))
+    native = [line for line in calls if line.startswith("NATIVE:")]
+    captures = [args for kind, *args in actions if kind == "capture"]
+    full_native = [args for args in captures if "dotnet" not in args and not args[-1].startswith("before-")]
+    full_oracle = [args for args in captures if "dotnet" in args and not args[-1].startswith("before-")]
+    check(len(native) == images and len(full_native) == images and len(full_oracle) == images, (label, native, captures))
+    check(sum(line.startswith("EMIT:") for line in calls) == (3 if extra.get("DN2CPP_ARRAY_FULL") == "1" else 2), calls)
+    check(sum(line.startswith("BUILD:") for line in calls) == (0 if extra.get("DN2CPP_SKIP_BUILD") else 3 if extra.get("DN2CPP_ARRAY_FULL") == "1" else 2), calls)
+    check(calls.count("COMMIT") == images, calls)
+    check(("FULL_ARRAY_PROFILE" in calls) == (extra.get("DN2CPP_ARRAY_FULL") == "1"), calls)
+    if images == 0:
+        check(not captures and not any(kind == "output" for kind, *_ in actions), (label, actions))
+    cache = [line for line in calls if line.startswith("CACHE:") and "corelib_diff_gate|ArrayCore|" in line]
+    check(len(cache) == 1 and "gates/_headerless-reference-identity.sh" in cache[0]
+          and "gates/_md-readonly-byrefs.sh" in cache[0] and "array-full:" + extra.get("DN2CPP_ARRAY_FULL", "0") in cache[0], cache)
+    witnesses = [args for kind, *args in actions if kind == "output" and args[0] == "witness"]
+    check(len(witnesses) <= 55, (label, len(witnesses)))
+    for args in witnesses:
+        record_args = args[2:args.index("--count")]
+        check(sum(len(arg) + 3 for arg in record_args) <= 4096, (label, args))
+        check(args[-2:] == ["--policy", "crlf"], args)
+    if label in ("cold", "full", "suffix"):
+        contract, _ = array_contract(actions)
+        check(len(contract["prefixes"]) == 34, (label, contract["prefixes"]))
+        for args in witnesses:
+            check(args[1].endswith("/native.stdout"), (label, "unverified observation", args))
+    if label == "suffix":
+        check(all("-hwy-scalar-probe/" in args[0] for args in captures), captures)
+
+for full in ("0", "1"):
+    result, calls, actions = array_run("array-cli-failure-" + full, array_prefix,
+                                     {"DN2CPP_ARRAY_FULL": full, "FAKE_PREPARE_CLI_FAIL": "1"})
+    check(result.returncode == 23 and calls == ["PREPARE"] and not actions, (full, result.stderr, calls, actions))
+
+for label, argv, extra, images in (
+        ("prefix", "before-default-comparison", {}, 2),
+        ("quoted", "'unrecognized argument'", {}, 2),
+        ("whitespace", " ", {}, 2),
+        ("suite", "before-default-comparison", {"DN2CPP_SKIP_BUILD": "1"}, 2),
+        ("full", "before-default-comparison", {"DN2CPP_ARRAY_FULL": "1"}, 3),
+        ("warm", "before-default-comparison", {"FAKE_ARRAY_CACHE": "all"}, 0),
+        ("wrapper-failure-parity", "before-default-comparison", {"FAKE_ARRAY_WRAPPER_STATUS": "2"}, 2),
+        ("native-diagnostic", "before-default-comparison", {"FAKE_ARRAY_FAIL": "stderr", "FAKE_ARRAY_STAGE": "argless"}, 2),
+        ("finite-diagnostic", "before-default-comparison", {"FAKE_ARRAY_FAIL": "stderr", "FAKE_ARRAY_STAGE": "argless", "FAKE_ARRAY_SUBJECT": "finite"}, 2)):
+    result, calls, actions = array_run("array-argv-" + label, array_prefix, {"DN2CPP_GATE_RUN_ARGS": argv, **extra})
+    check(result.returncode == 0 and calls.count("COMMIT") == images, (label, result.stderr, calls))
+    check(sum(line.startswith("NATIVE:") for line in calls) == images, (label, calls))
+    argless = [args for kind, *args in actions if kind == "capture" and args[0].endswith("/argless-native")]
+    check(len(argless) == images and all(len(args) == 3 and args[1] == "run_bounded" for args in argless), (label, argless))
+    for kind, *args in actions:
+        if kind == "output" and args[0] == "witness":
+            check(args[1].endswith("/argless-native.stdout"), (label, args))
+    for line in calls:
+        if line.startswith("CACHE:"):
+            check("runargs:" + argv in line and "gates/_headerless-reference-identity.sh" in line, (label, line))
+    if label == "wrapper-failure-parity":
+        check(calls.count("ASSERT:status 2 2") == images and "ASSERT:status 2 0" not in calls, calls)
+    if label == "warm":
+        check(not any(kind in ("capture", "output") for kind, *_ in actions), actions)
+
+for subject in ("finite", "aggregate"):
+    for failure in ("native-status", "oracle-status", "both-status", "missing-stdout", "missing-stderr", "missing-status",
+                    "capture-error", "missing-witness", "duplicate-witness", "nul", "cr", "newline"):
+        result, calls, actions = array_run("array-failure-" + subject + "-" + failure, array_prefix,
+                                          {"FAKE_ARRAY_SUBJECT": subject, "FAKE_ARRAY_FAIL": failure})
+        check(result.returncode != 0, (subject, failure, result.stderr))
+        check(calls.count("COMMIT") == (0 if subject == "finite" else 1), (subject, failure, calls))
+    for failure in ("native-status", "both-status", "missing-stdout", "missing-stderr", "missing-status",
+                    "capture-error", "missing-witness", "duplicate-witness", "nul"):
+        result, calls, actions = array_run("array-argless-failure-" + subject + "-" + failure, array_prefix,
+                                          {"DN2CPP_GATE_RUN_ARGS": "before-default-comparison", "FAKE_ARRAY_WRAPPER_STATUS": "2",
+                                           "FAKE_ARRAY_SUBJECT": subject, "FAKE_ARRAY_FAIL": failure, "FAKE_ARRAY_STAGE": "argless"})
+        check(result.returncode != 0 and calls.count("COMMIT") == (0 if subject == "finite" else 1),
+              (subject, failure, result.stderr, calls))
+result, calls, _ = array_run("array-argv-infrastructure-status", array_prefix,
+                             {"DN2CPP_GATE_RUN_ARGS": "before-default-comparison", "FAKE_ARRAY_WRAPPER_STATUS": "124"})
+check(result.returncode != 0 and "COMMIT" not in calls, (result.stderr, calls))
+for failure in ("prefix", "prefix-status", "prefix-marker-missing", "prefix-marker-duplicate", "selected", "unsearched", "guard", "shared SZ address identities", "shared readonly MD reads",
+                "pending indirect references rooted", "shared reference store", "shared array allocation", "shared multidimensional store", "shared MD identities"):
+    result, calls, _ = array_run("array-failure-" + failure.replace(" ", "-"), array_prefix, {"FAKE_ARRAY_FAIL": failure})
+    check(result.returncode != 0, (failure, result.stderr))
+    check(calls.count("COMMIT") == (0 if failure in ("selected", "unsearched") else 1), (failure, calls))
+
+for label, extra, commits in (
+        ("producer", {"FAKE_ARRAY_WITNESS": "array producer and validation order end"}, 2),
+        ("raw-finite", {"FAKE_ARRAY_SUBJECT": "finite", "FAKE_ARRAY_TARGET_SUFFIX": "-no-ildiet"}, 1)):
+    result, calls, _ = array_run("array-full-failure-" + label, array_prefix,
+                                {"DN2CPP_ARRAY_FULL": "1", "FAKE_ARRAY_FAIL": "missing-witness", **extra})
+    check(result.returncode != 0 and calls.count("COMMIT") == commits, (label, result.stderr, calls))
+
+batch_helper = array_source[array_source.index("array_core_witnesses() {"):
+                            array_source.index("# Prefix runs retain their own evidence;")]
+batch_records = [f'quoted "record" \\ {index} ' + "\u03b1" * 80 for index in range(120)]
+for label, records, needles, count, success in (
+        ("split", batch_records, batch_records, "1", True),
+        ("missing", ["first"], ["first", "missing"], "1", False),
+        ("duplicate", ["first", "first"], ["first"], "1", False),
+        ("any", ["first", "first"], ["first"], "any", True),
+        ("empty", ["first"], [], "1", False),
+        ("oversize", ["x" * 5000], ["x" * 5000], "1", False)):
+    script = batch_helper + "\nprintf '%s\\n' " + " ".join(map(shlex.quote, records)) + " > batch.stdout\n"
+    script += "array_core_witnesses batch.stdout " + count + " " + " ".join(map(shlex.quote, needles)) + "\n"
+    result, _, actions = array_run("array-batch-" + label, script)
+    check((result.returncode == 0) == success, (label, result.stderr))
+    batches = [args for kind, *args in actions if kind == "output"]
+    if label == "split": check(len(batches) > 1, batches)
+    if label in ("empty", "oversize"): check(not batches, batches)
+    for args in batches:
+        command = subprocess.list2cmdline([os.sys.executable, str(GATES / "gate-output.py"), *args])
+        check(len(command.encode("utf-16-le")) // 2 < 12000, (label, "Windows argv too large"))
+        check(args[-4:] == ["--count", count, "--policy", "crlf"], args)
+
+# Shared helper callers retain fresh captures unless an explicit observation is
+# provided. Reuse checks all receipts even when called inside a shell condition.
+headerless = array_helpers["_headerless-reference-identity.sh"]
+headerless_setup = r'''
+mkdir -p artifacts/arraycore
+_CG_APP=ArrayCore.dll
+printf '%s\n' 0 > artifacts/arraycore/reused.status
+: > artifacts/arraycore/reused.stderr
+"$FAKE_PYTHON" "$FAKE_ARRAY_RUNNER" capture artifacts/arraycore/reused run_bounded ArrayCore
+case "${FAKE_HEADERLESS_FAIL:-}" in
+    status) printf '%s\n' 23 > artifacts/arraycore/reused.status ;;
+    stdout|stderr|missing-status) stream=${FAKE_HEADERLESS_FAIL#missing-}; mv "artifacts/arraycore/reused.$stream" "artifacts/arraycore/saved.$stream" ;;
+esac
+'''
+for reuse in (False, True):
+    for failure in ("", "status", "stdout", "stderr", "missing-status") if reuse else ("",):
+        invocation = ('headerless_reference_prefix_asserts artifacts/arraycore ArrayCore before-headerless-md-identity '
+                      "'== headerless multidimensional reference identity ==' 'headerless multidimensional reference identity end'")
+        if reuse: invocation += " artifacts/arraycore/reused"
+        script = headerless + headerless_setup + "\nif " + invocation + "; then record HELPER_OK; else exit 27; fi\n"
+        result, calls, actions = array_run("array-headerless-" + str(reuse) + "-" + failure, script,
+                                          {"FAKE_HEADERLESS_FAIL": failure})
+        check((result.returncode == 0) == (not failure), (reuse, failure, result.stderr))
+        captures = [args for kind, *args in actions if kind == "capture"]
+        check(len(captures) == (0 if failure else 2 if reuse else 3), (reuse, failure, captures))
+
+for project in ("ReflectInvoke", "StringBuild"):
+    script = headerless + headerless_setup + (
+        "\nheaderless_reference_prefix_asserts artifacts/arraycore " + project + " before-headerless-md-identity "
+        "'== headerless multidimensional reference identity ==' 'headerless multidimensional reference identity end'\n")
+    result, _, actions = array_run("array-headerless-default-" + project, script)
+    captures = [args for kind, *args in actions if kind == "capture"]
+    check(result.returncode == 0 and len(captures) == 3, (project, result.stderr, captures))
+    check(captures[0][-1] == "artifacts/arraycore/" + project, captures)
+for failure in ("status", "stderr", "missing-status"):
+    script = headerless + headerless_setup + (
+        "\nif headerless_md_reference_asserts artifacts/arraycore artifacts/arraycore/reused; "
+        "then record HELPER_OK; else exit 27; fi\n")
+    result, _, actions = array_run("array-headerless-forward-" + failure, script, {"FAKE_HEADERLESS_FAIL": failure})
+    check(result.returncode == 27 and not any(kind == "capture" for kind, *_ in actions), (failure, result.stderr, actions))
 
 
 profiles = [
@@ -525,7 +902,8 @@ selfhost = selfhost.replace('source "$(dirname "$0")/_delegate-signatures.sh"',
 selfhost_stubs = r'''
 mkdir -p artifacts/selfhost-prim-routes-Debug/previous-run
 printf 'retained route evidence\n' > artifacts/selfhost-prim-routes-Debug/previous-run/native.stdout
-for reference in System.Linq System.Diagnostics.TraceSource System.Collections.Specialized; do
+for reference in System.Linq System.Diagnostics.TraceSource System.Collections.Specialized \
+        System.Security.Claims System.Runtime System.Console; do
     : > "runtime/$reference.dll"
 done
 prepare_gen2_projects() {
@@ -571,6 +949,12 @@ invoke_cli() {
                     diagnostic='RuntimeTypeIsPointerSubset.IsPointerChecks.Address: RuntimeType pointer query requires its exact MemberRef signature [chain: Program.Main]' ;;
                 pointer-call-raw)
                     diagnostic='RuntimeTypeIsPointerSubset.IsPointerChecks.Direct: RuntimeType pointer query requires its exact MemberRef signature [chain: Program.Main]' ;;
+                principal-missing)
+                    diagnostic='default principal requires the System.Security.Claims implementation assembly' ;;
+                principal-factory)
+                    diagnostic='default principal requires the exact managed GenericPrincipal.GetDefaultInstance factory' ;;
+                typed-gchandle-address)
+                    diagnostic="Entry.Main: System.Runtime.InteropServices.GCHandle_Object::ToIntPtr: typed GCHandle<T> members are lowered only at call sites; taking a member's address is not supported, so call it from a lambda instead [chain: Entry.Main]" ;;
                 *) return 97 ;;
             esac
             ;;
@@ -669,9 +1053,11 @@ gate_capture() {
                 printf 'wrong prefix\n' >> "$prefix.stdout"
             fi
             printf '%s\n' '== Runtime method enumeration contract ==' \
-                'Runtime method enumeration contract end' >> "$prefix.stdout"
+                'Runtime method enumeration contract end' 'Runtime type handle accessors end' \
+                'Principal public neighbor end' 'known-constant-public-searches:True' \
+                'known-constant-search-values:70:70:0:-1:-1' >> "$prefix.stdout"
             if [ "${FAKE_RUNTIME_TAINT:-}" != tail ] || [[ "$prefix" != */native ]]; then
-                printf '%s\n' 'Runtime type handle accessors end' >> "$prefix.stdout"
+                printf '%s\n' 'Known constant public searches end' >> "$prefix.stdout"
             fi ;;
         */gc-prefix) primitive_stdout > "$prefix.stdout" ;;
         */runtime-prefix) gc_stdout > "$prefix.stdout" ;;
@@ -733,9 +1119,11 @@ gate_output() {
     esac
 }
 git() {
-    [ "$*" = 'ls-files -co --exclude-standard -- gates/fixtures/ldftn-local' ] || return 97
+    [ "$*" = 'ls-files -co --exclude-standard -- gates/fixtures/ldftn-local gates/fixtures/default-principal' ] || return 97
     printf '%s\n' gates/fixtures/ldftn-local/RuntimeTypeIsPointerFixture.cs \
-        gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs
+        gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs \
+        gates/fixtures/ldftn-local/DefaultPrincipalFixture.cs \
+        gates/fixtures/default-principal/ImplicitPrincipalProbe.csproj
 }
 dotnet() {
     record "FIXTURE:$*"
@@ -743,7 +1131,8 @@ dotnet() {
     [ "${FAKE_ROUTE_FIXTURE_FAIL:-}" != "$2" ] || return 23
     case "$2" in
         --runtime-field-handle|--runtime-type-is-pointer-aggregate|\
-        --runtime-type-is-pointer-negative-address-return|--runtime-type-is-pointer-negative-call-class-return)
+        --runtime-type-is-pointer-negative-address-return|--runtime-type-is-pointer-negative-call-class-return|\
+        --default-principal)
             [ "$#" = 4 ] && [ -f "$3" ] && [ -f "$4" ] || return 97
             if [ "$2" = --runtime-field-handle ]; then
                 [[ "$3" == */app/SelfHostPrimSubset.dll ]] || return 97
@@ -755,6 +1144,9 @@ dotnet() {
                 printf 'private-pointer\n' >> "$3"
                 printf 'runtime-type-is-pointer-entry:Program.Main\n'
             fi ;;
+        --default-principal-target-copy)
+            [ "$#" = 5 ] && [ -f "$3" ] && [ "$5" = wrong-return ] || return 97
+            cp "$3" "$4" ;;
         *) return 97 ;;
     esac
 }
@@ -795,12 +1187,12 @@ text += "static const Dn2CppTypeReflection md_native_refl_ti_System_Gen2GcCallba
 selfhost_env = {"FAKE_PYTHON": os.sys.executable, "FAKE_OUTPUT_HELPER": str(GATES / "gate-output.py"),
                 "FAKE_GATES": str(GATES), "FAKE_MINIMAL_WRITER": str(minimal_writer)}
 for label, extra, expected in (
-        ("cold", {}, (7, 4, 4)),
-        ("suite", {"DN2CPP_SKIP_BUILD": "1"}, (7, 4, 1)),
-        ("suffix", {"DN2CPP_OUT_SUFFIX": "-probe", "HIGHWAY": "1"}, (7, 4, 4)),
-        ("scalar", {"SCALAR": "1"}, (7, 4, 4)),
+        ("cold", {}, (7, 4, 5)),
+        ("suite", {"DN2CPP_SKIP_BUILD": "1"}, (7, 4, 2)),
+        ("suffix", {"DN2CPP_OUT_SUFFIX": "-probe", "HIGHWAY": "1"}, (7, 4, 5)),
+        ("scalar", {"SCALAR": "1"}, (7, 4, 5)),
         ("routes-warm", {"FAKE_ROUTES_CACHE_HIT": "1"}, (7, 4, 4)),
-        ("aggregate-warm", {"FAKE_CACHE_HIT": "1", "FAKE_ROUTES_CACHE_HIT": "0"}, (2, 1, 3)),
+        ("aggregate-warm", {"FAKE_CACHE_HIT": "1", "FAKE_ROUTES_CACHE_HIT": "0"}, (2, 1, 4)),
         ("warm", {"FAKE_CACHE_HIT": "1"}, (2, 1, 3))):
     result, calls = run("selfhost-" + label, selfhost_stubs + selfhost, {**selfhost_env, **extra})
     check(result.returncode == 0, (label, result.returncode, result.stderr))
@@ -817,7 +1209,8 @@ for label, extra, expected in (
     check(sum(line == "PREPARE" for line in calls) == 1, calls)
     check(not any("DelegateCallableBodies.csproj" in line for line in calls), calls)
     check(any("/app/SelfHostPrimSubset.dll -r " in line for line in emit), emit)
-    check(any("DefaultStructCtorLib.dll" in line for line in emit), emit)
+    check(any("System.Security.Claims.dll" in line and "DefaultStructCtorLib.dll" in line
+              for line in emit), emit)
     cache = [line for line in calls if line.startswith("CACHE:")]
     check(any("delegate-callable-refusals.txt" in line and "keep-delegate-callable-bodies.xml" in line
               and "delegate-callable:reflection,call,calli,callvirt,ldvirtftn" in line for line in cache), cache)
@@ -854,7 +1247,7 @@ for label, extra, expected in (
     route_cache = [line for line in cache if line.startswith("CACHE:artifacts/selfhost-prim-routes-")]
     check(len(route_cache) == 1, route_cache)
     for dependency in ("flags:--auto-ref,--no-ildiet", "DefaultStructCtorLib.dll", "RuntimeTypeIsPointerFixture.cs",
-                       "RuntimeFieldHandleFixture.cs"):
+                       "RuntimeFieldHandleFixture.cs", "DefaultPrincipalFixture.cs", "ImplicitPrincipalProbe.csproj"):
         check(dependency in route_cache[0], (label, dependency, route_cache))
     route_native = [line for line in native if line.endswith(":RuntimeTypeRoutes")]
     check(not route_native and not any("selfhost-prim-routes-" in line for line in emit), (native, emit))
@@ -865,12 +1258,18 @@ for label, extra, expected in (
         check(not route_refusals and fixtures == positive_fixtures, calls)
         check(calls.count("HIT") == (2 if label == "warm" else 1), calls)
     else:
-        check([line.split(":")[1] for line in route_refusals] == ["pointer-memberref", "pointer-call-raw"], route_refusals)
+        check([line.split(":")[1] for line in route_refusals] == ["pointer-memberref", "pointer-call-raw",
+              "principal-missing", "principal-factory", "typed-gchandle-address"], route_refusals)
         check(" --auto-ref " in route_refusals[0] and "--no-ildiet" not in route_refusals[0], route_refusals)
         check(" --auto-ref --no-ildiet " in route_refusals[1], route_refusals)
-        check(sum(line.startswith("ASSERT:match-record artifacts/selfhost-prim-routes-") for line in calls) == 2, calls)
+        check(" --auto-ref " not in route_refusals[2] and "System.Runtime.dll" in route_refusals[2]
+              and "System.Console.dll" in route_refusals[2] and "System.Security.Claims.dll" not in route_refusals[2], route_refusals)
+        check("/claims/copy/System.Security.Claims.dll" in route_refusals[3], route_refusals)
+        check("gates/fixtures/default-principal/bin/Debug/net10.0/ImplicitPrincipalProbe.dll --auto-ref" in route_refusals[4], route_refusals)
+        check(sum(line.startswith("ASSERT:match-record artifacts/selfhost-prim-routes-") for line in calls) == 5, calls)
         check(fixtures == positive_fixtures + [
-              "--runtime-type-is-pointer-negative-address-return", "--runtime-type-is-pointer-negative-call-class-return"], fixtures)
+              "--runtime-type-is-pointer-negative-address-return", "--runtime-type-is-pointer-negative-call-class-return",
+              "--default-principal", "--default-principal-target-copy"], fixtures)
     check(calls.count("COMMIT") == (0 if label == "warm" else 1 if label in ("routes-warm", "aggregate-warm") else 2), calls)
     if label in ("warm", "aggregate-warm"):
         check("HIT" in calls, calls)
@@ -925,7 +1324,7 @@ for label, extra, expected in (
     refusals = [line for line in calls if line.startswith("REJECT:") and "artifacts/selfhost-prim-routes-" not in line]
     check([line.split(":")[1] for line in refusals] == ["buffer-negative-internal", "buffer-negative-batch",
           "gc-missing-corelib-collect", "gc-missing-corelib-memory", "gen2-newobj", "gen2-memberref"], refusals)
-    check(sum(line == "ASSERT:status 2 2" for line in calls) == (6 if label == "routes-warm" else 8), calls)
+    check(sum(line == "ASSERT:status 2 2" for line in calls) == (6 if label == "routes-warm" else 11), calls)
     for mode in ("collect", "memory"):
         missing = [line for line in refusals if line.startswith(f"REJECT:gc-missing-corelib-{mode}:")]
         check(len(missing) == 1 and f"/{mode}/SelfHostPrimSubset.dll --no-ildiet -o " in missing[0], missing)
@@ -1066,7 +1465,7 @@ for label, extra, native_count in (
     if label.startswith("oracle-status"):
         check("HIT" not in calls, calls)
 
-for name in ("pointer-memberref", "pointer-call-raw"):
+for name in ("pointer-memberref", "pointer-call-raw", "principal-missing", "principal-factory", "typed-gchandle-address"):
     for failure in ("accepted", "diagnostic"):
         result, calls = run("selfhost-routes-" + name + "-" + failure, selfhost_stubs + selfhost,
                             {**selfhost_env, "FAKE_ROUTE_REFUSAL": name + ":" + failure})

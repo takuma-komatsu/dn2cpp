@@ -44,6 +44,15 @@ class Program
         Console.WriteLine("handler after clear='" + handler.ToString() + "'");
     }
 
+    // An enum-capable integer hole instantiates CoreLib's float and double flag-name arms.
+    internal static void __SpanTryWriteGate()
+    {
+        Span<char> span = stackalloc char[8];
+        int value = 42;
+        bool ok = span.TryWrite($"{value}", out int written);
+        Console.WriteLine("span trywrite int=" + ok + " " + written + " " + span.Slice(0, written).ToString());
+    }
+
     // The handler's five NON-GENERIC AppendFormatted overloads: the C# compiler picks
     // one by the hole's static type, and the ReadOnlySpan<char> and object ones are
     // exercised here. This bucket's snapshot is frozen because other sections diverge

@@ -25,6 +25,8 @@
 # Monitor and Lock have independent ownership, checked exits and synchronized epilogues.
 # Registration object equality names its type-info without a box or typeof site.
 # Lock's runtime header preserves its CLR identity through typed and shared casts.
+# SynchronizationContext.Wait reaches the CoreCLR WaitHandle QCall, which natively
+# refuses at the call instead of binding.
 source "$(dirname "$0")/_common.sh"
 registration_app="gates/fixtures/registration-object-equality/bin/$CONFIG/$TFM/RegistrationObjectEquality.dll"
 build_gate_proj gates/fixtures/registration-object-equality/RegistrationObjectEquality.csproj
@@ -134,6 +136,14 @@ gate_extra_asserts() {
         gate_output byte-witness "$actual" "$line" --count any --policy crlf \
             || { echo "FAIL: registration object equality witness missing: $line" >&2; exit 1; }
     done
+    gate_capture_ok "$out/assert-before-raw-wait" run_bounded dotnet "$_CG_APP" before-raw-wait
+    gate_output select "$native" "$out/assert-prefix-raw-wait.stdout" --before '== raw-wait existing event APIs ==' --policy crlf
+    gate_output compare "$out/assert-prefix-raw-wait.stdout" "$out/assert-before-raw-wait.stdout"
+    gate_output witness "$native" 'raw-wait-null-array=ArgumentNullException/waitHandles' \
+        'raw-wait existing event APIs end' --count 1 --policy crlf
+    gate_capture_ok "$out/raw-wait-boundary" run_bounded "./$out/ThreadingPrimitives" native-boundary
+    gate_output byte-witness "$out/raw-wait-boundary.stdout" 'raw-wait-public-wait=PlatformNotSupportedException:True:True' \
+        --count 1 --policy crlf
 }
 
 corelib_diff_gate ThreadingPrimitives

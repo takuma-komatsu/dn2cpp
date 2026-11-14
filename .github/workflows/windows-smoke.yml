@@ -120,8 +120,6 @@ jobs:
         run: ./gates/ci-smoke.sh --self-test
 
       - name: Run selected smoke profile
-        env:
-          DN2CPP_GATE_WATCHDOG_SECS: ${{ matrix.partition == 'limits' && 1200 || '' }}
         run: |
           export TMPDIR="$(cygpath -m "$RUNNER_TEMP/dn2cpp-gate-output")"
           mkdir -p "$TMPDIR"

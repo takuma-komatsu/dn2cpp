@@ -626,8 +626,8 @@ double dn2cpp_fp_parse_str(Dn2CppString* s, int32_t styles,
 // U+202F, U+2212) — so a byte-wise scanner would have to transcode them anyway, in a
 // second place that can drift from the first.
 //
-// Integer parsing validates first: replacement characters may themselves be
-// custom NumberFormatInfo symbols and must not make malformed bytes parseable.
+// The decoder replaces malformed input. Integer parsing must reject those bytes
+// first: U+FFFD itself can be a legitimate NumberFormatInfo sign or separator.
 static Dn2CppString* ns_utf8_widen(const char* p, int32_t n)
 {
     return dn2cpp_string_decode_utf8(p, n < 0 ? 0 : n);

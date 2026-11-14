@@ -86,15 +86,17 @@ internal sealed partial class MethodCompiler
     {
         // Address-taken imports use the same managed override as direct calls.
         // The direct-call mouth has already checked this before entering here.
-        if (ftnWrapper && CoreIntrinsics.PiAbsentCoreClrQCall.Matches(callee)
+        if (ftnWrapper && (CoreIntrinsics.PiAbsentGlobalizationNative.Matches(callee)
+                || CoreIntrinsics.PiAbsentCoreClrQCall.Matches(callee))
             && _c.NativeImplFor(pinv) is { } implementation
             && !ReferenceEquals(implementation, _method))
         {
             EmitNativeImplCall(callee, implementation);
             return;
         }
-        string? refusal = _c.IsAbsentCoreClrQCall(callee)
-            ? Compilation.AbsentCoreClrQCallMessage(pinv) : null;
+        string? refusal = _c.IsAbsentGlobalizationImport(callee)
+            ? Compilation.AbsentGlobalizationImportMessage(pinv)
+            : _c.IsAbsentCoreClrQCall(callee) ? Compilation.AbsentCoreClrQCallMessage(pinv) : null;
         if (refusal is not null)
         {
             PopArgs(callee, hasThis: !callee.IsStatic);
@@ -675,6 +677,7 @@ internal sealed partial class MethodCompiler
             string receiverType = CoreIntrinsics.IsScalarNumericLeaf(callee)
                 || CoreIntrinsics.IsDateTimeCultureManagedBody(callee)
                 || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(callee)
+                || CoreIntrinsics.BrStringRawByteReference.Matches(callee)
                 ? ReceiverCppType(callee.DeclaringClass)
                 : callee.DeclaringClass.CppStructName + "*";
             args[0] = CoerceTo(receiver, TypeDesc.MakeClass(callee.DeclaringClass), receiverType);
@@ -1096,13 +1099,11 @@ internal sealed partial class MethodCompiler
             Push(StackKind.Ref, "Dn2CppCancelSource*", ctsNew);
             return;
         }
-        // new CancellationToken(bool canceled) — the expression (newobj) form.
-        if (NewobjTypeName(handle) == "System.Threading.CancellationToken")
+        // Both public Boolean and internal source constructors use the token payload.
+        if (NewobjTypeName(handle) == "System.Threading.CancellationToken"
+            && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition)
         {
-            var arg = Pop(); // bool canceled
-            EmitCanceledExcRegistration();
-            Push(StackKind.Struct, "Dn2CppCancelToken",
-                $"Dn2CppCancelToken{{ ({arg.Expr}) ? dn2cpp_cts_canceled() : nullptr }}");
+            Push(StackKind.Struct, "Dn2CppCancelToken", EmitCancellationTokenCtorExpr(DecodeCtorSignature(handle)));
             return;
         }
         // new Thread(ThreadStart|ParameterizedThreadStart [, int maxStackSize]) — the

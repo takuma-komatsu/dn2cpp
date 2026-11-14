@@ -56,14 +56,15 @@ internal static class Program
     }
 
     private static void Names(string label, Func<DateTimeFormatInfo, object, string> reflected, Func<DateTimeFormatInfo, int, string> direct,
-        Func<int, object> box, int[] values)
+        Func<int, object> box, int[] values, bool includeNull = true)
     {
         var info = DateTimeFormatInfo.InvariantInfo;
         foreach (int value in values)
             Console.WriteLine(label + " " + value + " direct=" + Show(() => direct(info, value))
                 + " reflect=" + Show(() => reflected(info, box(value))));
-        Console.WriteLine(label + " null direct=" + Show(() => direct(null, values[^1]))
-            + " reflect=" + Show(() => reflected(null, box(values[0]))));
+        if (includeNull)
+            Console.WriteLine(label + " null direct=" + Show(() => direct(null, values[^1]))
+                + " reflect=" + Show(() => reflected(null, box(values[0]))));
     }
 
     private static void NameArray(string label, Func<DateTimeFormatInfo, string[]> read)
@@ -191,5 +192,40 @@ internal static class Program
         Console.WriteLine("tokenize=" + Show(() => Tokenize(info, ref token, ref value).ToString()) + " outputs=" + token + "/" + value);
         Console.WriteLine("tokenize null=" + Show(() => Tokenize(null, ref token, ref value).ToString()) + " outputs=" + token + "/" + value);
         Console.WriteLine("DateTimeFormatInfo explicit refusals end");
+    }
+
+    private static void NameIdentity(string label, Func<string> read) =>
+        Console.WriteLine(label + " identity=" + ReferenceEquals(read(), read()));
+
+    public static void RunNameEdges()
+    {
+        Console.WriteLine("== DateTimeFormatInfo name edges ==");
+        var info = DateTimeFormatInfo.InvariantInfo;
+        NameIdentity("abbreviated-day", () => DayDirect(info, DayOfWeek.Sunday));
+        NameIdentity("day", () => info.GetDayName(DayOfWeek.Sunday));
+        NameIdentity("abbreviated-month", () => info.GetAbbreviatedMonthName(1));
+        NameIdentity("month", () => info.GetMonthName(1));
+        NameIdentity("era", () => info.GetEraName(0));
+        NameIdentity("abbreviated-era", () => info.GetAbbreviatedEraName(0));
+        int[] months = { -1, int.MinValue, int.MaxValue };
+        int[] eras = { int.MinValue, int.MaxValue };
+        Names("abbreviated-month", (target, value) => (string)typeof(DateTimeFormatInfo).GetMethod("GetAbbreviatedMonthName").Invoke(target, new[] { value }),
+            (target, value) => target.GetAbbreviatedMonthName(value), value => value, months, includeNull: false);
+        Names("month", (target, value) => (string)typeof(DateTimeFormatInfo).GetMethod("GetMonthName").Invoke(target, new[] { value }),
+            (target, value) => target.GetMonthName(value), value => value, months, includeNull: false);
+        Names("era", (target, value) => (string)typeof(DateTimeFormatInfo).GetMethod("GetEraName").Invoke(target, new[] { value }),
+            (target, value) => target.GetEraName(value), value => value, eras, includeNull: false);
+        Names("abbreviated-era", (target, value) => (string)typeof(DateTimeFormatInfo).GetMethod("GetAbbreviatedEraName").Invoke(target, new[] { value }),
+            (target, value) => target.GetAbbreviatedEraName(value), value => value, eras, includeNull: false);
+        MethodInfo metadata = typeof(DateTimeFormatInfo).GetMethod("GetAllDateTimePatterns", new[] { typeof(char) });
+        foreach (char format in new[] { 'a', 'z', '\udfff' })
+            Console.WriteLine(Escape("patterns " + format + " direct=" + Show(() => info.GetAllDateTimePatterns(format)[0])
+                + " reflect=" + Show(() => ((string[])metadata.Invoke(info, new object[] { format }))[0])));
+        Console.WriteLine("patterns null reflect=" + Show(() => ((string[])metadata.Invoke(null, new object[] { 's' }))[0]));
+        var clone = (DateTimeFormatInfo)info.Clone();
+        clone.DateSeparator = "~";
+        Console.WriteLine("clone separator=" + clone.DateSeparator + " invariant separator=" + info.DateSeparator
+            + " clone day=" + clone.GetAbbreviatedDayName(DayOfWeek.Monday));
+        Console.WriteLine("DateTimeFormatInfo name edges end");
     }
 }

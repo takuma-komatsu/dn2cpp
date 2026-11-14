@@ -714,6 +714,8 @@ internal sealed partial class MethodCompiler : IEvalStack
         CoreIntrinsics.ValidateVectorAsCallable(_method);
         if (CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(_method))
             return CompileInvariantCompareInfoInitializer();
+        if (CoreIntrinsics.BrStringRawByteReference.Matches(_method))
+            return CompileStringRawByteReferenceBody();
         if (CoreIntrinsics.IsGuardedVectorAs(_method))
             return CompileGuardedVectorAs();
         if (CoreIntrinsics.IsVectorMagnitudeManagedGuard(_method))
@@ -1303,8 +1305,14 @@ internal sealed partial class MethodCompiler : IEvalStack
     internal string? CompileCoreIntrinsicWrapper()
     {
         if (CoreIntrinsics.BrDelegateCallable.Matches(_method)) return CompileDelegateCallableBody();
+        if (CoreIntrinsics.BrArrayNativeLength.Matches(_method))
+            return CompileArrayNativeLengthBody();
+        if (CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(_method))
+            return CompileGCHandleCheckUninitializedBody();
         if (CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(_method))
             return CompileInvariantCompareInfoInitializer();
+        if (CoreIntrinsics.BrStringRawByteReference.Matches(_method))
+            return CompileStringRawByteReferenceBody();
         CoreIntrinsics.ValidateDelegateCallableBody(_method);
         CoreIntrinsics.ValidateConcreteVectorElement(_method);
         CoreIntrinsics.ValidateVectorFloatingPointTernary(_method);
@@ -1372,9 +1380,12 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleInterfaces(_method)
             || CoreIntrinsics.IsActivatorFrom(_method)
+            || CoreIntrinsics.IsDefaultPrincipalAccessor(_method)
+            || CoreIntrinsics.IsResourceFormatterAccessor(_method)
             || CoreIntrinsics.IsAppDomainExecuteAssembly(_method)
             || CoreIntrinsics.IsGen2GcCallbackRefusal(_method)
             || CoreIntrinsics.IsGen2GcCallbackRegister(_method)
+            || CoreIntrinsics.IsDecimalDivMod(_method)
             || CoreIntrinsics.IsVectorExplicit(_method)
             || CoreIntrinsics.IsConcreteVectorElement(_method)
             || CoreIntrinsics.IsVectorFloatingPointTernary(_method)

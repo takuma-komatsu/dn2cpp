@@ -24,6 +24,7 @@
 # byte that shell command substitution would discard.
 # Decimal standard fixed formats round exact digits; explicit G precision rounds
 # significant digits without changing the unqualified exact layout.
+# MemoryExtensions.TryWrite formats an interpolated integer hole into a span.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|comma-scaling-prefix:before-comma-scaling|custom-matrix-prefix:before-custom-matrix"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|standard-nul-prefix:before-standard-nul"
@@ -150,6 +151,8 @@ gate_extra_asserts() {
     long_sign=${long_sign// /+}
     gate_output witness "$native" "long exponent sign=[1.23E${long_sign}03]" --count any --policy crlf || {
         echo "FAIL: long decimal exponent sign witness missing" >&2; exit 1; }
+    gate_output byte-witness "$out/assert-native-1.stdout" 'span trywrite int=True 2 42' --count 1 --policy crlf || {
+        echo "FAIL: span TryWrite interpolation witness missing" >&2; exit 1; }
 }
 
 corelib_diff_gate StringInterp

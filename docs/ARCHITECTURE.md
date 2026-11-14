@@ -6,6 +6,13 @@ see `README.md`, for working conventions `AGENTS.md`, for the open backlog
 
 ---
 
+The CoreLib `RuntimeHelpers.IsKnownConstant` family retains its exact managed
+fallbacks rather than claiming JIT constant knowledge. Declaration constraints,
+raw references and closed value arguments are checked before admitting those
+bodies on the mapped owner. Ordinary calls, addresses and retained reflection
+share the same bodies, preserving argument effects and exceptions. A false hint
+selects the caller's normal algorithm; it is not a claim that a value is mutable.
+
 ## 1. Pipeline
 
 ```
@@ -376,6 +383,9 @@ Core invariants:
   `Dn2CppTypeInfo` at the head of every object.
 - **The evaluation stack is single-assignment temporaries**, spilled to per-depth
   normalized variables at basic-block boundaries so control-flow joins agree.
+  Promoted narrow-enum arguments normalize to their CLI storage width on real-IL
+  body entry, and local/argument stores use the same narrowing rule; the
+  normalization happens in the body, not in the native ABI.
 - **Generation is deterministic**: same input, same output. Nothing in the
   environment may change the C++ a successful transpile emits — the self-host
   fixpoint depends on it.
@@ -387,7 +397,6 @@ Core invariants:
   This can retain bodies for types a search never selects. An unsupported value
   equality keeps its slot empty, and the runtime array-search guard reports
   `NotSupportedException` if that equality is actually needed.
-
 - **Structural value equality compares unmanaged data-pointer fields by address**,
   including nested ordinary structs. It never reads pointees or compares the
   struct's raw bytes. The matching hash folds a pointer-sized unsigned address
@@ -680,6 +689,53 @@ refuses the virtual helper, which can call arbitrary managed overrides.
 3. For value-type receivers see `DerefReceiver` (dereferences the `ldloca`
    pointer).
 
+Primitive `BigMul` on Int32, UInt32, Int64, UInt64, IntPtr and UIntPtr retains
+an exact CoreLib callable replacement. Direct, address-taken and type-retained
+routes use that same body; native owners are not globally intrinsic. Fixed-width
+products reuse Math arithmetic and named Int128/UInt128 fields. Native products
+split at the target pointer width, restore unsigned native operands before
+widening and write only native-sized output storage. The host CoreLib native IL
+is not a target-independent implementation. Other signatures and the separate
+Int128/UInt128 full-width family are not intercepted. These replacements do not
+alter runtime-owned primitive reflection catalogs.
+
+The genuine CoreLib `DefaultInterpolatedStringHandler.HasCustomFormatter` and
+`GetDefaultLength` static helpers keep their field-free managed bodies across
+calls, retention, reflection-bound delegates and function addresses. They do not expose the
+intrinsic handler's instance layout. Formatter detection preserves the exact
+CultureInfo type shortcut and otherwise asks `IFormatProvider.GetFormat` for
+ICustomFormatter, testing only whether the returned object is nonnull. It does
+not cast, cache the callback, or change existing handler/provider policies.
+The length helper preserves unchecked Int32 arithmetic before the signed floor.
+`MethodInfo.Invoke` refuses a by-ref-like declaring type before receiver or
+argument validation; this does not prohibit binding its static methods to delegates.
+
+`Int128.CreateChecked<T>` has a bounded closed adapter for signed and unsigned
+integer primitives, including Char and target-width native integers, plus Int128
+identity. Concrete calls, constrained `INumberBase<Int128>` calls and retained
+function targets share the exact CoreLib signature authority. The checked adapter
+validates the ordinary Int128 layout and writes its named UInt64 fields; signed
+sources sign-extend, unsigned sources zero-extend, and identity uses a typed value
+copy. It does not admit UInt128, floating-point or custom numeric conversions,
+open generic factories, or a general `TryConvert*` implementation. Existing
+truncating and primitive checked conversions retain their separate policies.
+
+`UInt128.CreateChecked<T>` admits the corresponding finite integer source family
+and UInt128 identity, but no Int128 cross-conversion. Signed sources restore
+their declared width and throw managed overflow when negative, before writing
+either named UInt64 field. Successful widening zero-extends; identity preserves
+the full value. Direct, constrained and retained callable routes share exact
+signature and layout admission. Raw MethodSpec arguments and owner TypeSpecs
+reject modifiers, pinned wrappers and malformed spelling before decoded types
+can authorize replacement. The genuine `INumberBase.CreateChecked` owner must
+have exactly one declared and supplied type argument before ordinary dispatch.
+ILDiet consumes original retained method and TypeSpec signatures completely
+rather than normalizing trailing bytes away, including retained constrained
+operands whose original tokens Cecil otherwise erases. Native integers use
+target-width storage. Successful
+conversion allocates nothing; overflow retains the ordinary exception-only
+allocation policy. This adapter does not expand reflection discovery.
+
 **When does a method earn an intrinsic?** The default is to transpile the real
 BCL IL — Regex/Guid/Crypto coverage landed by removing transpile blockers, not by
 adding intrinsics. Add one only when:
@@ -711,7 +767,14 @@ So add **one descriptor row** in
 asker — **(pure predicate, cut kind, emit arm, scan effect)**, one list, nothing
 to drift.
 
-CoreLib imports of the private `QCall` module refuse unsupported native calls:
+CoreLib's `Interop.Globalization` imports have no ICU PAL in the native runtime.
+Their native-import descriptor keeps managed wrappers and retained signatures,
+but routes execution to a catchable `PlatformNotSupportedException` through the
+same P/Invoke mouth used by direct calls and address-taken wrappers. A registered
+`NativeImplementation` or explicit `--direct-pinvoke` binding supplies the import
+instead; application imports are unaffected.
+
+CoreLib imports of the private `QCall` module follow the same refusal rule:
 the standalone runtime has no CoreCLR entry points. Existing member-specific
 lowerings retain ownership of direct calls and address-taken wrappers. This is
 selected from the input declaration, never the transpiler host. In particular,
@@ -948,6 +1011,17 @@ AssemblyLoadContext or netmodule loader. This does not add a named reflection
 catalog for the base method; address-retained metadata must refuse invocation
 rather than run its nonvirtual base body on a native reflection receiver.
 
+The private CoreLib `GC.RunFinalizers(): UInt32` callback belongs to CoreCLR's
+native finalizer worker, including its thread reset and queue ownership. dn2cpp
+owns finalization through its dedicated consumer or manual-drain mode. The exact
+private, static, nongeneric, zero-argument callback retains a callable signature
+but throws `PlatformNotSupportedException` when invoked, including by reflection
+or an address-taken wrapper. It does not return a fabricated count, reset caller
+threads, or introduce a second queue consumer. Public `GC.Collect`,
+`GC.WaitForPendingFinalizers`, suppression and re-registration keep their runtime
+implementations. This is a private runtime boundary, not CLR callback parity or a
+general fallback for retained methods.
+
 - **Predicate**: the member set only — names, and behind a name gate a thunked
   signature. Never Compilation state.
 - **Table**, by what the (type, member) pair *means*: `MethodDefIntercepts`
@@ -1060,6 +1134,52 @@ its `GetFormat(Type)` implementation and accepts only a `NumberFormatInfo` resul
 other results fall back to the current culture. Allocation, identity conversion,
 and unrelated known-provider formatting do not retain unused provider bodies.
 
+The exact DateTimeFormatInfo and CultureInfo CompareInfo getters share a genuine
+managed CompareInfo under the native invariant-comparison policy. A single linked
+typed factory initializes its actual name fields to the rooted empty string and
+publishes only the complete object through a mutex-protected scanned pinned root.
+It neither invokes the managed constructor/InitSort nor re-enters the CompareInfo
+type initializer. Ordinary type initialization and the real Name, Equals and
+GetHashCode bodies remain intact. Null receivers fail before cache access; cold
+allocation is conservatively classified even for warmed callers. This does not
+initialize ICU/NLS handles or add arbitrary linguistic comparison capabilities.
+
+Native CultureInfo values have a headerless representation distinct from managed
+subclasses. An exact getter virtual/address/reflection demand combined with an
+actually allocated descendant overriding that slot is diagnosed as unsupported,
+not silently redirected to the invariant base result. A directly proven native
+InvariantCulture producer and explicit nonvirtual base calls remain valid. Merely
+loading or preserving subtype/getter metadata does not establish dispatch demand.
+Opaque reflection conservatively considers available getter rows when invocation
+or delegate binding is used; it does not infer which runtime method is selected.
+No general CultureInfo subclass ABI or virtual-dispatch framework is introduced.
+
+DateTimeFormatInfo name lookup, public array cloning and pattern composition
+retain their CoreLib IL above frozen invariant-data leaves. Shared precise
+String[] backing arrays use mutex-protected scanned pinned roots; public name
+arrays remain detached clones. First use can allocate. Pattern setters and
+per-culture date formatting remain unsupported. The Char/Byte TChar accessors
+read the existing mutable DateSeparator; other text stays invariant. Char spans
+borrow string storage, while Byte spans use GC-managed UTF-8 buffers, without
+promising CoreCLR cache identity.
+
+Native DateTimeFormatInfo values do not construct CultureData or Calendar state.
+Calendar access refuses explicitly; its setter preserves receiver, read-only and
+null-value checks before refusing a nonnull change. Tokenize is a capability
+boundary: it throws PlatformNotSupportedException without reading parser state
+or changing output references. Ordinary callvirt still checks its receiver.
+Retaining that callable body does not make token-table parsing functional.
+
+DateOnly.Deconstruct and the selected private DateTime arithmetic helpers retain
+their original IL over the mapped day-number and date-data value fields.
+The native date model does not represent leap seconds. Its Windows CoreLib
+capability leaf is false, leaving the OS-dependent leap-second branch unreachable.
+CultureInfo.VerifyCultureName(String, Boolean) likewise retains its field-free
+managed body; its CultureInfo overload depends on unmodeled inheritance state.
+Only the exact retained DateOnly, DateTime and CultureInfo rows are attached to
+named lookup on their runtime-owned type identities. This does not expose an
+unmodeled reflection surface or imply general member enumeration support.
+
 Numeric culture data are frozen CLR/ICU snapshots in `runtime/core/intrinsics/`.
 Native binaries never discover or load the deployment host's ICU. Reference
 versions are explicit and checked by `gates/check-culture-reference.sh` in CI.
@@ -1110,52 +1230,6 @@ An erased indirect read can materialize an identity wrapper; pending objects and
 on the IL evaluation stack therefore stay live across `ldind.ref` and `ldobj` on Web.
 Runtime argument-exception helpers likewise keep earlier managed operands live
 while constructing later message, parameter-name and boxed-value operands.
-
-The exact DateTimeFormatInfo and CultureInfo CompareInfo getters share a genuine
-managed CompareInfo under the native invariant-comparison policy. A single linked
-typed factory initializes its actual name fields to the rooted empty string and
-publishes only the complete object through a mutex-protected scanned pinned root.
-It neither invokes the managed constructor/InitSort nor re-enters the CompareInfo
-type initializer. Ordinary type initialization and the real Name, Equals and
-GetHashCode bodies remain intact. Null receivers fail before cache access; cold
-allocation is conservatively classified even for warmed callers. This does not
-initialize ICU/NLS handles or add arbitrary linguistic comparison capabilities.
-
-Native CultureInfo values have a headerless representation distinct from managed
-subclasses. An exact getter virtual/address/reflection demand combined with an
-actually allocated descendant overriding that slot is diagnosed as unsupported,
-not silently redirected to the invariant base result. A directly proven native
-InvariantCulture producer and explicit nonvirtual base calls remain valid. Merely
-loading or preserving subtype/getter metadata does not establish dispatch demand.
-Opaque reflection conservatively considers available getter rows when invocation
-or delegate binding is used; it does not infer which runtime method is selected.
-No general CultureInfo subclass ABI or virtual-dispatch framework is introduced.
-
-DateTimeFormatInfo name lookup, public array cloning and pattern composition
-retain their CoreLib IL above frozen invariant-data leaves. Shared precise
-String[] backing arrays use mutex-protected scanned pinned roots; public name
-arrays remain detached clones. First use can allocate. Pattern setters and
-per-culture date formatting remain unsupported. The Char/Byte TChar accessors
-read the existing mutable DateSeparator; other text stays invariant. Char spans
-borrow string storage, while Byte spans use GC-managed UTF-8 buffers, without
-promising CoreCLR cache identity.
-
-Native DateTimeFormatInfo values do not construct CultureData or Calendar state.
-Calendar access refuses explicitly; its setter preserves receiver, read-only and
-null-value checks before refusing a nonnull change. Tokenize is a capability
-boundary: it throws PlatformNotSupportedException without reading parser state
-or changing output references. Ordinary callvirt still checks its receiver.
-Retaining that callable body does not make token-table parsing functional.
-
-DateOnly.Deconstruct and the selected private DateTime arithmetic helpers retain
-their original IL over the mapped day-number and date-data value fields.
-The native date model does not represent leap seconds. Its Windows CoreLib
-capability leaf is false, leaving the OS-dependent leap-second branch unreachable.
-CultureInfo.VerifyCultureName(String, Boolean) likewise retains its field-free
-managed body; its CultureInfo overload depends on unmodeled inheritance state.
-Only the exact retained DateOnly, DateTime and CultureInfo rows are attached to
-named lookup on their runtime-owned type identities. This does not expose an
-unmodeled reflection surface or imply general member enumeration support.
 
 #### Portable vector lowering
 
@@ -2075,3 +2149,14 @@ flags, binder, culture or array payload is validated or inspected, and
 no target or `ObjectHandle` is allocated. Null/empty path validation is therefore
 not CLR parity; linked-name activation remains a separate supported capability.
 The typed unreachable return preserves the managed `ObjectHandle` ABI.
+
+The exact CoreLib default-principal `UnsafeAccessor` is forwarded to the
+managed `GenericPrincipal.GetDefaultInstance` factory in `System.Security.Claims`.
+It is not a VM principal handle. Automatic framework reference resolution admits
+that one dependency beside the original CoreLib; explicit references remain
+authoritative. Without automatic references the target must be supplied.
+ILDiet retains the factory closure only when the accessor is executable, not
+merely because Claims metadata was loaded. The ignored static-target marker
+still evaluates normally. The real factory owns identity, roles and freshness;
+AppDomain policy branches and explicit principals keep their managed behavior.
+Other UnsafeAccessor shapes are not generalized by this bridge.

@@ -54,7 +54,8 @@ public sealed record TranspileOptions
     internal string ILDietFallback { get; init; } = "none";
 
     /// <summary>Self-hosting feasibility harness (<c>--measure</c>): collect and
-    /// report every reachable transpilation gap instead of emitting C++.</summary>
+    /// report observed per-body failures instead of emitting C++. Failed scans can
+    /// leave dependencies undiscovered; this mode does not establish full coverage.</summary>
     public bool Measure { get; init; }
 
     /// <summary>Maximum number of method bodies compiled concurrently

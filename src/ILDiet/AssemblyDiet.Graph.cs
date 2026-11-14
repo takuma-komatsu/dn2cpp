@@ -160,7 +160,11 @@ internal sealed partial class AssemblyDiet
     private void Require(MethodDefinition method, MethodState state)
     {
         CheckMutable();
-        if ((state & MethodState.Body) != 0) NoteMediumMethod(method);
+        if ((state & MethodState.Body) != 0)
+        {
+            NoteMediumMethod(method);
+            ReachDefaultPrincipalTarget(method);
+        }
         if ((state & MethodState.Body) != 0 && _cutMethods.Contains(method))
         {
             KeepCutMethod(method);

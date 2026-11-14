@@ -12,6 +12,11 @@ namespace ThreadingPrimitives
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+            if (args.Length != 0 && args[0] == "native-boundary")
+            {
+                WaitHandleRawWaitSubset.Program.RunNativeBoundary();
+                return;
+            }
             ThreadingPrimitivesCore.Program.__GateEntry();
             InterlockedSubWord.Program.__GateEntry();
             InterlockedFloatDouble.Program.__GateEntry();
@@ -36,6 +41,9 @@ namespace ThreadingPrimitives
             if (args.Length != 0 && args[0] == "before-cancellation-thread-faults")
                 return;
             ThreadingPrimitivesCore.Program.RunCancellationFaults();
+            if (args.Length != 0 && args[0] == "before-raw-wait")
+                return;
+            WaitHandleRawWaitSubset.Program.Run();
         }
     }
 }

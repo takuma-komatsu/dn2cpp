@@ -2280,14 +2280,9 @@ internal sealed partial class MethodCompiler
             return;
         }
 
-        // NumberFormatInfo / DateTimeFormatInfo generic span accessors
-        // (NegativeSignTChar<TChar>() and siblings) — the TChar forms of the string
-        // properties, reached from the transpiled formatting subtrees (Number.FormatFloat
-        // behind Half.ToString for char, the Utf8Formatter path for byte). BOTH widths read
-        // the SAME modeled culture: the byte arm transcodes the very string the char arm
-        // spans, so a non-invariant provider prints its own separators in UTF-8 too.
-        // DateTimeFormatInfo remains invariant-only, matching its property intercepts.
-        if ((declType is "System.Globalization.NumberFormatInfo" or "System.Globalization.DateTimeFormatInfo")
+        // NumberFormatInfo generic span accessors keep their modeled culture.
+        // DateTimeFormatInfo uses the exact token-free arm shared with retained bodies.
+        if (declType == "System.Globalization.NumberFormatInfo"
             && name.EndsWith("TChar", StringComparison.Ordinal))
         {
             bool isByte = methodArgs is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte }];
@@ -2301,18 +2296,6 @@ internal sealed partial class MethodCompiler
             string spanCt = CppTypes.Of(nfiSig.ReturnType);
             string symSpan = NewTemp(spanCt);
             string strExpr;
-            if (declType == "System.Globalization.DateTimeFormatInfo")
-                strExpr = Literals.GetOrAdd(name switch
-                {
-                    "DecimalSeparatorTChar" => ".",
-                    "DateSeparatorTChar" => "/",
-                    "TimeSeparatorTChar" => ":",
-                    "AMDesignatorTChar" => "AM",
-                    "PMDesignatorTChar" => "PM",
-                    _ => throw new NotSupportedException(
-                        $"{Method.DeclaringClass.FullName}.{Method.Name}: {declType}::{name} has no mapping yet"),
-                });
-            else
             {
                 string nfiPtr = $"({Cast(recv, "const Dn2CppNumberFormatInfo*")})";
                 strExpr = name switch

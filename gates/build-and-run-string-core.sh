@@ -46,6 +46,7 @@
 # String argument validation preserves named faults, values and validation order.
 # Composite format faults preserve UTF-16 positions, grammar reasons and argument effects.
 # Runtime argument messages retain named/boxed operands across Web collections.
+# Null-terminated spans, pinnable byte views and Marshal Uni copies read raw UTF-16.
 source "$(dirname "$0")/_common.sh"
 gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for string call fixtures"
 
@@ -385,6 +386,11 @@ gate_extra_asserts() {
         [ "$(grep -Ec "^$line=Argument(OutOfRange)?Exception:" "$out/argument-roots.lf")" = 1 ] \
             || { echo "FAIL: collected runtime argument witness missing or repeated: $line" >&2; exit 1; }
     done
+    gate_capture_ok "$out/assert-before-35" run_bounded dotnet "$_CG_APP" before-null-terminated
+    gate_output select "$native" "$out/assert-prefix-35.stdout" --before '== null-terminated string views ==' --policy crlf
+    gate_output compare "$out/assert-prefix-35.stdout" "$out/assert-before-35.stdout"
+    gate_output witness "$native" 'null-terminated string views end' --count 1 --policy crlf \
+        || { echo 'FAIL: null-terminated string views did not run' >&2; exit 1; }
 }
 
 corelib_diff_gate StringCore System.Linq

@@ -46,6 +46,16 @@ namespace ManifestResources
                 ResourceManagerLimitsSubset.Program.__GateEntry();
                 return;
             }
+            if (args.Length > 0 && args[0] == "reader-guards")
+            {
+                ResourceReaderGuardSubset.Program.Run();
+                return;
+            }
+            if (args.Length > 0 && args[0] == "formatter-limit")
+            {
+                ResourceReaderGuardSubset.Program.RunFormatterLimit();
+                return;
+            }
 
             ResourceStreamSubset.Program.__GateEntry();
             ResourceCatalogSubset.Program.__GateEntry();

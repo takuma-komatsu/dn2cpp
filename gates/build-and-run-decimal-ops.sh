@@ -5,6 +5,7 @@
 # OLE currency conversion preserves ToEven rounding, signed bounds and decimal scale.
 # Scale reads the stored exponent, including signed zero and equal-value representations.
 # Decimal binary I/O preserves coefficient, flags, span bounds and evaluation order.
+# Coefficient division preserves sign and scale; malformed DecDivMod1E9 references are refused.
 #
 #   * DecimalSubset — the STATICALLY TYPED surface. The real corelib
 #     Decimal.ToString reaches Number.FormatDecimal -> ArrayPool -> EventSource ->
@@ -34,6 +35,8 @@
 # InvariantGlobalization pins the oracle's culture, which is what makes the diff
 # host-independent. See the csproj.
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/DecimalDivModFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|cli:$(_gate_cli_hash)"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
@@ -69,6 +72,22 @@ gate_extra_asserts() {
     gate_output select "$native" "$out/assert-prefix-binary.stdout" --before '[DecimalBinarySubset]' --policy crlf
     gate_output compare "$out/assert-prefix-binary.stdout" "$out/assert-before-binary.stdout"
     gate_output byte-witness "$native" 'decimal-binary.done' --count 1 --policy crlf
+    gate_capture_ok "$out/assert-before-divmod" run_bounded dotnet "$_CG_APP" before-decimal-divmod || return 1
+    gate_output select "$native" "$out/assert-prefix-divmod.stdout" --before '== decimal coefficient divmod ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-divmod.stdout" "$out/assert-before-divmod.stdout" || return 1
+    gate_output byte-witness "$native" 'decimal coefficient divmod end' --count 1 --policy crlf \
+        || { echo 'FAIL: decimal divmod section did not run' >&2; return 1; }
+
+    # A DecDivMod1E9 MemberRef whose return type differs from CoreLib's is refused.
+    local fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" root
+    build_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj || return $?
+    root=$(mktemp -d "$out/refusal-divmod.XXXXXX") || return 1
+    mkdir -p "$root/input" || return 1
+    cp "$_CG_APP" "${_CG_APP%.dll}.runtimeconfig.json" "${_CG_APP%.dll}.deps.json" "$root/input/" || return $?
+    dotnet "$fixture" --decimal-divmod "$root/input/DecimalOps.dll" "$_CG_CORELIB" return || return $?
+    gate_capture "$root/cli" invoke_cli "$root/input/DecimalOps.dll" --auto-ref --no-ildiet -o "$root/out" || return $?
+    [ "$(cat "$root/cli.status")" = 2 ] && grep -Fq 'Decimal.DecDivMod1E9 requires its exact' "$root/cli.stderr" \
+        || { echo 'FAIL: malformed DecDivMod1E9 reference was not refused' >&2; return 1; }
 }
 
 corelib_diff_gate DecimalOps System.Linq System.Collections System.Runtime

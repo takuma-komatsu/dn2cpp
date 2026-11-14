@@ -381,6 +381,8 @@ ok "Gate cache inputs: runtime-tree=$DN2CPP_RUNTIME_HASH dotnet-runtimes=$DN2CPP
 ORDERED_PROJECTS=(
     "src/Dn2Cpp.Runtime/Dn2Cpp.Runtime.csproj"
     "src/Dn2Cpp.Cli.Console/Dn2Cpp.Cli.Console.csproj"
+    "samples/dotnet/SelfHostPrimSubset/DefaultStructCtorLib/DefaultStructCtorLib.csproj"
+    "samples/dotnet/SelfHostPrimSubset/SelfHostPrimSubset.csproj"
     "samples/dotnet/ReflectInvoke/ReflectInvoke.csproj"
     "samples/dotnet/ReflectInvoke/DelegateVirtualIdentityLibrary.csproj"
     "samples/dotnet/ReflectReturnLib/ReflectReturnLib.csproj"
@@ -497,6 +499,8 @@ ORDERED_PROJECTS=(
     # Shared fixture outside samples/: build once before array-core and
     # wasm-console consume it under DN2CPP_SKIP_BUILD.
     "gates/fixtures/md-readonly-byrefs/MdReadonlyByrefs.csproj"
+    # These fixture roots are outside the sample scan, but their gates use
+    # build_proj and therefore consume these outputs under DN2CPP_SKIP_BUILD.
     "gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
     "gates/fixtures/gen2-callback/interpreter/Patch/Gen2CallbackPatch.csproj"
     "gates/fixtures/compare-info-override/CompareInfoOverride.csproj"

@@ -74,6 +74,9 @@ namespace DateTimeOps
             DateOnlySubset.Program.RunDeconstruct();
             DateTimePrivateSubset.Program.Run();
             DateTimePrivateSubset.Program.RunCultureNames();
+            if (args.Length > 0 && args[0] == "before-dtfi-name-edges")
+                return;
+            DateTimeFormatInfoSubset.Program.RunNameEdges();
         }
     }
 }

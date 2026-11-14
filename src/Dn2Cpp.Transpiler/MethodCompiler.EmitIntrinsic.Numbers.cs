@@ -1195,15 +1195,6 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", "0");
                 return true;
             }
-            case ("System.Globalization.DateTimeFormatInfo", "get_AbbreviatedMonthNames")
-                or ("System.Globalization.DateTimeFormatInfo", "get_AbbreviatedMonthGenitiveNames")
-                when sig.ReturnType is { Kind: TypeKind.SZArray, Element: { } me }:
-            {
-                var receiver = Pop();
-                Emit($"dn2cpp_null_check({Cast(receiver, "Dn2CppObject*")});");
-                Push(StackKind.Ref, "Dn2CppArrayRef*", $"dn2cpp_array_clone_ref(dn2cpp_dtfi_invariant_month_names({PreciseArrayTypeInfoExpr(me)}, true))");
-                return true;
-            }
             case ("System.Globalization.DateTimeFormatInfo", "get_AbbreviatedDayNames")
                 when sig.ReturnType is { Kind: TypeKind.SZArray, Element: { } de }:
             {

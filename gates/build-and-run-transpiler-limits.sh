@@ -109,6 +109,8 @@
 # Validated ordinary cuts exclude body depth summaries while preserving signatures.
 # Measure inventories equality first selected by reflected signature layouts.
 # A closure table's convergence check renders each shared summary term once.
+# Measurement keeps normal emission fail-fast and records each failing body once
+# (tools/measure-gap-backlog/check_cli.py).
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_ildiet.sh"
 
@@ -117,6 +119,20 @@ case "${DN2CPP_TRANSPILER_LIMITS_FULL:-0}" in
     *) echo 'DN2CPP_TRANSPILER_LIMITS_FULL must be 0 or 1' >&2; exit 1 ;;
 esac
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|transpiler-limits-full:$DN2CPP_TRANSPILER_LIMITS_FULL"
+
+transpiler_limits_measure_contract() {
+    local root="$1" corelib="$2" fixtures config
+    fixtures="artifacts/transpiler-limits-measure-fixtures-$CONFIG"
+    config=$(printf '%s' "$CONFIG" | tr '[:upper:]' '[:lower:]')
+    # Build output stays under artifacts/, outside the tools tree.
+    dotnet build tools/measure-gap-backlog/fixture/GapFixture.csproj -c "$CONFIG" --nologo -v q \
+        -p:BuildInParallel=false --artifacts-path "$fixtures/GapFixture" || return 1
+    prepare_cli || return 1
+    gate_python "$(native_path tools/measure-gap-backlog/check_cli.py)" \
+        --cli "$(native_path "$DN2CPP_CLI_DLL")" --corelib "$(native_path "$corelib")" \
+        --fixture "$(native_path "$fixtures/GapFixture/bin/GapFixture/$config/GapFixture.dll")" \
+        --output "$(native_path "$root/measure-contract")" || return 1
+}
 
 transpiler_limits_representative_gate() (
     local root corelib sig_app rec_app big_app rc sym
@@ -154,6 +170,9 @@ transpiler_limits_representative_gate() (
     gate_output status "$rc" 2
     grep -q 'exceeded its 16 MB heap budget during' "$root/heap.stderr" \
         || { echo 'FAIL: heap overrun did not name the budget and phase' >&2; cat "$root/heap.stderr" >&2; return 1; }
+
+    echo '== Measurement stays fail-fast in emission and records each failing body once =='
+    transpiler_limits_measure_contract "$root" "$corelib"
 
     echo '== Uncalled recursive signatures remain shells; live CLR parity =='
     gate_extra_asserts() {

@@ -4422,11 +4422,27 @@ void dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> 
     g_culture_compare_info_row = method;
 }
 
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_string_private_rows[2];
+
+void dn2cpp_set_string_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> rawByte,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> length)
+{
+    g_string_private_rows[0] = rawByte;
+    g_string_private_rows[1] = length;
+}
+
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_culture_name_validator_row;
 
 void dn2cpp_set_culture_name_validator_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method)
 {
     g_culture_name_validator_row = method;
+}
+
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_resourcemanager_default_type_row;
+
+void dn2cpp_set_resourcemanager_default_type_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method)
+{
+    g_resourcemanager_default_type_row = method;
 }
 
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_dateonly_deconstruct_row;
@@ -4465,16 +4481,22 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     const auto factory = g_member_not_found_factory_row;
     const bool factoryNamed = factory != nullptr
         && dn2cpp_member_name_matches(factory->name, name, bindingFlags, false);
+    const auto dateOnly = g_dateonly_deconstruct_row;
+    const bool dateOnlyNamed = dateOnly != nullptr
+        && dn2cpp_member_name_matches(dateOnly->name, name, bindingFlags, false);
     const auto cultureCompareInfo = g_culture_compare_info_row;
     const bool cultureCompareInfoNamed = cultureCompareInfo != nullptr
         && dn2cpp_member_name_matches(cultureCompareInfo->name, name, bindingFlags, false);
     const auto cultureNameValidator = g_culture_name_validator_row;
     const bool cultureNameValidatorNamed = cultureNameValidator != nullptr
         && dn2cpp_member_name_matches(cultureNameValidator->name, name, bindingFlags, false);
-    const auto dateOnly = g_dateonly_deconstruct_row;
-    const bool dateOnlyNamed = dateOnly != nullptr
-        && dn2cpp_member_name_matches(dateOnly->name, name, bindingFlags, false);
-    bool named = factoryNamed || cultureCompareInfoNamed || cultureNameValidatorNamed || dateOnlyNamed;
+    const auto resourceManager = g_resourcemanager_default_type_row;
+    const bool resourceManagerNamed = resourceManager != nullptr
+        && dn2cpp_member_name_matches(resourceManager->name, name, bindingFlags, false);
+    bool named = factoryNamed || dateOnlyNamed || cultureCompareInfoNamed || cultureNameValidatorNamed || resourceManagerNamed;
+    for (int32_t i = 0; i < 2 && !named; i++)
+        named = g_string_private_rows[i] != nullptr
+            && dn2cpp_member_name_matches(g_string_private_rows[i]->name, name, bindingFlags, false);
     for (int32_t i = 0; i < 2 && !named; i++)
         named = g_datetime_parser_rows[i] != nullptr
             && dn2cpp_member_name_matches(g_datetime_parser_rows[i]->name, name, bindingFlags, false);
@@ -4486,13 +4508,19 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     for (const Dn2CppTypeInfo* ti = queried; ti != nullptr; ti = dn2cpp_meta_next_level(ti))
     {
         bool inherited = (ti != queried);
-        if (cultureNameValidatorNamed)
+        if (ti == &dn2cpp_string_type)
         {
-            const auto row = cultureNameValidator.operator->();
-            if (row->declaringType == ti && dn2cpp_member_matches(row->attrs, bindingFlags, inherited)
-                && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
-                && (paramTypes == nullptr || dn2cpp_params_match_types(cultureNameValidator, paramTypes, queried)))
-                cands.push_back(cultureNameValidator);
+            for (int32_t i = 0; i < 2; i++)
+            {
+                const auto method = g_string_private_rows[i];
+                if (method == nullptr) continue;
+                const auto row = method.operator->();
+                if (row->declaringType == ti && dn2cpp_member_name_matches(row->name, name, bindingFlags, false)
+                    && dn2cpp_member_matches(row->attrs, bindingFlags, inherited)
+                    && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
+                    && (paramTypes == nullptr || dn2cpp_params_match_types(method, paramTypes, queried)))
+                    cands.push_back(method);
+            }
         }
         for (int32_t i = 0; i < 2; i++)
         {
@@ -4505,14 +4533,6 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
                 && (paramTypes == nullptr || dn2cpp_params_match_types(method, paramTypes, queried)))
                 cands.push_back(method);
         }
-        if (dateOnlyNamed)
-        {
-            const auto row = dateOnly.operator->();
-            if (row->declaringType == ti && dn2cpp_member_matches(row->attrs, bindingFlags, inherited)
-                && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
-                && (paramTypes == nullptr || dn2cpp_params_match_types(dateOnly, paramTypes, queried)))
-                cands.push_back(dateOnly);
-        }
         if (cultureCompareInfoNamed)
         {
             const auto row = cultureCompareInfo.operator->();
@@ -4520,6 +4540,30 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
                 && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
                 && (paramTypes == nullptr || dn2cpp_params_match_types(cultureCompareInfo, paramTypes, queried)))
                 cands.push_back(cultureCompareInfo);
+        }
+        if (cultureNameValidatorNamed)
+        {
+            const auto row = cultureNameValidator.operator->();
+            if (row->declaringType == ti && dn2cpp_member_matches(row->attrs, bindingFlags, inherited)
+                && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
+                && (paramTypes == nullptr || dn2cpp_params_match_types(cultureNameValidator, paramTypes, queried)))
+                cands.push_back(cultureNameValidator);
+        }
+        if (resourceManagerNamed)
+        {
+            const auto row = resourceManager.operator->();
+            if (row->declaringType == ti && dn2cpp_member_matches(row->attrs, bindingFlags, inherited)
+                && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
+                && (paramTypes == nullptr || dn2cpp_params_match_types(resourceManager, paramTypes, queried)))
+                cands.push_back(resourceManager);
+        }
+        if (dateOnlyNamed)
+        {
+            const auto row = dateOnly.operator->();
+            if (row->declaringType == ti && dn2cpp_member_matches(row->attrs, bindingFlags, inherited)
+                && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
+                && (paramTypes == nullptr || dn2cpp_params_match_types(dateOnly, paramTypes, queried)))
+                cands.push_back(dateOnly);
         }
         if (factoryNamed)
         {

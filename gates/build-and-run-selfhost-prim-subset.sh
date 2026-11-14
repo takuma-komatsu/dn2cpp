@@ -76,8 +76,9 @@
 # codecs; minimal metadata and malformed inputs need emission only.
 #
 #  The reflection sections after BufferReferenceMoveSubset (RuntimeType queries,
-#     activation and type/field/method handles) reach private CoreLib members
-#     that Medium retains, through public APIs only.
+#     activation, type/field/method handles, GC queries, delegates and
+#     known-constant searches) reach private CoreLib members that Medium
+#     retains, through public APIs only.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
 source "$(dirname "$0")/_common.sh"
@@ -112,7 +113,8 @@ gate_extra_asserts() {
     local out="$1"
     gate_output witness "$out/native.stdout" 'Nullable reboxing contract end' \
         'Activator default construction end' 'GC memory query entry points end' \
-        'Runtime method enumeration contract end' 'Runtime type handle accessors end' \
+        'Runtime method enumeration contract end' 'Runtime type handle accessors end' 'Principal public neighbor end' \
+        'known-constant-public-searches:True' 'known-constant-search-values:70:70:0:-1:-1' 'Known constant public searches end' \
         --count 1 --policy crlf || return 1
     gate_capture_ok "$out/nullable-before" run_bounded dotnet "$_CG_APP" before-nullable-reboxing || return 1
     gate_output select "$out/native.stdout" "$out/nullable-prefix.stdout" \
@@ -136,7 +138,7 @@ gate_extra_asserts() {
 }
 
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \
-    System.Collections.Specialized \
+    System.Collections.Specialized System.Security.Claims \
     -r "samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/DefaultStructCtorLib.dll"
 
 # The real runner source is linked into this small fixture so this block proves
@@ -191,7 +193,7 @@ mkdir -p "$routes"
 # are already covered by the aggregate cache and need no second native image.
 route_inputs=()
 while IFS= read -r f; do route_inputs+=("$f"); done < <(git ls-files -co --exclude-standard -- \
-    gates/fixtures/ldftn-local)
+    gates/fixtures/ldftn-local gates/fixtures/default-principal)
 if gate_cache_check "$routes" "selfhost-prim-route-refusals|cli:$(_gate_cli_hash)|corelib:$corelib|flags:--auto-ref,--no-ildiet" \
         "$prim_bin/"* "${route_inputs[@]}"; then
     gate_cache_hit_msg
@@ -199,13 +201,16 @@ if gate_cache_check "$routes" "selfhost-prim-route-refusals|cli:$(_gate_cli_hash
 fi
 routes=$(mktemp -d "$routes/run.XXXXXX")
 echo "RuntimeType refusal artifacts: $routes"
-mkdir -p "$routes/negative-input" "$routes/raw-input"
+mkdir -p "$routes/negative-input" "$routes/raw-input" "$routes/claims/copy"
 cp "$prim_bin/"* "$routes/negative-input/"
 cp "$prim_bin/"* "$routes/raw-input/"
 
 # Malformed inputs are compile-only and fail closed: an ldftn of the pointer query
 # with a wrong return type, a raw call whose return names Boolean as a class (the
-# refusal must not fall back to the intrinsic table).
+# refusal must not fall back to the intrinsic table), a missing Claims
+# implementation for the default principal, a Claims copy whose
+# GenericPrincipal.GetDefaultInstance returns object, and the unrewritten
+# principal probe, whose entry takes a typed GCHandle member's address.
 refusal() {
     local name="$1" diagnostic="$2"
     shift 2
@@ -219,4 +224,16 @@ refusal pointer-memberref 'RuntimeTypeIsPointerSubset[.]IsPointerChecks[.]Addres
 dotnet "$fixture" --runtime-type-is-pointer-negative-call-class-return "$routes/raw-input/SelfHostPrimSubset.dll" "$corelib"
 refusal pointer-call-raw 'RuntimeTypeIsPointerSubset[.]IsPointerChecks[.]Direct: RuntimeType pointer query requires its exact MemberRef signature \[chain: .*\]' \
     "$routes/raw-input/SelfHostPrimSubset.dll" --auto-ref --no-ildiet
+build_gate_proj gates/fixtures/default-principal/ImplicitPrincipalProbe.csproj
+cp "gates/fixtures/default-principal/bin/$CONFIG/$TFM/"* "$routes/claims/"
+dotnet "$fixture" --default-principal "$routes/claims/ImplicitPrincipalProbe.dll" "$corelib"
+dotnet "$fixture" --default-principal-target-copy "$(dirname "$corelib")/System.Security.Claims.dll" \
+    "$routes/claims/copy/System.Security.Claims.dll" wrong-return
+refusal principal-missing 'default principal requires the System[.]Security[.]Claims implementation assembly' \
+    "$routes/claims/ImplicitPrincipalProbe.dll" -r "$corelib" \
+    -r "$(dirname "$corelib")/System.Runtime.dll" -r "$(dirname "$corelib")/System.Console.dll"
+refusal principal-factory 'default principal requires the exact managed GenericPrincipal[.]GetDefaultInstance factory' \
+    "$routes/claims/ImplicitPrincipalProbe.dll" --auto-ref -r "$routes/claims/copy/System.Security.Claims.dll"
+refusal typed-gchandle-address "Entry[.]Main: System[.]Runtime[.]InteropServices[.]GCHandle_Object::ToIntPtr: typed GCHandle<T> members are lowered only at call sites; taking a member's address is not supported, so call it from a lambda instead \[chain: Entry[.]Main\]" \
+    "gates/fixtures/default-principal/bin/$CONFIG/$TFM/ImplicitPrincipalProbe.dll" --auto-ref
 gate_cache_commit
