@@ -23,6 +23,7 @@ namespace ListCollections
             ListSortStringSubset.Program.__GateEntry();
             ComparerDefaultSubset.Program.__GateEntry();
             CustomComparerSubset.Program.__GateEntry();
+            ListSortComparerSubset.Program.ArrayElementEntry();
         }
     }
 }

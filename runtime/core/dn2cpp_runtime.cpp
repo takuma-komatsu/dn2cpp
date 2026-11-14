@@ -287,6 +287,8 @@ Dn2CppObject* dn2cpp_object_memberwise_clone(Dn2CppObject* obj)
 {
     if (obj == nullptr)
         dn2cpp_throw_null_reference();
+    // Every allocation route refuses an allocation-unsupported type, so no such
+    // instance reaches here.
     const Dn2CppTypeInfo* t = obj->type;
     if (t == &dn2cpp_string_type)
     {

@@ -635,6 +635,7 @@ internal sealed class ReflectionSummarizer
 
     internal readonly MetadataReader Reader;
     private readonly PEReader _pe;
+    private readonly RuntimeTypeMakeGenericTypePlan? _makeGenericTypePlan;
     private readonly Dictionary<int, CallInfo?> _calls = new();
     private readonly Dictionary<int, byte> _compilerClasses = new();
     private readonly Dictionary<int, FieldShape> _shapes = new();
@@ -642,10 +643,11 @@ internal sealed class ReflectionSummarizer
     private readonly Dictionary<int, FieldTable> _tables = new();
     private int _tableDepth;
 
-    public ReflectionSummarizer(MetadataReader reader, PEReader pe)
+    public ReflectionSummarizer(MetadataReader reader, PEReader pe, RuntimeTypeMakeGenericTypePlan? makeGenericTypePlan = null)
     {
         Reader = reader;
         _pe = pe;
+        _makeGenericTypePlan = makeGenericTypePlan;
     }
 
     /// <summary>Summarizes <paramref name="method"/>, whose decoded body is
@@ -752,8 +754,14 @@ internal sealed class ReflectionSummarizer
             && !info.HasThis && signature.GenericParameterCount == 0
             && info.Parameters.Length >= 2 && info.Parameters[0] == "System.Array";
         if (ReflectionApis.IsCandidateName(info.Name) || IsTransferName(info.Name))
-            info.Api = ReflectionApis.Classify(info.Parent, info.Name, info.Parameters, info.HasThis,
+        {
+            // Only the validated CoreLib override shares Type's construction planner.
+            string parent = info.Parent == "System.RuntimeType" && info.Name == "MakeGenericType"
+                && typeArguments is null && _makeGenericTypePlan?.IsTarget(Reader, handle) == true
+                ? "System.Type" : info.Parent;
+            info.Api = ReflectionApis.Classify(parent, info.Name, info.Parameters, info.HasThis,
                 signature.GenericParameterCount);
+        }
         return info;
     }
 
@@ -3861,4 +3869,102 @@ internal sealed class SummaryInterpreter
         ILOpCode.Ldarg_s or ILOpCode.Ldarg or ILOpCode.Starg_s or ILOpCode.Starg => (int)insn.Operand,
         _ => null,
     };
+}
+
+// Raw metadata keeps this planner adapter independent of either reachability model.
+// A similarly named method, or a signature naming another assembly's Type, is not the adapter.
+internal sealed class RuntimeTypeMakeGenericTypePlan
+{
+    private readonly bool _available;
+    private readonly RawAssemblyTypeResolver<MetadataReader> _resolver;
+    private readonly Dictionary<string, List<(MetadataReader Module, TypeDefinitionHandle Handle)>> _candidates = new(StringComparer.Ordinal);
+
+    public RuntimeTypeMakeGenericTypePlan(IEnumerable<MetadataReader> modules)
+    {
+        var readers = modules.Where(m => m.IsAssembly).ToArray();
+        _resolver = new RawAssemblyTypeResolver<MetadataReader>(readers.Select(m => (m, m.GetString(m.GetAssemblyDefinition().Name), m)));
+        foreach (string name in new[] { "Type", "RuntimeType" })
+        {
+            var candidates = new List<(MetadataReader, TypeDefinitionHandle)>();
+            foreach (var reader in readers)
+                foreach (var handle in reader.TypeDefinitions)
+                {
+                    var type = reader.GetTypeDefinition(handle);
+                    if (reader.StringComparer.Equals(type.Namespace, "System") && reader.StringComparer.Equals(type.Name, name))
+                        candidates.Add((reader, handle));
+                }
+            _candidates.Add(name, candidates);
+        }
+        var coreLib = readers.FirstOrDefault(IsCoreLib);
+        if (coreLib is null) return;
+        foreach (var handle in coreLib.TypeDefinitions)
+        {
+            var type = coreLib.GetTypeDefinition(handle);
+            if (!coreLib.StringComparer.Equals(type.Namespace, "System")
+                || !coreLib.StringComparer.Equals(type.Name, "RuntimeType")) continue;
+            foreach (var method in type.GetMethods())
+                if (IsDefinition(coreLib, method)) { _available = true; return; }
+        }
+    }
+
+    public bool IsTarget(MetadataReader reader, EntityHandle handle)
+    {
+        if (!_available) return false;
+        if (handle.Kind == HandleKind.MethodDefinition)
+            return IsDefinition(reader, (MethodDefinitionHandle)handle);
+        if (handle.Kind != HandleKind.MemberReference) return false;
+        var member = reader.GetMemberReference((MemberReferenceHandle)handle);
+        return member.GetKind() == MemberReferenceKind.Method
+            && reader.StringComparer.Equals(member.Name, "MakeGenericType")
+            && IsCoreType(reader, member.Parent, "RuntimeType") && IsSignature(reader, member.Signature);
+    }
+
+    private static bool IsCoreLib(MetadataReader reader) => reader.IsAssembly
+        && reader.StringComparer.Equals(reader.GetAssemblyDefinition().Name, "System.Private.CoreLib");
+
+    private bool IsDefinition(MetadataReader reader, MethodDefinitionHandle handle)
+    {
+        if (!IsCoreLib(reader)) return false;
+        var method = reader.GetMethodDefinition(handle);
+        return reader.StringComparer.Equals(method.Name, "MakeGenericType")
+            && IsCoreType(reader, method.GetDeclaringType(), "RuntimeType")
+            && (reader.GetTypeDefinition(method.GetDeclaringType()).Attributes & System.Reflection.TypeAttributes.Sealed) != 0
+            && method.Attributes == (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig)
+            && method.RelativeVirtualAddress != 0
+            && (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) == 0
+            && IsSignature(reader, method.Signature);
+    }
+
+    private bool IsCoreType(MetadataReader reader, EntityHandle handle, string name)
+    {
+        if (handle.Kind == HandleKind.TypeDefinition)
+        {
+            var type = reader.GetTypeDefinition((TypeDefinitionHandle)handle);
+            return IsCoreLib(reader) && type.GetDeclaringType().IsNil
+                && reader.StringComparer.Equals(type.Namespace, "System") && reader.StringComparer.Equals(type.Name, name);
+        }
+        if (handle.Kind != HandleKind.TypeReference) return false;
+        var reference = reader.GetTypeReference((TypeReferenceHandle)handle);
+        if (!reader.StringComparer.Equals(reference.Namespace, "System") || !reader.StringComparer.Equals(reference.Name, name))
+            return false;
+        if (reference.ResolutionScope.Kind == HandleKind.ModuleDefinition || reference.ResolutionScope.IsNil)
+            return IsCoreLib(reader) && reader.TypeDefinitions.Any(h => IsCoreType(reader, h, name));
+        if (reference.ResolutionScope.Kind != HandleKind.AssemblyReference) return false;
+        var scope = (AssemblyReferenceHandle)reference.ResolutionScope;
+        string assembly = reader.GetString(reader.GetAssemblyReference(scope).Name);
+        return _resolver.Resolve(assembly, "System", name, _candidates[name], reader, scope) is { } target
+            && IsCoreLib(target.Module);
+    }
+
+    private bool IsSignature(MetadataReader reader, BlobHandle signature)
+    {
+        var blob = reader.GetBlobReader(signature);
+        // CLASS Type (SZARRAY CLASS Type), with no modifiers, generics or optional parameters.
+        return blob.ReadByte() == 0x20 && blob.ReadCompressedInteger() == 1
+            && blob.ReadByte() == 0x12 && IsCoreType(reader, blob.ReadTypeHandle(), "Type")
+            && blob.ReadByte() == 0x1d && blob.ReadByte() == 0x12
+            && IsCoreType(reader, blob.ReadTypeHandle(), "Type") && blob.RemainingBytes == 0;
+    }
 }

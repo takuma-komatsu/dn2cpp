@@ -115,6 +115,9 @@ internal enum InterceptEmitArm
     /// that reason: a default-initialized arm must be REJECTED rather than aliasing a
     /// real route. Asserted by <see cref="CoreIntrinsics.VerifyInterceptRegistry"/>.</summary>
     Unspecified,
+    /// <summary><c>MethodCompiler.EmitPInvokeCall</c> refuses CoreLib's CoreCLR
+    /// entry points unless an explicit binding or managed implementation supplies them.</summary>
+    AbsentCoreClrQCallThrow,
     /// <summary><c>MethodCompiler.EmitRuntimePrimitive</c> — total over
     /// <see cref="CoreIntrinsics.LoweredRuntimePrimitive"/>: an unmodeled shape
     /// leaves through its throw, never through <c>EmitManagedCall</c>.</summary>
@@ -322,6 +325,19 @@ internal enum InterceptEmitArm
     /// <summary>Delegate.Clone's callable slot uses the same shallow-copy helper as a direct call.</summary>
     DelegateCloneBody,
     DelegateCallableBody,
+    CoreClrTypeMaterializationBody,
+    NullableReboxingBody,
+    ActivatorNamedBody,
+    ActivatorDefaultBody,
+    RuntimeTypeDefaultCtorBody,
+    RuntimeTypeGenericFactoryBody,
+    RuntimeTypeCreateInstanceOfTBody,
+    RuntimeTypeHandleConstructNameBody,
+    RuntimeTypeHandleDeclaringTypeBody,
+    RuntimeTypeCacheGenericDefinitionBody,
+    CustomAttributeDataMemberBody,
+    CoreClrActivationInfoBody,
+    RuntimeTypeDefaultStructCtorBody,
     DelegateCloneBinding,
     ArrayCloneBinding,
     /// <summary>SafeHandle lifetime calls and bindings recognize the runtime SafeWaitHandle layout.
@@ -599,18 +615,2229 @@ internal static partial class CoreIntrinsics
     public static readonly MethodDefIntercept MdRuntimePrimitive = new(
         InterceptCutKind.Cut, InterceptEmitArm.RuntimePrimitive,
         extra: static mi => LoweredRuntimePrimitive(mi.DeclaringClass.FullName, mi.Name)
-            || IsRuntimeTypeEnumName(mi) || IsRuntimeTypeEnumDefined(mi)
             || IsInvariantCompareInfoGetter(mi)
             || IsDateTimeFormatInfoBoundary(mi)
             || IsDateTimeLeapSecondSupport(mi)
             || IsCoreClrGcMemoryQuery(mi)
             || IsCoreClrFinalizerWorker(mi)
+            || IsCoreClrIntroducedMethodEnumeration(mi)
+            || IsCoreClrMethodDescQuery(mi)
+            || IsCoreClrFieldDescOperation(mi)
+            || IsCoreClrCanonicalTypeComparison(mi)
+            || IsRuntimeTypeHandleAccessor(mi)
+            || IsRuntimeTypeHandleIsSZArray(mi)
+            || IsRuntimeTypeHandleFunctionPointerPredicate(mi)
+            || IsRuntimeTypeHandleIsGenericVariable(mi)
+            || IsRuntimeTypeHandleGetToken(mi)
+            || IsRuntimeTypeHandleGetAttributes(mi)
+            || IsRuntimeTypeHandleHasElementType(mi)
+            || IsRuntimeTypeHandleIsArray(mi)
+            || IsRuntimeTypeHandleIsByRef(mi)
+            || IsRuntimeTypeHandleIsPrimitive(mi)
+            || IsRuntimeTypeHandleIsPointer(mi)
+            || IsRuntimeTypeHandleGetElementType(mi)
+            || IsRuntimeTypeHandleIsTypeDefinition(mi)
+            || IsRuntimeTypeHandleGetAssembly(mi)
+            || IsRuntimeTypeHandleGetModule(mi)
+            || IsRuntimeTypeHandleInstantiation(mi)
+            || IsRuntimeTypeHandleInterfaces(mi)
+            || IsActivatorFrom(mi)
+            || IsAppDomainExecuteAssembly(mi)
             || IsVectorExplicit(mi)
             || IsConcreteVectorElement(mi)
             || IsVectorFloatingPointTernary(mi)
             || IsVectorLog(mi)
             || IsVectorMagnitude(mi)
-            || IsVectorValueMethod(mi));
+            || IsVectorValueMethod(mi)
+            || IsAppContextOnProcessExit(mi)
+            || IsRuntimeTypeHandleFunctionPointerArguments(mi)
+            || IsRuntimeTypeHandleFields(mi)
+            || IsRuntimeTypeHandleGenericVariableIndex(mi)
+            || IsRuntimeTypeHandleContainsGenericVariables(mi)
+            || IsRuntimeTypeHandleContainsGenericVariablesStatic(mi)
+            || IsRuntimeTypeHandleUtf8Name(mi)
+            || IsRuntimeTypeHandleConstraints(mi)
+            || IsRuntimeTypeHandleMakeCompound(mi)
+            || IsRuntimeTypeHandleMakeArray(mi)
+            || IsRuntimeTypeGenericParameterPosition(mi)
+            || IsRuntimeTypeHandleInstantiate(mi)
+            || (IsRuntimeTypeArrayRank(mi) || IsRuntimeTypeEnumName(mi) || IsRuntimeTypeEnumDefined(mi) || IsRuntimeTypeAssignableFrom(mi) || IsRuntimeTypeTypeCode(mi))
+            || IsRuntimeTypeMakeGenericType(mi)
+            || IsRuntimeTypeHandleConstructor(mi)
+            || IsRuntimeTypeCacheHandleBridge(mi)
+            || IsRuntimeTypeInterfaceCheck(mi)
+            || IsCoreClrVirtualSlotCount(mi)
+            || IsCoreClrMethodSlotLookup(mi)
+            || IsMethodGenericParameterCount(mi)
+            || IsMemberMetadataDefinitionOverride(mi)
+            || IsCoreClrConstraintCheck(mi)
+            || IsRuntimeTypeDeclaringMethod(mi)
+            || IsCoreClrDeclaringMethodBridge(mi)
+            || IsCoreClrSignatureBlobParser(mi)
+            || IsCoreClrTypeMaterialization(mi) && mi.Rva == 0);
+
+    internal static bool IsMemberMetadataDefinition(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.Name != "HasSameMetadataDefinitionAs"
+            || !CoreIntrinsicTypeMaps.IsMemberMetadataDefinitionOwner(method.DeclaringClass.FullName))
+            return false;
+        var signature = method.Signature;
+        return CoreIntrinsicTypeMaps.IsMemberMetadataDefinitionMethod(method.Module.AssemblyName,
+            method.DeclaringClass.FullName, method.Name,
+            method.IsVirtual && !method.IsAbstract
+                && (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask) == System.Reflection.MethodAttributes.Public,
+            (method.Attributes & System.Reflection.MethodAttributes.Final) != 0,
+            !method.IsStatic && signature.Header.RawValue == 0x20, signature.GenericParameterCount,
+            method.Rva != 0 && (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) == 0,
+            method.PInvoke is not null || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0,
+            signature.ParameterTypes.Length, signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean },
+            signature.ParameterTypes.Length == 1 && signature.ParameterTypes[0] is
+                { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.MemberInfo", Module.AssemblyName: "System.Private.CoreLib" } }
+                ? "System.Reflection.MemberInfo" : null);
+    }
+
+    internal static bool IsCustomAttributeDataConstructorBase(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.Reflection.CustomAttributeData"
+            || method.Name != "get_Constructor" || method.Rva == 0 || method.PInvoke is not null
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.HideBySig
+                | System.Reflection.MethodAttributes.SpecialName | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.NewSlot)
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL
+            || !IsCustomAttributeDataConstructorSignature(method.Module.Reader.GetBlobReader(
+                method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.ConstructorInfo" } result }
+            && result.Module == method.Module;
+    }
+
+    internal static bool IsCustomAttributeDataConstructorSignature(BlobReader blob) =>
+        blob.RemainingBytes >= 4 && blob.ReadByte() == 0x20 && blob.ReadByte() == 0
+        && blob.ReadByte() == 0x12 && blob.TryReadCompressedInteger(out int token)
+        && (token >> 2) != 0 && (token & 3) != 3 && blob.RemainingBytes == 0;
+
+    internal static bool IsMemberMetadataDefinitionBase(MethodInfo method) =>
+        method.DeclaringClass.FullName == "System.Reflection.MemberInfo" && IsMemberMetadataDefinition(method);
+
+    internal static bool IsMemberMetadataDefinitionOverride(MethodInfo method) =>
+        method.DeclaringClass.FullName != "System.Reflection.MemberInfo" && IsMemberMetadataDefinition(method);
+
+    // The public lookup validates null; this factory only reads the name and returns an exception.
+    internal static bool IsMemberNotFoundExceptionFactory(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.Type"
+            || method.Name != "CreateGetMemberWithSameMetadataDefinitionAsNotFoundException")
+            return false;
+        var signature = method.Signature;
+        static string? Shape(TypeDesc type) => type is
+            { Kind: TypeKind.Class, Class: { Module.AssemblyName: "System.Private.CoreLib" } cls }
+                ? cls.FullName : null;
+        return CoreIntrinsicTypeMaps.IsMemberNotFoundExceptionFactoryMethod(
+            method.DeclaringClass.Module.AssemblyName, method.DeclaringClass.FullName, method.Name,
+            (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask) == System.Reflection.MethodAttributes.FamANDAssem,
+            method.IsStatic && !method.IsVirtual && !method.IsAbstract && signature.Header.RawValue == 0,
+            signature.GenericParameterCount,
+            method.Rva != 0 && (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) == 0,
+            method.PInvoke is not null || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0,
+            signature.ParameterTypes.Length, Shape(signature.ReturnType),
+            signature.ParameterTypes.Length == 1 ? Shape(signature.ParameterTypes[0]) : null);
+    }
+
+    // These enum-code helpers preserve the input IL's masks and RVA widening table.
+    internal static bool IsPrimitiveElementHelper(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.Runtime.CompilerServices.RuntimeHelpers"
+            || method.Name is not ("IsPrimitiveType" or "CanPrimitiveWiden"))
+            return false;
+        int arity = method.Name == "IsPrimitiveType" ? 1 : 2;
+        var signature = method.Signature;
+        var blob = method.Module.Reader.GetBlobReader(method.Module.Reader.GetMethodDefinition(method.Handle).Signature);
+        bool unmodified = blob.ReadByte() == 0 && blob.ReadCompressedInteger() == arity
+            && blob.ReadByte() == (byte)SignatureTypeCode.Boolean;
+        EntityHandle elementHandle = default;
+        for (int i = 0; unmodified && i < arity; i++)
+        {
+            unmodified = blob.ReadByte() == 0x11;
+            if (!unmodified) break;
+            var handle = blob.ReadTypeHandle();
+            unmodified = handle.Kind == HandleKind.TypeDefinition && (i == 0 || handle == elementHandle);
+            elementHandle = handle;
+        }
+        unmodified &= blob.RemainingBytes == 0;
+        bool byteElements = signature.ParameterTypes.Length == arity;
+        foreach (var parameter in signature.ParameterTypes)
+            byteElements &= parameter is { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.CorElementType",
+                IsEnum: true, EnumUnderlying: PrimitiveTypeCode.Byte } element }
+                && element.Module == method.Module && element.Handle == elementHandle;
+        return CoreIntrinsicTypeMaps.IsPrimitiveElementHelperMethod(method.Module.AssemblyName,
+            method.DeclaringClass.FullName, method.Name,
+            (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask) == System.Reflection.MethodAttributes.Assembly,
+            method.IsStatic && !method.IsVirtual && !method.IsAbstract && signature.Header.RawValue == 0,
+            signature.GenericParameterCount,
+            method.Rva != 0 && (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) == 0,
+            method.PInvoke is not null || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0,
+            signature.ParameterTypes.Length,
+            unmodified && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean },
+            byteElements);
+    }
+
+    // Factories retain their getter/formatting order and return an exception, not a throw sink.
+    internal static bool IsAmbiguousMatchExceptionFactory(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.ThrowHelper"
+            || method.Name != "GetAmbiguousMatchException")
+            return false;
+        var signature = method.Signature;
+        static string? Shape(TypeDesc type) => type is
+            { Kind: TypeKind.Class, Class: { Module.AssemblyName: "System.Private.CoreLib" } cls }
+                ? cls.FullName : null;
+        return CoreIntrinsicTypeMaps.IsAmbiguousMatchExceptionFactoryMethod(
+            method.DeclaringClass.Module.AssemblyName, method.DeclaringClass.FullName, method.Name,
+            (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask) == System.Reflection.MethodAttributes.Assembly,
+            method.IsStatic && !method.IsVirtual && !method.IsAbstract && signature.Header.RawValue == 0,
+            signature.GenericParameterCount,
+            method.Rva != 0 && (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) == 0,
+            method.PInvoke is not null || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0,
+            signature.ParameterTypes.Length, Shape(signature.ReturnType),
+            signature.ParameterTypes.Length == 1 ? Shape(signature.ParameterTypes[0]) : null);
+    }
+
+    // Keep the real value-type factory and its constructor's existing VM boundary.
+    internal static bool IsRuntimeTypeIntroducedMethodsFactory(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetIntroducedMethods")
+            return false;
+        if (!IsRuntimeTypeIntroducedMethodsFactorySignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        bool result = signature.ReturnType is { Kind: TypeKind.Class, Class: {
+                FullName: "IntroducedMethodEnumerator", IsValueType: true, GenericArity: 0 } value }
+            && value.Module == method.Module
+            && method.Module.Reader.GetTypeDefinition(value.Handle).GetDeclaringType() == method.DeclaringClass.Handle;
+        bool parameter = signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: {
+                FullName: "System.RuntimeType", IsValueType: false } type }]
+            && type.Module == method.Module;
+        return CoreIntrinsicTypeMaps.IsRuntimeTypeIntroducedMethodsFactoryMethod(
+            method.Module.AssemblyName, method.DeclaringClass.FullName, method.Name,
+            method.Attributes == (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig),
+            signature.Header.RawValue == 0, signature.GenericParameterCount,
+            method.Rva != 0 && method.ImplAttributes == System.Reflection.MethodImplAttributes.IL,
+            method.PInvoke is not null, signature.ParameterTypes.Length, result, parameter);
+    }
+
+    internal static bool IsRuntimeTypeIntroducedMethodsFactorySignature(BlobReader blob) =>
+        blob.RemainingBytes >= 6 && blob.ReadByte() == 0 && blob.ReadByte() == 1
+        && blob.ReadByte() == 0x11 && blob.TryReadCompressedInteger(out int result)
+        && result > 0 && (result >> 2) != 0 && (result & 3) != 3
+        && blob.RemainingBytes >= 2 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int parameter) && parameter > 0
+        && (parameter >> 2) != 0 && (parameter & 3) != 3 && blob.RemainingBytes == 0;
+
+    // These managed copies consume the supported Value/TypeHandle APIs, not VM fields.
+    internal static bool IsRuntimeTypeHandleCopy(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.Name != "CopyRuntimeTypeHandles")
+            return false;
+        var signature = method.Signature;
+        return CoreIntrinsicTypeMaps.IsRuntimeTypeHandleCopyMethod(
+            method.DeclaringClass.Module.AssemblyName, method.DeclaringClass.FullName, method.Name,
+            (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask) == System.Reflection.MethodAttributes.Assembly,
+            method.IsStatic && signature.Header.RawValue == 0, signature.GenericParameterCount,
+            method.Rva != 0 && (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) == 0,
+            method.PInvoke is not null || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0,
+            signature.ParameterTypes.Length, RuntimeTypeHandleCopyType(signature.ReturnType),
+            signature.ParameterTypes.Length > 0 ? RuntimeTypeHandleCopyType(signature.ParameterTypes[0]) : null,
+            signature.ParameterTypes.Length > 1 ? RuntimeTypeHandleCopyType(signature.ParameterTypes[1]) : null);
+    }
+
+    private static string? RuntimeTypeHandleCopyType(TypeDesc type)
+    {
+        if (type is { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 } })
+            return "System.Int32&";
+        if (type is { Kind: TypeKind.SZArray, Element: { } element })
+        {
+            if (element is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.IntPtr }) return "System.IntPtr[]";
+            if (IsCoreLibMethodDescType(element, "System.Type")) return "System.Type[]";
+            if (IsCoreLibMethodDescType(element, "System.RuntimeTypeHandle")) return "System.RuntimeTypeHandle[]";
+        }
+        if (type is { Kind: TypeKind.Class, Class: { Module.AssemblyName: "System.Private.CoreLib" } span }
+            && !span.Handle.IsNil && span.Context.TypeArgs is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.IntPtr }])
+        {
+            var reader = span.Module.Reader;
+            var definition = reader.GetTypeDefinition(span.Handle);
+            if (definition.GetDeclaringType().IsNil && reader.StringComparer.Equals(definition.Namespace, "System"))
+            {
+                if (reader.StringComparer.Equals(definition.Name, "Span`1")) return "System.Span<System.IntPtr>";
+                if (reader.StringComparer.Equals(definition.Name, "ReadOnlySpan`1")) return "System.ReadOnlySpan<System.IntPtr>";
+            }
+        }
+        return null;
+    }
+
+    internal static bool IsRuntimeTypeHandleConstructName(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "ConstructName"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsRuntimeTypeHandleConstructNameSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.TypeNameFormatFlags",
+                IsEnum: true, EnumUnderlying: PrimitiveTypeCode.Int32 } flags }]
+            && flags.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeHandleConstructNameSignature(BlobReader blob) =>
+        blob.RemainingBytes >= 5 && blob.ReadByte() == 0x20 && blob.ReadByte() == 1
+        && blob.ReadByte() == (byte)SignatureTypeCode.String && blob.ReadByte() == 0x11
+        && blob.TryReadCompressedInteger(out int typeToken) && typeToken > 0 && (typeToken >> 2) != 0
+        && (typeToken & 3) != 3 && blob.RemainingBytes == 0;
+
+    public static readonly MethodDefIntercept BrRuntimeTypeHandleConstructName = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeTypeHandleConstructNameBody,
+        typeGate: "System.RuntimeTypeHandle", nameGate: "ConstructName", extra: static m => IsRuntimeTypeHandleConstructName(m));
+
+    internal static bool IsCustomAttributeDataMember(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.Reflection.CustomAttributeData" || method.Name != "GetCustomAttributes"
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsCustomAttributeDataMemberSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        if (signature.Header.RawValue != 0 || signature.GenericParameterCount != 0
+            || signature.ReturnType is not { Kind: TypeKind.Class, Class: { } list }
+            || list.Module != method.Module || list.Handle.IsNil
+            || list.Context.TypeArgs is not [{ Kind: TypeKind.Class, Class: { } element }]
+            || element != method.DeclaringClass
+            || signature.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.Reflection.MemberInfo" } member }]
+            || member.Module != method.Module)
+            return false;
+        var reader = list.Module.Reader;
+        var definition = reader.GetTypeDefinition(list.Handle);
+        return definition.GetDeclaringType().IsNil
+            && reader.StringComparer.Equals(definition.Namespace, "System.Collections.Generic")
+            && reader.StringComparer.Equals(definition.Name, "IList`1");
+    }
+
+    internal static bool IsCustomAttributeDataMemberSignature(BlobReader blob) =>
+        blob.RemainingBytes >= 10 && blob.ReadByte() == 0 && blob.ReadByte() == 1
+        && blob.ReadByte() == 0x15 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int listToken) && listToken > 0
+        && (listToken >> 2) != 0 && (listToken & 3) != 3
+        && blob.RemainingBytes >= 5 && blob.ReadByte() == 1 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int elementToken) && elementToken > 0
+        && (elementToken >> 2) != 0 && (elementToken & 3) != 3
+        && blob.RemainingBytes >= 2 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int memberToken) && memberToken > 0
+        && (memberToken >> 2) != 0 && (memberToken & 3) != 3 && blob.RemainingBytes == 0;
+
+    public static readonly MethodDefIntercept BrCustomAttributeDataMember = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.CustomAttributeDataMemberBody,
+        typeGate: "System.Reflection.CustomAttributeData", nameGate: "GetCustomAttributes", extra: static m => IsCustomAttributeDataMember(m));
+
+    internal static bool IsRuntimeTypeCacheGenericDefinition(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "RuntimeTypeCache"
+            || method.Name != "<GetGenericTypeDefinition>g__CacheGenericDefinition|50_0"
+            || method.Attributes != (System.Reflection.MethodAttributes.Private | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.NoInlining)
+            return false;
+        if (!IsRuntimeTypeCacheGenericDefinitionSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } result }
+            && result.Module == method.Module
+            && method.Module.Reader.GetTypeDefinition(method.DeclaringClass.Handle).GetDeclaringType() == result.Handle;
+    }
+
+    internal static bool IsRuntimeTypeCacheGenericDefinitionSignature(BlobReader blob) =>
+        blob.RemainingBytes >= 4 && blob.ReadByte() == 0x20 && blob.ReadByte() == 0
+        && blob.ReadByte() == 0x12 && blob.TryReadCompressedInteger(out int token)
+        && token > 0 && (token >> 2) != 0 && (token & 3) != 3 && blob.RemainingBytes == 0;
+
+    public static readonly MethodDefIntercept BrRuntimeTypeCacheGenericDefinition = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeTypeCacheGenericDefinitionBody,
+        typeGate: "RuntimeTypeCache", nameGate: "<GetGenericTypeDefinition>g__CacheGenericDefinition|50_0",
+        extra: static m => IsRuntimeTypeCacheGenericDefinition(m));
+
+    internal static bool IsRuntimeTypeHandleDeclaringType(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetDeclaringType"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsRuntimeTypeHandleDeclaringTypeSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } result }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && result == parameter && result.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeHandleDeclaringTypeSignature(BlobReader blob) =>
+        blob.RemainingBytes >= 6 && blob.ReadByte() == 0 && blob.ReadByte() == 1
+        && blob.ReadByte() == 0x12 && blob.TryReadCompressedInteger(out int resultToken)
+        && resultToken > 0 && (resultToken >> 2) != 0 && (resultToken & 3) != 3
+        && blob.RemainingBytes >= 2 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int parameterToken) && parameterToken > 0
+        && (parameterToken >> 2) != 0 && (parameterToken & 3) != 3
+        && blob.RemainingBytes == 0;
+
+    public static readonly MethodDefIntercept BrRuntimeTypeHandleDeclaringType = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeTypeHandleDeclaringTypeBody,
+        typeGate: "System.RuntimeTypeHandle", nameGate: "GetDeclaringType", extra: static m => IsRuntimeTypeHandleDeclaringType(m));
+
+    // Validate nested signatures beyond the pointer-shaped ABI, including raw modifiers.
+    internal static bool IsCoreClrActivationInfo(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetActivationInfo"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsCoreClrActivationInfoSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Void }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } type },
+                { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Pointer, Element.IsVoid: true } },
+                { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Pointer, Element.IsVoid: true } },
+                { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Pointer, Element.IsVoid: true } },
+                { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Pointer, Element.IsVoid: true } },
+                { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean } }]
+            && type.Module == method.Module;
+    }
+
+    internal static bool IsCoreClrActivationInfoSignature(BlobReader blob)
+    {
+        if (blob.RemainingBytes < 5 || blob.ReadByte() != 0 || blob.ReadByte() != 6
+            || blob.ReadByte() != (byte)SignatureTypeCode.Void || blob.ReadByte() != 0x12
+            || !blob.TryReadCompressedInteger(out int typeToken) || typeToken <= 0 || (typeToken >> 2) == 0 || (typeToken & 3) == 3)
+            return false;
+        // ref managed object(void*), ref void*, ref managed void(object),
+        // ref managed void(byte&), ref bool. No modifiers, varargs or trailing types.
+        ReadOnlySpan<byte> suffix = [0x10, 0x1b, 0, 1, 0x1c, 0x0f, 1, 0x10, 0x0f, 1,
+            0x10, 0x1b, 0, 1, 1, 0x1c, 0x10, 0x1b, 0, 1, 1, 0x10, 5, 0x10, 2];
+        if (blob.RemainingBytes != suffix.Length)
+            return false;
+        foreach (byte value in suffix)
+            if (blob.ReadByte() != value)
+                return false;
+        return true;
+    }
+
+    public static readonly MethodDefIntercept BrCoreClrActivationInfo = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.CoreClrActivationInfoBody,
+        typeGate: "System.RuntimeTypeHandle", nameGate: "GetActivationInfo", extra: static m => IsCoreClrActivationInfo(m));
+
+    internal static bool IsRuntimeTypeDefaultStructCtor(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || method.Name != "CallDefaultStructConstructor"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsRuntimeTypeDefaultStructCtorSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Void }
+            && signature.ParameterTypes is [{ Kind: TypeKind.ByRef,
+                Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte } }];
+    }
+
+    internal static bool IsRuntimeTypeDefaultStructCtorSignature(BlobReader blob) =>
+        blob.RemainingBytes == 5 && blob.ReadByte() == 0x20 && blob.ReadByte() == 1
+        && blob.ReadByte() == (byte)SignatureTypeCode.Void && blob.ReadByte() == (byte)SignatureTypeCode.ByReference
+        && blob.ReadByte() == (byte)SignatureTypeCode.Byte;
+
+    public static readonly MethodDefIntercept BrRuntimeTypeDefaultStructCtor = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeTypeDefaultStructCtorBody,
+        typeGate: "System.RuntimeType", nameGate: "CallDefaultStructConstructor", extra: static m => IsRuntimeTypeDefaultStructCtor(m));
+
+    internal static bool IsRuntimeTypeCreateInstanceOfT(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || method.Name != "CreateInstanceOfT"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsRuntimeTypeCreateInstanceOfTSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }
+            && signature.ParameterTypes.Length == 0;
+    }
+
+    internal static bool IsRuntimeTypeCreateInstanceOfTSignature(BlobReader blob) =>
+        blob.RemainingBytes == 3 && blob.ReadByte() == 0x20 && blob.ReadByte() == 0
+        && blob.ReadByte() == (byte)SignatureTypeCode.Object;
+
+    public static readonly MethodDefIntercept BrRuntimeTypeCreateInstanceOfT = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeTypeCreateInstanceOfTBody,
+        typeGate: "System.RuntimeType", nameGate: "CreateInstanceOfT", extra: static m => IsRuntimeTypeCreateInstanceOfT(m));
+
+    /// <summary>Replaces only the managed RuntimeType-object wrappers, never the
+    /// private QCall handle ABI. Every callable route executes the same native factory.</summary>
+    public static readonly MethodDefIntercept BrRuntimeTypeGenericFactory = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeTypeGenericFactoryBody,
+        typeGate: "System.RuntimeTypeHandle", nameGate: "CreateInstanceForAnotherGenericParameter",
+        extra: static m => IsRuntimeTypeGenericFactory(m));
+
+    internal static bool IsRuntimeTypeDefaultCtor(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || method.Name != "CreateInstanceDefaultCtor"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsRuntimeTypeDefaultCtorSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean },
+                { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }];
+    }
+
+    internal static bool IsRuntimeTypeDefaultCtorSignature(BlobReader blob) =>
+        blob.RemainingBytes == 5 && blob.ReadByte() == 0x20 && blob.ReadByte() == 2
+        && blob.ReadByte() == (byte)SignatureTypeCode.Object
+        && blob.ReadByte() == (byte)SignatureTypeCode.Boolean
+        && blob.ReadByte() == (byte)SignatureTypeCode.Boolean;
+
+    public static readonly MethodDefIntercept BrRuntimeTypeDefaultCtor = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeTypeDefaultCtorBody,
+        typeGate: "System.RuntimeType", nameGate: "CreateInstanceDefaultCtor", extra: static m => IsRuntimeTypeDefaultCtor(m));
+
+    internal static bool IsActivatorNamed(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.Activator" || method.Name != "CreateInstance"
+            || method.DeclaringClass.Handle.IsNil || method.Handle.IsNil
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig | System.Reflection.MethodAttributes.RequireSecObject)
+            || method.Rva == 0 || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        var owner = method.Module.Reader.GetTypeDefinition(method.DeclaringClass.Handle);
+        if (!owner.GetDeclaringType().IsNil
+            || !method.Module.Reader.StringComparer.Equals(owner.Namespace, "System")
+            || !method.Module.Reader.StringComparer.Equals(owner.Name, "Activator")
+            || !IsActivatorNamedSignature(method.Module.Reader.GetBlobReader(
+                method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        return IsActivatorNamedDecodedSignature(method.Signature, method.Module);
+    }
+
+    internal static bool IsActivatorNamedDecodedSignature(MethodSignature<TypeDesc> signature, Module module)
+    {
+        if (signature.Header.RawValue != 0 || signature.GenericParameterCount != 0
+            || signature.ReturnType is not { Kind: TypeKind.Class, Class: { FullName: "System.Runtime.Remoting.ObjectHandle", IsValueType: false } result }
+            || result.Module != module) return false;
+        var ps = signature.ParameterTypes;
+        if (ps is [{ IsString: true }, { IsString: true }]
+            or [{ IsString: true }, { IsString: true }, { Kind: TypeKind.SZArray, Element: { IsObject: true } }]) return true;
+        return ps is [{ IsString: true }, { IsString: true },
+                { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean },
+                { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.BindingFlags",
+                    IsEnum: true, EnumUnderlying: PrimitiveTypeCode.Int32 } flags },
+                { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.Binder", IsValueType: false } binder },
+                { Kind: TypeKind.SZArray, Element: { IsObject: true } },
+                { Kind: TypeKind.Class, Class: { FullName: "System.Globalization.CultureInfo", IsValueType: false } culture },
+                { Kind: TypeKind.SZArray, Element: { IsObject: true } }]
+            && flags.Module == module && binder.Module == module && culture.Module == module;
+    }
+
+    internal static bool IsActivatorNamedSignature(BlobReader blob)
+    {
+        static bool Named(ref BlobReader reader, byte marker) => reader.RemainingBytes > 1
+            && reader.ReadByte() == marker && reader.TryReadCompressedInteger(out int token)
+            && token > 0 && (token >> 2) != 0 && (token & 3) != 3;
+        if (blob.RemainingBytes < 6 || blob.ReadByte() != 0) return false;
+        int count = blob.ReadByte();
+        if (count is not (2 or 3 or 8) || !Named(ref blob, 0x12)
+            || blob.RemainingBytes < 2 || blob.ReadByte() != (byte)SignatureTypeCode.String
+            || blob.ReadByte() != (byte)SignatureTypeCode.String) return false;
+        if (count == 2) return blob.RemainingBytes == 0;
+        if (count == 3) return blob.RemainingBytes == 2
+            && blob.ReadByte() == (byte)SignatureTypeCode.SZArray
+            && blob.ReadByte() == (byte)SignatureTypeCode.Object;
+        return blob.RemainingBytes > 0 && blob.ReadByte() == (byte)SignatureTypeCode.Boolean
+            && Named(ref blob, 0x11) && Named(ref blob, 0x12)
+            && blob.RemainingBytes >= 2 && blob.ReadByte() == (byte)SignatureTypeCode.SZArray
+            && blob.ReadByte() == (byte)SignatureTypeCode.Object && Named(ref blob, 0x12)
+            && blob.RemainingBytes == 2 && blob.ReadByte() == (byte)SignatureTypeCode.SZArray
+            && blob.ReadByte() == (byte)SignatureTypeCode.Object;
+    }
+
+    public static readonly MethodDefIntercept BrActivatorNamed = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.ActivatorNamedBody,
+        typeGate: "System.Activator", nameGate: "CreateInstance", extra: static m => IsActivatorNamed(m));
+
+    internal static bool IsActivatorDefault(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.Activator" || method.Name != "CreateInstance"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        if (!IsActivatorDefaultSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.Type" } type },
+                { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean },
+                { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }]
+            && type.Module == method.Module;
+    }
+
+    internal static bool IsActivatorDefaultSignature(BlobReader blob)
+    {
+        if (blob.RemainingBytes < 7 || blob.ReadByte() != 0 || blob.ReadByte() != 3
+            || blob.ReadByte() != (byte)SignatureTypeCode.Object || blob.ReadByte() != 0x12)
+            return false;
+        blob.ReadCompressedInteger();
+        return blob.RemainingBytes == 2 && blob.ReadByte() == (byte)SignatureTypeCode.Boolean
+            && blob.ReadByte() == (byte)SignatureTypeCode.Boolean;
+    }
+
+    public static readonly MethodDefIntercept BrActivatorDefault = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.ActivatorDefaultBody,
+        typeGate: "System.Activator", nameGate: "CreateInstance", extra: static m => IsActivatorDefault(m));
+
+    internal static bool IsNullableReboxing(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.RuntimeMethodHandle"
+            || method.Name is not ("ReboxFromNullable" or "ReboxToNullable")
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return CoreIntrinsicTypeMaps.IsNullableReboxingMethod(
+            method.DeclaringClass.Module.AssemblyName, method.DeclaringClass.FullName, method.Name,
+            (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask) == System.Reflection.MethodAttributes.Assembly,
+            method.IsStatic && signature.Header.RawValue == 0, signature.GenericParameterCount,
+            method.Rva != 0, (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0,
+            signature.ParameterTypes.Length, signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object },
+            signature.ParameterTypes.Length > 0 && signature.ParameterTypes[0] is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object },
+            signature.ParameterTypes.Length > 1 && IsCoreLibMethodDescType(signature.ParameterTypes[1], "System.RuntimeType"));
+    }
+
+    public static readonly MethodDefIntercept BrNullableReboxing = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.NullableReboxingBody,
+        typeGate: "System.RuntimeMethodHandle", extra: static m => IsNullableReboxing(m));
+
+    internal static bool IsCoreClrTypeMaterialization(MethodInfo method)
+    {
+        if (method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.Name is not ("GetRuntimeType" or "GetRuntimeTypeFromHandle"
+                or "GetRuntimeTypeFromHandleMaybeNull" or "GetRuntimeTypeFromHandleSlow"))
+            return false;
+        if ((method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+            | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        var access = method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask;
+        bool pinvoke = (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0;
+        if (pinvoke && method.PInvoke is not { ModuleName: "QCall",
+            RawEntryPoint: "RuntimeTypeHandle_GetRuntimeTypeFromHandleSlow" })
+            return false;
+        return CoreIntrinsicTypeMaps.IsCoreClrTypeMaterializationMethod(
+            method.DeclaringClass.Module.AssemblyName, method.DeclaringClass.FullName, method.Name,
+            access == System.Reflection.MethodAttributes.Assembly, method.IsPrivate,
+            method.IsStatic && !signature.Header.IsInstance, signature.GenericParameterCount,
+            method.Rva != 0 && (method.ImplAttributes & System.Reflection.MethodImplAttributes.InternalCall) == 0,
+            pinvoke, signature.ParameterTypes.Length, CoreClrTypeMaterializationType(signature.ReturnType),
+            signature.ParameterTypes.Length > 0 ? CoreClrTypeMaterializationType(signature.ParameterTypes[0]) : null,
+            signature.ParameterTypes.Length > 1 ? CoreClrTypeMaterializationType(signature.ParameterTypes[1]) : null);
+    }
+
+    private static string? CoreClrTypeMaterializationType(TypeDesc type)
+    {
+        if (type.IsVoid) return "System.Void";
+        if (type is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.IntPtr }) return "System.IntPtr";
+        if (type is { Kind: TypeKind.Pointer, Element: { } element }
+            && IsCoreLibMethodDescType(element, "System.Runtime.CompilerServices.MethodTable"))
+            return "System.Runtime.CompilerServices.MethodTable*";
+        return type is { Kind: TypeKind.Class, Class.Module.AssemblyName: "System.Private.CoreLib" }
+            ? type.Class.FullName : null;
+    }
+
+    public static readonly MethodDefIntercept BrCoreClrTypeMaterialization = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.CoreClrTypeMaterializationBody,
+        typeGate: "System.RuntimeTypeHandle",
+        extra: static m => m.Rva != 0 && IsCoreClrTypeMaterialization(m));
+
+    // CoreCLR MethodDesc queries do not consume dn2cpp's reflection member rows.
+    internal static bool IsCoreClrMethodDescQuery(MethodInfo method)
+    {
+        if (method.DeclaringClass.FullName != "System.RuntimeMethodHandle"
+            || method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.Name is not ("GetAttributes" or "GetImplAttributes" or "GetMethodTable"
+                or "GetSlot" or "GetMethodDef" or "GetUtf8NameInternal" or "HasMethodInstantiation"
+                or "GetStubIfNeededInternal" or "GetMethodFromCanonical" or "IsGenericMethodDefinition"
+                or "IsTypicalMethodDefinition" or "GetGenericParameterCount" or "IsDynamicMethod"
+                or "GetResolver" or "IsConstructor" or "GetLoaderAllocatorInternal")
+            || !method.IsStatic || method.Rva != 0
+            || (method.ImplAttributes & System.Reflection.MethodImplAttributes.InternalCall) == 0)
+            return false;
+        bool isPrivate = method.Name is "GetMethodTable" or "GetUtf8NameInternal"
+            or "GetStubIfNeededInternal" or "IsTypicalMethodDefinition"
+            or "GetGenericParameterCount" or "GetLoaderAllocatorInternal";
+        var visibility = method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask;
+        if (visibility != (isPrivate ? System.Reflection.MethodAttributes.Private : System.Reflection.MethodAttributes.Assembly))
+            return false;
+        var signature = method.Signature;
+        bool hasType = method.Name is "GetStubIfNeededInternal" or "GetMethodFromCanonical";
+        if (signature.Header.IsInstance || signature.GenericParameterCount != 0
+            || signature.ParameterTypes.Length != (hasType ? 2 : 1)
+            || !IsCoreLibMethodDescType(signature.ParameterTypes[0],
+                method.Name is "GetImplAttributes" or "IsTypicalMethodDefinition"
+                    ? "System.IRuntimeMethodInfo" : "System.RuntimeMethodHandleInternal")
+            || hasType && !IsCoreLibMethodDescType(signature.ParameterTypes[1], "System.RuntimeType"))
+            return false;
+        var result = signature.ReturnType;
+        return method.Name switch
+        {
+            "GetAttributes" => IsCoreLibMethodDescType(result, "System.Reflection.MethodAttributes"),
+            "GetImplAttributes" => IsCoreLibMethodDescType(result, "System.Reflection.MethodImplAttributes"),
+            "GetMethodTable" => result.Kind == TypeKind.Pointer && result.Element is { } table
+                && IsCoreLibMethodDescType(table, "System.Runtime.CompilerServices.MethodTable"),
+            "GetUtf8NameInternal" => result is { Kind: TypeKind.Pointer, Element.IsVoid: true },
+            "GetSlot" or "GetMethodDef" or "GetGenericParameterCount" =>
+                result is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+            "GetStubIfNeededInternal" or "GetMethodFromCanonical" =>
+                IsCoreLibMethodDescType(result, "System.RuntimeMethodHandleInternal"),
+            "GetResolver" => IsCoreLibMethodDescType(result, "System.Resolver"),
+            "GetLoaderAllocatorInternal" => IsCoreLibMethodDescType(result, "System.Reflection.LoaderAllocator"),
+            _ => result is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+        };
+    }
+
+    // FieldDesc addresses and RtFieldInfo are not native FieldInfo metadata handles.
+    internal static bool IsCoreClrFieldDescOperation(MethodInfo method)
+    {
+        if (method.DeclaringClass.FullName != "System.RuntimeFieldHandle"
+            || method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.Name is not ("GetUtf8NameInternal" or "GetAttributes"
+                or "GetApproxDeclaringMethodTable" or "IsFastPathSupported"
+                or "GetInstanceFieldOffset" or "GetStaticFieldAddress" or "GetToken"
+                or "GetStaticFieldForGenericType" or "AcquiresContextFromThis"
+                or "GetLoaderAllocatorInternal")
+            || !method.IsStatic || method.Rva != 0 || method.PInvoke is not null
+            || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != System.Reflection.MethodImplAttributes.InternalCall)
+            return false;
+        bool isPrivate = method.Name is "GetUtf8NameInternal" or "GetApproxDeclaringMethodTable"
+            or "GetStaticFieldForGenericType" or "GetLoaderAllocatorInternal";
+        if ((method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+            != (isPrivate ? System.Reflection.MethodAttributes.Private : System.Reflection.MethodAttributes.Assembly))
+            return false;
+        var signature = method.Signature;
+        bool genericStatic = method.Name == "GetStaticFieldForGenericType";
+        if (signature.Header.RawValue != 0 || signature.GenericParameterCount != 0
+            || signature.ParameterTypes.Length != (genericStatic ? 2 : 1))
+            return false;
+        var first = signature.ParameterTypes[0];
+        if (method.Name == "GetToken")
+        {
+            if (first is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.IntPtr }) return false;
+        }
+        else if (!IsCoreLibMethodDescType(first,
+            method.Name is "IsFastPathSupported" or "GetInstanceFieldOffset" or "GetStaticFieldAddress"
+                ? "System.Reflection.RtFieldInfo" : "System.RuntimeFieldHandleInternal"))
+            return false;
+        if (genericStatic && !IsCoreClrMethodTablePointer(signature.ParameterTypes[1]))
+            return false;
+        var result = signature.ReturnType;
+        return method.Name switch
+        {
+            "GetUtf8NameInternal" => result is { Kind: TypeKind.Pointer, Element.IsVoid: true },
+            "GetAttributes" => IsCoreLibMethodDescType(result, "System.Reflection.FieldAttributes"),
+            "GetApproxDeclaringMethodTable" => IsCoreClrMethodTablePointer(result),
+            "IsFastPathSupported" or "AcquiresContextFromThis" =>
+                result is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean },
+            "GetInstanceFieldOffset" or "GetToken" =>
+                result is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+            "GetStaticFieldAddress" => result is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.IntPtr },
+            "GetStaticFieldForGenericType" => IsCoreLibMethodDescType(result, "System.RuntimeFieldHandleInternal"),
+            "GetLoaderAllocatorInternal" => IsCoreLibMethodDescType(result, "System.Reflection.LoaderAllocator"),
+            _ => false,
+        };
+    }
+
+    internal static bool IsRuntimeTypeHandleConstructor(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != ".ctor"
+            || (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                != System.Reflection.MethodAttributes.Assembly
+            || (method.Attributes & (System.Reflection.MethodAttributes.SpecialName | System.Reflection.MethodAttributes.RTSpecialName))
+                != (System.Reflection.MethodAttributes.SpecialName | System.Reflection.MethodAttributes.RTSpecialName)
+            || method.IsStatic || method.Rva == 0 || method.PInvoke is not null
+            || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ReturnType.IsVoid && signature.ParameterTypes.Length == 1
+            && IsCoreLibMethodDescType(signature.ParameterTypes[0], "System.RuntimeType");
+    }
+
+    // Method arity lives on the native member row, independently of its definition view.
+    internal static bool IsMethodGenericParameterCount(MethodInfo method)
+    {
+        const System.Reflection.MethodAttributes required = System.Reflection.MethodAttributes.Virtual
+            | System.Reflection.MethodAttributes.NewSlot | System.Reflection.MethodAttributes.CheckAccessOnOverride
+            | System.Reflection.MethodAttributes.SpecialName;
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.Reflection.MethodInfo"
+            || method.Name != "get_GenericParameterCount"
+            || (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                != System.Reflection.MethodAttributes.Assembly
+            || (method.Attributes & required) != required
+            || (method.Attributes & (System.Reflection.MethodAttributes.Static | System.Reflection.MethodAttributes.Final
+                | System.Reflection.MethodAttributes.Abstract | System.Reflection.MethodAttributes.PinvokeImpl)) != 0
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 };
+    }
+
+    // CoreCLR slot counts do not describe native dispatch or reflection-row layouts.
+    internal static bool IsCoreClrVirtualSlotCount(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.Name is not ("GetNumVirtuals" or "GetNumVirtualsAndStaticVirtuals")
+            || (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                != System.Reflection.MethodAttributes.Assembly
+            || !method.IsStatic || method.PInvoke is not null
+            || (method.Attributes & (System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.Abstract | System.Reflection.MethodAttributes.PinvokeImpl)) != 0)
+            return false;
+        bool internalCall = method.Name == "GetNumVirtuals";
+        if ((method.Rva == 0) != internalCall
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != (internalCall ? System.Reflection.MethodImplAttributes.InternalCall : 0))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }
+            && signature.ParameterTypes.Length == 1
+            && IsCoreLibMethodDescType(signature.ParameterTypes[0], "System.RuntimeType");
+    }
+
+    // CoreCLR lookup results are MethodDesc values, not native reflection rows.
+    internal static bool IsCoreClrMethodSlotLookup(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.Name is not ("GetMethodAt" or "GetInterfaceMethodImplementation")
+            || (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                != System.Reflection.MethodAttributes.Assembly
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.Attributes & (System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.Abstract | System.Reflection.MethodAttributes.PinvokeImpl)) != 0
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        bool at = method.Name == "GetMethodAt";
+        var signature = method.Signature;
+        return method.IsStatic == at && signature.Header.RawValue == (at ? 0 : 0x20)
+            && signature.GenericParameterCount == 0 && signature.ParameterTypes.Length == 2
+            && IsCoreLibMethodDescType(signature.ReturnType, "System.RuntimeMethodHandleInternal")
+            && IsCoreLibMethodDescType(signature.ParameterTypes[0], at ? "System.RuntimeType" : "System.RuntimeTypeHandle")
+            && (at ? signature.ParameterTypes[1] is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }
+                : IsCoreLibMethodDescType(signature.ParameterTypes[1], "System.RuntimeMethodHandleInternal"));
+    }
+
+    // The managed interface check consumes native type identities, not QCall handles.
+    internal static bool IsRuntimeTypeInterfaceCheck(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.Name != "VerifyInterfaceIsImplemented"
+            || (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                != System.Reflection.MethodAttributes.Assembly
+            || (method.Attributes & (System.Reflection.MethodAttributes.Static | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.Abstract | System.Reflection.MethodAttributes.PinvokeImpl)) != 0
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ReturnType.IsVoid && signature.ParameterTypes.Length == 1
+            && IsCoreLibMethodDescType(signature.ParameterTypes[0], "System.RuntimeTypeHandle");
+    }
+
+    // These wrappers allocate cache slots owned by a CoreCLR LoaderAllocator.
+    internal static bool IsRuntimeTypeCacheHandleBridge(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.Name is not ("GetGCHandle" or "FreeGCHandle")
+            || (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                != System.Reflection.MethodAttributes.Assembly
+            || method.IsStatic || method.Rva == 0 || method.PInvoke is not null
+            || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.IntPtr }
+            && signature.ParameterTypes.Length == 1
+            && (method.Name == "GetGCHandle"
+                ? IsCoreLibMethodDescType(signature.ParameterTypes[0], "System.Runtime.InteropServices.GCHandleType")
+                : signature.ParameterTypes[0] is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.IntPtr });
+    }
+
+    // The native handle stores TypeInfo identity, not CoreCLR's m_type field.
+    internal static bool IsRuntimeTypeHandleAccessor(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.Name is not ("GetRuntimeType" or "GetRuntimeTypeChecked")
+            || (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                != System.Reflection.MethodAttributes.Assembly
+            || method.IsStatic || method.Rva == 0 || method.PInvoke is not null
+            || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && IsCoreLibMethodDescType(signature.ReturnType, "System.RuntimeType");
+    }
+
+    // SZ-array identity is native metadata; rank one alone also includes T[*].
+    internal static bool IsRuntimeTypeHandleIsSZArray(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "IsSZArray"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module;
+    }
+
+    // Function-pointer flags read the signature companion, not CoreCLR type-handle storage.
+    internal static bool IsRuntimeTypeHandleFunctionPointerPredicate(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.Name is not ("IsFunctionPointer" or "IsUnmanagedFunctionPointer")
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.PInvoke is not null)
+            return false;
+        bool managed = method.Name == "IsFunctionPointer";
+        if ((method.Rva != 0) != managed
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != (managed ? 0 : System.Reflection.MethodImplAttributes.InternalCall))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module;
+    }
+
+    // Retain these sealed getters' IL without indexing a CoreCLR-only virtual slot.
+    internal static bool IsRuntimeTypeFunctionPointerGetter(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name is not ("get_IsFunctionPointer" or "get_IsUnmanagedFunctionPointer")
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig | System.Reflection.MethodAttributes.SpecialName)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean };
+    }
+
+    // Only a formal identity is generic; compounds do not inherit their element's flag.
+    internal static bool IsRuntimeTypeHandleIsGenericVariable(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "IsGenericVariable"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva != 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != System.Reflection.MethodImplAttributes.InternalCall)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeGenericParameterGetter(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "get_IsGenericParameter"
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig | System.Reflection.MethodAttributes.SpecialName)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean };
+    }
+
+    // Element presence uses the native category, not availability of element metadata.
+    internal static bool IsRuntimeTypeHandleHasElementType(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "HasElementType"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeHasElementTypeOverride(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "HasElementTypeImpl"
+            || method.Attributes != (System.Reflection.MethodAttributes.Family | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean };
+    }
+
+    // Array identity uses the native category, independently of element metadata precision.
+    internal static bool IsRuntimeTypeHandleIsArray(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "IsArray"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeIsArrayOverride(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "IsArrayImpl"
+            || method.Attributes != (System.Reflection.MethodAttributes.Family | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean };
+    }
+
+    // By-reference identity is the outer signature kind, not an element or IsByRefLike flag.
+    internal static bool IsRuntimeTypeHandleIsByRef(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "IsByRef"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeIsByRefOverride(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "IsByRefImpl"
+            || method.Attributes != (System.Reflection.MethodAttributes.Family | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean };
+    }
+
+    // Primitive identity uses the existing native flag, not an element or enum underlying type.
+    internal static bool IsRuntimeTypeHandleIsPrimitive(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "IsPrimitive"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.Handle.IsNil || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != 0)
+            return false;
+        var signature = method.Signature;
+        var blob = method.Module.Reader.GetBlobReader(method.Module.Reader.GetMethodDefinition(method.Handle).Signature);
+        if (blob.RemainingBytes < 5 || blob.ReadByte() != 0 || blob.ReadByte() != 1
+            || blob.ReadByte() != (byte)SignatureTypeCode.Boolean || blob.ReadByte() != 0x12)
+            return false;
+        var parameterHandle = blob.ReadTypeHandle();
+        return blob.RemainingBytes == 0 && parameterHandle.Kind == HandleKind.TypeDefinition && !parameterHandle.IsNil
+            && signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module && parameter.Handle == parameterHandle;
+    }
+
+    internal static bool IsRuntimeTypeIsPrimitiveOverride(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "IsPrimitiveImpl"
+            || method.Attributes != (System.Reflection.MethodAttributes.Family | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.Handle.IsNil || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        var blob = method.Module.Reader.GetBlobReader(method.Module.Reader.GetMethodDefinition(method.Handle).Signature);
+        return blob.RemainingBytes == 3 && blob.ReadByte() == 0x20 && blob.ReadByte() == 0
+            && blob.ReadByte() == (byte)SignatureTypeCode.Boolean
+            && signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean };
+    }
+
+    // Pointer identity is the outer signature kind, not a native integer or element type.
+    internal static bool IsRuntimeTypeHandleIsPointer(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "IsPointer"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.Handle.IsNil || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != 0)
+            return false;
+        var signature = method.Signature;
+        var blob = method.Module.Reader.GetBlobReader(method.Module.Reader.GetMethodDefinition(method.Handle).Signature);
+        if (blob.RemainingBytes < 5 || blob.ReadByte() != 0 || blob.ReadByte() != 1
+            || blob.ReadByte() != (byte)SignatureTypeCode.Boolean || blob.ReadByte() != 0x12)
+            return false;
+        var parameterHandle = blob.ReadTypeHandle();
+        return blob.RemainingBytes == 0 && parameterHandle.Kind == HandleKind.TypeDefinition && !parameterHandle.IsNil
+            && signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module && parameter.Handle == parameterHandle;
+    }
+
+    internal static bool IsRuntimeTypeIsPointerOverride(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "IsPointerImpl"
+            || method.Attributes != (System.Reflection.MethodAttributes.Family | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.Handle.IsNil || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        var blob = method.Module.Reader.GetBlobReader(method.Module.Reader.GetMethodDefinition(method.Handle).Signature);
+        return blob.RemainingBytes == 3 && blob.ReadByte() == 0x20 && blob.ReadByte() == 0
+            && blob.ReadByte() == (byte)SignatureTypeCode.Boolean
+            && signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean };
+    }
+
+    // Native element handles bypass the CoreCLR handle materialization sequence.
+    internal static bool IsRuntimeTypeHandleGetElementType(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetElementType"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } result }
+            && result.Module == method.Module
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeElementTypeOverride(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "GetElementType"
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Type" } result }
+            && result.Module == method.Module;
+    }
+
+    // Retained queries use the existing recorded-or-synthesized native attribute policy.
+    internal static bool IsRuntimeTypeHandleGetAttributes(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetAttributes"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva != 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != System.Reflection.MethodImplAttributes.InternalCall)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.TypeAttributes", IsEnum: true } result }
+            && result.Module == method.Module
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeAttributeFlagsOverride(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "GetAttributeFlagsImpl"
+            || method.Attributes != (System.Reflection.MethodAttributes.Family | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.TypeAttributes", IsEnum: true } result }
+            && result.Module == method.Module;
+    }
+
+    // Retained queries use the public native token policy, including unstamped rows.
+    internal static bool IsRuntimeTypeHandleGetToken(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetToken"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva != 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != System.Reflection.MethodImplAttributes.InternalCall)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeMetadataTokenGetter(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "get_MetadataToken"
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig | System.Reflection.MethodAttributes.SpecialName)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 };
+    }
+
+    // Keep the sealed getter IL; only its CoreCLR element-kind helper is cut.
+    internal static bool IsRuntimeTypeHandleIsTypeDefinition(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "IsTypeDefinition"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeDefinitionGetter(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "get_IsTypeDefinition"
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig | System.Reflection.MethodAttributes.SpecialName)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean };
+    }
+
+    // Module identity is a native object, not a CoreCLR cache or object layout.
+    internal static bool IsRuntimeTypeHandleGetModule(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetModule"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.RuntimeModule" } result }
+            && result.Module == method.Module
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module;
+    }
+
+    // This sealed getter keeps its IL while binding to the native RuntimeType receiver.
+    internal static bool IsRuntimeTypeModuleGetter(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "get_Module"
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig | System.Reflection.MethodAttributes.SpecialName)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.Module" } result }
+            && result.Module == method.Module;
+    }
+
+    // The internal accessor keeps its IL and managed RuntimeModule return ABI.
+    internal static bool IsRuntimeTypeGetRuntimeModule(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "GetRuntimeModule"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.RuntimeModule" } result }
+            && result.Module == method.Module;
+    }
+
+    // Assembly identity is a native object, not a CoreCLR cache or object layout.
+    internal static bool IsRuntimeTypeHandleGetAssembly(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetAssembly"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.RuntimeAssembly" } result }
+            && result.Module == method.Module
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module;
+    }
+
+    // This sealed getter keeps its IL while binding to the native RuntimeType receiver.
+    internal static bool IsRuntimeTypeAssemblyGetter(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "get_Assembly"
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig | System.Reflection.MethodAttributes.SpecialName)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.Assembly" } result }
+            && result.Module == method.Module;
+    }
+
+    // Positions belong to native formal contexts, not CoreCLR generic-variable handles.
+    internal static bool IsRuntimeTypeHandleGenericVariableIndex(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetGenericVariableIndex"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 };
+    }
+
+    // File activation stops at the existing AOT LoadFrom capability boundary.
+    internal static bool IsActivatorFrom(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.Activator" || method.Name != "CreateInstanceFrom"
+            || method.DeclaringClass.Handle.IsNil || method.Handle.IsNil
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        var owner = method.Module.Reader.GetTypeDefinition(method.DeclaringClass.Handle);
+        if (!owner.GetDeclaringType().IsNil
+            || !method.Module.Reader.StringComparer.Equals(owner.Namespace, "System")
+            || !method.Module.Reader.StringComparer.Equals(owner.Name, "Activator")
+            || !IsActivatorFromSignature(method.Module.Reader.GetBlobReader(
+                method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        return IsActivatorFromDecodedSignature(method.Signature, method.Module);
+    }
+
+    internal static bool IsActivatorFromDecodedSignature(MethodSignature<TypeDesc> signature, Module module) =>
+        signature.ParameterTypes.Length is 2 or 3 or 8 && IsActivatorNamedDecodedSignature(signature, module);
+
+    internal static bool IsActivatorFromSignature(BlobReader blob)
+    {
+        var shape = blob;
+        return blob.RemainingBytes >= 6 && blob.ReadByte() == 0
+            && blob.ReadByte() is 2 or 3 or 8 && IsActivatorNamedSignature(shape);
+    }
+
+    internal static bool IsAppDomainExecuteAssembly(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.AppDomain" || method.Name != "ExecuteAssembly"
+            || method.DeclaringClass.Handle.IsNil || method.Handle.IsNil
+            || method.Attributes != (System.Reflection.MethodAttributes.Private | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        var owner = method.Module.Reader.GetTypeDefinition(method.DeclaringClass.Handle);
+        if (!owner.GetDeclaringType().IsNil
+            || !method.Module.Reader.StringComparer.Equals(owner.Namespace, "System")
+            || !method.Module.Reader.StringComparer.Equals(owner.Name, "AppDomain")
+            || !IsAppDomainExecuteAssemblySignature(method.Module.Reader.GetBlobReader(
+                method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }
+            && signature.ParameterTypes is [
+                { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.Assembly", IsValueType: false } assembly },
+                { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String } }]
+            && assembly.Module == method.Module;
+    }
+
+    internal static bool IsAppDomainExecuteAssemblySignature(BlobReader blob) =>
+        blob.RemainingBytes >= 7 && blob.ReadByte() == 0 && blob.ReadByte() == 2
+        && blob.ReadByte() == (byte)SignatureTypeCode.Int32 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int assembly) && assembly > 0
+        && (assembly >> 2) != 0 && (assembly & 3) != 3
+        && blob.RemainingBytes == 2 && blob.ReadByte() == (byte)SignatureTypeCode.SZArray
+        && blob.ReadByte() == (byte)SignatureTypeCode.String;
+
+    // CoreCLR shutdown orchestration is not a native process-exit registration.
+    internal static bool IsAppContextOnProcessExit(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.AppContext" || method.Name != "OnProcessExit"
+            || method.DeclaringClass.Handle.IsNil || method.Handle.IsNil
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        var owner = method.Module.Reader.GetTypeDefinition(method.DeclaringClass.Handle);
+        if (!owner.GetDeclaringType().IsNil
+            || !method.Module.Reader.StringComparer.Equals(owner.Namespace, "System")
+            || !method.Module.Reader.StringComparer.Equals(owner.Name, "AppContext")
+            || !IsAppContextOnProcessExitSignature(method.Module.Reader.GetBlobReader(
+                method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0 && signature.ReturnType.IsVoid;
+    }
+
+    internal static bool IsAppContextOnProcessExitSignature(BlobReader blob) =>
+        blob.RemainingBytes == 3 && blob.ReadByte() == 0 && blob.ReadByte() == 0
+        && blob.ReadByte() == (byte)SignatureTypeCode.Void;
+
+    internal static bool IsRuntimeTypeHandleUtf8Name(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetUtf8Name"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.Handle.IsNil || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsRuntimeTypeHandleUtf8NameSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Class,
+                Class: { FullName: "System.MdUtf8String", IsValueType: true } result }
+            && result.Module == method.Module
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class,
+                Class: { FullName: "System.RuntimeType", IsValueType: false } type }]
+            && type.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeHandleUtf8NameSignature(BlobReader blob) =>
+        blob.RemainingBytes >= 6 && blob.ReadByte() == 0 && blob.ReadByte() == 1
+        && blob.ReadByte() == 0x11 && blob.TryReadCompressedInteger(out int result)
+        && result > 0 && (result >> 2) != 0 && (result & 3) != 3
+        && blob.RemainingBytes >= 2 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int type) && type > 0
+        && (type >> 2) != 0 && (type & 3) != 3 && blob.RemainingBytes == 0;
+
+    internal static bool IsRuntimeTypeHandleContainsGenericVariablesStatic(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "ContainsGenericVariables"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva != 0 || method.Handle.IsNil || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.InternalCall)
+            return false;
+        if (!IsRuntimeTypeHandleContainsGenericVariablesStaticSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class,
+                Class: { FullName: "System.RuntimeType", IsValueType: false } type }]
+            && type.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeHandleContainsGenericVariablesStaticSignature(BlobReader blob) =>
+        blob.RemainingBytes >= 5 && blob.ReadByte() == 0 && blob.ReadByte() == 1
+        && blob.ReadByte() == 0x02 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int type) && type > 0
+        && (type >> 2) != 0 && (type & 3) != 3 && blob.RemainingBytes == 0;
+
+    // Generic-variable queries use native type structure after managed handle validation.
+    internal static bool IsRuntimeTypeHandleContainsGenericVariables(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "ContainsGenericVariables"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean };
+    }
+
+    // Constraint payloads use native formal metadata, not CoreCLR type variables.
+    internal static bool IsRuntimeTypeHandleConstraints(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetConstraints"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Class, Class: { FullName: "System.Type" } element } }
+            && element.Module == method.Module;
+    }
+
+    // RuntimeType is sealed, but its native Type header has no CoreCLR virtual slots.
+    internal static bool IsRuntimeTypeMakeCompound(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name is not ("MakePointerType" or "MakeByRefType")
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Type" } result }
+            && result.Module == method.Module;
+    }
+
+    // Compound types share native interned identities after managed handle validation.
+    internal static bool IsRuntimeTypeHandleMakeCompound(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.Name is not ("MakePointer" or "MakeByRef")
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } result }
+            && result.Module == method.Module;
+    }
+
+    // Array wrappers use the existing native AOT policy after checked-handle validation.
+    internal static bool IsRuntimeTypeHandleMakeArray(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.Name is not ("MakeSZArray" or "MakeArray")
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } result }
+            && result.Module == method.Module
+            && (method.Name == "MakeSZArray" ? signature.ParameterTypes.Length == 0
+                : signature.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]);
+    }
+
+    // Keep the real rank guard while avoiding absent CoreCLR virtual slots.
+    internal static bool IsRuntimeTypeMakeArray(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "MakeArrayType"
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Type" } result }
+            && result.Module == method.Module
+            && (signature.ParameterTypes.Length == 0
+                || signature.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]);
+    }
+
+    internal static bool IsRuntimeTypeGenericParameterPosition(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "get_GenericParameterPosition"
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig | System.Reflection.MethodAttributes.SpecialName)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 };
+    }
+
+    internal static bool IsRuntimeTypeHandleFields(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetFields"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.Handle.IsNil || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsRuntimeTypeHandleFieldsSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes is [
+                { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType", IsValueType: false } type },
+                var buffer, { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 } }]
+            && type.Module == method.Module && IsRuntimeTypeFieldsSpan(buffer, method.Module);
+    }
+
+    internal static bool IsRuntimeTypeFieldsSpan(TypeDesc type, Module module)
+    {
+        if (type is not { Kind: TypeKind.Class, Class: { IsValueType: true, IsByRefLike: true } span }
+            || span.Module != module || span.Handle.IsNil
+            || span.Context.TypeArgs is not [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.IntPtr }])
+            return false;
+        var reader = module.Reader;
+        var definition = reader.GetTypeDefinition(span.Handle);
+        return definition.GetDeclaringType().IsNil
+            && reader.StringComparer.Equals(definition.Namespace, "System")
+            && reader.StringComparer.Equals(definition.Name, "Span`1");
+    }
+
+    internal static bool IsRuntimeTypeHandleFieldsSignature(BlobReader blob) =>
+        blob.RemainingBytes >= 12 && blob.ReadByte() == 0 && blob.ReadByte() == 3
+        && blob.ReadByte() == 0x02 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int type) && type > 0 && (type >> 2) != 0 && (type & 3) != 3
+        && blob.RemainingBytes >= 7 && blob.ReadByte() == 0x15 && blob.ReadByte() == 0x11
+        && blob.TryReadCompressedInteger(out int span) && span > 0 && (span >> 2) != 0 && (span & 3) != 3
+        && blob.RemainingBytes == 4 && blob.ReadByte() == 1 && blob.ReadByte() == 0x18
+        && blob.ReadByte() == 0x10 && blob.ReadByte() == 0x08;
+
+    internal static bool IsRuntimeTypeHandleFunctionPointerArguments(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetArgumentTypesFromFunctionPointer"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.Handle.IsNil || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsRuntimeTypeHandleFunctionPointerArgumentsSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Class,
+                Class: { FullName: "System.Type", IsValueType: false } element } }
+            && element.Module == method.Module
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class,
+                Class: { FullName: "System.RuntimeType", IsValueType: false } type }]
+            && type.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeHandleFunctionPointerArgumentsSignature(BlobReader blob) =>
+        blob.RemainingBytes >= 7 && blob.ReadByte() == 0 && blob.ReadByte() == 1
+        && blob.ReadByte() == 0x1d && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int result) && result > 0
+        && (result >> 2) != 0 && (result & 3) != 3
+        && blob.RemainingBytes >= 2 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int parameter) && parameter > 0
+        && (parameter >> 2) != 0 && (parameter & 3) != 3 && blob.RemainingBytes == 0;
+
+    internal static bool IsRuntimeTypeHandleInterfaces(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetInterfaces"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.Handle.IsNil || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsRuntimeTypeHandleInterfacesSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Class,
+                Class: { FullName: "System.Type", IsValueType: false } element } }
+            && element.Module == method.Module
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class,
+                Class: { FullName: "System.RuntimeType", IsValueType: false } type }]
+            && type.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeHandleInterfacesSignature(BlobReader blob) =>
+        blob.RemainingBytes >= 7 && blob.ReadByte() == 0 && blob.ReadByte() == 1
+        && blob.ReadByte() == 0x1d && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int result) && result > 0
+        && (result >> 2) != 0 && (result & 3) != 3
+        && blob.RemainingBytes >= 2 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int parameter) && parameter > 0
+        && (parameter >> 2) != 0 && (parameter & 3) != 3 && blob.RemainingBytes == 0;
+
+    // The managed wrappers differ in array identity, not argument materialization.
+    internal static bool IsRuntimeTypeHandleInstantiation(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.Name is not ("GetInstantiationInternal" or "GetInstantiationPublic")
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Class, Class: { } element } }
+            && element.Module == method.Module
+            && element.FullName == (method.Name == "GetInstantiationInternal" ? "System.RuntimeType" : "System.Type");
+    }
+
+    // The retained override uses native array metadata, not CoreCLR virtual slots.
+    internal static bool IsRuntimeTypeArrayRank(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "GetArrayRank"
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 };
+    }
+
+    // Native type classification does not use CoreCLR's RuntimeTypeCache.
+    internal static bool IsRuntimeTypeTypeCode(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "GetTypeCodeImpl"
+            || method.Attributes != (System.Reflection.MethodAttributes.Family | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.Handle.IsNil || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        var blob = method.Module.Reader.GetBlobReader(method.Module.Reader.GetMethodDefinition(method.Handle).Signature);
+        if (blob.RemainingBytes < 4 || blob.ReadByte() != 0x20 || blob.ReadByte() != 0
+            || blob.ReadByte() != 0x11)
+            return false;
+        blob.ReadCompressedInteger();
+        return blob.RemainingBytes == 0
+            && signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.TypeCode", IsEnum: true,
+                EnumUnderlying: PrimitiveTypeCode.Int32 } result }
+            && result.Module == method.Module;
+    }
+
+    // Runtime Types use the shared native relation, not CoreCLR handles or cast caches.
+    internal static bool IsRuntimeTypeAssignableFrom(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "IsAssignableFrom"
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        var blob = method.Module.Reader.GetBlobReader(method.Module.Reader.GetMethodDefinition(method.Handle).Signature);
+        if (blob.RemainingBytes < 5 || blob.ReadByte() != 0x20 || blob.ReadByte() != 1
+            || blob.ReadByte() != (byte)SignatureTypeCode.Boolean || blob.ReadByte() != 0x12)
+            return false;
+        blob.ReadCompressedInteger();
+        return blob.RemainingBytes == 0
+            && signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.Type" } argument }]
+            && argument.Module == method.Module;
+    }
+
+    // The public override uses native AOT reflection, not CoreCLR's type loader.
+    internal static bool IsRuntimeTypeMakeGenericType(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "MakeGenericType"
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Type" } result }
+            && result.Module == method.Module
+            && signature.ParameterTypes is [{ Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Class, Class: { FullName: "System.Type" } element } }]
+            && element.Module == method.Module;
+    }
+
+    // These managed siblings enter CoreCLR's instantiating loader after handle validation.
+    internal static bool IsRuntimeTypeHandleInstantiate(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "Instantiate"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        if (signature.Header.RawValue != 0x20 || signature.GenericParameterCount != 0
+            || signature.ReturnType is not { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } result }
+            || result.Module != method.Module || signature.ParameterTypes.Length != 1)
+            return false;
+        return signature.ParameterTypes[0] is { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } scalar }
+                && scalar.Module == method.Module
+            || signature.ParameterTypes[0] is { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Class, Class: { FullName: "System.Type" } element } }
+                && element.Module == method.Module;
+    }
+
+    // RuntimeType's public owner query uses native formal metadata, not its CoreCLR fields.
+    internal static bool IsRuntimeTypeDeclaringMethod(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "get_DeclaringMethod"
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig | System.Reflection.MethodAttributes.SpecialName)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.MethodBase" } result }
+            && result.Module == method.Module;
+    }
+
+    // IRuntimeMethodInfo carries a CoreCLR MethodDesc, not a native reflection member row.
+    internal static bool IsCoreClrDeclaringMethodBridge(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetDeclaringMethodForGenericParameter"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.IRuntimeMethodInfo" } result }
+            && result.Module == method.Module;
+    }
+
+    // This managed bridge consumes CoreCLR private method contexts, not native reflection rows.
+    internal static bool IsCoreClrConstraintCheck(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.Name != "SatisfiesConstraints"
+            || (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                != System.Reflection.MethodAttributes.Assembly
+            || !method.IsStatic || method.Rva == 0 || method.PInvoke is not null
+            || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes.Length == 4
+            && IsCoreLibMethodDescType(signature.ParameterTypes[0], "System.RuntimeType")
+            && IsCoreLibMethodDescType(signature.ParameterTypes[1], "System.RuntimeType")
+            && IsCoreLibMethodDescType(signature.ParameterTypes[2], "System.Reflection.RuntimeMethodInfo")
+            && IsCoreLibMethodDescType(signature.ParameterTypes[3], "System.RuntimeType");
+    }
+
+    // FieldDesc context checks compare CoreCLR canonical MethodTables, not native Type identities.
+    internal static bool IsCoreClrCanonicalTypeComparison(MethodInfo method)
+    {
+        if (method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.Name != "CompareCanonicalHandles"
+            || (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                != System.Reflection.MethodAttributes.Assembly
+            || !method.IsStatic || method.Rva != 0 || method.PInvoke is not null
+            || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != System.Reflection.MethodImplAttributes.InternalCall)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes.Length == 2
+            && IsCoreLibMethodDescType(signature.ParameterTypes[0], "System.RuntimeType")
+            && IsCoreLibMethodDescType(signature.ParameterTypes[1], "System.RuntimeType");
+    }
+
+    // Native reflection reads decoded metadata; it does not construct CoreCLR Signature blobs.
+    internal static bool IsCoreClrSignatureBlobParser(MethodInfo method)
+    {
+        if (method.DeclaringClass.FullName != "System.Signature"
+            || method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.Name is not ("GetParameterOffsetInternal" or "GetTypeParameterOffsetInternal"
+                or "GetCallingConventionFromFunctionPointerAtOffsetInternal")
+            || !method.IsPrivate || !method.IsStatic || method.Rva != 0 || method.PInvoke is not null
+            || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != System.Reflection.MethodImplAttributes.InternalCall)
+            return false;
+        var signature = method.Signature;
+        if (signature.Header.RawValue != 0 || signature.GenericParameterCount != 0
+            || signature.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }
+            || signature.ParameterTypes.Length != (method.Name == "GetTypeParameterOffsetInternal" ? 4 : 3)
+            || signature.ParameterTypes[0] is not { Kind: TypeKind.Pointer, Element.IsVoid: true })
+            return false;
+        for (int i = 1; i < signature.ParameterTypes.Length; i++)
+            if (signature.ParameterTypes[i] is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 })
+                return false;
+        return true;
+    }
+
+    private static bool IsCoreClrMethodTablePointer(TypeDesc type) =>
+        type is { Kind: TypeKind.Pointer, Element: { } element }
+            && IsCoreLibMethodDescType(element, "System.Runtime.CompilerServices.MethodTable");
+
+    private static bool IsCoreLibMethodDescType(TypeDesc type, string name) =>
+        type is { Kind: TypeKind.Class, Class.Module.AssemblyName: "System.Private.CoreLib" }
+            && type.Class.FullName == name;
+
+    // These leaves enumerate CoreCLR MethodDesc handles, not native reflection rows.
+    internal static bool IsCoreClrIntroducedMethodEnumeration(MethodInfo method)
+    {
+        if (method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.Name is not ("GetFirstIntroducedMethod" or "GetNextIntroducedMethod")
+            || !method.IsPrivate || !method.IsStatic || method.Rva != 0
+            || (method.ImplAttributes & System.Reflection.MethodImplAttributes.InternalCall) == 0)
+            return false;
+        var signature = method.Signature;
+        if (signature.GenericParameterCount != 0 || signature.ParameterTypes.Length != 1)
+            return false;
+        if (method.Name == "GetFirstIntroducedMethod")
+            return signature.ReturnType is { Kind: TypeKind.Class, Class: {
+                    FullName: "System.RuntimeMethodHandleInternal", Module.AssemblyName: "System.Private.CoreLib" } }
+                && signature.ParameterTypes[0] is { Kind: TypeKind.Class, Class: {
+                    FullName: "System.RuntimeType", Module.AssemblyName: "System.Private.CoreLib" } };
+        return signature.ReturnType.IsVoid
+            && signature.ParameterTypes[0] is { Kind: TypeKind.ByRef, Element: {
+                Kind: TypeKind.Class, Class: { FullName: "System.RuntimeMethodHandleInternal",
+                    Module.AssemblyName: "System.Private.CoreLib" } } };
+    }
 
     // This is CoreCLR's native-worker callback, not a managed finalizer API.
     // Match only its input declaration; neighboring GC methods keep their own routes.
@@ -775,7 +3002,8 @@ internal static partial class CoreIntrinsics
     /// intra-assembly call into one is not a reachability edge.</summary>
     public static readonly MethodDefIntercept MdIntrinsicType = new(
         InterceptCutKind.Cut, InterceptEmitArm.IntrinsicDispatch,
-        extra: static mi => IsIntrinsicType(mi.DeclaringClass.FullName));
+        extra: static mi => IsIntrinsicType(mi.DeclaringClass.FullName)
+            && !IsCoreClrTypeCollectibilityImport(mi));
 
     /// <summary>Every static member of a CoreLib platform-ISA facade
     /// (<c>Sse2</c>, <c>Lzcnt.X64</c>, <c>AdvSimd.Arm64</c>, <c>PackedSimd</c>, …): the
@@ -1859,6 +4087,49 @@ internal static partial class CoreIntrinsics
         }
     }
 
+    /// <summary>QCall is CoreCLR's private runtime module, not an OS library.
+    /// Its CoreLib declarations retain their bodies and metadata, but native calls
+    /// need a supplied implementation. Actual OS imports use their ordinary route.</summary>
+    public static readonly MethodDefIntercept PiAbsentCoreClrQCall = new(
+        InterceptCutKind.None, InterceptEmitArm.AbsentCoreClrQCallThrow,
+        extra: static m => m.Rva == 0
+            && m.DeclaringClass.Module.AssemblyName == "System.Private.CoreLib"
+            && m.PInvoke is { ModuleName: "QCall" });
+
+    // An intrinsic owner does not replace this import's explicit native binding.
+    internal static bool IsCoreClrTypeCollectibilityImport(MethodInfo method)
+    {
+        if (method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "IsCollectible"
+            || method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.Rva != 0 || !method.IsStatic
+            || method.IsVirtual || method.IsAbstract
+            || (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                != System.Reflection.MethodAttributes.Assembly
+            || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) == 0
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0
+            || (method.ImplAttributes & System.Reflection.MethodImplAttributes.PreserveSig) == 0
+            || method.PInvoke is not { ModuleName: "QCall", RawEntryPoint: "RuntimeTypeHandle_IsCollectible" })
+            return false;
+        var signature = method.Signature;
+        if (signature.Header.RawValue != 0 || signature.GenericParameterCount != 0
+            || signature.ParameterTypes is not [{ Kind: TypeKind.Class, Class: {
+                FullName: "System.Runtime.CompilerServices.QCallTypeHandle", IsValueType: true, IsByRefLike: true } } parameter]
+            || parameter.Class.Module != method.Module
+            || signature.ReturnType is not { Kind: TypeKind.Class, Class: {
+                Name: "BOOL", Namespace: "", IsEnum: true, EnumUnderlying: PrimitiveTypeCode.Int32 } result }
+            || result.Module != method.Module || result.Handle.IsNil)
+            return false;
+        var reader = result.Module.Reader;
+        var parent = reader.GetTypeDefinition(result.Handle).GetDeclaringType();
+        if (parent.IsNil)
+            return false;
+        var owner = reader.GetTypeDefinition(parent);
+        return owner.GetDeclaringType().IsNil && reader.StringComparer.Equals(owner.Namespace, "")
+            && reader.StringComparer.Equals(owner.Name, "Interop");
+    }
+
     /// <summary>Walks every descriptor table and throws on a malformed row. Called once per
     /// transpile from <c>Compilation.Build</c>; see the block comment above for the limit on
     /// what a table walk can decide.
@@ -1895,6 +4166,33 @@ internal static partial class CoreIntrinsics
             || BrNativeIntegerParse.CutKind != InterceptCutKind.BodyReplace)
             throw new InvalidOperationException("Native integer operations must retain callable target-width bodies");
 
+        CheckRow(nameof(BrCustomAttributeDataMember), 0, BrCustomAttributeDataMember.EmitArm,
+            BrCustomAttributeDataMember.TypeGate, BrCustomAttributeDataMember.NameGate);
+        if (BrCustomAttributeDataMember.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Attribute-data member bridge must retain a callable body");
+        CheckRow(nameof(BrRuntimeTypeCacheGenericDefinition), 0, BrRuntimeTypeCacheGenericDefinition.EmitArm,
+            BrRuntimeTypeCacheGenericDefinition.TypeGate, BrRuntimeTypeCacheGenericDefinition.NameGate);
+        if (BrRuntimeTypeCacheGenericDefinition.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Generic-definition cache helper must retain a callable body");
+        CheckRow(nameof(BrRuntimeTypeHandleDeclaringType), 0, BrRuntimeTypeHandleDeclaringType.EmitArm,
+            BrRuntimeTypeHandleDeclaringType.TypeGate, BrRuntimeTypeHandleDeclaringType.NameGate);
+        if (BrRuntimeTypeHandleDeclaringType.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Declaring-type bridge must retain a callable body");
+        CheckRow(nameof(BrRuntimeTypeHandleConstructName), 0, BrRuntimeTypeHandleConstructName.EmitArm,
+            BrRuntimeTypeHandleConstructName.TypeGate, BrRuntimeTypeHandleConstructName.NameGate);
+        if (BrRuntimeTypeHandleConstructName.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("RuntimeTypeHandle name construction must remain callable");
+
+        CheckRow(nameof(BrCoreClrActivationInfo), 0, BrCoreClrActivationInfo.EmitArm,
+            BrCoreClrActivationInfo.TypeGate, BrCoreClrActivationInfo.NameGate);
+        if (BrCoreClrActivationInfo.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("CoreCLR activation-info refusal must remain callable");
+
+        CheckRow(nameof(BrCoreClrTypeMaterialization), 0, BrCoreClrTypeMaterialization.EmitArm,
+            BrCoreClrTypeMaterialization.TypeGate, BrCoreClrTypeMaterialization.NameGate);
+        if (BrCoreClrTypeMaterialization.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("CoreCLR type materialization must remain callable");
+
         CheckRow(nameof(BrEnumStaticFormat), 0, BrEnumStaticFormat.EmitArm,
             BrEnumStaticFormat.TypeGate, BrEnumStaticFormat.NameGate);
         if (BrEnumStaticFormat.CutKind != InterceptCutKind.BodyReplace)
@@ -1919,6 +4217,10 @@ internal static partial class CoreIntrinsics
             BrEnumUnderlyingType.TypeGate, BrEnumUnderlyingType.NameGate);
         if (BrEnumUnderlyingType.CutKind != InterceptCutKind.BodyReplace)
             throw new InvalidOperationException("Enum underlying-type body must remain callable");
+
+        CheckRow(nameof(PiAbsentCoreClrQCall), 0, PiAbsentCoreClrQCall.EmitArm,
+            PiAbsentCoreClrQCall.TypeGate, PiAbsentCoreClrQCall.NameGate);
+        CheckCallSiteCutKind(nameof(PiAbsentCoreClrQCall), 0, PiAbsentCoreClrQCall.CutKind);
 
         for (int i = 0; i < MethodDefIntercepts.Length; i++)
         {

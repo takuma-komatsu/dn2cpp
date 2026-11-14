@@ -541,16 +541,39 @@ internal sealed partial class MethodCompiler
                 if (CoreIntrinsics.BrDelegateCallable.Matches(callee)
                     || CoreIntrinsics.BrPrimitiveBigMul.Matches(callee)
                     || CoreIntrinsics.BrNativeIntegerEndian.Matches(callee)
-                    || CoreIntrinsics.BrNativeIntegerParse.Matches(callee)
-                    || CoreIntrinsics.IsWaitHandleTimeoutConversion(callee)
+                    || CoreIntrinsics.BrNativeIntegerParse.Matches(callee))
+                {
+                    EmitManagedCall(callee, isCallvirt);
+                    return;
+                }
+                if (CoreIntrinsics.IsWaitHandleTimeoutConversion(callee)
                     || CoreIntrinsics.IsDateTimeCultureManagedBody(callee)
+                    || (CoreIntrinsics.IsRuntimeTypeHandleCopy(callee) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(callee))
+                    || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(callee)
                     || CoreIntrinsics.IsScalarNumericLeaf(callee)
                     || CoreIntrinsics.IsBinaryIntegerEndianBody(callee)
                     || CoreIntrinsics.IsPrimitiveParseBody(callee)
                     || CoreIntrinsics.IsDecimalBinaryBody(callee)
                     || CoreIntrinsics.IsPrimitiveWideConversionBody(callee)
                     || CoreIntrinsics.IsVectorAlignmentManagedBody(callee)
-                    || CoreIntrinsics.IsConcreteVectorReduction(callee))
+                    || CoreIntrinsics.IsConcreteVectorReduction(callee)
+                    || CoreIntrinsics.IsPrimitiveElementHelper(callee)
+                    || CoreIntrinsics.IsMemberNotFoundExceptionFactory(callee)
+                    || CoreIntrinsics.IsMemberMetadataDefinitionBase(callee)
+                    || CoreIntrinsics.IsCustomAttributeDataConstructorBase(callee)
+                    || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(callee)
+                    || CoreIntrinsics.BrNullableReboxing.Matches(callee)
+                    || CoreIntrinsics.BrCustomAttributeDataMember.Matches(callee)
+                    || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(callee)
+                    || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(callee)
+                    || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(callee)
+                    || CoreIntrinsics.BrCoreClrActivationInfo.Matches(callee)
+                    || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(callee)
+                    || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(callee)
+                    || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(callee)
+                    || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(callee)
+                    || CoreIntrinsics.BrActivatorNamed.Matches(callee)
+                    || CoreIntrinsics.BrActivatorDefault.Matches(callee))
                 {
                     EmitManagedCall(callee, isCallvirt);
                     return;
@@ -1809,6 +1832,21 @@ internal sealed partial class MethodCompiler
         if (_intrinsics is not null && _intrinsics.TryEmitCall(this, callee, isCallvirt))
             return;
 
+        if (isCallvirt && CoreIntrinsics.IsCustomAttributeDataConstructorBase(callee))
+        {
+            var receiver = Pop();
+            Push(StackKind.Ref, "Dn2CppMethodRef*", $"dn2cpp_attrdata_constructor_virtual({Cast(receiver, "Dn2CppObject*")})");
+            return;
+        }
+
+        if (isCallvirt && CoreIntrinsics.IsMemberMetadataDefinitionBase(callee))
+        {
+            var other = Pop();
+            var receiver = Pop();
+            Push(StackKind.I4, "int32_t", $"dn2cpp_memberinfo_has_same_metadata({Cast(receiver, "Dn2CppObject*")}, {Cast(other, "Dn2CppObject*")})");
+            return;
+        }
+
         if (Compilation.RuntimeNumericProviderConsumer(callee))
             FormatProviderDispatchArgs(_stack[^1]);
 
@@ -2607,6 +2645,13 @@ internal sealed partial class MethodCompiler
             // here.
             call = DirectCall(callee, args);
         }
+        else if (isCallvirt && ((CoreIntrinsics.IsRuntimeTypeArrayRank(callee) || CoreIntrinsics.IsRuntimeTypeEnumName(callee) || CoreIntrinsics.IsRuntimeTypeEnumDefined(callee) || CoreIntrinsics.IsRuntimeTypeAssignableFrom(callee) || CoreIntrinsics.IsRuntimeTypeTypeCode(callee)) || CoreIntrinsics.IsRuntimeTypeMakeCompound(callee) || CoreIntrinsics.IsRuntimeTypeMakeArray(callee)
+            || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(callee) || (CoreIntrinsics.IsRuntimeTypeAssemblyGetter(callee) || CoreIntrinsics.IsRuntimeTypeModuleGetter(callee))
+            || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(callee) || CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(callee) || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(callee) || CoreIntrinsics.IsRuntimeTypeHasElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsArrayOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsByRefOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsPrimitiveOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsPointerOverride(callee) || CoreIntrinsics.IsRuntimeTypeElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(callee)))
+        {
+            // The selected sealed native receiver has no CoreCLR virtual slots.
+            call = DirectCall(callee, args);
+        }
         else if (isCallvirt && callee.IsVirtual)
         {
             // The receiver is cast to the declaring class's struct pointer in FnPtrType,
@@ -3112,19 +3157,8 @@ internal sealed partial class MethodCompiler
             return true;
         }
 
-        // IBinaryInteger<TSelf>.ReadBigEndian(ReadOnlySpan<byte> source, bool isUnsigned)
-        // -> TSelf. A static-virtual whose DEFAULT interface body calls the static-abstract
-        // TryReadBigEndian (an InternalCall with no IL) and throws OverflowException on
-        // failure — dn2cpp_read_big_endian reproduces both: it reads the span big-endian,
-        // sign/zero-extends per isUnsigned, and raises the catchable OverflowException when
-        // the value does not fit TSelf. Reached from System.Formats.Tar (GNU/PAX base-256
-        // numeric fields) closed to Int32/Int64. TSelf is the (substituted) return type.
-        // Only the ReadOnlySpan/Span<byte> overload is modeled — the (byte[], …) overloads
-        // are a loud decline (Tar uses the span form); a name-gated route may DECLINE a
-        // shape but must never POP the wrong one, so the shape is matched before any Pop.
-        // Same predicate the reach-side cut asks (Compilation.IsInterceptedReadBigEndian),
-        // called here at this asker's own position (cut ⟹ route): the reach cut deletes the
-        // DIM body, so this route must name none of it.
+        // The residual sub-word shortcut shares its predicate with reachability.
+        // Admitted endian owners keep the genuine default and concrete TryRead IL.
         if (Comp.IsInterceptedReadBigEndian(callee))
         {
             var rbeSelf = callee.Signature.ReturnType;
@@ -3679,8 +3713,10 @@ internal sealed partial class MethodCompiler
         var args2 = new List<string> { typedObj };
         for (int i = 0; i < rawArgs.Length; i++)
             args2.Add(Cast(rawArgs[i], CppTypes.Of(ps[i])));
-        // A non-virtual callee has no slot: the object runs its own body.
-        if (!callee.IsVirtual)
+        // Nonvirtual and selected sealed native-Type calls enter their own bodies.
+        if (!callee.IsVirtual || (CoreIntrinsics.IsRuntimeTypeArrayRank(callee) || CoreIntrinsics.IsRuntimeTypeEnumName(callee) || CoreIntrinsics.IsRuntimeTypeEnumDefined(callee) || CoreIntrinsics.IsRuntimeTypeAssignableFrom(callee) || CoreIntrinsics.IsRuntimeTypeTypeCode(callee)) || CoreIntrinsics.IsRuntimeTypeMakeCompound(callee) || CoreIntrinsics.IsRuntimeTypeMakeArray(callee)
+            || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(callee) || (CoreIntrinsics.IsRuntimeTypeAssemblyGetter(callee) || CoreIntrinsics.IsRuntimeTypeModuleGetter(callee))
+            || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(callee) || CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(callee) || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(callee) || CoreIntrinsics.IsRuntimeTypeHasElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsArrayOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsByRefOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsPrimitiveOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsPointerOverride(callee) || CoreIntrinsics.IsRuntimeTypeElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(callee))
         {
             EmitCallResult(callee, DirectCall(callee, args2));
             return;

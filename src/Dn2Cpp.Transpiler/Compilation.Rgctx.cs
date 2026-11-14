@@ -146,7 +146,9 @@ internal sealed partial class Compilation
     /// that normally links no longer runs by then.</summary>
     private void LinkCanonicalMethodInstance(MethodInfo m)
     {
-        if (m.SharedOwner is not null || m.Rva == 0 || (m.IsVirtual && m.VtableSlot < 0))
+        // The formatter body carries the exact underlying primitive identity.
+        if (m.SharedOwner is not null || m.Rva == 0 || (m.IsVirtual && m.VtableSlot < 0)
+            || CoreIntrinsics.BrEnumStaticFormat.Matches(m))
             return;
         var args = m.Context.MethodArgs;
         if (args.Any(ContainsOpenGenerics))
@@ -715,12 +717,18 @@ internal sealed partial class Compilation
         "dn2cpp_delegate_initialize_named(", // binds through a fresh delegate
         // System.Enum's metadata: fresh names, arrays and boxes.
         "dn2cpp_enum_get_name(",
+        "dn2cpp_enum_get_name_u64(",
+        "dn2cpp_runtime_type_get_enum_name(",
+        "dn2cpp_type_get_enum_name(",
+        "dn2cpp_type_get_enum_values(",
         "dn2cpp_enum_get_names(",
         "dn2cpp_enum_get_value(",   // Enum.GetValue re-boxes the payload
         "dn2cpp_enum_get_values_",  // boxed/underlying arrays
         "dn2cpp_enum_to_object",    // + _boxed
         "dn2cpp_enum_parse_type",   // Enum.Parse(Type, ...) boxes its result
         "dn2cpp_enum_format(",
+        "dn2cpp_enum_format_raw_integer(",
+        "dn2cpp_rebox_",            // Nullable<T> reboxing (to/from)
         // Reflection: member and attribute arrays, a fresh ParameterInfo, boxed field
         // values and names built per call. The member lookups (GetMethod, GetField,
         // GetProperty, MakeGenericType) intern their handles, so they allocate only the
@@ -735,6 +743,8 @@ internal sealed partial class Compilation
         "dn2cpp_type_get_members(",
         "dn2cpp_type_get_member(",  // GetMember answers an array
         "dn2cpp_type_get_interfaces(",
+        "dn2cpp_runtime_type_get_interfaces(",
+        "dn2cpp_runtime_type_function_pointer_arguments(",
         "dn2cpp_type_find_interfaces(",
         "dn2cpp_type_get_nested_types(",
         "dn2cpp_type_get_generic_arguments(",
@@ -748,6 +758,7 @@ internal sealed partial class Compilation
         "dn2cpp_propref_get_index_parameters(",
         "dn2cpp_paramref_custom_modifiers(",
         "dn2cpp_member_custom_attributes_data(",
+        "dn2cpp_custom_attribute_data_get_custom_attributes(",
         "dn2cpp_assembly_custom_attributes_data(",
         "dn2cpp_assembly_get_types(",
         "dn2cpp_assembly_get_modules(",
@@ -772,9 +783,11 @@ internal sealed partial class Compilation
         // time and box its result and each by-ref write-back; attribute reads run the
         // attribute constructors. In both tables.
         "dn2cpp_methodref_invoke(",
+        "dn2cpp_attrdata_constructor_virtual", // may dispatch an arbitrary retained override
         "dn2cpp_delegate_dynamic_invoke(",
         "dn2cpp_ctorref_invoke(",
         "dn2cpp_activator_create_instance", // + _args/_nonpublic
+        "dn2cpp_runtime_type_create_generic_instance_", // generic construction: argument array and selected ctor
         "dn2cpp_assembly_create_instance(",
         "dn2cpp_propref_get_value", // + _indexed
         "dn2cpp_eventref_handler(",       // EventInfo.Add/RemoveEventHandler: the selected accessor
@@ -799,9 +812,13 @@ internal sealed partial class Compilation
         "dn2cpp_array_search_equals(",  // runtime array-element equality-slot dispatch
         "dn2cpp_default_equality_comparer_equals_nongeneric",
         "dn2cpp_methodref_invoke(",     // MethodInfo.Invoke: the row's body or the receiver's override
+        "dn2cpp_attrdata_constructor_virtual", // may dispatch an arbitrary retained override
+        "dn2cpp_memberinfo_has_same_metadata(", // may dispatch an arbitrary retained override
         "dn2cpp_delegate_dynamic_invoke(", // Delegate.DynamicInvoke: every entry of the chain
         "dn2cpp_ctorref_invoke(",       // ConstructorInfo.Invoke: the row's constructor
+        "dn2cpp_runtime_type_call_default_struct_constructor(", // In-place ctor dispatch; no box allocation.
         "dn2cpp_activator_create_instance", // Activator.CreateInstance: a constructor chosen at run time
+        "dn2cpp_runtime_type_create_generic_instance_", // generic construction: a constructor chosen at run time
         "dn2cpp_assembly_create_instance(", // Assembly.CreateInstance, likewise
         "dn2cpp_propref_get_value",     // PropertyInfo.GetValue: the getter's body or override
         "dn2cpp_eventref_handler(",       // EventInfo.Add/RemoveEventHandler: the selected accessor
@@ -2659,7 +2676,8 @@ internal sealed partial class Compilation
         user.SharedLinkVerified = true;
         EnsureCompleted(user);    // its vtable is half the comparison
         EnsureCompleted(owner);   // few: one per group, not one per instantiation
-        if (SameVtableShape(user, owner) && SameVectorFieldStorage(user, owner))
+        if (SameVtableShape(user, owner)
+            && SameVectorFieldStorage(user, owner))
             return;
         owner.RemoveSharedUser(user);
         user.SharedOwner = null;

@@ -49,6 +49,9 @@ namespace EnumOps
                 return;
             EnumCoreLibQueriesSubset.Program.Run();
             EnumStaticIntegerFormatSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-enum-values")
+                return;
+            EnumLookupSubset.ValueLookup.Run();
         }
     }
 }

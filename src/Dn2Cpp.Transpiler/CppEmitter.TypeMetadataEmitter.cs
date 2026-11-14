@@ -1986,6 +1986,7 @@ internal sealed partial class CppEmitter
             _invokerMissStubs.Clear();
             _slotStubs.Clear();
             EmitDelegateMethodCatalog();
+            EmitMemberNotFoundFactoryRow();
             EmitCultureCompareInfoRow();
             EmitCultureNameValidatorRow();
             EmitDateOnlyDeconstructRow();
@@ -2097,13 +2098,33 @@ internal sealed partial class CppEmitter
             }
         }
 
+        private void EmitMemberNotFoundFactoryRow()
+        {
+            foreach (var cls in _e.TopoOrder())
+            {
+                if (cls.FullName != "System.Type")
+                    continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsMemberNotFoundExceptionFactory(method) || !IsRetainedOpaqueMemberRow(method))
+                        continue;
+                    // Delegate.Method and named lookup must hand out the same physical row.
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "namedfactorytab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained member-not-found factory has no metadata row.");
+                    }
+                    _e._memberNotFoundFactoryRow = address;
+                    return;
+                }
+            }
+        }
+
         private void EmitDelegateMethodCatalog()
         {
             if (!_c.ReadsDelegateMethod && !_c.NeedsReflectionDelegateBind)
                 return;
-            _invokerThunks.Clear();
-            _invokerMissStubs.Clear();
-            _slotStubs.Clear();
             var entries = new List<string>();
             if (_c.ReadsDelegateMethod)
                 foreach (var (method, address) in _memberAddr)
@@ -3721,6 +3742,12 @@ internal sealed partial class CppEmitter
                         : m.Name == "Equals" ? "dn2cpp_object_equals_virtual" : "dn2cpp_object_gethashcode");
                     invoker = "(void*)&dn2cpp_delegate_object_virtual_invoker";
                 }
+                // An address-taken base body is nonvirtual. Reflection invokes the
+                // runtime override, whose native handle has no generated vtable.
+                if (CoreIntrinsics.IsMemberMetadataDefinitionBase(m))
+                    invoker = "nullptr";
+                if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(m) && fnPtr != "nullptr")
+                    invoker = "(void*)&dn2cpp_attrdata_constructor_invoker";
                 if (fnPtr != "nullptr") _c.NoteInvariantCompareInfoReflectionRow(m);
                 bool preservable = fnPtr == "nullptr" && !symbolic && _c.IsPreservableTemplateRow(m);
                 // Reflection, a bound delegate and the interpreter enter the row with no
@@ -3922,13 +3949,69 @@ internal sealed partial class CppEmitter
             && (CoreIntrinsics.BrDelegateCallable.Matches(method)
                 || CoreIntrinsics.IsDateTimeFormatInfoBoundary(method)
                 || CoreIntrinsics.IsDateTimeCultureManagedBody(method)
+                || (CoreIntrinsics.IsRuntimeTypeHandleCopy(method) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(method))
+                || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(method)
                 || CoreIntrinsics.IsScalarNumericLeaf(method)
                 || CoreIntrinsics.IsVectorAlignmentManagedBody(method)
                 || CoreIntrinsics.IsConcreteVectorReduction(method)
+                || CoreIntrinsics.IsPrimitiveElementHelper(method)
                 || CoreIntrinsics.IsVectorManagedThrowHelper(method)
                 || CoreIntrinsics.IsGenericVectorEstimate(method)
                 || CoreIntrinsics.IsGuardedVectorAs(method)
-                || CoreIntrinsics.IsInvariantCompareInfoGetter(method));
+                || CoreIntrinsics.IsMemberNotFoundExceptionFactory(method)
+                || CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(method)
+                || CoreIntrinsics.IsCoreClrCanonicalTypeComparison(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleAccessor(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleIsGenericVariable(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleGetToken(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleGetAttributes(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleHasElementType(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleIsArray(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleIsByRef(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleIsPrimitive(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleIsPointer(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleGetElementType(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleIsTypeDefinition(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleGetAssembly(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleGetModule(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleInterfaces(method)
+                || CoreIntrinsics.IsActivatorFrom(method)
+                || CoreIntrinsics.IsAppDomainExecuteAssembly(method)
+                || CoreIntrinsics.IsInvariantCompareInfoGetter(method)
+                || CoreIntrinsics.IsAppContextOnProcessExit(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleFields(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariables(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStatic(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleUtf8Name(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleConstraints(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleMakeCompound(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleMakeArray(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleInstantiate(method)
+                || CoreIntrinsics.IsRuntimeTypeHandleConstructor(method)
+                || CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(method)
+                || CoreIntrinsics.IsRuntimeTypeInterfaceCheck(method)
+                || CoreIntrinsics.IsCoreClrVirtualSlotCount(method)
+                || CoreIntrinsics.IsCoreClrMethodSlotLookup(method)
+                || CoreIntrinsics.IsCoreClrConstraintCheck(method)
+                || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(method)
+                || CoreIntrinsics.IsCoreClrTypeMaterialization(method)
+                || CoreIntrinsics.BrNullableReboxing.Matches(method)
+                || CoreIntrinsics.IsCustomAttributeDataConstructorBase(method)
+                || CoreIntrinsics.BrCustomAttributeDataMember.Matches(method)
+                || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(method)
+                || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(method)
+                || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(method)
+                || CoreIntrinsics.BrCoreClrActivationInfo.Matches(method)
+                || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(method)
+                || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(method)
+                || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(method)
+                || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(method)
+                || CoreIntrinsics.BrActivatorNamed.Matches(method)
+                || CoreIntrinsics.BrActivatorDefault.Matches(method));
 
         private void RenderMemberTables(ClassInfo cls)
         {
@@ -3942,7 +4025,7 @@ internal sealed partial class CppEmitter
             if (_e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls))
             {
                 var activationCtors = cls.Methods.Where(m => _e._activationConstructorRows.Contains(m)
-                    || m.Name == ".ctor" && CoreIntrinsics.BrDelegateCallable.Matches(m) && IsRetainedOpaqueMemberRow(m)).ToList();
+                    || m.Name == ".ctor" && IsRetainedOpaqueMemberRow(m)).ToList();
                 if (BuildMemberTable(cls, activationCtors, "ctortab") is { } table)
                     _ctorTabs[cls] = table;
                 NoteListedCtors(cls, activationCtors);

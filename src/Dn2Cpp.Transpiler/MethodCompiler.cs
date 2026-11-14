@@ -712,6 +712,8 @@ internal sealed partial class MethodCompiler : IEvalStack
         CoreIntrinsics.ValidateVectorAlignment(_method);
         CoreIntrinsics.ValidateConcreteVectorReduction(_method);
         CoreIntrinsics.ValidateVectorAsCallable(_method);
+        if (CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(_method))
+            return CompileInvariantCompareInfoInitializer();
         if (CoreIntrinsics.IsGuardedVectorAs(_method))
             return CompileGuardedVectorAs();
         if (CoreIntrinsics.IsVectorMagnitudeManagedGuard(_method))
@@ -739,8 +741,6 @@ internal sealed partial class MethodCompiler : IEvalStack
         if (SharedTrial && _method.IsHotPath)
             throw new SharedBodyTaintException("hotpath",
                 $"{_method.DeclaringClass.FullName}.{_method.Name}: [HotPath] bodies compile per instantiation");
-        if (CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(_method))
-            return CompileInvariantCompareInfoInitializer();
         var bodyBlock = _module.PE.GetMethodBody(_method.Rva);
         List<Instruction> insns;
         try
@@ -756,7 +756,7 @@ internal sealed partial class MethodCompiler : IEvalStack
 
         BuildExceptionRegions(bodyBlock);
         BuildArgsAndLocals(bodyBlock);
-        // CLI calls store arguments at their declared width, including enum arguments.
+        // Calls assign to CLI argument storage even when the native ABI promotes enums.
         foreach (var argument in _args)
             if (IsNarrowEnumSlot(argument.Type))
                 Emit($"{argument.Name} = {CoerceToSlot(new StackEntry(argument.Name, argument.Kind, argument.CppType), argument.Type, argument.CppType)};");
@@ -840,8 +840,29 @@ internal sealed partial class MethodCompiler : IEvalStack
                 if (!virtFtn && _c.TrimLdftnRedirect(target) is { } redirect)
                     target = redirect;
                 _ftnOrigins.Add(insn.Offset + 1, (target, virtFtn && target.IsVirtual
+                    && !CoreIntrinsics.IsRuntimeTypeDeclaringMethod(target)
+                    && !CoreIntrinsics.IsRuntimeTypeTypeCode(target)
+                    && !CoreIntrinsics.IsRuntimeTypeArrayRank(target)
                     && !CoreIntrinsics.IsRuntimeTypeEnumName(target)
-                    && !CoreIntrinsics.IsRuntimeTypeEnumDefined(target), virtFtn));
+                    && !CoreIntrinsics.IsRuntimeTypeEnumDefined(target)
+                    && !CoreIntrinsics.IsRuntimeTypeAssignableFrom(target)
+                    && !CoreIntrinsics.IsRuntimeTypeMakeGenericType(target)
+                    && !CoreIntrinsics.IsRuntimeTypeMakeCompound(target)
+                    && !CoreIntrinsics.IsRuntimeTypeMakeArray(target)
+                    && !CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(target)
+                    && !CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(target)
+                    && !CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(target)
+                    && !CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(target)
+                    && !CoreIntrinsics.IsRuntimeTypeHasElementTypeOverride(target)
+                    && !CoreIntrinsics.IsRuntimeTypeIsArrayOverride(target)
+                    && !CoreIntrinsics.IsRuntimeTypeIsByRefOverride(target)
+                    && !CoreIntrinsics.IsRuntimeTypeIsPrimitiveOverride(target)
+                    && !CoreIntrinsics.IsRuntimeTypeIsPointerOverride(target)
+                    && !CoreIntrinsics.IsRuntimeTypeElementTypeOverride(target)
+                    && !CoreIntrinsics.IsRuntimeTypeDefinitionGetter(target)
+                    && !CoreIntrinsics.IsRuntimeTypeAssemblyGetter(target)
+                    && !CoreIntrinsics.IsRuntimeTypeModuleGetter(target)
+                    && !CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(target), virtFtn));
             }
 
         foreach (var insn in insns)
@@ -1330,7 +1351,28 @@ internal sealed partial class MethodCompiler : IEvalStack
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
                 TryTokenFreeGenericIntrinsic(_method.DeclaringClass.FullName, _method.Name, _method.Context.MethodArgs),
                 "checked Int128 integer widening");
-        if (CoreIntrinsics.IsRuntimeTypeEnumName(_method) || CoreIntrinsics.IsRuntimeTypeEnumDefined(_method)
+        // Intrinsic-owner address targets still replay the exact declaration guard.
+        if (CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(_method)
+            || CoreIntrinsics.IsCoreClrCanonicalTypeComparison(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleAccessor(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsSZArray(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsGenericVariable(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetToken(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetAttributes(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleHasElementType(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsArray(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsByRef(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsPrimitive(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsPointer(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetElementType(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsTypeDefinition(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetAssembly(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetModule(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleInterfaces(_method)
+            || CoreIntrinsics.IsActivatorFrom(_method)
+            || CoreIntrinsics.IsAppDomainExecuteAssembly(_method)
             || CoreIntrinsics.IsGen2GcCallbackRefusal(_method)
             || CoreIntrinsics.IsGen2GcCallbackRegister(_method)
             || CoreIntrinsics.IsVectorExplicit(_method)
@@ -1341,8 +1383,257 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsVectorValueMethod(_method)
             || CoreIntrinsics.IsInvariantCompareInfoGetter(_method)
             || CoreIntrinsics.IsDateTimeFormatInfoBoundary(_method)
-            || CoreIntrinsics.IsDateTimeLeapSecondSupport(_method))
+            || CoreIntrinsics.IsDateTimeLeapSecondSupport(_method)
+            || CoreIntrinsics.IsAppContextOnProcessExit(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleFields(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariables(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStatic(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleUtf8Name(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleConstraints(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleMakeCompound(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleMakeArray(_method)
+            || CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleInstantiate(_method)
+            || (CoreIntrinsics.IsRuntimeTypeArrayRank(_method) || CoreIntrinsics.IsRuntimeTypeEnumName(_method) || CoreIntrinsics.IsRuntimeTypeEnumDefined(_method) || CoreIntrinsics.IsRuntimeTypeAssignableFrom(_method) || CoreIntrinsics.IsRuntimeTypeTypeCode(_method))
+            || CoreIntrinsics.IsRuntimeTypeMakeGenericType(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleConstructor(_method)
+            || CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(_method)
+            || CoreIntrinsics.IsRuntimeTypeInterfaceCheck(_method)
+            || CoreIntrinsics.IsCoreClrVirtualSlotCount(_method)
+            || CoreIntrinsics.IsCoreClrMethodSlotLookup(_method)
+            || CoreIntrinsics.IsMethodGenericParameterCount(_method)
+            || CoreIntrinsics.IsMemberMetadataDefinitionOverride(_method)
+            || CoreIntrinsics.IsCoreClrConstraintCheck(_method)
+            || CoreIntrinsics.IsRuntimeTypeDeclaringMethod(_method)
+            || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(_method)
+            || CoreIntrinsics.IsCoreClrTypeMaterialization(_method) && _method.Rva == 0)
             return CompileInterceptWrapper();
+        if (CoreIntrinsics.BrCustomAttributeDataMember.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                var elem = CustomAttributeDataElem(_method.Signature.ReturnType);
+                var definition = Comp.OpenGenericDefHandleByName("System.Collections.ObjectModel.ReadOnlyCollection`1");
+                if (definition is not { } def || def.Module != _method.Module)
+                    throw new NotSupportedException("CustomAttributeData requires CoreLib ReadOnlyCollection<T>");
+                var collection = Comp.Instantiate(def.Module, def.Handle, new[] { elem });
+                var ctor = Comp.ReachManagedMethod(collection, ".ctor",
+                    ps => ps.Length == 1 && ps[0] == _method.Signature.ReturnType, allocates: true)
+                    ?? throw new NotSupportedException("CustomAttributeData requires ReadOnlyCollection<T>(IList<T>)");
+                var member = Pop();
+                PushReflectionMemberArray(
+                    $"dn2cpp_custom_attribute_data_get_custom_attributes({Cast(member, "Dn2CppObject*")})",
+                    TypeDesc.MakeSZArray(elem));
+                var array = Pop();
+                // CoreLib exposes its empty array; nonempty data is a read-only collection.
+                Emit($"if ({array.Expr}->length == 0) return ({CppTypes.Of(_method.Signature.ReturnType)}){array.Expr};");
+                string result = NewTemp(collection.CppStructName + "*");
+                Emit($"{result} = ({collection.CppStructName}*)dn2cpp_alloc(sizeof({collection.CppStructName}));");
+                Emit($"((Dn2CppObject*){result})->type = &{collection.CppTypeInfoName};");
+                Emit($"{DirectCall(ctor, new List<string> { result, Cast(array, CppTypes.Of(ctor.Signature.ParameterTypes[0])) })};");
+                PushEntry(new StackEntry(result, StackKind.Ref, collection.CppStructName + "*",
+                    StaticType: TypeDesc.MakeClass(collection)));
+                return true;
+            }, "canonical MemberInfo attribute data");
+        if (CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                var cache = Pop();
+                var cls = _method.DeclaringClass;
+                FieldInfo? ownerField = null;
+                FieldInfo? resultField = null;
+                foreach (var field in cls.Fields)
+                {
+                    if (field.Name == "m_runtimeType")
+                    {
+                        if (ownerField is not null)
+                            throw new NotSupportedException("RuntimeTypeCache has duplicate owner fields");
+                        ownerField = field;
+                    }
+                    if (field.Name == "_genericTypeDefinition")
+                    {
+                        if (resultField is not null)
+                            throw new NotSupportedException("RuntimeTypeCache has duplicate definition fields");
+                        resultField = field;
+                    }
+                }
+                if (ownerField is null || resultField is null)
+                    throw new NotSupportedException("RuntimeTypeCache generic-definition fields are unavailable");
+                foreach (var field in new[] { ownerField, resultField })
+                {
+                    var row = cls.Module.Reader.GetFieldDefinition(field.Handle);
+                    var expected = System.Reflection.FieldAttributes.Private
+                        | (field == ownerField ? System.Reflection.FieldAttributes.InitOnly : 0);
+                    var raw = cls.Module.Reader.GetBlobReader(row.Signature);
+                    if (row.Attributes != expected || field.Type != _method.Signature.ReturnType
+                        || raw.RemainingBytes < 3 || raw.ReadByte() != 6 || raw.ReadByte() != 0x12
+                        || !raw.TryReadCompressedInteger(out int token) || token <= 0
+                        || (token >> 2) == 0 || (token & 3) == 3 || raw.RemainingBytes != 0)
+                        throw new NotSupportedException("RuntimeTypeCache generic-definition fields require their exact managed layout");
+                }
+                NoteFieldOwnerLayout(cls);
+                string owner = NewTemp("Dn2CppType*");
+                Emit($"{owner} = (Dn2CppType*){FieldAccess(cls, ownerField, cache)};");
+                Emit($"if ({owner} == nullptr) dn2cpp_throw_null_reference();");
+                Emit($"if ({owner}->type != &dn2cpp_type_type) dn2cpp_throw_platform_not_supported(\"RuntimeTypeCache generic definition requires a canonical runtime Type\");");
+                string result = NewTemp("Dn2CppType*");
+                Emit($"{result} = dn2cpp_type_is_generic_type_definition(dn2cpp_type_require({owner})) ? {owner} : dn2cpp_type_get_generic_type_definition({owner});");
+                // Match stfld: publish only after lookup succeeds, then mark the actual cache object.
+                Emit($"{FieldAccess(cls, resultField, cache)} = ({LayoutFieldType(cls, resultField)}){result};");
+                Emit($"dn2cpp_gc_write_barrier((void*)({cache.Expr}));");
+                Push(StackKind.Ref, "Dn2CppType*", result);
+                return true;
+            }, "managed generic-definition cache helper");
+        if (CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                var type = Pop();
+                Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_runtime_type_get_declaring_type({Cast(type, "Dn2CppType*")})");
+                return true;
+            }, "RuntimeType bounded declaring-type query");
+        if (CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                var flags = Pop();
+                var receiver = Pop();
+                if (receiver.Kind == StackKind.Ptr)
+                    Emit($"if ({receiver.Expr} == nullptr) dn2cpp_throw_null_reference();");
+                string handle = NewTemp("const Dn2CppTypeInfo*");
+                Emit($"{handle} = {(receiver.Kind == StackKind.Ptr ? $"(*(const Dn2CppTypeInfo**)({receiver.Expr}))" : Cast(receiver, "const Dn2CppTypeInfo*"))};");
+                ValidateRuntimeTypeHandle(handle, _method);
+                string text = NewTemp("Dn2CppString*");
+                Emit($"{text} = nullptr;");
+                Emit($"switch ({Cast(flags, "int32_t")}) {{");
+                Emit($"case 0: {text} = dn2cpp_type_name({handle}); break;");
+                Emit($"case 1: {text} = dn2cpp_type_tostring({handle}); break;");
+                Emit($"case 3: {text} = dn2cpp_type_fullname({handle}); break;");
+                Emit($"case 7: {text} = dn2cpp_type_assembly_qualified_name(dn2cpp_get_type_from_handle({handle})); break;");
+                Emit("default: break;");
+                Emit("}");
+                Emit($"if ({text} == nullptr) dn2cpp_throw_platform_not_supported(\"RuntimeTypeHandle.ConstructName supports name, display, full and assembly-qualified modes only in the native type-name domain.\");");
+                Push(StackKind.Ref, "Dn2CppString*", text);
+                return true;
+            }, "RuntimeTypeHandle bounded name construction");
+        if (CoreIntrinsics.BrCoreClrActivationInfo.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                foreach (var _ in _method.Signature.ParameterTypes) Pop();
+                Emit("dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.GetActivationInfo requires CoreCLR allocator and constructor function-pointer ABI. Use supported public construction APIs instead.\");");
+                return true;
+            }, "CoreCLR activation-info boundary");
+        if (CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                var data = Pop();
+                var type = Pop();
+                Emit($"dn2cpp_runtime_type_call_default_struct_constructor({Cast(type, "Dn2CppType*")}, {Cast(data, "uint8_t*")});");
+                return true;
+            }, "RuntimeType in-place default construction");
+        if (CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                var type = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*",
+                    $"dn2cpp_activator_create_instance_default_ctor({Cast(type, "Dn2CppType*")}, 1, 1)");
+                return true;
+            }, "RuntimeType public parameterless construction");
+        if (CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                int count = _method.Signature.ParameterTypes.Length;
+                var second = count == 3 ? Pop() : default;
+                var first = Pop();
+                var representative = Pop();
+                string arguments = Cast(representative, "Dn2CppType*") + ", " + Cast(first, "Dn2CppType*");
+                if (second is not null) arguments += ", " + Cast(second, "Dn2CppType*");
+                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_runtime_type_create_generic_instance_{count - 1}({arguments})");
+                return true;
+            }, "RuntimeType generic-family construction");
+        if (CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                var wrap = Pop();
+                var publicOnly = Pop();
+                var type = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*",
+                    $"dn2cpp_activator_create_instance_default_ctor({Cast(type, "Dn2CppType*")}, {Cast(publicOnly, "int32_t")}, {Cast(wrap, "int32_t")})");
+                return true;
+            }, "RuntimeType parameterless construction");
+        if (CoreIntrinsics.BrActivatorNamed.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                var handleClass = _method.Signature.ReturnType.Class!;
+                var ctor = Comp.ReachManagedMethod(handleClass, ".ctor",
+                    static ps => ps is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }], allocates: true)
+                    ?? throw new NotSupportedException("Named activation requires ObjectHandle(object)");
+                bool withArguments = _method.Signature.ParameterTypes.Length == 8;
+                bool withAttributes = _method.Signature.ParameterTypes.Length is 3 or 8;
+                string attributes = withAttributes ? Cast(Pop(), "Dn2CppArrayRef*") : "nullptr";
+                if (withArguments) Pop(); // Culture follows the existing non-parse DefaultBinder policy.
+                string arguments = withArguments ? Cast(Pop(), "Dn2CppArrayRef*") : "nullptr";
+                string binder = withArguments ? Cast(Pop(), "Dn2CppObject*") : "nullptr";
+                string flags = withArguments ? Cast(Pop(), "int32_t") : withAttributes ? "0x214" : "20";
+                string ignoreCase = withArguments ? Cast(Pop(), "int32_t") : "0";
+                var typeName = Pop();
+                var assemblyName = Pop();
+                string assembly = NewTemp("const char*");
+                Emit($"if ({assemblyName.Expr} == nullptr) dn2cpp_throw_platform_not_supported(\"Named activation with a null assembly name requires caller-sensitive assembly resolution\");");
+                Emit($"{assembly} = dn2cpp_assembly_load({Cast(assemblyName, "Dn2CppString*")}, \"assemblyName\");");
+                Emit($"if ({typeName.Expr} == nullptr) dn2cpp_throw_argument_null_param(\"name\");");
+                Emit($"if ({typeName.Expr}->length == 0) dn2cpp_throw_argument_param(DN2CPP_SR_EMPTY_STRING, \"name\");");
+                string type = NewTemp("Dn2CppType*");
+                Emit($"{type} = dn2cpp_assembly_get_type({assembly}, {Cast(typeName, "Dn2CppString*")}, 1, {ignoreCase});");
+                string instance = NewTemp("Dn2CppObject*");
+                if (withAttributes)
+                {
+                    // CoreLib rejects activation attributes before entering binder selection.
+                    Emit($"if ({attributes} != nullptr && ({attributes})->length > 0) dn2cpp_throw_platform_not_supported(\"Activation Attributes are not supported.\");");
+                    Emit($"{instance} = dn2cpp_activator_create_instance_args({type}, {arguments}, {flags}, {binder}, {attributes});");
+                }
+                else Emit($"{instance} = dn2cpp_activator_create_instance({type});");
+                Emit($"if ({instance} == nullptr) return nullptr;");
+                string handle = NewTemp(handleClass.CppStructName + "*");
+                Emit($"{handle} = ({handleClass.CppStructName}*)dn2cpp_alloc(sizeof({handleClass.CppStructName}));");
+                Emit($"((Dn2CppObject*){handle})->type = &{handleClass.CppTypeInfoName};");
+                Emit($"{DirectCall(ctor, new List<string> { handle, instance })};");
+                PushEntry(new StackEntry(handle, StackKind.Ref, handleClass.CppStructName + "*",
+                    StaticType: _method.Signature.ReturnType));
+                return true;
+            }, "linked-name Activator construction");
+        if (CoreIntrinsics.BrActivatorDefault.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                var wrap = Pop();
+                var nonPublic = Pop();
+                var type = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*",
+                    $"dn2cpp_activator_create_instance_wrapped({Cast(type, "Dn2CppType*")}, {Cast(nonPublic, "int32_t")}, {Cast(wrap, "int32_t")})");
+                return true;
+            }, "parameterless Activator construction");
+        if (CoreIntrinsics.BrNullableReboxing.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                if (_method.Name == "ReboxToNullable")
+                {
+                    var type = Pop();
+                    var value = Pop();
+                    Push(StackKind.Ref, "Dn2CppObject*",
+                        $"dn2cpp_rebox_to_nullable({Cast(value, "Dn2CppObject*")}, {Cast(type, "Dn2CppType*")})");
+                }
+                else
+                {
+                    var value = Pop();
+                    Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_rebox_from_nullable({Cast(value, "Dn2CppObject*")})");
+                }
+                return true;
+            }, "nullable reboxing");
+        if (CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                EmitCoreClrTypeMaterialization(_method);
+                return true;
+            }, "CoreCLR type materialization boundary");
         string dispatch = _c.RuntimeInterfaceLowerings.TryGetValue(_method, out var runtimeDispatch)
             ? runtimeDispatch
             : CoreIntrinsics.IsIntrinsicType(_method.DeclaringClass.FullName)
@@ -3923,6 +4214,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 //
                 bool vftnBounded = _c.IsBoundedMethod(m.DeclaringClass.FullName, m.Name);
                 bool bindsLowering = false;
+                bool delegateAddressReady = true;
                 if (vftnBounded)
                 {
                     expr = BoundedFtnStub(m, insn.Offset, receiverSlot: true);
@@ -3978,6 +4270,31 @@ internal sealed partial class MethodCompiler : IEvalStack
                     expr = $"((void)dn2cpp_null_check({obj.Expr}), "
                         + $"(void*)+[](Dn2CppObject* receiver, Dn2CppObject* other) -> int32_t "
                         + $"{{ return {impl.CppName}(({virtualTarget.DeclaringClass.CppStructName}*)(receiver + 1), other); }})";
+                }
+                else if ((CoreIntrinsics.IsRuntimeTypeArrayRank(m) || CoreIntrinsics.IsRuntimeTypeEnumName(m) || CoreIntrinsics.IsRuntimeTypeEnumDefined(m) || CoreIntrinsics.IsRuntimeTypeAssignableFrom(m) || CoreIntrinsics.IsRuntimeTypeTypeCode(m)) || CoreIntrinsics.IsRuntimeTypeDeclaringMethod(m) || CoreIntrinsics.IsRuntimeTypeMakeGenericType(m)
+                    || CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(m) || CoreIntrinsics.IsRuntimeTypeMakeCompound(m)
+                    || CoreIntrinsics.IsRuntimeTypeMakeArray(m) || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(m)
+                    || CoreIntrinsics.IsRuntimeTypeAssemblyGetter(m) || CoreIntrinsics.IsRuntimeTypeModuleGetter(m) || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(m) || CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(m) || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(m) || CoreIntrinsics.IsRuntimeTypeHasElementTypeOverride(m) || CoreIntrinsics.IsRuntimeTypeIsArrayOverride(m) || CoreIntrinsics.IsRuntimeTypeIsByRefOverride(m) || CoreIntrinsics.IsRuntimeTypeIsPrimitiveOverride(m) || CoreIntrinsics.IsRuntimeTypeIsPointerOverride(m) || CoreIntrinsics.IsRuntimeTypeElementTypeOverride(m) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(m))
+                {
+                    // RuntimeType is sealed; its native header has no CoreCLR virtual slots.
+                    bindsLowering = true;
+                    NoteFtnTargetBody(m.Emittable);
+                    _c.NoteNamedBodySymbol(_method, m.Emittable);
+                    expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{m.Emittable.CppName})";
+                    if (CoreIntrinsics.IsRuntimeTypeAssemblyGetter(m) || CoreIntrinsics.IsRuntimeTypeModuleGetter(m))
+                    {
+                        // The raw getter returns an assembly/module identity; only a delegate erases it.
+                        _ftnOrigins[insn.Offset + 1] = (m, false, true);
+                        delegateAddressReady = false;
+                    }
+                }
+                else if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(m))
+                {
+                    expr = $"dn2cpp_attrdata_constructor_virtual_address({Cast(obj, "Dn2CppObject*")})";
+                }
+                else if (CoreIntrinsics.IsMemberMetadataDefinitionBase(m))
+                {
+                    expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&dn2cpp_memberinfo_has_same_metadata)";
                 }
                 else if (CoreIntrinsics.IsVectorValueMethod(m) && m.Name == "Equals"
                     && m.Signature.ParameterTypes[0].Class == m.DeclaringClass)
@@ -4043,14 +4360,6 @@ internal sealed partial class MethodCompiler : IEvalStack
                     expr = $"({receiver} == nullptr ? (void*)&{m.Emittable.CppName} : "
                         + $"dn2cpp_bind_interface_slot(dn2cpp_resolve_interface({receiver}->type, "
                         + $"&{itf.CppTypeInfoName})[{clone.VtableSlot}], {receiver}))";
-                }
-                else if (CoreIntrinsics.IsRuntimeTypeEnumName(m) || CoreIntrinsics.IsRuntimeTypeEnumDefined(m))
-                {
-                    // RuntimeType is sealed; its native header has no CoreCLR virtual slots.
-                    bindsLowering = true;
-                    NoteFtnTargetBody(m.Emittable);
-                    _c.NoteNamedBodySymbol(_method, m.Emittable);
-                    expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{m.Emittable.CppName})";
                 }
                 else if (m.IsVirtual && CoreIntrinsics.BrEnumInstanceFormat.Matches(m))
                 {
@@ -4134,7 +4443,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 }
                 Push(StackKind.Ptr, "void*", expr);
                 _stack[^1] = _stack[^1] with { DelegateMethod = m, DelegateVirtual = m.IsVirtual && !bindsLowering,
-                    DelegateTag = (insn.Offset + 1).ToString(), DelegateAddressReady = true };
+                    DelegateTag = (insn.Offset + 1).ToString(), DelegateAddressReady = delegateAddressReady };
                 break;
             }
 

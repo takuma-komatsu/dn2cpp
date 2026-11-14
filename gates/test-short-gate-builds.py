@@ -58,6 +58,7 @@ fake_build() {
     : > "$dir/CustomAsyncTaskLib.dll"
     : > "$dir/MiniCorlib.dll"
     : > "$dir/MultiAssemblyAlias.dll"
+    [ "$name" != SelfHostPrimSubset ] || : > "$dir/DefaultStructCtorLib.dll"
     [ "$name" != Dn2Cpp.Cli.Console ] || : > "$dir/dn2cpp-console.dll"
 }
 build_proj() { [ -z "${DN2CPP_SKIP_BUILD:-}" ] || return 0; fake_build "$1"; }
@@ -522,6 +523,8 @@ signature_helper = signature_helper[:signature_helper.index('\nif [ "${BASH_SOUR
 selfhost = selfhost.replace('source "$(dirname "$0")/_delegate-signatures.sh"',
                             signature_helper, 1)
 selfhost_stubs = r'''
+mkdir -p artifacts/selfhost-prim-routes-Debug/previous-run
+printf 'retained route evidence\n' > artifacts/selfhost-prim-routes-Debug/previous-run/native.stdout
 for reference in System.Linq System.Diagnostics.TraceSource System.Collections.Specialized; do
     : > "runtime/$reference.dll"
 done
@@ -552,13 +555,25 @@ gate_python() {
 # Missing CoreLib and malformed private inputs refuse; positive emissions retain
 # their command/image count, including the two BPI encodings and metadata-only TI.
 invoke_cli() {
-    local args="$*" dir= name= diagnostic= suffix body leaf query collect wait backedge
+    local args="$*" dir= name= diagnostic= suffix body leaf query collect wait backedge refusal="${FAKE_GC_REFUSAL:-}"
     local argv=("$@")
     while [ "$#" -gt 0 ]; do
         if [ "$1" = -o ]; then dir="$2"; break; fi
         shift
     done
     case "$dir" in
+        artifacts/selfhost-prim-routes-*/*-out)
+            name="${dir##*/}"
+            name="${name%-out}"
+            refusal="${FAKE_ROUTE_REFUSAL:-}"
+            case "$name" in
+                pointer-memberref)
+                    diagnostic='RuntimeTypeIsPointerSubset.IsPointerChecks.Address: RuntimeType pointer query requires its exact MemberRef signature [chain: Program.Main]' ;;
+                pointer-call-raw)
+                    diagnostic='RuntimeTypeIsPointerSubset.IsPointerChecks.Direct: RuntimeType pointer query requires its exact MemberRef signature [chain: Program.Main]' ;;
+                *) return 97 ;;
+            esac
+            ;;
         */buffer-negative-internal/emitted|*/buffer-negative-batch/emitted)
             name=${dir%/emitted}; name=${name##*/}
             suffix=Internal
@@ -579,8 +594,8 @@ invoke_cli() {
     esac
     if [ -n "$name" ]; then
         record "REJECT:$name:$args"
-        [ "${FAKE_GC_REFUSAL:-}" != "$name:accepted" ] || return 0
-        [ "${FAKE_GC_REFUSAL:-}" != "$name:diagnostic" ] || diagnostic='wrong diagnostic'
+        [ "$refusal" != "$name:accepted" ] || return 0
+        [ "$refusal" != "$name:diagnostic" ] || diagnostic='wrong diagnostic'
         printf 'error: %s\n' "$diagnostic" >&2
         return 2
     fi
@@ -610,14 +625,18 @@ invoke_cli() {
             "$collect" "$wait" "$query" "$backedge" >> "$dir/generated.cpp"
     fi
 }
+primitive_stdout() {
+    printf '%s\n' 'mock output' 'Nullable reboxing contract end' 'Activator default construction end'
+}
 gc_stdout() {
-    printf '%s\n' 'mock output' '== GC collection overloads ==' \
+    primitive_stdout
+    printf '%s\n' '== GC collection overloads ==' \
         'GC collection overloads end' 'GC logical generations end' \
         'GC memory query entry points end' 'GC notification validation end' \
         'GC pause duration end' 'GC finalizer worker contract end' 'Buffer reference moves end'
 }
 gate_capture() {
-    local prefix="$1" status=0 label mode
+    local prefix="$1" status=0 label mode captured_status
     if [ "$2" = invoke_cli ]; then
         shift
         record "CAPTURE:$prefix:$*"
@@ -628,7 +647,34 @@ gate_capture() {
     fi
     fake_gate_capture "$@"
     case "$prefix" in
-        */selfhostprimsubset*/native|*/selfhostprimsubset*/oracle|*/buffer-unrewritten) gc_stdout > "$prefix.stdout" ;;
+        */runtime-field-fixture|*/runtime-type-fixture)
+            captured_status=$(cat "$prefix.status")
+            [ "$2" = run_bounded ] && [ "$3" = dotnet ] || return 97
+            dotnet "${@:4}" > "$prefix.stdout" 2> "$prefix.stderr" || status=$?
+            [ "$status" != 0 ] || status=$captured_status
+            printf '%s\n' "$status" > "$prefix.status" ;;
+        */runtime-type-oracle|*/runtime-type-native)
+            [ "${@: -1}" = runtime-type-routes ] || return 97
+            if [[ "$prefix" == */runtime-type-oracle ]]; then
+                [ "$4" = samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/SelfHostPrimSubset.dll ] || return 97
+                [ ! -s "$4" ] || return 97
+            fi
+            printf 'Runtime is-pointer routes end\n' > "$prefix.stdout" ;;
+        */runtime-field-boundary)
+            [ "${@: -1}" = native-boundary ] || return 97
+            printf '%s\n' 'field-handle-GetAttributes-direct:PlatformNotSupportedException:System.RuntimeFieldHandle.GetAttributes requires CoreCLR field descriptors. Use FieldInfo instead.' > "$prefix.stdout" ;;
+        */selfhostprimsubset*/native|*/selfhostprimsubset*/oracle|*/buffer-unrewritten)
+            gc_stdout > "$prefix.stdout"
+            if [ "${FAKE_RUNTIME_TAINT:-}" = prefix ] && [[ "$prefix" == */native ]]; then
+                printf 'wrong prefix\n' >> "$prefix.stdout"
+            fi
+            printf '%s\n' '== Runtime method enumeration contract ==' \
+                'Runtime method enumeration contract end' >> "$prefix.stdout"
+            if [ "${FAKE_RUNTIME_TAINT:-}" != tail ] || [[ "$prefix" != */native ]]; then
+                printf '%s\n' 'Runtime type handle accessors end' >> "$prefix.stdout"
+            fi ;;
+        */gc-prefix) primitive_stdout > "$prefix.stdout" ;;
+        */runtime-prefix) gc_stdout > "$prefix.stdout" ;;
         */buffer-fixture)
             printf '%s\n' 'buffer-move-fixture:Internal:ref-byte,ref-byte,nuint' \
                 'buffer-move-fixture:Batch:ref-byte,ref-byte,nuint' > "$prefix.stdout" ;;
@@ -657,6 +703,19 @@ gate_capture() {
                 gen2-interp-ctor0:True gen2-interp-ordinary:True gen2-interp-end \
                 > "$prefix.stdout" ;;
     esac
+    if [ -n "${FAKE_ROUTE_TAINT:-}" ] && [[ "$prefix" == */"$FAKE_ROUTE_TAINT" ]]; then
+        printf 'wrong output\n' > "$prefix.stdout"
+    fi
+    if [ -n "${FAKE_ROUTE_STDERR:-}" ] && [[ "$prefix" == */"$FAKE_ROUTE_STDERR" ]]; then
+        printf 'unexpected stderr\n' > "$prefix.stderr"
+    fi
+    if [[ "$prefix" == */runtime-type-native ]]; then
+        case "${FAKE_ROUTE_BYTES:-}" in
+            nul) printf '\000' >> "$prefix.stdout" ;;
+            cr) printf '\r' >> "$prefix.stdout" ;;
+            newline) printf '\n' >> "$prefix.stdout" ;;
+        esac
+    fi
     if [ -n "${FAKE_GC_TAINT:-}" ] && [[ "$prefix" == *"$FAKE_GC_TAINT" ]]; then
         printf 'wrong output\n' > "$prefix.stdout"
     fi
@@ -669,15 +728,52 @@ gate_capture() {
 gate_output() {
     fake_gate_output "$@" || return $?
     case "${2:-}:$*" in
-        */gc-*:*|*/buffer-*:*|*/gen2-retained.*:*|*:witness*'GC collection overloads end'*|*:prefix*'/gc-prefix.stdout'*)
+        artifacts/selfhost-prim-routes-*/*:*|*/runtime-type-*:*|*/runtime-field-*:*|*/gc-*:*|*/buffer-*:*|*/gen2-retained.*:*|*:witness*'GC collection overloads end'*|*:witness*'Runtime method enumeration contract end'*|*:prefix*'/gc-prefix.stdout'*|*:prefix*'/runtime-prefix.stdout'*)
             "$FAKE_PYTHON" "$FAKE_OUTPUT_HELPER" "$@" ;;
     esac
+}
+git() {
+    [ "$*" = 'ls-files -co --exclude-standard -- gates/fixtures/ldftn-local' ] || return 97
+    printf '%s\n' gates/fixtures/ldftn-local/RuntimeTypeIsPointerFixture.cs \
+        gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs
+}
+dotnet() {
+    record "FIXTURE:$*"
+    [ "$1" = "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" ] && [ -f "$1" ] || return 97
+    [ "${FAKE_ROUTE_FIXTURE_FAIL:-}" != "$2" ] || return 23
+    case "$2" in
+        --runtime-field-handle|--runtime-type-is-pointer-aggregate|\
+        --runtime-type-is-pointer-negative-address-return|--runtime-type-is-pointer-negative-call-class-return)
+            [ "$#" = 4 ] && [ -f "$3" ] && [ -f "$4" ] || return 97
+            if [ "$2" = --runtime-field-handle ]; then
+                [[ "$3" == */app/SelfHostPrimSubset.dll ]] || return 97
+                printf 'private-field\n' >> "$3"
+                printf 'field-handle-sites=GetAttributes-direct\n'
+            elif [ "$2" = --runtime-type-is-pointer-aggregate ]; then
+                [[ "$3" == */app/SelfHostPrimSubset.dll ]] || return 97
+                grep -Fxq private-field "$3" || return 97
+                printf 'private-pointer\n' >> "$3"
+                printf 'runtime-type-is-pointer-entry:Program.Main\n'
+            fi ;;
+        *) return 97 ;;
+    esac
+}
+gate_cache_check() {
+    record "CACHE:$*"
+    if [[ "$1" == artifacts/selfhost-prim-routes-* ]]; then
+        [ "${FAKE_ROUTES_CACHE_HIT:-${FAKE_CACHE_HIT:-0}}" = 1 ]
+    else
+        [ "${FAKE_CACHE_HIT:-0}" = 1 ]
+    fi
 }
 if [ -n "${DN2CPP_SKIP_BUILD:-}" ]; then
     fake_build samples/dotnet/SelfHostPrimSubset/SelfHostPrimSubset.csproj
     fake_build gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
     fake_build gates/fixtures/gen2-callback/interpreter/Patch/Gen2CallbackPatch.csproj
     prepare_gen2_projects
+    if [ "${FAKE_MISSING_LDFTN:-0}" = 1 ]; then
+        mv gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll fixture-unavailable.dll
+    fi
     : > "$FAKE_LOG"
 fi
 '''
@@ -702,9 +798,17 @@ for label, extra, expected in (
         ("cold", {}, (7, 4, 4)),
         ("suite", {"DN2CPP_SKIP_BUILD": "1"}, (7, 4, 1)),
         ("suffix", {"DN2CPP_OUT_SUFFIX": "-probe", "HIGHWAY": "1"}, (7, 4, 4)),
+        ("scalar", {"SCALAR": "1"}, (7, 4, 4)),
+        ("routes-warm", {"FAKE_ROUTES_CACHE_HIT": "1"}, (7, 4, 4)),
+        ("aggregate-warm", {"FAKE_CACHE_HIT": "1", "FAKE_ROUTES_CACHE_HIT": "0"}, (2, 1, 3)),
         ("warm", {"FAKE_CACHE_HIT": "1"}, (2, 1, 3))):
     result, calls = run("selfhost-" + label, selfhost_stubs + selfhost, {**selfhost_env, **extra})
     check(result.returncode == 0, (label, result.returncode, result.stderr))
+    work = root / ("selfhost-" + label)
+    check((work / "artifacts/selfhost-prim-routes-Debug/previous-run/native.stdout").read_bytes()
+          == b"retained route evidence\n", label)
+    check((work / "samples/dotnet/SelfHostPrimSubset/bin/Debug/net10.0/SelfHostPrimSubset.dll").read_bytes()
+          == b"", (label, "shared build output was rewritten"))
     emit = [line for line in calls if line.startswith("EMIT:")]
     native = [line for line in calls if line.startswith("NATIVE:")]
     builds = [line for line in calls if line.startswith("BUILD:")]
@@ -713,6 +817,7 @@ for label, extra, expected in (
     check(sum(line == "PREPARE" for line in calls) == 1, calls)
     check(not any("DelegateCallableBodies.csproj" in line for line in calls), calls)
     check(any("/app/SelfHostPrimSubset.dll -r " in line for line in emit), emit)
+    check(any("DefaultStructCtorLib.dll" in line for line in emit), emit)
     cache = [line for line in calls if line.startswith("CACHE:")]
     check(any("delegate-callable-refusals.txt" in line and "keep-delegate-callable-bodies.xml" in line
               and "delegate-callable:reflection,call,calli,callvirt,ldvirtftn" in line for line in cache), cache)
@@ -731,13 +836,55 @@ for label, extra, expected in (
     for suffix in (".dll", ".runtimeconfig.json", ".deps.json"):
         check(any(raw_base + suffix in line for line in cache), (label, suffix, cache))
     check(any(raw[0].split(":")[1] + ".stdout" in line for line in cache), (label, raw, cache))
-    if label == "warm":
-        check("HIT" in calls and "COMMIT" not in calls, calls)
+    aggregate_cache = [line for line in cache if not line.startswith("CACHE:artifacts/selfhost-prim-routes-")]
+    check(len(aggregate_cache) == 1, aggregate_cache)
+    for dependency in ("RuntimeTypeIsPointerFixture.cs", "RuntimeFieldHandleFixture.cs",
+                       "runtime-type-routes:aggregate,public-wrapper-oracle,fieldhandle-boundary",
+                       "runtime-type-oracle.stdout", "runtime-type-oracle.stderr"):
+        check(dependency in aggregate_cache[0], (label, dependency, aggregate_cache))
+    route_oracle = [line for line in captures if "/runtime-type-oracle:" in line]
+    check(len(route_oracle) == 1 and route_oracle[0].endswith(
+        "run_bounded dotnet " + raw_base + ".dll runtime-type-routes"), route_oracle)
+    field_fixture = next(line for line in captures if " --runtime-field-handle " in line)
+    route_fixture = next(line for line in captures if " --runtime-type-is-pointer-aggregate " in line)
+    aggregate_emit = next(line for line in emit if "/app/SelfHostPrimSubset.dll -r " in line)
+    check(calls.index(route_oracle[0]) < calls.index(delegate_fixture) < calls.index(buffer_fixture)
+          < calls.index(field_fixture) < calls.index(route_fixture) < calls.index(aggregate_emit), captures)
+    check(sum("LdftnLocalFixture.csproj" in line for line in builds) == (0 if label == "suite" else 1), builds)
+    route_cache = [line for line in cache if line.startswith("CACHE:artifacts/selfhost-prim-routes-")]
+    check(len(route_cache) == 1, route_cache)
+    for dependency in ("flags:--auto-ref,--no-ildiet", "DefaultStructCtorLib.dll", "RuntimeTypeIsPointerFixture.cs",
+                       "RuntimeFieldHandleFixture.cs"):
+        check(dependency in route_cache[0], (label, dependency, route_cache))
+    route_native = [line for line in native if line.endswith(":RuntimeTypeRoutes")]
+    check(not route_native and not any("selfhost-prim-routes-" in line for line in emit), (native, emit))
+    route_refusals = [line for line in calls if line.startswith("REJECT:") and "artifacts/selfhost-prim-routes-" in line]
+    fixtures = [line.split()[1] for line in calls if line.startswith("FIXTURE:")]
+    positive_fixtures = ["--runtime-field-handle", "--runtime-type-is-pointer-aggregate"]
+    if label in ("warm", "routes-warm"):
+        check(not route_refusals and fixtures == positive_fixtures, calls)
+        check(calls.count("HIT") == (2 if label == "warm" else 1), calls)
+    else:
+        check([line.split(":")[1] for line in route_refusals] == ["pointer-memberref", "pointer-call-raw"], route_refusals)
+        check(" --auto-ref " in route_refusals[0] and "--no-ildiet" not in route_refusals[0], route_refusals)
+        check(" --auto-ref --no-ildiet " in route_refusals[1], route_refusals)
+        check(sum(line.startswith("ASSERT:match-record artifacts/selfhost-prim-routes-") for line in calls) == 2, calls)
+        check(fixtures == positive_fixtures + [
+              "--runtime-type-is-pointer-negative-address-return", "--runtime-type-is-pointer-negative-call-class-return"], fixtures)
+    check(calls.count("COMMIT") == (0 if label == "warm" else 1 if label in ("routes-warm", "aggregate-warm") else 2), calls)
+    if label in ("warm", "aggregate-warm"):
+        check("HIT" in calls, calls)
         check(not any("delegate-refusals " in line for line in calls if line.startswith("CAPTURE:")), calls)
         check(not any("gen2-retained" in line for line in native + emit), calls)
-        check(not any(line.startswith("REJECT:") for line in calls), calls)
+        check(not any("/runtime-type-native:" in line or "/runtime-field-boundary:" in line for line in captures), captures)
         continue
     target = next(line.split(":")[1] for line in native if line.endswith(":SelfHostPrimSubset"))
+    check(any(line.endswith(f"{target}/SelfHostPrimSubset runtime-type-routes") for line in captures), captures)
+    check(any(line.endswith(f"{target}/SelfHostPrimSubset native-boundary") for line in captures), captures)
+    for stream in ("stdout", "stderr"):
+        check(f"ASSERT:compare {target}/runtime-type-oracle.{stream} {target}/runtime-type-native.{stream}" in calls, calls)
+    check(any(line.startswith(f"ASSERT:byte-witness {target}/runtime-field-boundary.stdout ")
+              and "CoreCLR field descriptors" in line for line in calls), calls)
     check(f"ASSERT:compare {target}/buffer-unrewritten.stdout {target}/oracle.stdout" in calls, calls)
     for route in ("reflection", "call", "calli", "callvirt", "ldvirtftn"):
         for mode in ("delegate-callable", "delegate-refusals"):
@@ -750,6 +897,9 @@ for label, extra, expected in (
     check(sum("--link-xml samples/dotnet/SelfHostPrimSubset/keep-delegate-callable-bodies.xml" in line
               for line in emit) == 1, emit)
     check(any(" before-nullable-reboxing" in line for line in captures), captures)
+    check(any(line.endswith(f"{target}/app/SelfHostPrimSubset.dll before-runtime-primitives")
+              for line in captures), captures)
+    check(f"ASSERT:prefix {target}/native.stdout {target}/runtime-prefix.stdout --before == Runtime method enumeration contract == --policy crlf" in calls, calls)
     check(sum(" delegate-callable before-virtual-delegates" in line for line in captures) == 2, captures)
     check("COMMIT" in calls and any(" --delegate-signatures " in line for line in captures), calls)
     check(any(line.endswith(f"{target}/SelfHostPrimSubset gc-native-boundary") for line in captures), captures)
@@ -772,10 +922,10 @@ for label, extra, expected in (
     check(not any("/minimal:" in line for line in native), native)
     check(not any("run_bounded dotnet " in line and "/input/" in line
                   and "LdftnLocalFixture.dll" not in line for line in captures), captures)
-    refusals = [line for line in calls if line.startswith("REJECT:")]
+    refusals = [line for line in calls if line.startswith("REJECT:") and "artifacts/selfhost-prim-routes-" not in line]
     check([line.split(":")[1] for line in refusals] == ["buffer-negative-internal", "buffer-negative-batch",
           "gc-missing-corelib-collect", "gc-missing-corelib-memory", "gen2-newobj", "gen2-memberref"], refusals)
-    check(sum(line == "ASSERT:status 2 2" for line in calls) == 6, calls)
+    check(sum(line == "ASSERT:status 2 2" for line in calls) == (6 if label == "routes-warm" else 8), calls)
     for mode in ("collect", "memory"):
         missing = [line for line in refusals if line.startswith(f"REJECT:gc-missing-corelib-{mode}:")]
         check(len(missing) == 1 and f"/{mode}/SelfHostPrimSubset.dll --no-ildiet -o " in missing[0], missing)
@@ -794,7 +944,11 @@ for label, extra in (
         ("retained-fixture", {"FAKE_STATUS_FAIL": "retained-fixture"}),
         ("retained-emit", {"FAKE_EMIT_FAIL": "retained-only"}),
         ("retained-check", {"FAKE_RETAINED_CHECK_FAIL": "1"}),
-        ("retained-status", {"FAKE_STATUS_FAIL": "retained-only/native"})):
+        ("retained-status", {"FAKE_STATUS_FAIL": "retained-only/native"}),
+        ("runtime-prefix-status", {"FAKE_STATUS_FAIL": "/runtime-prefix"}),
+        ("runtime-prefix-bytes", {"FAKE_GC_TAINT": "/runtime-prefix"}),
+        ("runtime-native-prefix", {"FAKE_RUNTIME_TAINT": "prefix"}),
+        ("runtime-tail", {"FAKE_RUNTIME_TAINT": "tail"})):
     result, calls = run("selfhost-failure-" + label, selfhost_stubs + selfhost, {**selfhost_env, **extra})
     check(result.returncode != 0, (label, result.stderr))
     check("COMMIT" not in calls and not any(" --delegate-signatures " in line for line in calls), (label, calls))
@@ -880,6 +1034,46 @@ for name in ("buffer-negative-internal", "buffer-negative-batch", "gc-missing-co
                             {**selfhost_env, "FAKE_GC_REFUSAL": name + ":" + failure})
         check(result.returncode != 0 and "COMMIT" not in calls, (name, failure, calls))
         check(any(line.startswith("REJECT:" + name + ":") for line in calls), calls)
+
+for label, extra, native_count in (
+        ("field-fixture", {"FAKE_ROUTE_FIXTURE_FAIL": "--runtime-field-handle"}, 0),
+        ("field-fixture-status", {"FAKE_STATUS_FAIL": "/runtime-field-fixture"}, 0),
+        ("field-fixture-bytes", {"FAKE_ROUTE_TAINT": "runtime-field-fixture"}, 0),
+        ("field-fixture-stderr", {"FAKE_ROUTE_STDERR": "runtime-field-fixture"}, 0),
+        ("fixture", {"FAKE_ROUTE_FIXTURE_FAIL": "--runtime-type-is-pointer-aggregate"}, 0),
+        ("fixture-status", {"FAKE_STATUS_FAIL": "/runtime-type-fixture"}, 0),
+        ("fixture-bytes", {"FAKE_ROUTE_TAINT": "runtime-type-fixture"}, 0),
+        ("fixture-stderr", {"FAKE_ROUTE_STDERR": "runtime-type-fixture"}, 0),
+        ("oracle-status", {"FAKE_STATUS_FAIL": "/runtime-type-oracle"}, 0),
+        ("oracle-status-warm", {"FAKE_STATUS_FAIL": "/runtime-type-oracle", "FAKE_CACHE_HIT": "1"}, 0),
+        ("suite-missing-fixture", {"DN2CPP_SKIP_BUILD": "1", "FAKE_MISSING_LDFTN": "1"}, 0),
+        ("emit", {"FAKE_EMIT_FAIL": "artifacts/selfhostprimsubset"}, 0),
+        ("native-status", {"FAKE_STATUS_FAIL": "/runtime-type-native"}, 3),
+        ("parity-bytes", {"FAKE_ROUTE_TAINT": "runtime-type-oracle"}, 3),
+        ("parity-stderr", {"FAKE_ROUTE_STDERR": "runtime-type-native"}, 3),
+        ("parity-nul", {"FAKE_ROUTE_BYTES": "nul"}, 3),
+        ("parity-cr", {"FAKE_ROUTE_BYTES": "cr"}, 3),
+        ("parity-newline", {"FAKE_ROUTE_BYTES": "newline"}, 3),
+        ("witness", {"FAKE_ROUTE_TAINT": "runtime-type-native"}, 3),
+        ("boundary-status", {"FAKE_STATUS_FAIL": "/runtime-field-boundary"}, 3),
+        ("boundary-bytes", {"FAKE_ROUTE_TAINT": "runtime-field-boundary"}, 3)):
+    result, calls = run("selfhost-routes-failure-" + label, selfhost_stubs + selfhost,
+                        {**selfhost_env, **extra})
+    check(result.returncode != 0, (label, result.stderr))
+    check("COMMIT" not in calls and not any(line.startswith("REJECT:") and "artifacts/selfhost-prim-routes-" in line for line in calls), (label, calls))
+    native = [line for line in calls if line.startswith("NATIVE:")]
+    check(len(native) == native_count, (label, native))
+    if label.startswith("oracle-status"):
+        check("HIT" not in calls, calls)
+
+for name in ("pointer-memberref", "pointer-call-raw"):
+    for failure in ("accepted", "diagnostic"):
+        result, calls = run("selfhost-routes-" + name + "-" + failure, selfhost_stubs + selfhost,
+                            {**selfhost_env, "FAKE_ROUTE_REFUSAL": name + ":" + failure})
+        check(result.returncode != 0 and calls.count("COMMIT") == 1, (name, failure, calls))
+        check(sum(line.startswith("NATIVE:") for line in calls) == 4, calls)
+        rejected = [line.split(":")[1] for line in calls if line.startswith("REJECT:")]
+        check(rejected[-1] == name, (name, failure, rejected))
 
 (root / "results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
 print(f"short-gate-builds: {checks} checks passed; evidence: {root}")

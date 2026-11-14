@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Member metadata-definition identity ignores generic instantiation and reflected views without conflating definitions.
 # Method attribute inheritance honors override chains and AttributeUsage without constructing IsDefined results.
 # Type.GetType(name, throwOnError, ignoreCase) keeps caller/CoreLib lookup and case-collision order.
 # Forwarded names resolve in the target assembly again after the source finds a match.
@@ -319,6 +320,8 @@ DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-type-leaves-v1|before-attribute-display-code-units|exception-object-prefix-argv:before-exception-object-members|assembly-name-prefix-argv:before-assembly-name-validation|attribute-construction-prefix-argv:before-attribute-construction-order"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/AttributeConstructionOrderSubset.cs samples/dotnet/ReflectTypes/MethodAttributeInheritanceSubset.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|before-method-attribute-inheritance"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/MetadataDefinitionSubset.cs samples/dotnet/ReflectTypes/CollectibilitySubset.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|before-metadata-definition-identity|before-collectibility"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/keep-ordinary-type-leaves.xml samples/dotnet/ReflectTypes/keep-template-signatures.xml samples/dotnet/ReflectTypes/keep-attribute-enumeration.xml"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsOnly.csproj samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsUnshared.csproj samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsOnlyProgram.cs gates/expected/reflect-types-closed-generic.txt gates/expected/reflect-types-closed-generic-unshared.txt"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ReflectionTemplateDispatch.csproj samples/dotnet/ReflectTypes/ReflectionTemplateDispatchProgram.cs samples/dotnet/ReflectTypes/ReflectRuntimeInstantiationSubset.cs"
@@ -924,6 +927,20 @@ gate_extra_asserts() {
         echo 'FAIL: array contents changed the selected element type' >&2
         return 1
     fi
+    before="$out/metadata-definition-before-clr.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-metadata-definition-identity || return $?
+    prefix="$out/metadata-definition-prefix.stdout"
+    gate_output select "$native" "$prefix" --before '== member metadata definition identity ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    before="$out/metadata-definition-before-native.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" before-metadata-definition-identity || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    gate_output witness "$native" '== member metadata definition identity ==' --count 1 --policy crlf || return $?
+    gate_output witness "$native" 'member metadata definition identity end' --count 1 --policy crlf || return $?
+    gate_capture_ok "$out/collectibility-before" run_bounded dotnet "$_CG_APP" before-collectibility || return $?
+    gate_output prefix "$out/native.stdout" "$out/collectibility-before.stdout" \
+        --before '== noncollectible reflection types ==' --policy crlf || return $?
+    gate_output byte-witness "$out/native.stdout" 'noncollectible reflection types end' --count 1 --policy crlf || return $?
 }
 # Helpers that read a Type parameter's attributes or construct a Type an attribute
 # carries are preserved explicitly; their callers' typeof arguments select nothing.

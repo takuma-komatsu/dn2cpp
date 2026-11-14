@@ -26,6 +26,7 @@
     <Compile Include="../Dn2Cpp.Transpiler/ILDecoder.cs" Link="ILDecoder.cs" />
     <Compile Include="../Dn2Cpp.Transpiler/ReflectionApis.cs" Link="ReflectionApis.cs" />
     <Compile Include="../Dn2Cpp.Transpiler/ReflectionSummary.cs" Link="ReflectionSummary.cs" />
+    <Compile Include="../Dn2Cpp.Transpiler/RawAssemblyTypeResolver.cs" Link="RawAssemblyTypeResolver.cs" />
     <Compile Include="../Dn2Cpp.Transpiler/ScalarNumericLeafContract.cs" Link="ScalarNumericLeafContract.cs" />
     <Compile Include="../Dn2Cpp.Transpiler/BinaryIntegerEndianContract.cs" Link="BinaryIntegerEndianContract.cs" />
     <Compile Include="../Dn2Cpp.Transpiler/PrimitiveParseContract.cs" Link="PrimitiveParseContract.cs" />

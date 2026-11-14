@@ -74,6 +74,10 @@
 # Buffer copies assert overlap and reference survival plus collector-aware
 # lowering. A separate Gen2 base reuses one image for reflection and both patch
 # codecs; minimal metadata and malformed inputs need emission only.
+#
+#  The reflection sections after BufferReferenceMoveSubset (RuntimeType queries,
+#     activation and type/field/method handles) reach private CoreLib members
+#     that Medium retains, through public APIs only.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
 source "$(dirname "$0")/_common.sh"
@@ -81,29 +85,59 @@ prepare_cli
 source "$(dirname "$0")/_delegate-callable-bodies.sh"
 source "$(dirname "$0")/_gc-collector-contracts.sh"
 source "$(dirname "$0")/_gen2-gate.sh"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ldftn-local/RuntimeTypeIsPointerFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|runtime-type-routes:aggregate,public-wrapper-oracle,fieldhandle-boundary"
 
 gate_prepare_app() {
+    local out="$2" fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll"
     gc_collector_capture_raw_app "$2" || return 1
+    # The CLR must use the original public wrappers, not the private native routes.
+    gate_capture_ok "$out/runtime-type-oracle" run_bounded dotnet "$_CG_APP" runtime-type-routes || return 1
+    DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS $out/runtime-type-oracle.stdout $out/runtime-type-oracle.stderr"
     delegate_callable_prepare_app "$@" || return 1
-    gc_collector_prepare_app "$2"
+    gc_collector_prepare_app "$2" || return 1
+    gate_capture_ok "$out/runtime-field-fixture" run_bounded dotnet "$fixture" \
+        --runtime-field-handle "$_CG_APP" "$_CG_CORELIB" || return 1
+    gate_assert_text "$out/runtime-field-fixture.stdout" 'field-handle-sites=GetAttributes-direct' || return 1
+    gate_assert_text "$out/runtime-field-fixture.stderr" '' || return 1
+    gate_capture_ok "$out/runtime-type-fixture" run_bounded dotnet "$fixture" \
+        --runtime-type-is-pointer-aggregate "$_CG_APP" "$_CG_CORELIB" || return 1
+    gate_assert_text "$out/runtime-type-fixture.stdout" 'runtime-type-is-pointer-entry:Program.Main' || return 1
+    gate_assert_text "$out/runtime-type-fixture.stderr" ''
 }
 
+# GC capabilities and delegate callable refusals use isolated processes of the
+# driver image; the ordinary run retains its unchanged GC and Buffer prefix.
 gate_extra_asserts() {
     local out="$1"
     gate_output witness "$out/native.stdout" 'Nullable reboxing contract end' \
-        'Activator default construction end' --count 1 --policy crlf
-    gate_capture_ok "$out/nullable-before" run_bounded dotnet "$_CG_APP" before-nullable-reboxing
+        'Activator default construction end' 'GC memory query entry points end' \
+        'Runtime method enumeration contract end' 'Runtime type handle accessors end' \
+        --count 1 --policy crlf || return 1
+    gate_capture_ok "$out/nullable-before" run_bounded dotnet "$_CG_APP" before-nullable-reboxing || return 1
     gate_output select "$out/native.stdout" "$out/nullable-prefix.stdout" \
-        --before '== Nullable reboxing contract ==' --policy crlf
-    gate_output compare "$out/nullable-prefix.stdout" "$out/nullable-before.stdout"
+        --before '== Nullable reboxing contract ==' --policy crlf || return 1
+    gate_output compare "$out/nullable-prefix.stdout" "$out/nullable-before.stdout" || return 1
+    gate_capture_ok "$out/runtime-prefix" run_bounded dotnet "$_CG_APP" before-runtime-primitives || return 1
+    gate_output prefix "$out/native.stdout" "$out/runtime-prefix.stdout" \
+        --before '== Runtime method enumeration contract ==' --policy crlf || return 1
     delegate_callable_asserts "$out"
     delegate_callable_retained_only "$out"
     gc_collector_asserts "$out"
     gen2_retained_boundary_gate "$out/gen2-retained"
+    # Private call, calli, virtual, address and reflection routes share this
+    # image, but run separately so the ordinary transcript is unchanged.
+    gate_capture_ok "$out/runtime-type-native" run_bounded "$out/SelfHostPrimSubset$EXE_EXT" runtime-type-routes
+    gate_output witness "$out/runtime-type-native.stdout" 'Runtime is-pointer routes end' --count 1 --policy crlf
+    gate_output compare "$out/runtime-type-oracle.stdout" "$out/runtime-type-native.stdout"
+    gate_output compare "$out/runtime-type-oracle.stderr" "$out/runtime-type-native.stderr"
+    gate_capture_ok "$out/runtime-field-boundary" run_bounded "$out/SelfHostPrimSubset$EXE_EXT" native-boundary
+    gate_output byte-witness "$out/runtime-field-boundary.stdout" 'field-handle-GetAttributes-direct:PlatformNotSupportedException:System.RuntimeFieldHandle.GetAttributes requires CoreCLR field descriptors. Use FieldInfo instead.' --count 1 --policy crlf
 }
 
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \
-    System.Collections.Specialized
+    System.Collections.Specialized \
+    -r "samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/DefaultStructCtorLib.dll"
 
 # The real runner source is linked into this small fixture so this block proves
 # its MethodDef interception independently of a full self-host native build.
@@ -147,3 +181,42 @@ diff -u "$probe_out/managed.err" "$probe_out/path-native.err"
 
 source "$(dirname "$0")/_delegate-signatures.sh"
 delegate_signature_regressions
+
+fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll"
+corelib=$(resolve_net10_corelib)
+prim_bin="samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM"
+routes="artifacts/selfhost-prim-routes-$CONFIG"
+mkdir -p "$routes"
+# The compile-only refusals read original sample outputs; the positive routes
+# are already covered by the aggregate cache and need no second native image.
+route_inputs=()
+while IFS= read -r f; do route_inputs+=("$f"); done < <(git ls-files -co --exclude-standard -- \
+    gates/fixtures/ldftn-local)
+if gate_cache_check "$routes" "selfhost-prim-route-refusals|cli:$(_gate_cli_hash)|corelib:$corelib|flags:--auto-ref,--no-ildiet" \
+        "$prim_bin/"* "${route_inputs[@]}"; then
+    gate_cache_hit_msg
+    exit 0
+fi
+routes=$(mktemp -d "$routes/run.XXXXXX")
+echo "RuntimeType refusal artifacts: $routes"
+mkdir -p "$routes/negative-input" "$routes/raw-input"
+cp "$prim_bin/"* "$routes/negative-input/"
+cp "$prim_bin/"* "$routes/raw-input/"
+
+# Malformed inputs are compile-only and fail closed: an ldftn of the pointer query
+# with a wrong return type, a raw call whose return names Boolean as a class (the
+# refusal must not fall back to the intrinsic table).
+refusal() {
+    local name="$1" diagnostic="$2"
+    shift 2
+    gate_capture "$routes/$name" invoke_cli "$@" -o "$routes/$name-out"
+    gate_output status "$(cat "$routes/$name.status")" 2
+    gate_output match-record "$routes/$name.stderr" ".*error: $diagnostic\$" --count 1 --policy crlf
+}
+dotnet "$fixture" --runtime-type-is-pointer-negative-address-return "$routes/negative-input/SelfHostPrimSubset.dll" "$corelib"
+refusal pointer-memberref 'RuntimeTypeIsPointerSubset[.]IsPointerChecks[.]Address: RuntimeType pointer query requires its exact MemberRef signature \[chain: .*\]' \
+    "$routes/negative-input/SelfHostPrimSubset.dll" --auto-ref
+dotnet "$fixture" --runtime-type-is-pointer-negative-call-class-return "$routes/raw-input/SelfHostPrimSubset.dll" "$corelib"
+refusal pointer-call-raw 'RuntimeTypeIsPointerSubset[.]IsPointerChecks[.]Direct: RuntimeType pointer query requires its exact MemberRef signature \[chain: .*\]' \
+    "$routes/raw-input/SelfHostPrimSubset.dll" --auto-ref --no-ildiet
+gate_cache_commit

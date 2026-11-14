@@ -23,6 +23,11 @@ if (DateTimeInterceptFixture.Run(args))
 if (DateTimeTCharFixture.Run(args))
     return;
 
+if (RuntimeTypeIsPointerFixture.Run(args))
+    return;
+if (RuntimeFieldHandleFixture.Run(args))
+    return;
+
 if (VectorRefusalFixture.Run(args))
     return;
 

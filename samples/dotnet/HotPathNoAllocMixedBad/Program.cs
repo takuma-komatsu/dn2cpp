@@ -15,6 +15,8 @@ namespace HotPathNoAllocMixedBad
 {
     using Dn2Cpp.Runtime;
 
+    internal enum Shade { Light = 1, Dark = 2 }
+
     /// <summary>[HotPath(NoAlloc = true)] methods, each allocating through a
     /// directly-emitted runtime helper the verifier must detect: ToString on an
     /// object receiver (dn2cpp_object_tostring — a runtime-internal dispatch that
@@ -66,6 +68,19 @@ namespace HotPathNoAllocMixedBad
             return info.GetDayName(day);
         }
 
+        // Type's enum metadata answers a fresh array and a fresh name.
+        [HotPath(NoAlloc = true)]
+        private static Array EnumValueArray()
+        {
+            return typeof(Shade).GetEnumValues();
+        }
+
+        [HotPath(NoAlloc = true)]
+        private static string? EnumMemberName(Type type, object value)
+        {
+            return type.GetEnumName(value);
+        }
+
         private static void Empty() { }
 
         private static void Main()
@@ -78,6 +93,8 @@ namespace HotPathNoAllocMixedBad
             supplied += Empty;
             Console.WriteLine(AdvanceInvocation(supplied));
             Console.WriteLine(DayName(System.Globalization.DateTimeFormatInfo.InvariantInfo, DayOfWeek.Monday));
+            Console.WriteLine(EnumValueArray().Length);
+            Console.WriteLine(EnumMemberName(typeof(Shade), Shade.Dark));
         }
     }
 }

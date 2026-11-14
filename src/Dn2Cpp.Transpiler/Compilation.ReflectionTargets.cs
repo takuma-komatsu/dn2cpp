@@ -684,9 +684,8 @@ internal sealed partial class Compilation
         }
         else if (ReflectionRoutes.BindsReflectedMethod(api.Op))
         {
-            NoteReflectionDelegateBind(module);
-            if (api.Op == ReflectionOp.CreateDelegateNamed && IsUserModule(module))
-                _reflectionNamedDelegateBindUsed = true;
+            NoteReflectionDelegateBind(module,
+                named: api.Op == ReflectionOp.CreateDelegateNamed && IsUserModule(module));
         }
         else if (api.Op == ReflectionOp.DynamicInvoke)
             _delegateDynamicInvokeUsed = true;
@@ -706,6 +705,31 @@ internal sealed partial class Compilation
         var target = Operand(app, site, api.Target);
         switch (api.Op)
         {
+            case ReflectionOp.RuntimeTypeDefaultStructCtor:
+            {
+                string? unknown = target.Unknown;
+                foreach (var e in target.Items)
+                {
+                    var type = e.Kind == REntityKind.Template ? ExactTemplateType(e)
+                        : e.Kind == REntityKind.Type && !e.Inherited ? e.Type : null;
+                    if (e.Kind == REntityKind.Template && type is null)
+                        unknown ??= "a runtime-instantiated generic value type";
+                    if (type is not { Kind: TypeKind.Class, Class: { } cls }
+                        || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls) || !EnsureShape(cls).IsValueType)
+                        continue;
+                    foreach (var member in SelectMembers(cls, LookupMemberKind.Constructor, null,
+                        ReflectionApis.PublicInstance, null, -1))
+                        if (member.Method is { } ctor && ctor.Signature.ParameterTypes.Length == 0)
+                        {
+                            ReachCctor(cls);
+                            InvokeTarget(ctor);
+                        }
+                }
+                if (unknown is not null)
+                    RecordReflectionDiagnostic(app, site, ReflectionDiagnosticKind.Execution,
+                        "Type comes from " + unknown + " — no in-place constructor retained", null, null, ".ctor");
+                break;
+            }
             case ReflectionOp.RunClassConstructor:
                 foreach (var cls in ClassesOf(target))
                     if (!ContainsCanonPlaceholder(cls) && !ContainsGenericVar(cls))
@@ -896,12 +920,29 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsDateTimeCultureManagedBody(target)
             || CoreIntrinsics.IsScalarNumericLeaf(target)
             || CoreIntrinsics.IsInvariantCompareInfoGetter(target)
+            || CoreIntrinsics.IsCoreClrVirtualSlotCount(target)
+            || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(target)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsGenericVariable(target)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetToken(target)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetAttributes(target)
+            || CoreIntrinsics.IsRuntimeTypeHandleHasElementType(target)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsArray(target)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsByRef(target)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsPrimitive(target)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsPointer(target)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetElementType(target)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetModule(target)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsTypeDefinition(target)
+            || CoreIntrinsics.IsCoreClrMethodSlotLookup(target)
+            || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(target)
             || CoreIntrinsics.IsVectorAlignmentManagedBody(target)
             || CoreIntrinsics.IsConcreteVectorReduction(target)
+            || CoreIntrinsics.IsPrimitiveElementHelper(target)
             || CoreIntrinsics.IsVectorManagedThrowHelper(target)
             || CoreIntrinsics.IsGenericVectorEstimate(target)
             || CoreIntrinsics.IsGuardedVectorAs(target)
             || CoreIntrinsics.IsVectorManagedForwarder(target)
+            || CoreIntrinsics.IsMemberNotFoundExceptionFactory(target)
             || target.Rva != 0 && cls.IntrinsicCppName is null)
             Reach(target);
         if (target.IsVirtual && !target.IsStatic && CarriesReflectedSlots(cls))
@@ -1032,6 +1073,11 @@ internal sealed partial class Compilation
         bool nonPublic = false;
         if (api.NonPublic >= 0)
             nonPublic = MayBeTrue(Operand(app, site, api.NonPublic));
+        if (api.Op == ReflectionOp.RuntimeTypeDefaultCtor)
+        {
+            var publicOnly = BooleanAlternatives(Operand(app, site, 0), out bool complete);
+            nonPublic = !complete || publicOnly.Count == 0 || publicOnly.Contains(false);
+        }
         int defaultFlags = ReflectionApis.PublicInstance | (nonPublic ? ReflectionApis.NonPublic : 0);
         var flagSet = api.Flags >= 0 ? FlagAlternatives(Operand(app, site, api.Flags), defaultFlags, out _)
             : new List<int> { defaultFlags };
@@ -2258,13 +2304,12 @@ internal sealed partial class Compilation
     /// class type parameters or is not known. A clone's body is applied only at its
     /// placeholder level, where such a site admits and reports nothing; a static
     /// instantiation's exact context resolves and reports it.</summary>
-    private static bool ReflectsThroughContext(Module m, MethodDefinitionHandle h, MethodDefinition md)
+    private bool ReflectsThroughContext(Module m, MethodDefinitionHandle h, MethodDefinition md)
     {
         if (!m.ReflectionSummaries.TryGetValue(h, out var summary))
         {
-            m.ReflectionSummarizer ??= new ReflectionSummarizer(m.Reader, m.PE);
             var body = m.PE.GetMethodBody(md.RelativeVirtualAddress);
-            summary = m.ReflectionSummarizer.Summarize(h, body, ILDecoder.Decode(body.GetILBytes()!.ToImmutableArrayCompat()));
+            summary = GetReflectionSummarizer(m).Summarize(h, body, ILDecoder.Decode(body.GetILBytes()!.ToImmutableArrayCompat()));
         }
         var reader = m.Reader;
         var seen = new HashSet<int>();

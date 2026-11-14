@@ -84,6 +84,30 @@ internal sealed partial class MethodCompiler
     private void EmitPInvokeCall(MethodInfo callee, PInvokeInfo pinv,
         bool ftnWrapper = false)
     {
+        // Address-taken imports use the same managed override as direct calls.
+        // The direct-call mouth has already checked this before entering here.
+        if (ftnWrapper && CoreIntrinsics.PiAbsentCoreClrQCall.Matches(callee)
+            && _c.NativeImplFor(pinv) is { } implementation
+            && !ReferenceEquals(implementation, _method))
+        {
+            EmitNativeImplCall(callee, implementation);
+            return;
+        }
+        string? refusal = _c.IsAbsentCoreClrQCall(callee)
+            ? Compilation.AbsentCoreClrQCallMessage(pinv) : null;
+        if (refusal is not null)
+        {
+            PopArgs(callee, hasThis: !callee.IsStatic);
+            Emit("dn2cpp_throw_platform_not_supported(\"" + refusal + "\");");
+            var returnType = callee.Signature.ReturnType;
+            if (!returnType.IsVoid)
+            {
+                string cppType = CppTypes.Of(returnType);
+                Push(CppTypes.KindOf(returnType), cppType, CppTypes.ZeroInitExpr(cppType));
+            }
+            return;
+        }
+
         string Where(string what) =>
             $"{_method.DeclaringClass.FullName}.{_method.Name}: P/Invoke {callee.DeclaringClass.FullName}.{callee.Name} {what}";
 
@@ -650,6 +674,7 @@ internal sealed partial class MethodCompiler
             // not an emitted managed struct layout.
             string receiverType = CoreIntrinsics.IsScalarNumericLeaf(callee)
                 || CoreIntrinsics.IsDateTimeCultureManagedBody(callee)
+                || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(callee)
                 ? ReceiverCppType(callee.DeclaringClass)
                 : callee.DeclaringClass.CppStructName + "*";
             args[0] = CoerceTo(receiver, TypeDesc.MakeClass(callee.DeclaringClass), receiverType);
@@ -1967,6 +1992,13 @@ internal sealed partial class MethodCompiler
         };
         var cls = ctor.DeclaringClass;
 
+        if (CoreIntrinsics.IsRuntimeTypeHandleConstructor(ctor))
+        {
+            var type = TypeDesc.MakeClass(cls);
+            Push(CppTypes.KindOf(type), CppTypes.Of(type), RuntimeTypeHandleConstructorValue());
+            return;
+        }
+
         if (!cls.IsBeforeFieldInit)
             EnsureCctorBefore(cls);
 
@@ -2137,8 +2169,9 @@ internal sealed partial class MethodCompiler
                         adapterExpr = DelegateInvokeAddress(method);
                     else if (!fromVirtFtn && ObjectDispatchHelper(method, virtualBinding: false) is { } objectHelper)
                         adapterExpr = $"(void*)&{objectHelper}";
-                    else if (!fromVirtFtn && (method.IsStatic || method.DeclaringClass.IsValueType
-                        || NeedsNfiErasedAdapter(method.Emittable)))
+                    else if ((!fromVirtFtn || CoreIntrinsics.IsRuntimeTypeAssemblyGetter(method) || CoreIntrinsics.IsRuntimeTypeModuleGetter(method))
+                        && (method.IsStatic || method.DeclaringClass.IsValueType
+                            || NeedsNfiErasedAdapter(method.Emittable)))
                     {
                         var impl = method.Emittable;
                         var adapter = new DelegateAdapter(impl,

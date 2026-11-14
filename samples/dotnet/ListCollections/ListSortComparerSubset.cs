@@ -47,5 +47,19 @@ namespace ListSortComparerSubset
             nat.Sort();
             Console.WriteLine(string.Join(",", nat));    // 10,20,30
         }
+
+        // Array elements implement no IComparable<T>: the default comparer takes
+        // the object path, which sorts fewer than two elements and rejects a pair.
+        internal static void ArrayElementEntry()
+        {
+            var jagged = new List<int[]> { new[] { 4, 5 }, new[] { 6 }, new int[0] };
+            jagged.Sort((x, y) => x.Length.CompareTo(y.Length));
+            var bytes = new byte[][] { new byte[] { 7 } };
+            Array.Sort(bytes);
+            string fault = "none";
+            try { new List<int[]> { new[] { 1 }, new[] { 2 } }.Sort(); }
+            catch (InvalidOperationException e) { fault = e.Message + " / " + e.InnerException?.Message; }
+            Console.WriteLine($"array elements: {jagged[0].Length}{jagged[1].Length}{jagged[2].Length} {bytes[0][0]} {fault}");
+        }
     }
 }

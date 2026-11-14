@@ -446,7 +446,9 @@ assert_noalloc_reject "$mixed_app" "directly-emitted allocation helpers" \
     "ChopFirst" "dn2cpp_str_substring" \
     "CornerSum" "dn2cpp_newmdarr" \
     "AdvanceInvocation" "dn2cpp_delegate_try_get_at(" \
-    "DayName" "dn2cpp_dtfi_invariant_"
+    "DayName" "dn2cpp_dtfi_invariant_" \
+    "EnumValueArray" "dn2cpp_type_get_enum_values(" \
+    "EnumMemberName" "dn2cpp_type_get_enum_name("
 
 assert_noalloc_reject "$reflection_noalloc_app" "ordinary reflection allocation and dispatch helpers" \
     "HotPath(NoAlloc)" \
@@ -456,7 +458,8 @@ assert_noalloc_reject "$reflection_noalloc_app" "ordinary reflection allocation 
     "WriteField" "dn2cpp_fieldref_set_value(" \
     "WriteProperty" "dn2cpp_propref_set_value" \
     "InvokeMethod" "dn2cpp_methodref_invoke(" \
-    "CreateNamed" "dn2cpp_assembly_create_instance("
+    "CreateNamed" "dn2cpp_assembly_create_instance(" \
+    "SameDefinition" "dn2cpp_memberinfo_has_same_metadata("
 
 gate_cache_commit
 echo "OK: NoAlloc verifier rejects direct/deep allocation, dynamic dispatch, and the intrinsic allocation-helper families"
