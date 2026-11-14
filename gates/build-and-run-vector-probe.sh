@@ -32,7 +32,44 @@ export DN2CPP_GATE_EXTRA_INPUTS="gates/_vector-floating-point.sh gates/_vector-c
 
 source "$(dirname "$0")/_vector-regression-checks.sh"
 
+unsupported_aligned_fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll"
+build_gate_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS $unsupported_aligned_fixture"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|unsupported-aligned-boundary"
+gate_prepare_app() {
+    local project="$1" out="$2" prepared stable file
+    [ "$project" = VectorProbe ] || return 0
+    mkdir -p "$out"
+    prepared=$(mktemp -d "$out/unsupported-aligned-app.XXXXXX")
+    gate_capture_ok "$prepared/rewrite" run_bounded dotnet "$unsupported_aligned_fixture" \
+        --unsupported-aligned "$_CG_APP" "$prepared/VectorProbe.dll" "$_CG_CORELIB"
+    cp "${_CG_APP%.dll}.runtimeconfig.json" "$prepared/VectorProbe.runtimeconfig.json"
+    cp "${_CG_APP%.dll}.deps.json" "$prepared/VectorProbe.deps.json"
+    # The cache hashes paths as well as bytes. Keep fresh rewrite evidence but
+    # publish the app at a stable path, preserving identical existing files.
+    stable="$out/unsupported-aligned-app"
+    mkdir -p "$stable"
+    for file in VectorProbe.dll VectorProbe.runtimeconfig.json VectorProbe.deps.json; do
+        if ! cmp -s "$prepared/$file" "$stable/$file"; then
+            cp "$prepared/$file" "$stable/$file.tmp"
+            mv "$stable/$file.tmp" "$stable/$file"
+        fi
+    done
+    _CG_APP="$stable/VectorProbe.dll"
+}
+
 corelib_diff_gate VectorProbe
+unset -f gate_prepare_app
+gate_capture_ok "$_CG_OUT/unsupported-aligned" run_bounded "./$_CG_OUT/VectorProbe$EXE_EXT" unsupported-aligned-boundary
+for closure in 'Vector<decimal>' 'Vector<char>' 'Vector64<Int128>' 'Vector128<char>' 'Vector256<UInt128>' 'Vector512<decimal>'; do
+    for mode in 0 2; do
+        for route in direct address; do
+            gate_output witness "$_CG_OUT/unsupported-aligned.stdout" \
+                "unsupported aligned $closure $mode $route: boundary, caller order, canary" --count 1 --policy crlf
+        done
+    done
+done
+gate_output witness "$_CG_OUT/unsupported-aligned.stdout" 'unsupported aligned boundary end' --count 1 --policy crlf
 vector_section_witnesses "$_CG_OUT/native.stdout"
 vector_concrete_elements_gate "$_CG_OUT" "$_CG_APP"
 # A CLR may fuse MultiplyAddEstimate, so only the native nonfused profile is asserted.
@@ -75,7 +112,12 @@ estimate|Vector MultiplyAddEstimate requires its exact floating-point CoreLib re
 log|Vector Log requires its exact floating-point CoreLib reference
 lerp|Vector Lerp requires a nongeneric floating-point declaration
 magnitude|Vector magnitude selection requires an exact floating-point generic CoreLib declaration and method specification
-alignment|LoadAligned: ISimdVector.Alignment requires its exact CoreLib slot, numeric closure and concrete managed MethodImpl
+unsupported-alignment-char-parent|Unsupported aligned defaults require their exact closed CoreLib declaration and signature
+unsupported-alignment-wide-context|Unsupported aligned defaults require their exact closed CoreLib declaration and signature
+unsupported-alignment-methodspec|Unsupported aligned defaults require their exact closed CoreLib declaration and signature
+unsupported-alignment-signature|Unsupported aligned defaults require their exact closed CoreLib declaration and signature
+unsupported-alignment-context|Unsupported aligned defaults require their exact closed CoreLib declaration and signature
+unsupported-alignment-owner|Unsupported aligned defaults require their exact closed CoreLib declaration and signature
 alignment-helper|Fixture.Program.Main: ISimdVector.Alignment requires its exact CoreLib slot, numeric closure and concrete managed MethodImpl
 as|Vector reinterpretation requires an exact closed CoreLib declaration and unmodified MethodSpec
 reduction|Concrete vector reduction requires an exact nongeneric CoreLib declaration and unmodified reference

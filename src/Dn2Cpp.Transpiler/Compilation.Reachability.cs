@@ -14,6 +14,7 @@ internal sealed partial class Compilation
 
     private void Reach(MethodInfo m)
     {
+        CoreIntrinsics.ValidateUnsupportedAlignedDefault(m);
         NoteMediumMethod(m);
         if (_reflectedTemplateBodies.Count > 0 && !_reachingReflectedTemplateBody)
             _reflectedTemplateBodies.Remove(m);
@@ -165,6 +166,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(m)
             || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(m)
             || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(m)
+            || CoreIntrinsics.BrUnsupportedAlignedDefault.Matches(m)
             || CoreIntrinsics.BrStringRawByteReference.Matches(m)
             || CoreIntrinsics.BrArrayNativeLength.Matches(m)
             || CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(m)

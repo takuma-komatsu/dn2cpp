@@ -945,6 +945,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsResourceManagerDefaultType(target)
             || CoreIntrinsics.IsPrimitiveElementHelper(target)
             || CoreIntrinsics.IsStringNullTerminatedLength(target)
+            || CoreIntrinsics.BrUnsupportedAlignedDefault.Matches(target)
             || CoreIntrinsics.BrStringRawByteReference.Matches(target)
             || CoreIntrinsics.IsSearchValuesShuffle(target)
             || CoreIntrinsics.IsWaitHandleRawWaitWrapper(target)

@@ -37,6 +37,9 @@ if (RuntimeTypeIsPointerFixture.Run(args))
 if (RuntimeFieldHandleFixture.Run(args))
     return;
 
+if (UnsupportedAlignedFixture.Run(args))
+    return;
+
 if (VectorRefusalFixture.Run(args))
     return;
 
