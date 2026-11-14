@@ -1316,13 +1316,13 @@ run_bounded dotnet "$static_rank1_root/generator/Generate.dll" \
     "$static_rank1_root/metadata/ArrayRankOneLibrary.dll" --metadata-only
 run_bounded dotnet exec "$(dirname "$DN2CPP_CLI_DLL")/ildiet/ILDiet.dll" \
     "$static_rank1_root/metadata/ArrayRankOneLibrary.dll" -r "$corelib" -o "$static_rank1_root/metadata-diet"
-static_rank1_metadata=$(run_bounded dotnet "$static_rank1_root/generator/Generate.dll" --inspect \
-    "$static_rank1_root/metadata/ArrayRankOneLibrary.dll")
-static_rank1_metadata_diet=$(run_bounded dotnet "$static_rank1_root/generator/Generate.dll" --inspect \
-    "$(ildiet_generation "$static_rank1_root/metadata-diet")/ArrayRankOneLibrary.dll")
-static_rank1_metadata=$(strip_cr_win "$static_rank1_metadata")
-static_rank1_metadata_diet=$(strip_cr_win "$static_rank1_metadata_diet")
-assert_output "$static_rank1_metadata" "$static_rank1_metadata_diet"
+static_rank1_metadata="$static_rank1_root/metadata-original.stdout"
+static_rank1_metadata_diet="$static_rank1_root/metadata-stripped.stdout"
+gate_capture_ok "${static_rank1_metadata%.stdout}" run_bounded dotnet "$static_rank1_root/generator/Generate.dll" --inspect \
+    "$static_rank1_root/metadata/ArrayRankOneLibrary.dll"
+gate_capture_ok "${static_rank1_metadata_diet%.stdout}" run_bounded dotnet "$static_rank1_root/generator/Generate.dll" --inspect \
+    "$(ildiet_generation "$static_rank1_root/metadata-diet")/ArrayRankOneLibrary.dll"
+gate_output compare "$static_rank1_metadata" "$static_rank1_metadata_diet"
 for line in 'field GenericUnsized=System.Collections.Generic.List`1<System.Int32[*]>;optional=' \
     'field ModifiedUnsized=System.Int32[*];optional=System.Object' \
     'field PointerUnsized=System.Int32[*]*;optional=' \
@@ -1336,7 +1336,7 @@ for line in 'field GenericUnsized=System.Collections.Generic.List`1<System.Int32
     'method get_IndexedUnsized=System.Int32[*](System.Int32[*])' \
     'token MethodSpecType=System.Int32[*]' \
     'local EchoUnsized/0=System.Int32[*]/True'; do
-    [[ $(grep -Fxc -- "$line" <<< "$static_rank1_metadata_diet") == 1 ]] \
+    gate_output witness "$static_rank1_metadata_diet" "$line" --count 1 --policy crlf \
         || { echo "FAIL: wrapped rank1 MD witness must run once: $line" >&2; exit 1; }
 done
 
