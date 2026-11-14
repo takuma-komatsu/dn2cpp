@@ -40,6 +40,10 @@ namespace MarshalPinning
             StructMarshalRoundtripSubset.Program.TypeBoxing();
             if (args.Length == 1 && args[0] == "before-typed-handles") return;
             TypedGCHandleSubset.Program.Run();
+            if (args.Length == 1 && args[0] == "before-structure-to-ptr-routes") return;
+            MarshalStructureToPtrRoutesSubset.Program.Run();
+            if (args.Length == 1 && args[0] == "before-check-uninitialized") return;
+            GCHandleCheckUninitializedSubset.Program.Run();
         }
     }
 }

@@ -221,3 +221,32 @@ print("stripping-levels=high-compatible,medium-static-closure,metadata-inert,kno
 
 from intercept_retention import validate_intercept_retention
 validate_intercept_retention(probe, cli, original, directory, modes=modes)
+
+
+def medium_emission(source, output, success=True):
+    return run(cli, source / "MediumApp.dll", "-r", source / "System.Private.CoreLib.dll", "-r", source / "MediumLib.dll",
+               "--stripping-level", "medium", "--no-metadata-compression", "--no-shared-generics", "-o", output,
+               success=success)
+
+
+# The collector-aware move lowering accepts only the CoreLib byte-count shape.
+shape = directory / "buffer-move-shape"
+assert "stripping-fixture=buffer-move-shape" in run(probe, "--create-stripping-buffer-move-shape-fixture", original, shape).stdout
+refused = medium_emission(shape, directory / "emission-buffer-move-shape", success=False)
+assert refused.returncode == 2 and "Unhandled exception" not in refused.stderr, refused.stderr
+assert "System.Buffer::BulkMoveWithWriteBarrierInternal(Byte&, Byte&, Int32)" in refused.stderr, refused.stderr
+
+# Retaining an unavailable PAL or QCall import emits a callable refusal and never binds the import.
+imports = directory / "unavailable-imports"
+assert "stripping-fixture=unavailable-imports" in run(probe, "--create-stripping-unavailable-imports-fixture", original, imports).stdout
+output = directory / "emission-unavailable-imports"
+medium_emission(imports, output)
+text = "\n".join(p.read_text() for p in [output / "generated.h", *output.glob("generated*.cpp")])
+for owner, refusal in (("Globalization", "requires the ICU globalization PAL"), ("Kernel32", "requires the CoreCLR runtime")):
+    for member in ("CallImport", "AddressImport"):
+        assert re.search(r"\b" + owner + "_" + member + r"_\w+\([^;]*?\)\s*\{", text), "Medium dropped " + owner + "." + member
+    assert refusal in text, "no callable refusal for " + owner
+for name in ("pinvoke-libs.txt", "pinvoke-symbols.txt"):
+    listed = (output / name).read_text().lower() if (output / name).exists() else ""
+    assert "globalization" not in listed and "qcall" not in listed and "closehandle" not in listed, (name, listed)
+print("stripping-medium-imports=buffer-move-shape-refused,unavailable-imports-unbound")

@@ -115,6 +115,9 @@ internal enum InterceptEmitArm
     /// that reason: a default-initialized arm must be REJECTED rather than aliasing a
     /// real route. Asserted by <see cref="CoreIntrinsics.VerifyInterceptRegistry"/>.</summary>
     Unspecified,
+    /// <summary><c>MethodCompiler.EmitPInvokeCall</c> refuses the absent ICU PAL
+    /// unless an explicit native binding or managed implementation supplies it.</summary>
+    AbsentGlobalizationNativeThrow,
     /// <summary><c>MethodCompiler.EmitPInvokeCall</c> refuses CoreLib's CoreCLR
     /// entry points unless an explicit binding or managed implementation supplies them.</summary>
     AbsentCoreClrQCallThrow,
@@ -304,6 +307,7 @@ internal enum InterceptEmitArm
     NativeIntegerEndianBody,
     NativeIntegerParseBody,
     InvariantCompareInfoInitializerBody,
+    StringRawByteReferenceBody,
     /// <summary>A synthesized System.Enum instance ToString/GetTypeCode body —
     /// <c>MethodCompiler.CompileEnumInstanceFormatBody</c>, emitted under the
     /// intercepted method's OWN symbol so EVERY mouth resolves to it: a direct
@@ -331,6 +335,8 @@ internal enum InterceptEmitArm
     ActivatorDefaultBody,
     RuntimeTypeDefaultCtorBody,
     RuntimeTypeGenericFactoryBody,
+    ArrayNativeLengthBody,
+    GCHandleCheckUninitializedBody,
     RuntimeTypeCreateInstanceOfTBody,
     RuntimeTypeHandleConstructNameBody,
     RuntimeTypeHandleDeclaringTypeBody,
@@ -611,7 +617,9 @@ internal static partial class CoreIntrinsics
     /// <summary>The intra-CoreLib runtime primitives
     /// (<see cref="LoweredRuntimePrimitive"/>) — cut by NAME over whole overload
     /// families; the arm is total over the predicate, so an unmodeled shape
-    /// throws instead of naming a body the cut deleted.</summary>
+    /// throws instead of naming a body the cut deleted. Parameterless GC.Collect
+    /// additionally shares the exact MemberRef fast-path shape so address-taking
+    /// replays that cut without suppressing the validating overload bodies.</summary>
     public static readonly MethodDefIntercept MdRuntimePrimitive = new(
         InterceptCutKind.Cut, InterceptEmitArm.RuntimePrimitive,
         extra: static mi => LoweredRuntimePrimitive(mi.DeclaringClass.FullName, mi.Name)
@@ -642,7 +650,12 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleInstantiation(mi)
             || IsRuntimeTypeHandleInterfaces(mi)
             || IsActivatorFrom(mi)
+            || IsDefaultPrincipalAccessor(mi)
+            || IsResourceFormatterAccessor(mi)
             || IsAppDomainExecuteAssembly(mi)
+            || IsInt128Checked(mi)
+            || IsUInt128Checked(mi)
+            || IsDecimalDivMod(mi)
             || IsVectorExplicit(mi)
             || IsConcreteVectorElement(mi)
             || IsVectorFloatingPointTernary(mi)
@@ -1138,6 +1151,16 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeTypeGenericFactoryBody,
         typeGate: "System.RuntimeTypeHandle", nameGate: "CreateInstanceForAnotherGenericParameter",
         extra: static m => IsRuntimeTypeGenericFactory(m));
+
+    /// <summary>One owned runtime leaf with a callable body over the native representation.</summary>
+    public static readonly MethodDefIntercept BrArrayNativeLength = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.ArrayNativeLengthBody,
+        typeGate: "System.Array", nameGate: "get_NativeLength", extra: static m => IsArrayNativeLength(m));
+
+    /// <summary>One owned runtime leaf with a callable body over the native representation.</summary>
+    public static readonly MethodDefIntercept BrGCHandleCheckUninitialized = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.GCHandleCheckUninitializedBody,
+        typeGate: "System.Runtime.InteropServices.GCHandle", nameGate: "CheckUninitialized", extra: static m => IsGCHandleCheckUninitialized(m));
 
     internal static bool IsRuntimeTypeDefaultCtor(MethodInfo method)
     {
@@ -2201,6 +2224,35 @@ internal static partial class CoreIntrinsics
             && blob.ReadByte() is 2 or 3 or 8 && IsActivatorNamedSignature(shape);
     }
 
+    internal static bool IsResourceFormatterAccessor(MethodInfo method) =>
+        method.Name is "CreateBinaryFormatter" or "Deserialize"
+        && method.Module.AssemblyName == "System.Private.CoreLib"
+        && method.DeclaringClass.Module == method.Module
+        && method.DeclaringClass.FullName == "System.Resources.ResourceReader"
+        && !method.DeclaringClass.Handle.IsNil && !method.Handle.IsNil
+        && (int)method.Attributes == 0x91 && (int)method.ImplAttributes == 0
+        && method.Rva == 0 && method.PInvoke is null
+        && method.Module.Reader.GetMethodDefinition(method.Handle).GetDeclaringType() == method.DeclaringClass.Handle
+        && ResourceFormatterContract.IsAccessor(method.Module.Reader, method.Handle)
+        && IsResourceFormatterDecodedSignature(method.Signature, method.Module, method.Name == "CreateBinaryFormatter");
+
+    internal static bool IsResourceFormatterDecodedSignature(MethodSignature<TypeDesc> signature, Module module, bool constructor) =>
+        signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+        && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }
+        && (constructor ? signature.ParameterTypes.Length == 0
+            : signature.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object },
+                { Kind: TypeKind.Class, Class: { FullName: "System.IO.Stream" } stream }] && stream.Module == module);
+
+    internal static bool IsDefaultPrincipalAccessor(MethodInfo method) =>
+        method.Name == DefaultPrincipalContract.AccessorName
+        && (int)method.Attributes == 0x93 && (int)method.ImplAttributes == 0
+        && method.Rva == 0 && method.PInvoke is null
+        && method.DeclaringClass.FullName == "System.AppDomain"
+        && DefaultPrincipalContract.IsAccessor(method.Module.Reader, method.Handle)
+        && method.Signature.Header.RawValue == 0 && method.Signature.GenericParameterCount == 0
+        && method.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }
+        && method.Signature.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }];
+
     internal static bool IsAppDomainExecuteAssembly(MethodInfo method)
     {
         if (method.Module.AssemblyName != "System.Private.CoreLib"
@@ -2997,13 +3049,21 @@ internal static partial class CoreIntrinsics
         typeGate: "System.Runtime.InteropServices.MemoryMarshal", nameGate: "GetArrayDataReference",
         extra: static mi => mi.Signature.GenericParameterCount == 0);
 
+    /// <summary>The owned non-generic StructureToPtr body uses the same native copy
+    /// as its MemberRef call. Retention and address-taking replay this row rather
+    /// than reviving the CoreCLR MethodTable and marshalling-stub implementation.</summary>
+    public static readonly MethodDefIntercept MdMarshalStructureToPtr = new(
+        InterceptCutKind.Cut, InterceptEmitArm.IntrinsicUnderDeclType,
+        typeGate: "System.Runtime.InteropServices.Marshal", nameGate: "StructureToPtr",
+        extra: static mi => IsMarshalStructureToPtr(mi));
+
     /// <summary>A member of an intrinsic-mapped type
     /// (<see cref="IsIntrinsicType"/>): emitted inline, never transpiled, so an
     /// intra-assembly call into one is not a reachability edge.</summary>
     public static readonly MethodDefIntercept MdIntrinsicType = new(
         InterceptCutKind.Cut, InterceptEmitArm.IntrinsicDispatch,
         extra: static mi => IsIntrinsicType(mi.DeclaringClass.FullName)
-            && !IsCoreClrTypeCollectibilityImport(mi));
+            && !IsCoreClrTypeCollectibilityImport(mi) && !IsWaitHandleRawWaitImport(mi));
 
     /// <summary>Every static member of a CoreLib platform-ISA facade
     /// (<c>Sse2</c>, <c>Lzcnt.X64</c>, <c>AdvSimd.Arm64</c>, <c>PackedSimd</c>, …): the
@@ -3080,6 +3140,7 @@ internal static partial class CoreIntrinsics
         MdExecutionContextRun,
         MdSyncContextSlot,
         MdMemoryMarshalArrayData,
+        MdMarshalStructureToPtr,
         MdIntrinsicType,
         MdPlatformIsa,
         MdSafeHandleLifetime,
@@ -3564,9 +3625,9 @@ internal static partial class CoreIntrinsics
     /// UInt128Converter parse paths reach via Newtonsoft/TypeDescriptor). Cut it; the
     /// route (TranslateGenericIntrinsic) lowers the widening — a sign/zero extension into
     /// {_lower, _upper} — inline for an integer-primitive source and loudly declines any
-    /// other TOther (no general Int128 generic-math engine). CreateChecked/CreateSaturating
-    /// are NOT cut: they are unreached, and widening into 128 bits never overflows anyway.
-    /// A STATIC method, so only the call-site pair reaches it.</summary>
+    /// other TOther (no general Int128 generic-math engine). Checked Int128 widening
+    /// uses the separate exact closed-method authority; this name-keyed row does
+    /// not admit checked or saturating conversions.</summary>
     public static readonly NameKeyedIntercept MsInt128CreateConversion = new(
         InterceptCutKind.Cut, InterceptEmitArm.GenericIntrinsic,
         extra: static (dt, n) =>
@@ -3880,6 +3941,12 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.BodyReplace, InterceptEmitArm.HttpShimBody,
         extra: static (dt, n) => IsBodyReplacedHttpMethod(dt, n));
 
+    /// <summary>The native String buffer supplies the byte reference without CLR inline-field access.</summary>
+    public static readonly MethodDefIntercept BrStringRawByteReference = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.StringRawByteReferenceBody,
+        typeGate: "System.String", nameGate: "GetRawStringDataAsUInt8",
+        extra: static m => IsStringRawByteReference(m));
+
     /// <summary>Closed integer static formatters consume native enum metadata, not a CLR cache.</summary>
     public static readonly MethodDefIntercept BrEnumStaticFormat = new(
         InterceptCutKind.BodyReplace, InterceptEmitArm.EnumStaticFormatBody,
@@ -4087,6 +4154,13 @@ internal static partial class CoreIntrinsics
         }
     }
 
+    /// <summary>Bodyless ICU imports use the P/Invoke call and address-wrapper mouths.
+    /// No managed body is cut. Compilation applies explicit native-binding policy
+    /// after this metadata-only match; user declarations are never intercepted.</summary>
+    public static readonly MethodDefIntercept PiAbsentGlobalizationNative = new(
+        InterceptCutKind.None, InterceptEmitArm.AbsentGlobalizationNativeThrow,
+        typeGate: "Globalization", extra: static m => IsCoreLibGlobalizationImport(m));
+
     /// <summary>QCall is CoreCLR's private runtime module, not an OS library.
     /// Its CoreLib declarations retain their bodies and metadata, but native calls
     /// need a supplied implementation. Actual OS imports use their ordinary route.</summary>
@@ -4127,6 +4201,26 @@ internal static partial class CoreIntrinsics
             return false;
         var owner = reader.GetTypeDefinition(parent);
         return owner.GetDeclaringType().IsNil && reader.StringComparer.Equals(owner.Namespace, "")
+            && reader.StringComparer.Equals(owner.Name, "Interop");
+    }
+
+    private static bool IsCoreLibGlobalizationImport(MethodInfo method)
+    {
+        if (method.Rva != 0 || method.PInvoke is not { } import
+            || method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || import.ModuleName is not ("libSystem.Globalization.Native" or "System.Globalization.Native")
+            || !import.RawEntryPoint.StartsWith("GlobalizationNative_", StringComparison.Ordinal))
+            return false;
+        var cls = method.DeclaringClass;
+        if (cls.Handle.IsNil || cls.Namespace.Length != 0)
+            return false;
+        var reader = cls.Module.Reader;
+        var parent = reader.GetTypeDefinition(cls.Handle).GetDeclaringType();
+        if (parent.IsNil)
+            return false;
+        var owner = reader.GetTypeDefinition(parent);
+        return owner.GetDeclaringType().IsNil
+            && reader.StringComparer.Equals(owner.Namespace, "")
             && reader.StringComparer.Equals(owner.Name, "Interop");
     }
 
@@ -4193,6 +4287,11 @@ internal static partial class CoreIntrinsics
         if (BrCoreClrTypeMaterialization.CutKind != InterceptCutKind.BodyReplace)
             throw new InvalidOperationException("CoreCLR type materialization must remain callable");
 
+        CheckRow(nameof(BrStringRawByteReference), 0, BrStringRawByteReference.EmitArm,
+            BrStringRawByteReference.TypeGate, BrStringRawByteReference.NameGate);
+        if (BrStringRawByteReference.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("String raw byte reference must remain callable");
+
         CheckRow(nameof(BrEnumStaticFormat), 0, BrEnumStaticFormat.EmitArm,
             BrEnumStaticFormat.TypeGate, BrEnumStaticFormat.NameGate);
         if (BrEnumStaticFormat.CutKind != InterceptCutKind.BodyReplace)
@@ -4218,6 +4317,9 @@ internal static partial class CoreIntrinsics
         if (BrEnumUnderlyingType.CutKind != InterceptCutKind.BodyReplace)
             throw new InvalidOperationException("Enum underlying-type body must remain callable");
 
+        CheckRow(nameof(PiAbsentGlobalizationNative), 0, PiAbsentGlobalizationNative.EmitArm,
+            PiAbsentGlobalizationNative.TypeGate, PiAbsentGlobalizationNative.NameGate);
+        CheckCallSiteCutKind(nameof(PiAbsentGlobalizationNative), 0, PiAbsentGlobalizationNative.CutKind);
         CheckRow(nameof(PiAbsentCoreClrQCall), 0, PiAbsentCoreClrQCall.EmitArm,
             PiAbsentCoreClrQCall.TypeGate, PiAbsentCoreClrQCall.NameGate);
         CheckCallSiteCutKind(nameof(PiAbsentCoreClrQCall), 0, PiAbsentCoreClrQCall.CutKind);

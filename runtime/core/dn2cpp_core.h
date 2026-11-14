@@ -1426,7 +1426,11 @@ void dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodIn
 // Exact retained CultureInfo getter; no general intrinsic-type metadata mutation.
 void dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 void dn2cpp_set_culture_name_validator_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+// Only the two exact retained String entries participate in named lookup.
+void dn2cpp_set_string_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> rawByte,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> length);
 void dn2cpp_set_dateonly_deconstruct_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+void dn2cpp_set_resourcemanager_default_type_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 void dn2cpp_set_datetime_parser_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> addTicks,
     Dn2CppMetadataHandle<Dn2CppMethodInfo> tryCreate, Dn2CppMetadataHandle<Dn2CppMethodInfo> localConstructor);
 Dn2CppObject* dn2cpp_delegate_object_virtual_invoker(void* fn, Dn2CppObject* receiver,
@@ -8278,6 +8282,9 @@ static_assert((uint32_t)dn2cpp_dec_flags(3, 1) == 0x80030000u, "the sign is bit 
 static_assert(Dn2CppDecimal{ dn2cpp_dec_flags(28, 1), 0, 1 }.scale() == 28
     && Dn2CppDecimal{ dn2cpp_dec_flags(28, 1), 0, 1 }.sign() == 1,
     "the accessors invert the packing");
+
+// Divides the coefficient in caller storage without changing the flags.
+uint32_t dn2cpp_decimal_divmod1e9(Dn2CppDecimal* value);
 
 // Constructors. `from_parts` is the .NET `Decimal(int lo, int mid, int hi, bool
 // isNegative, byte scale)` ctor (and the bit-pattern form); the rest are the

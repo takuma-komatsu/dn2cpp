@@ -854,6 +854,8 @@ internal sealed partial class MethodCompiler
             //
             // ArgumentOutOfRangeException_Enum_Value is the one [DoesNotReturn]
             // ThrowHelper member not named Throw*; same trap lowering.
+            case ("System.ThrowHelper", "ThrowAccessViolationException"):
+                throw new NotSupportedException("ThrowAccessViolationException requires its exact CoreLib declaration and managed body");
             case ("System.ThrowHelper", _)
                 when (name.StartsWith("Throw") && !name.StartsWith("ThrowIf"))
                      || name == "ArgumentOutOfRangeException_Enum_Value":

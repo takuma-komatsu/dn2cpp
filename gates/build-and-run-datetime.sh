@@ -27,8 +27,8 @@
 # Former gates: datetime, datetime-now, datetime-parse, datetime-format,
 # datetime-tz, datetimeoffset.
 source "$(dirname "$0")/_common.sh"
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/DateTimeInterceptFixture.cs gates/fixtures/ldftn-local/DateTimeTCharFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj gates/expected/datetime-refusals.txt"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|datetime-private-calls:fixture,direct-only-emission|public-ctor:no-corelib,no-ildiet|refusals:native-frozen|tchar:malformed-return-owner|cli:$(_gate_cli_hash)"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/DateTimeInterceptFixture.cs gates/fixtures/ldftn-local/DateTimeTCharFixture.cs gates/fixtures/ldftn-local/AbbreviatedDayFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj gates/expected/datetime-refusals.txt"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|datetime-private-calls:fixture,direct-only-emission|public-ctor:no-corelib,no-ildiet|refusals:native-frozen|tchar:malformed-return-owner|day:malformed-return|dtfi-name-edges:prefix|cli:$(_gate_cli_hash)"
 
 # Keep the rewritten input private to this gate; the suite prebuild stays intact.
 _corelib_gate_core() {
@@ -139,6 +139,12 @@ gate_extra_asserts() {
     gate_capture_ok "$out/refusals-native" run_bounded "./$out/DateTimeOps$EXE_EXT" dtfi-refusals
     gate_output compare "$out/refusals-native.stdout" gates/expected/datetime-refusals.txt --policy crlf
 
+    gate_capture_ok "$out/name-edges-before" run_bounded dotnet "$_CG_APP" before-dtfi-name-edges
+    gate_output select "$out/native.stdout" "$out/name-edges-prefix.stdout" \
+        --before '== DateTimeFormatInfo name edges ==' --policy crlf
+    gate_output compare "$out/name-edges-prefix.stdout" "$out/name-edges-before.stdout"
+    gate_output witness "$out/native.stdout" 'DateTimeFormatInfo name edges end' --count 1 --policy crlf
+
     local isolated="$out/direct-only" method
     mkdir -p "$isolated/input"
     cp -R "$(dirname "$_CG_APP")/." "$isolated/input/"
@@ -173,6 +179,17 @@ gate_extra_asserts() {
     [ "$(cat "$negative/cli.status")" = 2 ] \
         && grep -Fq 'DateTimeFormatInfo TChar accessor requires its exact MethodSpec MemberRef signature' "$negative/cli.stdout" "$negative/cli.stderr" \
         || { echo 'FAIL: malformed DTFI TChar return owner was not refused' >&2; return 1; }
+
+    negative="$out/refusal-abbreviated-day"
+    mkdir -p "$negative/input"
+    cp -R "$(dirname "$_CG_APP")/." "$negative/input/"
+    gate_capture_ok "$negative/fixture" run_bounded dotnet \
+        "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+        --abbreviated-day-negative "$negative/input/DateTimeOps.dll" "$_CG_CORELIB" return
+    gate_capture "$negative/cli" invoke_cli "$negative/input/DateTimeOps.dll" --auto-ref --no-ildiet -o "$negative/out"
+    [ "$(cat "$negative/cli.status")" = 2 ] \
+        && grep -Fq 'DateTimeFormatInfo member requires its exact CoreLib reference and declaration' "$negative/cli.stdout" "$negative/cli.stderr" \
+        || { echo 'FAIL: malformed DTFI day-name return was not refused' >&2; return 1; }
 }
 
 corelib_diff_gate DateTimeOps --link-xml samples/dotnet/DateTimeOps/keep-dtfi-intercepts.xml

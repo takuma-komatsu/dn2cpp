@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CI profiles share the fast bootstrap; fixed primitive partitions cover the
+# CI profiles share the fast bootstrap; balanced primitive partitions cover the
 # same allowlist without extending a hosted job budget. The suite is unchanged.
 set -euo pipefail
 
@@ -38,12 +38,36 @@ PRIMITIVES=(
     console-io datetime threadpool transpiler-limits
 )
 
+# Keep the partition tokens stable for workflow check names and callers.
+primitive_partition() {
+    case "$1" in
+        convert-parse|math-subset|array-core) printf 'arrays\n' ;;
+        shared-generics|async-combinators|custom-async-task|pinvoke-native|transpiler-limits)
+            printf 'limits\n' ;;
+        *) printf 'core\n' ;;
+    esac
+}
+
+partition_description() {
+    case "$1" in
+        core) printf 'core primitives' ;;
+        arrays) printf 'arrays and numeric primitives' ;;
+        limits) printf 'transpiler limits and runtime primitives' ;;
+    esac
+}
+
 self_test() (
-    local fixture name case_name rc expected test_os success_case partition label failure_gate
+    local fixture name case_name rc expected test_os success_case partition label failure_gate after_failure
     local full core arrays limits combined logdir expected_budgets
     local runner_args
     fixture=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp-ci-smoke-test.XXXXXX")
-    trap 'rm -rf "$fixture"' EXIT
+    trap 'rc=$?
+        if [ "$rc" -eq 0 ]; then
+            rm -rf "$fixture"
+        else
+            printf "FAIL: CI smoke self-test; fixture preserved at %s\n" "$fixture" >&2
+        fi
+        exit "$rc"' EXIT
     mkdir -p "$fixture/gates" "$fixture/bin" "$fixture/runtime/10.0.0"
     cp "$SCRIPT_DIR/ci-smoke.sh" "$SCRIPT_DIR/gate-output.py" \
         "$SCRIPT_DIR/_python.sh" "$fixture/gates/"
@@ -160,9 +184,11 @@ SUITE
     arrays=$(bash "$fixture/gates/ci-smoke.sh" --profile primitives --partition arrays --list)
     limits=$(bash "$fixture/gates/ci-smoke.sh" --profile primitives --partition limits --list)
     [ "$full" = "$(printf '%s\n' "${PRIMITIVES[@]}")" ]
-    [ "$arrays" = array-core ]
-    [ "$limits" = transpiler-limits ]
-    [ "$core" = "$(sed '/^array-core$/d; /^transpiler-limits$/d' <<< "$full")" ]
+    [ "$arrays" = "$(printf '%s\n' array-core convert-parse math-subset)" ]
+    [ "$limits" = "$(printf '%s\n' transpiler-limits shared-generics async-combinators custom-async-task pinvoke-native)" ]
+    [ "$core" = "$(sed '/^convert-parse$/d; /^math-subset$/d; /^array-core$/d;
+        /^shared-generics$/d; /^async-combinators$/d; /^custom-async-task$/d;
+        /^pinvoke-native$/d; /^transpiler-limits$/d' <<< "$full")" ]
     combined=$(printf '%s\n%s\n%s\n' "$core" "$arrays" "$limits" | LC_ALL=C sort)
     [ "$combined" = "$(LC_ALL=C sort <<< "$full")" ]
     [ -z "$(uniq -d <<< "$combined")" ]
@@ -177,7 +203,9 @@ SUITE
             success_case=success
             [ "$test_os" != windows ] || success_case=sample-crlf
             expected=$(bash "$fixture/gates/ci-smoke.sh" "${runner_args[@]}" --list)
-            expected_budgets=$(printf 'bootstrap\n%s\n' "$expected" | awk '{ print $0, ($0 == "array-core" ? 1200 : 600) }')
+            expected_budgets=$(printf 'bootstrap\n%s\n' "$expected" |
+                awk -v partition="$partition" '{ print $0,
+                    ($0 == "array-core" || ($0 == "transpiler-limits" && partition == "limits") ? 1200 : 600) }')
             logdir="$fixture/logs-$test_os-$label"
             rc=0
             PATH="$fixture/bin:$PATH" CONFIG=Sentinel DN2CPP_SKIP_BUILD=1 \
@@ -209,13 +237,17 @@ SUITE
                 [ ! -e "$logdir/sample.log" ]
             fi
             [ -s "$logdir/summary.md" ] && [ ! -s "$logdir/_failures.txt" ]
+            if [ -n "$partition" ]; then
+                grep -Fq "$(partition_description "$partition")" "$logdir/summary.md"
+                grep -Fq "CI smoke partition: $partition ($(partition_description "$partition"))" "$fixture/output"
+            fi
             rm -f "$fixture/order" "$fixture/budgets"
             echo "OK: $test_os $label uses strict Debug/bootstrap, selected gates and bounded step budgets"
         done
 
         case "$partition" in
-            arrays) failure_gate=array-core ;;
-            limits) failure_gate=transpiler-limits ;;
+            arrays) failure_gate=convert-parse ;;
+            limits) failure_gate=shared-generics ;;
             *) failure_gate=multiassembly ;;
         esac
         for case_name in fail exit77 skip partial expected-partial cached cached-partial \
@@ -249,7 +281,11 @@ SUITE
                     [ ! -e "$logdir/multiassembly.log" ] ;;
                 *)
                     [ -s "$logdir/$failure_gate.log" ]
-                    [ ! -e "$logdir/lang-versions.log" ] ;;
+                    after_failure=0
+                    for name in $(bash "$fixture/gates/ci-smoke.sh" "${runner_args[@]}" --list); do
+                        [ "$after_failure" -eq 0 ] || [ ! -e "$logdir/$name.log" ]
+                        [ "$name" != "$failure_gate" ] || after_failure=1
+                    done ;;
             esac
             if [ "$case_name" = watchdog ]; then
                 grep -q '^WATCHDOG:' "$logdir/$failure_gate.log"
@@ -292,12 +328,14 @@ fi
 case "$PROFILE" in
     primitives)
         GATES=()
+        # Warm the native runtime in the heavyweight gate before its peers.
+        case "$PARTITION" in
+            arrays) GATES=(array-core) ;;
+            limits) GATES=(transpiler-limits) ;;
+        esac
         for name in "${PRIMITIVES[@]}"; do
-            case "$PARTITION:$name" in
-                core:array-core|core:transpiler-limits) continue ;;
-                arrays:*) [ "$name" = array-core ] || continue ;;
-                limits:*) [ "$name" = transpiler-limits ] || continue ;;
-            esac
+            [ -z "$PARTITION" ] || [ "$(primitive_partition "$name")" = "$PARTITION" ] || continue
+            case "$PARTITION:$name" in arrays:array-core|limits:transpiler-limits) continue ;; esac
             GATES+=("$name")
         done
         CONFIG=Debug ;;
@@ -333,7 +371,8 @@ summary() {
         printf '# CI smoke: %s\n\n' "$PROFILE"
         printf 'Configuration: %s; elapsed: %ss. Logs: `%s`.\n\n' \
             "$CONFIG" "$((SECONDS - START))" "$LOGDIR"
-        [ -z "$PARTITION" ] || printf 'Partition: `%s`.\n\n' "$PARTITION"
+        [ -z "$PARTITION" ] || printf 'Partition: `%s` (%s).\n\n' \
+            "$PARTITION" "$(partition_description "$PARTITION")"
         printf '| Step | Seconds | Result |\n| --- | ---: | --- |\n'
         while read -r name seconds verdict; do
             printf '| %s | %s | %s |\n' "$name" "$seconds" "$verdict"
@@ -344,8 +383,8 @@ summary() {
 run_step() {
     local name="$1" start=$SECONDS rc=0 budget=600
     shift
-    # ArrayCore independently builds the runtime for each allocator axis.
-    [ "$name" != array-core ] || budget=1200
+    # These gate-specific budgets must not extend their partition peers.
+    case "$PARTITION:$name" in *:array-core|limits:transpiler-limits) budget=1200 ;; esac
     run_with_watchdog "${DN2CPP_GATE_WATCHDOG_SECS:-$budget}" "$@" \
         > "$LOGDIR/$name.log" 2>&1 || rc=$?
     if [ "$rc" -eq 0 ] && grep -Eq \
@@ -419,6 +458,10 @@ run_fast_gate() {
     return 0
 }
 
+if [ -n "$PARTITION" ]; then
+    printf 'CI smoke partition: %s (%s); gates: %s\n' \
+        "$PARTITION" "$(partition_description "$PARTITION")" "${GATES[*]}"
+fi
 run_step bootstrap bootstrap || exit 1
 DN2CPP_CORELIB=$(cat "$LOGDIR/_corelib.txt")
 export DN2CPP_CORELIB

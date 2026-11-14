@@ -140,5 +140,7 @@ internal static class Program
         AppContextExitSubset.Program.Run();
         AssemblyExecutionSubset.Program.Run();
         ActivationSubset.Program.Run();
+        DefaultPrincipalPublicSubset.Program.Run();
+        KnownConstantSubset.Program.Run();
     }
 }

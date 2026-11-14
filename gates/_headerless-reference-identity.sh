@@ -2,19 +2,28 @@
 # Headerless typed payloads preserve identity across managed and MD array boundaries.
 headerless_reference_prefix_asserts() {
     local out="$1" project="$2" before="$3" marker="$4" end="$5" axis
-    gate_capture_ok "$out/headerless-full.native" run_bounded "$out/$project$EXE_EXT"
+    local capture="${6:-$1/headerless-full.native}" stream
+    # A caller inside the parity hook may supply that run's checked observation.
+    if [ -n "${6:-}" ]; then
+        for stream in stdout stderr status; do
+            [ -f "$capture.$stream" ] || { echo "FAIL: missing native observation: $capture.$stream" >&2; return 1; }
+        done
+        gate_output status "$(cat "$capture.status")" 0 || return 1
+    else
+        gate_capture_ok "$capture" run_bounded "$out/$project$EXE_EXT" || return 1
+    fi
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            gate_capture_ok "$out/headerless-before.$axis" run_bounded dotnet "$_CG_APP" "$before"
+            gate_capture_ok "$out/headerless-before.$axis" run_bounded dotnet "$_CG_APP" "$before" || return 1
         else
-            gate_capture_ok "$out/headerless-before.$axis" run_bounded "$out/$project$EXE_EXT" "$before"
+            gate_capture_ok "$out/headerless-before.$axis" run_bounded "$out/$project$EXE_EXT" "$before" || return 1
         fi
-        gate_output prefix "$out/headerless-full.native.stdout" "$out/headerless-before.$axis.stdout" \
-            --before "$marker" --policy crlf
+        gate_output prefix "$capture.stdout" "$out/headerless-before.$axis.stdout" \
+            --before "$marker" --policy crlf || return 1
     done
     local line
     for line in "$marker" "$end"; do
-        gate_output witness "$out/headerless-full.native.stdout" "$line" --count 1 --policy crlf \
+        gate_output witness "$capture.stdout" "$line" --count 1 --policy crlf \
             || { echo "FAIL: headerless identity block missing or repeated: $line" >&2; return 1; }
     done
 }
@@ -38,9 +47,9 @@ headerless_managed_reference_asserts() {
 }
 
 headerless_md_reference_asserts() {
-    local out="$1" line
+    local out="$1" line capture="${2:-$1/headerless-full.native}"
     headerless_reference_prefix_asserts "$out" ArrayCore before-headerless-md-identity \
-        '== headerless multidimensional reference identity ==' 'headerless multidimensional reference identity end'
+        '== headerless multidimensional reference identity ==' 'headerless multidimensional reference identity end' "${2:-}" || return 1
     for line in 'headerless md typed to reflective=True' 'headerless md typed to covariant=True' \
         'headerless md reflective to typed=ja-JP:True' 'headerless md byref to reflective=True' \
         'headerless md covariant to typed=ja-JP:True' 'headerless md reflective null=True:True' \
@@ -50,7 +59,7 @@ headerless_md_reference_asserts() {
         'headerless md copy to object=True' 'headerless md copy to typed=True:ja-JP' \
         'headerless rank1 copy to SZ=True:True' 'headerless rank1 copy to MD=True:True' \
         'generic md default reads=True:True' 'generic md null stores=True:True'; do
-        gate_output witness "$out/headerless-full.native.stdout" "$line" --count 1 --policy crlf \
+        gate_output witness "$capture.stdout" "$line" --count 1 --policy crlf \
             || { echo "FAIL: MD headerless witness missing: $line" >&2; return 1; }
     done
 }

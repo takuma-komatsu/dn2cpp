@@ -54,6 +54,18 @@ internal static partial class Program
         ConcreteCases3();
         ConcreteCases4();
         ConcreteCallables();
+        Matrix3x2 matrix = new Matrix3x2(1, 2, 3, 4, 5, 6);
+        for (int row = 0; row < 3; row++)
+            for (int column = 0; column < 2; column++)
+            {
+                ConcreteCheck(matrix[row, column] == row * 2 + column + 1);
+                Matrix3x2 copy = matrix;
+                copy[row, column] = ConcreteFloat(unchecked((int)0xffc12345));
+                for (int r = 0; r < 3; r++)
+                    for (int c = 0; c < 2; c++)
+                        ConcreteCheck(ConcreteBits(copy[r, c]) == (r == row && c == column
+                            ? unchecked((int)0xffc12345) : ConcreteBits(matrix[r, c])));
+            }
         Console.WriteLine("concrete vector element bit/copy/bounds/order checks=" + ConcreteChecks);
     }
 

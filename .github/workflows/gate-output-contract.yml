@@ -61,6 +61,7 @@ jobs:
           python gates/fixtures/setup-premerge-test.py
           python gates/fixtures/bash-fixture-test.py
           python gates/fixtures/culture-gate-scope-test.py
+          python gates/test-stripping-profiles.py
           python gates/fixtures/reflection-gate-inputs-test.py
           bash gates/fixtures/reflection-gate-inputs.sh python
           bash gates/fixtures/hotupdate-output.sh python
@@ -71,6 +72,10 @@ jobs:
           bash gates/fixtures/numeric-tls-records.sh python
           python -X warn_default_encoding -W error::EncodingWarning gates/fixtures/culture-output-family.py
           python -X warn_default_encoding -W error::EncodingWarning gates/fixtures/declared-abort-callers.py
+      - name: Check gap measurement contracts
+        # The measurement runner kills timed-out process groups, which needs POSIX.
+        if: runner.os != 'Windows'
+        run: python tools/measure-gap-backlog/test_measure.py
       - name: Check incremental policy enforcement
         run: python gates/test-lint-gate-output.py
       - name: Reject new legacy newline filters

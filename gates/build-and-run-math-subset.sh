@@ -183,6 +183,10 @@ gate_extra_asserts() {
     gate_output byte-witness "$native" --count 1 --policy crlf \
         'primitive BigMul end' \
         'primitive null output direct=NullReferenceException address=NullReferenceException'
+    gate_capture_ok "$out/assert-before-mixed-width-bigmul" run_bounded dotnet "$_CG_APP" before-mixed-width-bigmul
+    gate_output select "$native" "$out/assert-mixed-width-bigmul-prefix.stdout" --before '== mixed-width BigMul ==' --policy crlf
+    gate_output compare "$out/assert-mixed-width-bigmul-prefix.stdout" "$out/assert-before-mixed-width-bigmul.stdout"
+    gate_output byte-witness "$native" 'mixed-width BigMul end' --count 1 --policy crlf
     primitive_bigmul_retention "$out"
     numeric_signature_regressions bigmul
 }

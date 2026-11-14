@@ -313,6 +313,15 @@ namespace CultureInfoApi
             {
                 Console.WriteLine("Calendar: PlatformNotSupportedException");
             }
+            // DateTimeFormatInfo.Calendar shares that limit: its getter and a non-null
+            // set on a writable clone trap, after .NET's read-only and null checks.
+            DateTimeFormatInfo dtfi = DateTimeFormatInfo.InvariantInfo;
+            var writable = (DateTimeFormatInfo)dtfi.Clone();
+            var gregorian = (Calendar)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(GregorianCalendar));
+            Console.WriteLine("DTFI.Calendar get: " + CalendarOutcome(() => _ = dtfi.Calendar));
+            Console.WriteLine("DTFI.Calendar read-only set: " + CalendarOutcome(() => dtfi.Calendar = gregorian));
+            Console.WriteLine("DTFI.Calendar null set: " + CalendarOutcome(() => writable.Calendar = null));
+            Console.WriteLine("DTFI.Calendar set: " + CalendarOutcome(() => writable.Calendar = gregorian));
 
             // ---- CurrentUICulture is a SLOT, and a different one ----
             // SUBJECT: the second culture axis. Not "UI culture formatting" — the UI culture
@@ -838,6 +847,19 @@ namespace CultureInfoApi
                 Console.WriteLine("    " + label + "=" + nameof(CultureNotFoundException));
                 WriteCultureFault(exception);
                 return false;
+            }
+        }
+
+        private static string CalendarOutcome(Action access)
+        {
+            try
+            {
+                access();
+                return "ok";
+            }
+            catch (Exception error)
+            {
+                return error.GetType().Name + ": " + error.Message;
             }
         }
 

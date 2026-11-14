@@ -39,13 +39,15 @@
 # CultureInfo fields and a synthesized GregorianCalendar would pull the unmodeled
 # CalendarData subtree), so it traps loudly (PlatformNotSupportedException) instead
 # of returning a GregorianCalendar — the "a stripped type throws, never answers
-# empty" discipline; and GetCultures / NativeName / DisplayName answer for the
+# empty" discipline; DateTimeFormatInfo.Calendar's getter and non-null setter trap
+# the same way after .NET's read-only and null checks; and GetCultures / NativeName / DisplayName answer for the
 # invariant culture alone, those being ICU inventory and display-name questions
 # dn2cpp carries no table for. The third belongs to the escape sections below: the
 # loud trap for SearchValues<T> prints a refusal where real .NET prints "ok"
 # (Assembly/Module wrap instead, so their lines print the "ok" real .NET prints).
 # Everything else is byte-identical against real .NET under en_US and de_DE.
-# CoreLib only.
+# CoreLib only. An allocated CultureInfo subclass overriding CompareInfo and
+# reached by virtual dispatch is refused at transpile time.
 # The appended culture-name section diffs against live .NET: validation,
 # canonical casing, supported variant formatting, cache identity, typed refusal
 # fields/messages and CreateSpecificCulture's retry. Unmodeled regions assert

@@ -48,6 +48,18 @@ static partial class StrippingLevelValidation
             Console.WriteLine("stripping-fixture=forwarded-attribute");
             return true;
         }
+        if (args.Length == 3 && args[0] == "--create-stripping-buffer-move-shape-fixture")
+        {
+            CreateBufferMoveShape(args[1], args[2]);
+            Console.WriteLine("stripping-fixture=buffer-move-shape");
+            return true;
+        }
+        if (args.Length == 3 && args[0] == "--create-stripping-unavailable-imports-fixture")
+        {
+            CreateUnavailableImports(args[1], args[2]);
+            Console.WriteLine("stripping-fixture=unavailable-imports");
+            return true;
+        }
         return false;
     }
 
@@ -720,6 +732,121 @@ static partial class StrippingLevelValidation
         string deferredTarget = retainedEquality ? "DormantDeferredTarget" : "DeferredBox";
         foreach (string target in new[] { "SignatureTarget", "BodyTarget", deferredTarget })
             Require(Body("MediumFixture." + target, ".cctor"), "retention lost a static initializer: " + target);
+    }
+
+    // A private Buffer reference move whose count is int32 rather than nuint. The
+    // collector-aware move lowering accepts only the CoreLib byte-count contract.
+    static void CreateBufferMoveShape(string original, string directory)
+    {
+        CreateRetainedIntercept(original, directory, "retained");
+        var resolver = new DefaultAssemblyResolver();
+        resolver.AddSearchDirectory(directory);
+        var read = new ReaderParameters { InMemory = true, AssemblyResolver = resolver };
+        using var core = AssemblyDefinition.ReadAssembly(Path.Combine(directory, "System.Private.CoreLib.dll"), read);
+        using var app = AssemblyDefinition.ReadAssembly(Path.Combine(directory, "MediumApp.dll"), read);
+        var cm = core.MainModule;
+        var am = app.MainModule;
+        var move = new MethodDefinition("BulkMoveWithWriteBarrierInternal", MethodAttributes.Public | MethodAttributes.Static,
+            cm.TypeSystem.Void) { ImplAttributes = MethodImplAttributes.InternalCall };
+        move.Parameters.Add(new ParameterDefinition(new ByReferenceType(cm.TypeSystem.Byte)));
+        move.Parameters.Add(new ParameterDefinition(new ByReferenceType(cm.TypeSystem.Byte)));
+        move.Parameters.Add(new ParameterDefinition(cm.TypeSystem.Int32));
+        cm.GetType("System.Buffer").Methods.Add(move);
+        var main = am.EntryPoint;
+        // Keep the culture pinning and type-touch prefix; replace the final `ldc.i4.0; ret`.
+        main.Body.Instructions.RemoveAt(main.Body.Instructions.Count - 1);
+        main.Body.Instructions.RemoveAt(main.Body.Instructions.Count - 1);
+        var bytes = new VariableDefinition(new ArrayType(am.TypeSystem.Byte));
+        main.Body.Variables.Add(bytes);
+        var entry = main.Body.GetILProcessor();
+        entry.Emit(OpCodes.Ldc_I4, 16);
+        entry.Emit(OpCodes.Newarr, am.TypeSystem.Byte);
+        entry.Emit(OpCodes.Stloc, bytes);
+        foreach (int offset in new[] { 8, 0 })
+        {
+            entry.Emit(OpCodes.Ldloc, bytes);
+            entry.Emit(OpCodes.Ldc_I4, offset);
+            entry.Emit(OpCodes.Ldelema, am.TypeSystem.Byte);
+        }
+        entry.Emit(OpCodes.Ldc_I4_4);
+        entry.Emit(OpCodes.Call, am.ImportReference(move));
+        entry.Emit(OpCodes.Ldc_I4_0);
+        entry.Emit(OpCodes.Ret);
+        var writer = new WriterParameters { Timestamp = 0, DeterministicMvid = true };
+        core.Write(Path.Combine(directory, "System.Private.CoreLib.dll"), writer);
+        app.Write(Path.Combine(directory, "MediumApp.dll"), writer);
+    }
+
+    // CoreLib owners of an ICU PAL import and a CoreCLR QCall import, each reached by a
+    // direct call and an address-taken call. The entry only touches the owners, so the
+    // imports are retained by Medium and never called.
+    static void CreateUnavailableImports(string original, string directory)
+    {
+        Directory.CreateDirectory(directory);
+        var resolver = new DefaultAssemblyResolver();
+        resolver.AddSearchDirectory(original);
+        var read = new ReaderParameters { InMemory = true, AssemblyResolver = resolver };
+        using var core = AssemblyDefinition.ReadAssembly(Path.Combine(original, "System.Private.CoreLib.dll"), read);
+        using var app = AssemblyDefinition.ReadAssembly(Path.Combine(original, "MediumApp.dll"), read);
+        var cm = core.MainModule;
+        var am = app.MainModule;
+        var obj = cm.GetType("System.Object");
+        var value = cm.GetType("System.ValueType");
+        cm.Types.Add(new TypeDefinition("System", "String", TypeAttributes.Public | TypeAttributes.Sealed, obj));
+        cm.Types.Add(new TypeDefinition("System", "UInt16", TypeAttributes.Public | TypeAttributes.Sealed, value));
+        var exception = new TypeDefinition("System", "Exception", TypeAttributes.Public, obj);
+        cm.Types.Add(exception);
+        cm.Types.Add(new TypeDefinition("System", "PlatformNotSupportedException", TypeAttributes.Public, exception));
+        var interop = new TypeDefinition("", "Interop", TypeAttributes.Public | TypeAttributes.Abstract | TypeAttributes.Sealed, obj);
+        cm.Types.Add(interop);
+        var pointer = new PointerType(am.TypeSystem.UInt16);
+        var main = am.EntryPoint;
+        main.ReturnType = am.TypeSystem.Int32;
+        main.Body = new MethodBody(main);
+        var entry = main.Body.GetILProcessor();
+        foreach (var (owner, library, prefix, name) in new[]
+            { ("Globalization", "libSystem.Globalization.Native", "GlobalizationNative_", "GetCalendars"), ("Kernel32", "QCall", "", "CloseHandle") })
+        {
+            var type = new TypeDefinition("", owner, TypeAttributes.NestedPublic | TypeAttributes.Abstract | TypeAttributes.Sealed, obj);
+            interop.NestedTypes.Add(type);
+            var native = new ModuleReference(library);
+            cm.ModuleReferences.Add(native);
+            var import = new MethodDefinition(name, MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.PInvokeImpl,
+                am.TypeSystem.Int32)
+            {
+                ImplAttributes = MethodImplAttributes.PreserveSig,
+                PInvokeInfo = new PInvokeInfo(PInvokeAttributes.CallConvCdecl | PInvokeAttributes.CharSetUnicode, prefix + name, native),
+            };
+            import.Parameters.Add(new ParameterDefinition(pointer));
+            type.Methods.Add(import);
+            foreach (bool address in new[] { false, true })
+            {
+                var wrapper = Method(type, address ? "AddressImport" : "CallImport", am.TypeSystem.Int32);
+                wrapper.Attributes = MethodAttributes.Public | MethodAttributes.Static;
+                wrapper.Body.Instructions.Clear();
+                var il = wrapper.Body.GetILProcessor();
+                il.Emit(OpCodes.Ldc_I4_0);
+                il.Emit(OpCodes.Conv_U);
+                if (address)
+                {
+                    il.Emit(OpCodes.Ldftn, import);
+                    var site = new CallSite(am.TypeSystem.Int32);
+                    site.Parameters.Add(new ParameterDefinition(pointer));
+                    il.Emit(OpCodes.Calli, site);
+                }
+                else il.Emit(OpCodes.Call, import);
+                il.Emit(OpCodes.Ret);
+            }
+            var touch = Method(type, "Touch", am.TypeSystem.Void);
+            touch.Attributes = MethodAttributes.Public | MethodAttributes.Static;
+            entry.Emit(OpCodes.Call, am.ImportReference(touch));
+        }
+        entry.Emit(OpCodes.Ldc_I4_0);
+        entry.Emit(OpCodes.Ret);
+        var writer = new WriterParameters { Timestamp = 0, DeterministicMvid = true };
+        core.Write(Path.Combine(directory, "System.Private.CoreLib.dll"), writer);
+        app.Write(Path.Combine(directory, "MediumApp.dll"), writer);
+        File.Copy(Path.Combine(original, "MediumLib.dll"), Path.Combine(directory, "MediumLib.dll"), true);
     }
 
     static void Require(bool condition, string message)

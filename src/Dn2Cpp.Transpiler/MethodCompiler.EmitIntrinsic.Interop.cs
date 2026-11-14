@@ -505,6 +505,13 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsDecimalDivMod(callee))
+        {
+            var value = Pop();
+            Push(StackKind.I4, "int32_t", $"dn2cpp_decimal_divmod1e9({Cast(value, "Dn2CppDecimal*")})");
+            return;
+        }
+
         if (CoreIntrinsics.IsGen2GcCallbackRefusal(callee))
         {
             // Both arguments and the receiver were already evaluated. Never touch
@@ -873,6 +880,30 @@ internal sealed partial class MethodCompiler
             var result = callee.Signature.ReturnType;
             Push(StackKind.Ref, CppTypes.Of(result), "nullptr"); // unreachable stack shape
             Top = Top with { StaticType = result };
+            return;
+        }
+
+        if (CoreIntrinsics.IsResourceFormatterAccessor(callee))
+        {
+            var arguments = new StackEntry[callee.Signature.ParameterTypes.Length];
+            for (int i = arguments.Length - 1; i >= 0; i--)
+                arguments[i] = Pop();
+            foreach (var argument in arguments)
+                Emit($"(void)({argument.Expr});");
+            // Deliberate AOT resource policy, not CLR constructor or loader parity.
+            Emit("dn2cpp_throw_not_supported_msg(\"BinaryFormatter-serialized resource types are not supported. Store the value as one of the primitive resource types (string, numeric types, byte[]) instead.\");");
+            Push(StackKind.Ref, "Dn2CppObject*", "nullptr"); // unreachable stack shape
+            Top = Top with { StaticType = callee.Signature.ReturnType };
+            return;
+        }
+
+        if (CoreIntrinsics.IsDefaultPrincipalAccessor(callee))
+        {
+            var marker = Pop();
+            Emit($"(void)({marker.Expr});");
+            var target = Comp.ReachDefaultPrincipalFactory();
+            Push(StackKind.Ref, "Dn2CppObject*", $"((Dn2CppObject*){DirectCallSym(target)}())");
+            Top = Top with { StaticType = callee.Signature.ReturnType };
             return;
         }
 

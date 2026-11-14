@@ -37,6 +37,7 @@ namespace StringInterp
             if (args.Length > 0 && args[0] == "before-standard-decimal")
                 return;
             CustomFormatSubset.Program.__StandardDecimalGate();
+            InterpHandlerSubset.Program.__SpanTryWriteGate();
         }
     }
 }

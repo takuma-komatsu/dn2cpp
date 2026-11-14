@@ -34,6 +34,16 @@ gate_extra_asserts() {
     gate_capture_ok "$out/limits" run_bounded "$out/ManifestResources$EXE_EXT" limits
     gate_output compare "$out/limits.stdout" "$EXPDIR/manifest-resources-limits.txt" --policy crlf
 
+    # Private reader type guards reached by name match .NET; BinaryFormatter
+    # construction, which .NET performs, is refused.
+    gate_capture_ok "$out/reader-guards-oracle" run_bounded dotnet "$_CG_APP" reader-guards
+    gate_capture_ok "$out/reader-guards" run_bounded "$out/ManifestResources$EXE_EXT" reader-guards
+    gate_output byte-witness "$out/reader-guards.stdout" 'resource reader type guards end' --count 1 --policy crlf
+    gate_output compare "$out/reader-guards-oracle.stdout" "$out/reader-guards.stdout" --policy crlf
+    gate_capture_ok "$out/formatter-limit" run_bounded "$out/ManifestResources$EXE_EXT" formatter-limit
+    gate_assert_text "$out/formatter-limit.stdout" 'create-formatter -> NotSupportedException: BinaryFormatter-serialized resource types are not supported. Store the value as one of the primitive resource types (string, numeric types, byte[]) instead.
+'
+
 }
 
 PROJECT=ManifestResources

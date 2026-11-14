@@ -4109,13 +4109,24 @@ internal sealed partial class Compilation
         CoreIntrinsics.ValidateVectorAlignment(m);
         CoreIntrinsics.ValidateConcreteVectorReduction(m);
         CoreIntrinsics.ValidateVectorAsCallable(m);
+        CoreIntrinsics.ValidateKnownConstantCallable(m);
         if (CoreIntrinsics.IsInvariantCompareInfoGetter(m))
         {
             NoteInvariantCompareInfoFactory(m);
         }
-        if (CoreIntrinsics.IsCoreClrTypeCollectibilityImport(m))
+        if (CoreIntrinsics.IsCoreClrTypeCollectibilityImport(m) || CoreIntrinsics.IsWaitHandleRawWaitImport(m))
         {
             NotePInvokeFtnTarget(m);
+            return;
+        }
+        if (CoreIntrinsics.BrArrayNativeLength.Matches(m))
+        {
+            Reach(m);
+            return;
+        }
+        if (CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(m))
+        {
+            Reach(m);
             return;
         }
         if (CoreIntrinsics.BrLifetimeDispose.Matches(m.DeclaringClass.FullName, m.Name))
@@ -4129,6 +4140,11 @@ internal sealed partial class Compilation
             DrainReachability();
             return;
         }
+        if (CoreIntrinsics.BrStringRawByteReference.Matches(m))
+        {
+            Reach(m);
+            return;
+        }
         if (_intrinsicTypeTranspiled.Contains(m))
             return; // real body transpiled — the symbol already exists
         // Its calls already delegate to the real body, which serves the address too.
@@ -4136,6 +4152,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsDateTimeCultureManagedBody(m)
             || (CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(m))
             || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
+            || CoreIntrinsics.IsInterpolationStaticHelper(m)
             || CoreIntrinsics.IsScalarNumericLeaf(m)
             || CoreIntrinsics.IsBinaryIntegerEndianBody(m)
             || CoreIntrinsics.IsPrimitiveParseBody(m)
@@ -4143,7 +4160,13 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsPrimitiveWideConversionBody(m)
             || CoreIntrinsics.IsVectorAlignmentManagedBody(m)
             || CoreIntrinsics.IsConcreteVectorReduction(m)
+            || CoreIntrinsics.IsResourceManagerDefaultType(m)
             || CoreIntrinsics.IsPrimitiveElementHelper(m)
+            || CoreIntrinsics.IsStringNullTerminatedLength(m)
+            || CoreIntrinsics.IsSearchValuesShuffle(m)
+            || CoreIntrinsics.IsWaitHandleRawWaitWrapper(m)
+            || CoreIntrinsics.IsCancellationInvoke(m)
+            || CoreIntrinsics.IsKnownConstant(m)
             || CoreIntrinsics.IsVectorManagedThrowHelper(m)
             || CoreIntrinsics.IsGenericVectorEstimate(m)
             || CoreIntrinsics.IsGuardedVectorAs(m)
@@ -6499,7 +6522,7 @@ internal sealed partial class Compilation
         // remain behind their intrinsic/refusal boundary; absent runtime modules
         // use a callable refusal through this same route.
         if (!IsFrameworkAssemblyName(m.DeclaringClass.Module.AssemblyName)
-            || IsDirectPInvoke(m))
+            || IsDirectPInvoke(m) || IsAbsentGlobalizationImport(m))
             return true;
 
         // A concrete cut lowering owns both calls and addresses. The intrinsic-type
@@ -6509,8 +6532,19 @@ internal sealed partial class Compilation
                 || row.EmitArm == InterceptEmitArm.IntrinsicDispatch);
     }
 
+    // Invariant globalization has no ICU PAL. Keep retained imports callable,
+    // but refuse execution unless the caller explicitly supplies native binding.
+    internal bool IsAbsentGlobalizationImport(MethodInfo method) =>
+        CoreIntrinsics.PiAbsentGlobalizationNative.Matches(method) && !IsDirectPInvoke(method);
+
     internal bool IsAbsentCoreClrQCall(MethodInfo method) =>
         CoreIntrinsics.PiAbsentCoreClrQCall.Matches(method) && !IsDirectPInvoke(method);
+
+    internal static string AbsentGlobalizationImportMessage(PInvokeInfo import) =>
+        ("the native import " + import.ModuleName + "!" + import.RawEntryPoint
+        + " requires the ICU globalization PAL, which a dn2cpp-transpiled binary does not provide. "
+        + "Use the supported globalization APIs, a NativeImplementation shim, or an explicit --direct-pinvoke binding.")
+        .Replace("\\", "\\\\").Replace("\"", "\\\"");
 
     internal static string AbsentCoreClrQCallMessage(PInvokeInfo import) =>
         ("the native import " + import.ModuleName + "!" + import.RawEntryPoint

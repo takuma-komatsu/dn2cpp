@@ -22,7 +22,16 @@ if (DateTimeInterceptFixture.Run(args))
     return;
 if (DateTimeTCharFixture.Run(args))
     return;
-
+if (AbbreviatedDayFixture.Run(args))
+    return;
+if (DecimalDivModFixture.Run(args))
+    return;
+if (Gen2CallbackFixture.Run(args))
+    return;
+if (DefaultPrincipalDependencyFixture.Run(args))
+    return;
+if (DefaultPrincipalFixture.Run(args))
+    return;
 if (RuntimeTypeIsPointerFixture.Run(args))
     return;
 if (RuntimeFieldHandleFixture.Run(args))

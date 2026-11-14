@@ -192,6 +192,41 @@ source "$(dirname "$0")/_ildiet.sh"
 source gates/_headerless-reference-identity.sh
 source gates/_md-readonly-byrefs.sh
 
+# Bound each Python argv independently of section size and Windows quoting.
+array_core_witnesses() {
+    local output="$1" count="$2" line size=0 length
+    local batch=()
+    shift 2
+    for line in "$@"; do
+        length=$((${#line} + 3))
+        [ "$length" -le 4096 ] || { echo 'FAIL: array witness exceeds argv budget' >&2; return 1; }
+        if [ "$size" -gt 0 ] && [ "$((size + length))" -gt 4096 ]; then
+            gate_output witness "$output" "${batch[@]}" --count "$count" --policy crlf || return 1
+            batch=()
+            size=0
+        fi
+        batch+=("$line")
+        size=$((size + length))
+    done
+    [ "$size" -gt 0 ] || { echo 'FAIL: array witness list is empty' >&2; return 1; }
+    gate_output witness "$output" "${batch[@]}" --count "$count" --policy crlf
+}
+
+# A wrapper with run arguments proves that variant, not the full no-argument run.
+array_core_observation() {
+    local out="$1" project="$2" stream
+    _ARRAY_CORE_NATIVE="$out/native"
+    if [ -n "${DN2CPP_GATE_RUN_ARGS:-}" ]; then
+        _ARRAY_CORE_NATIVE="$out/argless-native"
+        gate_capture "$_ARRAY_CORE_NATIVE" run_bounded "./$out/$project$EXE_EXT" || return 1
+    fi
+    for stream in stdout stderr status; do
+        [ -f "$_ARRAY_CORE_NATIVE.$stream" ] \
+            || { echo "FAIL: missing array observation: $_ARRAY_CORE_NATIVE.$stream" >&2; return 1; }
+    done
+    gate_output status "$(cat "$_ARRAY_CORE_NATIVE.status")" 0
+}
+
 # Prefix runs retain their own evidence; a missing or duplicated boundary fails.
 array_core_prefix() {
     local output="$1" marker="$2" capture="${1%.stdout}.prefix-${4##*/}-${!#}"
@@ -202,11 +237,9 @@ array_core_prefix() {
 }
 
 comparison_prior_extra_asserts() {
-    local out="$1" line array_output="$1/array-core-check.stdout"
-    gate_capture "${array_output%.stdout}" run_bounded "./$out/ArrayCore$EXE_EXT"
-    gate_output status "$(cat "${array_output%.stdout}.status")" 0
+    local out="$1" capture="$2" array_output="$2.stdout"
     array_core_prefix "$array_output" '== Array validation fields ==' run_bounded dotnet "$_CG_APP" before-validation-fields
-    for line in '== Array validation fields ==' \
+    array_core_witnesses "$array_output" 1 '== Array validation fields ==' \
         'copy:0:0:-1:-1:-1 param=sourceArray' \
         'copy:2:0:-1:-1:-1 param=destinationArray' \
         'copy:1:1:0:-1:1 type=ArgumentException' \
@@ -225,33 +258,27 @@ comparison_prior_extra_asserts() {
         'string zero slice canonical=True' \
         'covariant empty canonical=False' \
         'covariant zero slice fresh=True' \
-        'Array validation fields end'; do
-        gate_output witness "$array_output" "$line" --count 1 --policy crlf \
-            || { echo "FAIL: ArrayCore validation witness missing: $line" >&2; exit 1; }
-    done
+        'Array validation fields end' \
+        || { echo "FAIL: ArrayCore validation witness missing" >&2; exit 1; }
 }
 
 # Default order and equality preserve the earlier bucket and run the appended cases.
 gate_extra_asserts() {
-    local out="$1" line array_output="$1/array-core-check.stdout"
-    comparison_prior_extra_asserts "$out"
-    gate_capture "${array_output%.stdout}" run_bounded "./$out/ArrayCore$EXE_EXT"
-    gate_output status "$(cat "${array_output%.stdout}.status")" 0
+    local out="$1" capture="$2" array_output="$2.stdout"
+    comparison_prior_extra_asserts "$out" "$capture"
     array_core_prefix "$array_output" '== default comparison validation ==' run_bounded dotnet "$_CG_APP" before-default-comparison
-    for line in '== default comparison validation ==' \
+    array_core_witnesses "$array_output" 1 '== default comparison validation ==' \
         '== default order without IComparable<T> ==' \
         '== comparer message UTF-16 ==' \
         'throwing name calls=1' \
         '== non-generic null search equality ==' \
         'value-forward=1:12' \
         'generic-value-forward=0:1' \
-        'default comparison validation end'; do
-        gate_output witness "$array_output" "$line" --count 1 --policy crlf \
-            || { echo "FAIL: ArrayCore comparison coverage missing: $line" >&2; exit 1; }
-    done
+        'default comparison validation end' \
+        || { echo "FAIL: ArrayCore comparison coverage missing" >&2; exit 1; }
     array_core_prefix "$array_output" '== default comparer type identity ==' run_bounded dotnet "$_CG_APP" before-comparer-identity
     array_core_prefix "$array_output" '== default comparer type identity ==' run_bounded "./$out/ArrayCore$EXE_EXT" before-comparer-identity
-    for line in '== default comparer type identity ==' \
+    array_core_witnesses "$array_output" 1 '== default comparer type identity ==' \
         'enum-sbyte comparer Name=EnumComparer`1' 'enum-byte comparer Name=EnumComparer`1' \
         'enum-int16 comparer Name=EnumComparer`1' 'enum-uint16 comparer Name=EnumComparer`1' \
         'enum-int32 comparer Name=EnumComparer`1' 'enum-uint32 comparer Name=EnumComparer`1' \
@@ -266,24 +293,22 @@ gate_extra_asserts() {
         'user-generic direct=-16/16/-9/0' 'user-generic interface=-16/16/-9/0' \
         'enum-uint64 default sort=Zero,High,Max search=1/-2' \
         'enum-uint64 explicit sort=Zero,High,Max search=1/-2' \
-        'default comparer type identity end'; do
-        gate_output witness "$array_output" "$line" --count 1 --policy crlf \
-            || { echo "FAIL: default comparer identity witness missing: $line" >&2; exit 1; }
-    done
+        'default comparer type identity end' \
+        || { echo "FAIL: default comparer identity witness missing" >&2; exit 1; }
 }
 
 md_address_identity_asserts() {
-    local out="$1" axis line
+    local out="$1" capture="$2" axis
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
             gate_capture_ok "$out/md-address-before.$axis" run_bounded dotnet "$_CG_APP" before-md-address-identity
         else
             gate_capture_ok "$out/md-address-before.$axis" run_bounded "$out/ArrayCore$EXE_EXT" before-md-address-identity
         fi
-        gate_output prefix "$out/headerless-full.native.stdout" "$out/md-address-before.$axis.stdout" \
+        gate_output prefix "$capture.stdout" "$out/md-address-before.$axis.stdout" \
             --before '== multidimensional writable address identity ==' --policy crlf
     done
-    for line in '== multidimensional writable address identity ==' \
+    array_core_witnesses "$capture.stdout" 1 '== multidimensional writable address identity ==' \
         'address covariance=ArrayTypeMismatchException/80131503:identity=True' \
         'address covariance before bounds=ArrayTypeMismatchException/80131503:identity=True' \
         'address readonly covariance=True' \
@@ -314,24 +339,22 @@ md_address_identity_asserts() {
         'generic md cast=same:same:InvalidCastException:same' \
         'generic md nested is=True:True:True:False' \
         'generic md nested cast=same:same:same:InvalidCastException' \
-        'generic md tokens=True:True:True:True'; do
-        gate_output witness "$out/headerless-full.native.stdout" "$line" --count 1 --policy crlf \
-            || { echo "FAIL: MD address/allocation witness missing or repeated: $line" >&2; return 1; }
-    done
+        'generic md tokens=True:True:True:True' \
+        || { echo "FAIL: MD address/allocation witness missing or repeated" >&2; return 1; }
 }
 
 sz_address_identity_asserts() {
-    local out="$1" axis line shared
+    local out="$1" capture="$2" axis shared
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
             gate_capture_ok "$out/sz-address-before.$axis" run_bounded dotnet "$_CG_APP" before-sz-address-identity
         else
             gate_capture_ok "$out/sz-address-before.$axis" run_bounded "$out/ArrayCore$EXE_EXT" before-sz-address-identity
         fi
-        gate_output prefix "$out/headerless-full.native.stdout" "$out/sz-address-before.$axis.stdout" \
+        gate_output prefix "$capture.stdout" "$out/sz-address-before.$axis.stdout" \
             --before '== vector writable address identity ==' --policy crlf
     done
-    for line in '== vector writable address identity ==' 'vector writable address identity end' \
+    array_core_witnesses "$capture.stdout" 1 '== vector writable address identity ==' 'vector writable address identity end' \
         'vector address covariance=ArrayTypeMismatchException/80131503:identity=True' \
         'vector address negative=IndexOutOfRangeException/80131508:identity=True' \
         'vector address past end=IndexOutOfRangeException/80131508:identity=True' \
@@ -351,10 +374,8 @@ sz_address_identity_asserts() {
         'vector address generic class exact=True' 'vector address external exact=True' \
         'vector address nested exact=nested:rectangle' \
         'vector address nested covariance=ArrayTypeMismatchException/80131503:identity=True' \
-        'vector address value slots=-123:11:37:29'; do
-        gate_output witness "$out/headerless-full.native.stdout" "$line" --count 1 --policy crlf \
-            || { echo "FAIL: SZ address witness missing or repeated: $line" >&2; return 1; }
-    done
+        'vector address value slots=-123:11:37:29' \
+        || { echo "FAIL: SZ address witness missing or repeated" >&2; return 1; }
     shared=$(LC_ALL=C awk '
         { sub(/\r$/, "") }
         /^inline void .*_WriteGenericSz_TisCnRef_.*\)$/ { method = 1 }
@@ -371,10 +392,10 @@ sz_address_identity_asserts() {
 }
 
 md_readonly_alias_asserts() {
-    local out="$1" line shared
+    local out="$1" capture="$2" shared
     headerless_reference_prefix_asserts "$out" ArrayCore before-md-readonly-aliases \
-        '== headerless multidimensional readonly aliases ==' 'headerless multidimensional readonly aliases end'
-    for line in 'readonly raw initial=True' 'readonly raw live alias=True' \
+        '== headerless multidimensional readonly aliases ==' 'headerless multidimensional readonly aliases end' "$capture"
+    array_core_witnesses "$capture.stdout" 1 'readonly raw initial=True' 'readonly raw live alias=True' \
         'readonly raw callee mutation=True' 'readonly raw generic=True' 'readonly raw owner=True' \
         'readonly raw unaligned=True' 'readonly raw span=True' 'readonly typed raw=True' \
         'readonly pending indirect=True' 'readonly pending generic=True' \
@@ -385,10 +406,8 @@ md_readonly_alias_asserts() {
         'readonly raw lower=True' 'readonly raw clone=True' 'readonly managed cell=True' \
         'readonly managed vector=True' 'readonly managed nested=nested' 'readonly raw alias lifetime=True' \
         'readonly raw null=NullReferenceException/80004003:identity=True' \
-        'readonly raw bounds=IndexOutOfRangeException/80131508:identity=True'; do
-        gate_output witness "$out/headerless-full.native.stdout" "$line" --count 1 --policy crlf \
-            || { echo "FAIL: readonly MD alias witness missing or repeated: $line" >&2; return 1; }
-    done
+        'readonly raw bounds=IndexOutOfRangeException/80131508:identity=True' \
+        || { echo "FAIL: readonly MD alias witness missing or repeated" >&2; return 1; }
     shared=$(awk '
         { sub(/\r$/, "") }
         /^\/\/ ArrayCovariantStoreSubset.Program::ReadReadonly$/ { method = 1; next }
@@ -407,14 +426,15 @@ md_readonly_alias_asserts() {
 eval "$(declare -f gate_extra_asserts | sed '1s/gate_extra_asserts/nonzero_prior_extra_asserts/')"
 # Keep the prior whole bucket and prove each appended lower-bound block ran once.
 gate_extra_asserts() {
-    local out="$1" line array_output="$1/array-core-check.stdout"
-    nonzero_prior_extra_asserts "$out"
-    headerless_md_reference_asserts "$out"
-    md_address_identity_asserts "$out"
-    sz_address_identity_asserts "$out"
-    md_readonly_alias_asserts "$out"
-    gate_capture "${array_output%.stdout}" run_bounded "./$out/ArrayCore$EXE_EXT"
-    gate_output status "$(cat "${array_output%.stdout}.status")" 0
+    local out="$1" capture array_output
+    array_core_observation "$out" ArrayCore || return 1
+    capture="$_ARRAY_CORE_NATIVE"
+    array_output="$capture.stdout"
+    nonzero_prior_extra_asserts "$out" "$capture"
+    headerless_md_reference_asserts "$out" "$capture"
+    md_address_identity_asserts "$out" "$capture"
+    sz_address_identity_asserts "$out" "$capture"
+    md_readonly_alias_asserts "$out" "$capture"
     array_core_prefix "$array_output" '== nonzero array lower bounds ==' run_bounded dotnet "$_CG_APP" before-nonzero-lower-bounds
     array_core_prefix "$array_output" '== nonzero array lower bounds ==' run_bounded "./$out/ArrayCore$EXE_EXT" before-nonzero-lower-bounds
     array_core_prefix "$array_output" '== lower-bound array sort and search ==' run_bounded dotnet "$_CG_APP" before-lower-bound-search
@@ -423,7 +443,7 @@ gate_extra_asserts() {
     array_core_prefix "$array_output" '== wrapped lower-bound array ranges ==' run_bounded "./$out/ArrayCore$EXE_EXT" before-wrapped-array-ranges
     array_core_prefix "$array_output" '== lower-bound sort access faults ==' run_bounded dotnet "$_CG_APP" before-sort-access-faults
     array_core_prefix "$array_output" '== lower-bound sort access faults ==' run_bounded "./$out/ArrayCore$EXE_EXT" before-sort-access-faults
-    for line in '== lower-bound sort access faults ==' 'lower-bound sort access faults end' \
+    array_core_witnesses "$array_output" 1 '== lower-bound sort access faults ==' 'lower-bound sort access faults end' \
         'sort access Int32/2 sort custom=ArgumentException/<none>' \
         'sort access String/2 sort=ArgumentException/<none>' \
         'sort access Object/3 sort custom=ArgumentException/<none>' \
@@ -433,11 +453,9 @@ gate_extra_asserts() {
         'sort start Int32/2147483643 default=ArgumentOutOfRangeException/<none>' \
         'sort start Int32/2147483643 custom=ArgumentException/<none>' \
         'sort start String/2147483643 default=ArgumentException/<none>' \
-        'sort start Object/2147483643 custom=ArgumentException/<none>'; do
-        gate_output witness "$array_output" "$line" --count 1 --policy crlf \
-            || { echo "FAIL: sort access witness must run once: $line" >&2; exit 1; }
-    done
-    for line in '== wrapped lower-bound array ranges ==' 'wrapped lower-bound array ranges end' \
+        'sort start Object/2147483643 custom=ArgumentException/<none>' \
+        || { echo "FAIL: sort access witness must run once" >&2; exit 1; }
+    array_core_witnesses "$array_output" 1 '== wrapped lower-bound array ranges ==' 'wrapped lower-bound array ranges end' \
         'wrapped Int32/-5/0 sort=ok' 'wrapped Int32/-5/1 reverse=ok' \
         'wrapped Int32/-5/0 binary=ArgumentOutOfRangeException/<none>' \
         'wrapped Int32/-5/0 binary custom=-2147483648' \
@@ -447,32 +465,27 @@ gate_extra_asserts() {
         'wrapped String/-5/1 binary=InvalidOperationException/<none>' \
         'wrapped Default=ArgumentOutOfRangeException/<none>' \
         'wrapped DefaultInvariant=-2147483648' 'wrapped new comparer=-2147483648' \
-        'wrapped null value=-2147483648' 'wrapped wrong value type=-2147483648'; do
-        gate_output witness "$array_output" "$line" --count 1 --policy crlf \
-            || { echo "FAIL: wrapped range witness must run once: $line" >&2; exit 1; }
-    done
-    for line in '== nonzero array lower bounds ==' 'nonzero array lower bounds end' \
+        'wrapped null value=-2147483648' 'wrapped wrong value type=-2147483648' \
+        || { echo "FAIL: wrapped range witness must run once" >&2; exit 1; }
+    array_core_witnesses "$array_output" 1 '== nonzero array lower bounds ==' 'nonzero array lower bounds end' \
         '== nonzero covariant array stores ==' 'nonzero covariant array stores end' \
         '== lower-bound array sort and search ==' 'lower-bound array sort and search end' \
         'lower indices=-2/0:-1/-1/-3/-3' 'lower binary=-2/0:-1/0/-2' \
-        'lower extreme sort=9 binary=2147483647' 'lower empty min=2147483647/2147483647/2147483647'; do
-        gate_output witness "$array_output" "$line" --count 1 --policy crlf \
-            || { echo "FAIL: lower-bound witness must run once: $line" >&2; exit 1; }
-    done
+        'lower extreme sort=9 binary=2147483647' 'lower empty min=2147483647/2147483647/2147483647' \
+        || { echo "FAIL: lower-bound witness must run once" >&2; exit 1; }
+    array_core_tail_asserts "$out" "$capture"
 }
 
 
 assert_runtime_box_formatting() {
-    local output="$1" line
-    for line in '== runtime-handle boxed formatting ==' \
+    local output="$1"
+    array_core_witnesses "$output" any '== runtime-handle boxed formatting ==' \
         'plain copied=handle:17:17' 'plain mutated=handle:23:handle:29:distinct=True' \
         'nullable copied=nullable:31:underlying=True' 'nullable empty=True' \
         'indirect copied=indirect:53:type=True' 'generic payloads=Int32:71/String:79' \
         'ordinary control=ordinary:83/ordinary:89' 'unselected type=UnselectedPayload' \
-        'runtime-handle boxed formatting end'; do
-        gate_output witness "$output" "$line" --count any --policy crlf \
-            || { echo "FAIL: runtime box formatting witness missing: $line" >&2; exit 1; }
-    done
+        'runtime-handle boxed formatting end' \
+        || { echo "FAIL: runtime box formatting witness missing" >&2; exit 1; }
 }
 
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|array-box-shared-generics|before-array-provenance|before-nested-interface-variance|before-covariant-stores|before-covariant-md-stores|before-runtime-box-formatting|before-nullable-array-names|before-excess-array-rank"
@@ -488,13 +501,295 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|readonly-raw-md-live-alias
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_md-readonly-byrefs.sh gates/fixtures/md-readonly-byrefs/MdReadonlyByrefs.csproj gates/fixtures/md-readonly-byrefs/Program.cs gates/fixtures/md-readonly-byrefs/runtime-checks.cpp"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ArrayCore/ArrayFiniteSearchOnly.csproj samples/dotnet/ArrayCore/ArrayFiniteSearchProgram.cs samples/dotnet/ArrayCore/ArrayFiniteSearchSubset.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|finite-local-searches:ildiet,no-ildiet|before-finite-local-searches"
+array_rank_diagnostic() {
+    local file="$1" label="$2"
+    gate_output match-record "$file" "^$label=System.TypeLoadException/80131522:'.*' from assembly '.*' has too many dimensions\\.$" --count any --policy crlf
+}
+
+array_core_tail_asserts() {
+    local out="$1" capture="$2" array_output="$2.stdout" line label name result
+    local witnesses=()
+    gate_output view "$array_output" "$array_output.records" --policy crlf
+    array_core_prefix "$array_output" '== finite local array searches ==' run_bounded dotnet "$_CG_APP" before-finite-local-searches
+    array_core_prefix "$array_output" '== finite local array searches ==' run_bounded "./$out/ArrayCore$EXE_EXT" before-finite-local-searches
+    gate_output witness "$array_output" 'finite local array searches end' --count 1 --policy crlf \
+        || { echo 'FAIL: finite local search block did not run in ArrayCore' >&2; exit 1; }
+    array_core_prefix "$array_output" '== Array.NativeLength named reflection ==' run_bounded dotnet "$_CG_APP" before-native-length
+    array_core_prefix "$array_output" '== Array.NativeLength named reflection ==' run_bounded "./$out/ArrayCore$EXE_EXT" before-native-length
+    array_core_witnesses "$array_output" 1 'md-nonzero-lower:UIntPtr:6:True' 'null-receiver:TargetException' 'Array.NativeLength named reflection end' \
+        || { echo "FAIL: ArrayCore NativeLength witness missing" >&2; exit 1; }
+    array_core_prefix "$array_output" '== runtime-handle boxed formatting ==' run_bounded dotnet "$_CG_APP" before-runtime-box-formatting
+    assert_runtime_box_formatting "$array_output"
+    array_core_prefix "$array_output" '== nullable array type names ==' run_bounded dotnet "$_CG_APP" before-nullable-array-names
+    array_core_witnesses "$array_output" 1 '== nullable array type names ==' \
+        'int text=System.Nullable`1[System.Int32][]' \
+        'char text=System.Nullable`1[System.Char][]' \
+        'jagged text=System.Nullable`1[System.Int32][][]' \
+        'md text=System.Nullable`1[System.Char][,]' \
+        'mixed text=System.Nullable`1[System.Int32][,][]' \
+        'nullable array identities=True:True:True' 'nullable dynamic names=True:True' \
+        'nullable array type names end' \
+        || { echo "FAIL: nullable array name witness missing" >&2; exit 1; }
+
+    array_core_prefix "$array_output" '== excessive array rank diagnostics ==' run_bounded dotnet "$_CG_APP" before-excess-array-rank
+    array_core_witnesses "$array_output" 1 '== excessive array rank diagnostics ==' 'rank32 accepted=32:0' \
+        'rank invalid length=ArgumentOutOfRangeException:lengths[0]:<null>:Non-negative number required. (Parameter '\''lengths[0]'\'')' \
+        'rank null lengths=ArgumentNullException:lengths:<none>:Value cannot be null. (Parameter '\''lengths'\'')' \
+        'rank bounds mismatch=ArgumentException:<null>:<none>:Number of lengths and lowerBounds must match.' \
+        'excessive array rank diagnostics end' \
+        || { echo "FAIL: excessive array rank witness missing" >&2; exit 1; }
+    for label in 'int lengths' 'object lengths' 'char lengths' 'int bounds' 'object bounds' 'char bounds'; do
+        array_rank_diagnostic "$array_output" "$label" \
+            || { echo "FAIL: excessive array rank diagnostic missing: $label" >&2; exit 1; }
+    done
+    array_core_prefix "$array_output" '== covariant reference array stores ==' run_bounded dotnet "$_CG_APP" before-covariant-stores
+    array_core_witnesses "$array_output" 1 '== covariant reference array stores ==' \
+        'store message=Attempted to access an element as a type incompatible with the array.' \
+        'negative before type=IndexOutOfRangeException/80131508:identity=True' \
+        'past end before type=IndexOutOfRangeException/80131508:identity=True' \
+        'null before type=NullReferenceException/80004003:identity=True' \
+        'allocated array identities=True:True:True:True' \
+        'array token identities=True:True:True' 'array token casts=True:True:True' \
+        'array token cast rejected=InvalidCastException/80004002:identity=True' \
+        'list byte array growth=10:True:True' 'list byte array regrowth=True' \
+        'list int array growth=2:True' 'list reference array growth=2:True' \
+        'constructed mismatch=Attempted to access an element as a type incompatible with the array./80131503' \
+        'covariant reference array stores end' \
+        || { echo "FAIL: covariant array store witness missing" >&2; exit 1; }
+    witnesses=()
+    for line in 'string rejected' 'argument rejected' 'field rejected' 'return rejected' \
+        'shared rejected' 'class rejected' 'interface narrowed rejected' 'interface rejected' \
+        'generic invariant rejected' 'generic variance rejected' 'jagged rejected' \
+        'intrinsic rejected' 'runtime returned rejected' 'generic list rejected' \
+        'allocated array element rejected'; do
+        witnesses+=("$line=ArrayTypeMismatchException/80131503:identity=True")
+    done
+    array_core_witnesses "$array_output" 1 "${witnesses[@]}" \
+        || { echo "FAIL: rejected store changed array contents" >&2; exit 1; }
+    witnesses=()
+    for line in 'string compatible' 'string null' 'shared compatible' 'class compatible' \
+        'interface narrowed compatible' 'interface compatible' 'boxed interface compatible' \
+        'object boxed compatible' 'object compatible' 'object null' 'generic compatible' \
+        'generic variance compatible' 'jagged compatible' 'intrinsic compatible' 'generic list compatible' \
+        'allocated byte array compatible' 'allocated int array compatible' \
+        'allocated reference array compatible' 'allocated nested array compatible' \
+        'allocated object compatible'; do
+        witnesses+=("$line=ok:identity=True")
+    done
+    array_core_witnesses "$array_output" 1 "${witnesses[@]}" \
+        || { echo "FAIL: compatible store lost value identity" >&2; exit 1; }
+    shared_store=$(LC_ALL=C awk '{ sub(/\r$/, "") }
+        /^inline void .*_StoreGeneric_TisCnRef_.*\)$/ { in_body = 1 }
+        in_body && /dn2cpp_stelem_ref\(/ { found = 1 }
+        in_body && /^\}/ { in_body = 0 }
+        END { if (found) print "shared reference store" }' "$out"/generated.h)
+    assert_output "$shared_store" 'shared reference store'
+    shared_array=$(LC_ALL=C awk '{ sub(/\r$/, "") }
+        /^inline Dn2CppArrayRef\* .*_Allocate_TisCnRef_.*\)$/ { in_body = 1 }
+        in_body && /dn2cpp_newarr_ref_t\(.*__rgctx/ { found = 1 }
+        in_body && /^\}/ { in_body = 0 }
+        END { if (found) print "shared array allocation" }' "$out"/generated.h)
+    assert_output "$shared_array" 'shared array allocation'
+    array_core_prefix "$array_output" '== covariant multidimensional reference stores ==' run_bounded dotnet "$_CG_APP" before-covariant-md-stores
+    array_core_witnesses "$array_output" 1 '== covariant multidimensional reference stores ==' \
+        'md store message=Attempted to access an element as a type incompatible with the array.' \
+        'md null before type=NullReferenceException/80004003:identity=True' \
+        'md culture reads=en-US:True' 'md culture ref read=en-US' \
+        'md culture ref write=ja-JP:True' 'md culture null=True' \
+        'multidimensional reference stores end' \
+        || { echo "FAIL: multidimensional reference store witness missing" >&2; exit 1; }
+    witnesses=()
+    for label in 'md rank2 rejected' 'md rank2 type before negative' 'md rank2 type before past end' \
+        'md argument rejected' 'md field rejected' 'md shared rejected' \
+        'md rank3 rejected' 'md rank3 type before bounds' 'md rank4 rejected' 'md rank4 type before bounds' \
+        'md created rejected' 'md class rejected' 'md interface rejected' 'md jagged rejected'; do
+        witnesses+=("$label=ArrayTypeMismatchException/80131503:identity=True")
+    done
+    array_core_witnesses "$array_output" 1 "${witnesses[@]}" \
+        || { echo "FAIL: multidimensional incompatible store or retention mismatch" >&2; exit 1; }
+    witnesses=()
+    for label in 'md rank2 compatible negative' 'md rank2 null past end' \
+        'md rank3 compatible bounds' 'md rank4 compatible bounds'; do
+        witnesses+=("$label=IndexOutOfRangeException/80131508:identity=True")
+    done
+    array_core_witnesses "$array_output" 1 "${witnesses[@]}" \
+        || { echo "FAIL: multidimensional compatible store bounds mismatch" >&2; exit 1; }
+    witnesses=()
+    for label in 'md rank2 compatible' 'md rank2 null' 'md shared compatible' \
+        'md rank3 compatible' 'md rank3 null' 'md rank4 compatible' 'md rank4 null' \
+        'md created compatible' 'md interface compatible' 'md jagged compatible' 'md object boxed compatible'; do
+        witnesses+=("$label=ok:identity=True")
+    done
+    array_core_witnesses "$array_output" 1 "${witnesses[@]}" \
+        || { echo "FAIL: multidimensional compatible store lost identity" >&2; exit 1; }
+    shared_md_store=$(LC_ALL=C awk '{ sub(/\r$/, "") }
+        /^inline void .*_StoreMdGeneric_TisCnRef_.*\)$/ { in_body = 1 }
+        in_body && /dn2cpp_array_check_store_ref\(/ { found = 1 }
+        in_body && /^\}/ { in_body = 0 }
+        END { if (found) print "shared multidimensional store" }' "$out"/generated.h)
+    assert_output "$shared_md_store" 'shared multidimensional store'
+    shared_md_identity=$(LC_ALL=C awk '{ sub(/\r$/, "") }
+        /_AllocateMd_TisCnRef_.*\)$/ { allocation = 1 }
+        allocation && /dn2cpp_newmdarr\(.*__rgctx/ { allocation_ti = 1 }
+        /_WriteGenericMd_TisCnRef_.*\)$/ { address = 1 }
+        address && /dn2cpp_md_require_address_element\(.*__rgctx/ { address_ti = 1 }
+        /^\}/ { allocation = 0; address = 0 }
+        END { if (allocation_ti && address_ti) print "shared MD identities" }' "$out"/generated.h "$out"/generated*.cpp)
+    assert_output "$shared_md_identity" 'shared MD identities'
+
+    array_core_prefix "$array_output" '-- array shape argument checks --' run_bounded "./$out/ArrayCore$EXE_EXT" before-array-provenance
+    grep -Fq 'dn2cpp_array_search_equals(' "$out"/generated*.cpp \
+        || { echo 'FAIL: non-generic Array search lacks its missing-slot guard' >&2; exit 1; }
+    array_core_witnesses "$array_output" 1 '-- array shape argument checks --' 'array shape argument checks end' \
+            'initialize-dyn-boxed-equality: True/True' \
+            'initialize-bound-boxed-equality: True/True' 'Array Initialize discovery end' \
+            '== runtime type-handle boxes and array refusals ==' \
+            'int=System.Int32:7:equal=True/True' 'short=System.Int16:-3:equal=True/True' \
+            'nullable empty=null' 'reference identity=True' \
+            'runtime type-handle boxes and array refusals end' \
+        || { echo "FAIL: Array guard witness missing" >&2; exit 1; }
+
+    array_core_prefix "$array_output" '== dynamic array null equality ==' run_bounded dotnet "$_CG_APP" before-dynamic-array-null-equality
+    array_core_prefix "$array_output" '== array search reference and type provenance ==' run_bounded dotnet "$_CG_APP" before-array-search-provenance-additions
+    array_core_prefix "$array_output" '== array search loop provenance ==' run_bounded dotnet "$_CG_APP" before-array-search-loops
+    array_core_witnesses "$array_output" 1 '== array search loop provenance ==' \
+            'loop-local=0:1:1' 'loop-argument=0:1:1' 'loop-type=0' \
+            'loop-type-unwrapped=0:1' 'loop-unsearched-leaf=0' \
+            'array search loop provenance end' \
+        || { echo "FAIL: array loop witness missing" >&2; exit 1; }
+
+    array_core_prefix "$array_output" '== nested generic interface variance ==' run_bounded dotnet "$_CG_APP" before-nested-interface-variance
+    array_core_witnesses "$array_output" 1 '== nested generic interface variance ==' \
+        'nested direct=-1' 'nested covariance=True' 'nested owner distinct=False' \
+        'nested flat neighbor=False' 'nested escape neighbor=False' \
+        'variance nested definition=NestedInterfaceVarianceSubset.Outer+IOut`1' \
+        'variance flat definition=NestedInterfaceVarianceSubset.Outer_IOut`1' \
+        'nested explicit body=1' 'nested explicit interface=-1' \
+        'generic covariance=True' 'generic enclosing invariant=False' \
+        'generic middle invariant=False' 'nested generic interface variance end' \
+        || { echo "FAIL: nested interface variance witness missing" >&2; exit 1; }
+    witnesses=()
+    for name in 'top public' 'top explicit' 'nested public' 'nested explicit' 'deep' 'generic enclosing'; do
+        for result in 'default=-1' 'held=1' 'array=1,2,3' 'search=1' 'span=1,2,3' 'list=1,2,3/1'; do
+            witnesses+=("$name $result")
+        done
+    done
+    array_core_witnesses "$array_output" 1 "${witnesses[@]}" \
+        || { echo 'FAIL: nested interface comparison mouth missing' >&2; exit 1; }
+    array_core_witnesses "$array_output" 1 \
+        'direct=0:1' \
+        'conditional-first=0:1:0' \
+        'conditional-second=0:0:1' \
+        'indexed-selected=0:1' \
+        'type-overwrite=0:1:TypeOverwrittenDeadMatch' \
+        'field-forward=0:1' \
+        'field-backward=1:1' \
+        'hidden-field=0:1' \
+        'field-stored=0:1:1' \
+        'ref-field-write=0:1' \
+        'ref-static-write=0:1' \
+        'array-get-type=0:1' \
+        'make-array-type=0:1:True' \
+        'object-get-type=0:Object' \
+        'nested-array-get-type=0:1' \
+        'ranked-array-type=0:1' \
+        'helper-ranked-array-type=0:1' \
+        'repeated-ranked-array-type=0:1' \
+        'ref-stobj=0:1' \
+        'ref-ldobj=0:1' \
+        'copied-object-get-type=0:Object' \
+        'md-get-type=0:1:2' \
+        'type-handle=0:1' \
+        'empty-type-signature=0:1' \
+        'field-alias=0:1' \
+        'field-overwrite=0:1:1' \
+        'field-virtual=0:1' \
+        'static-erased=0:1' \
+        'static-declared=0:1' \
+        'static-overwrite=0:1:1' \
+        'generic-static=0:1,0:1' \
+        'struct-field=0:1' \
+        'box-overwrite=0:1:True' \
+        'cctor-static=0:1' \
+        'constructor-field=0:1' \
+        'constructor-overwrite=0:1:1' \
+        'cctor-overwrite=0:1:1' \
+        'property=1:1' \
+        'setter-only=0:1' \
+        'mixed-visibility=0:1' \
+        'method=0:1' \
+        'generic-argument=1:1' \
+        'generic-selected=0:1' \
+        'interface-provider=0:1' \
+        'overload=0:1' \
+        'nonzero-overload=0:1' \
+        'local-after-create=0:1:UnselectedLocalMatch' \
+        'helper-other-call=0:1:2' \
+        'helper-sink=0:1' \
+        'field-helper=0:1' \
+        'deep-helper=0:1' \
+        'shared-generic=0:1,0:1' \
+        'unallocated-provider=UnallocatedArrayTypeProvider' \
+        'unused-reflected=UnusedReflectedMatch[]' \
+        'framework-box-forward=0:1:False' \
+        'framework-box-backward=0:1' \
+        'framework-box-null=-1:0' \
+        'list-box-forward=0:1:False' \
+        'list-box-backward=0:1' \
+        'copy-box-forward=0:1:False' \
+        'copy-box-backward=0:1' \
+        'copy-box-other=-1:1' \
+        'plain-forward=0' \
+        'plain-backward=0' \
+        'runtime-owned=1' \
+        'runtime-no-slot=-1' \
+        'dynamic array null equality end' \
+        '== array search reference and type provenance ==' \
+        'array search reference and type provenance end' \
+        || { echo "FAIL: dynamic Array equality witness missing" >&2; exit 1; }
+    for name in DirectDynamicMatch ConditionalFirstMatch ConditionalSecondMatch IndexedSelectedMatch \
+            TypeOverwriteSelectedMatch \
+            FieldMatch HiddenMatch FieldStoredMatch FieldAliasMatch OverwriteSelectedMatch \
+            RefFieldWriteMatch RefStaticWriteMatch ArrayGetTypeMatch MakeArrayTypeMatch MdGetTypeMatch \
+            NestedArrayRuntimeMatch RankedTypeArrayMatch HelperRankedTypeArrayMatch \
+            RepeatedRankedTypeArrayMatch \
+            RefStobjMatch RefLdobjMatch \
+            TypeHandleMatch EmptySignatureSelectedMatch \
+            FieldVirtualMatch StructFieldMatch BoxOverwriteSelectedMatch \
+            StaticErasedMatch StaticDeclaredMatch StaticOverwriteSelectedMatch \
+            GenericStaticFirstMatch GenericStaticSecondMatch CctorStaticMatch ConstructorMatch \
+            ConstructorOverwriteSelectedMatch CctorOverwriteSelectedMatch \
+            PropertyMatch SetterOnlyMatch \
+            MixedVisibilityMatch \
+            MethodMatch GenericArgumentMatch \
+            GenericSelectedMatch \
+            InterfaceMatch OverloadSelectedMatch NonzeroOverloadMatch LocalSelectedMatch \
+            HelperSelectedMatch FrameworkBoxMatch \
+            SinkHelperMatch CrossHelperMatch DeepHelperMatch SharedGenericFirstMatch SharedGenericSecondMatch \
+            FrameworkListBoxMatch FrameworkCopyBoxMatch; do
+        if ! grep -Eq "^int32_t ${name}_Equals_m[0-9]+\\(" "$out"/generated*.cpp; then
+            echo "FAIL: selected value type equality body was not emitted: $name" >&2
+            exit 1
+        fi
+    done
+    if [ "$DN2CPP_ARRAY_FULL" = 1 ]; then
+        array_core_witnesses "$array_output" any '== array producer and validation order ==' \
+                'runtime box search=0:0' 'nullable runtime box search=0:0' \
+                'uninitialized runtime box search=0:0' 'reference-slot runtime box search=0:0' \
+                'reference-slot runtime box identity=True' 'reference-slot runtime box type=0:1' \
+                'array producer and validation order end' \
+            || { echo 'FAIL: runtime producer witness missing' >&2; return 1; }
+    fi
+}
+
+# Keep the CLI export in the parent before the finite-image subshell.
+prepare_cli
 (
     DN2CPP_SAMPLE_PROJECT_DIR=samples/dotnet/ArrayCore
     gate_extra_asserts() {
-        local out="$1" native name
-        gate_capture "$out/finite-search-witness" run_bounded "$out/ArrayFiniteSearchOnly$EXE_EXT"
-        gate_output status "$(cat "$out/finite-search-witness.status")" 0
-        gate_output witness "$out/finite-search-witness.stdout" 'finite local array searches end' --count 1 --policy crlf \
+        local out="$1" name
+        array_core_observation "$out" ArrayFiniteSearchOnly || return 1
+        gate_output witness "$_ARRAY_CORE_NATIVE.stdout" 'finite local array searches end' --count 1 --policy crlf \
             || { echo 'FAIL: finite local search block did not run' >&2; return 1; }
         for name in Selected Alternative GenericOnly; do
             grep -Eqw "${name}_Equals_m[0-9]+" "$out"/generated*.cpp \
@@ -511,278 +806,11 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|finite-local-searches:ildi
         corelib_diff_gate ArrayFiniteSearchOnly --no-ildiet
     fi
 )
+# Bash 3.2 does not apply errexit to a failed subshell command.
+finite_status=$?
+[ "$finite_status" -eq 0 ] || exit "$finite_status"
 corelib_diff_gate ArrayCore System.Collections
 
-array_output="$_CG_OUT/array-core-check.stdout"
-gate_capture "${array_output%.stdout}" run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT"
-gate_output status "$(cat "${array_output%.stdout}.status")" 0
-gate_output view "$array_output" "$array_output.records" --policy crlf
-array_core_prefix "$array_output" '== finite local array searches ==' run_bounded dotnet "$_CG_APP" before-finite-local-searches
-array_core_prefix "$array_output" '== finite local array searches ==' run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT" before-finite-local-searches
-gate_output witness "$array_output" 'finite local array searches end' --count 1 --policy crlf \
-    || { echo 'FAIL: finite local search block did not run in ArrayCore' >&2; exit 1; }
-array_core_prefix "$array_output" '== runtime-handle boxed formatting ==' run_bounded dotnet "$_CG_APP" before-runtime-box-formatting
-assert_runtime_box_formatting "$array_output"
-array_core_prefix "$array_output" '== nullable array type names ==' run_bounded dotnet "$_CG_APP" before-nullable-array-names
-for line in '== nullable array type names ==' \
-    'int text=System.Nullable`1[System.Int32][]' \
-    'char text=System.Nullable`1[System.Char][]' \
-    'jagged text=System.Nullable`1[System.Int32][][]' \
-    'md text=System.Nullable`1[System.Char][,]' \
-    'mixed text=System.Nullable`1[System.Int32][,][]' \
-    'nullable array identities=True:True:True' 'nullable dynamic names=True:True' \
-    'nullable array type names end'; do
-    gate_output witness "$array_output" "$line" --count 1 --policy crlf \
-        || { echo "FAIL: nullable array name witness missing: $line" >&2; exit 1; }
-done
-
-array_core_prefix "$array_output" '== excessive array rank diagnostics ==' run_bounded dotnet "$_CG_APP" before-excess-array-rank
-for line in '== excessive array rank diagnostics ==' 'rank32 accepted=32:0' \
-    'rank invalid length=ArgumentOutOfRangeException:lengths[0]:<null>:Non-negative number required. (Parameter '\''lengths[0]'\'')' \
-    'rank null lengths=ArgumentNullException:lengths:<none>:Value cannot be null. (Parameter '\''lengths'\'')' \
-    'rank bounds mismatch=ArgumentException:<null>:<none>:Number of lengths and lowerBounds must match.' \
-    'excessive array rank diagnostics end'; do
-    gate_output witness "$array_output" "$line" --count 1 --policy crlf \
-        || { echo "FAIL: excessive array rank witness missing: $line" >&2; exit 1; }
-done
-array_rank_diagnostic() {
-    local file="$1" label="$2"
-    gate_output match-record "$file" "^$label=System.TypeLoadException/80131522:'.*' from assembly '.*' has too many dimensions\\.$" --count any --policy crlf
-}
-for label in 'int lengths' 'object lengths' 'char lengths' 'int bounds' 'object bounds' 'char bounds'; do
-    array_rank_diagnostic "$array_output" "$label" \
-        || { echo "FAIL: excessive array rank diagnostic missing: $label" >&2; exit 1; }
-done
-array_core_prefix "$array_output" '== covariant reference array stores ==' run_bounded dotnet "$_CG_APP" before-covariant-stores
-for line in '== covariant reference array stores ==' \
-    'store message=Attempted to access an element as a type incompatible with the array.' \
-    'negative before type=IndexOutOfRangeException/80131508:identity=True' \
-    'past end before type=IndexOutOfRangeException/80131508:identity=True' \
-    'null before type=NullReferenceException/80004003:identity=True' \
-    'allocated array identities=True:True:True:True' \
-    'array token identities=True:True:True' 'array token casts=True:True:True' \
-    'array token cast rejected=InvalidCastException/80004002:identity=True' \
-    'list byte array growth=10:True:True' 'list byte array regrowth=True' \
-    'list int array growth=2:True' 'list reference array growth=2:True' \
-    'constructed mismatch=Attempted to access an element as a type incompatible with the array./80131503' \
-    'covariant reference array stores end'; do
-    gate_output witness "$array_output" "$line" --count 1 --policy crlf \
-        || { echo "FAIL: covariant array store witness missing: $line" >&2; exit 1; }
-done
-for line in 'string rejected' 'argument rejected' 'field rejected' 'return rejected' \
-    'shared rejected' 'class rejected' 'interface narrowed rejected' 'interface rejected' \
-    'generic invariant rejected' 'generic variance rejected' 'jagged rejected' \
-    'intrinsic rejected' 'runtime returned rejected' 'generic list rejected' \
-    'allocated array element rejected'; do
-    gate_output witness "$array_output" "$line=ArrayTypeMismatchException/80131503:identity=True" --count 1 --policy crlf \
-        || { echo "FAIL: rejected store changed array contents: $line" >&2; exit 1; }
-done
-for line in 'string compatible' 'string null' 'shared compatible' 'class compatible' \
-    'interface narrowed compatible' 'interface compatible' 'boxed interface compatible' \
-    'object boxed compatible' 'object compatible' 'object null' 'generic compatible' \
-    'generic variance compatible' 'jagged compatible' 'intrinsic compatible' 'generic list compatible' \
-    'allocated byte array compatible' 'allocated int array compatible' \
-    'allocated reference array compatible' 'allocated nested array compatible' \
-    'allocated object compatible'; do
-    gate_output witness "$array_output" "$line=ok:identity=True" --count 1 --policy crlf \
-        || { echo "FAIL: compatible store lost value identity: $line" >&2; exit 1; }
-done
-shared_store=$(LC_ALL=C awk '{ sub(/\r$/, "") }
-    /^inline void .*_StoreGeneric_TisCnRef_.*\)$/ { in_body = 1 }
-    in_body && /dn2cpp_stelem_ref\(/ { found = 1 }
-    in_body && /^\}/ { in_body = 0 }
-    END { if (found) print "shared reference store" }' "$_CG_OUT"/generated.h)
-assert_output "$shared_store" 'shared reference store'
-shared_array=$(LC_ALL=C awk '{ sub(/\r$/, "") }
-    /^inline Dn2CppArrayRef\* .*_Allocate_TisCnRef_.*\)$/ { in_body = 1 }
-    in_body && /dn2cpp_newarr_ref_t\(.*__rgctx/ { found = 1 }
-    in_body && /^\}/ { in_body = 0 }
-    END { if (found) print "shared array allocation" }' "$_CG_OUT"/generated.h)
-assert_output "$shared_array" 'shared array allocation'
-array_core_prefix "$array_output" '== covariant multidimensional reference stores ==' run_bounded dotnet "$_CG_APP" before-covariant-md-stores
-for line in '== covariant multidimensional reference stores ==' \
-    'md store message=Attempted to access an element as a type incompatible with the array.' \
-    'md null before type=NullReferenceException/80004003:identity=True' \
-    'md culture reads=en-US:True' 'md culture ref read=en-US' \
-    'md culture ref write=ja-JP:True' 'md culture null=True' \
-    'multidimensional reference stores end'; do
-    gate_output witness "$array_output" "$line" --count 1 --policy crlf \
-        || { echo "FAIL: multidimensional reference store witness missing: $line" >&2; exit 1; }
-done
-for label in 'md rank2 rejected' 'md rank2 type before negative' 'md rank2 type before past end' \
-    'md argument rejected' 'md field rejected' 'md shared rejected' \
-    'md rank3 rejected' 'md rank3 type before bounds' 'md rank4 rejected' 'md rank4 type before bounds' \
-    'md created rejected' 'md class rejected' 'md interface rejected' 'md jagged rejected'; do
-    gate_output witness "$array_output" "$label=ArrayTypeMismatchException/80131503:identity=True" --count 1 --policy crlf \
-        || { echo "FAIL: multidimensional incompatible store or retention mismatch: $label" >&2; exit 1; }
-done
-for label in 'md rank2 compatible negative' 'md rank2 null past end' \
-    'md rank3 compatible bounds' 'md rank4 compatible bounds'; do
-    gate_output witness "$array_output" "$label=IndexOutOfRangeException/80131508:identity=True" --count 1 --policy crlf \
-        || { echo "FAIL: multidimensional compatible store bounds mismatch: $label" >&2; exit 1; }
-done
-for label in 'md rank2 compatible' 'md rank2 null' 'md shared compatible' \
-    'md rank3 compatible' 'md rank3 null' 'md rank4 compatible' 'md rank4 null' \
-    'md created compatible' 'md interface compatible' 'md jagged compatible' 'md object boxed compatible'; do
-    gate_output witness "$array_output" "$label=ok:identity=True" --count 1 --policy crlf \
-        || { echo "FAIL: multidimensional compatible store lost identity: $label" >&2; exit 1; }
-done
-shared_md_store=$(LC_ALL=C awk '{ sub(/\r$/, "") }
-    /^inline void .*_StoreMdGeneric_TisCnRef_.*\)$/ { in_body = 1 }
-    in_body && /dn2cpp_array_check_store_ref\(/ { found = 1 }
-    in_body && /^\}/ { in_body = 0 }
-    END { if (found) print "shared multidimensional store" }' "$_CG_OUT"/generated.h)
-assert_output "$shared_md_store" 'shared multidimensional store'
-shared_md_identity=$(LC_ALL=C awk '{ sub(/\r$/, "") }
-    /_AllocateMd_TisCnRef_.*\)$/ { allocation = 1 }
-    allocation && /dn2cpp_newmdarr\(.*__rgctx/ { allocation_ti = 1 }
-    /_WriteGenericMd_TisCnRef_.*\)$/ { address = 1 }
-    address && /dn2cpp_md_require_address_element\(.*__rgctx/ { address_ti = 1 }
-    /^\}/ { allocation = 0; address = 0 }
-    END { if (allocation_ti && address_ti) print "shared MD identities" }' "$_CG_OUT"/generated.h "$_CG_OUT"/generated*.cpp)
-assert_output "$shared_md_identity" 'shared MD identities'
-
-array_core_prefix "$array_output" '-- array shape argument checks --' run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT" before-array-provenance
-grep -Fq 'dn2cpp_array_search_equals(' "$_CG_OUT"/generated*.cpp \
-    || { echo 'FAIL: non-generic Array search lacks its missing-slot guard' >&2; exit 1; }
-for line in '-- array shape argument checks --' 'array shape argument checks end' \
-        'initialize-dyn-boxed-equality: True/True' \
-        'initialize-bound-boxed-equality: True/True' 'Array Initialize discovery end' \
-        '== runtime type-handle boxes and array refusals ==' \
-        'int=System.Int32:7:equal=True/True' 'short=System.Int16:-3:equal=True/True' \
-        'nullable empty=null' 'reference identity=True' \
-        'runtime type-handle boxes and array refusals end'; do
-    gate_output witness "$array_output" "$line" --count 1 --policy crlf \
-        || { echo "FAIL: Array guard witness missing: $line" >&2; exit 1; }
-done
-
-array_core_prefix "$array_output" '== dynamic array null equality ==' run_bounded dotnet "$_CG_APP" before-dynamic-array-null-equality
-array_core_prefix "$array_output" '== array search reference and type provenance ==' run_bounded dotnet "$_CG_APP" before-array-search-provenance-additions
-array_core_prefix "$array_output" '== array search loop provenance ==' run_bounded dotnet "$_CG_APP" before-array-search-loops
-for line in '== array search loop provenance ==' \
-        'loop-local=0:1:1' 'loop-argument=0:1:1' 'loop-type=0' \
-        'loop-type-unwrapped=0:1' 'loop-unsearched-leaf=0' \
-        'array search loop provenance end'; do
-    gate_output witness "$array_output" "$line" --count 1 --policy crlf \
-        || { echo "FAIL: array loop witness missing: $line" >&2; exit 1; }
-done
-
-array_core_prefix "$array_output" '== nested generic interface variance ==' run_bounded dotnet "$_CG_APP" before-nested-interface-variance
-for line in '== nested generic interface variance ==' \
-    'nested direct=-1' 'nested covariance=True' 'nested owner distinct=False' \
-    'nested flat neighbor=False' 'nested escape neighbor=False' \
-    'variance nested definition=NestedInterfaceVarianceSubset.Outer+IOut`1' \
-    'variance flat definition=NestedInterfaceVarianceSubset.Outer_IOut`1' \
-    'nested explicit body=1' 'nested explicit interface=-1' \
-    'generic covariance=True' 'generic enclosing invariant=False' \
-    'generic middle invariant=False' 'nested generic interface variance end'; do
-    gate_output witness "$array_output" "$line" --count 1 --policy crlf \
-        || { echo "FAIL: nested interface variance witness missing: $line" >&2; exit 1; }
-done
-for name in 'top public' 'top explicit' 'nested public' 'nested explicit' 'deep' 'generic enclosing'; do
-    for result in 'default=-1' 'held=1' 'array=1,2,3' 'search=1' 'span=1,2,3' 'list=1,2,3/1'; do
-        gate_output witness "$array_output" "$name $result" --count 1 --policy crlf \
-            || { echo "FAIL: nested interface comparison mouth missing: $name $result" >&2; exit 1; }
-    done
-done
-for line in \
-    'direct=0:1' \
-    'conditional-first=0:1:0' \
-    'conditional-second=0:0:1' \
-    'indexed-selected=0:1' \
-    'type-overwrite=0:1:TypeOverwrittenDeadMatch' \
-    'field-forward=0:1' \
-    'field-backward=1:1' \
-    'hidden-field=0:1' \
-    'field-stored=0:1:1' \
-    'ref-field-write=0:1' \
-    'ref-static-write=0:1' \
-    'array-get-type=0:1' \
-    'make-array-type=0:1:True' \
-    'object-get-type=0:Object' \
-    'nested-array-get-type=0:1' \
-    'ranked-array-type=0:1' \
-    'helper-ranked-array-type=0:1' \
-    'repeated-ranked-array-type=0:1' \
-    'ref-stobj=0:1' \
-    'ref-ldobj=0:1' \
-    'copied-object-get-type=0:Object' \
-    'md-get-type=0:1:2' \
-    'type-handle=0:1' \
-    'empty-type-signature=0:1' \
-    'field-alias=0:1' \
-    'field-overwrite=0:1:1' \
-    'field-virtual=0:1' \
-    'static-erased=0:1' \
-    'static-declared=0:1' \
-    'static-overwrite=0:1:1' \
-    'generic-static=0:1,0:1' \
-    'struct-field=0:1' \
-    'box-overwrite=0:1:True' \
-    'cctor-static=0:1' \
-    'constructor-field=0:1' \
-    'constructor-overwrite=0:1:1' \
-    'cctor-overwrite=0:1:1' \
-    'property=1:1' \
-    'setter-only=0:1' \
-    'mixed-visibility=0:1' \
-    'method=0:1' \
-    'generic-argument=1:1' \
-    'generic-selected=0:1' \
-    'interface-provider=0:1' \
-    'overload=0:1' \
-    'nonzero-overload=0:1' \
-    'local-after-create=0:1:UnselectedLocalMatch' \
-    'helper-other-call=0:1:2' \
-    'helper-sink=0:1' \
-    'field-helper=0:1' \
-    'deep-helper=0:1' \
-    'shared-generic=0:1,0:1' \
-    'unallocated-provider=UnallocatedArrayTypeProvider' \
-    'unused-reflected=UnusedReflectedMatch[]' \
-    'framework-box-forward=0:1:False' \
-    'framework-box-backward=0:1' \
-    'framework-box-null=-1:0' \
-    'list-box-forward=0:1:False' \
-    'list-box-backward=0:1' \
-    'copy-box-forward=0:1:False' \
-    'copy-box-backward=0:1' \
-    'copy-box-other=-1:1' \
-    'plain-forward=0' \
-    'plain-backward=0' \
-    'runtime-owned=1' \
-    'runtime-no-slot=-1' \
-    'dynamic array null equality end' \
-    '== array search reference and type provenance ==' \
-    'array search reference and type provenance end'; do
-    gate_output witness "$array_output" "$line" --count 1 --policy crlf \
-        || { echo "FAIL: dynamic Array equality witness missing: $line" >&2; exit 1; }
-done
-for name in DirectDynamicMatch ConditionalFirstMatch ConditionalSecondMatch IndexedSelectedMatch \
-        TypeOverwriteSelectedMatch \
-        FieldMatch HiddenMatch FieldStoredMatch FieldAliasMatch OverwriteSelectedMatch \
-        RefFieldWriteMatch RefStaticWriteMatch ArrayGetTypeMatch MakeArrayTypeMatch MdGetTypeMatch \
-        NestedArrayRuntimeMatch RankedTypeArrayMatch HelperRankedTypeArrayMatch \
-        RepeatedRankedTypeArrayMatch \
-        RefStobjMatch RefLdobjMatch \
-        TypeHandleMatch EmptySignatureSelectedMatch \
-        FieldVirtualMatch StructFieldMatch BoxOverwriteSelectedMatch \
-        StaticErasedMatch StaticDeclaredMatch StaticOverwriteSelectedMatch \
-        GenericStaticFirstMatch GenericStaticSecondMatch CctorStaticMatch ConstructorMatch \
-        ConstructorOverwriteSelectedMatch CctorOverwriteSelectedMatch \
-        PropertyMatch SetterOnlyMatch \
-        MixedVisibilityMatch \
-        MethodMatch GenericArgumentMatch \
-        GenericSelectedMatch \
-        InterfaceMatch OverloadSelectedMatch NonzeroOverloadMatch LocalSelectedMatch \
-        HelperSelectedMatch FrameworkBoxMatch \
-        SinkHelperMatch CrossHelperMatch DeepHelperMatch SharedGenericFirstMatch SharedGenericSecondMatch \
-        FrameworkListBoxMatch FrameworkCopyBoxMatch; do
-    if ! grep -Eq "^int32_t ${name}_Equals_m[0-9]+\\(" "$_CG_OUT"/generated*.cpp; then
-        echo "FAIL: selected value type equality body was not emitted: $name" >&2
-        exit 1
-    fi
-done
 if [ "$DN2CPP_ARRAY_FULL" = 0 ]; then
     exit 0
 fi
@@ -1131,16 +1159,7 @@ for prior_store_subject in ArrayFutureStoreOnly ArrayFutureNullStoreOnly ArrayOb
     fi
 done
 
-for line in '== array producer and validation order ==' \
-        'runtime box search=0:0' 'nullable runtime box search=0:0' \
-        'uninitialized runtime box search=0:0' 'reference-slot runtime box search=0:0' \
-        'reference-slot runtime box identity=True' 'reference-slot runtime box type=0:1' \
-        'array producer and validation order end'; do
-    if ! gate_output witness "$array_output" "$line" --count any --policy crlf; then
-        echo "FAIL: runtime producer witness missing: $line" >&2
-        exit 1
-    fi
-done
+
 
 # Non-SZ rank-one collection calls need the MD map without a statically MD array.
 lower_bounds_root="artifacts/arraycore-lower-bounds-only"

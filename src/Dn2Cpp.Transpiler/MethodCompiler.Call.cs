@@ -538,6 +538,12 @@ internal sealed partial class MethodCompiler
                         return;
                     }
                 }
+                CoreIntrinsics.ValidateKnownConstantCallable(callee);
+                if (CoreIntrinsics.IsWaitHandleRawWaitImport(callee))
+                {
+                    EmitManagedCall(callee, isCallvirt);
+                    return;
+                }
                 if (CoreIntrinsics.BrDelegateCallable.Matches(callee)
                     || CoreIntrinsics.BrPrimitiveBigMul.Matches(callee)
                     || CoreIntrinsics.BrNativeIntegerEndian.Matches(callee)
@@ -550,6 +556,7 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.IsDateTimeCultureManagedBody(callee)
                     || (CoreIntrinsics.IsRuntimeTypeHandleCopy(callee) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(callee))
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(callee)
+                    || CoreIntrinsics.IsInterpolationStaticHelper(callee)
                     || CoreIntrinsics.IsScalarNumericLeaf(callee)
                     || CoreIntrinsics.IsBinaryIntegerEndianBody(callee)
                     || CoreIntrinsics.IsPrimitiveParseBody(callee)
@@ -557,7 +564,13 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.IsPrimitiveWideConversionBody(callee)
                     || CoreIntrinsics.IsVectorAlignmentManagedBody(callee)
                     || CoreIntrinsics.IsConcreteVectorReduction(callee)
+                    || CoreIntrinsics.IsResourceManagerDefaultType(callee)
                     || CoreIntrinsics.IsPrimitiveElementHelper(callee)
+                    || CoreIntrinsics.IsStringNullTerminatedLength(callee)
+                    || CoreIntrinsics.IsSearchValuesShuffle(callee)
+                    || CoreIntrinsics.IsWaitHandleRawWaitWrapper(callee)
+                    || CoreIntrinsics.IsCancellationInvoke(callee)
+                    || CoreIntrinsics.IsKnownConstant(callee)
                     || CoreIntrinsics.IsMemberNotFoundExceptionFactory(callee)
                     || CoreIntrinsics.IsMemberMetadataDefinitionBase(callee)
                     || CoreIntrinsics.IsCustomAttributeDataConstructorBase(callee)
@@ -572,6 +585,9 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(callee)
                     || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(callee)
                     || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(callee)
+                    || CoreIntrinsics.BrStringRawByteReference.Matches(callee)
+                    || CoreIntrinsics.BrArrayNativeLength.Matches(callee)
+                    || CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(callee)
                     || CoreIntrinsics.BrActivatorNamed.Matches(callee)
                     || CoreIntrinsics.BrActivatorDefault.Matches(callee))
                 {
@@ -724,6 +740,8 @@ internal sealed partial class MethodCompiler
                 // mapping.
                 if (TryEmitMethodDefIntercept(CoreIntrinsics.MdMemoryMarshalArrayData, callee))
                     return;
+                if (TryEmitMethodDefIntercept(CoreIntrinsics.MdMarshalStructureToPtr, callee))
+                    return;
                 // An intra-assembly call into an intrinsic-mapped type (e.g.
                 // corelib's Span<T> -> ThrowHelper) is emitted inline, not
                 // transpiled — its body is never pulled into the tree.
@@ -796,6 +814,11 @@ internal sealed partial class MethodCompiler
                 if (_c.TryResolveVectorManagedThrowSpec(_module, (MethodSpecificationHandle)handle, _method.Context) is { } vectorGuard)
                 {
                     EmitManagedCall(vectorGuard, isCallvirt);
+                    return;
+                }
+                if (_c.IsKnownConstantSpec(_module, ms))
+                {
+                    EmitManagedCall(_c.ResolveMethodSpec(_module, (MethodSpecificationHandle)handle, _method.Context), isCallvirt);
                     return;
                 }
                 // AsyncTaskMethodBuilder.Start<TSM> /.AwaitUnsafeOnCompleted —

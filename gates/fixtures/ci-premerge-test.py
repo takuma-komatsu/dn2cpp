@@ -207,6 +207,32 @@ exec "$FIXTURE_PYTHON" "$@"
         (self.logs / '_receipt.txt').unlink()
         self.assertNotEqual(self.invoke('outcome', PREMERGE_OUTCOME='success').returncode, 0)
 
+    def test_outcome_compares_numeric_shas_as_text(self):
+        commands = self.root / 'numeric sha commands'
+        commands.mkdir()
+        real_git = shutil.which('git')
+        self.assertIsNotNone(real_git)
+        command = commands / 'git'
+        command.write_text('''#!/usr/bin/env bash
+if [ "$#" = 3 ] && [ "$1" = rev-parse ] && [ "$2" = --short ] && [ "$3" = HEAD ]; then
+    printf '%s\\n' "$FIXTURE_SHORT_HEAD"
+else
+    exec "$FIXTURE_REAL_GIT" "$@"
+fi
+''', encoding='utf-8', newline='\n')
+        command.chmod(0o755)
+        for short_head, different in (('0e89710', '0000000'), ('1e00006', '1000000')):
+            with self.subTest(short_head=short_head, different=different):
+                environment = dict(PREMERGE_OUTCOME='success', FIXTURE_COMMANDS=commands.as_posix(),
+                                   FIXTURE_REAL_GIT=Path(real_git).as_posix(), FIXTURE_SHORT_HEAD=short_head)
+                self.assertEqual(self.invoke('run', FIXTURE_COMMIT=short_head).returncode, 0)
+                result = self.invoke('outcome', **environment)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.invoke('run', FIXTURE_COMMIT=different).returncode, 0)
+                result = self.invoke('outcome', **environment)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertTrue((self.logs / 'receipt-validation-error.txt').is_file())
+
     def test_failed_or_skipped_step_never_reuses_a_receipt(self):
         self.assertEqual(self.invoke('run').returncode, 0)
         for outcome in ('failure', 'cancelled', 'skipped'):

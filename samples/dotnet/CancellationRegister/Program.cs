@@ -13,6 +13,11 @@ namespace CancellationRegister
             System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
             System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.InvariantCulture;
 
+            if (args.Length != 0 && args[0] == "cold-first-use")
+            {
+                CancellationDispatchSubset.RunColdFirstUse();
+                return;
+            }
             CrossThreadCancel.Program.__GateEntry();
             LifoOrder.Program.__GateEntry();
             AlreadyCanceled.Program.__GateEntry();
@@ -32,6 +37,9 @@ namespace CancellationRegister
             if (args.Length != 0 && args[0] == "before-token-identity")
                 return;
             CancellationIdentitySubset.Run();
+            if (args.Length != 0 && args[0] == "before-cancellation-dispatch")
+                return;
+            CancellationDispatchSubset.Run();
         }
     }
 }

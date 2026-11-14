@@ -26,6 +26,9 @@
 # here only because CancellationTokenRegistration is the intrinsic pointer value type
 # that shows the bug. It carries a RuntimeTypeHandle arm for the same reason.
 # Named argument faults, boxed bounds, validation order and GC-retained fields.
+# Cancel dispatch passes state and token, runs a multicast callback in order and
+# stops it at the first throw. A fresh process races first use of the canonical
+# canceled token across threads.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|token-identity-prefix:before-token-identity"
 
@@ -64,7 +67,17 @@ gate_extra_asserts() {
         'delegate argument=InvalidOperationException' \
         'Cancellation identity and delegate faults end' \
         --count 1 --policy crlf
-
+    gate_capture_ok "$out/dispatch-before" run_bounded dotnet "$_CG_APP" before-cancellation-dispatch
+    gate_output select "$out/native.stdout" "$out/dispatch-prefix.stdout" \
+        --before '== Cancellation dispatch ==' --policy crlf
+    gate_output compare "$out/dispatch-prefix.stdout" "$out/dispatch-before.stdout" --policy crlf
+    gate_output witness "$out/native.stdout" 'token multicast throw=aggregate:1:True calls=2 order=12 state=True token=True:True:True' \
+        'Cancellation dispatch end' --count 1 --policy crlf
+    gate_capture_ok "$out/cold-oracle" run_bounded dotnet "$_CG_APP" cold-first-use
+    gate_capture_ok "$out/cold-native" run_bounded "./$out/CancellationRegister" cold-first-use
+    gate_output byte-witness "$out/cold-oracle.stdout" 'cold first use=True:True:True' --count 1 --policy crlf
+    gate_output compare "$out/cold-oracle.stdout" "$out/cold-native.stdout" --policy crlf
+    gate_output compare "$out/cold-oracle.stderr" "$out/cold-native.stderr" --policy crlf
 }
 
 corelib_diff_gate CancellationRegister

@@ -51,6 +51,10 @@
 # Full mode adds a linked High driver, a generated-CoreLib High/Medium retention
 # probe and the full malformed-signature matrix. Address-taking and representative
 # signature refusals always run with both ILDiet and --no-ildiet.
+# The appended StructureToPtr block checks the exact object overload through
+# calls, managed function pointers and reflection on its own buffer. The
+# private CheckUninitialized guard faults on a zero token and passes an
+# allocated one, by name and through the public weak handle.
 source "$(dirname "$0")/_common.sh"
 source gates/_typed-gchandle.sh
 case "${DN2CPP_MARSHAL_FULL:-0}" in
@@ -188,6 +192,18 @@ gate_capture_diff_files() {
     gate_output prefix "$native" "$out/before-typed.native.stdout" --before '== Typed GC handles ==' --policy crlf
     gate_output prefix "$4" "$out/before-typed.oracle.stdout" --before '== Typed GC handles ==' --policy crlf
     typed_gchandle_assert_output "$native"
+    gate_capture_ok "$out/before-structure-to-ptr" run_bounded "./$out/MarshalPinning$EXE_EXT" before-structure-to-ptr-routes
+    gate_output prefix "$native" "$out/before-structure-to-ptr.stdout" --before '== Marshal StructureToPtr callable routes ==' --policy crlf
+    for route in direct calli reflection; do
+        gate_output witness "$native" "marshal-structure-to-ptr-route:$route:checks=7" --count 1 --policy crlf
+    done
+    gate_output witness "$native" 'marshal-structure-to-ptr-checks:23' --count 1 --policy crlf
+    gate_output witness "$native" 'Marshal StructureToPtr callable routes end' --count 1 --policy crlf
+    gate_capture_ok "$out/before-check-uninitialized" run_bounded "./$out/MarshalPinning$EXE_EXT" before-check-uninitialized
+    gate_output prefix "$native" "$out/before-check-uninitialized.stdout" --before '== GCHandle.CheckUninitialized ==' --policy crlf
+    gate_output witness "$native" 'default:NullReferenceException:NullReferenceException' --count 1 --policy crlf
+    gate_output witness "$native" 'allocated:passed:passed' --count 1 --policy crlf
+    gate_output witness "$native" 'GCHandle.CheckUninitialized end' --count 1 --policy crlf
 }
 
 corelib_diff_gate MarshalPinning

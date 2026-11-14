@@ -115,6 +115,15 @@ each is settled, and each refuses out loud rather than answering wrong:
   zones, per-culture *date* formatting and localized display names are
   out (they need ICU + TZif). Culture-aware **numeric** formatting is in.
 - 64-bit only. No COM interop.
+- GC generation queries model one logical generation (`GC.MaxGeneration == 0`).
+  Boehm is non-generational; objects do not undergo CLR-style promotion.
+  Validated `GC.Collect` requests use a whole-heap collection; scheduling and
+  compaction hints do not change the collector into a generational or moving GC.
+- Full-GC notifications are unavailable: registration and cancellation use the
+  input CoreLib's `InvalidOperationException` failure path; waits immediately
+  return `GCNotificationStatus.NotApplicable`. Public argument validation stays
+  intact. This is a dn2cpp capability limit, not a claim about CLR notification
+  support or the host's concurrent-GC setting.
 - `FileStream.IsAsync` answers `false` — async file I/O runs the
   deterministic sync-over-async route.
 - An unsupported IL or BCL shape is a transpile-time error or a catchable
@@ -704,7 +713,17 @@ Full ECMA-335 IL coverage. What that means concretely:
   `catch … when` filters, multi-level finally chains, nested EH.
 - **Delegates / lambdas** — `ldftn`/`ldvirtftn`, Roslyn display classes
   and cached lambdas, multicast `+=`/`-=`, static function pointers
-  (`calli`/`delegate*<...>`).
+  (`calli`/`delegate*<...>`). Retained protected name-binding constructors
+  initialize the existing delegate through the native binder, preserving its
+  identity and exact type. Instance names are case-sensitive; static names are
+  case-insensitive and a missing static match leaves the receiver unchanged.
+  Rebinding an existing multicast list would create CoreCLR-only hybrid state;
+  a successful match on that path throws `PlatformNotSupportedException` before
+  changing the receiver. Rebinding an entry whose binding was ever copied into
+  a multicast list is also refused, even after that list becomes unreachable;
+  cloning a single entry creates an independent, rebindable receiver. These
+  limits do not alter ordinary delegate construction or combination, and do not
+  make concurrent constructor mutation safe.
 - **Generics** — canonically shared bodies by default, in the IL2CPP
   manner; see *Optimization* below.
 - **Static abstract interface members** — dispatched through `constrained.`,
@@ -815,6 +834,12 @@ expression trees at runtime.
   real (de)registration. **`WeakReference`/`WeakReference<T>`** are real,
   on Boehm disappearing and long links, with .NET resurrection semantics;
   **`GCHandle`** supports all four `GCHandleType` values.
+  `GC.GetTotalPauseDuration()` reports cumulative completed pauses in `TimeSpan`
+  ticks, independently of `DN2CPP_GC_STATS`: stop-the-world windows with threads,
+  synchronous full collections on single-threaded Wasm. Diagnostic histograms
+  remain opt-in. Nonthreaded incremental collection cannot supply this measure
+  and throws `PlatformNotSupportedException`; the no-GC allocator reports zero
+  because no collections occur. Absolute timings are collector-specific.
 - **Real OS threads** — `Thread`, `Task.Run`, `ThreadPool`,
   `Parallel.For`/`ForEach`/`Invoke` over `std::thread` and a real worker
   pool. **Real synchronization** — `Interlocked` → `__atomic_*`;

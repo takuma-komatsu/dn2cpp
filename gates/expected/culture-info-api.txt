@@ -35,6 +35,10 @@ GetCultures(All).Length=1
   unmodeled name='xx-YY' LCID=4096
 GetFormat(DTFI) null? False
 Calendar: PlatformNotSupportedException
+DTFI.Calendar get: PlatformNotSupportedException: DateTimeFormatInfo.Calendar is not supported
+DTFI.Calendar read-only set: InvalidOperationException: Instance is read-only.
+DTFI.Calendar null set: ArgumentNullException: Value cannot be null. (Parameter 'value')
+DTFI.Calendar set: PlatformNotSupportedException: DateTimeFormatInfo.Calendar is not supported
 -- CurrentUICulture --
   ui='ja-JP' cur='de-DE'
   provider-less N2=1.234,50

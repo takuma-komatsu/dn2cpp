@@ -119,10 +119,37 @@ internal static class CoreIntrinsicTypeMaps
         && managedBody && !pinvoke && parameterCount == 1
         && result == "System.ArgumentException" && parameter == "System.Reflection.MemberInfo";
 
+    public static bool IsWaitHandleRawWaitWrapperMethod(string? assembly, string? owner, string name,
+        bool exactDeclaration, int parameterCount, bool exactSignature) =>
+        assembly == "System.Private.CoreLib" && owner == "System.Threading.WaitHandle"
+        && (name == "WaitMultipleIgnoringSyncContext" && parameterCount is 3 or 4
+            || name == "WaitMultipleIgnoringSyncContextCore" && parameterCount == 3)
+        && exactDeclaration && exactSignature;
+
+    public static bool IsCancellationInvokeMethod(string? assembly, string? owner, string name,
+        bool exactDeclaration, bool exactSignature) =>
+        assembly == "System.Private.CoreLib" && owner == "System.Threading.CancellationTokenSource"
+        && name == "Invoke" && exactDeclaration && exactSignature;
+
+    public static bool IsKnownConstantMethod(string? assembly, string? owner, string name,
+        bool exactAttributes, bool managedBody, bool parameterIdentity, bool constraints) =>
+        assembly == "System.Private.CoreLib" && owner == "System.Runtime.CompilerServices.RuntimeHelpers"
+        && name == "IsKnownConstant" && exactAttributes && managedBody && parameterIdentity && constraints;
+
+    public static bool IsStringPrivateEntryPointMethod(string? assembly, string? owner, string name,
+        bool exactDeclaration, bool exactSignature) =>
+        assembly == "System.Private.CoreLib" && owner == "System.String"
+        && name is "GetRawStringDataAsUInt8" or "wcslen" && exactDeclaration && exactSignature;
+
     public static bool IsCultureInfoNameValidatorMethod(string? assembly, string? owner, string name,
         bool exactDeclaration, bool exactSignature) =>
         assembly == "System.Private.CoreLib" && owner == "System.Globalization.CultureInfo"
         && name == "VerifyCultureName" && exactDeclaration && exactSignature;
+
+    public static bool IsSearchValuesShuffleMethod(string? assembly, string? owner, string name,
+        bool exactDeclaration, bool exactSignature) =>
+        assembly == "System.Private.CoreLib" && owner == "System.Buffers.SearchValues"
+        && name == "ShuffleNativeModified" && exactDeclaration && exactSignature;
 
     public static bool IsPrimitiveElementHelperMethod(string? assembly, string? owner, string name,
         bool isAssembly, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
@@ -621,7 +648,7 @@ internal static class CoreIntrinsicTypeMaps
     /// delegate invoke, a List&lt;T&gt; or ReadOnlyCollection&lt;T&gt;, and calls to each
     /// other. System.Delegate's EnumerateInvocationList: the InvocationListEnumerator
     /// construction, whose MoveNext reaches the chain through
-    /// <c>MulticastDelegate.TryGetAt</c> (<see cref="LoweredRuntimePrimitive"/>). Their call
+    /// <c>MulticastDelegate.TryGetAt</c>, a retained native-chain body. Their call
     /// sites stay intercepted with the rest of the intrinsic type, but the lowering and an
     /// address-taken use both name the real transpiled body, so .NET's argument order and
     /// messages hold by construction.</summary>
