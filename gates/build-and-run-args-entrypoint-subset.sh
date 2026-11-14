@@ -60,8 +60,9 @@
 # typeof and default(struct) stay non-triggers. The last block enters through reflection
 # and the runtime: Activator and new(), a constructor, static method or property invoked
 # by reflection, GetUninitializedObject, a boxed interface call or ToString, an attribute
-# a read constructs, and a closed generic's static method bound by name or invoked. A
-# failed initializer under Activator.CreateInstance(Type) surfaces inside the
+# a read constructs, and a closed generic's static method bound by name or invoked
+# after MakeGenericType closes it over a known argument. A failed initializer
+# under Activator.CreateInstance(Type) surfaces inside the
 # TargetInvocationException, as the constructor's would. A value type's member that a
 # lowered call or a runtime slot enters triggers too: an interpolation hole, a
 # collection's default equality, hash and order, a typed or run-time Array.Initialize

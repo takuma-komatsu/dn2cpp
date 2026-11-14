@@ -317,8 +317,12 @@ to repeat keep exact values when every path writes the slot before use.
 A `MakeGenericType` over a known tuple takes an existing instantiation, else the
 definition's runtime template while `TemplateMayServe` finds that a clone can run
 what the sites select on it, else a static instantiation when the constraints
-admit the tuple, else a ClosedGeneric diagnostic. A body that runs, binds,
-constructs or instantiates through an operand depending on the class type
+admit the tuple, else a ClosedGeneric diagnostic. Definitions with a type
+initializer cannot supply a runtime template. A known tuple for such a definition
+uses a closed static instantiation; invoking a precise-init static member retains
+that type's initializer and enters its first-use guard. Unknown arguments require
+an independently emitted instantiation with the selected body retained.
+A body that runs, binds, constructs or instantiates through an operand depending on the class type
 parameters cannot serve a clone, which applies the body's sites only in the
 placeholder context, so such a request takes the static instantiation, whose
 exact context resolves them; a template body's sites report from the placeholder
