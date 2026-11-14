@@ -1454,6 +1454,18 @@ internal sealed partial class Compilation
             throw new NotSupportedException(
                 $"field '{name}' not found on {cls.FullName} "
                 + $"(fields: {string.Join(", ", cls.Fields.Select(f => f.Name))})");
+        if (cls.FullName == "System.Resources.ResourceManager")
+        {
+            CoreIntrinsics.ValidateResourceManagerField(fld);
+            if (mr.Parent.Kind != HandleKind.TypeReference
+                || !CoreIntrinsics.IsResourceManagerHeaderFieldSignature(reader.GetBlobReader(mr.Signature)))
+                throw new NotSupportedException("ResourceManager field access requires its unmodified named CoreLib owner and Int32 field signature");
+            var owner = reader.GetTypeReference((TypeReferenceHandle)mr.Parent);
+            if (owner.ResolutionScope.Kind != HandleKind.AssemblyReference
+                || !reader.StringComparer.Equals(owner.Namespace, "System.Resources")
+                || !reader.StringComparer.Equals(owner.Name, "ResourceManager"))
+                throw new NotSupportedException("ResourceManager field access requires its unmodified named CoreLib owner and Int32 field signature");
+        }
         return (cls, fld);
     }
 

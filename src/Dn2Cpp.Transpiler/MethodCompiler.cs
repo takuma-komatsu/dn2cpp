@@ -3205,7 +3205,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // vector halves as private fields. Route to the get_lower/get_upper op.
                 if (TryEmitVectorHalfField(insn.Token, wantAddress: false))
                     break;
-                var (cls, fld) = ResolveField(insn.Token);
+                var (cls, fld) = ResolveField(insn.Token, op);
                 // A field declared on System.Exception (an intrinsic type with no emitted
                 // struct) maps onto the Dn2CppExceptionObject prefix — a get_Message
                 // override reading base state (FileNotFoundException reads _message).
@@ -3245,7 +3245,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             }
             case ILOpCode.Stfld:
             {
-                var (cls, fld) = ResolveField(insn.Token);
+                var (cls, fld) = ResolveField(insn.Token, op);
                 if (IsExceptionBaseField(cls))
                 {
                     var exVal = Pop();
@@ -3289,7 +3289,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             {
                 if (TryEmitVectorHalfField(insn.Token, wantAddress: true))
                     break;
-                var (cls, fld) = ResolveField(insn.Token);
+                var (cls, fld) = ResolveField(insn.Token, op);
                 if (IsExceptionBaseField(cls))
                 {
                     var exObj = Pop();
@@ -3346,7 +3346,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     Push(StackKind.Ptr, "const uint8_t*", sym);
                     break;
                 }
-                var (_, fld) = ResolveField(insn.Token);
+                var (_, fld) = ResolveField(insn.Token, op);
                 fld = ReflectionStaticFieldAlias(fld);
                 // ldsflda of an intrinsic value-type constant (e.g. TimeSpan.Zero.
                 // ToString) — materialize the value into a temp and push its address
@@ -3380,7 +3380,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             }
             case ILOpCode.Ldsfld:
             {
-                var (_, fld) = ResolveField(insn.Token);
+                var (_, fld) = ResolveField(insn.Token, op);
                 fld = ReflectionStaticFieldAlias(fld);
                 // Decimal / TimeSpan / DateTime are intrinsic value types; their
                 // static-field constants (Decimal.Zero/One/MinusOne/Max/Min, TimeSpan.
@@ -3455,7 +3455,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             }
             case ILOpCode.Stsfld:
             {
-                var (_, fld) = ResolveField(insn.Token);
+                var (_, fld) = ResolveField(insn.Token, op);
                 if (_stack.Count > 0)
                     TaintPoisonedTypeEscape(_stack[^1]);
                 // Force the owner's static-field declarations into the emit set (the

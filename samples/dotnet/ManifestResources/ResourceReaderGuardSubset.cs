@@ -1,6 +1,8 @@
 #nullable disable
 using System;
 using System.Globalization;
+using System.IO;
+using System.Text;
 using System.Reflection;
 using System.Resources;
 using System.Runtime.CompilerServices;
@@ -74,6 +76,62 @@ namespace ResourceReaderGuardSubset
             foreach (int index in new[] { -1, 0, int.MaxValue })
                 Console.WriteLine("deserialize-permit:" + index + ":" + DeserializeWithoutPermit(index));
             Console.WriteLine("resource reader type guards end");
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_READER_HEADERS") != "1") RunHeaders();
+        }
+
+        private static byte[] Header(string readerName, int magic)
+        {
+            using var names = new MemoryStream();
+            using (var writer = new BinaryWriter(names, Encoding.UTF8, true))
+            {
+                writer.Write(readerName);
+                writer.Write("System.Resources.RuntimeResourceSet");
+            }
+            byte[] nameBytes = names.ToArray();
+            using var stream = new MemoryStream();
+            using (var writer = new BinaryWriter(stream, Encoding.UTF8, true))
+            {
+                writer.Write(magic);
+                writer.Write(ResourceManager.HeaderVersionNumber);
+                writer.Write(nameBytes.Length);
+                writer.Write(nameBytes);
+                writer.Write(2);
+                writer.Write(0);
+                writer.Write(0);
+                while (stream.Position % 8 != 0) writer.Write((byte)0);
+                writer.Write((int)stream.Position + 4);
+            }
+            return stream.ToArray();
+        }
+
+        private static void ReadHeader(string name, byte[] bytes)
+        {
+            try
+            {
+                using var reader = new ResourceReader(new MemoryStream(bytes));
+                Console.WriteLine("reader-header:" + name + ":accepted");
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine("reader-header:" + name + ":" + exception.GetType().FullName);
+            }
+        }
+
+        private static void RunHeaders()
+        {
+            // Formatting a readonly field directly takes its address. This section
+            // exercises value loads; address refusal has its own metadata fixture.
+            int magic = ResourceManager.MagicNumber;
+            int version = ResourceManager.HeaderVersionNumber;
+            Console.WriteLine("resource-header-fields:" + magic + ":" + version);
+            Console.WriteLine("resource-header-reflection:"
+                + (magic == (int)typeof(ResourceManager).GetField("MagicNumber").GetValue(null)) + ":"
+                + (version == (int)typeof(ResourceManager).GetField("HeaderVersionNumber").GetValue(null)));
+            ReadHeader("valid", Header(Reader + ", mscorlib", magic));
+            ReadHeader("wrong-reader", Header("Wrong.Reader, mscorlib", magic));
+            ReadHeader("bad-magic", Header(Reader + ", mscorlib", 0));
+            ReadHeader("truncated", new byte[] { 0xce, 0xca, 0xef, 0xbe });
+            Console.WriteLine("resource reader headers end");
         }
 
         // dn2cpp refuses BinaryFormatter construction, where .NET builds one, so the

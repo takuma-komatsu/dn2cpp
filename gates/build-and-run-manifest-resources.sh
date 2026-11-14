@@ -11,7 +11,7 @@ case "${DN2CPP_MANIFEST_RESOURCES_FULL:-0}" in
     *) echo 'DN2CPP_MANIFEST_RESOURCES_FULL must be 0 or 1' >&2; exit 1 ;;
 esac
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|manifest-resources-full:$DN2CPP_MANIFEST_RESOURCES_FULL"
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/expected/manifest-resources-limits.txt"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/expected/manifest-resources-limits.txt gates/fixtures/ldftn-local/ResourceHeaderFieldFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 if [ "$DN2CPP_MANIFEST_RESOURCES_FULL" = 1 ]; then
     echo 'manifest resource coverage: full trim, route and preprocessing matrix'
 else
@@ -19,7 +19,7 @@ else
     echo 'manifest resource extended checks: skipped (not selected); not counted as passed'
 fi
 
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|resource-receivers-prefix:${DN2CPP_BEFORE_RM_RECEIVERS:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|resource-receivers-prefix:${DN2CPP_BEFORE_RM_RECEIVERS:-}|reader-headers-prefix:${DN2CPP_BEFORE_READER_HEADERS:-}"
 
 gate_extra_asserts() {
     local out="$1"
@@ -40,6 +40,10 @@ gate_extra_asserts() {
     gate_capture_ok "$out/reader-guards" run_bounded "$out/ManifestResources$EXE_EXT" reader-guards
     gate_output byte-witness "$out/reader-guards.stdout" 'resource reader type guards end' --count 1 --policy crlf
     gate_output compare "$out/reader-guards-oracle.stdout" "$out/reader-guards.stdout" --policy crlf
+    gate_output byte-witness "$out/reader-guards.stdout" 'resource reader headers end' --count 1 --policy crlf
+    DN2CPP_BEFORE_READER_HEADERS=1 gate_capture_ok "$out/reader-guards-before" run_bounded "$out/ManifestResources$EXE_EXT" reader-guards
+    gate_output select "$out/reader-guards.stdout" "$out/reader-guards-prefix.stdout" --before-prefix 'resource-header-fields:' --policy crlf
+    gate_output compare "$out/reader-guards-prefix.stdout" "$out/reader-guards-before.stdout" --policy crlf
     gate_capture_ok "$out/formatter-limit" run_bounded "$out/ManifestResources$EXE_EXT" formatter-limit
     gate_assert_text "$out/formatter-limit.stdout" 'create-formatter -> NotSupportedException: BinaryFormatter-serialized resource types are not supported. Store the value as one of the primitive resource types (string, numeric types, byte[]) instead.
 '
@@ -211,6 +215,30 @@ else
     gate_output compare "$OUT/native.stdout" "$EXPDIR/manifest-resources-limits-dropped.txt" --policy crlf
     gate_cache_commit
 fi
+
+# Distinct invalid metadata needs separate transpilation, not separate native images.
+build_gate_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+field_fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll"
+field_root=$(mktemp -d "artifacts/resource-header-fields-${CONFIG}.XXXXXXXX")
+gate_capture_ok "$field_root/generate" run_bounded dotnet "$field_fixture" --resource-header-fields "$field_root" "$CORELIB"
+for field_case in reference-type owner declaration-type declaration-flags address unsupported; do
+    field_core="$CORELIB"
+    field_extra=()
+    case "$field_case" in
+        declaration-*) field_core="$field_root/$field_case/System.Private.CoreLib.dll" ;;
+        owner) field_extra=(-r "$field_root/$field_case/ResourceLookalike.dll") ;;
+    esac
+    gate_capture "$field_root/$field_case/refusal" invoke_cli "$field_root/$field_case/ResourceHeaderField.dll" \
+        -r "$field_core" ${field_extra[@]+"${field_extra[@]}"} --no-ildiet -o "$field_root/$field_case/emitted"
+    gate_output status "$(cat "$field_root/$field_case/refusal.status")" 2
+    case "$field_case" in
+        reference-type) field_message='ResourceManager field access requires its unmodified named CoreLib owner and Int32 field signature' ;;
+        address) field_message='ResourceManager header fields support readonly value loads only' ;;
+        *) field_message='ResourceManager field access requires an exact CoreLib MagicNumber or HeaderVersionNumber declaration' ;;
+    esac
+    grep -Fq "$field_message" "$field_root/$field_case/refusal.stderr" \
+        || { cat "$field_root/$field_case/refusal.stderr" >&2; exit 1; }
+done
 
 if [ "$DN2CPP_MANIFEST_RESOURCES_FULL" != 1 ]; then
     echo "OK"
