@@ -1735,93 +1735,14 @@ internal sealed partial class Compilation
         return null;
     }
 
-    private Dictionary<(string Assembly, string Namespace, string Name), (Module Module, AssemblyReferenceHandle Scope)>? _typeForwarders;
-    private Dictionary<string, string>? _loadedAssemblyNames;
+    private RawAssemblyTypeResolver<Module>? _assemblyTypeResolver;
 
     private TypeDesc? ResolveAssemblyType(string assembly, string ns, string name,
         List<(Module, TypeDefinitionHandle)> candidates, Module scopeModule, AssemblyReferenceHandle scope)
     {
-        if (_typeForwarders is null)
-        {
-            _typeForwarders = new();
-            _loadedAssemblyNames = new(StringComparer.OrdinalIgnoreCase);
-            foreach (var module in Modules)
-            {
-                _loadedAssemblyNames.TryAdd(module.AssemblyName, module.AssemblyName);
-                foreach (var handle in module.Reader.ExportedTypes)
-                {
-                    var type = module.Reader.GetExportedType(handle);
-                    if (type.Implementation.Kind != HandleKind.AssemblyReference)
-                        continue;
-                    _typeForwarders.TryAdd((module.AssemblyName, module.Reader.GetString(type.Namespace),
-                        module.Reader.GetString(type.Name)), (module, (AssemblyReferenceHandle)type.Implementation));
-                }
-            }
-        }
-        for (int hops = 0; hops <= Modules.Count; hops++)
-        {
-            if (_loadedAssemblyNames!.TryGetValue(assembly, out var canonical))
-                assembly = canonical;
-            foreach (var (module, handle) in candidates)
-                if (module.AssemblyName.Equals(assembly, StringComparison.OrdinalIgnoreCase)
-                    && module.Reader.GetTypeDefinition(handle).GetDeclaringType().IsNil)
-                    return MakeTypeDescFor(module, handle);
-            if (_typeForwarders.TryGetValue((assembly, ns, name), out var forwarded))
-            {
-                scopeModule = forwarded.Module;
-                scope = forwarded.Scope;
-                assembly = scopeModule.Reader.GetString(scopeModule.Reader.GetAssemblyReference(scope).Name);
-                continue;
-            }
-            // Signed facades can be omitted when their implementation is loaded.
-            if (!_loadedAssemblyNames.ContainsKey(assembly)
-                && IsSignedStandardFacadeScope(scopeModule, scope, assembly))
-            {
-                string target = IsPrivateUriFacadeType(scopeModule, scope, assembly, ns, name)
-                    ? "System.Private.Uri" : "System.Private.CoreLib";
-                foreach (var (module, handle) in candidates)
-                    if (module.AssemblyName == target
-                        && module.Reader.GetTypeDefinition(handle).GetDeclaringType().IsNil)
-                        return MakeTypeDescFor(module, handle);
-            }
-            return null;
-        }
-        return null;
-    }
-
-    private static bool IsPrivateUriFacadeType(Module module, AssemblyReferenceHandle scope,
-        string assembly, string ns, string name)
-    {
-        bool runtime = assembly.Equals("System.Runtime", StringComparison.OrdinalIgnoreCase);
-        if (ns != "System" || (!runtime
-            && !assembly.Equals("netstandard", StringComparison.OrdinalIgnoreCase)))
-            return false;
-        var reference = module.Reader.GetAssemblyReference(scope);
-        var token = module.Reader.GetBlobReader(reference.PublicKeyOrToken);
-        if (token.Length != 8 || token.ReadUInt64() != (runtime
-            ? 0x3a0ad5117f5f3fb0UL : 0x51dd2dcdff137bccUL))
-            return false;
-        // These public forwarding rows share Private.Uri; nested rows resolve through their owner.
-        return name is "FileStyleUriParser" or "FtpStyleUriParser" or "GenericUriParser"
-            or "GenericUriParserOptions" or "GopherStyleUriParser" or "HttpStyleUriParser"
-            or "LdapStyleUriParser" or "NetPipeStyleUriParser" or "NetTcpStyleUriParser"
-            or "NewsStyleUriParser" or "Uri" or "UriBuilder" or "UriComponents"
-            or "UriFormat" or "UriFormatException" or "UriHostNameType" or "UriKind"
-            or "UriParser" or "UriPartial" || (runtime && name == "UriCreationOptions");
-    }
-
-    private static bool IsSignedStandardFacadeScope(Module module, AssemblyReferenceHandle scope, string assembly)
-    {
-        if (!assembly.StartsWith("System.", StringComparison.OrdinalIgnoreCase)
-            && !assembly.Equals("netstandard", StringComparison.OrdinalIgnoreCase)
-            && !assembly.Equals("mscorlib", StringComparison.OrdinalIgnoreCase))
-            return false;
-        var reference = module.Reader.GetAssemblyReference(scope);
-        var token = module.Reader.GetBlobReader(reference.PublicKeyOrToken);
-        if (token.Length != 8)
-            return false;
-        return token.ReadUInt64() is 0x3a0ad5117f5f3fb0UL or 0x51dd2dcdff137bccUL
-            or 0x8e79a7bed785ec7cUL or 0x89e03419565c7ab7UL;
+        _assemblyTypeResolver ??= new RawAssemblyTypeResolver<Module>(Modules.Select(m => (m, m.AssemblyName, m.Reader)));
+        return _assemblyTypeResolver.Resolve(assembly, ns, name, candidates, scopeModule.Reader, scope) is { } target
+            ? MakeTypeDescFor(target.Module, target.Handle) : null;
     }
 
     internal TypeDesc ExternalTypeRef(Module module, TypeReferenceHandle handle)
@@ -4192,13 +4113,29 @@ internal sealed partial class Compilation
         {
             NoteInvariantCompareInfoFactory(m);
         }
+        if (CoreIntrinsics.IsCoreClrTypeCollectibilityImport(m))
+        {
+            NotePInvokeFtnTarget(m);
+            return;
+        }
         if (CoreIntrinsics.BrLifetimeDispose.Matches(m.DeclaringClass.FullName, m.Name))
             Reach(m);
+        if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(m))
+        {
+            // A nonvirtual address can expose a MethodInfo whose Invoke is virtual.
+            // Retain only this slot on allocated subclasses, even if Method is unused.
+            ReachUsedVirtual(m);
+            ReachIntrinsicTypeMethod(m);
+            DrainReachability();
+            return;
+        }
         if (_intrinsicTypeTranspiled.Contains(m))
             return; // real body transpiled — the symbol already exists
         // Its calls already delegate to the real body, which serves the address too.
         if (CoreIntrinsics.IsWaitHandleTimeoutConversion(m)
             || CoreIntrinsics.IsDateTimeCultureManagedBody(m)
+            || (CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(m))
+            || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
             || CoreIntrinsics.IsScalarNumericLeaf(m)
             || CoreIntrinsics.IsBinaryIntegerEndianBody(m)
             || CoreIntrinsics.IsPrimitiveParseBody(m)
@@ -4206,10 +4143,13 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsPrimitiveWideConversionBody(m)
             || CoreIntrinsics.IsVectorAlignmentManagedBody(m)
             || CoreIntrinsics.IsConcreteVectorReduction(m)
+            || CoreIntrinsics.IsPrimitiveElementHelper(m)
             || CoreIntrinsics.IsVectorManagedThrowHelper(m)
             || CoreIntrinsics.IsGenericVectorEstimate(m)
             || CoreIntrinsics.IsGuardedVectorAs(m)
             || CoreIntrinsics.IsVectorManagedForwarder(m)
+            || CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
+            || CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
             || CoreIntrinsics.IsRealBodyGeneric(m.DeclaringClass.FullName, m.Name)
             || CoreIntrinsics.IsArrayRealBodyMember(m.DeclaringClass.FullName, m.Name, m.Signature))
         {
@@ -4859,6 +4799,17 @@ internal sealed partial class Compilation
     internal sealed record MdArrayItfInfo(ClassInfo Wrapper, MethodInfo Ctor, IReadOnlyList<ArrayItfDispatch> Dispatches);
 
     internal MdArrayItfInfo? MdArrayInterfaces { get; private set; }
+
+    private volatile bool _enumValuesArraysUsed;
+    internal bool EnumValuesArraysUsed => _enumValuesArraysUsed;
+
+    internal void NoteEnumValuesArrays()
+    {
+        _enumValuesArraysUsed = true;
+        // Runtime enum arrays can lack a static E[] token. Their non-generic
+        // interfaces use the existing element-agnostic Array reflection wrapper.
+        NoteMdArrayUse();
+    }
 
     private bool _mdArrayUsed;
     private bool _arrayCloneDispatchUsed;
@@ -6533,7 +6484,8 @@ internal sealed partial class Compilation
     }
 
     /// <summary>True for a bodyless <c>[DllImport]</c> method whose call sites lower to a
-    /// P/Invoke lowering, either lazy or explicitly direct. The ONE predicate every asker shares —
+    /// P/Invoke lowering, either lazy, explicitly direct, or an absent-PAL refusal.
+    /// The ONE predicate every asker shares —
     /// the call route (<c>MethodCompiler.TranslateCall</c>) and the address-taken path
     /// (the ldftn arm noting <see cref="NotePInvokeFtnTarget"/>) — so the set of imports
     /// that lower cannot drift between a call site and a delegate method group over the
@@ -6544,11 +6496,27 @@ internal sealed partial class Compilation
             return false;
 
         // User/library imports are the dynamic-loading surface. Framework imports
-        // remain behind their existing intrinsic/refusal boundary unless the
-        // runtime provides that PAL module or the caller explicitly selects them.
-        return !IsFrameworkAssemblyName(m.DeclaringClass.Module.AssemblyName)
-            || IsDirectPInvoke(m);
+        // remain behind their intrinsic/refusal boundary; absent runtime modules
+        // use a callable refusal through this same route.
+        if (!IsFrameworkAssemblyName(m.DeclaringClass.Module.AssemblyName)
+            || IsDirectPInvoke(m))
+            return true;
+
+        // A concrete cut lowering owns both calls and addresses. The intrinsic-type
+        // umbrella alone does not promise a lowering for every private QCall member.
+        return IsAbsentCoreClrQCall(m)
+            && (!CoreIntrinsics.TryFindCutRow(m, out var row)
+                || row.EmitArm == InterceptEmitArm.IntrinsicDispatch);
     }
+
+    internal bool IsAbsentCoreClrQCall(MethodInfo method) =>
+        CoreIntrinsics.PiAbsentCoreClrQCall.Matches(method) && !IsDirectPInvoke(method);
+
+    internal static string AbsentCoreClrQCallMessage(PInvokeInfo import) =>
+        ("the native import " + import.ModuleName + "!" + import.RawEntryPoint
+        + " requires the CoreCLR runtime, which a dn2cpp-transpiled binary does not provide. "
+        + "Use a supported managed API, a NativeImplementation shim, or an explicit --direct-pinvoke binding.")
+        .Replace("\\", "\\\\").Replace("\"", "\\\"");
 
     /// <summary>ldftn/delegate targets that are bodyless P/Invokes whose call sites
     /// use the same lazy/direct lowering (<see cref="LowersToPInvoke"/>), e.g.

@@ -113,7 +113,7 @@ void dn2cpp_register_vcall_traps(const void* const* fns, int32_t count)
 // Whether `fn` is a vtable dispatch trap — the shared symbol or one of the image's
 // registered per-signature thunks. For probes that must not CALL a trapped slot to
 // find out (the trap aborts). Linear over a small set, on already-cold paths.
-static bool dn2cpp_is_vcall_trap(const void* fn)
+bool dn2cpp_is_vcall_trap(const void* fn)
 {
     if (fn == reinterpret_cast<const void*>(&dn2cpp_vcall_unimplemented))
         return true;

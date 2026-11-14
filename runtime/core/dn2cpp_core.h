@@ -1421,6 +1421,8 @@ struct Dn2CppDelegateMethodCatalog
     int32_t methodCount;
 };
 void dn2cpp_set_delegate_method_catalog(const Dn2CppDelegateMethodCatalog* rows, int32_t count);
+// A retained managed Type factory is named-only metadata; its runtime type handle stays immutable.
+void dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 // Exact retained CultureInfo getter; no general intrinsic-type metadata mutation.
 void dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 void dn2cpp_set_culture_name_validator_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
@@ -1790,6 +1792,7 @@ int32_t dn2cpp_type_is_function_pointer(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_unmanaged_function_pointer(const Dn2CppTypeInfo* ti);
 Dn2CppType* dn2cpp_type_function_pointer_return(Dn2CppType* type);
 Dn2CppArrayRef* dn2cpp_type_function_pointer_parameters(Dn2CppType* type);
+Dn2CppArrayRef* dn2cpp_runtime_type_function_pointer_arguments(Dn2CppType* type, const Dn2CppTypeInfo* typeArray);
 Dn2CppArrayRef* dn2cpp_type_function_pointer_conventions(Dn2CppType* type);
 int32_t dn2cpp_type_is_pointer(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_by_ref(const Dn2CppTypeInfo* ti);
@@ -1817,6 +1820,7 @@ int32_t dn2cpp_type_get_array_rank(Dn2CppType* a);
 // (System.Array, the array collection interfaces, element covariance) and generic
 // variance answer here exactly as a cast would.
 int32_t dn2cpp_type_is_assignable_from(Dn2CppType* a, Dn2CppType* b);
+int32_t dn2cpp_runtime_type_is_assignable_from(Dn2CppType* receiver, Dn2CppObject* source);
 int32_t dn2cpp_type_is_assignable_to(Dn2CppType* t, Dn2CppType* target);
 // Type.IsInstanceOfType(obj): obj is non-null and an instance of type a.
 int32_t dn2cpp_type_is_instance_of_type(Dn2CppType* a, Dn2CppObject* obj);
@@ -1858,12 +1862,15 @@ Dn2CppObject* dn2cpp_get_uninitialized_object(Dn2CppType* t);
 int32_t dn2cpp_type_is_generic_type(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_constructed_generic(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_generic_type_definition(const Dn2CppTypeInfo* ti);
+int32_t dn2cpp_type_is_type_definition(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_contains_generic_parameters(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_generic_parameter_attributes(const Dn2CppTypeInfo* ti);
+int32_t dn2cpp_type_generic_parameter_position(const Dn2CppTypeInfo* ti);
 bool dn2cpp_type_reference_argument(const Dn2CppTypeInfo* ti);
 Dn2CppString* dn2cpp_type_generic_parameter_namespace(const Dn2CppTypeInfo* ti);
 const Dn2CppTypeInfo* dn2cpp_type_generic_parameter_declaring_type(const Dn2CppTypeInfo* ti);
 Dn2CppMethodRef* dn2cpp_type_generic_parameter_declaring_method(const Dn2CppTypeInfo* ti);
+Dn2CppType* dn2cpp_runtime_type_get_declaring_type(Dn2CppType* type);
 Dn2CppType* dn2cpp_type_get_generic_type_definition(Dn2CppType* t);
 Dn2CppArrayRef* dn2cpp_type_get_generic_arguments(Dn2CppType* t);
 Dn2CppArrayRef* dn2cpp_type_get_generic_parameter_constraints(Dn2CppType* t);
@@ -1881,6 +1888,11 @@ Dn2CppType* dn2cpp_type_make_generic(Dn2CppType* def, Dn2CppArrayRef* args);
 // Parse(Type, string[, ignoreCase]) and Type.GetEnumUnderlyingType work via a runtime
 // Type, complementing the generic Enum.*<T> inline lowering.
 Dn2CppArrayRef* dn2cpp_type_get_interfaces(Dn2CppType* t);
+[[noreturn]] void dn2cpp_runtime_type_get_utf8_name(Dn2CppType* t, const char* invalidHandleMessage);
+int32_t dn2cpp_runtime_type_contains_generic_variables(Dn2CppType* t);
+int32_t dn2cpp_runtime_type_get_fields(Dn2CppType* t, int32_t* count);
+Dn2CppArrayRef* dn2cpp_runtime_type_get_interfaces(Dn2CppType* t,
+    const Dn2CppTypeInfo* typeArray, const Dn2CppTypeInfo* runtimeTypeArray);
 // Type.GetInterface(name[, ignoreCase]): the lone matching row of the same table,
 // or null on no match. The name splits at its last '.'; the simple part matches the
 // interface's simple name (the generic DEFINITION's for a closed generic, so
@@ -1899,6 +1911,7 @@ Dn2CppArrayRef* dn2cpp_type_get_enum_names(Dn2CppType* t);
 // Enum.GetValues(Type) (non-generic): the declared values as object[] of boxed enums, so a
 // foreach over the returned System.Array yields boxed `object` elements.
 Dn2CppArrayRef* dn2cpp_enum_get_values_boxed(Dn2CppType* t);
+Dn2CppObject* dn2cpp_type_get_enum_values(Dn2CppType* t);
 // Enum.GetValuesAsUnderlyingType(Type) (non-generic): the declared values as an array of the
 // UNDERLYING primitive (byte[]/int[]/long[]/...), typed with that element's precise identity so
 // GetType()/GetValue read it. Built on dn2cpp_array_create_instance; returned as the array object.
@@ -2507,6 +2520,12 @@ Dn2CppObject* dn2cpp_activator_create_instance(Dn2CppType* t);
 // invisible parameterless ctor and abstract/interface targets throw the
 // catchable MissingMethodException (probed against real .NET).
 Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t nonPublic);
+// Retained parameterless factory: only canonical runtime Type objects carry a native layout.
+Dn2CppObject* dn2cpp_activator_create_instance_wrapped(Dn2CppType* t, int32_t nonPublic, int32_t wrapExceptions);
+Dn2CppObject* dn2cpp_activator_create_instance_default_ctor(Dn2CppType* t, int32_t publicOnly, int32_t wrapExceptions);
+Dn2CppObject* dn2cpp_runtime_type_create_generic_instance_1(Dn2CppType* representative, Dn2CppType* argument);
+Dn2CppObject* dn2cpp_runtime_type_create_generic_instance_2(Dn2CppType* representative, Dn2CppType* first, Dn2CppType* second);
+void dn2cpp_runtime_type_call_default_struct_constructor(Dn2CppType* t, uint8_t* data);
 // Activator.CreateInstance(Type, object[] args[, BindingFlags, Binder,
 // activationAttributes]): DefaultBinder-style ctor resolution — filter on
 // flags + arity + boxed-argument admissibility (null matches everything,
@@ -2870,9 +2889,15 @@ extern const Dn2CppTypeInfo dn2cpp_customattributedata_type;
 // member handle's object header, like dn2cpp_get_custom_attributes); the
 // assembly form serves Assembly.CustomAttributes via the assembly registry.
 Dn2CppArrayRef* dn2cpp_member_custom_attributes_data(Dn2CppObject* member);
+Dn2CppArrayRef* dn2cpp_custom_attribute_data_get_custom_attributes(Dn2CppObject* target);
 Dn2CppArrayRef* dn2cpp_assembly_custom_attributes_data(const char* name);
 // CustomAttributeData.AttributeType.
 Dn2CppType* dn2cpp_attrdata_attribute_type(Dn2CppAttrDataRef* d);
+void dn2cpp_set_attrdata_constructor_slot(int32_t slot);
+Dn2CppMethodRef* dn2cpp_attrdata_constructor_virtual(Dn2CppObject* value);
+void* dn2cpp_attrdata_constructor_virtual_address(Dn2CppObject* value);
+Dn2CppObject* dn2cpp_attrdata_constructor_invoker(void* fn, Dn2CppObject* receiver,
+    Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
 
 // Reflection-handle ToString. The header-dispatched entry is also installed in
 // every handle type-info's tostring slot, so direct/base/object paths converge.
@@ -2888,8 +2913,7 @@ int32_t dn2cpp_type_il_attrs(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_public(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_not_public(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_visible(const Dn2CppTypeInfo* ti);
-// Type.HasElementType / GetRootElementType: only array Types materialize with
-// an element in this model (no byref/pointer Type objects exist at runtime).
+// Element presence follows array/pointer/byref category even when the element is unknown.
 int32_t dn2cpp_type_has_element_type(const Dn2CppTypeInfo* ti);
 Dn2CppType* dn2cpp_type_get_root_element_type(Dn2CppType* t);
 // Type.FormatTypeName (internal; MethodInfo/ConstructorInfo.ToString's type
@@ -2914,6 +2938,9 @@ int32_t dn2cpp_type_implement_interface(Dn2CppType* t, Dn2CppType* itf);
 // assembly's simple-name handle (dn2cpp is single-module per assembly).
 int32_t dn2cpp_memberinfo_member_type(Dn2CppObject* m);
 int32_t dn2cpp_memberinfo_metadata_token(Dn2CppObject* m);
+extern int32_t dn2cpp_memberinfo_has_same_metadata_slot;
+void dn2cpp_set_memberinfo_has_same_metadata_slot(int32_t slot);
+int32_t dn2cpp_memberinfo_has_same_metadata(Dn2CppObject* member, Dn2CppObject* other);
 const char* dn2cpp_memberinfo_module(Dn2CppObject* m);
 // MethodBase/MethodInfo raw-word predicates + accessors.
 int32_t dn2cpp_methodref_attributes(Dn2CppMethodRef* m);
@@ -2933,6 +2960,7 @@ Dn2CppArrayRef* dn2cpp_methodref_get_parameter_types(Dn2CppMethodRef* m);
 Dn2CppMethodRef* dn2cpp_methodref_make_generic(Dn2CppMethodRef* m, Dn2CppArrayRef* types);
 Dn2CppMethodRef* dn2cpp_methodref_get_generic_definition(Dn2CppMethodRef* m);
 Dn2CppArrayRef* dn2cpp_methodref_get_generic_arguments(Dn2CppMethodRef* m);
+int32_t dn2cpp_methodref_generic_parameter_count(Dn2CppMethodRef* m);
 int32_t dn2cpp_methodref_is_generic_def(Dn2CppMethodRef* m);
 int32_t dn2cpp_methodref_contains_generic_parameters(Dn2CppMethodRef* m);
 // MethodInfo.GetBaseDefinition: the shallowest base-chain ancestor declaring a
@@ -3005,7 +3033,7 @@ void dn2cpp_array_set_ref_fallback_interfaces(const Dn2CppInterfaceEntry* entrie
 // element-agnostic thunk on SZ arrays. Installed when a dispatch route needs it,
 // before any managed code runs.
 void dn2cpp_array_set_md_fallback_interfaces(const Dn2CppInterfaceEntry* entries, int32_t count,
-    const Dn2CppTypeInfo* cloneInterface = nullptr);
+    const Dn2CppTypeInfo* cloneInterface = nullptr, bool enumSzArrays = false);
 // Installs the RELATION-only row set for the six non-generic interfaces every CLR
 // array implements — the same six the two tables above dispatch, but as rows with
 // NULL slot tables, and for ENUMERATION rather than dispatch.
@@ -3544,6 +3572,7 @@ int64_t dn2cpp_gc_total_allocated_bytes();
 // prologue. For the callers that must recognise a trapped slot WITHOUT calling it
 // (dn2cpp_exception_message's override probe); one image, one registration.
 void dn2cpp_register_vcall_traps(const void* const* fns, int32_t count);
+bool dn2cpp_is_vcall_trap(const void* fn);
 // A dispatch trap entered as `slotFn` throws the catchable PlatformNotSupportedException
 // MethodBase.Invoke and a CreateDelegate binding raise for a receiver whose override the
 // image did not retain, when `slotFn` is the slot the innermost such reflective call is
@@ -4732,6 +4761,7 @@ const Dn2CppTypeInfo* dn2cpp_nullable_underlying_ti(const Dn2CppTypeInfo* ti);
 // Internal invocation adapters exchange raw Nullable<T> boxes; ordinary boxing
 // exposes null or a boxed T instead. Reboxing preserves payload bits and references.
 Dn2CppObject* dn2cpp_rebox_from_nullable(Dn2CppObject* value);
+Dn2CppObject* dn2cpp_rebox_to_nullable(Dn2CppObject* value, Dn2CppType* type);
 // Whether `ti` is Nullable<u>. Ordinary boxing produces a boxed U, which passes a
 // Nullable<U> type test and Type.IsAssignableFrom(Nullable<U>, U) holds. The rule
 // stays out of dn2cpp_typeinfo_assignable, whose callers also read an answer as

@@ -153,7 +153,20 @@ internal sealed partial class Compilation
             || CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(m)
             || CoreIntrinsics.BrPrimitiveBigMul.Matches(m)
             || CoreIntrinsics.BrNativeIntegerEndian.Matches(m)
-            || CoreIntrinsics.BrNativeIntegerParse.Matches(m))
+            || CoreIntrinsics.BrNativeIntegerParse.Matches(m)
+            || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(m)
+            || CoreIntrinsics.BrNullableReboxing.Matches(m)
+            || CoreIntrinsics.BrCustomAttributeDataMember.Matches(m)
+            || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(m)
+            || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(m)
+            || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(m)
+            || CoreIntrinsics.BrCoreClrActivationInfo.Matches(m)
+            || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(m)
+            || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(m)
+            || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(m)
+            || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(m)
+            || CoreIntrinsics.BrActivatorNamed.Matches(m)
+            || CoreIntrinsics.BrActivatorDefault.Matches(m))
         {
             if (AddReachable(m))
             {
@@ -169,13 +182,55 @@ internal sealed partial class Compilation
             NoteInterceptFtnTarget(m);
             return;
         }
-        if (CoreIntrinsics.IsRuntimeTypeEnumName(m) || CoreIntrinsics.IsRuntimeTypeEnumDefined(m)
+        // Reflection-only roots need the native wrapper, not the opaque managed body.
+        if (CoreIntrinsics.IsRuntimeTypeHandleAccessor(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsSZArray(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsGenericVariable(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetToken(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetAttributes(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleHasElementType(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsArray(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsByRef(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsPrimitive(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsPointer(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetElementType(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsTypeDefinition(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetAssembly(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetModule(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleInterfaces(m)
+            || CoreIntrinsics.IsActivatorFrom(m)
+            || CoreIntrinsics.IsAppDomainExecuteAssembly(m)
             || CoreIntrinsics.IsGen2GcCallbackRefusal(m)
             || CoreIntrinsics.IsGen2GcCallbackRegister(m)
             || CoreIntrinsics.IsInt128Checked(m)
             || CoreIntrinsics.IsUInt128Checked(m)
             || CoreIntrinsics.IsInvariantCompareInfoGetter(m)
             || CoreIntrinsics.IsDateTimeFormatInfoBoundary(m)
+            || CoreIntrinsics.IsAppContextOnProcessExit(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleFields(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariables(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStatic(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleUtf8Name(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleConstraints(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleMakeCompound(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleMakeArray(m)
+            || CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleInstantiate(m)
+            || (CoreIntrinsics.IsRuntimeTypeArrayRank(m) || CoreIntrinsics.IsRuntimeTypeEnumName(m) || CoreIntrinsics.IsRuntimeTypeEnumDefined(m) || CoreIntrinsics.IsRuntimeTypeAssignableFrom(m) || CoreIntrinsics.IsRuntimeTypeTypeCode(m))
+            || CoreIntrinsics.IsRuntimeTypeMakeGenericType(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleConstructor(m)
+            || CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(m)
+            || CoreIntrinsics.IsRuntimeTypeInterfaceCheck(m)
+            || CoreIntrinsics.IsMemberMetadataDefinitionOverride(m)
+            || CoreIntrinsics.IsCoreClrVirtualSlotCount(m)
+            || CoreIntrinsics.IsCoreClrMethodSlotLookup(m)
+            || CoreIntrinsics.IsCoreClrConstraintCheck(m)
+            || CoreIntrinsics.IsRuntimeTypeDeclaringMethod(m)
+            || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(m)
             || CoreIntrinsics.BrInvariantCompareInfoCallback.Matches(m.DeclaringClass.FullName, m.Name))
         {
             _predTrace.TryAdd(m, _currentScan);
@@ -211,6 +266,7 @@ internal sealed partial class Compilation
             return;
         if (CoreIntrinsics.IsWaitHandleTimeoutConversion(m)
             || CoreIntrinsics.IsDateTimeCultureManagedBody(m)
+            || (CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(m)) || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
             || CoreIntrinsics.IsScalarNumericLeaf(m)
             || CoreIntrinsics.IsBinaryIntegerEndianBody(m)
             || CoreIntrinsics.IsPrimitiveParseBody(m)
@@ -218,7 +274,11 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsPrimitiveWideConversionBody(m)
             || CoreIntrinsics.IsVectorAlignmentManagedBody(m)
             || CoreIntrinsics.IsConcreteVectorReduction(m)
-            || CoreIntrinsics.IsVectorManagedThrowHelper(m))
+            || CoreIntrinsics.IsPrimitiveElementHelper(m)
+            || CoreIntrinsics.IsVectorManagedThrowHelper(m)
+            || CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
+            || CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
+            || CoreIntrinsics.IsCustomAttributeDataConstructorBase(m))
             _intrinsicTypeTranspiled.Add(m);
         // Methods of an intrinsic-mapped type are emitted inline, never
         // transpiled. Call edges already skip them (ResolveCallTarget), but an
@@ -659,6 +719,30 @@ internal sealed partial class Compilation
         t is { Kind: TypeKind.Class, Class: { } pc } && InheritsFromException(pc)
         || t is { Kind: TypeKind.External, ExternalName: { } xn }
            && CoreIntrinsics.IsExternalBclExceptionName(xn);
+
+    // Native reflection handles lack the generated MemberInfo vtable. Other
+    // managed receivers keep the ordinary override in this slot.
+    internal int MemberMetadataDefinitionSlot()
+    {
+        if (FindClassByFullName("System.Reflection.MemberInfo") is not { } owner)
+            return -1;
+        EnsureCompleted(owner);
+        foreach (var method in owner.Methods)
+            if (CoreIntrinsics.IsMemberMetadataDefinitionBase(method))
+                return method.VtableSlot;
+        return -1;
+    }
+
+    internal int CustomAttributeDataConstructorSlot()
+    {
+        if (FindClassByFullName("System.Reflection.CustomAttributeData") is not { } owner)
+            return -1;
+        EnsureCompleted(owner);
+        foreach (var method in owner.Methods)
+            if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(method))
+                return method.VtableSlot;
+        return -1;
+    }
 
     private int? _exceptionGetMessageSlot;
 
@@ -5918,6 +6002,19 @@ internal sealed partial class Compilation
     }
 
     private long _reflectionSummaryMs;
+    private RuntimeTypeMakeGenericTypePlan? _makeGenericTypePlan;
+    private bool _makeGenericTypePlanInitialized;
+
+    private ReflectionSummarizer GetReflectionSummarizer(Module module)
+    {
+        if (!_makeGenericTypePlanInitialized)
+        {
+            _makeGenericTypePlanInitialized = true;
+            _makeGenericTypePlan = new RuntimeTypeMakeGenericTypePlan(Modules.Select(m => m.Reader));
+        }
+        return module.ReflectionSummarizer ??= new ReflectionSummarizer(module.Reader, module.PE, _makeGenericTypePlan);
+    }
+
 
     /// <summary>Summarizes the reflection values of a scanned definition once. A summary
     /// reads raw metadata only, so computing it decodes nothing in the model and cannot
@@ -5928,8 +6025,7 @@ internal sealed partial class Compilation
         if (module.ReflectionSummaries.ContainsKey(m.Handle))
             return;
         long start = Environment.TickCount64;
-        module.ReflectionSummarizer ??= new ReflectionSummarizer(module.Reader, module.PE);
-        module.ReflectionSummaries.Add(m.Handle, module.ReflectionSummarizer.Summarize(m.Handle, body, insns));
+        module.ReflectionSummaries.Add(m.Handle, GetReflectionSummarizer(module).Summarize(m.Handle, body, insns));
         _reflectionSummaryMs += Environment.TickCount64 - start;
     }
 
@@ -6051,6 +6147,7 @@ internal sealed partial class Compilation
                 + "ILDiet's retained set must contain every body reachability admits");
         try
         {
+            ReachArraySortFactory(m);
             var insns = ILDecoder.Decode(body.GetILBytes()!.ToImmutableArrayCompat());
             NoteMediumBodyTypes(m, body);
             SummarizeReflection(m, body, insns);
@@ -6364,12 +6461,8 @@ internal sealed partial class Compilation
                             constrained = null;
                             continue;
                         }
-                        // IBinaryInteger<TSelf>.ReadBigEndian span overload on an integer
-                        // primitive: emit lowers the whole call to dn2cpp_read_big_endian
-                        // (its default body's TryReadBigEndian leaf is an InternalCall with
-                        // no IL), so its DIM body must NOT enter the tree — cut the ordinary
-                        // Reach(t) edge below. cut ⟹ route: the same predicate gates the emit
-                        // route (MethodCompiler.TryEmitGenericMathIntrinsic).
+                        // Keep the residual shortcut's cut in sync with emission;
+                        // the admitted endian family instead reaches the real DIM.
                         if (t is not null && insn.OpCode == ILOpCode.Call
                             && constrained is { Kind: TypeKind.Primitive, IsCanonPlaceholder: false }
                             && IsInterceptedReadBigEndian(t))

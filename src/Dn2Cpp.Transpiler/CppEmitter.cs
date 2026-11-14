@@ -2120,12 +2120,27 @@ internal sealed partial class CppEmitter
         || CoreIntrinsics.BrPrimitiveBigMul.Matches(m)
         || CoreIntrinsics.BrNativeIntegerEndian.Matches(m)
         || CoreIntrinsics.BrNativeIntegerParse.Matches(m)
+        || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(m)
+        || CoreIntrinsics.BrNullableReboxing.Matches(m)
+        || CoreIntrinsics.BrCustomAttributeDataMember.Matches(m)
+        || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(m)
+        || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(m)
+        || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(m)
+        || CoreIntrinsics.BrCoreClrActivationInfo.Matches(m)
+        || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(m)
+        || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(m)
+        || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(m)
+        || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(m)
+        || CoreIntrinsics.BrActivatorNamed.Matches(m)
+        || CoreIntrinsics.BrActivatorDefault.Matches(m)
         || _c.PInvokeFtnTargets.Contains(m) || _c.IntrinsicFtnTargets.Contains(m)
         || _c.InterceptFtnTargets.Contains(m) || CoreIntrinsics.MdComparerCompare.Matches(m)
         || _c.IsUnorderableComparerCompareBody(m)
         || CoreIntrinsics.IsIntrinsicType(cls.FullName)
             && !CoreIntrinsics.IsWaitHandleTimeoutConversion(m)
             && !CoreIntrinsics.IsDateTimeCultureManagedBody(m)
+            && !(CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(m))
+            && !CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
             && !CoreIntrinsics.IsScalarNumericLeaf(m)
             && !CoreIntrinsics.IsBinaryIntegerEndianBody(m)
             && !CoreIntrinsics.IsPrimitiveParseBody(m)
@@ -2133,10 +2148,14 @@ internal sealed partial class CppEmitter
             && !CoreIntrinsics.IsPrimitiveWideConversionBody(m)
             && !CoreIntrinsics.IsVectorAlignmentManagedBody(m)
             && !CoreIntrinsics.IsConcreteVectorReduction(m)
+            && !CoreIntrinsics.IsPrimitiveElementHelper(m)
             && !CoreIntrinsics.IsVectorManagedThrowHelper(m)
             && !CoreIntrinsics.IsGenericVectorEstimate(m)
             && !CoreIntrinsics.IsGuardedVectorAs(m)
-            && !CoreIntrinsics.IsVectorManagedForwarder(m);
+            && !CoreIntrinsics.IsVectorManagedForwarder(m)
+            && !CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
+            && !CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
+            && !CoreIntrinsics.IsCustomAttributeDataConstructorBase(m);
 
     private ParallelBodyResult CompileParallelBody(
         MethodInfo m, LiteralPool literals, bool planning)
@@ -2591,7 +2610,20 @@ internal sealed partial class CppEmitter
                             || CoreIntrinsics.BrInvariantCompareInfoInitializer.Matches(m)
                             || CoreIntrinsics.BrPrimitiveBigMul.Matches(m)
                             || CoreIntrinsics.BrNativeIntegerEndian.Matches(m)
-                            || CoreIntrinsics.BrNativeIntegerParse.Matches(m))
+                            || CoreIntrinsics.BrNativeIntegerParse.Matches(m)
+                            || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(m)
+                            || CoreIntrinsics.BrNullableReboxing.Matches(m)
+                            || CoreIntrinsics.BrCustomAttributeDataMember.Matches(m)
+                            || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(m)
+                            || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(m)
+                            || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(m)
+                            || CoreIntrinsics.BrCoreClrActivationInfo.Matches(m)
+                            || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(m)
+                            || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(m)
+                            || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(m)
+                            || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(m)
+                            || CoreIntrinsics.BrActivatorNamed.Matches(m)
+                            || CoreIntrinsics.BrActivatorDefault.Matches(m))
                         {
                             var wrapper = new MethodCompiler(_c, m, literals, _backend)
                                 .CompileCoreIntrinsicWrapper()
@@ -2706,6 +2738,8 @@ internal sealed partial class CppEmitter
                         if (CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName)
                             && !CoreIntrinsics.IsWaitHandleTimeoutConversion(m)
                             && !CoreIntrinsics.IsDateTimeCultureManagedBody(m)
+                            && !(CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(m))
+                            && !CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
                             && !CoreIntrinsics.IsScalarNumericLeaf(m)
                             && !CoreIntrinsics.IsBinaryIntegerEndianBody(m)
                             && !CoreIntrinsics.IsPrimitiveParseBody(m)
@@ -2713,10 +2747,14 @@ internal sealed partial class CppEmitter
                             && !CoreIntrinsics.IsPrimitiveWideConversionBody(m)
                             && !CoreIntrinsics.IsVectorAlignmentManagedBody(m)
                             && !CoreIntrinsics.IsConcreteVectorReduction(m)
+                            && !CoreIntrinsics.IsPrimitiveElementHelper(m)
                             && !CoreIntrinsics.IsVectorManagedThrowHelper(m)
                             && !CoreIntrinsics.IsGenericVectorEstimate(m)
                             && !CoreIntrinsics.IsGuardedVectorAs(m)
-                            && !CoreIntrinsics.IsVectorManagedForwarder(m))
+                            && !CoreIntrinsics.IsVectorManagedForwarder(m)
+                            && !CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
+                            && !CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
+                            && !CoreIntrinsics.IsCustomAttributeDataConstructorBase(m))
                         {
                             string body;
                             if (new MethodCompiler(_c, m, literals, _backend)
@@ -3068,18 +3106,22 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    ({handle})->flags |= DN2CPP_TF_OBJECT_MEMBER_ROWS;");
         if (_delegateInterfaceTargets is { } interfaceTargets)
             sb.AppendLine($"    dn2cpp_set_delegate_interface_targets({interfaceTargets.Sym}, {interfaceTargets.Count});");
+        sb.AppendLine($"    dn2cpp_set_memberinfo_has_same_metadata_slot({_c.MemberMetadataDefinitionSlot()});");
+        sb.AppendLine($"    dn2cpp_set_attrdata_constructor_slot({_c.CustomAttributeDataConstructorSlot()});");
         if (_delegateMethodCatalog is { } delegateMethods)
             sb.AppendLine($"    dn2cpp_set_delegate_method_catalog({delegateMethods.Sym}, {delegateMethods.Count});");
-        if (_objectVirtualInheritance is { } objectVirtuals)
-            sb.AppendLine($"    dn2cpp_set_object_virtual_inheritance({objectVirtuals.Sym}, {objectVirtuals.Count});");
         if (_dateTimeTryAddTicksRow is not null || _dateTimeTryCreateRow is not null || _dateTimeLocalConstructorRow is not null)
             sb.AppendLine($"    dn2cpp_set_datetime_parser_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeTryAddTicksRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeTryCreateRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeLocalConstructorRow ?? "nullptr"}));");
-        if (_dateOnlyDeconstructRow is { } dateOnlyRow)
-            sb.AppendLine($"    dn2cpp_set_dateonly_deconstruct_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({dateOnlyRow}));");
         if (_cultureNameValidatorRow is { } cultureNameValidatorRow)
             sb.AppendLine($"    dn2cpp_set_culture_name_validator_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({cultureNameValidatorRow}));");
         if (_cultureCompareInfoRow is { } cultureCompareInfoRow)
             sb.AppendLine($"    dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({cultureCompareInfoRow}));");
+        if (_dateOnlyDeconstructRow is { } dateOnlyRow)
+            sb.AppendLine($"    dn2cpp_set_dateonly_deconstruct_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({dateOnlyRow}));");
+        if (_memberNotFoundFactoryRow is { } factoryRow)
+            sb.AppendLine($"    dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({factoryRow}));");
+        if (_objectVirtualInheritance is { } objectVirtuals)
+            sb.AppendLine($"    dn2cpp_set_object_virtual_inheritance({objectVirtuals.Sym}, {objectVirtuals.Count});");
         // The shared reference-element SZArray fallback table goes in before any managed
         // code too: a cctor can already dispatch a collection interface on an array it
         // reached through `object` (or on a runtime-built attribute array).
@@ -3092,7 +3134,7 @@ internal sealed partial class CppEmitter
         {
             var cloneItf = _c.MdArrayInterfaces!.Dispatches.FirstOrDefault(d => d.Itf.FullName == "System.ICloneable")?.Itf;
             string cloneKey = cloneItf is null ? "nullptr" : TypeInfoRef(cloneItf, "array Clone dispatch");
-            sb.AppendLine($"    dn2cpp_array_set_md_fallback_interfaces({mdm.Sym}, {mdm.Count}, {cloneKey});");
+            sb.AppendLine($"    dn2cpp_array_set_md_fallback_interfaces({mdm.Sym}, {mdm.Count}, {cloneKey}, {(_c.EnumValuesArraysUsed ? "true" : "false")});");
         }
         // The relation-only rows the two tables above cannot carry — the enumeration half.
         // Installed here rather than lazily for the same reason: a cctor can already call
@@ -3839,9 +3881,10 @@ internal sealed partial class CppEmitter
     private readonly List<string> _runtimeHandleObjectRows = [];
     private (string Sym, int Count)? _objectVirtualInheritance;
     private (string Sym, int Count)? _delegateMethodCatalog;
+    private string? _memberNotFoundFactoryRow;
+    private string? _dateOnlyDeconstructRow;
     private string? _cultureCompareInfoRow;
     private string? _cultureNameValidatorRow;
-    private string? _dateOnlyDeconstructRow;
     private string? _dateTimeTryAddTicksRow;
     private string? _dateTimeTryCreateRow;
     private string? _dateTimeLocalConstructorRow;

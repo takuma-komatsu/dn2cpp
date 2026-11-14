@@ -12,6 +12,11 @@ internal static class Program
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        if (args.Length > 0 && (args[0] == "runtime-type-routes" || args[0] == "native-boundary"))
+        {
+            RuntimeTypeIsPointerSubset.IsPointerChecks.RunArtifact(args);
+            return;
+        }
         if (args.Length > 0 && args[0] == "gc-native-boundary")
         {
             GcNotificationSubset.Program.RunNativeUnavailable();
@@ -70,7 +75,8 @@ internal static class Program
         Console.WriteLine("proc-exists " + File.Exists(procPath));
         Console.WriteLine("proc-rooted " + Path.IsPathRooted(procPath));
 
-        // Driven last so nothing it does can perturb the sections above.
+        // Later sections force collections; the primitives above run first and
+        // never observe them.
         MiscIntrinsicSubset.Program.__GateEntry();
         GcAllocatedBytesSubset.Program.__GateEntry();
         if (args.Length > 0 && args[0] == "before-nullable-reboxing")
@@ -86,5 +92,53 @@ internal static class Program
         GcPauseSubset.Program.Run();
         GcFinalizerWorkerSubset.Program.Run();
         BufferReferenceMoveSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-runtime-primitives")
+            return;
+        RuntimeMethodEnumerationSubset.Program.Run();
+        RuntimeMethodHandleSubset.Program.Run();
+        RuntimeTypeMaterializationSubset.Program.Run();
+        RuntimeFieldHandleSubset.Program.Run();
+        RuntimeTypeHandleCopySubset.Program.Run();
+        SignatureBlobSubset.Program.Run();
+        CanonicalTypeComparisonSubset.Program.Run();
+        RuntimeTypeHandleAccessorSubset.Program.Run();
+        ConstraintCheckSubset.Program.Run();
+        RuntimeTypeHandleConstructorSubset.Program.Run();
+        RuntimeTypeCacheHandleSubset.Program.Run();
+        MethodGenericCountSubset.Program.Run();
+        RuntimeTypeInterfaceCheckSubset.Program.Run();
+        RuntimeVirtualSlotCountSubset.Program.Run();
+        RuntimeMethodSlotLookupSubset.Program.Run();
+        AmbiguousMatchFactorySubset.Program.Run();
+        MemberNotFoundFactorySubset.Program.Run();
+        FormalDeclaringMethodSubset.Program.Run();
+        RuntimeTypeInstantiationSubset.Program.Run();
+        RuntimeTypeMakeGenericSubset.Program.Run();
+        GenericParameterPositionSubset.Program.Run();
+        ContainsGenericVariablesSubset.Program.Run();
+        GenericConstraintArraySubset.Program.Run();
+        CompoundTypeHandleSubset.Program.Run();
+        ArrayTypeHandleSubset.Program.Run();
+        PrimitiveElementTypeSubset.Program.Run();
+        PrimitiveWideningSubset.Program.Run();
+        RuntimeTypeQueriesSubset.Program.Run();
+        RuntimeTypeDefaultCtorSubset.DefaultCtorChecks.Run();
+        RuntimeTypeDefaultCtorSubset.DefaultCtorChecks.RunOfT();
+        RuntimeTypeDefaultStructSubset.StructChecks.Run();
+        CoreClrActivationInfoSubset.ActivationChecks.Run();
+        RuntimeTypeHandleNameSubset.NameChecks.Run();
+        RuntimeTypeDeclaringSubset.DeclaringChecks.Run();
+        CustomAttributeDataMemberSubset.DataChecks.Run();
+        CustomAttributeConstructorSubset.ConstructorChecks.Run();
+        RuntimeTypeCacheGenericDefinitionSubset.DefinitionChecks.Run();
+        RuntimeIntroducedMethodsSubset.Program.Run();
+        RuntimeInterfacesSubset.Program.Run();
+        RuntimeFieldsSubset.Program.Run();
+        StaticGenericVariablesSubset.Program.Run();
+        RuntimeUtf8NameSubset.Program.Run();
+        FunctionPointerArgumentsSubset.Program.Run();
+        AppContextExitSubset.Program.Run();
+        AssemblyExecutionSubset.Program.Run();
+        ActivationSubset.Program.Run();
     }
 }

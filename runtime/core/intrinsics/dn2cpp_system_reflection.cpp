@@ -44,6 +44,25 @@ int32_t dn2cpp_type_is_generic_type_definition(const Dn2CppTypeInfo* ti)
     return (ti->flags & DN2CPP_TF_GENERICDEF) != 0 ? 1 : 0;
 }
 
+// Definitions include open generic declarations and builtins, not compound or formal identities.
+int32_t dn2cpp_type_is_type_definition(const Dn2CppTypeInfo* ti)
+{
+    // These erased runtime handles only represent constructed instances; open
+    // declarations use separate generic-definition handles.
+    if (ti == &dn2cpp_threadlocal_type || ti == &dn2cpp_blockingcollection_type)
+        return 0;
+    // Enum rows omit generic-owner arguments, so an ordinary enum cannot be
+    // distinguished from a constructed nested enum. Synthetic comparers likewise
+    // do not model the CLR's concrete generic/non-generic implementation identity.
+    if ((ti->flags & DN2CPP_TF_DEFAULT_EQ_COMPARER) != 0
+        || ((ti->flags & DN2CPP_TF_ENUM) != 0
+            && (ti->flags & DN2CPP_TF_GENERICDEF) == 0 && ti->genericArgCount == 0))
+        dn2cpp_throw_platform_not_supported("Reflection: type definition identity is unavailable");
+    return dn2cpp_signature_kind(ti) == 0
+        && (ti->flags & (DN2CPP_TF_ARRAY | DN2CPP_TF_GENERICPARAM)) == 0
+        && !dn2cpp_type_is_constructed_generic(ti) ? 1 : 0;
+}
+
 int32_t dn2cpp_type_contains_generic_parameters(const Dn2CppTypeInfo* ti)
 {
     if ((ti->flags & (DN2CPP_TF_GENERICDEF | DN2CPP_TF_GENERICPARAM)) != 0)
@@ -746,6 +765,70 @@ Dn2CppArrayRef* dn2cpp_type_get_interfaces(Dn2CppType* t)
     return arr;
 }
 
+// Native display names do not establish stable raw TypeDef-name provenance.
+[[noreturn]] void dn2cpp_runtime_type_get_utf8_name(Dn2CppType* t, const char* invalidHandleMessage)
+{
+    if (t == nullptr)
+        dn2cpp_throw_null_reference();
+    if (t->type != &dn2cpp_type_type)
+        dn2cpp_throw_platform_not_supported("RuntimeTypeHandle.GetUtf8Name: custom Type is not supported");
+    const Dn2CppTypeInfo* ti = dn2cpp_type_require(t);
+    const int32_t kind = dn2cpp_signature_kind(ti);
+    if ((ti->flags & (DN2CPP_TF_GENERICPARAM | DN2CPP_TF_ARRAY)) != 0 || kind == 1 || kind == 2 || kind == 3)
+        dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type, invalidHandleMessage, nullptr);
+    dn2cpp_throw_platform_not_supported("RuntimeTypeHandle.GetUtf8Name requires CoreCLR metadata-name pointers. Use Type.Name instead.");
+}
+
+// This InternalCall accepts native canonical Type objects, never CoreCLR handles.
+int32_t dn2cpp_runtime_type_contains_generic_variables(Dn2CppType* t)
+{
+    if (t == nullptr)
+        dn2cpp_throw_null_reference();
+    if (t->type != &dn2cpp_type_type)
+        dn2cpp_throw_platform_not_supported("RuntimeTypeHandle.ContainsGenericVariables: custom Type is not supported");
+    return dn2cpp_type_contains_generic_parameters(dn2cpp_type_require(t));
+}
+
+// TypeDesc success never inspects the span. Ordinary enumeration requires VM
+// FieldDesc addresses; refusal must not copy a local count back to caller storage.
+int32_t dn2cpp_runtime_type_get_fields(Dn2CppType* t, int32_t* count)
+{
+    if (t == nullptr)
+        dn2cpp_throw_null_reference();
+    if (t->type != &dn2cpp_type_type)
+        dn2cpp_throw_platform_not_supported("RuntimeTypeHandle.GetFields: custom Type is not supported");
+    const Dn2CppTypeInfo* ti = dn2cpp_type_require(t);
+    const int32_t kind = dn2cpp_signature_kind(ti);
+    if ((ti->flags & DN2CPP_TF_GENERICPARAM) != 0 || kind == 1 || kind == 2 || kind == 3)
+    {
+        if (count == nullptr)
+            dn2cpp_throw_null_reference();
+        *count = 0;
+        return 1;
+    }
+    dn2cpp_throw_platform_not_supported("RuntimeTypeHandle.GetFields requires CoreCLR field descriptors. Use Type.GetFields instead.");
+}
+
+// The private managed wrapper bypasses formal constraints and preserves the VM's
+// empty Type[] singleton versus fresh nonempty RuntimeType[] distinction.
+Dn2CppArrayRef* dn2cpp_runtime_type_get_interfaces(Dn2CppType* t,
+    const Dn2CppTypeInfo* typeArray, const Dn2CppTypeInfo* runtimeTypeArray)
+{
+    if (t == nullptr)
+        dn2cpp_throw_null_reference();
+    if (t->type != &dn2cpp_type_type)
+        dn2cpp_throw_platform_not_supported("RuntimeTypeHandle.GetInterfaces: custom Type is not supported");
+    const Dn2CppTypeInfo* ti = dn2cpp_type_require(t);
+    const int32_t kind = dn2cpp_signature_kind(ti);
+    if ((ti->flags & DN2CPP_TF_GENERICPARAM) != 0 || kind == 1 || kind == 2 || kind == 3)
+        return dn2cpp_array_empty_ref(typeArray);
+    Dn2CppArrayRef* result = dn2cpp_type_get_interfaces(t);
+    if (result->length == 0)
+        return dn2cpp_array_empty_ref(typeArray);
+    result->type = runtimeTypeArray;
+    return result;
+}
+
 // AmbiguousMatchException as .NET's reflection lookups raise it, with its HResult
 // (COR_E_AMBIGUOUSMATCH). A null text (no CoreLib resources) keeps the default message.
 [[noreturn]] static void dn2cpp_throw_ambiguous_text(Dn2CppString* message)
@@ -986,7 +1069,6 @@ static void enum_underlying_shape(const Dn2CppTypeInfo* ti, int32_t* byteWidth, 
     else                               { *byteWidth = 4; *isUnsigned = false; } // Int32 (default)
 }
 
-// Box `v` under the enum's type-info at that same model width.
 static Dn2CppObject* dn2cpp_enum_box(const Dn2CppTypeInfo* ti, int64_t v)
 {
     if (dn2cpp_enum_is_wide(ti))
@@ -1057,6 +1139,37 @@ Dn2CppArrayRef* dn2cpp_enum_get_values_boxed(Dn2CppType* t)
     for (int32_t i = 0; i < n; i++)
         dn2cpp_gc_store_ref(&arr->data[i], dn2cpp_enum_box(ti, reflection.enumMembers[i]->value));
     return arr;
+}
+
+// Type.GetEnumValues keeps every literal, including aliases that the name lookup
+// table deduplicates. Array.CreateInstance supplies the precise enum array identity
+// and packed underlying storage, including for a runtime-only element type.
+Dn2CppObject* dn2cpp_type_get_enum_values(Dn2CppType* t)
+{
+    const Dn2CppTypeInfo* ti = dn2cpp_type_require(t);
+    if ((ti->flags & DN2CPP_TF_ENUM) == 0)
+        dn2cpp_throw_argument_param(DN2CPP_SR_MUST_BE_ENUM, "enumType");
+    int32_t width;
+    bool isUnsigned;
+    enum_underlying_shape(ti, &width, &isUnsigned);
+    uint64_t mask = width == 8 ? UINT64_MAX : (uint64_t{1} << (width * 8)) - 1;
+    std::vector<uint64_t> values;
+    const auto reflection = ti->reflection();
+    for (int32_t i = 0; i < reflection.fieldCount; i++)
+    {
+        const auto field = reflection.fields[i].operator->();
+        if ((field->attrs & DN2CPP_FLDA_LITERAL) != 0)
+            values.push_back(static_cast<uint64_t>(field->literalValue) & mask);
+    }
+    std::sort(values.begin(), values.end());
+    int32_t count = static_cast<int32_t>(values.size());
+    Dn2CppObject* result = dn2cpp_array_create_instance(t, &count, 1);
+    char* data = width == 4
+        ? reinterpret_cast<char*>(reinterpret_cast<Dn2CppArrayI4*>(result)->data)
+        : reinterpret_cast<Dn2CppArrayN*>(result)->data;
+    for (int32_t i = 0; i < count; i++)
+        std::memcpy(data + static_cast<size_t>(i) * width, &values[i], static_cast<size_t>(width));
+    return result;
 }
 
 // Enum.GetValuesAsUnderlyingType(Type): the declared values as an array of the UNDERLYING
@@ -1869,6 +1982,8 @@ static bool dn2cpp_is_methodref_header(const Dn2CppTypeInfo* t)
 {
     return t == &dn2cpp_methodinfo_type || t == &dn2cpp_constructorinfo_type;
 }
+
+static bool dn2cpp_native_member_header(const Dn2CppTypeInfo* type);
 
 // A non-null Binder is a custom binder (Type.DefaultBinder is modeled as null):
 // honoring it would require re-implementing binder-driven overload selection,
@@ -3128,6 +3243,13 @@ static Dn2CppObject* dn2cpp_meta_valuetype_gethashcode(const Dn2CppTypeInfo* con
     return dn2cpp_meta_object_gethashcode(args, receiver, argv);
 }
 
+static Dn2CppObject* dn2cpp_meta_method_generic_count(const Dn2CppTypeInfo* const*,
+    Dn2CppObject* receiver, Dn2CppObject**)
+{
+    int32_t count = dn2cpp_methodref_generic_parameter_count(reinterpret_cast<Dn2CppMethodRef*>(receiver));
+    return dn2cpp_box(&dn2cpp_int32_type, &count, sizeof(count));
+}
+
 static const Dn2CppParamInfo g_meta_params_obj[] = {
     { &dn2cpp_object_type, "obj", {}, 0, 0, nullptr, 0, nullptr, 0, 1, "System.Object obj", nullptr },
 };
@@ -3149,6 +3271,10 @@ static const Dn2CppMethodGenericParameter g_meta_unsafe_sizeof_generic_parameter
 // word: 0x0100 AggressiveInlining on SizeOf, 0 (IL) on the rest.
 // The transpiler's CoreIntrinsics.IsObjectMemberRowName lists the gated rows' names.
 static const Dn2CppMetaMember g_meta_members[] = {
+    // Runtime-owned MethodInfo has no emitted member table or managed vtable.
+    { "System.Reflection.MethodInfo", "get_GenericParameterCount", 0, &dn2cpp_int32_type,
+      0 /* instance, non-public */, 0x0BC3, dn2cpp_meta_method_generic_count,
+      nullptr, 0, "Int32 get_GenericParameterCount()", "Int32", false },
     { "System.Runtime.CompilerServices.Unsafe", "SizeOf", 1, &dn2cpp_int32_type,
       DN2CPP_MTHA_STATIC | DN2CPP_MTHA_PUBLIC, 0x0096, dn2cpp_meta_unsafe_sizeof,
       nullptr, 0, nullptr, "Int32", false, 0x0100, g_meta_unsafe_sizeof_generic_parameters },
@@ -3693,6 +3819,22 @@ Dn2CppArrayRef* dn2cpp_type_get_generic_parameter_constraints(Dn2CppType* t)
     return result;
 }
 
+int32_t dn2cpp_type_generic_parameter_position(const Dn2CppTypeInfo* ti)
+{
+    std::lock_guard<std::recursive_mutex> lock(g_formal_types_mtx);
+    const auto found = g_formal_types.find(ti);
+    if (found == g_formal_types.end() || found->second == nullptr || !found->second->parameter
+        || &found->second->type != ti)
+        dn2cpp_throw_platform_not_supported("Reflection: generic parameter context is not retained");
+    const auto* node = found->second;
+    // A formal's defining vector is independent of any constructed use of it.
+    const auto& arguments = node->methodArguments.empty() ? node->typeArguments : node->methodArguments;
+    for (size_t i = 0; i < arguments.size(); i++)
+        if (arguments[i] == ti)
+            return static_cast<int32_t>(i);
+    dn2cpp_throw_platform_not_supported("Reflection: generic parameter context is not retained");
+}
+
 int32_t dn2cpp_type_generic_parameter_attributes(const Dn2CppTypeInfo* ti)
 {
     return (ti->flags & DN2CPP_TF_GENERICPARAM) != 0
@@ -3707,6 +3849,37 @@ Dn2CppString* dn2cpp_type_generic_parameter_namespace(const Dn2CppTypeInfo* ti)
 const Dn2CppTypeInfo* dn2cpp_type_generic_parameter_declaring_type(const Dn2CppTypeInfo* ti)
 {
     return reinterpret_cast<const Dn2CppFormalType*>(ti)->declaringType;
+}
+
+Dn2CppType* dn2cpp_runtime_type_get_declaring_type(Dn2CppType* type)
+{
+    if (type == nullptr)
+        dn2cpp_throw_null_reference();
+    if (type->type != &dn2cpp_type_type)
+        dn2cpp_throw_platform_not_supported("RuntimeType.GetDeclaringType: custom Type is not supported");
+    const Dn2CppTypeInfo* ti = dn2cpp_type_require(type);
+    if ((ti->flags & DN2CPP_TF_GENERICPARAM) != 0)
+    {
+        const Dn2CppTypeInfo* owner = nullptr;
+        {
+            std::lock_guard<std::recursive_mutex> lock(g_formal_types_mtx);
+            const auto found = g_formal_types.find(ti);
+            if (found != g_formal_types.end() && found->second != nullptr
+                && found->second->parameter && &found->second->type == ti)
+                owner = found->second->declaringType;
+        }
+        if (owner == nullptr)
+            dn2cpp_throw_platform_not_supported("RuntimeType.GetDeclaringType: enclosing type identity is not retained");
+        return dn2cpp_get_type_from_handle(owner);
+    }
+    // Compounds have no enclosing owner even when their element type is nested.
+    const int32_t kind = dn2cpp_signature_kind(ti);
+    if ((ti->flags & DN2CPP_TF_ARRAY) != 0 || kind == 1 || kind == 2 || kind == 3)
+        return nullptr;
+    // The hot bit survives reflection trimming; omitted nested tables prove nothing.
+    if ((ti->flags & DN2CPP_TF_NESTED) != 0)
+        dn2cpp_throw_platform_not_supported("RuntimeType.GetDeclaringType: enclosing type identity is not retained");
+    return nullptr;
 }
 
 Dn2CppMethodRef* dn2cpp_type_generic_parameter_declaring_method(const Dn2CppTypeInfo* ti)
@@ -4234,6 +4407,14 @@ static int32_t dn2cpp_meta_collect_family(const Dn2CppTypeInfo* type, int32_t fl
     return n;
 }
 
+// The image installs this exact managed row before startup; ordinary invocation owns its body.
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_member_not_found_factory_row;
+
+void dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method)
+{
+    g_member_not_found_factory_row = method;
+}
+
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_culture_compare_info_row;
 
 void dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method)
@@ -4281,6 +4462,9 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     int32_t genericParamCount, Dn2CppArrayRef* paramTypes, int32_t bindingFlags,
     Dn2CppMethodCandidates& cands)
 {
+    const auto factory = g_member_not_found_factory_row;
+    const bool factoryNamed = factory != nullptr
+        && dn2cpp_member_name_matches(factory->name, name, bindingFlags, false);
     const auto cultureCompareInfo = g_culture_compare_info_row;
     const bool cultureCompareInfoNamed = cultureCompareInfo != nullptr
         && dn2cpp_member_name_matches(cultureCompareInfo->name, name, bindingFlags, false);
@@ -4290,7 +4474,7 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     const auto dateOnly = g_dateonly_deconstruct_row;
     const bool dateOnlyNamed = dateOnly != nullptr
         && dn2cpp_member_name_matches(dateOnly->name, name, bindingFlags, false);
-    bool named = cultureCompareInfoNamed || cultureNameValidatorNamed || dateOnlyNamed;
+    bool named = factoryNamed || cultureCompareInfoNamed || cultureNameValidatorNamed || dateOnlyNamed;
     for (int32_t i = 0; i < 2 && !named; i++)
         named = g_datetime_parser_rows[i] != nullptr
             && dn2cpp_member_name_matches(g_datetime_parser_rows[i]->name, name, bindingFlags, false);
@@ -4336,6 +4520,14 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
                 && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
                 && (paramTypes == nullptr || dn2cpp_params_match_types(cultureCompareInfo, paramTypes, queried)))
                 cands.push_back(cultureCompareInfo);
+        }
+        if (factoryNamed)
+        {
+            const auto row = factory.operator->();
+            if (row->declaringType == ti && dn2cpp_member_matches(row->attrs, bindingFlags, inherited)
+                && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
+                && (paramTypes == nullptr || dn2cpp_params_match_types(factory, paramTypes, queried)))
+                cands.push_back(factory);
         }
         for (int32_t k = 0; k < g_meta_member_count; k++)
         {
@@ -5908,7 +6100,8 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
             : reinterpret_cast<void*>(&dn2cpp_delegate_hash);
     const bool objectVirtualInvoker = row.invoker == reinterpret_cast<void*>(&dn2cpp_delegate_object_virtual_invoker)
         || row.invoker == reinterpret_cast<void*>(&dn2cpp_delegate_interface_invoker)
-        || delegateBaseEquals || delegateBaseHash;
+        || delegateBaseEquals || delegateBaseHash
+        || row.invoker == reinterpret_cast<void*>(&dn2cpp_attrdata_constructor_invoker);
     if (obj != nullptr && row.vtableSlot >= 0 && !objectVirtualInvoker && (declaring->flags & DN2CPP_TF_PATCH) == 0)
     {
         if ((declaring->flags & DN2CPP_TF_INTERFACE) != 0)
@@ -5993,6 +6186,10 @@ Dn2CppObject* dn2cpp_methodref_invoke(Dn2CppMethodRef* m, Dn2CppObject* obj, Dn2
         || dn2cpp_type_metadata_only(mi->declaringType))
         dn2cpp_throw_reflection_fault(&dn2cpp_invalid_operation_exception_type,
             dn2cpp_sr_message(DN2CPP_SR_UNBOUND_GENERIC, nullptr, 0), 0x80131509u);
+    // Invoke refuses methods declared on by-ref-like types, including statics.
+    // CreateDelegate uses the separate binding route and may call those statics.
+    if ((mi->declaringType->flags & DN2CPP_TF_BYREFLIKE) != 0)
+        dn2cpp_throw_invoke_not_supported(nullptr);
     return dn2cpp_invoke_mi(mi, obj, (args == nullptr) ? nullptr : args->data,
                             (args == nullptr) ? 0 : args->length, wrapExceptions, m->reflectedType);
 }
@@ -8302,6 +8499,12 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
     }
     else if (decl.vtableSlot >= 0)
         hit = dn2cpp_delegate_class_virtual_target(t->type, owner, decl.vtableSlot);
+    if (!hit && owner == &dn2cpp_memberinfo_type && dn2cpp_native_member_header(t->type)
+        && std::strcmp(decl.name, "HasSameMetadataDefinitionAs") == 0)
+        dn2cpp_throw_platform_not_supported("Delegate.Method: the runtime metadata-definition override is not retained");
+    if (!hit && owner == &dn2cpp_customattributedata_type && t->type == &dn2cpp_customattributedata_type
+        && std::strcmp(decl.name, "get_Constructor") == 0)
+        dn2cpp_throw_platform_not_supported("Delegate.Method: the runtime attribute-data constructor override is not retained");
     return reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(hit ? hit : declared, nullptr));
 }
 
@@ -8573,6 +8776,102 @@ static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, int32_t nonP
         dn2cpp_throw_missing_method(("No parameterless constructor defined for type '" + name + "'.").c_str());
     dn2cpp_throw_missing_method(("Cannot dynamically create an instance of type '" + name
         + "'. Reason: No parameterless constructor defined.").c_str());
+}
+
+Dn2CppObject* dn2cpp_activator_create_instance_wrapped(Dn2CppType* t, int32_t nonPublic, int32_t wrapExceptions)
+{
+    if (t == nullptr)
+        dn2cpp_throw_argument_null_param("type");
+    if (t->type != &dn2cpp_type_type)
+        dn2cpp_throw_platform_not_supported("Activator: custom Type construction is not supported");
+    return dn2cpp_activator_create_default(t, nonPublic, wrapExceptions != 0, false);
+}
+
+Dn2CppObject* dn2cpp_activator_create_instance_default_ctor(Dn2CppType* t, int32_t publicOnly, int32_t wrapExceptions)
+{
+    if (t == nullptr)
+        dn2cpp_throw_null_reference();
+    return dn2cpp_activator_create_instance_wrapped(t, publicOnly == 0, wrapExceptions);
+}
+
+// The managed wrappers carry RuntimeType objects, not CoreCLR TypeHandle arrays.
+// AOT discovery retains the constrained closed type and its callable constructor.
+static Dn2CppObject* dn2cpp_runtime_type_create_generic_instance(Dn2CppType* representative,
+    Dn2CppType* const* arguments, int32_t count)
+{
+    if (representative == nullptr)
+        dn2cpp_throw_null_reference();
+    if (representative->type != &dn2cpp_type_type)
+        dn2cpp_throw_platform_not_supported("RuntimeType: generic construction requires runtime Type objects");
+    for (int32_t i = 0; i < count; i++)
+    {
+        if (arguments[i] == nullptr)
+            dn2cpp_throw_null_reference();
+        if (arguments[i]->type != &dn2cpp_type_type)
+            dn2cpp_throw_platform_not_supported("RuntimeType: generic construction requires runtime Type objects");
+        (void)dn2cpp_type_require(arguments[i]);
+    }
+    auto* definition = dn2cpp_type_get_generic_type_definition(representative);
+    auto* args = dn2cpp_newarr_ref(count);
+    for (int32_t i = 0; i < count; i++)
+        dn2cpp_gc_store_ref(&args->data[i], reinterpret_cast<Dn2CppObject*>(arguments[i]));
+    auto* closed = dn2cpp_type_make_generic(definition, args);
+    return dn2cpp_activator_create_instance_default_ctor(closed, 0, 0);
+}
+
+Dn2CppObject* dn2cpp_runtime_type_create_generic_instance_1(Dn2CppType* representative, Dn2CppType* argument)
+{
+    Dn2CppType* arguments[] = { argument };
+    return dn2cpp_runtime_type_create_generic_instance(representative, arguments, 1);
+}
+
+Dn2CppObject* dn2cpp_runtime_type_create_generic_instance_2(Dn2CppType* representative, Dn2CppType* first, Dn2CppType* second)
+{
+    Dn2CppType* arguments[] = { first, second };
+    return dn2cpp_runtime_type_create_generic_instance(representative, arguments, 2);
+}
+
+// The caller owns initialized storage large enough for the type. An implicit
+// constructor does not touch it; an explicit constructor runs on that same address.
+void dn2cpp_runtime_type_call_default_struct_constructor(Dn2CppType* t, uint8_t* data)
+{
+    if (t == nullptr)
+        dn2cpp_throw_null_reference();
+    if (t->type != &dn2cpp_type_type)
+        dn2cpp_throw_platform_not_supported("RuntimeType: custom Type construction is not supported");
+    const Dn2CppTypeInfo* ti = t->typeInfo;
+    if (dn2cpp_type_contains_generic_parameters(ti))
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_TYPE_NOT_SUPPORTED);
+    if (ti == &dn2cpp_void_type || dn2cpp_type_metadata_only(ti) || (ti->flags & DN2CPP_TF_VALUETYPE) == 0)
+        dn2cpp_throw_platform_not_supported("RuntimeType: in-place construction requires a value type with runtime layout");
+    dn2cpp_require_layout(ti);
+    const auto reflection = ti->reflection();
+    bool hasDefaultConstructor = (reflection.activation & DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR) != 0;
+    for (int32_t i = 0; i < reflection.ctorCount; i++)
+    {
+        const auto ci = reflection.ctors[i];
+        const auto row = ci.operator->();
+        if (row->paramCount != 0)
+            continue;
+        hasDefaultConstructor = true;
+        if ((row->attrs & DN2CPP_MTHA_PUBLIC) == 0)
+            continue;
+        if (row->invoker == nullptr || row->fnPtr == nullptr)
+            dn2cpp_throw_invoke_unavailable(ci, ti);
+        // Invalid explicit-constructor storage is a native boundary refusal, not
+        // a claim about unsafe private-VM null-buffer exception behavior.
+        if (data == nullptr)
+            dn2cpp_throw_platform_not_supported("RuntimeType: null constructor storage is not supported");
+        // The constructor row's initializer hook runs first, as a call to the
+        // constructor triggers its type's initializer.
+        dn2cpp_invoke_target(row->invoker, row->fnPtr, reinterpret_cast<Dn2CppObject*>(data),
+            nullptr, nullptr, true, nullptr, row->initializer);
+        return;
+    }
+    if ((reflection.activation & DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR) != 0)
+        dn2cpp_throw_omitted_ctor(ti, "Void .ctor()");
+    if (hasDefaultConstructor)
+        dn2cpp_throw_missing_default_constructor(ti, true);
 }
 
 Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t nonPublic)
@@ -9356,6 +9655,264 @@ static bool dn2cpp_same_metadata_def(int32_t tokA, const char* assemblyA,
     const char* asmA = assemblyA != nullptr ? assemblyA : "System.Private.CoreLib";
     const char* asmB = assemblyB != nullptr ? assemblyB : "System.Private.CoreLib";
     return std::strcmp(asmA, asmB) == 0;
+}
+
+// Installed with the image's other dispatch tables, before managed initializers.
+// Standalone runtime clients have no MemberInfo slot to dispatch.
+int32_t dn2cpp_memberinfo_has_same_metadata_slot = -1;
+
+void dn2cpp_set_memberinfo_has_same_metadata_slot(int32_t slot)
+{
+    dn2cpp_memberinfo_has_same_metadata_slot = slot;
+}
+
+// Registry entries and generic-definition links name canonical definitions, not
+// constructed Type objects. Signature/formal types have separate identity rules.
+static bool dn2cpp_recorded_type_definition(const Dn2CppTypeInfo* type)
+{
+    if (type == nullptr || (type->flags & (DN2CPP_TF_ARRAY | DN2CPP_TF_GENERICPARAM)) != 0
+        || dn2cpp_signature_kind(type) != 0 || (type->genericDef != nullptr && type->genericDef != type))
+        return false;
+    if (type->reflection().metadataToken != 0)
+        return true;
+    for (int32_t i = 0; i < dn2cpp_type_registry_count; ++i)
+        if (dn2cpp_type_registry[i].type == type)
+            return true;
+    return false;
+}
+
+[[noreturn]] static void dn2cpp_metadata_definition_unavailable()
+{
+    dn2cpp_throw_platform_not_supported("HasSameMetadataDefinitionAs: the member's definition identity is not retained");
+}
+
+static const Dn2CppTypeInfo* dn2cpp_metadata_type_definition(const Dn2CppTypeInfo* type)
+{
+    return type != nullptr && type->genericDef != nullptr ? type->genericDef : type;
+}
+
+static bool dn2cpp_recorded_formal_parameter(const Dn2CppTypeInfo* type)
+{
+    std::lock_guard<std::recursive_mutex> lock(g_formal_types_mtx);
+    const auto found = g_formal_types.find(type);
+    return found != g_formal_types.end() && found->second->parameter;
+}
+
+static bool dn2cpp_metadata_compound_type(const Dn2CppTypeInfo* type)
+{
+    const int32_t kind = dn2cpp_signature_kind(type);
+    return (type->flags & DN2CPP_TF_ARRAY) != 0 || kind == 1 || kind == 2;
+}
+
+static const char* dn2cpp_metadata_definition_module(const Dn2CppTypeInfo* type)
+{
+    while (type != nullptr && dn2cpp_metadata_compound_type(type))
+        type = type->elementType;
+    {
+        std::lock_guard<std::recursive_mutex> lock(g_formal_types_mtx);
+        const auto formal = g_formal_types.find(type);
+        if (formal != g_formal_types.end() && formal->second->parameter)
+            type = formal->second->declaringType;
+    }
+    type = dn2cpp_metadata_type_definition(type);
+    if (!dn2cpp_recorded_type_definition(type))
+        dn2cpp_metadata_definition_unavailable();
+    if (const char* module = type->reflection().assemblyName)
+        return module;
+    // Canonical identity alone proves no module. Only these exact native
+    // CoreLib handles may use its implicit assembly; other missing modules refuse.
+    if (type == &dn2cpp_object_type || type == &dn2cpp_string_type || type == &dn2cpp_void_type
+        || type == &dn2cpp_bool_type || type == &dn2cpp_char_type || type == &dn2cpp_byte_type
+        || type == &dn2cpp_sbyte_type || type == &dn2cpp_int16_type || type == &dn2cpp_uint16_type
+        || type == &dn2cpp_int32_type || type == &dn2cpp_uint32_type || type == &dn2cpp_int64_type
+        || type == &dn2cpp_uint64_type || type == &dn2cpp_intptr_type || type == &dn2cpp_uintptr_type
+        || type == &dn2cpp_single_type || type == &dn2cpp_double_type)
+        return "System.Private.CoreLib";
+    dn2cpp_metadata_definition_unavailable();
+}
+
+static bool dn2cpp_same_recorded_metadata_def(int32_t tokenA, const Dn2CppTypeInfo* ownerA,
+    int32_t tokenB, const Dn2CppTypeInfo* ownerB)
+{
+    if (tokenA == 0 || tokenA != tokenB)
+        return false;
+    // Callers proved these are canonical definitions; one owner has one module.
+    return ownerA == ownerB || std::strcmp(dn2cpp_metadata_definition_module(ownerA),
+        dn2cpp_metadata_definition_module(ownerB)) == 0;
+}
+
+static bool dn2cpp_same_type_metadata_definition(const Dn2CppTypeInfo* a, const Dn2CppTypeInfo* b)
+{
+    if (a == nullptr || b == nullptr)
+        dn2cpp_metadata_definition_unavailable();
+    const bool compoundA = dn2cpp_metadata_compound_type(a);
+    const bool compoundB = dn2cpp_metadata_compound_type(b);
+    if (compoundA || compoundB)
+    {
+        // CLR assigns every element-bearing RuntimeType the typed-nil TypeDef
+        // token. The leaf's module, not array rank or element identity, separates it.
+        const auto validLeaf = [](const Dn2CppTypeInfo* type) {
+            while (type != nullptr && dn2cpp_metadata_compound_type(type))
+                type = type->elementType;
+            return type != nullptr && (dn2cpp_recorded_formal_parameter(type)
+                || dn2cpp_recorded_type_definition(dn2cpp_metadata_type_definition(type)));
+        };
+        if (!validLeaf(a) || !validLeaf(b))
+            dn2cpp_metadata_definition_unavailable();
+        return compoundA && compoundB && std::strcmp(dn2cpp_metadata_definition_module(a),
+            dn2cpp_metadata_definition_module(b)) == 0;
+    }
+    const bool formalA = dn2cpp_recorded_formal_parameter(a);
+    const bool formalB = dn2cpp_recorded_formal_parameter(b);
+    if (formalA || formalB)
+    {
+        if ((!formalA && !dn2cpp_recorded_type_definition(dn2cpp_metadata_type_definition(a)))
+            || (!formalB && !dn2cpp_recorded_type_definition(dn2cpp_metadata_type_definition(b))))
+            dn2cpp_metadata_definition_unavailable();
+        // Published formal nodes are interned by typical owner/MethodDef/position.
+        return formalA && formalB && a == b;
+    }
+    a = dn2cpp_metadata_type_definition(a);
+    b = dn2cpp_metadata_type_definition(b);
+    if (!dn2cpp_recorded_type_definition(a) || !dn2cpp_recorded_type_definition(b))
+        dn2cpp_metadata_definition_unavailable();
+    const auto ar = a->reflection();
+    const auto br = b->reflection();
+    if (ar.metadataToken != 0 && br.metadataToken != 0)
+        return dn2cpp_same_recorded_metadata_def(ar.metadataToken, a, br.metadataToken, b);
+    return a == b;
+}
+
+static bool dn2cpp_native_member_header(const Dn2CppTypeInfo* type)
+{
+    return type == &dn2cpp_type_type || dn2cpp_is_methodref_header(type)
+        || type == &dn2cpp_fieldinfo_type || type == &dn2cpp_propertyinfo_type || type == &dn2cpp_eventinfo_type;
+}
+
+template<class Row>
+static bool dn2cpp_recorded_builtin_member(Dn2CppMetadataHandle<Row> member,
+    const Dn2CppTypeInfo* owner, Dn2CppMetadataTable<Row> rows, int32_t count)
+{
+    if (!dn2cpp_recorded_type_definition(owner) || owner->reflection().metadataToken != 0)
+        return false;
+    for (int32_t i = 0; i < count; ++i)
+        if (rows[i] == member)
+            return true;
+    return false;
+}
+
+template<class Row>
+static bool dn2cpp_same_member_metadata_definition(Dn2CppMetadataHandle<Row> a, Dn2CppMetadataHandle<Row> b,
+    Dn2CppMetadataTable<Row> aTable, int32_t aCount, Dn2CppMetadataTable<Row> bTable, int32_t bCount)
+{
+    const Row ar = *a;
+    const Row br = *b;
+    const auto* ao = dn2cpp_metadata_type_definition(ar.declaringType);
+    const auto* bo = dn2cpp_metadata_type_definition(br.declaringType);
+    if (!dn2cpp_recorded_type_definition(ao) || !dn2cpp_recorded_type_definition(bo))
+        dn2cpp_metadata_definition_unavailable();
+    if (ar.metadataToken != 0 && br.metadataToken != 0)
+        return dn2cpp_same_recorded_metadata_def(ar.metadataToken, ao, br.metadataToken, bo);
+    const bool builtinA = dn2cpp_recorded_builtin_member(a, ar.declaringType, aTable, aCount);
+    const bool builtinB = dn2cpp_recorded_builtin_member(b, br.declaringType, bTable, bCount);
+    if ((ar.metadataToken == 0 && !builtinA) || (br.metadataToken == 0 && !builtinB))
+        dn2cpp_metadata_definition_unavailable();
+    if (!dn2cpp_same_type_metadata_definition(ao, bo))
+        return false;
+    if (builtinA && builtinB)
+        return a == b;
+    dn2cpp_metadata_definition_unavailable();
+}
+
+int32_t dn2cpp_memberinfo_has_same_metadata(Dn2CppObject* member, Dn2CppObject* other)
+{
+    dn2cpp_memberref_require(member);
+    if (!dn2cpp_native_member_header(member->type))
+    {
+        const int32_t slot = dn2cpp_memberinfo_has_same_metadata_slot;
+        if (slot >= 0 && member->type->vtable != nullptr)
+        {
+            const void* target = member->type->vtable[slot];
+            if (target != nullptr && !dn2cpp_is_vcall_trap(target))
+                return reinterpret_cast<int32_t (*)(Dn2CppObject*, Dn2CppObject*)>(const_cast<void*>(target))(member, other);
+        }
+        dn2cpp_throw_platform_not_supported("HasSameMetadataDefinitionAs: this reflection receiver has no retained virtual implementation");
+    }
+    if (other == nullptr)
+        dn2cpp_throw_argument_null_param("other");
+    // Runtime implementations accept only their own runtime member kind; in
+    // particular a custom MemberInfo's virtual token/module getters are not read.
+    if (member->type != other->type)
+        return 0;
+    if (member->type == &dn2cpp_type_type)
+        return dn2cpp_same_type_metadata_definition(reinterpret_cast<Dn2CppType*>(member)->typeInfo,
+            reinterpret_cast<Dn2CppType*>(other)->typeInfo);
+    if (dn2cpp_is_methodref_header(member->type))
+    {
+        const auto a = dn2cpp_open_method_definition(reinterpret_cast<Dn2CppMethodRef*>(member)->method);
+        const auto b = dn2cpp_open_method_definition(reinterpret_cast<Dn2CppMethodRef*>(other)->method);
+        if (a == nullptr || b == nullptr)
+            dn2cpp_metadata_definition_unavailable();
+        const Dn2CppMethodInfo ar = *a;
+        const Dn2CppMethodInfo br = *b;
+        const auto* ao = dn2cpp_metadata_type_definition(ar.declaringType);
+        const auto* bo = dn2cpp_metadata_type_definition(br.declaringType);
+        if (!dn2cpp_recorded_type_definition(ao) || !dn2cpp_recorded_type_definition(bo))
+            dn2cpp_metadata_definition_unavailable();
+        if (ar.metadataToken != 0 && br.metadataToken != 0)
+            return dn2cpp_same_recorded_metadata_def(ar.metadataToken, ao, br.metadataToken, bo);
+        const auto at = ar.declaringType->reflection();
+        const auto bt = br.declaringType->reflection();
+        const bool constructor = member->type == &dn2cpp_constructorinfo_type;
+        const auto* ad = dn2cpp_meta_desc_of(a);
+        const auto* bd = dn2cpp_meta_desc_of(b);
+        if (ad != nullptr || bd != nullptr)
+        {
+            const bool knownA = ar.metadataToken != 0 || ad != nullptr
+                || dn2cpp_recorded_builtin_member(a, ar.declaringType,
+                    constructor ? at.ctors : at.methods, constructor ? at.ctorCount : at.methodCount);
+            const bool knownB = br.metadataToken != 0 || bd != nullptr
+                || dn2cpp_recorded_builtin_member(b, br.declaringType,
+                    constructor ? bt.ctors : bt.methods, constructor ? bt.ctorCount : bt.methodCount);
+            if (!knownA || !knownB)
+                dn2cpp_metadata_definition_unavailable();
+            if (!dn2cpp_same_type_metadata_definition(ao, bo))
+                return 0;
+            if (ad == nullptr || bd == nullptr)
+                dn2cpp_metadata_definition_unavailable();
+            return ad == bd;
+        }
+        return dn2cpp_same_member_metadata_definition(a, b, constructor ? at.ctors : at.methods,
+            constructor ? at.ctorCount : at.methodCount, constructor ? bt.ctors : bt.methods,
+            constructor ? bt.ctorCount : bt.methodCount);
+    }
+    if (member->type == &dn2cpp_fieldinfo_type)
+    {
+        const auto a = reinterpret_cast<Dn2CppFieldRef*>(member)->field;
+        const auto b = reinterpret_cast<Dn2CppFieldRef*>(other)->field;
+        if (a == nullptr || b == nullptr || a->declaringType == nullptr || b->declaringType == nullptr)
+            dn2cpp_metadata_definition_unavailable();
+        const auto at = a->declaringType->reflection();
+        const auto bt = b->declaringType->reflection();
+        return dn2cpp_same_member_metadata_definition(a, b, at.fields, at.fieldCount, bt.fields, bt.fieldCount);
+    }
+    if (member->type == &dn2cpp_propertyinfo_type)
+    {
+        const auto a = reinterpret_cast<Dn2CppPropRef*>(member)->prop;
+        const auto b = reinterpret_cast<Dn2CppPropRef*>(other)->prop;
+        if (a == nullptr || b == nullptr || a->declaringType == nullptr || b->declaringType == nullptr)
+            dn2cpp_metadata_definition_unavailable();
+        const auto at = a->declaringType->reflection();
+        const auto bt = b->declaringType->reflection();
+        return dn2cpp_same_member_metadata_definition(a, b, at.props, at.propCount, bt.props, bt.propCount);
+    }
+    const auto a = reinterpret_cast<Dn2CppEventRef*>(member)->event;
+    const auto b = reinterpret_cast<Dn2CppEventRef*>(other)->event;
+    if (a == nullptr || b == nullptr || a->declaringType == nullptr || b->declaringType == nullptr)
+        dn2cpp_metadata_definition_unavailable();
+    const auto at = a->declaringType->reflection();
+    const auto bt = b->declaringType->reflection();
+    return dn2cpp_same_member_metadata_definition(a, b, at.events, at.eventCount, bt.events, bt.eventCount);
 }
 
 Dn2CppObject* dn2cpp_type_get_member_same_metadata(Dn2CppType* t, Dn2CppObject* member)
@@ -10389,11 +10946,68 @@ Dn2CppArrayRef* dn2cpp_member_custom_attributes_data(Dn2CppObject* member)
     return dn2cpp_attr_table_to_data_array(tab, count);
 }
 
+Dn2CppArrayRef* dn2cpp_custom_attribute_data_get_custom_attributes(Dn2CppObject* target)
+{
+    if (target == nullptr)
+        dn2cpp_throw_argument_null_param("target");
+    if (!dn2cpp_native_member_header(target->type))
+        dn2cpp_throw_platform_not_supported("CustomAttributeData.GetCustomAttributes: custom MemberInfo is not supported");
+    return dn2cpp_member_custom_attributes_data(target);
+}
+
 Dn2CppArrayRef* dn2cpp_assembly_custom_attributes_data(const char* name)
 {
     int32_t count;
     Dn2CppMetadataTable<Dn2CppAttrInfo> tab = dn2cpp_assembly_custom_attrs(name, &count);
     return dn2cpp_attr_table_to_data_array(tab, count);
+}
+
+static int32_t dn2cpp_attrdata_constructor_slot = -1;
+
+void dn2cpp_set_attrdata_constructor_slot(int32_t slot)
+{
+    dn2cpp_attrdata_constructor_slot = slot;
+}
+
+static Dn2CppMethodRef* dn2cpp_attrdata_constructor_unavailable(Dn2CppObject*)
+{
+    dn2cpp_throw_platform_not_supported("CustomAttributeData.Constructor: constructor identity is not retained");
+}
+
+void* dn2cpp_attrdata_constructor_virtual_address(Dn2CppObject* value)
+{
+    if (value == nullptr)
+        dn2cpp_throw_null_reference();
+    if (value->type == &dn2cpp_customattributedata_type)
+        return reinterpret_cast<void*>(&dn2cpp_attrdata_constructor_unavailable);
+    bool derived = false;
+    for (const Dn2CppTypeInfo* type = value->type; type != nullptr; type = type->base)
+        if (type == &dn2cpp_customattributedata_type) { derived = true; break; }
+    const int32_t slot = dn2cpp_attrdata_constructor_slot;
+    if (derived && slot >= 0 && value->type->vtable != nullptr)
+    {
+        const void* target = value->type->vtable[slot];
+        if (target != nullptr && !dn2cpp_is_vcall_trap(target))
+            return const_cast<void*>(target);
+    }
+    dn2cpp_throw_platform_not_supported("CustomAttributeData.Constructor: receiver has no retained virtual implementation");
+}
+
+Dn2CppMethodRef* dn2cpp_attrdata_constructor_virtual(Dn2CppObject* value)
+{
+    auto target = reinterpret_cast<Dn2CppMethodRef* (*)(Dn2CppObject*)>(
+        dn2cpp_attrdata_constructor_virtual_address(value));
+    return target(value);
+}
+
+Dn2CppObject* dn2cpp_attrdata_constructor_invoker(void* fn, Dn2CppObject* receiver,
+    Dn2CppObject**, const Dn2CppTypeInfo*)
+{
+    // Invoke validates its receiver first. A closed-null CreateDelegate instead
+    // enters the true nonvirtual base body, whose IL does not read the receiver.
+    if (receiver == nullptr)
+        return reinterpret_cast<Dn2CppObject* (*)(Dn2CppObject*)>(fn)(receiver);
+    return reinterpret_cast<Dn2CppObject*>(dn2cpp_attrdata_constructor_virtual(receiver));
 }
 
 Dn2CppType* dn2cpp_attrdata_attribute_type(Dn2CppAttrDataRef* d)
@@ -10892,6 +11506,11 @@ int32_t dn2cpp_methodref_is_generic(Dn2CppMethodRef* m)
 }
 
 // ---- reflection: generic definitions and closed instantiations ----
+
+int32_t dn2cpp_methodref_generic_parameter_count(Dn2CppMethodRef* m)
+{
+    return dn2cpp_methodref_require(m)->genericParamCount;
+}
 
 int32_t dn2cpp_methodref_is_generic_def(Dn2CppMethodRef* m)
 {
@@ -11916,6 +12535,16 @@ static Dn2CppObject* dn2cpp_nullable_box_payload(const Dn2CppTypeInfo* nullable,
     box->type = nullable;
     dn2cpp_nullable_store_payload(box + 1, size, offset, width, payload);
     return box;
+}
+
+Dn2CppObject* dn2cpp_rebox_to_nullable(Dn2CppObject* value, Dn2CppType* type)
+{
+    const auto* nullable = type != nullptr ? type->typeInfo : nullptr;
+    const auto* underlying = dn2cpp_nullable_underlying_ti(nullable);
+    if (underlying == nullptr)
+        dn2cpp_throw_invalid_operation_msg("Nullable reboxing requires a closed Nullable<T> runtime type.");
+    return dn2cpp_nullable_box_payload(nullable, underlying,
+        value != nullptr ? dn2cpp_unbox_nullable(value, underlying) : nullptr);
 }
 
 // ---- Array.Copy type compatibility ----

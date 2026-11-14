@@ -427,7 +427,7 @@ internal sealed partial class AssemblyDiet : IDisposable
     }
 
     // The shared classification of a Cecil call target, named as RawSignatureProvider names it.
-    private static ReflectionApi? ClassifyReflectionTarget(MethodReference target)
+    private ReflectionApi? ClassifyReflectionTarget(MethodReference target)
     {
         if (!ReflectionApis.IsCandidateName(target.Name))
             return null;
@@ -438,6 +438,9 @@ internal sealed partial class AssemblyDiet : IDisposable
             ? instance.GenericArguments.Count
             : target.GenericParameters.Count;
         var owner = target.DeclaringType is GenericInstanceType generic ? generic.ElementType : target.DeclaringType;
+        if (owner.FullName == "System.RuntimeType" && target.Name == "MakeGenericType"
+            && target.MetadataToken.RID != 0 && _byModule.ContainsKey(target.Module))
+            return GetReflectionSummarizer(target.Module).Call(target.MetadataToken.ToInt32())?.Api;
         return ReflectionApis.Classify(RawTypeName(owner), target.Name, parameters, target.HasThis, arity);
     }
 

@@ -568,6 +568,110 @@ Members, signatures and field types are decoded **on demand**; read
 4. Add a minimal case to `samples/dotnet/HelloWorld`; green
    `./gates/build-and-run-sample.sh`.
 
+The retained internal `Activator.CreateInstance(Type, bool, bool)` factory shares
+parameterless constructor selection with the public native factory. Its booleans
+remain `nonPublic` and `wrapExceptions`; constructor discovery does not depend on
+the wrapping choice. Null Type arguments keep their named argument exception;
+custom Type objects are refused before interpreting the native Type payload.
+Default value creation uses normal Nullable boxing, while raw internal Nullable
+reboxing retains its separate object representation.
+
+The retained `RuntimeType.CreateInstanceDefaultCtor(bool, bool)` adapter checks
+the instance for null before using that same factory with inverted `publicOnly`.
+It never reads a custom Type payload or enters CoreCLR activation-cache machinery.
+Receiver-based planning selects only parameterless constructors; an unknown
+visibility flag conservatively retains both accessibilities, without changing
+the runtime visibility check or rooting other constructor arities.
+The nongeneric `RuntimeType.CreateInstanceOfT()` body uses the same instance
+adapter with public-only selection and constructor exception wrapping fixed on.
+Its receiver-based planning retains only public parameterless constructors;
+value/Nullable boxed return policies remain separate from the public generic
+caller's struct-construction path.
+The retained `RuntimeType.CallDefaultStructConstructor(ref byte)` instead invokes
+a public parameterless value constructor on caller-owned storage, without boxing,
+zeroing or copying. An implicit constructor leaves that storage unchanged, including
+ref-like values. Private default-constructor metadata survives stripping so absence
+is never confused with inaccessibility. Receiver planning reaches execution and
+initialization, not a box; unresolved value-type templates retain existing refusal.
+The caller must provide sufficient storage. Null storage for an explicit constructor
+is refused before dispatch as a native safety boundary; implicit no-op initialization
+does not inspect it. This dynamic constructor dispatch is not an allocation primitive
+and remains an opaque-dispatch boundary for NoAlloc.
+
+The managed `RuntimeTypeHandle.GetActivationInfo` bridge requires CoreCLR-owned
+allocator and constructor function-pointer ABIs. Its exact raw nested signature
+routes to a catchable `PlatformNotSupportedException`, without checking arguments
+or writing output references. The separate raw QCall overload keeps native import
+binding authority. ActivatorCache and generic cache bodies remain real IL; this
+boundary does not provide a working activation cache or fabricated VM pointers.
+Supported public construction uses the native adapters above. Reflection's existing
+byref-pointer invocation restrictions and exception-only NoAlloc policy remain.
+
+The managed `RuntimeTypeHandle.ConstructName(TypeNameFormatFlags)` adapter first
+validates the handle, then composes existing Name/ToString/FullName/AssemblyQualifiedName
+helpers for modes 0/1/3/7. Unsupported flags and a null FullName/AQN result are explicit
+native capability refusals, not claims about private CLR flag behavior. Public getters
+keep their separate open/formal/function-pointer null contract. Existing metadata and
+name-formatting limits remain; compound open generic definitions are not newly promised
+for modes 3/7. The raw QCall overload retains its import policy. String construction
+remains allocating for NoAlloc; boxed handles use the existing unbox/invoker ABI.
+
+
+The retained `RuntimeTypeHandle.GetDeclaringType(RuntimeType)` bridge requires a
+canonical Type object before reading its payload. Recorded formal parameters return
+their typical declaring type; outer arrays and signature types have no enclosing type.
+Ordinary nested types explicitly refuse because general enclosing-owner identity is
+not represented. The hot nested flag, not absence of a cold nested table, distinguishes
+this boundary from top-level null. Missing formal provenance also refuses. The public
+MemberInfo declaring-type helper is outside this boundary; this is not nested-type parity. Returning
+an interned Type follows the existing NoAlloc policy for cached reflection handles,
+which does not promise zero cold initialization allocation.
+
+The exact managed `RuntimeTypeHandle.GetIntroducedMethods(RuntimeType)` factory keeps
+its real IL and nested value-type return. Its real constructor still enters the existing
+GetFirstIntroducedMethod unsupported-VM boundary before any iterator is returned;
+GetNextIntroducedMethod retains the same separate refusal. The copied-body traversal
+preserves constructor and field dependencies. No null guard or empty iterator is
+substituted for the factory, and public reflection rows are not CLR MethodDesc handles.
+This enables transpilation through the factory, not private VM enumeration at runtime.
+
+The retained RuntimeTypeCache generic-definition local helper reads its actual managed
+owner field and requires a canonical Type header before payload access. Definitions
+return the same owner; constructed types use the existing native definition identity.
+Only successful lookup updates the real cache field, using the ordinary managed
+reference-store barrier. The outer getter retains its existing-value shortcut, while
+a direct local-helper call recomputes and overwrites even a populated cache. Null cache
+and owner throw before writes; unsupported custom owners refuse. Invalid nongeneric
+owners follow the native helper's safety policy, not claimed private CLR VM parity.
+This does not implement CoreCLR cache construction or admit raw QCall handles. Returning
+interned identities follows the existing NoAlloc policy, not a zero-cold-allocation claim.
+
+The retained `CustomAttributeData.GetCustomAttributes(MemberInfo)` wrapper accepts
+canonical native Type, method, constructor, field, property and event handles. Null
+throws ArgumentNullException for `target`; custom MemberInfo headers explicitly refuse
+before payload access rather than silently losing a virtual override. Existing row-data
+materialization supplies AttributeType without running attribute constructors. A managed
+ReadOnlyCollection wraps nonempty rows so IList mutation remains unsupported; empty
+results retain the array representation and its index-bound checks. Encoded argument views and sibling overloads are not expanded. The new
+wrapper does not change existing instance helpers or custom virtual dispatch policy.
+
+The retained CustomAttributeData.Constructor base body remains ordinary managed IL:
+nonvirtual calls and addresses return null without reading the receiver. Virtual calls
+and virtual addresses use a bounded slot selector: ldvirtftn fixes the selected
+implementation at acquisition, not on a later calli receiver. Canonical row handles
+refuse with PlatformNotSupportedException because exact constructor identity is not
+stored; their selected address is an unconditional refusal thunk. Managed subclasses
+retain their actual registered virtual slot. Unknown or stripped
+implementations refuse before payload access. Reflection invokes the same virtual
+policy, while permitted closed-null delegate bindings enter the actual base body.
+A virtual delegate on a canonical row refuses Delegate.Method rather than report the
+base method as a fabricated runtime override identity. Taking the exact base getter
+address also retains this virtual slot on allocated subclasses, because the resulting
+MethodInfo can be invoked virtually; a direct base call alone does not add that demand.
+This does not infer constructors from attribute types or factories, extend metadata
+layout, or parse attribute blobs. NoAlloc accepts the base body but conservatively
+refuses the virtual helper, which can call arbitrary managed overrides.
+
 ### B. A BCL intrinsic (a `System.*` call) — core lane
 
 1. Add a case to the `switch (declType, name)` in
@@ -606,6 +710,243 @@ So add **one descriptor row** in
 `src/Dn2Cpp.Transpiler/CoreIntrinsics.Intercepts.cs` and reference it from every
 asker — **(pure predicate, cut kind, emit arm, scan effect)**, one list, nothing
 to drift.
+
+CoreLib imports of the private `QCall` module refuse unsupported native calls:
+the standalone runtime has no CoreCLR entry points. Existing member-specific
+lowerings retain ownership of direct calls and address-taken wrappers. This is
+selected from the input declaration, never the transpiler host. In particular,
+a CoreLib import of `kernel32.dll` keeps its normal native binding even when a corresponding
+CoreLib flavour declares a `QCall` import with the same entry-point name.
+The exact `RuntimeTypeHandle.IsCollectible(QCallTypeHandle)` import keeps this
+binding authority even though its declaring type is intrinsic-mapped. Its raw
+handle query is not the public reflection API's noncollectible-image policy.
+
+The exact managed `RuntimeTypeHandle.IsSZArray(RuntimeType)` helper uses the
+existing native SZ-array predicate with a null Type guard. Its retained getter,
+direct calls and address-taken wrappers share that lowering; neither CoreCLR
+element codes nor rank alone define native array identity.
+
+The exact managed `RuntimeTypeHandle.IsByRef(RuntimeType)` helper uses the
+existing outer signature-kind predicate with a null Type guard. Arrays, pointers,
+function pointers and byref-like types are not themselves by-reference types;
+a by-reference wrapper is, independently of element metadata precision. The
+protected override on sealed RuntimeType keeps its IL and exact call/address
+bindings, without adding CoreCLR element codes or custom Type dispatch.
+
+The exact managed `RuntimeTypeHandle.IsPrimitive(RuntimeType)` helper uses the
+existing native primitive flag with a null Type guard. It does not inherit an
+element or enum underlying type's flags; native integers are primitive, while
+void, decimal and compound handles are not. The protected sealed RuntimeType
+override retains its IL and exact call/address bindings, without exposing
+CoreCLR handles or widening custom Type dispatch. The pure element-code helper
+`RuntimeHelpers.IsPrimitiveType` remains independent of this Type query.
+
+The exact managed `RuntimeTypeHandle.IsPointer(RuntimeType)` helper uses the
+existing outer signature-kind predicate with a null Type guard. Native integers,
+arrays, byrefs and function pointers themselves are not pointers; an outer
+pointer wrapper is, regardless of its element. The real protected RuntimeType
+override retains its IL and exact call/address bindings. This neither exposes
+CoreCLR handles nor widens custom Type dispatch.
+
+The exact `RuntimeTypeHandle.IsFunctionPointer(RuntimeType)` managed predicate
+and `IsUnmanagedFunctionPointer(RuntimeType)` InternalCall share the existing
+native signature predicates. Only the queried type counts: pointer, by-reference
+and array wrappers do not inherit their element's function-pointer flags.
+Retained public getters keep their managed bodies. Their exact sealed bindings
+avoid CoreCLR virtual slots across calls and address loads. Direct calls, address
+bindings and retained reflection rows use the same lowering. The native null Type
+guard also applies to the raw unmanaged predicate, whose CoreCLR contract requires a
+nonnull RuntimeType. This does not extend custom Type dispatch or open
+function-pointer construction.
+
+The exact `RuntimeTypeHandle.IsGenericVariable(RuntimeType)` InternalCall reads
+only the native formal-parameter flag. Definitions, constructed types and
+compound wrappers do not inherit generic-parameter identity. Its retained public
+RuntimeType getter keeps its managed body; exact sealed calls and address bindings
+avoid CoreCLR-only virtual slots. Direct calls, delegates and explicitly retained
+helper reflection rows share that lowering. Raw null arguments use the native
+Type safety guard, not a claimed CoreCLR private-call exception contract. This
+does not extend custom Type dispatch or the separate raw index/contains helpers.
+
+The exact managed `RuntimeTypeHandle.GetAssembly(RuntimeType)` helper returns
+an interned native RuntimeAssembly object; public Assembly boundaries retain their
+headerless identity conversion. The retained sealed public getter keeps its IL;
+its raw address keeps that ABI, while delegate construction erases it through the
+managed-wrapper adapter. Its standalone delegate metadata row does not add named
+lookup to the runtime-owned RuntimeType catalog. Helper null arguments use
+CoreLib's invalid-handle ArgumentNullException; public virtual receiver checks
+still raise NullReferenceException. Private assembly-cache
+InternalCalls and QCall imports keep their separate binding authority. Under the
+native image's noncollectible policy, function-pointer assembly identity follows
+its return signature recursively without changing its element-type predicates.
+
+The exact managed `RuntimeTypeHandle.GetInstantiationInternal` and
+`GetInstantiationPublic` wrappers read native formal or constructed type arguments.
+They validate default handles and return null at zero arity. Nonempty results are
+fresh arrays carrying the declared RuntimeType[] or Type[] identity; public getter
+normalization stays in its managed body. Raw handles are not rooted through array
+or pointer elements, and the raw QCall keeps native-import binding authority.
+
+The exact managed `RuntimeTypeHandle.GetGenericVariableIndex()` wrapper and public
+`RuntimeType.GenericParameterPosition` getter read native formal contexts. A
+position is the parameter's identity index in its defining type or method vector,
+not its index in a constructed use. The lookup verifies an interned formal under
+the existing context lock without completing constraints. Missing context refuses
+explicitly. Default handles, null public receivers and non-parameters preserve
+their distinct managed validation. Retained calls, function pointers, delegates
+and reflection share the same lowering; the raw private InternalCall is not an
+alias for the managed wrapper.
+
+The exact managed `RuntimeTypeHandle.ContainsGenericVariables()` wrapper validates
+its handle and shares the native `ContainsGenericParameters` predicate. Formal
+parameters and open definitions are terminal positives; constructed arguments and
+element types recurse without inspecting constraints or declaring contexts. The
+public getter keeps its managed body. Retained calls, function pointers, delegates
+and reflection share this wrapper. The exact static InternalCall accepts a
+canonical native Type object and reuses the same predicate after header validation;
+null fails with native NullReferenceException, while custom Type headers refuse
+before payload access. This native safety policy is not a private CLR null-call
+contract. The instance wrapper retains its checked default-handle validation,
+and open function-pointer construction keeps its existing refusal.
+
+The retained `RuntimeTypeHandle.GetArgumentTypesFromFunctionPointer(RuntimeType)`
+uses existing immutable native signature children to return a fresh precise Type[]:
+return type first, followed by parameters in order, with interned Type identities.
+The zero-parameter case still owns an array containing its return type. Public
+parameter/return helpers and managed cache storage keep their existing behavior.
+Null, custom headers and non-function-pointer input have explicit native safety
+policies (NullReferenceException, PlatformNotSupportedException and
+InvalidOperationException), not private CLR invalid-input parity. Canonical header
+validation precedes payload access; no function pointer is invoked and no new
+signature substitution or raw QCall capability is introduced.
+
+The retained `RuntimeTypeHandle.GetUtf8Name(RuntimeType)` validates the canonical
+Type header before payload access. Null throws NullReferenceException; formal,
+signature and array types preserve the managed Arg_InvalidHandle ArgumentException
+with no parameter name. Ordinary types explicitly refuse unavailable CoreCLR
+metadata-name pointers. Native display names are not raw TypeDef simple-name
+provenance, so no borrowed pointer or successful MdUtf8String is fabricated. The
+real managed value-return ABI remains intact for calls, addresses and reflection;
+public naming and the raw GetUtf8NameInternal leaf keep their existing policies.
+
+The exact managed `RuntimeTypeHandle.GetConstraints()` wrapper reads the existing
+native formal-constraint metadata. Default handles and non-parameter handles keep
+their distinct validation. Zero constraints return null; nonempty results are
+fresh, precisely typed Type[] arrays over interned constraint identities. The
+retained public RuntimeType getter keeps its managed non-parameter validation and
+Type.EmptyTypes normalization. Direct calls, address bindings and reflection rows
+share the wrapper, while its raw QCall keeps native-import binding authority.
+This does not change the separate Type intrinsic's existing unsupported-receiver
+policy or the formal context, completion and missing-metadata rules.
+
+The exact managed `RuntimeTypeHandle.MakePointer()` and `MakeByRef()` wrappers
+validate their handles, then share the existing native compound-type factory.
+Pointer and by-reference identities are interned with static signature types;
+a by-reference element remains invalid for either construction. Their public
+RuntimeType overrides keep their managed bodies, including the distinction
+between a null virtual receiver and a nonvirtual body's default-handle check.
+Sealed public calls and virtual-address bindings enter those same real bodies
+without indexing CoreCLR virtual slots. Direct calls, address bindings and
+reflection-only rows share the handle wrapper; the separate raw QCalls retain
+native-import binding authority. This does not
+extend the public Type policy or supported function-pointer construction.
+
+The exact managed `RuntimeTypeHandle.MakeSZArray()` and `MakeArray(int)` wrappers
+validate their handles before using the existing native array-type policy.
+Ordinary concrete SZ arrays require an emitted registry identity; concrete ranked
+arrays remain unsupported, including rank-one non-SZ arrays. Open and signature
+array types use their existing interning and rank limits. These wrappers do not
+expand the native array factory or implement CoreCLR's private loader ABI.
+A direct private MakeArray call with a nonpositive rank throws
+PlatformNotSupportedException after handle validation. Its public RuntimeType
+overload keeps the real managed rank check before handle construction, and a
+virtual null receiver still faults before entry. Both public overloads retain
+real IL across calls and address bindings; the raw QCalls remain independent
+native-import boundaries.
+
+The exact retained `RuntimeType.IsAssignableFrom(Type)` override reuses the
+existing native relation engine, including its metadata and nullable handling.
+Raw calls return false for a null source before observing the receiver;
+`callvirt` validates the receiver first. Non-null sources must carry the native
+RuntimeType object header: custom Type objects are rejected with
+`PlatformNotSupportedException` before accessing a native Type payload, even
+when the raw receiver is null. This boundary does not implement custom
+`UnderlyingSystemType` or TypeBuilder dispatch, change existing relation limits,
+or intercept the TypeInfo overload or arbitrary Type overrides.
+`selfhost-prim-subset` diffs the shared relation engine's class, interface and
+array answers against the CLR through public `IsAssignableFrom` calls.
+
+The exact `RuntimeType.IsEnumDefined(object)` override reuses the native enum
+lookup with strict boxed enum/underlying-type compatibility and literal name
+aliases. A raw retained call checks null value before dereferencing its receiver;
+callvirt and virtual address binding check the receiver before entry. This
+adapter does not widen custom Type dispatch or CoreCLR enum table support.
+
+The exact public `RuntimeType.MakeGenericType(Type[])` override shares the existing
+native `Type.MakeGenericType` AOT, open-type and template policy. Its retained body,
+direct calls and address bindings never enter CoreCLR's instantiating loader.
+The reflection planner recognizes that exact supplied CoreLib declaration and
+signature through the same assembly-identity resolver as normal type references,
+including supplied forwarders and the signed-facade fallback. Known call arguments
+retain the same closed types as the public Type route without an independent
+closed-type root.
+A virtual call checks its receiver before entry; a nonvirtual body validates the
+argument array first. The two managed `RuntimeTypeHandle.Instantiate` wrappers
+instead preserve their pre-QCall null-element and default-handle checks, then
+refuse CoreCLR-owned type construction and constraint validation. Their raw QCall
+keeps native-import binding authority. This does not extend generic constraint
+validation or the public API's supported runtime-instantiation subset.
+
+The exact public `RuntimeType.DeclaringMethod` getter uses native formal-owner
+metadata and preserves its non-parameter validation text. RuntimeType is sealed;
+its address and virtual-address bindings use that same wrapper, never a CoreCLR
+vtable slot. The separate managed `GetDeclaringMethodForGenericParameter` bridge
+returns CoreCLR's `IRuntimeMethodInfo` and refuses execution rather than inventing
+a MethodDesc. Its raw QCall sibling retains native-import binding authority.
+
+The exact managed `RuntimeHelpers.IsPrimitiveType(CorElementType)` and
+`CanPrimitiveWiden(CorElementType, CorElementType)` helpers retain their real IL.
+They classify element codes, not Type identities. Undefined codes keep the input
+body's masked shifts and widening-table identity fallback; the widening table
+comes from the input RVA field. Direct calls, address bindings, retained
+reflection rows and copied-body traversal share this same boundary. Other
+RuntimeHelpers members remain mapped, and public primitive/conversion policies
+are outside this boundary.
+
+The managed `ThrowHelper.GetAmbiguousMatchException` factories retain their real
+IL for both `MemberInfo` and `Attribute` inputs. They return an exception instead
+of throwing it, preserving the declaring-type getter and object-based `SR.Format`
+evaluation before construction. Direct calls, address-taken calls and retained
+reflection entries use that same body; other ThrowHelper members remain mapped.
+This does not extend the shared formatter's custom `IFormattable` or
+`ISpanFormattable` support.
+
+The private-protected `Type.CreateGetMemberWithSameMetadataDefinitionAsNotFoundException`
+factory also retains its real IL. It reads the input member's name, formats the
+input CoreLib resource and returns a fresh `ArgumentException` with parameter
+name `member`; the caller owns the throw. The factory's null dereference is
+separate from the public lookup's null-argument validation. Its call, address
+and retained reflection routes share the same managed body. A named-only entry
+registers its ordinary emitted row without mutating the runtime-owned Type
+handle or adding a partial member enumeration. Delegate metadata and named lookup
+reuse that row identity.
+
+`MemberInfo.HasSameMetadataDefinitionAs` keeps its managed base body for explicit
+nonvirtual calls and `ldftn`: it throws `NotImplementedException`, including for
+a null argument. Virtual calls and `ldvirtftn` use the native reflection handle's
+runtime kind, validate `other`, and compare definition identity rather than
+object equality. Ordinary managed receivers retain their existing virtual slot.
+Recorded tokens use the image's defining-assembly identity; closed generic owners
+and methods normalize to their definitions. Canonical builtin rows, synthetic
+method descriptors with their defining owner, registered formal parameters, and
+element-bearing types have separate proven identities. Module-dependent comparisons
+require a recorded assembly or an exact known CoreLib primitive/Object/String handle;
+canonical registry membership alone does not prove a defining module. Unknown modules
+and unrecorded tokenless rows refuse with `PlatformNotSupportedException`, even when the same handle is supplied.
+The module model remains one defining module per assembly simple name, not a new
+AssemblyLoadContext or netmodule loader. This does not add a named reflection
+catalog for the base method; address-retained metadata must refuse invocation
+rather than run its nonvirtual base body on a native reflection receiver.
 
 - **Predicate**: the member set only — names, and behind a name gate a thunked
   signature. Never Compilation state.
@@ -1653,3 +1994,84 @@ extended native, admission, publication-repeat and exhaustive budget matrices
 when investigating preservation or reachability changes. A representative pass
 does not claim those extended combinations; both profiles retain the managed
 metadata and publication-contract checks they execute.
+
+The retained managed `RuntimeTypeHandle.GetInterfaces(RuntimeType)` wrapper uses
+native interface rows in their existing order. Formal parameters and compound
+pointer/byref/function-pointer types return the precise `Array.Empty<Type>()`
+singleton without constraint enumeration. Ordinary empty results share that
+singleton; nonempty results own a fresh `RuntimeType[]`. The public enumeration
+helper and raw QCall binding policy are outside this bridge. Opaque shells still expose
+only retained interface rows; this bridge does not provide a new interface solver.
+The native row order is not necessarily CLR interface-map order, and an open
+generic shell can omit a substituted generic interface that a closed instance
+retains. The wrapper preserves these existing limits rather than sorting rows
+or inferring missing interfaces.
+
+The retained managed `RuntimeTypeHandle.GetFields(RuntimeType, Span<IntPtr>, ref int)`
+wrapper preserves its TypeDesc branch: a formal, pointer, byref or function-pointer
+type writes zero to count and succeeds without reading the span. Ordinary types
+explicitly refuse CoreCLR FieldDesc enumeration without changing the caller's
+count or buffer; native FieldInfo rows are not VM descriptor pointers. Null type
+and custom-header checks precede payload access. A null count address is a native
+NRE safety boundary only on the successful TypeDesc branch. This wrapper does not
+alter Span's byref-like reflection Invoke refusal or the raw marshaller/import
+policy. NoAlloc accepts this exception-only helper under the existing policy,
+not a promise that constructing an exception performs no allocation.
+
+### Retained private process-exit orchestration
+
+The exact managed CoreLib `AppContext.OnProcessExit()` hook throws
+`PlatformNotSupportedException` when invoked: CoreCLR load-context, listener and
+AppDomain shutdown orchestration is not a native runtime capability. Retaining
+this private body does not register it with native process exit. No partial
+callbacks run before refusal; native exit behavior and EventSource observation
+refusals are independent of this hook. This boundary does not provide public
+`ProcessExit` or `AssemblyLoadContext.Unloading` delivery. Throw-only NoAlloc
+admission follows the existing exception policy, not a physical allocation-free
+exception guarantee.
+
+### Retained private assembly execution
+
+The exact private CoreLib `AppDomain.ExecuteAssembly(Assembly, string[])` helper
+checks its assembly for null, then throws `PlatformNotSupportedException`:
+linked assembly identity does not provide exact entrypoint execution metadata.
+Arguments are evaluated normally, but the boundary reads no assembly or argument
+payload and invokes no entrypoint. Public name/path validation and assembly
+loading occur before this helper. This refusal also covers
+linked-name execution; it does not change base or custom virtual
+`Assembly.EntryPoint` behavior or fabricate a missing entrypoint. Throw-only
+NoAlloc admission follows the existing exception policy.
+
+### Linked-name activation
+
+The exact two-string `Activator.CreateInstance` overload resolves a nonnull
+assembly name through the linked registry before validating the type name. It
+uses existing type lookup and public parameterless activation, then constructs
+an ordinary managed `ObjectHandle`; a null instance produces a null handle.
+Null assembly names explicitly refuse caller-sensitive assembly resolution,
+rather than guessing an entry assembly. `AppDomain.CreateInstance` rejects a null
+assembly name with `ArgumentNullException` before reaching this overload.
+Linked-name matching and reflection/constructor retention keep their general
+limits; this is not a contextual loader or version-binding engine.
+The wrapper and instance are allocating operations for NoAlloc analysis.
+
+The exact eight-argument named overload uses the same linked-name path and
+managed handle, passing case matching, constructor flags and arguments to the
+existing bounded activation engine. Nonempty activation attributes are rejected
+after assembly/type lookup but before binder selection. Nonnull binders remain
+unsupported; culture is evaluated but the existing non-parse DefaultBinder path
+does not consume it. This does not add caller-sensitive loading, custom binder
+execution or culture-dependent conversion.
+
+The exact three-argument named overload treats its object array as activation
+attributes, never constructor arguments. It uses the same validation and managed
+handle path with public parameterless defaults; nonempty attributes are rejected
+after type lookup and before selecting or invoking a constructor.
+
+The exact two-string, three-argument activation-attributes and eight-argument
+`Activator.CreateInstanceFrom` retained adapters stop at the existing unconditional `Assembly.LoadFrom` AOT capability
+refusal. Argument expressions are evaluated normally in order, but no path, type,
+flags, binder, culture or array payload is validated or inspected, and
+no target or `ObjectHandle` is allocated. Null/empty path validation is therefore
+not CLR parity; linked-name activation remains a separate supported capability.
+The typed unreachable return preserves the managed `ObjectHandle` ABI.

@@ -31,6 +31,7 @@
 # builder when Current or Dispose throws, including Dispose replacing Current's fault.
 # Type.GetEnumName and IsEnumDefined cover direct and bound delegates at every
 # integral width; Enum.Format covers flags, aliases, numeric and hex formatting.
+# Type.GetEnumValues preserves aliases, packed values and runtime-only array identity.
 # Former gates: enum-flags, enum-interp, enum-tostring, enum-value-tostring,
 # external-enum.
 source "$(dirname "$0")/_common.sh"
@@ -123,6 +124,12 @@ gate_extra_asserts() {
     gate_output compare "$out/enum-corelib-prefix.stdout" "$out/enum-corelib-before.stdout" --policy crlf
     gate_output witness "$native" 'enum name lookup end' 'enum definition routes end' \
         'enum static integer format end' --count 1 --policy crlf
+
+    gate_capture_ok "$out/enum-values-before" run_bounded dotnet "$_CG_APP" before-enum-values
+    gate_output select "$native" "$out/enum-values-prefix.stdout" --before '== enum values lookup ==' --policy crlf
+    gate_output compare "$out/enum-values-prefix.stdout" "$out/enum-values-before.stdout" --policy crlf
+    gate_output witness "$native" 'enum values lookup end' 'dynamic-enumerated:0,65535,65535,' \
+        'field-only:0,0,65535,' --count 1 --policy crlf
 
     narrow_enum_storage_asserts "$out"
 }

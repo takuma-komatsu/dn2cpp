@@ -60,10 +60,98 @@ internal static class CoreIntrinsicTypeMaps
     public static bool IsDelegateBaseType(string? fullName) =>
         fullName is "System.Delegate" or "System.MulticastDelegate";
 
+    // Raw CoreCLR type materialization is distinct from the native TypeInfo handle API.
+    public static bool IsCoreClrTypeMaterializationMethod(string? assembly, string? owner, string name,
+        bool isAssembly, bool isPrivate, bool isStatic, int genericArity, bool managedBody,
+        bool pinvoke, int parameterCount, string? result, string? first, string? second) =>
+        assembly == "System.Private.CoreLib" && owner == "System.RuntimeTypeHandle"
+        && isStatic && genericArity == 0 && (name switch
+        {
+            "GetRuntimeType" => isAssembly && managedBody && !pinvoke && parameterCount == 1
+                && result == "System.RuntimeType" && first == "System.Runtime.CompilerServices.MethodTable*",
+            "GetRuntimeTypeFromHandle" or "GetRuntimeTypeFromHandleMaybeNull" =>
+                isAssembly && managedBody && !pinvoke && parameterCount == 1
+                && result == "System.RuntimeType" && first == "System.IntPtr",
+            "GetRuntimeTypeFromHandleSlow" => isPrivate && first == "System.IntPtr"
+                && (managedBody && !pinvoke && parameterCount == 1 && result == "System.RuntimeType"
+                    || !managedBody && pinvoke && parameterCount == 2 && result == "System.Void"
+                        && second == "System.Runtime.CompilerServices.ObjectHandleOnStack"),
+            _ => false,
+        });
+
+    public static bool IsRuntimeTypeIntroducedMethodsFactoryMethod(string? assembly, string? owner, string name,
+        bool exactAttributes, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
+        int parameterCount, bool nestedValueResult, bool runtimeTypeInput) =>
+        assembly == "System.Private.CoreLib" && owner == "System.RuntimeTypeHandle"
+        && name == "GetIntroducedMethods" && exactAttributes && staticDefault && genericArity == 0
+        && managedBody && !pinvoke && parameterCount == 1 && nestedValueResult && runtimeTypeInput;
+
+    public static bool IsRuntimeTypeHandleCopyMethod(string? assembly, string? owner, string name,
+        bool isAssembly, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
+        int parameterCount, string? result, string? first, string? second) =>
+        assembly == "System.Private.CoreLib" && owner == "System.RuntimeTypeHandle"
+        && name == "CopyRuntimeTypeHandles" && isAssembly && staticDefault && genericArity == 0
+        && managedBody && !pinvoke && parameterCount == 2
+        && (result == "System.ReadOnlySpan<System.IntPtr>" && first == "System.RuntimeTypeHandle[]"
+                && second == "System.Span<System.IntPtr>"
+            || result == "System.IntPtr[]" && first == "System.Type[]" && second == "System.Int32&");
+
+    public static bool IsMemberMetadataDefinitionOwner(string? owner) => owner is
+        "System.Reflection.MemberInfo" or "System.RuntimeType" or "System.Reflection.RuntimeMethodInfo"
+        or "System.Reflection.RuntimeConstructorInfo" or "System.Reflection.RuntimeFieldInfo"
+        or "System.Reflection.RuntimePropertyInfo" or "System.Reflection.RuntimeEventInfo";
+
+    public static bool IsMemberMetadataDefinitionMethod(string? assembly, string? owner, string name,
+        bool publicVirtual, bool isFinal, bool instanceDefault, int genericArity, bool managedBody,
+        bool pinvoke, int parameterCount, bool returnsBoolean, string? parameter) =>
+        assembly == "System.Private.CoreLib" && IsMemberMetadataDefinitionOwner(owner)
+        && name == "HasSameMetadataDefinitionAs" && publicVirtual
+        && isFinal == (owner != "System.Reflection.MemberInfo") && instanceDefault
+        && genericArity == 0 && managedBody && !pinvoke && parameterCount == 1
+        && returnsBoolean && parameter == "System.Reflection.MemberInfo";
+
+    public static bool IsMemberNotFoundExceptionFactoryMethod(string? assembly, string? owner, string name,
+        bool isFamilyAndAssembly, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
+        int parameterCount, string? result, string? parameter) =>
+        assembly == "System.Private.CoreLib" && owner == "System.Type"
+        && name == "CreateGetMemberWithSameMetadataDefinitionAsNotFoundException"
+        && isFamilyAndAssembly && staticDefault && genericArity == 0
+        && managedBody && !pinvoke && parameterCount == 1
+        && result == "System.ArgumentException" && parameter == "System.Reflection.MemberInfo";
+
     public static bool IsCultureInfoNameValidatorMethod(string? assembly, string? owner, string name,
         bool exactDeclaration, bool exactSignature) =>
         assembly == "System.Private.CoreLib" && owner == "System.Globalization.CultureInfo"
         && name == "VerifyCultureName" && exactDeclaration && exactSignature;
+
+    public static bool IsPrimitiveElementHelperMethod(string? assembly, string? owner, string name,
+        bool isAssembly, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
+        int parameterCount, bool booleanResult, bool byteElementType) =>
+        assembly == "System.Private.CoreLib" && owner == "System.Runtime.CompilerServices.RuntimeHelpers"
+        && name is "IsPrimitiveType" or "CanPrimitiveWiden" && isAssembly && staticDefault && genericArity == 0
+        && managedBody && !pinvoke && parameterCount == (name == "IsPrimitiveType" ? 1 : 2)
+        && booleanResult && byteElementType;
+
+    public static bool IsAmbiguousMatchExceptionFactoryMethod(string? assembly, string? owner, string name,
+        bool isAssembly, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
+        int parameterCount, string? result, string? parameter) =>
+        assembly == "System.Private.CoreLib" && owner == "System.ThrowHelper"
+        && name == "GetAmbiguousMatchException" && isAssembly && staticDefault && genericArity == 0
+        && managedBody && !pinvoke && parameterCount == 1
+        && result == "System.Reflection.AmbiguousMatchException"
+        && parameter is "System.Reflection.MemberInfo" or "System.Attribute";
+
+    public static bool IsNullableReboxingMethod(string? assembly, string? owner, string name,
+        bool isAssembly, bool isStatic, int genericArity, bool managedBody, bool pinvoke,
+        int parameterCount, bool returnsObject, bool objectInput, bool runtimeTypeInput) =>
+        assembly == "System.Private.CoreLib" && owner == "System.RuntimeMethodHandle"
+        && isAssembly && isStatic && genericArity == 0 && managedBody && !pinvoke
+        && returnsObject && objectInput && (name switch
+        {
+            "ReboxFromNullable" => parameterCount == 1,
+            "ReboxToNullable" => parameterCount == 2 && runtimeTypeInput,
+            _ => false,
+        });
 
     private static readonly HashSet<string> s_intrinsicTypes = new()
     {
@@ -117,8 +205,8 @@ internal static class CoreIntrinsicTypeMaps
         "System.String",
         "System.Delegate",
         "System.Type",
-        // RuntimeTypeHandle is the type-info pointer itself. Its managed CoreLib field
-        // layout and member bodies must not leak into the emitted representation.
+        // RuntimeTypeHandle is the type-info pointer itself. Only selected field-free
+        // managed helpers may bypass its CoreCLR layout and member-body boundary.
         "System.RuntimeTypeHandle",
         "System.Reflection.MemberInfo",
         // Reflected field handles. FieldInfo is abstract in the BCL; we model

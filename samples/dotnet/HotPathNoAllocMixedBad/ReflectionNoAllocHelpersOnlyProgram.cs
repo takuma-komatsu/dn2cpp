@@ -30,6 +30,7 @@ namespace ReflectionNoAllocHelpersOnly
         [HotPath(NoAlloc = true)] private static void WriteProperty(PropertyInfo property, object value, object data) => property.SetValue(value, data);
         [HotPath(NoAlloc = true)] private static object? InvokeMethod(MethodInfo method, object value) => method.Invoke(value, null);
         [HotPath(NoAlloc = true)] private static object? CreateNamed(Assembly assembly, string name) => assembly.CreateInstance(name);
+        [HotPath(NoAlloc = true)] private static bool SameDefinition(MemberInfo member, MemberInfo other) => member.HasSameMetadataDefinitionAs(other);
         private static void Main()
         {
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -44,6 +45,7 @@ namespace ReflectionNoAllocHelpersOnly
             WriteProperty(typeof(Tagged).GetProperty("Property")!, value, propertyValue);
             Console.WriteLine(InvokeMethod(typeof(Tagged).GetMethod("Read")!, value));
             Console.WriteLine(CreateNamed(typeof(Tagged).Assembly, "ReflectionNoAllocHelpersOnly.Tagged"));
+            Console.WriteLine(SameDefinition(typeof(Tagged).GetMethod("Read")!, typeof(Tagged).GetMethod("Read")!));
         }
     }
 }
