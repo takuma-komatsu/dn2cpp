@@ -14,8 +14,6 @@
 # carries the throw-time trace — see its comment below.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|trace-hook:fresh-wrapper-image|worker-modes:pool,thread,timer,cts-timer,async-void,local-continuation,nested-drain,generic-exception,message-override"
-# The Windows/MSYS status-4 workaround also covers the initial Main comparison.
-DN2CPP_RETRY_STATUS4=${DN2CPP_RETRY_STATUS4:-1}
 
 gate_extra_asserts() {
 
@@ -67,9 +65,9 @@ fi
 for mode in pool thread timer 'cts timer' 'async void' 'local continuation' 'nested drain' 'generic exception' \
         'message override'; do
     run_out="$out/worker-$mode"
-    gate_capture "$run_out/native" run_bounded_retry_status4 "$out" "worker $mode native" \
+    gate_capture "$run_out/native" run_bounded \
         "./$out/$project$EXE_EXT" "$mode"
-    gate_capture "$run_out/oracle" run_bounded_retry_status4 "$out" "worker $mode oracle" \
+    gate_capture "$run_out/oracle" run_bounded \
         dotnet "$_CG_APP" "$mode"
     native_code=$(cat "$run_out/native.status")
     expected_code=$(cat "$run_out/oracle.status")
@@ -80,10 +78,6 @@ throwing $mode"
     case "$expected_code" in
         0|1) echo "FAIL: real .NET did not terminate abnormally for $mode" >&2; exit 1 ;;
     esac
-    if [ "$DN2CPP_OS" = windows ] && { [ "$native_code" -eq 4 ] || [ "$expected_code" -eq 4 ]; }; then
-        echo "FAIL: worker $mode still returned status 4 after one retry" >&2
-        exit 1
-    fi
     # The first diagnostic is a semantic record; retain both complete reports.
     gate_output select "$run_out/native.stderr" "$run_out/native-first.stderr" --first-record --policy exact
     gate_output select "$run_out/oracle.stderr" "$run_out/oracle-first.stderr" --first-record --policy exact

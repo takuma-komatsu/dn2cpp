@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 script="$PWD/gates/test-gate-output-shell.sh"
 _DN2CPP_GATE_ROOT="$PWD"
 source gates/_python.sh
-eval "$(sed -n '/^gate_capture() {/,/^}/p; /^gate_capture_ok() {/,/^}/p; /^run_bounded_retry_status4() {/,/^}/p; /^gate_assert_text() {/,/^}/p; /^_gate_helpers_hash() {/,/^}/p; /^gate_output() {/,/^}/p; /^corelib_diff_gate() {/,/^}/p; /^corelib_diff_abort_gate() {/,/^}/p; /^_corelib_diff_gate() {/,/^}/p; /^corelib_diff_split_gate() {/,/^}/p; /^corelib_subset_gate() {/,/^}/p; /^corelib_freeze_gate() {/,/^}/p; /^wasm_corelib_diff_gate() {/,/^}/p' gates/_common.sh)"
+eval "$(sed -n '/^gate_capture() {/,/^}/p; /^gate_capture_ok() {/,/^}/p; /^gate_assert_text() {/,/^}/p; /^_gate_helpers_hash() {/,/^}/p; /^gate_output() {/,/^}/p; /^corelib_diff_gate() {/,/^}/p; /^corelib_diff_abort_gate() {/,/^}/p; /^_corelib_diff_gate() {/,/^}/p; /^corelib_diff_split_gate() {/,/^}/p; /^corelib_subset_gate() {/,/^}/p; /^corelib_freeze_gate() {/,/^}/p; /^wasm_corelib_diff_gate() {/,/^}/p' gates/_common.sh)"
 
 if [ "${1:-}" = --case ]; then
     scenario="$2" fixture="$3" py="$4"
@@ -53,6 +53,7 @@ if [ "${1:-}" = --case ]; then
                 gate_cache_check run custom-context || :
                 gate_cache_commit
                 gate_cache_check run custom-context
+                DN2CPP_RETRY_STATUS4=1 gate_cache_check run custom-context
                 if DN2CPP_RETRY_STATUS4=0 gate_cache_check run custom-context; then
                     echo 'FAIL: retry-disabled run reused a retry-enabled cache receipt' >&2
                     exit 1
@@ -61,28 +62,33 @@ if [ "${1:-}" = --case ]; then
             ;;
         status4-*)
             source gates/_ordinary-reflection.sh
-            eval "$(sed -n '/^_gate_extra_asserts() {/,/^}/p; /^_corelib_gate_check() {/,/^}/p' gates/_common.sh)"
+            eval "$(sed -n '/^_gate_extra_asserts() {/,/^}/p; /^_corelib_gate_check() {/,/^}/p; /^run_bounded() {/,/^}/p; /^gate_run_logs_cleanup() {/,/^}/p' gates/_common.sh)"
             unset DN2CPP_RETRY_STATUS4
             DN2CPP_OS=windows
+            DN2CPP_RUN_WATCHDOG_SECS=17
             CONFIG=Debug
             retry_root="$fixture/$scenario"
             mkdir -p "$retry_root/attempts"
             _CG_CORELIB_IN="$retry_root/System.Private.CoreLib.dll"
             native_first=4 oracle_first=4 second_code=0
             case "$scenario" in
-                status4-repeated) second_code=4 ;;
+                status4-repeated|status4-direct-repeated) second_code=4 ;;
                 status4-other) native_first=7; oracle_first=7 ;;
                 status4-second-error) oracle_first=0; second_code=7 ;;
-                status4-disabled|status4-direct-disabled) DN2CPP_RETRY_STATUS4=0; oracle_first=0 ;;
+                status4-disabled) DN2CPP_RETRY_STATUS4=0; oracle_first=0 ;;
+                status4-direct-disabled) DN2CPP_RETRY_STATUS4=0 ;;
                 status4-nonwindows) DN2CPP_OS=linux; oracle_first=0 ;;
                 status4-unrelated) oracle_first=0 ;;
+                status4-direct-enabled) DN2CPP_RETRY_STATUS4=1 ;;
             esac
             _corelib_gate_out() { printf '%s/run\n' "$retry_root"; }
             _gate_extra_inputs() { :; }
-            gate_cache_check() { printf '%s\n' "${DN2CPP_RETRY_STATUS4:-auto}" >> "$retry_root/contexts"; return 1; }
+            gate_cache_check() { printf '%s\n' "${DN2CPP_RETRY_STATUS4:-1}" >> "$retry_root/contexts"; return 1; }
             gate_build_fixture() { mkdir -p "$2"; }
             invoke_cli() { :; }
-            run_bounded() {
+            run_with_watchdog() {
+                test "$1" = 17 || return 91
+                shift
                 local side=native variant=main counter count=0 code
                 if [ "$1" = dotnet ]; then side=oracle; shift; fi
                 shift
@@ -99,7 +105,11 @@ if [ "${1:-}" = --case ]; then
                     if [ "$side" = native ]; then code="$native_first"; else code="$oracle_first"; fi
                 fi
                 printf 'payload\000\r\n\n'
-                printf 'attempt %s\n' "$count" >&2
+                if [[ "$scenario" == status4-direct-* ]]; then
+                    printf 'attempt %s\000\r\n\n' "$count" >&2
+                else
+                    printf 'attempt %s\n' "$count" >&2
+                fi
                 return "$code"
             }
             if [ "$scenario" = status4-fixture ]; then
@@ -116,7 +126,7 @@ if [ "${1:-}" = --case ]; then
                     DN2CPP_OUT_SUFFIX="$mode" ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves ${flags[@]+"${flags[@]}"}
                     test "${DN2CPP_RETRY_STATUS4+x}" != x
                 done
-                # Opting in must not repeat a command outside the final-run API.
+                # Commands outside the final-run API retain their original status.
                 single_shot() { printf 'ran\n' >> "$retry_root/single-shot-runs"; return 4; }
                 if DN2CPP_RETRY_STATUS4=1 gate_capture_ok "$retry_root/single-shot" single_shot; then
                     echo 'FAIL: status 4 passed a success-only capture' >&2
@@ -124,12 +134,61 @@ if [ "${1:-}" = --case ]; then
                 fi
                 test "$(cat "$retry_root/single-shot.status")" = 4
                 test "$(cat "$retry_root/single-shot-runs")" = ran
-            elif [ "$scenario" = status4-direct-disabled ]; then
-                gate_capture "$retry_root/run/direct" run_bounded_retry_status4 "$retry_root/run" direct native
-                test "$(cat "$retry_root/run/direct.status")" = 4
+            elif [[ "$scenario" == status4-direct-* ]]; then
+                _CG_OUT="$retry_root/run"
+                mkdir -p "$_CG_OUT"
+                direct_code=0
+                run_bounded native > "$_CG_OUT/direct.stdout" 2> "$_CG_OUT/direct.stderr" || direct_code=$?
+                oracle_code=0
+                run_bounded dotnet fixture.dll > "$_CG_OUT/direct-oracle.stdout" 2> "$_CG_OUT/direct-oracle.stderr" || oracle_code=$?
+                expected_code=0 expected_attempt=2
+                case "$scenario" in
+                    status4-direct-disabled) expected_code=4; expected_attempt=1 ;;
+                    status4-direct-repeated) expected_code=125 ;;
+                esac
+                test "$direct_code" = "$expected_code"
+                test "$oracle_code" = "$expected_code"
+                printf 'payload\000\r\n\n' > "$retry_root/expected.stdout"
+                printf 'attempt %s\000\r\n\n' "$expected_attempt" > "$retry_root/expected.stderr"
+                for stream in stdout stderr; do
+                    cmp "$_CG_OUT/direct.$stream" "$retry_root/expected.$stream"
+                    cmp "$_CG_OUT/direct.$stream" "$_CG_OUT/direct-oracle.$stream"
+                done
+            elif [ "$scenario" = status4-split ]; then
+                corelib_diff_split_gate OtherFixture
+                test "$(cat "$retry_root/run/native.stderr")" = 'attempt 2'
+                test "$(cat "$retry_root/run/oracle.stderr")" = 'attempt 2'
+            elif [[ "$scenario" == status4-cleanup* ]]; then
+                _GATE_RUN_LOG_DIR="$retry_root/run"
+                _GATE_RUN_LOG_LABEL=fixture
+                _GATE_EXIT_RC=0
+                capture_prefix="$_GATE_RUN_LOG_DIR/native"
+                if [ "$scenario" = status4-cleanup-nested ]; then
+                    capture_prefix="$_GATE_RUN_LOG_DIR/x64/native"
+                fi
+                gate_capture_ok "$capture_prefix" run_bounded native 2> "$retry_root/capture.log"
+                cmp "$capture_prefix.retry.log" "$retry_root/capture.log"
+                gate_run_logs_cleanup
+                test -d "$_GATE_RUN_LOG_DIR"
+                test -s "$capture_prefix.retry.log"
+                _GATE_RUN_LOG_DIR="$retry_root/no-retries"
+                mkdir -p "$_GATE_RUN_LOG_DIR/x64"
+                printf 'ordinary output\n' > "$_GATE_RUN_LOG_DIR/x64/native.stdout"
+                gate_run_logs_cleanup
+                test ! -d "$_GATE_RUN_LOG_DIR"
+                _GATE_RUN_LOG_DIR="$retry_root/scan-failure"
+                mkdir -p "$_GATE_RUN_LOG_DIR"
+                (
+                    find() { return 1; }
+                    gate_run_logs_cleanup
+                    test -d "$_GATE_RUN_LOG_DIR"
+                )
             else
                 subject=OrdinaryReflectionTypeLeaves
                 [ "$scenario" != status4-unrelated ] || subject=OtherFixture
+                if [ "$scenario" = status4-oracle-hook ]; then
+                    gate_run_oracle() { run_bounded dotnet "$@"; }
+                fi
                 ordinary_fixture_diff_gate ReflectTypes "$subject" --no-ildiet
             fi
             ;;
@@ -565,9 +624,16 @@ run_case 1 status4-repeated
 run_case 0 status4-other
 run_case 1 status4-second-error
 run_case 1 status4-disabled
+run_case 0 status4-direct-default
+run_case 0 status4-direct-enabled
 run_case 0 status4-direct-disabled
+run_case 0 status4-direct-repeated
 run_case 1 status4-nonwindows
-run_case 1 status4-unrelated
+run_case 0 status4-unrelated
+run_case 0 status4-split
+run_case 0 status4-oracle-hook
+run_case 0 status4-cleanup
+run_case 0 status4-cleanup-nested
 gate_python - "$fixture" <<'PY'
 from pathlib import Path
 import sys
@@ -592,19 +658,43 @@ for mode in ('raw', '-diet', '-native'):
     assert sum("before\\ fixture ''" in (attempt / 'command').read_text() for attempt in evidence) == 2
 contexts = (root / 'status4-fixture' / 'contexts').read_text().splitlines()
 assert contexts == ['1', '1', '1']
-for scenario in ('repeated', 'other', 'second-error', 'disabled', 'direct-disabled', 'nonwindows', 'unrelated'):
+for scenario in ('repeated', 'other', 'second-error', 'disabled', 'direct-default',
+                 'direct-enabled', 'direct-disabled', 'direct-repeated', 'nonwindows',
+                 'unrelated', 'split', 'oracle-hook', 'cleanup', 'cleanup-nested'):
     fixture = root / ('status4-' + scenario)
-    evidence = list((fixture / 'run').glob('retry4.*'))
-    native_count = 2 if scenario in ('repeated', 'second-error') else 1
+    evidence_root = fixture / 'run'
+    if scenario == 'cleanup-nested':
+        evidence_root /= 'x64'
+    evidence = list(evidence_root.glob('retry4.*'))
+    native_count = 1 if scenario in ('other', 'disabled', 'direct-disabled', 'nonwindows') else 2
     assert (fixture / 'attempts' / 'raw-native-main').read_text().strip() == str(native_count)
-    if scenario != 'direct-disabled':
-        oracle_count = 2 if scenario == 'repeated' else 1
+    if scenario.startswith('cleanup'):
+        oracle_count = 0
+    elif scenario.startswith('direct-'):
+        oracle_count = native_count
+    else:
+        oracle_count = 2 if scenario in ('repeated', 'split', 'oracle-hook') else 1
+    if oracle_count:
         assert (fixture / 'attempts' / 'raw-oracle-main').read_text().strip() == str(oracle_count)
-    if scenario in ('repeated', 'second-error'):
-        assert len(evidence) == (2 if scenario == 'repeated' else 1)
+    if native_count == 2:
+        assert len(evidence) == sum(count == 2 for count in (native_count, oracle_count))
         for attempt in evidence:
-            assert (attempt / 'second.status').read_text().strip() == ('4' if scenario == 'repeated' else '7')
+            code = '4' if scenario in ('repeated', 'direct-repeated') else '7' if scenario == 'second-error' else '0'
+            assert (attempt / 'first.status').read_text().strip() == '4'
+            assert (attempt / 'second.status').read_text().strip() == code
+            if scenario.startswith('direct-'):
+                assert (attempt / 'first.stdout').read_bytes() == payload
+                assert (attempt / 'second.stdout').read_bytes() == payload
+                assert (attempt / 'first.stderr').read_bytes() == b'attempt 1\0\r\n\n'
+                assert (attempt / 'second.stderr').read_bytes() == b'attempt 2\0\r\n\n'
+                label = (attempt / 'label').read_text().strip()
+                assert f'note: {label} first run returned 4;' in (attempt / 'retry.log').read_text()
+        if scenario.startswith('direct-'):
+            assert sorted((attempt / 'label').read_text().strip() for attempt in evidence) == ['dotnet fixture.dll', 'native']
     else:
         assert not evidence
+    if scenario == 'repeated':
+        for side in ('native', 'oracle'):
+            assert (fixture / 'run' / f'{side}.status').read_text().strip() == '125'
 PY
 printf 'OK: Windows status-4 retry policy\n'

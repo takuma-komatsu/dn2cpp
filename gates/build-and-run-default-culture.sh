@@ -29,8 +29,7 @@ default_culture_run() {
     _culture_prefix="$_GATE_RUN_LOG_DIR/${_CULTURE_RUN_SEQUENCE}-$_culture_side"
     printf -v "$_culture_result" '%s' "$_culture_prefix.stdout"
     printf -v _culture_command '%q ' "$@"
-    gate_capture "$_culture_prefix" run_bounded_retry_status4 "${out:-$_GATE_RUN_LOG_DIR}" \
-        "DefaultCulture $_culture_side: $_culture_command" "$@" || return 1
+    gate_capture "$_culture_prefix" run_bounded "$@" || return 1
     printf '%s\n' "$_culture_command" > "$_culture_prefix.command"
     _culture_code=$(cat "$_culture_prefix.status")
     if [ "$_culture_code" -ne 0 ]; then
@@ -145,8 +144,8 @@ default_culture_diagnostics_self_test() {
         else
             actual_code=$?
         fi
-        [ "$actual_code" -eq 4 ] \
-            && grep -Fxq 'exit code: 4' "$diagnostics" \
+        [ "$actual_code" -eq 125 ] \
+            && grep -Fxq 'exit code: 125' "$diagnostics" \
             && grep -Fq 'first run returned 4; retried once (second status 4' "$diagnostics" \
             || { echo 'FAIL: a second status 4 was not reported' >&2; return 1; }
     fi
