@@ -311,7 +311,8 @@ internal static class BoundGeneric<T>
     public static int Answer() => 20;
 }
 
-internal static class InvokedGeneric<T>
+// Closed only by MakeGenericType; the initializer requires the static fallback.
+internal sealed class InvokedGeneric<T>
 {
     static InvokedGeneric()
     {
@@ -1326,7 +1327,7 @@ internal static class Program
         int firstBound = bound();
         int repeatBound = bound();
         Console.WriteLine($"generic delegate by name={firstBound}/{repeatBound}/{Witness.BoundGeneric ?? "not-run"}/runs={Witness.BoundGenericRuns}");
-        MethodInfo invoked = typeof(InvokedGeneric<int>).GetMethod("Answer")!;
+        MethodInfo invoked = typeof(InvokedGeneric<>).MakeGenericType(typeof(int)).GetMethod("Answer")!;
         object? firstInvoke = invoked.Invoke(null, null);
         object? repeatInvoke = invoked.Invoke(null, null);
         Console.WriteLine($"generic method invoke={firstInvoke}/{repeatInvoke}/{Witness.InvokedGeneric ?? "not-run"}/runs={Witness.InvokedGenericRuns}");
