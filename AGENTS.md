@@ -82,9 +82,27 @@ dotnet run --project src/Dn2Cpp.Cli -- <assembly.dll> [-r <ref.dll>] [-o <dir>] 
 
 ## Adding regression coverage
 
-- Add a section to the closest themed bucket; create a bucket only for a new area.
-- Keep each gate under five minutes in every mode, opt-in profiles included.
-  A longer gate needs maintainer approval.
+- Minimize compilation passes. In principle, each gate builds one aggregate
+  program once through its required managed build, transpilation and native build
+  stages. Reuse those binaries for cases, arguments and inputs. Extra build/transpile
+  passes, including separate drivers or compiled fixtures, require an essential
+  compile-time distinction that the same binaries cannot verify; coverage breadth
+  alone does not qualify.
+- Keeping total gate-suite time from growing takes priority over exhaustive
+  coverage. Consolidate redundant build/setup work; do not move extra compilation
+  into new gates. Compare affected gates' build counts before and after changes,
+  checking timings as needed. Do not weaken required checks, parity or oracles.
+- Do not add regression tests by default. Inspect relevant existing cases and
+  gates first. If they already detect the failure or verify the changed behavior,
+  run them and do not add duplicate coverage.
+- Add only the minimum cases needed for a concrete gap in coverage of a
+  reproduced bug or new/changed behavior. Identify what existing checks miss;
+  a new bug regression must expose the pre-fix failure.
+- Extend an existing case or the closest themed bucket. Create a new bucket,
+  fixture or gate only when the required behavior cannot be covered there.
+- Do not add speculative edge cases, redundant combinations, or tests that
+  merely mirror the implementation. Documentation/comment-only changes and
+  behavior-preserving refactors alone do not justify new regression tests.
 - New drivers first pin `CurrentCulture` and `CurrentUICulture` to invariant.
 - Prove the new block ran and the old output is an unchanged prefix.
 - Use `corelib_diff_gate` for .NET parity and `corelib_freeze_gate` only for an
