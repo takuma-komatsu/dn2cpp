@@ -27,11 +27,11 @@ internal sealed partial class MethodCompiler
         return (null, "");
     }
 
-    private (ClassInfo, FieldInfo) ResolveField(int token)
+    private (ClassInfo, FieldInfo) ResolveField(int token, ILOpCode operation)
     {
         var handle = SRME.EntityHandle(token);
         if (handle.Kind == HandleKind.MemberReference)
-            return _c.ResolveMemberRefField(_module, (MemberReferenceHandle)handle, _method.Context);
+            return Validate(_c.ResolveMemberRefField(_module, (MemberReferenceHandle)handle, _method.Context));
         if (handle.Kind != HandleKind.FieldDefinition)
             throw new NotSupportedException("External field access is not supported");
         var fd = _reader.GetFieldDefinition((FieldDefinitionHandle)handle);
@@ -43,7 +43,17 @@ internal sealed partial class MethodCompiler
             ? _method.DeclaringClass
             : _c.GetClass(_module, declType);
         var fld = cls.Fields.First(f => f.Name == fname);
-        return (cls, fld);
+        return Validate((cls, fld));
+
+        (ClassInfo, FieldInfo) Validate((ClassInfo Owner, FieldInfo Field) resolved)
+        {
+            CoreIntrinsics.ValidateResourceManagerField(resolved.Field);
+            if (resolved.Owner.FullName == "System.Resources.ResourceManager" && operation != ILOpCode.Ldsfld)
+                throw new NotSupportedException($"{_method.DeclaringClass.FullName}.{_method.Name}: "
+                    + $"ResourceManager header fields support readonly value loads only; {resolved.Field.Name} uses {operation} "
+                    + "(field addresses, writes and instance access are not supported)");
+            return resolved;
+        }
     }
 
     /// <summary>Resolves a method token the way a call site does — a plain

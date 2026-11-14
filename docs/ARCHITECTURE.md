@@ -13,6 +13,12 @@ bodies on the mapped owner. Ordinary calls, addresses and retained reflection
 share the same bodies, preserving argument effects and exceptions. A false hint
 selects the caller's normal algorithm; it is not a claim that a value is mutable.
 
+ResourceManager's exact CoreLib `MagicNumber` and `HeaderVersionNumber` readonly
+fields lower to their resource-header values without introducing managed static
+storage on the runtime-owned type. Its reflection rows expose the same values.
+Field addresses, writes and instance access are explicitly unsupported; public
+ResourceReader header parsing otherwise retains the original CoreLib IL.
+
 ## 1. Pipeline
 
 ```

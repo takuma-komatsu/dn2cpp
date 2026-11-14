@@ -5,6 +5,9 @@ using Mono.Cecil.Cil;
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+if (ResourceHeaderFieldFixture.Run(args))
+    return;
+
 if (Gen2CallbackFixture.Run(args))
     return;
 if (BufferReferenceMoveFixture.Run(args))
