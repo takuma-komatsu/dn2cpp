@@ -6,3 +6,5 @@ and is imported below; `README.md` has the architecture overview, `docs/` the
 design docs. GitHub Issues in `takuma-komatsu/dn2cpp` track open work.
 
 @AGENTS.md
+
+@docs/BUGFIX-WORKFLOW.md
