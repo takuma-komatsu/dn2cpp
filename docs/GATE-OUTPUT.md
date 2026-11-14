@@ -150,22 +150,28 @@ failure class. A timeout, missing executable or terminated runner is not
 evidence of matching program behavior. Intentional abort status `134` remains
 available to failure-parity gates.
 
-Repeatable runs can opt into the Windows/MSYS status-4 workaround with
-`DN2CPP_RETRY_STATUS4=1`. `corelib_diff_gate` applies it to the native and CLR
-runs; `gate_capture_ok` also applies it to `run_bounded` observations. Direct calls to
-`run_bounded_retry_status4` also opt in. Only an initial Windows status `4`
-triggers a retry; other statuses and hosts keep the original result. The
-`retry4.*` directory retains both attempts' raw stdout, stderr and status,
-the command and its label. The second result must satisfy the ordinary output
-and status checks; repeated status `4` fails even when both parity sides agree.
+The Windows/MSYS status-4 workaround is enabled by default for `run_bounded`
+across all gates, including native and CLR comparisons, extra assertions and
+direct calls. Set `DN2CPP_RETRY_STATUS4=0` to disable it for an entire gate or
+suite invocation; `DN2CPP_RETRY_STATUS4=1` explicitly enables it. Gates do not
+select their own retry policy. Build and transpile steps outside `run_bounded`
+retain their original behavior.
 
-`OrdinaryReflectionTypeLeaves` opts in through `ordinary_fixture_diff_gate`,
-covering its native and CLR runs and extra assertions in every fixture mode.
-That default is scoped to the fixture. Set `DN2CPP_RETRY_STATUS4=0` to disable
-the workaround everywhere, including DefaultCulture and UnhandledExitSubset.
-The selector is part of the common gate cache key, so a result
-obtained with retries cannot satisfy a run with retries disabled. Build and
-transpile steps do not opt in.
+Only an initial Windows status `4` triggers a retry; other statuses and hosts
+keep the original result. The `retry4.*` directory retains both attempts' raw
+stdout, stderr and status, the command and its label. The second result must
+satisfy the ordinary output and status checks. Repeated status `4` becomes
+runner status `125`, so matching failures cannot pass a parity check; the raw
+second status remains `4` in the evidence. Retry evidence is kept beside
+captured output, or under the current output directory or temporary directory
+for direct calls. Shared run-log cleanup retains retry evidence on success,
+including captures nested under architecture subdirectories. Direct calls save
+retry diagnostics in `retry4.*/retry.log`, preserving the program's stdout and
+stderr bytes for callers that redirect them. Captured runs put retry diagnostics
+in `.retry.log` and replay them to the gate log without adding them to the
+program's stdout or stderr.
+The selector is part of the common gate cache key, so a result obtained with
+retries cannot satisfy a run with retries disabled.
 
 `abort-parity ACTUAL_PREFIX EXPECTED_PREFIX --host HOST --witness RECORD
 --diagnostic RECORD` is a separate, explicit expected-abort contract over raw

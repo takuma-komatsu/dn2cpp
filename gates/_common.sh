@@ -2215,9 +2215,10 @@ gate_output() {
 # Run in a subshell so command-side shell options and cwd cannot leak out.
 gate_capture() {
     local prefix="$1" status errexit=0
+    local _GATE_CAPTURE_PREFIX="$1"
     shift
     # A failed new capture must never leave an old success receipt usable.
-    rm -f "$prefix.status" || return 1
+    rm -f "$prefix.status" "$prefix.retry.log" || return 1
     [ "$#" -gt 0 ] || { echo 'FAIL: gate_capture needs a command' >&2; return 1; }
     mkdir -p "$(dirname "$prefix")" || return 1
     : > "$prefix.stdout" || return 1
@@ -2228,6 +2229,9 @@ gate_capture() {
     status=$?
     [ "$errexit" -eq 0 ] || set -e
     printf '%s\n' "$status" > "$prefix.status" || return 1
+    if [ -f "$prefix.retry.log" ]; then
+        cat "$prefix.retry.log" >&2 || return 1
+    fi
 }
 
 # gate_capture_ok PREFIX COMMAND... — a successful program observation.
@@ -2235,10 +2239,6 @@ gate_capture() {
 gate_capture_ok() {
     local prefix="$1"
     shift
-    if [ "${DN2CPP_RETRY_STATUS4:-0}" = 1 ] && [ "${1:-}" = run_bounded ]; then
-        shift
-        set -- run_bounded_retry_status4 "$(dirname "$prefix")" "$prefix" "$@"
-    fi
     gate_capture "$prefix" "$@" || return 1
     if ! gate_output status "$(cat "$prefix.status")" 0; then
         cat "$prefix.stderr" >&2
@@ -2586,7 +2586,7 @@ $simulator_sdk"
     key=$(
         {
             printf 'context:%s\n' "$context"
-            printf 'retry-status4:%s\n' "${DN2CPP_RETRY_STATUS4:-auto}"
+            printf 'retry-status4:%s\n' "${DN2CPP_RETRY_STATUS4:-1}"
             if [[ "$context" == *cli:* ]]; then
                 _gate_transpiler_env_term
             fi
@@ -2986,17 +2986,12 @@ _corelib_diff_gate() {
     # Real .NET is the oracle for the exit status too (Finalizers' last section
     # aborts deliberately). DN2CPP_GATE_RUN_ARGS: fresh @SCRATCH@ per side.
     local native native_code expected expected_code
-    local native_run=(run_bounded)
     local oracle=(run_bounded dotnet)
-    if [ "${DN2CPP_RETRY_STATUS4:-0}" = 1 ]; then
-        native_run=(run_bounded_retry_status4 "$out" "$project native")
-        oracle=(run_bounded_retry_status4 "$out" "$project oracle" dotnet)
-    fi
     if declare -F gate_run_oracle >/dev/null; then
         oracle=(gate_run_oracle)
     fi
     _gate_run_argv
-    gate_capture "$out/native" "${native_run[@]}" "./$out/$project$EXE_EXT" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} || return 1
+    gate_capture "$out/native" run_bounded "./$out/$project$EXE_EXT" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} || return 1
     native_code=$(cat "$out/native.status")
     _gate_run_argv
     if [ -n "${DN2CPP_ORACLE_DOTNET_ENABLE_AVX:-}" ]; then
@@ -3008,11 +3003,6 @@ _corelib_diff_gate() {
     expected_code=$(cat "$out/oracle.status")
     cat "$out/native.stderr" "$out/oracle.stderr" >&2
     _gate_scratch_cleanup
-    if [ "${DN2CPP_RETRY_STATUS4:-0}" = 1 ] && [ "$DN2CPP_OS" = windows ] \
-            && { [ "$native_code" -eq 4 ] || [ "$expected_code" -eq 4 ]; }; then
-        echo "FAIL: $project still returned status 4 after one retry" >&2
-        return 1
-    fi
     gate_output compare "$out/native.stdout" "$out/oracle.stdout" || return 1
     if [ "$status_contract" = abort ]; then
         gate_output abort-parity "$out/native" "$out/oracle" --host "$DN2CPP_OS" \
@@ -3441,23 +3431,25 @@ run_with_watchdog() {
 # failure instead of holding an xargs -P worker slot forever.
 # DN2CPP_RUN_WATCHDOG_SECS overrides; a run budget may be env-driven because it
 # can only turn a run into an abort or back.
+# Windows/MSYS can report status 4 after a successful run. Retry once across all
+# gates unless DN2CPP_RETRY_STATUS4=0; preserve both attempts when retrying.
 run_bounded() {
-    run_with_watchdog "${DN2CPP_RUN_WATCHDOG_SECS:-600}" "$@"
-}
-
-# Workaround for an unresolved Windows/MSYS status-4 anomaly under parallel gate
-# load. Opt in only for repeatable runs; retain the first result, and use the
-# second result as the verdict. A repeated 4 must still fail at the call site.
-# DN2CPP_RETRY_STATUS4=0 disables even callers that opt in by naming this helper.
-run_bounded_retry_status4() {
-    local evidence_root="$1" label="$2" evidence code
-    shift 2
-    if [ "$DN2CPP_OS" != windows ] || [ "${DN2CPP_RETRY_STATUS4:-1}" != 1 ]; then
-        run_bounded "$@"
+    local secs="${DN2CPP_RUN_WATCHDOG_SECS:-600}"
+    if [ "${DN2CPP_OS:-}" != windows ] || [ "${DN2CPP_RETRY_STATUS4:-1}" != 1 ]; then
+        run_with_watchdog "$secs" "$@"
         return $?
     fi
-    evidence=$(mktemp -d "$evidence_root/retry4.XXXXXX")
-    if run_bounded "$@" >"$evidence/first.stdout" 2>"$evidence/first.stderr"; then
+    local evidence_root="${_CG_OUT:-${_GATE_RUN_LOG_DIR:-${TMPDIR:-/tmp}}}" label="$*" evidence code
+    local diagnostics=
+    if [ -n "${_GATE_CAPTURE_PREFIX:-}" ]; then
+        evidence_root=$(dirname "$_GATE_CAPTURE_PREFIX") || return 125
+        label="$_GATE_CAPTURE_PREFIX"
+        diagnostics="$_GATE_CAPTURE_PREFIX.retry.log"
+    fi
+    mkdir -p "$evidence_root" || return 125
+    evidence=$(mktemp -d "$evidence_root/retry4.XXXXXX") || return 125
+    diagnostics="${diagnostics:-$evidence/retry.log}"
+    if run_with_watchdog "$secs" "$@" >"$evidence/first.stdout" 2>"$evidence/first.stderr"; then
         code=0
     else
         code=$?
@@ -3474,7 +3466,7 @@ run_bounded_retry_status4() {
     printf '%s\n' "$label" >"$evidence/label"
     printf '%q ' "$@" >"$evidence/command"
     printf '\n' >>"$evidence/command"
-    if run_bounded "$@" >"$evidence/second.stdout" 2>"$evidence/second.stderr"; then
+    if run_with_watchdog "$secs" "$@" >"$evidence/second.stdout" 2>"$evidence/second.stderr"; then
         code=0
     else
         code=$?
@@ -3482,7 +3474,18 @@ run_bounded_retry_status4() {
     printf '%s\n' "$code" >"$evidence/second.status"
     cat "$evidence/second.stdout"
     cat "$evidence/second.stderr" >&2
-    echo "note: $label first run returned 4; retried once (second status $code; first output: $evidence)" >&2
+    # Runner diagnostics must not enter a program's exact stderr comparison.
+    {
+        echo "note: $label first run returned 4; retried once (second status $code; first output: $evidence)"
+        if [ "$code" -eq 4 ]; then
+            echo "FAIL: $label still returned status 4 after one retry; runner status 125"
+        fi
+    } >> "$diagnostics"
+    # Equal status 4 on both parity sides must not turn an unresolved runner
+    # failure into a pass. The raw process statuses remain in the evidence.
+    if [ "$code" -eq 4 ]; then
+        return 125
+    fi
     return "$code"
 }
 
@@ -3571,10 +3574,19 @@ gate_run_logs_init() {
     gate_add_exit_hook gate_run_logs_cleanup
 }
 
-# gate_run_logs_cleanup — drop the logs on success, keep and explain them on
-# failure. Reads the exit status through _GATE_EXIT_RC: a hook cannot see `$?`.
+# gate_run_logs_cleanup — keep retry evidence at any depth, drop other successful
+# logs, and explain failures. _GATE_EXIT_RC carries the status a hook cannot see.
 gate_run_logs_cleanup() {
     if [ "${_GATE_EXIT_RC:-0}" -eq 0 ]; then
+        local evidence
+        if ! evidence=$(find "$_GATE_RUN_LOG_DIR" -type d -name 'retry4.*' -prune -print); then
+            echo "$_GATE_RUN_LOG_LABEL logs preserved in $_GATE_RUN_LOG_DIR (retry evidence scan failed)" >&2
+            return
+        fi
+        if [ -n "$evidence" ]; then
+            echo "$_GATE_RUN_LOG_LABEL status-4 retry logs preserved in $_GATE_RUN_LOG_DIR" >&2
+            return
+        fi
         rm -rf "$_GATE_RUN_LOG_DIR"
         return
     fi
