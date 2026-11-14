@@ -1402,11 +1402,15 @@ body remain managed IL, preserving exception type, argument order and memory
 effects without substituting the public aligned-memory facades.
 
 Exception ordering for unsupported aligned-memory defaults is outside this
-contract. `Vector<decimal>` and fixed-width vectors over `char`, `Int128` or
-`UInt128` are unsupported for these memory operations; the compiler rejects
-their alignment path rather than retaining a CLR-compatible exception sequence.
-Supported numeric memory operations keep their managed alignment guards, and
-unsupported elements are rejected.
+contract. Authenticated `ISimdVector<TVector,T>` aligned load/store defaults for
+`Vector<T>` and `Vector64/128/256/512<T>` over `decimal`, `char`, `Int128` or
+`UInt128` retain callable bodies that throw `PlatformNotSupportedException`
+before touching memory. Other default bodies, concrete overrides and public
+facades are unchanged. Callers' argument evaluation is preserved, but
+unsupported-element alignment exception ordering is not emulated. These bounded
+closures keep their existing managed or intrinsic storage without gaining numeric
+lane support. Supported numeric memory operations keep their managed alignment
+guards; unknown element types are not admitted by this boundary.
 
 #### Unmapped vector value methods
 

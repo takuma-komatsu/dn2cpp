@@ -1020,6 +1020,11 @@ internal sealed partial class MethodCompiler
                     EmitManagedCall(scalarNumericLeaf, isCallvirt);
                     return;
                 }
+                if (_c.TryResolveUnsupportedAlignedReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } unsupportedAligned)
+                {
+                    EmitManagedCall(unsupportedAligned, isCallvirt);
+                    return;
+                }
                 if (_c.TryResolveVectorAlignmentReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } alignment)
                 {
                     EmitManagedCall(alignment, isCallvirt);

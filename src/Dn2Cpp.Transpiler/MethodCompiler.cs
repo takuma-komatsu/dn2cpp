@@ -687,6 +687,13 @@ internal sealed partial class MethodCompiler : IEvalStack
 
     public string Compile()
     {
+        CoreIntrinsics.ValidateUnsupportedAlignedDefault(_method);
+        if (SharedTrial && CoreIntrinsics.IsUnsupportedAlignedName(_method.Name)
+            && CoreIntrinsics.IsSimdDefaultOwner(_method.DeclaringClass)
+            && Compilation.ContainsCanonPlaceholder(_method.DeclaringClass))
+            ThrowSharedTaint("unsupported-aligned-default", _method.DeclaringClass.FullName);
+        if (CoreIntrinsics.BrUnsupportedAlignedDefault.Matches(_method))
+            return CompileUnsupportedAlignedDefaultBody();
         _c.ValidateSimdAlignmentBody(_method);
         CoreIntrinsics.ValidateDelegateCallableBody(_method);
         CoreIntrinsics.ValidateConcreteVectorElement(_method);
@@ -1304,6 +1311,8 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// Null when the method has no intrinsic lowering to synthesize from.</summary>
     internal string? CompileCoreIntrinsicWrapper()
     {
+        CoreIntrinsics.ValidateUnsupportedAlignedDefault(_method);
+        if (CoreIntrinsics.BrUnsupportedAlignedDefault.Matches(_method)) return CompileUnsupportedAlignedDefaultBody();
         if (CoreIntrinsics.BrDelegateCallable.Matches(_method)) return CompileDelegateCallableBody();
         if (CoreIntrinsics.BrArrayNativeLength.Matches(_method))
             return CompileArrayNativeLengthBody();

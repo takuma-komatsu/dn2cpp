@@ -127,15 +127,43 @@ internal static class VectorRefusalFixture
                 }
                 break;
             }
-            case "alignment":
+            case "unsupported-alignment-char-parent":
+            case "unsupported-alignment-wide-context":
+            case "unsupported-alignment-methodspec":
+            case "unsupported-alignment-signature":
+            case "unsupported-alignment-context":
+            case "unsupported-alignment-owner":
             {
-                var element = module.TypeSystem.Char;
+                var element = args[3] == "unsupported-alignment-char-parent" ? module.TypeSystem.Char
+                    : module.ImportReference(Type(args[3] == "unsupported-alignment-wide-context" ? "System.Int128" : "System.Decimal"));
                 var declaration = module.ImportReference(Type("System.Runtime.Intrinsics.ISimdVector`2"));
+                if (args[3] == "unsupported-alignment-owner")
+                {
+                    var fake = new TypeDefinition("System.Runtime.Intrinsics", "ISimdVector`2",
+                        TypeAttributes.Interface | TypeAttributes.Abstract);
+                    fake.GenericParameters.Add(new GenericParameter("TSelf", fake));
+                    fake.GenericParameters.Add(new GenericParameter("T", fake));
+                    module.Types.Add(fake); declaration = fake;
+                }
                 var contract = new GenericInstanceType(declaration);
-                contract.GenericArguments.Add(Closed("System.Runtime.Intrinsics.Vector128`1", element)); contract.GenericArguments.Add(element);
+                var family = args[3] is "unsupported-alignment-char-parent" or "unsupported-alignment-wide-context"
+                    ? "System.Runtime.Intrinsics.Vector128`1" : "System.Numerics.Vector`1";
+                contract.GenericArguments.Add(Closed(family, element));
+                contract.GenericArguments.Add(args[3] == "unsupported-alignment-context" ? module.TypeSystem.Int32
+                    : args[3] == "unsupported-alignment-wide-context" ? module.ImportReference(Type("System.UInt128"))
+                    : args[3] == "unsupported-alignment-char-parent" ? Modified(element) : element);
                 var target = new MethodReference("LoadAligned", declaration.GenericParameters[0], contract);
-                target.Parameters.Add(new ParameterDefinition(new PointerType(declaration.GenericParameters[1])));
-                Call(target, new PointerType(element));
+                TypeReference pointer = new PointerType(declaration.GenericParameters[1]);
+                target.Parameters.Add(new ParameterDefinition(pointer));
+                if (args[3] == "unsupported-alignment-signature")
+                {
+                    // Resolve a valid sibling first; the malformed reference must
+                    // still be checked before any cached target is reused.
+                    Call(target, new PointerType(element));
+                    target = new MethodReference("LoadAligned", declaration.GenericParameters[0], contract);
+                    target.Parameters.Add(new ParameterDefinition(Modified(pointer)));
+                }
+                Call(args[3] == "unsupported-alignment-methodspec" ? Specialize(target, element) : target, new PointerType(element));
                 break;
             }
             case "alignment-valid":

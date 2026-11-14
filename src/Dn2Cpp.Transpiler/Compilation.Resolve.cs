@@ -510,6 +510,7 @@ internal sealed partial class Compilation
                 if (TryResolveDelegateCallableReference(module, (MemberReferenceHandle)handle, ctx) is { } delegateBody) return delegateBody;
                 ValidateNumericMemberRefOwner(module, (MemberReferenceHandle)handle, ctx);
                 if (TryResolveScalarNumericLeafReference(module, (MemberReferenceHandle)handle, ctx) is { } scalarNumericLeaf) return scalarNumericLeaf;
+                if (TryResolveUnsupportedAlignedReference(module, (MemberReferenceHandle)handle, ctx) is { } unsupportedAligned) return unsupportedAligned;
                 if (TryResolveVectorAlignmentReference(module, (MemberReferenceHandle)handle, ctx) is { } alignment) return alignment;
                 if (TryResolveConcreteVectorReductionReference(module, (MemberReferenceHandle)handle, ctx) is { } concreteReduction) return concreteReduction;
                 RejectBareVectorAsReference(module, (MemberReferenceHandle)handle, ctx);
@@ -839,6 +840,10 @@ internal sealed partial class Compilation
     {
         RejectVectorValueMethodSpecification(module, handle, callerCtx);
         RejectScalarNumericLeafMethodSpecification(module, handle, callerCtx);
+        var unsupportedAlignedSpec = module.Reader.GetMethodSpecification(handle);
+        if (unsupportedAlignedSpec.Method.Kind == HandleKind.MemberReference
+            && TryResolveUnsupportedAlignedReference(module, (MemberReferenceHandle)unsupportedAlignedSpec.Method, callerCtx) is not null)
+            throw UnsupportedAlignedReferenceUnsupported();
         RejectVectorAlignmentMethodSpecification(module, handle, callerCtx);
         RejectVectorLerpMethodSpecification(module, handle, callerCtx);
         RejectVectorLogMethodSpecification(module, handle, callerCtx);
@@ -1468,6 +1473,7 @@ internal sealed partial class Compilation
     {
         ValidateNumericMemberRefOwner(module, handle, callerCtx);
         if (TryResolveScalarNumericLeafReference(module, handle, callerCtx) is { } scalarNumericLeaf) return scalarNumericLeaf;
+        if (TryResolveUnsupportedAlignedReference(module, handle, callerCtx) is { } unsupportedAligned) return unsupportedAligned;
         if (TryResolveVectorAlignmentReference(module, handle, callerCtx) is { } alignment) return alignment;
         if (TryResolveConcreteVectorReductionReference(module, handle, callerCtx) is { } concreteReduction) return concreteReduction;
         RejectBareVectorAsReference(module, handle, callerCtx);
@@ -2288,6 +2294,7 @@ internal sealed partial class Compilation
         if (TryResolveDelegateCallableReference(module, handle, callerCtx) is { } delegateBody) return delegateBody;
         ValidateNumericMemberRefOwner(module, handle, callerCtx);
         if (TryResolveScalarNumericLeafReference(module, handle, callerCtx) is { } scalarNumericLeaf) return scalarNumericLeaf;
+        if (TryResolveUnsupportedAlignedReference(module, handle, callerCtx) is { } unsupportedAligned) return unsupportedAligned;
         if (TryResolveVectorAlignmentReference(module, handle, callerCtx) is { } alignment) return alignment;
         if (TryResolveConcreteVectorReductionReference(module, handle, callerCtx) is { } concreteReduction) return concreteReduction;
         RejectBareVectorAsReference(module, handle, callerCtx);

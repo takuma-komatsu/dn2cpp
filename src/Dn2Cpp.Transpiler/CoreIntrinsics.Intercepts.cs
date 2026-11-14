@@ -308,6 +308,7 @@ internal enum InterceptEmitArm
     NativeIntegerParseBody,
     InvariantCompareInfoInitializerBody,
     StringRawByteReferenceBody,
+    UnsupportedAlignedDefaultBody,
     /// <summary>A synthesized System.Enum instance ToString/GetTypeCode body —
     /// <c>MethodCompiler.CompileEnumInstanceFormatBody</c>, emitted under the
     /// intercepted method's OWN symbol so EVERY mouth resolves to it: a direct
@@ -3941,6 +3942,11 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.BodyReplace, InterceptEmitArm.HttpShimBody,
         extra: static (dt, n) => IsBodyReplacedHttpMethod(dt, n));
 
+    /// <summary>Unsupported aligned-memory defaults retain a callable capability boundary.</summary>
+    public static readonly MethodDefIntercept BrUnsupportedAlignedDefault = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.UnsupportedAlignedDefaultBody,
+        extra: static m => IsUnsupportedAlignedDefault(m));
+
     /// <summary>The native String buffer supplies the byte reference without CLR inline-field access.</summary>
     public static readonly MethodDefIntercept BrStringRawByteReference = new(
         InterceptCutKind.BodyReplace, InterceptEmitArm.StringRawByteReferenceBody,
@@ -4286,6 +4292,11 @@ internal static partial class CoreIntrinsics
             BrCoreClrTypeMaterialization.TypeGate, BrCoreClrTypeMaterialization.NameGate);
         if (BrCoreClrTypeMaterialization.CutKind != InterceptCutKind.BodyReplace)
             throw new InvalidOperationException("CoreCLR type materialization must remain callable");
+
+        CheckRow(nameof(BrUnsupportedAlignedDefault), 0, BrUnsupportedAlignedDefault.EmitArm,
+            BrUnsupportedAlignedDefault.TypeGate, BrUnsupportedAlignedDefault.NameGate);
+        if (BrUnsupportedAlignedDefault.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Unsupported aligned defaults must remain callable");
 
         CheckRow(nameof(BrStringRawByteReference), 0, BrStringRawByteReference.EmitArm,
             BrStringRawByteReference.TypeGate, BrStringRawByteReference.NameGate);
