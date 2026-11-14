@@ -228,6 +228,36 @@ then remove redundant string normalization. Do not globally rewrite unrelated
 checks or treat an old lossy capture as raw evidence. Existing unconverted
 callers retain their limitations until individually migrated.
 
+The extended ArrayCore profile (`DN2CPP_ARRAY_FULL=1`) captures the original and
+stripped assembly metadata-inspector observations separately, requires successful
+exits and compares their stdout bytes exactly. Its required metadata records must
+each occur once, with explicit CRLF equivalence for those text witnesses. The
+wrapper probe in the extended transpiler-limits profile
+(`DN2CPP_TRANSPILER_LIMITS_FULL=1`) uses a successful raw capture followed by the
+inline text contract: CRLF pairs and an optional final LF are accepted; payload
+CR, NUL and extra blank records are not. Default profile passes do not exercise
+these probes.
+
+The remaining legacy normalization sites have these boundaries:
+
+| Callers under `gates/` | Unmigrated observations |
+|---|---|
+| `build-and-run-preserve-control.sh` | Managed metadata and stub probes, original/stripped runtime output, CLI warnings and reflection-report rows. |
+| `build-and-run-trim-reflection.sh` | Recognized-lookup CLI warnings and reflection-report rows; sorted generated-body summaries still use string equality. |
+| `build-and-run-hotupdate-subset.sh` | Constructor-body fixture rewriter output; the renamed-slot file-state summary also uses string equality. |
+| `build-and-run-godot-anchor-churn.sh` | Stop-the-world and incremental churn program output. |
+| `build-and-run-cri-wasm-smoke.sh` | Wasm program output and the P/Invoke library manifest. |
+| `build-and-run-cri-android.sh`, `build-and-run-cri-web.sh`, `build-and-run-yetanotherhttphandler.sh`, `build-and-run-magiconion-yetanotherhttphandler.sh`, `build-and-run-pinvoke-native.sh` | P/Invoke library or symbol manifest checks. |
+
+These sites retain their existing loss of payload CR or shell-unrepresentable
+bytes; a passing legacy assertion does not establish the raw contract. This is
+a migration boundary, not permission to copy their normalization into new checks.
+Generated-source searches in ArrayCore and the ISA helpers, and host-tool
+parsing for SDK versions, Godot versions, device discovery and linker symbols,
+remain separate consumers. Their filters do not authorize normalization of
+program output. The inventory describes the retained legacy adapters and CR
+filters, not every shell variable used by a gate.
+
 The Python output helper, ISA record parser and policy document are gate-cache inputs. An edit to output
 comparison semantics must invalidate cached gate results, even when the sample
 and native binary have not changed.

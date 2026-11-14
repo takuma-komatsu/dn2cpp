@@ -287,6 +287,75 @@ PY
                 test ! -e "$fixture/committed"
             fi
             ;;
+        metadata-probe-*)
+            DN2CPP_OS=windows
+            static_rank1_root="$fixture/$scenario"
+            DN2CPP_CLI_DLL=fixture-cli.dll
+            corelib=fixture-corelib.dll
+            mkdir -p "$static_rank1_root"
+            gate_python - "$static_rank1_root" "$scenario" <<'PY'
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+scenario = sys.argv[2].removeprefix('metadata-probe-')
+rows = [
+    'field GenericUnsized=System.Collections.Generic.List`1<System.Int32[*]>;optional=',
+    'field ModifiedUnsized=System.Int32[*];optional=System.Object',
+    'field PointerUnsized=System.Int32[*]*;optional=',
+    'field FunctionUnsized=fn(System.Int32[*][]&)->System.Int32[*];optional=',
+    'field UnsizedOfUnsized=System.Int32[*][*];optional=',
+    'method EchoUnsizedOfUnsized=System.Int32[*][*](System.Int32[*][*])',
+    'token UnsizedOfUnsizedType=System.Int32[*][*]',
+    'field Sized=System.Int32[*];optional=',
+    'local EchoSized/0=System.Int32[*]/True',
+    'property IndexedUnsized=System.Int32[*](System.Int32[*])',
+    'method get_IndexedUnsized=System.Int32[*](System.Int32[*])',
+    'token MethodSpecType=System.Int32[*]',
+    'local EchoUnsized/0=System.Int32[*]/True',
+]
+if scenario == 'duplicate':
+    rows.append(rows[-1])
+original = ('\r\n'.join(rows) + '\r\n').encode('utf-8')
+stripped = original
+if scenario == 'eol':
+    stripped = stripped.replace(b'\r\n', b'\n')
+root.joinpath('original.input').write_bytes(original)
+root.joinpath('stripped.input').write_bytes(stripped)
+root.joinpath('probe.error').write_bytes(b'inspection diagnostic\r\n\n')
+PY
+            ildiet_generation() { printf '%s/generation\n' "$1"; }
+            run_bounded() {
+                [ "${3:-}" = --inspect ] || return 0
+                local source=original
+                case "$4" in */metadata-diet/*) source=stripped ;; esac
+                cat "$static_rank1_root/$source.input" || return 1
+                cat "$static_rank1_root/probe.error" >&2 || return 1
+                [ "$scenario/$source" != metadata-probe-status/stripped ] || return 7
+            }
+            eval "$(sed -n '/^strip_cr_win() {/,/^}/p; /^assert_output() {/,/^}/p' gates/_common.sh)"
+            eval "$(sed -n '/^# CLR metadata inspection/,/^# Direct entrypoint calls/{ /^# Direct entrypoint calls/!p; }' gates/build-and-run-array-core.sh)"
+            ;;
+        wrapper-probe-*)
+            DN2CPP_OS=windows
+            out="$fixture/$scenario"
+            DN2CPP_CLI_DLL=fixture-cli.dll
+            wrapper_app=fixture-wrapper.dll
+            mkdir -p "$out"
+            printf '%s\r\n%s\r\n%s' 'wrapper NotSupportedException: OK' \
+                'wrapper InstantiationBoundException: OK' 'wrapper StrictCompletionException: OK' > "$out/probe.input"
+            if [ "$scenario" = wrapper-probe-lossy ]; then
+                printf '\r\0\n\n' >> "$out/probe.input"
+            fi
+            printf 'wrapper diagnostic\r\n\n' > "$out/probe.error"
+            dotnet() {
+                cat "$out/probe.input" || return 1
+                cat "$out/probe.error" >&2 || return 1
+                [ "$scenario" != wrapper-probe-status ] || return 7
+            }
+            run_bounded() { "$@"; }
+            eval "$(sed -n '/^strip_cr_win() {/,/^}/p; /^assert_output() {/,/^}/p; /^assert_exit_code() {/,/^}/p' gates/_common.sh)"
+            eval "$(sed -n '/^wrapper_transpiler=/,/^echo "OK (ordinary wrapper failure/p' gates/build-and-run-transpiler-limits.sh)"
+            ;;
         capture)
             fixture_command() { printf 'a\0b\n\n'; printf 'error\r\n\n' >&2; return 7; }
             gate_capture "$fixture/captured" fixture_command
@@ -500,6 +569,26 @@ reset_inputs() {
     printf '0\n' > "$fixture/native.code"
     printf '0\n' > "$fixture/oracle.code"
 }
+check_probe_capture() {
+    local scenario="$1" root="$fixture/$1" code=0
+    case "$scenario" in
+        metadata-probe-*)
+            cmp "$root/original.input" "$root/metadata-original.stdout"
+            cmp "$root/stripped.input" "$root/metadata-stripped.stdout"
+            cmp "$root/probe.error" "$root/metadata-original.stderr"
+            cmp "$root/probe.error" "$root/metadata-stripped.stderr"
+            test "$(cat "$root/metadata-original.status")" = 0
+            [ "$scenario" != metadata-probe-status ] || code=7
+            test "$(cat "$root/metadata-stripped.status")" = "$code"
+            ;;
+        wrapper-probe-*)
+            cmp "$root/probe.input" "$root/wrapper.stdout"
+            cmp "$root/probe.error" "$root/wrapper.stderr"
+            [ "$scenario" != wrapper-probe-status ] || code=7
+            test "$(cat "$root/wrapper.status")" = "$code"
+            ;;
+    esac
+}
 run_case 0 capture
 run_case 0 brotli-reference
 run_case 0 brotli-security-valid
@@ -510,6 +599,16 @@ run_case 1 brotli-security-extra
 run_case 1 capture-no-command
 run_case 1 capture-write-error
 run_case 0 capture-stale-status
+run_case 0 metadata-probe-crlf
+run_case 1 metadata-probe-eol
+run_case 1 metadata-probe-duplicate
+run_case 1 metadata-probe-status
+check_probe_capture metadata-probe-status
+run_case 0 wrapper-probe-text
+run_case 1 wrapper-probe-lossy
+check_probe_capture wrapper-probe-lossy
+run_case 1 wrapper-probe-status
+check_probe_capture wrapper-probe-status
 reset_inputs
 run_case 0 weak-final-valid
 run_case 1 weak-final-extra-tail

@@ -674,12 +674,10 @@ done
 
 echo "== 3f/9 Wrapper lowering must distinguish unsupported shapes from fatal bounds =="
 wrapper_transpiler="$(dirname "${DN2CPP_CLI_DLL:-src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}")/Dn2Cpp.Transpiler.dll"
-wrapper_rc=0
-wrapper_result=$(dotnet "$wrapper_app" "$wrapper_transpiler") || wrapper_rc=$?
-assert_output "$(strip_cr_win "$wrapper_result")" 'wrapper NotSupportedException: OK
+gate_capture_ok "$out/wrapper" run_bounded dotnet "$wrapper_app" "$wrapper_transpiler"
+gate_assert_text "$out/wrapper.stdout" 'wrapper NotSupportedException: OK
 wrapper InstantiationBoundException: OK
 wrapper StrictCompletionException: OK'
-assert_exit_code "$wrapper_rc" 0
 echo "OK (ordinary wrapper failure falls back; fatal exceptions escape unchanged)"
 
 echo "== 3g/9 Transpiler budgets do not change ILDiet definition graphs =="
