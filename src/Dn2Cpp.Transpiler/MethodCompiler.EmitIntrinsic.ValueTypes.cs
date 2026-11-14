@@ -692,6 +692,13 @@ internal sealed partial class MethodCompiler
     /// call on the constant). Returns false if the declaring type isn't one.</summary>
     private bool TryIntrinsicStaticField(FieldInfo fld, bool wantAddress, int token)
     {
+        // ResourceManager has no generated field storage. Its wire-header values
+        // agree with the runtime-owned reflection rows; addresses are refused at resolution.
+        if (CoreIntrinsics.IsResourceManagerHeaderField(fld))
+        {
+            PushI4Const(fld.Name == "MagicNumber" ? unchecked((int)0xBEEFCACEu) : 1);
+            return true;
+        }
         string cppType;
         string expr;
         // A custom async task-role type adopted as Task/ValueTask has no emitted static
