@@ -6,6 +6,16 @@ points, `CONTRIBUTING.md` for the contribution workflow, and
 [GitHub Issues](https://github.com/takuma-komatsu/dn2cpp/issues?q=is%3Aissue%20is%3Aopen)
 for open work.
 
+## Default workflow
+
+Read and follow [docs/BUGFIX-WORKFLOW.md](docs/BUGFIX-WORKFLOW.md) for every
+repository task; the user does not need to name it. It defines the default
+change workflow through investigation, implementation, verification, independent
+review and fixes, commit, push, and a concise PR, including the reviewer models
+and reasoning effort. Apply it to documentation and configuration changes too.
+Respect the requested scope: read-only tasks remain read-only, and merge or
+continuous backlog work requires an instruction authorizing that scope.
+
 ## Module boundaries
 
 - `src/Dn2Cpp.Transpiler/` and `runtime/core/` never depend on Godot.

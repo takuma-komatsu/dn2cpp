@@ -5,6 +5,11 @@ Read `AGENTS.md` first — build, gates, module boundaries, code style — and t
 each line says why, so a change that lands inside one is declined rather than
 discussed.
 
+Follow [the default workflow](docs/BUGFIX-WORKFLOW.md) for all repository work,
+including documentation and configuration changes. It defines task scope,
+independent review and fixes before PR delivery, commit preparation, and concise
+PR descriptions. Requests do not need to name the workflow to activate it.
+
 ## What CI can and cannot say
 
 The hosted smoke workflows (`.github/workflows/linux-smoke.yml`,
@@ -177,7 +182,7 @@ DN2CPP_DEFAULT_CULTURE_FULL=1 CONFIG=Debug bash gates/build-and-run-default-cult
 
 ## What to work on
 
-Choose open work from [GitHub Issues](https://github.com/takuma-komatsu/dn2cpp/issues?q=is%3Aissue%20is%3Aopen).
+When choosing backlog work, use [GitHub Issues](https://github.com/takuma-komatsu/dn2cpp/issues?q=is%3Aissue%20is%3Aopen).
 Read the permanent non-goals in `README.md` before proposing work. An issue must
 state the problem, scope, acceptance criteria, verification and dependencies
 well enough to continue on another machine. If verification needs a signing
