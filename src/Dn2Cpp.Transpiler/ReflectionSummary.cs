@@ -706,7 +706,14 @@ internal sealed class ReflectionSummarizer
         if (handle.Kind == HandleKind.MethodSpecification)
         {
             var spec = Reader.GetMethodSpecification((MethodSpecificationHandle)handle);
-            typeArguments = ToArray(spec.DecodeSignature(RawSignatureProvider.Instance, null));
+            try
+            {
+                typeArguments = ToArray(spec.DecodeSignature(RawSignatureProvider.Instance, null));
+            }
+            catch (BadImageFormatException ex)
+            {
+                throw new NotSupportedException("Cannot decode MethodSpec 0x" + token.ToString("x8") + ": " + ex.Message, ex);
+            }
             handle = spec.Method;
         }
         var info = new CallInfo { TypeArguments = typeArguments };

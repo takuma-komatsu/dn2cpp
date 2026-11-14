@@ -132,7 +132,8 @@ void EmitChecked(Type target, string change)
         case "member-instance": member.HasThis = true; break;
         case "member-vararg": member.CallingConvention = MethodCallingConvention.VarArg; break;
         case "member-generic-arity": member.GenericParameters.Add(new GenericParameter("TExtra", member)); break;
-        case "methodspec-arity": break;
+        case "methodspec-arity":
+        case "methodspec-empty": break;
         case "interface-owner-arity": ((GenericInstanceType)owner).GenericArguments.Add(self); break;
         case "constrained-wrong-target": constrained = Modified(module.ImportReference(target == typeof(Int128) ? typeof(UInt128) : typeof(Int128))); break;
         case "member-parameter": member.Parameters[0].ParameterType = Modified(source); break;
@@ -145,7 +146,7 @@ void EmitChecked(Type target, string change)
         default: throw new ArgumentException("unknown CreateChecked mutation " + change);
     }
     var call = new GenericInstanceMethod(member);
-    call.GenericArguments.Add(argument);
+    if (change != "methodspec-empty") call.GenericArguments.Add(argument);
     if (change == "methodspec-arity") call.GenericArguments.Add(argument);
     il.Emit(OpCodes.Ldc_I4, 7);
     if (interfaceForm) il.Emit(OpCodes.Constrained, constrained);
