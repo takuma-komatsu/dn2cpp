@@ -32,6 +32,7 @@ namespace InitializerTriggersOnly;
 // block calls static abstract and static virtual members through constrained calls. The
 // UninitializedChainEntries block allocates without a constructor types whose base
 // chains mix precise-init and beforefieldinit levels.
+// Binding snapshots printed at the end distinguish pointer acquisition from invocation.
 internal static class Witness
 {
     internal static bool Entry;
@@ -1243,6 +1244,7 @@ internal static class Program
         Console.WriteLine($"struct instance method={method.Read()}/{Witness.Method}");
 
         Func<int> function = FunctionOwner.Answer;
+        bool functionBefore = Witness.Function;
         Console.WriteLine($"method pointer={function()}/{Witness.Function}");
 
         Console.WriteLine($"static call={StaticCallOwner.Touch()}/{Witness.StaticCall}");
@@ -1261,8 +1263,10 @@ internal static class Program
         GenericMethodOnly<int> genericMethod = default;
         Console.WriteLine($"generic struct instance method={genericMethod.Read()}/{Witness.GenericMethod ?? "not-run"}");
         Func<int> genericFunction = GenericFunction<int>.Answer;
+        string? genericFunctionBefore = Witness.GenericFunction;
         Console.WriteLine($"generic method pointer={genericFunction()}/{Witness.GenericFunction ?? "not-run"}");
         Func<int> sharedFunction = SharedFunctionFactory.Of<string>();
+        string? sharedFunctionBefore = Witness.SharedFunction;
         Console.WriteLine($"shared method pointer={sharedFunction()}/{Witness.SharedFunction ?? "not-run"}");
         Console.WriteLine($"shared static call={SharedFunctionFactory.Call<string>()}/{Witness.SharedStaticCall ?? "not-run"}");
         ConstrainedOnly<int> constrained = default;
@@ -1324,6 +1328,7 @@ internal static class Program
         Console.WriteLine($"boxed ToString={boxedText.ToString()}/{Witness.BoxedText ?? "not-run"}");
         Console.WriteLine($"attribute instance={typeof(AttributeCarrier).GetCustomAttributes(false).Length}/{Witness.StagedAttribute ?? "not-run"}");
         var bound = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), typeof(BoundGeneric<int>), "Answer");
+        int boundBefore = Witness.BoundGenericRuns;
         int firstBound = bound();
         int repeatBound = bound();
         Console.WriteLine($"generic delegate by name={firstBound}/{repeatBound}/{Witness.BoundGeneric ?? "not-run"}/runs={Witness.BoundGenericRuns}");
@@ -1340,6 +1345,10 @@ internal static class Program
         DefaultMethodEntries.Run();
         StaticVirtualEntries.Run();
         UninitializedChainEntries.Run();
+        Console.WriteLine($"static delegate binding={functionBefore}/{Witness.Function}");
+        Console.WriteLine($"generic delegate binding={genericFunctionBefore ?? "not-run"}/{Witness.GenericFunction}");
+        Console.WriteLine($"shared delegate binding={sharedFunctionBefore ?? "not-run"}/{Witness.SharedFunction}");
+        Console.WriteLine($"reflection delegate binding={boundBefore}/{Witness.BoundGenericRuns}");
         return 0;
     }
 

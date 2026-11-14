@@ -349,4 +349,8 @@ gate_output compare "$OUT/native.stdout" "$OUT/oracle.stdout"
 # its own, whose initializer must run before the body reads what it set.
 gate_output byte-witness "$OUT/native.stdout" 'nimpl precise-init implementation=1' --count any --policy crlf \
     || { echo "FAIL: the substituted call skipped its implementation's type initializer" >&2; exit 1; }
+for line in 'pinvoke pointers before call=0' 'pinvoke pointer call=42/1' 'pinvoke delegate call=43/1'; do
+    gate_output byte-witness "$OUT/native.stdout" "$line" --count any --policy crlf \
+        || { echo "FAIL: P/Invoke initializer timing witness missing: $line" >&2; exit 1; }
+done
 gate_cache_commit

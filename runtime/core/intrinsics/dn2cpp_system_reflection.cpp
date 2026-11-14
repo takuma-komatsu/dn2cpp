@@ -6697,10 +6697,6 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
     if (!staticVirtual && !bodiless && !answered
         && (row.invoker == nullptr || (row.fnPtr == nullptr && !slotBound)))
         dn2cpp_throw_invoke_unavailable(mi, m->reflectedType);
-    // Binding triggers the initializer a call would, as a compiled ldftn of the
-    // member does when it takes the pointer.
-    dn2cpp_run_initializer(row.initializer);
-
     auto* node = static_cast<Dn2CppReflBind*>(dn2cpp_alloc(sizeof(Dn2CppReflBind)));
     node->type = &dn2cpp_reflbind_type;
     node->method = mi;

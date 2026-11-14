@@ -8,6 +8,7 @@ using PInvokeRefLib;
 // forwarder from the same P/Invoke lowering — the invoke and the calli must marshal
 // identically to a direct call. Covered for the app module's own import and for the
 // referenced binding assembly's.
+// A precise-init import owner initializes at invocation, not pointer acquisition.
 namespace PInvokeFtnDelegateSubset;
 
 internal static class Program
@@ -19,6 +20,25 @@ internal static class Program
     private static extern double dn2cpptest_scale(double x, int n);
 
     private delegate int BinOp(int a, int b);
+
+    private static int _initializations;
+
+    private static class PreciseImports
+    {
+        static PreciseImports() => _initializations++;
+
+        [DllImport("dn2cpptest", EntryPoint = "dn2cpptest_add")]
+        internal static extern int Add(int a, int b);
+    }
+
+    internal static unsafe void __InitializerTiming()
+    {
+        BinOp add = PreciseImports.Add;
+        delegate*<int, int, int> pointer = &PreciseImports.Add;
+        Console.WriteLine($"pinvoke pointers before call={_initializations}");
+        Console.WriteLine($"pinvoke pointer call={pointer(40, 2)}/{_initializations}");
+        Console.WriteLine($"pinvoke delegate call={add(40, 3)}/{_initializations}");
+    }
 
     private static int Apply(Func<int, int, int> f, int a, int b)
     {
