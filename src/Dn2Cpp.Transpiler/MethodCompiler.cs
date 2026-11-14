@@ -1036,7 +1036,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     + "and no hidden parameter");
         }
 
-        string? entryGuard = EntryInitializerGuard();
+        string? entryGuard = InitializerEntryGuard(_method);
 
         // Planning keeps lowering's effects, but has no consumer for a finished function.
         if (_c.Phase == EmitPhase.Planning)
@@ -1047,7 +1047,7 @@ internal sealed partial class MethodCompiler : IEvalStack
         return body;
     }
 
-    /// <summary>The initializer guard a trigger's body runs at entry
+    /// <summary>The initializer guard a trigger's body or callable substitute runs at entry
     /// (<see cref="Compilation.IsInitializerTrigger"/>), or null. Call sites guard after
     /// evaluating the arguments, so their side effects precede the initializer as in .NET;
     /// this one covers every route that reaches the body without such a site: a
@@ -1056,10 +1056,10 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// meets the guard while the run is in flight and returns to the partial state. A
     /// shared body cannot name a placeholder owner's initializer, which belongs to the
     /// instantiation, so such a trigger taints the body.</summary>
-    private string? EntryInitializerGuard()
+    private string? InitializerEntryGuard(MethodInfo method)
     {
-        var owner = _method.DeclaringClass;
-        if (_c.BodyEntryInitializer(_method) is not { } cc)
+        var owner = method.DeclaringClass;
+        if (_c.BodyEntryInitializer(method) is not { } cc)
             return null;
         RequireCoordinator("an entry initializer guard");
         TaintIfCanonical(owner, "type initializer");
@@ -1068,7 +1068,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             if (Compilation.IsFrameworkEventSourceProvider(owner))
                 return null;
             throw new InvalidOperationException(
-                $"{owner.FullName}::{_method.Name}: a compiled trigger's initializer was not reached");
+                $"{owner.FullName}::{method.Name}: a compiled trigger's initializer was not reached");
         }
         NoteCctorEnsure(cc);
         return cc.CppName + "__ensure";
@@ -1287,10 +1287,13 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// walks, the HTTP shim).</summary>
     private string RenderWrapperBody(string tag)
     {
+        string? entryGuard = InitializerEntryGuard(_method);
         var sb = new StringBuilder();
         sb.AppendLine($"// {_method.DeclaringClass.FullName}::{_method.Name} ({tag})");
         sb.AppendLine($"{Signature(_method)}");
         sb.AppendLine("{");
+        if (entryGuard is not null)
+            sb.AppendLine($"    {entryGuard}();");
         foreach (var d in _decls)
             sb.AppendLine($"    [[maybe_unused]] {d.Type} {d.Name};");
         sb.Append(_body);
@@ -4092,14 +4095,6 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // (Compilation.TrimLdftnRedirect; table frozen before emission).
                 if (_c.TrimLdftnRedirect(m) is { } trimRedirect)
                     m = trimRedirect;
-                // Whoever invokes the pointer calls the method with no guard, so a static
-                // method's precise-init initializer runs when the pointer is taken.
-                if (m is { IsStatic: true, DeclaringClass: { IsBeforeFieldInit: false, IntrinsicCppName: null } })
-                {
-                    if (m.DeclaringClass.StaticCctor is not null)
-                        TaintIfCanonical(m.DeclaringClass, "type initializer");
-                    EnsureCctorBefore(m.DeclaringClass);
-                }
                 if (Compilation.RuntimeNumericProviderConsumer(m))
                     _c.ReachFormatProviderGetFormat();
                 NoteFtnTarget(m, virtFtn: false);
@@ -4611,7 +4606,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// parameter list), and the variance a delegate binding does permit is
     /// reference-to-reference in both directions, which renders to a pointer on either side
     /// and to the same wasm type.</param>
-    private (string Params, string RetArrow, bool ReturnsVoid) FtnStubShape(
+    private (string Params, string RetArrow, bool ReturnsVoid, string EntryGuard) FtnStubShape(
         MethodInfo m, int ilOffset, bool receiverSlot, ClassInfo? delegateClass = null)
     {
         // Whatever shape the stub takes below, it SPELLS OUT its parameter and return
@@ -4623,11 +4618,12 @@ internal sealed partial class MethodCompiler : IEvalStack
         NoteLocalValueLayout(m.Signature.ReturnType);
         foreach (var sp in m.Signature.ParameterTypes)
             NoteLocalValueLayout(sp);
+        string entryGuard = m.IsStatic && InitializerEntryGuard(m) is { } ensure ? $"{ensure}(); " : "";
         if (receiverSlot)
         {
             var rr = m.Signature.ReturnType;
             return ("Dn2CppObject*" + string.Concat(m.Signature.ParameterTypes.Select(p => ", " + CppTypes.Of(p))),
-                rr.IsVoid ? "" : $" -> {CppTypes.Of(rr)}", rr.IsVoid);
+                rr.IsVoid ? "" : $" -> {CppTypes.Of(rr)}", rr.IsVoid, entryGuard);
         }
         if (delegateClass is not null || _ftnDelegateUse.TryGetValue(ilOffset, out delegateClass))
         {
@@ -4635,11 +4631,11 @@ internal sealed partial class MethodCompiler : IEvalStack
             var dgPs = invoke is not null ? invoke.Signature.ParameterTypes : m.Signature.ParameterTypes;
             var dgRet = invoke is not null ? invoke.Signature.ReturnType : m.Signature.ReturnType;
             string dgParams = "Dn2CppObject*" + string.Concat(dgPs.Select(p => ", " + CppTypes.Of(p)));
-            return (dgParams, dgRet.IsVoid ? "" : $" -> {CppTypes.Of(dgRet)}", dgRet.IsVoid);
+            return (dgParams, dgRet.IsVoid ? "" : $" -> {CppTypes.Of(dgRet)}", dgRet.IsVoid, entryGuard);
         }
         var ret = m.Signature.ReturnType;
         return (string.Join(", ", m.Signature.ParameterTypes.Select(CppTypes.Of)),
-            ret.IsVoid ? "" : $" -> {CppTypes.Of(ret)}", ret.IsVoid);
+            ret.IsVoid ? "" : $" -> {CppTypes.Of(ret)}", ret.IsVoid, entryGuard);
     }
 
     /// <summary>The substitute a BOUNDED method's ADDRESS gets: a stub in the shape its
@@ -4673,12 +4669,12 @@ internal sealed partial class MethodCompiler : IEvalStack
         if (_c.TryBoundedImport(m, out var bimp) && bimp.Verdict == BoundedVerdict.Loud)
         {
             return $"(void*)+[]({shape.Params}){shape.RetArrow} "
-                + "{ dn2cpp_throw_platform_not_supported(\""
+                + $"{{ {shape.EntryGuard}dn2cpp_throw_platform_not_supported(\""
                 + Compilation.BoundedImportThrowMessage(bimp) + "\"); }";
         }
         return shape.ReturnsVoid
-            ? $"(void*)+[]({shape.Params}) {{ }}"
-            : $"(void*)+[]({shape.Params}){shape.RetArrow} {{ return {{}}; }}";
+            ? $"(void*)+[]({shape.Params}) {{ {shape.EntryGuard}}}"
+            : $"(void*)+[]({shape.Params}){shape.RetArrow} {{ {shape.EntryGuard}return {{}}; }}";
     }
 
     /// <summary>The substitute the DYNAMIC-CODEGEN surface's address gets: the same
@@ -4690,7 +4686,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     {
         var shape = FtnStubShape(m, ilOffset, receiverSlot, delegateClass);
         return $"(void*)+[]({shape.Params}){shape.RetArrow} "
-            + "{ dn2cpp_throw_platform_not_supported("
+            + $"{{ {shape.EntryGuard}dn2cpp_throw_platform_not_supported("
             + $"\"{_c.GenericDefFullName(m.DeclaringClass)}.{m.Name} requires dynamic code generation\"); }}";
     }
 
@@ -4705,7 +4701,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     {
         var shape = FtnStubShape(m, ilOffset, receiverSlot, delegateClass);
         return $"(void*)+[]({shape.Params}){shape.RetArrow} "
-            + "{ dn2cpp_throw_platform_not_supported(\""
+            + $"{{ {shape.EntryGuard}dn2cpp_throw_platform_not_supported(\""
             + Compilation.AbsentNetworkPalThrowMessage(
                 _c.GenericDefFullName(m.DeclaringClass), m.Name) + "\"); }";
     }

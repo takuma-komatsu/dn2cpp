@@ -252,18 +252,17 @@ constant, compiled or through reflection, and by
 else. A type that is not `beforefieldinit` is also initialized by a constructor
 call, compiled or through `Activator`, a `new()` constraint or reflection, by
 `RuntimeHelpers.GetUninitializedObject` of the type or of a type derived from it,
-a static call, a pointer to a static method, a call to a value type's instance
-method or to an interface's own default method, a static member invoked by
-reflection, a delegate bound by reflection to a static method, and an explicit
+a static call, a call to a value type's instance method or to an interface's own
+default method, a static member invoked by
+reflection, a call through a pointer or delegate to a static method, and an explicit
 entry or a preserved member on the type wherever a call to it would. Every such
 member's compiled body runs the initializer guard on entry, so a route that
 enters it without a call site, such as a continuation or a runtime callback,
 triggers too. Only module
 initializers run at startup, before the entry point; a referenced library's runs
 even when the program touches nothing else in it. A pointer to a static method,
-or a delegate bound by reflection, triggers the initializer when the pointer is
-taken or the delegate is bound, not at its first call. A hot-update base build
-keeps its export contract: every non-private application method and every
+or a delegate bound by reflection, leaves the initializer dormant until invocation.
+A hot-update base build keeps its export contract: every non-private application method and every
 application static constructor.
 
 A reflection site is recognized from the values that reach it within one

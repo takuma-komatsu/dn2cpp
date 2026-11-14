@@ -208,8 +208,10 @@ interface's default, triggers its own type. Reaching any member that
 default method) reaches its type's `.cctor`, because the member's compiled body
 runs the `__ensure` guard at entry: every route into the body, a continuation,
 runtime slot or lowered call included, triggers. A reached `.cctor` also runs
-behind the guards that call, `ldftn` and static-field sites emit. A call site's
-guard follows its argument evaluation, so the arguments' side effects precede the
+behind the guards that call and static-field sites emit. Taking a method address or
+binding a delegate retains its initializer but does not run it: the callable entry
+guards it when invoked, including synthesized P/Invoke forwarders and cut stubs.
+A call site's guard follows its argument evaluation, so the arguments' side effects precede the
 initializer as in .NET, and a shared body that would need a placeholder owner's
 guard taints.
 An entry with no IL call site (the entry point, an emitted construction, a

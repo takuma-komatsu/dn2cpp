@@ -82,6 +82,7 @@
 # may enter. Its own driver, so no other section names those types; exact diff vs real
 # .NET, with the generic and non-generic late witnesses telling a first-use guard from
 # a startup run, and types reached only from an untaken branch never initializing.
+# Static method groups and reflection binding leave initializers dormant until invocation.
 source "$(dirname "$0")/_common.sh"
 
 echo "== Precise type initializers run on every trigger, and only on a trigger =="
@@ -153,7 +154,11 @@ echo "== Precise type initializers run on every trigger, and only on a trigger =
                 'beforefieldinit base static field=48/ChainRelaxedBase' \
                 'uninitialized three precise levels=True/ChainThird,ChainSecond,ChainFirst' \
                 'uninitialized over beforefieldinit middle=True/ChainOuterLeaf,ChainOuterRoot' \
-                'uninitialized chain entries end'; do
+                'uninitialized chain entries end' \
+                'static delegate binding=False/True' \
+                'generic delegate binding=not-run/registered' \
+                'shared delegate binding=not-run/registered' \
+                'reflection delegate binding=0/1'; do
             gate_output byte-witness "$native" "$line" --count any --policy crlf \
                 || { echo "FAIL: initializer trigger witness missing: $line" >&2; return 1; }
         done

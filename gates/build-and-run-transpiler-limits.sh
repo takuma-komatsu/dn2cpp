@@ -1073,7 +1073,7 @@ dotnet build gates/fixtures/transpiler-limits/ReflectionDepthSummary/ReflectionD
 for summary_cut_mode in ildiet no-ildiet; do
     (
         DN2CPP_SAMPLE_PROJECT_DIR="$summary_cut"
-        DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|defines:ORDINARY_CUT_DEPTH|cut:ReflectionDepthSummary.Program::Cut"
+        DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|defines:ORDINARY_CUT_DEPTH|cut:ReflectionDepthSummary.Program::Cut|cut:ReflectionDepthSummary.CutOwner::Read"
         DN2CPP_SKIP_BUILD=1
         DN2CPP_OUT_SUFFIX="-ordinary-cut-$summary_cut_mode"
         gate_extra_asserts() {
@@ -1085,15 +1085,19 @@ for summary_cut_mode in ildiet no-ildiet; do
             gate_output compare "$prefix" "$summary_expected" --policy crlf
             gate_output witness "$native" 'cut-complete' --count any --policy crlf \
                 || { echo 'FAIL: ordinary cut depth section did not run' >&2; return 1; }
+            gate_output witness "$native" 'cut delegate before call=False' --count any --policy crlf \
+                || { echo 'FAIL: cut delegate binding ran the initializer' >&2; return 1; }
+            gate_output witness "$native" 'cut delegate call=0/True' --count any --policy crlf \
+                || { echo 'FAIL: cut delegate invocation skipped the initializer' >&2; return 1; }
             if grep -Eq '^// ReflectionDepthSummary.Program::(Cut|Descend)$' "$out"/generated*.cpp; then
                 echo 'FAIL: a cut body or its generic subtree was emitted' >&2
                 return 1
             fi
         }
         if [ "$summary_cut_mode" = ildiet ]; then
-            corelib_diff_gate ReflectionDepthSummary --cut ReflectionDepthSummary.Program::Cut -r "$summary_library"
+            corelib_diff_gate ReflectionDepthSummary --cut ReflectionDepthSummary.Program::Cut --cut 'ReflectionDepthSummary.CutOwner::Read' -r "$summary_library"
         else
-            corelib_diff_gate ReflectionDepthSummary --no-ildiet --cut ReflectionDepthSummary.Program::Cut -r "$summary_library"
+            corelib_diff_gate ReflectionDepthSummary --no-ildiet --cut ReflectionDepthSummary.Program::Cut --cut 'ReflectionDepthSummary.CutOwner::Read' -r "$summary_library"
         fi
     )
 done

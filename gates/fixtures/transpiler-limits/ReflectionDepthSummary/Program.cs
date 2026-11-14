@@ -154,6 +154,9 @@ internal static class Program
         Console.WriteLine("== ordinary cut depth summary ==");
         Cut();
         Console.WriteLine("cut-complete");
+        Func<int> read = CutOwner.Read;
+        Console.WriteLine($"cut delegate before call={CutInitialized}");
+        Console.WriteLine($"cut delegate call={read()}/{CutInitialized}");
 #endif
 #endif
     }
@@ -175,6 +178,8 @@ internal static class Program
     private static int PrimitiveCall<T>(T value) where T : IComparable => value.CompareTo(null);
 #endif
 #if ORDINARY_CUT_DEPTH
+    internal static bool CutInitialized;
+
     private static void Cut() => Descend<int>(3);
     private static void Descend<T>(int remaining)
     {
@@ -478,5 +483,14 @@ internal class SeparateClassSlotDerived : SeparateClassSlot
 {
     public override void Run() => Descend<int>();
     private static void Descend<T>() => Descend<List<T>>();
+}
+#endif
+
+#if ORDINARY_CUT_DEPTH
+internal static class CutOwner
+{
+    static CutOwner() => Program.CutInitialized = true;
+
+    internal static int Read() => 0;
 }
 #endif

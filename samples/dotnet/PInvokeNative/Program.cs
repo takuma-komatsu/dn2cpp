@@ -50,6 +50,7 @@ namespace PInvokeNative
             PInvokeStackallocUtf8Subset.Program.__GateEntry();
             // The one section binding the platform C library rather than dn2cpptest.
             PInvokeLibcSubset.Program.__GateEntry();
+            PInvokeFtnDelegateSubset.Program.__InitializerTiming();
         }
     }
 }
