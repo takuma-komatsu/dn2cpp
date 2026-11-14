@@ -70,6 +70,10 @@ internal static class MetadataShape
         if (mode.StartsWith("bigmul-int-owner-", StringComparison.Ordinal)
             && references.Any(reference => reference.Parent.Kind != HandleKind.TypeSpecification))
             throw new InvalidOperationException("fixture lost the BigMul owner TypeSpec");
+        if (mode == "int128-methodspec-empty"
+            && !reader.GetBlobBytes(reader.GetMethodSpecification(MetadataTokens.MethodSpecificationHandle(1)).Signature)
+                .SequenceEqual(new byte[] { 0x0a, 0x00 }))
+            throw new InvalidOperationException("fixture lost the zero-arity MethodSpec");
         using var assembly = AssemblyDefinition.ReadAssembly(path);
         var instructions = assembly.MainModule.Types.SelectMany(type => type.Methods)
             .Where(method => method.HasBody).SelectMany(method => method.Body.Instructions).ToArray();

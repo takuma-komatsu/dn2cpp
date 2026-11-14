@@ -12,7 +12,7 @@ numeric_signature_regressions() {
     fi
     if [ "$family" != bigmul ]; then
         cases+=(int128-control uint128-control \
-            int128-member-return-type int128-member-generic-arity int128-methodspec-arity \
+            int128-member-return-type int128-member-generic-arity int128-methodspec-arity int128-methodspec-empty \
             int128-interface-owner-arity int128-constrained-wrong-target \
             int128-methodspec-modifier int128-methodspec-pinned \
             int128-owner-modifier int128-interface-owner-modifier \
@@ -45,6 +45,7 @@ numeric_signature_regressions() {
             bigmul-*) expected='Primitive BigMul requires its exact CoreLib reference and declaration' ;;
             int128-member-*) expected='Int128.CreateChecked requires its exact MethodSpec MemberRef signature' ;;
             int128-methodspec-arity) expected='System.Int128: no generic method CreateChecked<2>/1' ;;
+            int128-methodspec-empty) expected='NumericSignatures.Program.Main: Cannot decode MethodSpec 0x2b000001:' ;;
             int128-methodspec-*) expected='Int128.CreateChecked requires its exact closed integer MethodSpec signature' ;;
             int128-owner-modifier|int128-interface-owner-modifier) expected='Int128.CreateChecked requires an unmodified exact owner TypeSpec' ;;
             *-interface-owner-arity) expected='INumberBase.CreateChecked requires exactly one owner type argument' ;;
@@ -64,6 +65,7 @@ numeric_signature_regressions() {
             # ILDiet canonicalizes an unmodified primitive TypeSpec into the
             # named TypeRef accepted by the exact BigMul resolver.
             if [[ "$mode" = bigmul-int-owner-typespec-* ]] && [ "$preprocessing" = ildiet ]; then required=; fi
+            if [ "$mode" = int128-methodspec-empty ] && [ "$preprocessing" = ildiet ]; then required='ILDiet failed with exit code 1'; fi
             gate_capture "$prefix/cli" invoke_cli "$input" -r "$corelib" \
                 ${flags[@]+"${flags[@]}"} -o "$prefix/emitted" || return 1
             status=$(cat "$prefix/cli.status") || return 1
