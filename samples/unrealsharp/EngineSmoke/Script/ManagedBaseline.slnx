@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="ManagedDependency/ManagedDependency.csproj" />
+  <Project Path="ManagedBaseline/ManagedBaseline.csproj" />
+</Solution>
