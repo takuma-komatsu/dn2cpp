@@ -16,6 +16,7 @@
 #
 # Accepted flags share the worker-count runs; rejections remain isolated.
 # Floating-point mode selection must survive re-emission without a stale opt-in.
+# ILDiet arguments stay literal, preserve protocol ownership and are inert when disabled.
 # Assertions:
 #   1. Baseline — the same input with correct flags transpiles and exits 0. The
 #      regression guard that keeps the unknown-arg check from over-rejecting valid
@@ -60,7 +61,7 @@ echo "corelib: $CORELIB"
 # make this gate permanently uncacheable since it clears OUT on every run.
 OUT=artifacts/cli-args-baseline
 rm -rf "$OUT"; mkdir -p "$OUT"
-if gate_cache_check "$OUT" "cli-args|combined-acceptance|cli:$(_gate_cli_hash)|$CORELIB" \
+if gate_cache_check "$OUT" "cli-args|combined-acceptance|ildiet-arg:literal-budget-request|cli:$(_gate_cli_hash)|$CORELIB" \
         "$APP" "$CONSOLE_CLI"; then
     gate_cache_hit_msg
     exit 0
@@ -132,11 +133,23 @@ assert_native_metadata() {
         || { echo "FAIL: $frontend emitted no native metadata" >&2; exit 1; }
 }
 
+assert_ildiet_budget() {
+    gate_python - "$OUT/ildiet/ildiet-result.xml" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+root = ET.parse(sys.argv[1]).getroot()
+assert root.get("fallback") == "budget", "forwarded ILDiet budget did not trigger fallback"
+assert root.find("counters").get("work.budget") == "1", "ILDiet did not receive the literal budget value"
+print("OK: ILDiet received the additional work-budget arguments")
+PY
+}
+
 # ── Assertion 1: baseline — valid flags must still transpile (exit 0) ──────────
 echo "== 1/10 baseline: valid input + flags transpiles and exits 0 =="
 set +e
 invoke_cli "$APP" -r "$CORELIB" -o "$OUT" --jobs 1 \
-    --no-default-ref DnZlib --no-metadata-compression >/dev/null 2>&1
+    --no-default-ref DnZlib --no-metadata-compression \
+    --ildiet-arg --work-budget --ildiet-arg 1 >/dev/null 2>&1
 base_rc=$?
 set -e
 if [ "$base_rc" -ne 0 ]; then
@@ -147,6 +160,7 @@ fi
     || { echo "FAIL: the valid transpile produced no $OUT/generated.cpp" >&2; exit 1; }
 echo "OK: valid transpile exit 0, emitted generated.cpp"
 assert_native_metadata full
+assert_ildiet_budget
 gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-strict.expected"
 
 # ── Assertion 2: a bogus flag is a hard error naming the token ─────────────────
@@ -188,8 +202,10 @@ gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-precise.expected"
 precise_surface=$(_gate_surface_lines "$OUT")
 
 echo "== 8/10 console CLI accepts explicit sequential and parallel worker counts =="
-assert_accepted "console jobs 1, metadata opt-out and precise FP" console "$APP" -r "$CORELIB" -o "$OUT" --jobs 1 --no-metadata-compression --fp-mode precise
+assert_accepted "console jobs 1, metadata opt-out and precise FP" console "$APP" -r "$CORELIB" -o "$OUT" --jobs 1 --no-metadata-compression --fp-mode precise \
+    --ildiet-arg --work-budget --ildiet-arg 1
 assert_native_metadata console
+assert_ildiet_budget
 gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-precise.expected"
 assert_accepted "console jobs 2 and strict FP" console "$APP" -r "$CORELIB" -o "$OUT" --jobs 2 --fp-mode strict
 gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-strict.expected"
@@ -210,18 +226,46 @@ assert_rejected "console jobs non-numeric" "many" console "$APP" -r "$CORELIB" -
 
 echo "OK: both baseline worker-count runs verified --no-metadata-compression"
 
+echo "== Additional ILDiet arguments reject invalid values and protocol overrides =="
+for frontend in full console; do
+    assert_rejected "$frontend ILDiet argument missing" '--ildiet-arg expects an argument' "$frontend" "$APP" --ildiet-arg
+    assert_rejected "$frontend ILDiet unknown argument" 'unknown argument: --bogus-ildiet-option' "$frontend" "$APP" -r "$CORELIB" -o "$OUT" \
+        --ildiet-arg --bogus-ildiet-option
+    assert_rejected "$frontend ILDiet literal argument" 'unknown argument: --work-budget 1' "$frontend" "$APP" -r "$CORELIB" -o "$OUT" \
+        --ildiet-arg '--work-budget 1'
+    assert_rejected "$frontend ILDiet budget missing" 'missing value for --work-budget' "$frontend" "$APP" -r "$CORELIB" -o "$OUT" \
+        --ildiet-arg --work-budget
+    assert_rejected "$frontend ILDiet invalid budget" 'work budget must be a positive integer' "$frontend" "$APP" -r "$CORELIB" -o "$OUT" \
+        --ildiet-arg --work-budget --ildiet-arg 0
+    for protocol_option in --request --result; do
+        assert_rejected "$frontend ILDiet $protocol_option override" "cannot override reserved ILDiet option: $protocol_option" "$frontend" "$APP" -r "$CORELIB" -o "$OUT" \
+            --ildiet-arg "$protocol_option" --ildiet-arg "$OUT/override.xml"
+    done
+    assert_rejected "$frontend ILDiet output override" "direct input option '-o'" "$frontend" "$APP" -r "$CORELIB" -o "$OUT" \
+        --ildiet-arg -o --ildiet-arg ildiet-output
+    assert_rejected "$frontend ILDiet retention override" "direct input option '--stripping-level'" "$frontend" "$APP" -r "$CORELIB" -o "$OUT" \
+        --ildiet-arg --stripping-level --ildiet-arg high
+done
+[ ! -e "$OUT/override.xml" ] \
+    || { echo 'FAIL: additional ILDiet arguments wrote to a substituted protocol path' >&2; exit 1; }
+
 echo "== Floating-point modes reject invalid values and reset to strict =="
 for frontend in full console; do
     assert_rejected "$frontend FP mode missing" '--fp-mode' "$frontend" "$APP" --fp-mode
     assert_rejected "$frontend FP mode fast" 'fast' "$frontend" "$APP" --fp-mode fast
     assert_rejected "$frontend FP mode typo" 'presice' "$frontend" "$APP" --fp-mode presice
 done
-assert_accepted 'full explicit strict FP' full "$APP" -r "$CORELIB" -o "$OUT" --fp-mode strict
+assert_accepted 'full explicit strict FP without ILDiet' full "$APP" -r "$CORELIB" -o "$OUT" --fp-mode strict \
+    --no-ildiet --ildiet-output "$OUT/disabled-full" --ildiet-arg --bogus-ildiet-option
 gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-strict.expected"
 assert_accepted 'console precise FP before reset' console "$APP" -r "$CORELIB" -o "$OUT" --fp-mode precise
 gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-precise.expected"
-assert_accepted 'console default FP reset' console "$APP" -r "$CORELIB" -o "$OUT"
+assert_accepted 'console default FP reset without ILDiet' console "$APP" -r "$CORELIB" -o "$OUT" \
+    --no-ildiet --ildiet-output "$OUT/disabled-console" --ildiet-arg --bogus-ildiet-option
 gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-strict.expected"
+[ ! -e "$OUT/disabled-full" ] && [ ! -e "$OUT/disabled-console" ] \
+    || { echo 'FAIL: --no-ildiet invoked the companion with additional arguments' >&2; exit 1; }
 
 gate_cache_commit
 echo "PASS: both CLIs accept worker counts, metadata and floating-point options; invalid arguments remain hard errors"
+echo "PASS: ILDiet arguments preserve literal values, protocol paths and disabled preprocessing"

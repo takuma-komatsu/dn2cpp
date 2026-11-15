@@ -120,6 +120,55 @@ foreach (string platform in OS.PlatformFeatureMap.Keys)
 }
 Console.WriteLine($"PASS: export option definitions, visibility and argument generation ({runs} platform/preset/extra-argument cases)");
 
+int additionalArgumentRuns = 0;
+foreach (string platform in OS.PlatformFeatureMap.Keys)
+{
+    var editor = new EditorExportPlatform(platform);
+    var probe = new ExportProbe(platform, work);
+    var definitions = probe._GetExportOptions(editor);
+    foreach (string name in new[] { "extra_transpile_args", "extra_ildiet_args" })
+    {
+        string key = "dotnet/dn2cpp/" + name;
+        var definition = definitions.Single(item => (string)((Godot.Collections.Dictionary)item["option"])["name"] == key);
+        Check(((string[])definition["default_value"]).Length == 0, platform + " default " + name);
+        Check((int)((Godot.Collections.Dictionary)definition["option"])["type"] == (int)Variant.Type.PackedStringArray, "argument array option");
+        foreach (int backend in new[] { 0, 1, 2 })
+        {
+            probe.Preset["dotnet/export_backend"] = backend;
+            Check(probe._GetExportOptionVisibility(editor, key) == (backend == 2), platform + " visibility " + name);
+        }
+    }
+
+    probe.Preset.Clear();
+    ProjectSettings.Extra = [];
+    string[] missing = probe.Generate();
+    probe.Preset["dotnet/dn2cpp/extra_transpile_args"] = Array.Empty<string>();
+    probe.Preset["dotnet/dn2cpp/extra_ildiet_args"] = Array.Empty<string>();
+    Check(probe.Generate().SequenceEqual(missing), platform + " absent and empty arguments match");
+    additionalArgumentRuns += 2;
+
+    string[] projectArgs = ["--fp-mode", "strict", "--direct-pinvoke", "project native library"];
+    string[] presetArgs = ["--fp-mode", "precise", "--link-xml", @"C:\game data\link.xml", "--unknown-transpiler-option"];
+    string[] ildietArgs = ["--work-budget", "1234", "--unknown-ildiet-option", "literal \"quotes\" and spaces", ""];
+    ProjectSettings.Extra = ["--stripping-level", "high", .. projectArgs];
+    probe.Preset["dotnet/dn2cpp/extra_transpile_args"] = new[] { "--stripping-level", "high" }.Concat(presetArgs).ToArray();
+    probe.Preset["dotnet/dn2cpp/extra_ildiet_args"] = ildietArgs;
+    string[] actual = probe.Generate();
+    string[] expected = [.. missing[..^2], .. projectArgs, .. presetArgs,
+        .. ildietArgs.SelectMany(argument => new[] { "--ildiet-arg", argument }), .. missing[^2..]];
+    Check(actual.SequenceEqual(expected), platform + " project/preset order and literal argument boundaries");
+    CheckStripping(actual, "high");
+    additionalArgumentRuns++;
+
+    foreach (string[] invalid in new[] { new[] { "--stripping-level" }, new[] { "--stripping-level", "medium" }, new[] { "--stripping-level", "low" } })
+    {
+        probe.Preset["dotnet/dn2cpp/extra_transpile_args"] = invalid;
+        ExpectInvalid(() => probe.Generate(), "extra_transpile_args");
+        additionalArgumentRuns++;
+    }
+}
+Console.WriteLine($"PASS: preset CLI argument defaults, visibility, ordering and literal tokens ({additionalArgumentRuns} cases)");
+
 static void CheckStripping(string[] arguments, string level)
 {
     Check(arguments.Count(value => value == "--stripping-level") == 1, "one stripping-level argument");
@@ -159,7 +208,8 @@ sealed class ExportProbe(string platform, string work)
     public string[] Generate()
     {
         // INSERT_READ_OPTIONS
-        Transpile(work, "Game", Path.Combine(work, "il"), Path.Combine(work, "generated"), ilPrestripping, optimizationOptions);
+        Transpile(work, "Game", Path.Combine(work, "il"), Path.Combine(work, "generated"), ilPrestripping, optimizationOptions,
+            extraTranspileArgs, extraILDietArgs);
         return _arguments;
     }
     // INSERT_OPTIONS
@@ -197,7 +247,7 @@ namespace Godot
     enum PropertyHint { Enum, GlobalFile, None }
     readonly struct Variant(object? value)
     {
-        public enum Type { Nil, Bool, Int, String }
+        public enum Type { Nil, Bool, Int, String, PackedStringArray }
         public Type VariantType => value is null ? Type.Nil : Type.Bool;
         public bool AsBool() => (bool)value!;
         public string[] AsStringArray() => (string[])value!;

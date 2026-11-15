@@ -156,6 +156,14 @@ still bind their members. A closed-generic `--cut` selector that requires type
 specialization also keeps the DLLs intact and reports that validation is deferred
 to the transpiler.
 
+Repeat `--ildiet-arg <argument>` to pass literal arguments to the ILDiet companion,
+for example `--ildiet-arg --work-budget --ildiet-arg 100000`. Each occurrence
+passes a single argument without shell splitting. ILDiet accepts `--work-budget`
+alongside the generated request; input, output and retention settings use the
+transpiler's own options so both stages share the same contract. The protocol
+paths `--request` and `--result` cannot be overridden. Additional ILDiet arguments
+are unused with `--no-ildiet`.
+
 `--stripping-level high` is the default member-level policy. Select
 `--stripping-level medium` to retain all declared members of each statically
 referenced type, including non-public constructors, methods, fields and property
@@ -226,8 +234,8 @@ attributes unchanged.
 Godot export presets offer **Stripping Level** at
 `dotnet/dn2cpp/stripping_level`: **High** (default, value `0`) or **Medium**
 (value `1`). The exporter passes the choice independently of **IL Pre-stripping**.
-A `--stripping-level` in project extra arguments must match the preset; matching
-pairs are deduplicated and a conflict reports an error.
+A `--stripping-level` in project or preset extra arguments must match the preset;
+matching pairs are deduplicated and a conflict reports an error.
 
 Godot export presets default `dotnet/dn2cpp/trim_reflection`,
 `dotnet/dn2cpp/trim_godot_classes` and `dotnet/dn2cpp/shared_generics` to `true`
@@ -235,8 +243,14 @@ on every platform, including presets that omit these keys. These settings are
 visible with the dn2cpp backend and independent of IL Pre-stripping. Disabling a
 trim setting omits its CLI flag; disabling shared generics adds
 `--no-shared-generics`. Project `dotnet/dn2cpp/extra_transpile_args` are appended
-after the preset arguments, so an explicit trim flag there still enables that
-trim when its preset setting is off. Direct CLI defaults are unchanged:
+after the generated options, followed by the preset's **Extra Transpile Args**
+with the same key, so an explicit trim flag there still enables that trim when
+its preset setting is off. **Extra ILDiet Args** at
+`dotnet/dn2cpp/extra_ildiet_args` forwards arguments to the companion through
+`--ildiet-arg`. Both preset arrays default to empty and take a flag and its value
+as separate elements; paths with spaces need no extra quotes. See
+[the export options](docs/EDITOR-EXPORT-DESIGN.md#3-export-ux-in-the-fork) for details.
+Direct CLI defaults are unchanged:
 reflection and Godot-class trimming are opt-in, and shared generics are on.
 
 With High, C++ emission compiles a body only when compiled code depends on it
