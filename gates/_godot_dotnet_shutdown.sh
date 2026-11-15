@@ -149,7 +149,10 @@ godot_dotnet_shutdown_probe() {
         gate_assert_text "$log.stdout" "shutdown control: collection=observed target=finalized
 shutdown pause: pending=drained tracker=disposed collection=restored
 shutdown pause: nested=preserved collection=restored
-shutdown pause: exception=propagated collection=restored"
+shutdown pause: exception=propagated collection=restored
+shutdown in-flight: queue=ring main=once tracker=after concurrent=joined
+shutdown in-flight: queue=spill main=once tracker=after concurrent=joined
+shutdown frame: pending=pumped main=once"
         echo "   native shutdown collection probe: incremental=$mode verified"
     done
 }

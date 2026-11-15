@@ -75,7 +75,7 @@ void dn2cpp_dm_shutdown_callback()
     // Finalizers and tracker initialization allocate. Keep their collections
     // from clearing weak tracker targets after the last finalizer drain.
     Dn2CppGcCollectionPause collectionPause;
-    dn2cpp_gc_wait_for_pending_finalizers();
+    dn2cpp_gc_drain_finalizers_for_shutdown();
     if (g_managed_shutdown_callback != nullptr)
         g_managed_shutdown_callback();
 }
