@@ -7,14 +7,14 @@
 # Keep original IL metadata while comparing the native reflection policies.
 # ILDiet with --trim-reflection is covered by build-and-run-preserve-control.sh.
 # A recognized lookup keeps its owner's metadata without a root; an unrecognized lookup
-# warns, only under the flag, naming --reflection-root; a root keeps rows, not bodies.
+# warns when metadata or unreached method rows can strip; a root keeps rows, not bodies.
 # A constant Type.GetType or Assembly.GetType name emits its type without bodies.
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_ildiet.sh"
 # Delegate name lookup refuses stripped receiver metadata even for a soft bind failure.
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/TrimReflect/StrippedMembersOnly.csproj samples/dotnet/TrimReflect/StrippedMembersOnlyProgram.cs samples/dotnet/TrimReflect/RecognizedLookupOnly.csproj samples/dotnet/TrimReflect/RecognizedLookupOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|delegate-method-prefix:${DN2CPP_BEFORE_DELEGATE_METHOD:-}|member-enum-prefix:${DN2CPP_BEFORE_MEMBER_ENUM:-}|object-virtual-prefix:${DN2CPP_BEFORE_OBJECT_VIRTUAL:-}|unrecorded-receiver-prefix:${DN2CPP_BEFORE_UNRECORDED_RECEIVER:-}|reflected-unrecorded-receiver-prefix:${DN2CPP_BEFORE_REFLECTED_UNRECORDED_RECEIVER:-}|runtime-template-prefix-argv:before-runtime-template-members|property-accessors-prefix-argv:before-property-accessors"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-name-bindings-prefix-argv:before-delegate-name-bindings|isolated-stripped-members:plain,trimmed,rooted|recognized-lookup-owners:plain,trimmed,rooted|recognized-lookup-prefix:${DN2CPP_BEFORE_RECOGNIZED_LOOKUP:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-name-bindings-prefix-argv:before-delegate-name-bindings|isolated-stripped-members:plain,trimmed,rooted|recognized-lookup-owners:plain,trimmed,rooted|recognized-lookup-prefix:${DN2CPP_BEFORE_RECOGNIZED_LOOKUP:-}|unknown-method-prefix:${DN2CPP_BEFORE_UNKNOWN_METHOD_LOOKUP:-}"
 
 case "${DN2CPP_TRIM_REFLECTION_FULL:-0}" in
     0|1) DN2CPP_TRIM_REFLECTION_FULL=${DN2CPP_TRIM_REFLECTION_FULL:-0} ;;
@@ -433,9 +433,11 @@ lookup_app="samples/dotnet/TrimReflect/bin/$CONFIG/$TFM/RecognizedLookupOnly.dll
 lookup_clr="$OUT/check-lookup_clr-18.stdout"
 gate_capture_ok "${lookup_clr%.stdout}" run_bounded dotnet "$lookup_app"
 # The unrecognized site's owner is a factory result: no root or trim policy makes it
-# known, so every trimmed arm reports the same Metadata row.
+# known, so method lookup warns in every arm; field lookup warns only under trim.
 lookup_row=$(printf '%s\t' Metadata RecognizedLookupOnly 'TrimReflectLookup.Program::Main()')
 lookup_tail=$(printf '\t%s\t%s\t%s' 'System.Type.GetField(String)' \
+    'the reflected value comes from the result of TrimReflectLib.Factory::Make' '--reflection-root TYPE')
+lookup_method_tail=$(printf '\t%s\t%s\t%s' 'System.Type.GetMethod(String)' \
     'the reflected value comes from the result of TrimReflectLib.Factory::Make' '--reflection-root TYPE')
 lookup_bodies() { cat "$1"/generated*.cpp "$1"/generated.h | grep -E '^// ' | LC_ALL=C sort; }
 lookup_modes=trimmed
@@ -493,23 +495,36 @@ for mode in $lookup_modes; do
             || grep -Eqw 'LibGadget_Half_m[0-9]+' "$OUT"/generated*.cpp "$OUT"/generated.h; then
         echo "FAIL: a lookup without invoke compiled its member: $mode" >&2; exit 1
     fi
+    lookup_method_before="$OUT/lookup-method-before"
+    DN2CPP_BEFORE_UNKNOWN_METHOD_LOOKUP=1 gate_capture_ok "$lookup_method_before" run_bounded "$OUT/RecognizedLookupOnly$EXE_EXT"
+    gate_output prefix "$lookup_native" "$lookup_method_before.stdout" --before '== unknown method lookup ==' --policy crlf
+    gate_output witness "$lookup_native" 'known missing method=True' --count any --policy crlf
+    gate_output witness "$lookup_native" 'unknown method lookup end' --count any --policy crlf
+    lookup_rows=$(strip_cr_win "$(cat "$OUT/reflection-unrecognized.tsv")")
     if [ "$mode" = plain ]; then
-        gate_output compare "$lookup_native" "$lookup_clr"
-        [ ! -e "$OUT/reflection-unrecognized.tsv" ] \
-            && ! grep -q 'reflection target not recognized' <<< "$lookup_err" \
-            || { echo "FAIL: an unrecognized lookup was reported without --trim-reflection" >&2; exit 1; }
+        [ "$(wc -l <<< "$lookup_rows" | tr -d ' ')" = 1 ] \
+            && [[ "$lookup_rows" == "$lookup_row"IL_*"$lookup_method_tail" ]] \
+            || { echo "FAIL: the plain method lookup diagnostic differs: $lookup_rows" >&2; exit 1; }
+    else
+        [ "$(wc -l <<< "$lookup_rows" | tr -d ' ')" = 2 ] \
+            && [[ "$lookup_rows" == "$lookup_row"IL_*"$lookup_tail"$'\n'"$lookup_row"IL_*"$lookup_method_tail" ]] \
+            || { echo "FAIL: the unrecognized lookup rows differ: $mode/$lookup_rows" >&2; exit 1; }
+    fi
+    grep -Fxq -- "  fix: --reflection-root TYPE" <<< "$lookup_err" \
+        && grep -Eq '^dn2cpp: warning: reflection target not recognized: RecognizedLookupOnly TrimReflectLookup\.Program::Main\(\) IL_[0-9a-f]{4} System\.Type\.GetMethod\(String\): ' <<< "$lookup_err" \
+        || { echo "FAIL: the unrecognized method warning does not name its root remedy: $mode" >&2; exit 1; }
+    if [ "$mode" = plain ]; then
+        DN2CPP_BEFORE_UNKNOWN_METHOD_LOOKUP=1 gate_capture_ok "$OUT/lookup-method-clr-before" run_bounded dotnet "$lookup_app"
+        gate_output compare "$lookup_method_before.stdout" "$OUT/lookup-method-clr-before.stdout"
+        gate_output witness "$lookup_native" 'runtime method=False' --count any --policy crlf
         continue
     fi
-    lookup_rows=$(strip_cr_win "$(cat "$OUT/reflection-unrecognized.tsv")")
-    [ "$(wc -l <<< "$lookup_rows" | tr -d ' ')" = 1 ] \
-        && [[ "$lookup_rows" == "$lookup_row"IL_*"$lookup_tail" ]] \
-        || { echo "FAIL: the unrecognized lookup row differs: $mode/$lookup_rows" >&2; exit 1; }
-    grep -Fxq -- "  fix: --reflection-root TYPE" <<< "$lookup_err" \
-        && grep -Eq '^dn2cpp: warning: reflection target not recognized: RecognizedLookupOnly TrimReflectLookup\.Program::Main\(\) IL_[0-9a-f]{4} System\.Type\.GetField\(String\): ' <<< "$lookup_err" \
-        || { echo "FAIL: the unrecognized lookup warning does not name its root remedy: $mode" >&2; exit 1; }
+    grep -Eq '^dn2cpp: warning: reflection target not recognized: RecognizedLookupOnly TrimReflectLookup\.Program::Main\(\) IL_[0-9a-f]{4} System\.Type\.GetField\(String\): ' <<< "$lookup_err" \
+        || { echo "FAIL: the trimmed field warning is missing: $mode" >&2; exit 1; }
     if [ "$mode" = trimmed ]; then
         grep -Eq "^const Dn2CppTypeInfo ti_TrimReflectLib_LibWidget = .*DN2CPP_TF_METADATA_STRIPPED" "$OUT"/generated*.cpp \
             && grep -Fq "runtime owner refused: Reflection over the members of 'TrimReflectLib.LibWidget'" "$lookup_native.records" \
+            && grep -Fq "runtime method refused: Reflection over the members of 'TrimReflectLib.LibWidget'" "$lookup_native.records" \
             || { echo "FAIL: the unrecognized lookup's owner was kept without a root" >&2; exit 1; }
         trimmed_bodies=$(lookup_bodies "$OUT")
         continue

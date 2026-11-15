@@ -36,6 +36,19 @@ internal static class Program
             Console.WriteLine("runtime owner refused: " + e.Message);
         }
         Console.WriteLine("recognized lookup owners under trim end");
+        if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_UNKNOWN_METHOD_LOOKUP") == "1")
+            return;
+        Console.WriteLine("== unknown method lookup ==");
+        Console.WriteLine("known missing method=" + (typeof(GadgetHolder).GetMethod("Missing") is null));
+        try
+        {
+            Console.WriteLine("runtime method=" + (widget.GetType().GetMethod("Twice") is not null));
+        }
+        catch (PlatformNotSupportedException e)
+        {
+            Console.WriteLine("runtime method refused: " + e.Message);
+        }
+        Console.WriteLine("unknown method lookup end");
     }
 }
 

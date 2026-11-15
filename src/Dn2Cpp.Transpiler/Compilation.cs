@@ -4579,11 +4579,12 @@ internal sealed partial class Compilation
 
     /// <summary>Whether <paramref name="m"/>'s row must survive the unreached-row trim:
     /// <c>Delegate.Method</c> answers from it (<see cref="KeepsDelegateTargetRow"/>), a
-    /// recognized lookup or enumeration lists it, Medium retains its owner, or it
+    /// recognized lookup or enumeration lists it, a reflection root or Medium retains its owner, or it
     /// introduces the chain of an override whose row the image keeps.</summary>
     internal bool KeepsUnreachedRow(MethodInfo m)
     {
-        if (KeepsDelegateTargetRow(m) || IsReflectionListedRow(m) || _mediumTypes.Contains(m.DeclaringClass))
+        if (KeepsDelegateTargetRow(m) || IsReflectionListedRow(m) || _mediumTypes.Contains(m.DeclaringClass)
+            || _reflectionRoots.Count > 0 && ReflectionRootMatching(m.DeclaringClass) is not null)
             return true;
         if (!_gvmChainRoots.TryGetValue(m, out var overrides))
             return false;

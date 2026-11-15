@@ -3276,7 +3276,20 @@ gate_extra_asserts() {
         [ "$(grep -hwxF "// AdmissionFilters.$body" "$out"/generated*.cpp "$out"/generated.h | wc -l | tr -d ' ')" = 2 ] \
             || { echo "FAIL: both assembly alternatives must retain $body" >&2; return 1; }
     done
-    awk -F '\t' '$1 == "Execution" && $2 == "AdmissionFiltersOnly" && \
+    local admission_metadata
+    admission_metadata=$(cat <<'METADATA'
+Metadata	AdmissionFiltersOnly	AdmissionFilters.Program::InterfaceUnicode(System.String[])	IL_0027	System.Type.GetMethod(String)	the reflected value comes from GetInterface("IÅlpha") ignoring case over a name outside ASCII	--reflection-root TYPE
+Metadata	AdmissionFiltersOnly	AdmissionFilters.Program::InvokeDependentInterface()	IL_0019	System.Type.GetMethod(String)	the reflected value comes from an interface whose type depends on an open generic parameter	--reflection-root TYPE
+Metadata	AdmissionFiltersOnly	AdmissionFilters.Program::MixedAssemblyChoice(System.Reflection.Assembly,System.Boolean)	IL_0025	System.Type.GetMethod(String)	the reflected value comes from a type name searched in an assembly that comes from parameter 1	--reflection-root TYPE
+Metadata	AdmissionFiltersOnly	AdmissionFilters.Program::MostDerivedSelections()	IL_0099	System.Type.GetMethod(String, BindingFlags)	the reflected value comes from MakeGenericType over the result of AdmissionFilters.Program::OpaqueArgument	--reflection-root TYPE
+Metadata	AdmissionFiltersOnly	AdmissionFilters.Program::TypeOpaqueArray(System.String[])	IL_0034	System.Type.GetMethod(String)	the reflected value comes from MakeGenericType over the result of AdmissionFilters.Program::OpaqueArguments	--reflection-root TYPE
+Metadata	AdmissionFiltersOnly	AdmissionFilters.Program::TypeOpaqueElement(System.String[])	IL_0034	System.Type.GetMethod(String)	the reflected value comes from MakeGenericType over the result of AdmissionFilters.Program::OpaqueArgument	--reflection-root TYPE
+Metadata	System.Private.CoreLib	System.Reflection.TypeInfo::<GetDeclaredMethods>g__GetDeclaredOnlyMethods|10_0(System.Type)	IL_0003	System.Type.GetMethods(BindingFlags)	the reflected value comes from parameter 1	--reflection-root TYPE
+METADATA
+    )
+    assert_output "$(awk -F '\t' '$1 == "Metadata"' "$out/reflection-unrecognized.tsv")" "$admission_metadata" || return 1
+    awk -F '\t' '$1 == "Metadata" { next } \
+        $1 == "Execution" && $2 == "AdmissionFiltersOnly" && \
         $3 ~ /^AdmissionFilters.Program::(ConstructChoice|TypeChoice|ConstructMixed|TypeMixed|OpaqueChoices)\(/ { count++; next } \
         $1 == "Execution" && $2 == "AdmissionFiltersOnly" && \
         $3 ~ /^AdmissionFilters.Program::MixedAssemblyChoice\(/ { mixed++; next } \
