@@ -315,6 +315,13 @@ An allocation site that may repeat can represent several live arrays. Stores
 at such a site retain possible defaults, including those published through
 fields; a write to one instance cannot initialize another. Sites proved not
 to repeat keep exact values when every path writes the slot before use.
+Sourced and copied arrays follow the same non-repeating write rule, tracking
+Call/Callvirt repetition alongside Newarr and retaining per-slot and wildcard
+writes over their base sequence. Consumers prune elements whose slot every path
+since allocation overwrote while preserving unstructured or unknown bases and
+layered symbolic generic-argument writes up to the target arity.
+Repeated sites snapshot element values instead of layering write histories, so
+copy loops do not exhaust the alternative budget through historical nesting.
 
 A `MakeGenericType` over a known tuple takes an existing instantiation, else the
 definition's runtime template while `TemplateMayServe` finds that a clone can run

@@ -289,6 +289,29 @@ internal sealed partial class AssemblyDiet
     private readonly Dictionary<(TypeReference Source, MethodDefinition Method, int Term, bool IsMethod), TypeReference> _genericClosures = new();
     private int[]? _genericArities;
 
+    private int[] EnsureGenericArities()
+    {
+        if (_genericArities is not null)
+            return _genericArities;
+        var arities = new List<int>();
+        foreach (var assembly in _assemblies)
+            foreach (var type in AllTypes(assembly.Assembly.MainModule.Types))
+            {
+                Spend();
+                int arity = type.GenericParameters.Count;
+                if (arity > 0 && !arities.Contains(arity)) arities.Add(arity);
+                foreach (var candidate in type.Methods)
+                {
+                    Spend();
+                    arity = candidate.GenericParameters.Count;
+                    if (arity > 0 && !arities.Contains(arity)) arities.Add(arity);
+                }
+            }
+        arities.Sort();
+        _genericArities = arities.ToArray();
+        return _genericArities;
+    }
+
     private TypeReference CloseProjectedGeneric(TypeReference source, SummaryValue arguments, MethodDefinition method, int term, bool isMethod = false)
     {
         var key = (source, method, term, isMethod);
@@ -297,35 +320,24 @@ internal sealed partial class AssemblyDiet
         _genericClosures.Add(key, reference);
         foreach (var vector in arguments.TypeArrays)
             if (vector.All(position => position.Length != 0)) reference.Node.GenericVectors.Add(vector);
-        if (arguments.SymbolicGenericArrays.Count != 0)
+        if (arguments.SymbolicGenericArrays.Count != 0 || arguments.WrittenSymbolicGenericArrays.Count != 0)
         {
-            if (_genericArities is null)
-            {
-                var arities = new List<int>();
-                foreach (var assembly in _assemblies)
-                    foreach (var type in AllTypes(assembly.Assembly.MainModule.Types))
-                    {
-                        Spend();
-                        int arity = type.GenericParameters.Count;
-                        if (arity > 0 && !arities.Contains(arity)) arities.Add(arity);
-                        foreach (var candidate in type.Methods)
-                        {
-                            Spend();
-                            arity = candidate.GenericParameters.Count;
-                            if (arity > 0 && !arities.Contains(arity)) arities.Add(arity);
-                        }
-                    }
-                arities.Sort();
-                _genericArities = arities.ToArray();
-            }
             // The finite metadata arities fix every vector before any target binds.
+            int[] arities = EnsureGenericArities();
             foreach (var owner in arguments.SymbolicGenericArrays)
-                foreach (int arity in _genericArities)
+                foreach (int arity in arities)
                 {
                     var vector = new TypeReference[arity][];
                     for (int i = 0; i < arity; i++)
                         vector[i] = new[] { Project(owner, DetermineGenericArgProjection(owner), i, arity) };
                     reference.Node.GenericVectors.Add(vector);
+                }
+            foreach (var entry in arguments.WrittenSymbolicGenericArrays)
+                foreach (int arity in arities)
+                {
+                    var vector = WrittenSymbolicVector(entry, arity);
+                    if (vector.Length == arity && vector.All(position => position.Length != 0))
+                        reference.Node.GenericVectors.Add(vector);
                 }
         }
         return reference;

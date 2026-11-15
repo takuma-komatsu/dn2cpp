@@ -3821,6 +3821,79 @@ internal sealed partial class Compilation
                 result.Add(new REntity { Kind = REntityKind.TypeArray, Number = t.Number, Elements = elements });
                 break;
             }
+            case TermKind.WrittenArray:
+            {
+                var slots = ReflectionSummary.ParseWrittenArraySlots(t);
+                var baseValue = Child(app, t, 0);
+                var anyValue = Child(app, t, 1);
+                var slotValues = new RResolved[slots.Length];
+                var slotByIndex = new Dictionary<long, int>(slots.Length);
+                string? anySlotUnknown = anyValue.Unknown;
+                long maxDefiniteIndex = -1;
+                for (int i = 0; i < slots.Length; i++)
+                {
+                    slotValues[i] = Resolve(app, app.Summary.ValueOf(slots[i].ChildId));
+                    slotByIndex[slots[i].Index] = i;
+                    anySlotUnknown ??= slotValues[i].Unknown;
+                    if (slots[i].Definite && slots[i].Index > maxDefiniteIndex)
+                        maxDefiniteIndex = slots[i].Index;
+                }
+                result.Unknown = baseValue.Unknown ?? anyValue.Unknown;
+                RResolved? fallbackElements = null;
+                foreach (var e in baseValue.Items)
+                {
+                    if (e.Kind == REntityKind.Null)
+                        continue;
+                    if (e.Kind == REntityKind.TypeArray && e.Number >= 0 && e.Elements is { } elems)
+                    {
+                        if (elems.Length <= maxDefiniteIndex)
+                            continue;
+                        var updated = new RResolved[elems.Length];
+                        for (int pos = 0; pos < elems.Length; pos++)
+                        {
+                            var cell = new RResolved();
+                            bool hasSlot = slotByIndex.TryGetValue(pos, out int slotIdx);
+                            bool definite = hasSlot && slots[slotIdx].Definite;
+                            if (!definite)
+                                cell.Merge(elems[pos]);
+                            if (hasSlot)
+                                cell.Merge(slotValues[slotIdx]);
+                            cell.Merge(anyValue);
+                            updated[pos] = cell;
+                        }
+                        result.Add(new REntity { Kind = REntityKind.TypeArray, Number = elems.Length, Elements = updated });
+                    }
+                    else
+                    {
+                        fallbackElements ??= new RResolved();
+                        if (e.Kind == REntityKind.TypeArray && e.Elements is { } elements)
+                            foreach (var element in elements)
+                                fallbackElements.Merge(element);
+                        else
+                            fallbackElements.Add(e);
+                    }
+                }
+                if (fallbackElements is not null)
+                {
+                    foreach (var slotValue in slotValues)
+                        fallbackElements.Merge(slotValue);
+                    fallbackElements.Merge(anyValue);
+                    result.Unknown ??= anySlotUnknown;
+                    result.Add(new REntity { Kind = REntityKind.TypeArray, Number = -1, Elements = new[] { fallbackElements } });
+                }
+                else if ((baseValue.Items.Count == 0 || baseValue.Unknown is not null)
+                    && (slots.Length > 0 || t.Children.Length > 1 && t.Children[1] >= 0))
+                {
+                    var written = new RResolved();
+                    foreach (var slotValue in slotValues)
+                        written.Merge(slotValue);
+                    written.Merge(anyValue);
+                    result.Unknown ??= anySlotUnknown;
+                    if (written.Items.Count > 0 || written.Unknown is not null)
+                        result.Add(new REntity { Kind = REntityKind.TypeArray, Number = -1, Elements = new[] { written } });
+                }
+                break;
+            }
             case TermKind.Set:
                 result.Merge(Resolve(app, app.Summary.ValueOf(id)));
                 break;
