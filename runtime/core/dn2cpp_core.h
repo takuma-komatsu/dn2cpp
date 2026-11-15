@@ -3421,7 +3421,10 @@ void dn2cpp_gc_set_self_roots_default(int on);
 // dn2cpp_gc_drain_finalizers() / GC.WaitForPendingFinalizers(). The Godot
 // GDExtension flips this on before managed init so RefCounted engine teardown
 // runs on the engine's main thread, not off-thread. Inert under DN2CPP_NO_GC.
-// Call before the first finalizable allocation (before dn2cpp_runtime_init).
+// This also selects on-demand callback dispatch for this runtime's private
+// collector. Call before dn2cpp_runtime_init and before any GC work or threads;
+// switching a live collector or invoking its finalizers outside the runtime
+// bypasses the manual-mode shutdown boundary.
 void dn2cpp_gc_set_manual_finalizer_drain(int on);
 // Called at the top of every [UnmanagedCallersOnly] method body and marshalled
 // delegate thunk (the transpiler injects it). Default: a cheap no-op. Delegate
@@ -3502,6 +3505,11 @@ void dn2cpp_gc_wait_for_pending_finalizers();
 // GDExtension calls this from its per-frame process hook so finalizers that become
 // due from organic collections run on the engine's main thread promptly.
 void dn2cpp_gc_drain_finalizers();
+// With collection paused and manual drain enabled, join already-dequeued
+// callbacks before draining on the calling host thread. The host must retain
+// its collection pause through disposal of helpers used by finalizers.
+// Unlike ordinary Wait, this is a producer-completion boundary for shutdown.
+void dn2cpp_gc_drain_finalizers_for_shutdown();
 // System.GC.KeepAlive(object): an opaque liveness barrier. Defined out of line
 // in the runtime TU (the build does no LTO), so the optimizer must assume the
 // callee reads `obj` — the reference stays live at the call site, which is the

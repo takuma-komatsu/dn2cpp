@@ -491,6 +491,11 @@ void dn2cpp_runtime_init(Dn2CppCpuFeaturesInit initCpuFeatures)
     if (selfRoots)
         GC_set_no_dls(1);
 #endif
+    // Manual mode owns callback dispatch as well as managed-body execution.
+    // Select it before GC initialization and any registrations/threads, never
+    // by switching a live collector that may already be invoking callbacks.
+    if (g_finalizer_manual_drain != 0)
+        GC_set_finalize_on_demand(1);
     GC_INIT();
     // Managed finalizers are unordered, but their object graphs must remain
     // readable until the body runs. Without this post-pass, no-order registration
@@ -1434,6 +1439,11 @@ thread_local bool t_on_finalizer_thread = false;
 // thread_local checked *before* this lock, so a Finalize() body that drains
 // again returns instead of self-deadlocking.
 std::mutex& g_finalizer_drain_mtx = dn2cpp_never_destroyed<std::mutex>();
+// In manual mode the runtime owns every Boehm invocation. Enter a scope before
+// dequeue, not at callback entry, so shutdown can also join that publication gap.
+// Ordinary callers can still dispatch concurrently, preserving Wait's snapshot.
+std::atomic<uint64_t> g_finalizer_dispatch_active{0};
+thread_local bool t_dispatching_finalizers = false;
 
 // Overflow spill for the ring (real .NET's f-reachable queue is unbounded): one
 // collection wave can make far more objects finalizable than the ring holds, and in
@@ -2004,8 +2014,22 @@ DN2CPP_NOINLINE void dn2cpp_run_finalizer_body(Dn2CppObject* obj)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wframe-larger-than="
 #endif
+#if defined(_MSC_VER) && defined(_M_X64)
+DN2CPP_NOINLINE void dn2cpp_scrub_stack(
+    volatile uintptr_t home0 = 0, volatile uintptr_t home1 = 0,
+    volatile uintptr_t home2 = 0, volatile uintptr_t home3 = 0)
+#else
 DN2CPP_NOINLINE void dn2cpp_scrub_stack()
+#endif
 {
+#if defined(_MSC_VER) && defined(_M_X64)
+    // Win64 home slots sit above the local band and can retain dead roots.
+    // Volatile parameters let MSVC clear them without touching register saves.
+    home0 = 0;
+    home1 = 0;
+    home2 = 0;
+    home3 = 0;
+#endif
     volatile char band[16384];
     for (size_t i = 0; i < sizeof(band); i++)
         band[i] = 0;
@@ -2292,6 +2316,44 @@ Dn2CppGcCollectionPause::~Dn2CppGcCollectionPause() noexcept
 #endif
 }
 
+#ifdef DN2CPP_USE_BOEHM_GC
+static void dn2cpp_gc_publish_finalizers()
+{
+    if (g_finalizer_manual_drain == 0)
+    {
+        while (GC_should_invoke_finalizers())
+            GC_invoke_finalizers();
+        return;
+    }
+    if (t_dispatching_finalizers || !GC_should_invoke_finalizers())
+        return;
+    struct DispatchGuard
+    {
+        DispatchGuard()
+        {
+            t_dispatching_finalizers = true;
+            g_finalizer_dispatch_active.fetch_add(1, std::memory_order_acq_rel);
+        }
+        ~DispatchGuard()
+        {
+            g_finalizer_dispatch_active.fetch_sub(1, std::memory_order_release);
+            t_dispatching_finalizers = false;
+        }
+    } dispatchGuard;
+    while (GC_should_invoke_finalizers())
+        GC_invoke_finalizers();
+}
+
+static void* GC_CALLBACK dn2cpp_gc_finalizer_dispatch_busy(void* result)
+{
+    // Called under Boehm's allocator lock: seeing a dequeue's empty list must
+    // also observe the dispatch-scope increment that preceded that dequeue.
+    *static_cast<bool*>(result) = GC_should_invoke_finalizers()
+        || g_finalizer_dispatch_active.load(std::memory_order_acquire) != 0;
+    return nullptr;
+}
+#endif
+
 void dn2cpp_gc_collect()
 {
 #ifdef DN2CPP_USE_BOEHM_GC
@@ -2307,8 +2369,7 @@ void dn2cpp_gc_collect()
     // on a later allocation. Drain explicitly so a Collect() the caller pairs
     // with WaitForPendingFinalizers observes them promptly instead of racing
     // the next GC_MALLOC.
-    while (GC_should_invoke_finalizers())
-        GC_invoke_finalizers();
+    dn2cpp_gc_publish_finalizers();
 #endif
 }
 
@@ -2318,7 +2379,7 @@ void dn2cpp_gc_collect()
 // teardown (engine object destroy / unreference) runs on the engine's main
 // thread — via GC.WaitForPendingFinalizers and the per-frame process hook —
 // rather than off-thread. No-op unless manual mode is active.
-void dn2cpp_gc_drain_finalizers()
+static void dn2cpp_gc_drain_finalizers_impl(bool shutdown)
 {
 #ifdef DN2CPP_USE_BOEHM_GC
     // Only meaningful in manual-drain mode: with the dedicated finalizer thread
@@ -2326,8 +2387,10 @@ void dn2cpp_gc_drain_finalizers()
     // the tail counter. No-op otherwise, so callers need not know the active mode.
     if (g_finalizer_manual_drain == 0)
         return;
-    if (g_finalizer_ring == nullptr)
-        return; // nothing finalizable was ever registered -> ring not allocated
+    // A collector callback must only publish, never wait for a consumer that
+    // may itself be joining this dispatch scope at shutdown.
+    if (t_dispatching_finalizers)
+        return;
 
     // Reentrancy guard: a Finalize() body that itself collects + drains (directly
     // or via GC.WaitForPendingFinalizers) must not re-enter this loop and spin on
@@ -2350,6 +2413,28 @@ void dn2cpp_gc_drain_finalizers()
     // guarantee it came for. The head/tail snapshot happens under the lock so
     // it observes the previous drainer's progress.
     std::lock_guard<std::mutex> drainLock(g_finalizer_drain_mtx);
+
+    if (shutdown)
+    {
+        // The host has paused collection. Under consumer exclusion, flush the
+        // pending list and join every invocation that could have dequeued from
+        // it. Once empty and idle, a later dispatch scope has nothing to publish.
+        for (;;)
+        {
+            dn2cpp_gc_publish_finalizers();
+            bool busy;
+            GC_call_with_alloc_lock(dn2cpp_gc_finalizer_dispatch_busy, &busy);
+            if (!busy)
+                break;
+#ifdef DN2CPP_FINALIZER_SHUTDOWN_TEST
+            extern void dn2cpp_finalizer_shutdown_waiting();
+            dn2cpp_finalizer_shutdown_waiting();
+#endif
+            std::this_thread::yield();
+        }
+    }
+    if (g_finalizer_ring == nullptr)
+        return; // nothing finalizable was ever registered -> ring not allocated
 
     uint64_t target = g_finalizer_head.load(std::memory_order_acquire);
     uint64_t spillTarget = g_finalizer_spill_enqueued.load(std::memory_order_acquire);
@@ -2399,20 +2484,36 @@ void dn2cpp_gc_drain_finalizers()
 #endif
 }
 
+void dn2cpp_gc_drain_finalizers()
+{
+#ifdef DN2CPP_USE_BOEHM_GC
+    // On-demand callbacks from organic collections are pumped at the same
+    // per-frame boundary that already runs their managed bodies. No notifier
+    // or extra finalizer thread is needed for a host that polls this entry.
+    if (g_finalizer_manual_drain != 0)
+        dn2cpp_gc_publish_finalizers();
+#endif
+    dn2cpp_gc_drain_finalizers_impl(false);
+}
+
+void dn2cpp_gc_drain_finalizers_for_shutdown()
+{
+    dn2cpp_gc_drain_finalizers_impl(true);
+}
+
 void dn2cpp_gc_wait_for_pending_finalizers()
 {
 #ifdef DN2CPP_USE_BOEHM_GC
     // Mirror dn2cpp_gc_collect's drain — needed here too, since
     // WaitForPendingFinalizers can be called without a preceding explicit
     // Collect() (e.g. right after an organic collection).
-    while (GC_should_invoke_finalizers())
-        GC_invoke_finalizers();
+    dn2cpp_gc_publish_finalizers();
     // Manual-drain mode: no finalizer thread to wait on — the callbacks above
     // only enqueued onto the ring. Run those bodies here, on the calling (main)
     // thread, so RefCounted engine teardown happens on the main thread.
     if (g_finalizer_manual_drain != 0)
     {
-        dn2cpp_gc_drain_finalizers();
+        dn2cpp_gc_drain_finalizers_impl(false);
         return;
     }
     // On the finalizer thread itself (i.e. called from a Finalize() body):
