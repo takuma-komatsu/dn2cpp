@@ -162,9 +162,10 @@ without a load-time name scan. The interpreter runs it lazily, exactly once —
 before the first `ldsfld`/`stsfld` on one of the type's static fields and
 before the first call into the type from outside it — with the per-type started
 flag set **before** the initializer body runs, so re-entry from the running
-initializer neither deadlocks nor re-runs; a throwing initializer propagates
-the exception raw and never re-runs (the AOT accessor thunks' `__ensure`
-semantics).
+initializer neither deadlocks nor re-runs. A throwing initializer caches a
+`TypeInitializationException` wrapping the original failure and rethrows that
+same wrapper on every trigger, matching the AOT accessor thunks' `__ensure`
+semantics.
 
 ### FieldTable (4) — `FieldRecord` (20 bytes)
 | off | size | field |

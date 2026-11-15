@@ -2103,6 +2103,8 @@ bool dn2cpp_culture_exception_store(Dn2CppObject* e, Dn2CppString* invalidCultur
     int32_t invalidCultureId);
 // Init-only registration, before managed code or host callbacks can run.
 void dn2cpp_set_culture_exception_store(bool (*store)(Dn2CppObject*, Dn2CppString*, int32_t));
+// Writes TypeInitializationException._typeName using the image's managed layout.
+void dn2cpp_set_type_initialization_exception_store(void (*store)(Dn2CppObject*, Dn2CppString*));
 // The BCL exception messages this runtime raises, folded in at transpile time from the
 // CoreLib's own Strings.resources, or for an "Assembly:Key" entry from that library's.
 // A runtime resource read is not an option: --no-manifest-resources may have emptied
@@ -2211,6 +2213,7 @@ inline constexpr const char* DN2CPP_SR_NULL_REFERENCE = "Arg_NullReferenceExcept
 inline constexpr const char* DN2CPP_SR_DIVIDE_BY_ZERO = "Arg_DivideByZero";
 inline constexpr const char* DN2CPP_SR_SYNCHRONIZATION_LOCK = "Arg_SynchronizationLockException";
 inline constexpr const char* DN2CPP_SR_TARGET_INVOCATION = "Arg_TargetInvocationException";
+inline constexpr const char* DN2CPP_SR_TYPE_INITIALIZATION = "TypeInitialization_Type";
 inline constexpr const char* DN2CPP_SR_TARGET_PARAMETER_COUNT = "Arg_TargetParameterCountException";
 inline constexpr const char* DN2CPP_SR_ENTRY_POINT_NOT_FOUND = "Arg_EntryPointNotFoundException";
 inline constexpr const char* DN2CPP_SR_TARGET_REQUIRED = "RFLCT_Targ_StatMethReqTarg";
@@ -3257,6 +3260,7 @@ extern Dn2CppTypeInfo dn2cpp_ambiguous_match_exception_type;
 // System.Runtime.AmbiguousImplementationException: raised by an invoked
 // interface slot whose derived interfaces give it no most specific body.
 extern Dn2CppTypeInfo dn2cpp_ambiguous_implementation_exception_type;
+extern Dn2CppTypeInfo dn2cpp_type_initialization_exception_type;
 extern Dn2CppTypeInfo dn2cpp_target_invocation_exception_type;
 extern Dn2CppTypeInfo dn2cpp_target_exception_type;
 extern Dn2CppTypeInfo dn2cpp_target_parameter_count_exception_type;
@@ -3610,11 +3614,11 @@ void dn2cpp_reflective_slot_check(const void* slotFn, const Dn2CppTypeInfo* rece
 // threads each blocked on another's init): it then returns at once and
 // observes the partially-initialized statics, like real .NET.
 // A throwing body does NOT mark the flag: the failure is recorded against the flag's
-// address and every later call re-raises that same managed exception, so a
-// half-initialized type is never read as ready and the cctor is never retried (.NET's
-// rule; it caches a TypeInitializationException, which dn2cpp does not model).
+// address as a TypeInitializationException; the initial caller and every later call
+// receive that same wrapper, with the original failure as InnerException.
+// A half-initialized type is never read as ready and the cctor is never retried.
 // `body` is null for a tree-shaken cctor (the guard then only latches the flag).
-void dn2cpp_cctor_run_once(std::atomic<int8_t>* flag, void (*body)());
+void dn2cpp_cctor_run_once(std::atomic<int8_t>* flag, void (*body)(), const char* typeName);
 
 // Runs a metadata row's initializer guard (an X__ensure, or null for none) on an
 // entry no compiled call site guards: reflection, a bound delegate, the interpreter.
@@ -4317,6 +4321,9 @@ struct Dn2CppShadowFrame
 // dn2cpp never reads.
 Dn2CppObject* dn2cpp_exception_new(const Dn2CppTypeInfo* ti, Dn2CppString* message, Dn2CppObject* inner);
 Dn2CppObject* dn2cpp_exception_for_hresult(int32_t hresult);
+// Builds the wrapper cached by compiled and interpreted initializer guards.
+// The caller transfers the original in-flight root when it throws the wrapper.
+Dn2CppObject* dn2cpp_type_initialization_exception(const char* typeName, Dn2CppObject* inner);
 // System.Exception.get_Message on an object dn2cpp_exception_new produced, with virtual
 // dispatch: calls a derived get_Message override through the vtable
 // (dn2cpp_exception_get_message_slot) when one is present, else the aggregate getter

@@ -662,8 +662,7 @@ public class QuotaEx : SystemException
 
     // A non-virtual AOT reader over the exception prefix + the derived field,
     // callable from patch code through an ordinary method import: formats the
-    // Message, the inner Message (read AOT-side — the interpreter's intrinsic
-    // import table carries no get_InnerException) and Quota.
+    // Message, the inner Message and Quota.
     public string Describe()
     {
         string inner = InnerException != null ? InnerException.Message : "none";

@@ -798,6 +798,7 @@ internal static partial class CoreIntrinsics
         ["System.OutOfMemoryException"] = "&dn2cpp_out_of_memory_exception_type",
         ["System.InvalidCastException"] = "&dn2cpp_invalid_cast_exception_type",
         ["System.TypeLoadException"] = "&dn2cpp_type_load_exception_type",
+        ["System.TypeInitializationException"] = "&dn2cpp_type_initialization_exception_type",
         ["System.DllNotFoundException"] = "&dn2cpp_dll_not_found_exception_type",
         ["System.EntryPointNotFoundException"] = "&dn2cpp_entry_point_not_found_exception_type",
         ["System.NotSupportedException"] = "&dn2cpp_not_supported_exception_type",

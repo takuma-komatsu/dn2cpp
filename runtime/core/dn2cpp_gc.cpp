@@ -829,10 +829,8 @@ private:
 // SIGSEGV frames away from anything mentioning a static constructor.
 //
 // A failure is REMEMBERED instead: the flag stays 0, the thrown managed object is
-// recorded against the flag's address, and every later __ensure re-raises that same
-// object. .NET rethrows a cached TypeInitializationException wrapping it; dn2cpp does
-// not model that type, so it re-raises the original — a caller that unwraps
-// InnerException reads the same exception on both runtimes.
+// wrapped in TypeInitializationException and recorded against the flag's address.
+// The initial caller and every later __ensure receive that same wrapper.
 //
 // The record is consulted only on the slow path and a SUCCEEDING cctor still latches
 // to 1, so the inline fast path emitted ahead of every static access is untouched.
@@ -897,7 +895,7 @@ static void dn2cpp_cctor_unlink(Dn2CppCctorRun* node, Dn2CppCctorFailure* failur
     g_cctor_cv.notify_all();
 }
 
-void dn2cpp_cctor_run_once(std::atomic<int8_t>* flag, void (*body)())
+void dn2cpp_cctor_run_once(std::atomic<int8_t>* flag, void (*body)(), const char* typeName)
 {
     const std::thread::id self = std::this_thread::get_id();
     std::unique_lock<std::mutex> lk(g_cctor_mtx);
@@ -949,11 +947,17 @@ void dn2cpp_cctor_run_once(std::atomic<int8_t>* flag, void (*body)())
     }
     catch (const Dn2CppException& e)
     {
+        Dn2CppObject* wrapper = dn2cpp_type_initialization_exception(typeName, e.obj);
+        // Publish only a fully stamped wrapper: a waiting thread may replay it
+        // as soon as unlink releases the mutex.
+        dn2cpp_exc_stamp_trace(wrapper);
         auto* f = static_cast<Dn2CppCctorFailure*>(dn2cpp_alloc(sizeof(Dn2CppCctorFailure)));
+        DN2CPP_WEB_GC_LIVENESS(wrapper);
         f->flag = flag;
-        f->exc = e.obj;
+        dn2cpp_gc_store_ref(&f->exc, wrapper);
         dn2cpp_cctor_unlink(&node, f);
-        throw;
+        dn2cpp_exc_inflight_pop(e.obj);
+        dn2cpp_rethrow(f->exc);
     }
     catch (...)
     {
