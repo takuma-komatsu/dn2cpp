@@ -276,7 +276,7 @@ static class Program
 
     internal static void RunRemoveRuns()
     {
-        Console.WriteLine("== remove runs ==");
+        Console.WriteLine("== invocation list remove runs ==");
         var journal = new Journal();
         Action a = journal.A, b = journal.B, c = journal.C;
         Try("remove head run", () => Replay(journal, (a + b + c) - (a + b)));
@@ -303,7 +303,7 @@ static class Program
         Try("remove across delegate types", () => Delegate.Remove(a, signal) is null);
         Try("combine across delegate types", () => Delegate.Combine(a, signal) is null);
         Try("remove null across delegate types", () => Delegate.Remove(null, signal) is null);
-        Console.WriteLine("remove runs end");
+        Console.WriteLine("invocation list remove runs end");
     }
 
     internal static void RunCacheGc()
