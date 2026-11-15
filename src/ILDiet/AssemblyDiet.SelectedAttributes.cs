@@ -83,7 +83,7 @@ internal sealed partial class AssemblyDiet
         if (term.Kind is TermKind.TypeToken or TermKind.MethodSpecArg or TermKind.TypeName
             or TermKind.MadeGeneric or TermKind.ArrayOf or TermKind.ElementOf or TermKind.GenericDefOf
             or TermKind.GenericArgOf or TermKind.BaseOf or TermKind.TypeOfMember
-            or TermKind.Lookup or TermKind.Enumeration or TermKind.TypeArray)
+            or TermKind.Lookup or TermKind.Enumeration or TermKind.TypeArray or TermKind.WrittenArray)
             result.AttributeTypes.AddRange(result.Types);
     }
 

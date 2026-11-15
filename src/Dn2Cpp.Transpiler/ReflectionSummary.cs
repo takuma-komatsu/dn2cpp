@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using System.Text;
@@ -53,6 +54,12 @@ internal enum TermKind : byte
     /// child i the element at i, or -1 when the length is unknown and the one child holds
     /// every element.</summary>
     TypeArray,
+    /// <summary>An array copied or sourced from a sequence (<see cref="RTerm.Children"/>[0],
+    /// or -1 when empty) and then written: child 1 holds writes at non-constant or capped
+    /// indices (-1 when absent), and children 2.. hold writes at ascending slot indices
+    /// listed in <see cref="RTerm.Text"/> (suffixed with <c>!</c> where every path since
+    /// allocation overwrote that slot).</summary>
+    WrittenArray,
     /// <summary>A union: the children are the alternatives, and <see cref="RTerm.Number"/>
     /// is an index into <see cref="ReflectionSummary.Unknowns"/> or -1.</summary>
     Set,
@@ -214,6 +221,8 @@ internal readonly struct RUnknown
     }
 }
 
+internal readonly record struct WrittenArraySlot(long Index, bool Definite, int ChildId);
+
 internal sealed class ReflectionSummary
 {
     internal const int LookupOwner = 0, LookupName = 1, LookupFlags = 2, LookupTypes = 3, LookupArity = 4;
@@ -254,6 +263,68 @@ internal sealed class ReflectionSummary
         if (t.Kind == TermKind.Set)
             return new RValue(t.Children, (int)t.Number);
         return new RValue(new[] { term }, -1);
+    }
+
+    internal static string FormatWrittenArraySlots(List<(long Index, bool Definite)> slots)
+    {
+        if (slots.Count == 0)
+            return "";
+        var text = new StringBuilder();
+        for (int i = 0; i < slots.Count; i++)
+        {
+            if (i > 0)
+                text.Append(',');
+            text.Append(slots[i].Index.ToString(CultureInfo.InvariantCulture));
+            if (slots[i].Definite)
+                text.Append('!');
+        }
+        return text.ToString();
+    }
+
+    internal static WrittenArraySlot[] ParseWrittenArraySlots(RTerm term)
+    {
+        if (string.IsNullOrEmpty(term.Text) || term.Children.Length <= 2)
+            return Array.Empty<WrittenArraySlot>();
+        string[] parts = term.Text.Split(',');
+        int count = Math.Min(parts.Length, term.Children.Length - 2);
+        var result = new List<WrittenArraySlot>(count);
+        for (int i = 0; i < count; i++)
+        {
+            string part = parts[i];
+            bool definite = part.EndsWith('!');
+            string raw = definite ? part.Substring(0, part.Length - 1) : part;
+            if (!long.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out long index) || index < 0)
+                continue;
+            result.Add(new WrittenArraySlot(index, definite, term.Children[2 + i]));
+        }
+        return result.ToArray();
+    }
+
+    internal static bool TryGetWrittenArraySlot(RTerm term, long index, out int childId, out bool definite)
+    {
+        childId = -1;
+        definite = false;
+        if (index < 0 || string.IsNullOrEmpty(term.Text) || term.Children.Length <= 2)
+            return false;
+        string[] parts = term.Text.Split(',');
+        int count = Math.Min(parts.Length, term.Children.Length - 2);
+        for (int i = 0; i < count; i++)
+        {
+            string part = parts[i];
+            bool slotDefinite = part.EndsWith('!');
+            string raw = slotDefinite ? part.Substring(0, part.Length - 1) : part;
+            if (!long.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out long slotIndex))
+                continue;
+            if (slotIndex == index)
+            {
+                childId = term.Children[2 + i];
+                definite = slotDefinite;
+                return true;
+            }
+            if (slotIndex > index)
+                return false;
+        }
+        return false;
     }
 
     /// <summary>Renders the summary for the reflection-summary dump: one header line, then one
@@ -413,6 +484,26 @@ internal sealed class SummaryRenderer
                 }
                 text.Append(']');
                 break;
+            case TermKind.WrittenArray:
+            {
+                text.Append("written(");
+                Child(text, c.Length > 0 ? c[0] : -1, d);
+                foreach (var slot in ReflectionSummary.ParseWrittenArraySlots(t))
+                {
+                    text.Append(", [").Append(slot.Index);
+                    if (slot.Definite)
+                        text.Append('!');
+                    text.Append("]=");
+                    Child(text, slot.ChildId, d);
+                }
+                if (c.Length > 1 && c[1] >= 0)
+                {
+                    text.Append(", *=");
+                    Child(text, c[1], d);
+                }
+                text.Append(')');
+                break;
+            }
             case TermKind.Set:
                 Value(text, _summary.ValueOf(id), depth, flags);
                 break;
@@ -1442,7 +1533,7 @@ internal sealed class SummaryInterpreter
         for (int i = 0; i < n; i++)
         {
             _offsets[i] = code[i].Offset;
-            hasNewArray |= code[i].OpCode == ILOpCode.Newarr;
+            hasNewArray |= code[i].OpCode is ILOpCode.Newarr or ILOpCode.Call or ILOpCode.Callvirt;
         }
 
         _method = SRME.GetToken(method);
@@ -1625,7 +1716,7 @@ internal sealed class SummaryInterpreter
         for (int i = 0; i < _code.Count; i++)
         {
             active += ranges[i];
-            if (active > 0 && _code[i].OpCode == ILOpCode.Newarr)
+            if (active > 0 && _code[i].OpCode is ILOpCode.Newarr or ILOpCode.Call or ILOpCode.Callvirt)
                 _repeatedArrays.Add(_code[i].Offset);
         }
     }
@@ -2546,12 +2637,35 @@ internal sealed class SummaryInterpreter
                 TermKind.Allocation => Contents((int)t.Number, RValue.None),
                 TermKind.FieldArray => FieldArrayContents(t, RValue.None),
                 TermKind.TypeArray => AllChildren(t),
+                TermKind.WrittenArray => WrittenArrayElement(t, token),
                 TermKind.Null => RValue.None,
                 _ => Unknown(UnknownReason.CallResult, token),
             });
         }
         if (sequence.Unknown >= 0)
             result = Join(result, new RValue(null, sequence.Unknown));
+        return result;
+    }
+
+    private RValue WrittenArrayElement(RTerm t, int token)
+    {
+        var result = RValue.None;
+        if (t.Children.Length > 0 && t.Children[0] >= 0)
+        {
+            var baseVal = ValueOf(t.Children[0]);
+            if (baseVal.Unknown < 0 && baseVal.Count == 1
+                && Terms[baseVal.Alternatives![0]] is { Kind: TermKind.TypeArray, Number: >= 0 } fixedBase)
+            {
+                for (int i = 0; i < fixedBase.Children.Length; i++)
+                    if (!ReflectionSummary.TryGetWrittenArraySlot(t, i, out _, out bool definite) || !definite)
+                        result = Join(result, ValueOf(fixedBase.Children[i]));
+            }
+            else
+                result = Join(result, Element(baseVal, token));
+        }
+        for (int i = 1; i < t.Children.Length; i++)
+            if (t.Children[i] >= 0)
+                result = Join(result, ValueOf(t.Children[i]));
         return result;
     }
 
@@ -2583,8 +2697,8 @@ internal sealed class SummaryInterpreter
         {
             int id = value.Alternatives![k];
             var t = Terms[id];
-            result = Join(result, t.Kind is TermKind.TypeArray or TermKind.Enumeration or TermKind.Null
-                || t.Kind == TermKind.Lookup && t.Number == (long)ReflectionOp.GetMember
+            result = Join(result, t.Kind is TermKind.TypeArray or TermKind.WrittenArray or TermKind.Enumeration
+                or TermKind.Null || t.Kind == TermKind.Lookup && t.Number == (long)ReflectionOp.GetMember
                 ? Known(id) : Unknown(UnknownReason.CallResult, token));
         }
         return result;
@@ -3062,6 +3176,7 @@ internal sealed class SummaryInterpreter
             allocation = new Allocation { Sourced = true, Length = -1 };
             _allocations.Add(offset, allocation);
         }
+        _written.RemoveWhere(w => w.Site == offset);
         var joined = Join(allocation.Source, source);
         if (!Same(joined, allocation.Source))
         {
@@ -3220,6 +3335,37 @@ internal sealed class SummaryInterpreter
                         ? single < t.Children.Length ? ValueOf(t.Children[single]) : RValue.None
                         : AllChildren(t));
                     break;
+                case TermKind.WrittenArray:
+                    if (single >= 0)
+                    {
+                        bool found = ReflectionSummary.TryGetWrittenArraySlot(t, single, out int slotChild, out bool definite);
+                        if (!definite && t.Children.Length > 0 && t.Children[0] >= 0)
+                            result = Join(result, LoadElement(ValueOf(t.Children[0]), index));
+                        if (found)
+                            result = Join(result, ValueOf(slotChild));
+                        if (t.Children.Length > 1 && t.Children[1] >= 0)
+                            result = Join(result, ValueOf(t.Children[1]));
+                    }
+                    else
+                    {
+                        if (t.Children.Length > 0 && t.Children[0] >= 0)
+                        {
+                            var baseVal = ValueOf(t.Children[0]);
+                            if (baseVal.Unknown < 0 && baseVal.Count == 1
+                                && Terms[baseVal.Alternatives![0]] is { Kind: TermKind.TypeArray, Number: >= 0 } fixedBase)
+                            {
+                                for (int idx = 0; idx < fixedBase.Children.Length; idx++)
+                                    if (!ReflectionSummary.TryGetWrittenArraySlot(t, idx, out _, out bool definite) || !definite)
+                                        result = Join(result, ValueOf(fixedBase.Children[idx]));
+                            }
+                            else
+                                result = Join(result, LoadElement(baseVal, index));
+                        }
+                        for (int idx = 1; idx < t.Children.Length; idx++)
+                            if (t.Children[idx] >= 0)
+                                result = Join(result, ValueOf(t.Children[idx]));
+                    }
+                    break;
                 case TermKind.Enumeration:
                 {
                     var op = (ReflectionOp)t.Number;
@@ -3265,10 +3411,23 @@ internal sealed class SummaryInterpreter
         if (!_allocations.TryGetValue(site, out var allocation))
             return RValue.None;
         allocation.Read = true;
-        var result = allocation.Sourced ? LoadElement(allocation.Source, index, load) : RValue.None;
+        var result = RValue.None;
+        long? singleIndex = SingleInt(index);
+        if (allocation.Sourced)
+        {
+            if (singleIndex is null && allocation.Source.Unknown < 0 && allocation.Source.Count == 1
+                && Terms[allocation.Source.Alternatives![0]] is { Kind: TermKind.TypeArray, Number: >= 0 } fixedBase)
+            {
+                for (int k = 0; k < fixedBase.Children.Length; k++)
+                    if (!_written.Contains((site, k)))
+                        result = Join(result, ValueOf(fixedBase.Children[k]));
+            }
+            else if (!(singleIndex is long writtenAt && writtenAt >= 0 && _written.Contains((site, writtenAt))))
+                result = LoadElement(allocation.Source, index);
+        }
         // Only a constant index selects a slot: a set of indices is a loop counter on its
         // way to unknown, and reading it slot by slot would leave every partial union behind.
-        if (SingleInt(index) is long single)
+        if (singleIndex is long single)
         {
             if (allocation.Slots.TryGetValue(single, out var slot))
                 result = Join(result, slot);
@@ -3380,6 +3539,11 @@ internal sealed class SummaryInterpreter
                     continue;
                 }
             }
+            if (t.Kind == TermKind.WrittenArray)
+            {
+                result = Join(result, Length(t.Children.Length > 0 && t.Children[0] >= 0 ? ValueOf(t.Children[0]) : RValue.None));
+                continue;
+            }
             long length = t.Kind switch
             {
                 TermKind.Allocation when !_escaped.Contains((int)t.Number) && !_shared.Contains((int)t.Number)
@@ -3427,7 +3591,7 @@ internal sealed class SummaryInterpreter
             return Unknown(UnknownReason.ArrayEscaped, 0, site);
         allocation.Read = true;
         if (allocation.Sourced)
-            return SourcedValue(allocation);
+            return SourcedValue(site, allocation);
         long length = allocation.Length;
         if (length >= 0 && length <= ReflectionSummarizer.MaxAlternatives * 4)
         {
@@ -3447,28 +3611,61 @@ internal sealed class SummaryInterpreter
         return Known(Term(TermKind.TypeArray, 0, null, -1, new[] { Child(all) }));
     }
 
-    // A copy the body wrote: its source's elements slot by slot when the source is one
-    // array of known length, else any element of either at any index.
-    private RValue SourcedValue(Allocation allocation)
+    // A copy or reflection-produced array the body wrote: keep the base sequence with
+    // per-slot and wildcard writes so downstream consumers can prune definitely overwritten elements.
+    private RValue SourcedValue(int site, Allocation allocation)
     {
         if (allocation.Slots.Count == 0)
             return allocation.Source;
-        allocation.Slots.TryGetValue(-1, out var any);
-        var source = allocation.Source;
-        if (source.Unknown < 0 && source.Count == 1 && Terms[source.Alternatives![0]] is { Kind: TermKind.TypeArray, Number: >= 0 } fixedLength)
+        // Repeated sites share older live arrays. Widen their snapshots to elements
+        // so copying a previous iteration cannot grow an unbounded write history.
+        if (_repeatedArrays.Contains(site))
         {
-            var children = new int[fixedLength.Children.Length];
-            for (int k = 0; k < children.Length; k++)
+            allocation.Slots.TryGetValue(-1, out var any);
+            var source = allocation.Source;
+            if (source.Unknown < 0 && source.Count == 1
+                && Terms[source.Alternatives![0]] is { Kind: TermKind.TypeArray, Number: >= 0 } fixedLength)
             {
-                allocation.Slots.TryGetValue(k, out var slot);
-                children[k] = Child(Join(Join(ValueOf(fixedLength.Children[k]), slot), any));
+                var elements = new int[fixedLength.Children.Length];
+                for (int k = 0; k < elements.Length; k++)
+                {
+                    allocation.Slots.TryGetValue(k, out var slot);
+                    elements[k] = Child(Join(Join(ValueOf(fixedLength.Children[k]), slot), any));
+                }
+                return Known(Term(TermKind.TypeArray, 0, null, elements.Length, elements));
             }
-            return Known(Term(TermKind.TypeArray, 0, null, children.Length, children));
+            var all = LoadElement(source, RValue.None);
+            foreach (var slot in SlotValues(allocation))
+                all = Join(all, slot);
+            return Known(Term(TermKind.TypeArray, 0, null, -1, new[] { Child(all) }));
         }
-        var all = LoadElement(source, RValue.None);
-        foreach (var slot in SlotValues(allocation))
-            all = Join(all, slot);
-        return Known(Term(TermKind.TypeArray, 0, null, -1, new[] { Child(all) }));
+        var keys = new List<long>(allocation.Slots.Keys);
+        keys.Sort();
+        var wildcard = RValue.None;
+        var descriptors = new List<(long Index, bool Definite)>();
+        var slotValues = new List<RValue>();
+        const long maxSlotIndex = ReflectionSummarizer.MaxAlternatives * 4;
+        foreach (long key in keys)
+        {
+            if (key < -1)
+                continue;
+            if (key == -1 || key >= maxSlotIndex)
+                wildcard = Join(wildcard, allocation.Slots[key]);
+            else
+            {
+                descriptors.Add((key, _written.Contains((site, key))));
+                slotValues.Add(allocation.Slots[key]);
+            }
+        }
+        if (descriptors.Count == 0 && wildcard.IsEmpty)
+            return allocation.Source;
+        var children = new int[2 + slotValues.Count];
+        children[0] = allocation.Source.IsEmpty ? -1 : Child(allocation.Source);
+        children[1] = wildcard.IsEmpty ? -1 : Child(wildcard);
+        for (int i = 0; i < slotValues.Count; i++)
+            children[2 + i] = Child(slotValues[i]);
+        string text = ReflectionSummary.FormatWrittenArraySlots(descriptors);
+        return Known(Term(TermKind.WrittenArray, 0, text, 0, children));
     }
 
     // Another body stores into any element of the array; its length stays known.
@@ -3683,7 +3880,8 @@ internal sealed class SummaryInterpreter
                 return Category.Int;
             case TermKind.Null or TermKind.Set:
                 return Category.None;
-            case TermKind.TypeArray or TermKind.Allocation or TermKind.FieldArray or TermKind.Enumeration:
+            case TermKind.TypeArray or TermKind.Allocation or TermKind.FieldArray or TermKind.Enumeration
+                or TermKind.WrittenArray:
                 return Category.Sequence;
             case TermKind.Delegate:
                 return Category.Delegate;

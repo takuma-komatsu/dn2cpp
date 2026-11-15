@@ -552,11 +552,38 @@ internal sealed partial class AssemblyDiet
 {
     private readonly Dictionary<int, SummaryValue> _summaryValues = new();
 
+    private sealed class WrittenSymbolicLayer
+    {
+        internal readonly Dictionary<long, (bool Definite, TypeReference[] Types)> Slots;
+        internal readonly TypeReference[] Wildcard;
+
+        internal WrittenSymbolicLayer(Dictionary<long, (bool Definite, TypeReference[] Types)> slots,
+            TypeReference[] wildcard)
+        {
+            Slots = slots;
+            Wildcard = wildcard;
+        }
+    }
+
+    private sealed class WrittenSymbolicGenericArray
+    {
+        internal readonly TypeReference Source;
+        internal readonly WrittenSymbolicLayer[] Layers;
+
+        internal WrittenSymbolicGenericArray(TypeReference source, WrittenSymbolicLayer[] layers)
+        {
+            Source = source;
+            Layers = layers;
+        }
+    }
+
     private sealed class SummaryValue
     {
         internal readonly List<TypeReference> Types = new();
+        internal readonly List<TypeReference> UnstructuredTypes = new();
         internal readonly List<TypeReference[][]> TypeArrays = new();
         internal readonly List<TypeReference> SymbolicGenericArrays = new();
+        internal readonly List<WrittenSymbolicGenericArray> WrittenSymbolicGenericArrays = new();
         internal readonly List<IMemberDefinition> Members = new();
         internal readonly List<TypeReference> AttributeTypes = new();
         internal readonly List<ParameterDefinition> AttributeParameters = new();
@@ -571,7 +598,10 @@ internal sealed partial class AssemblyDiet
         internal void Add(SummaryValue other)
         {
             Types.AddRange(other.Types); TypeArrays.AddRange(other.TypeArrays);
-            SymbolicGenericArrays.AddRange(other.SymbolicGenericArrays); Members.AddRange(other.Members);
+            UnstructuredTypes.AddRange(other.UnstructuredTypes);
+            SymbolicGenericArrays.AddRange(other.SymbolicGenericArrays);
+            WrittenSymbolicGenericArrays.AddRange(other.WrittenSymbolicGenericArrays);
+            Members.AddRange(other.Members);
             AttributeTypes.AddRange(other.AttributeTypes);
             AttributeParameters.AddRange(other.AttributeParameters);
             Assemblies.AddRange(other.Assemblies); SymbolicAssemblyOwners.AddRange(other.SymbolicAssemblyOwners);
@@ -583,6 +613,22 @@ internal sealed partial class AssemblyDiet
             HasNullValues |= other.HasNullValues;
             HasNonArrayArgumentValues |= other.HasNonArrayArgumentValues;
         }
+    }
+
+    private static void CopyWrittenNonTypeState(SummaryValue target, SummaryValue source, bool includeNonArrayFlag)
+    {
+        target.Members.AddRange(source.Members);
+        target.AttributeParameters.AddRange(source.AttributeParameters);
+        target.Assemblies.AddRange(source.Assemblies);
+        target.SymbolicAssemblyOwners.AddRange(source.SymbolicAssemblyOwners);
+        target.ParameterTypesResolved |= source.ParameterTypesResolved;
+        target.Strings.AddRange(source.Strings);
+        target.Integers.AddRange(source.Integers);
+        target.HasObjectOwners |= source.HasObjectOwners;
+        target.HasOpenTypeSignatures |= source.HasOpenTypeSignatures;
+        target.HasOpenMethodSignatures |= source.HasOpenMethodSignatures;
+        if (includeNonArrayFlag)
+            target.HasNonArrayArgumentValues |= source.HasNonArrayArgumentValues;
     }
 
     private static RValue SiteOperand(RSite site, sbyte slot) => slot switch
@@ -937,7 +983,8 @@ internal sealed partial class AssemblyDiet
                         else result.Types.Add(reference);
                         constructed = true;
                     }
-                    if (!constructed && arguments.SymbolicGenericArrays.Count != 0)
+                    if (!constructed && (arguments.SymbolicGenericArrays.Count != 0
+                        || arguments.WrittenSymbolicGenericArrays.Count != 0))
                         result.Types.Add(reference);
                 }
                 result.Unknown = definitions.HasUnknownOwner || arguments.HasUnknownOwner;
@@ -991,15 +1038,37 @@ internal sealed partial class AssemblyDiet
             case TermKind.Element:
             {
                 var source = Child(0);
-                if (term.Children.Length > 0 && term.Children[0] >= 0
-                    && summary.Terms[term.Children[0]].Kind == TermKind.TypeArray
-                    && term.Number >= 0)
+                if (term.Children.Length > 0 && term.Children[0] >= 0 && term.Number >= 0)
                 {
                     var array = summary.Terms[term.Children[0]];
-                    if (term.Number < array.Children.Length)
-                        result.Add(SummaryValueOf(caller, summary, summary.ValueOf(array.Children[(int)term.Number])));
+                    if (array.Kind == TermKind.TypeArray)
+                    {
+                        if (term.Number < array.Children.Length)
+                            result.Add(SummaryValueOf(caller, summary, summary.ValueOf(array.Children[(int)term.Number])));
+                        break;
+                    }
+                    if (array.Kind == TermKind.WrittenArray)
+                    {
+                        bool found = ReflectionSummary.TryGetWrittenArraySlot(array, term.Number, out int slotChild, out bool definite);
+                        if (!definite && array.Children.Length > 0 && array.Children[0] >= 0)
+                        {
+                            var baseArray = summary.Terms[array.Children[0]];
+                            if (baseArray.Kind == TermKind.TypeArray)
+                            {
+                                if (term.Number < baseArray.Children.Length)
+                                    result.Add(SummaryValueOf(caller, summary, summary.ValueOf(baseArray.Children[(int)term.Number])));
+                            }
+                            else
+                                result.Add(SummaryValueOf(caller, summary, summary.ValueOf(array.Children[0])));
+                        }
+                        if (found)
+                            result.Add(SummaryValueOf(caller, summary, summary.ValueOf(slotChild)));
+                        if (array.Children.Length > 1 && array.Children[1] >= 0)
+                            result.Add(SummaryValueOf(caller, summary, summary.ValueOf(array.Children[1])));
+                        break;
+                    }
                 }
-                else result.Add(source);
+                result.Add(source);
                 break;
             }
             case TermKind.TypeArray:
@@ -1016,17 +1085,119 @@ internal sealed partial class AssemblyDiet
                 else result.Unknown = true;
                 break;
             }
+            case TermKind.WrittenArray:
+            {
+                var slots = ReflectionSummary.ParseWrittenArraySlots(term);
+                var baseValue = Child(0);
+                var anyValue = Child(1);
+                var slotValues = new SummaryValue[slots.Length];
+                var slotByIndex = new Dictionary<long, int>(slots.Length);
+                var symbolicSlots = new Dictionary<long, (bool Definite, TypeReference[] Types)>(slots.Length);
+                long maxDefiniteIndex = -1;
+                for (int i = 0; i < slots.Length; i++)
+                {
+                    slotValues[i] = SummaryValueOf(caller, summary, summary.ValueOf(slots[i].ChildId));
+                    slotByIndex[slots[i].Index] = i;
+                    symbolicSlots[slots[i].Index] = (slots[i].Definite, slotValues[i].Types.ToArray());
+                    if (slots[i].Definite && slots[i].Index > maxDefiniteIndex)
+                        maxDefiniteIndex = slots[i].Index;
+                }
+                CopyWrittenNonTypeState(result, baseValue, includeNonArrayFlag: true);
+                CopyWrittenNonTypeState(result, anyValue, includeNonArrayFlag: false);
+                foreach (var slotValue in slotValues)
+                    CopyWrittenNonTypeState(result, slotValue, includeNonArrayFlag: false);
+                result.Unknown |= baseValue.Unknown || anyValue.Unknown;
+
+                foreach (var vector in baseValue.TypeArrays)
+                {
+                    if (vector.Length <= maxDefiniteIndex)
+                        continue;
+                    var updated = new TypeReference[vector.Length][];
+                    for (int pos = 0; pos < vector.Length; pos++)
+                    {
+                        var cell = new List<TypeReference>();
+                        bool hasSlot = slotByIndex.TryGetValue(pos, out int slotIdx);
+                        bool definite = hasSlot && slots[slotIdx].Definite;
+                        if (!definite)
+                            cell.AddRange(vector[pos]);
+                        if (hasSlot)
+                            cell.AddRange(slotValues[slotIdx].Types);
+                        cell.AddRange(anyValue.Types);
+                        updated[pos] = cell.ToArray();
+                        result.Types.AddRange(updated[pos]);
+                        if (updated[pos].Length == 0 || hasSlot && slotValues[slotIdx].Unknown)
+                            result.Unknown = true;
+                    }
+                    result.TypeArrays.Add(updated);
+                }
+
+                bool addedSlotSummary = baseValue.SymbolicGenericArrays.Count != 0
+                    || baseValue.WrittenSymbolicGenericArrays.Count != 0;
+                if (addedSlotSummary)
+                {
+                    var layer = new WrittenSymbolicLayer(symbolicSlots, anyValue.Types.ToArray());
+                    foreach (var source in baseValue.SymbolicGenericArrays)
+                    {
+                        result.WrittenSymbolicGenericArrays.Add(new WrittenSymbolicGenericArray(source, new[] { layer }));
+                        result.Types.Add(Project(source, DetermineGenericArgProjection(source)));
+                    }
+                    foreach (var previous in baseValue.WrittenSymbolicGenericArrays)
+                    {
+                        var layers = new WrittenSymbolicLayer[previous.Layers.Length + 1];
+                        Array.Copy(previous.Layers, layers, previous.Layers.Length);
+                        layers[previous.Layers.Length] = layer;
+                        result.WrittenSymbolicGenericArrays.Add(new WrittenSymbolicGenericArray(previous.Source, layers));
+                        result.Types.Add(Project(previous.Source, DetermineGenericArgProjection(previous.Source)));
+                    }
+                    result.Types.AddRange(anyValue.Types);
+                    foreach (var slotValue in slotValues)
+                    {
+                        result.Types.AddRange(slotValue.Types);
+                        result.Unknown |= slotValue.Unknown;
+                    }
+                }
+
+                if (baseValue.UnstructuredTypes.Count != 0
+                    || baseValue.Unknown
+                    || baseValue.TypeArrays.Count == 0 && !addedSlotSummary)
+                {
+                    // Structured vectors that were filtered by a higher definite write index do
+                    // not cover unstructured sources (e.g. GetInterfaces) or unknown bases in a union.
+                    result.Types.AddRange(baseValue.UnstructuredTypes);
+                    result.UnstructuredTypes.AddRange(baseValue.UnstructuredTypes);
+                    result.UnstructuredTypes.AddRange(anyValue.Types);
+                    if (!addedSlotSummary)
+                        result.Types.AddRange(anyValue.Types);
+                    foreach (var slotValue in slotValues)
+                    {
+                        result.UnstructuredTypes.AddRange(slotValue.Types);
+                        if (!addedSlotSummary)
+                        {
+                            result.Types.AddRange(slotValue.Types);
+                            result.Unknown |= slotValue.Unknown;
+                        }
+                    }
+                }
+                break;
+            }
             case TermKind.Delegate: result.Add(Child(0)); break;
             case TermKind.Null:
                 result.HasNullValues = true;
                 break;
             default: result.Unknown = true; break;
         }
+        if (term.Kind is not (TermKind.Set or TermKind.WrittenArray or TermKind.Delegate or TermKind.Element)
+            && result.TypeArrays.Count == 0
+            && result.SymbolicGenericArrays.Count == 0
+            && result.WrittenSymbolicGenericArrays.Count == 0
+            && result.Types.Count != 0)
+            result.UnstructuredTypes.AddRange(result.Types);
         CarrySelectedAttributeTypeOwners(term, result);
         result.HasNonArrayArgumentValues |= result.HasObjectOwners || result.Members.Count != 0
             || result.Assemblies.Count != 0 || result.Strings.Count != 0 || result.Integers.Count != 0
             || result.SymbolicAssemblyOwners.Count != 0
-            || result.Types.Count != 0 && result.TypeArrays.Count == 0 && result.SymbolicGenericArrays.Count == 0;
+            || result.Types.Count != 0 && result.TypeArrays.Count == 0 && result.SymbolicGenericArrays.Count == 0
+                && result.WrittenSymbolicGenericArrays.Count == 0;
         _summaryValues[id] = result;
         return result;
     }
@@ -1122,7 +1293,8 @@ internal sealed partial class AssemblyDiet
 
     private static bool CompleteNames(SummaryValue value) => !value.Unknown && value.Strings.Count != 0
         && value.Types.Count == 0 && value.Members.Count == 0 && value.Assemblies.Count == 0 && value.Integers.Count == 0
-        && value.TypeArrays.Count == 0 && value.SymbolicGenericArrays.Count == 0 && value.SymbolicAssemblyOwners.Count == 0;
+        && value.TypeArrays.Count == 0 && value.SymbolicGenericArrays.Count == 0
+        && value.WrittenSymbolicGenericArrays.Count == 0 && value.SymbolicAssemblyOwners.Count == 0;
 
     private void SelectMembers(SummaryValue result, SummaryValue owners, SummaryValue names, ReflectionOp op,
         SummaryValue flags, SummaryValue parameterTypes, SummaryValue arity, bool hasName, bool flagsAffectUncertainty = true)
@@ -1215,6 +1387,7 @@ internal sealed partial class AssemblyDiet
                     if (!arity.Unknown && arity.Integers.Count == 1 && method.GenericParameters.Count != arity.Integers[0]) continue;
                     if (parameterTypes.TypeArrays.Count > 0 && !parameterTypes.Unknown
                         && parameterTypes.SymbolicGenericArrays.Count == 0
+                        && parameterTypes.WrittenSymbolicGenericArrays.Count == 0
                         && !parameterTypes.HasObjectOwners && !parameterTypes.HasNonArrayArgumentValues
                         && !(parameterTypes.HasNullValues && method.Parameters.Count == 0)
                         && !parameterTypes.TypeArrays.Any(a => a.Length == method.Parameters.Count)) continue;
@@ -1269,6 +1442,7 @@ internal sealed partial class AssemblyDiet
 
     private static bool HasSummaryArguments(SummaryValue arguments) =>
         arguments.SymbolicGenericArrays.Count != 0
+        || arguments.WrittenSymbolicGenericArrays.Count != 0
         || arguments.TypeArrays.Any(vector => vector.All(position => position.Length != 0));
 
     private bool BindSummaryArguments(Mono.Collections.Generic.Collection<GenericParameter> parameters, SummaryValue arguments)
@@ -1285,7 +1459,49 @@ internal sealed partial class AssemblyDiet
             BindGenericVector(parameters, source);
             bound = true;
         }
+        foreach (var entry in arguments.WrittenSymbolicGenericArrays)
+        {
+            var vector = WrittenSymbolicVector(entry, parameters.Count);
+            if (vector.Length == parameters.Count && vector.All(position => position.Length != 0))
+            {
+                BindTypeArray(parameters, vector);
+                bound = true;
+            }
+        }
         return bound;
+    }
+
+    private TypeReference[][] WrittenSymbolicVector(WrittenSymbolicGenericArray entry, int arity)
+    {
+        if (arity <= 0)
+            return Array.Empty<TypeReference[]>();
+        foreach (var layer in entry.Layers)
+            foreach (var slot in layer.Slots)
+                if (slot.Value.Definite && slot.Key >= arity)
+                    return Array.Empty<TypeReference[]>();
+        var vector = new TypeReference[arity][];
+        for (int i = 0; i < arity; i++)
+        {
+            int lastDefinite = -1;
+            for (int m = 0; m < entry.Layers.Length; m++)
+                if (entry.Layers[m].Slots.TryGetValue(i, out var slot) && slot.Definite)
+                    lastDefinite = m;
+            var cell = new List<TypeReference>();
+            if (lastDefinite < 0)
+                cell.Add(Project(entry.Source, DetermineGenericArgProjection(entry.Source), i, arity));
+            for (int m = Math.Max(0, lastDefinite); m < entry.Layers.Length; m++)
+            {
+                if (entry.Layers[m].Slots.TryGetValue(i, out var slot))
+                    foreach (var type in slot.Types)
+                        if (!cell.Contains(type))
+                            cell.Add(type);
+                foreach (var type in entry.Layers[m].Wildcard)
+                    if (!cell.Contains(type))
+                        cell.Add(type);
+            }
+            vector[i] = cell.ToArray();
+        }
+        return vector;
     }
 
     private void ApplyInstantiation(MethodDefinition caller, RSite site, SummaryValue target, SummaryValue arguments)

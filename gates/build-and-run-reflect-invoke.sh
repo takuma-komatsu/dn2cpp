@@ -21,6 +21,7 @@
 # Named method enumerations retain only their selection; type-name case choices keep each known branch.
 # Delegate method names select strict signatures, inherited private methods and virtual slots.
 # Delegate ABI compatibility retains by-ref, pointer and function-pointer signature identity.
+# Repeated array copies retain known reflection targets in unmodified slots.
 # Unanchored intrinsic pointer pointees retain binding identity independently of Invoke boxing.
 # Array shapes and constant nested arguments distinguish runtime pointer overloads.
 # Actual array elements and constant leaves retain known type-name inequality without a Type-object cache.
@@ -297,7 +298,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|inherited-gvm-remedy-v1|in
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|pointer-fields-prefix:${DN2CPP_BEFORE_POINTER_FIELDS:-}|object-methods-prefix-argv:before-object-method-enumeration|property-accessors-prefix-argv:before-property-accessors|property-hiding-prefix-argv:before-property-hiding"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|constructor-messages-prefix-argv:before-constructor-messages"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|generic-activator-messages-prefix-argv:before-generic-activator-messages"
-DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/keep-written-generic-arguments.xml samples/dotnet/ReflectInvoke/link.xml samples/dotnet/ReflectFrameworkBind/link.xml samples/dotnet/ReflectFrameworkBind/keep-library-override.xml samples/dotnet/ReflectInvoke/keep-object-methods.xml"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/link.xml samples/dotnet/ReflectFrameworkBind/link.xml samples/dotnet/ReflectFrameworkBind/keep-library-override.xml samples/dotnet/ReflectInvoke/keep-object-methods.xml"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/RecognizedReflectionOnly.csproj samples/dotnet/ReflectInvoke/RecognizedReflectionOnlyProgram.cs samples/dotnet/ReflectReturnLib/ReflectReturnLib.csproj samples/dotnet/ReflectReturnLib/RecognizedTargets.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectReturnLib/ConstructorBindingTargets.cs samples/dotnet/ReflectReturnLib/SelectionTargets.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/ReflectPointerFieldsOnly.csproj samples/dotnet/ReflectInvoke/ReflectPointerFieldsPreserved.csproj samples/dotnet/ReflectInvoke/ReflectPointerFieldsOnlyProgram.cs samples/dotnet/ReflectInvoke/keep-pointer-field.xml samples/dotnet/ReflectReturnLib/PointerFields.cs"
@@ -2672,6 +2673,14 @@ CONSTRUCTOR_MESSAGES
     reflection_assert_lines "$native_file" 1 \
         '== written generic arguments ==' 'written generic arguments: pair:Int32,Int64' \
         'written generic arguments end'
+    grep -qE '^// OrdinaryReflectionLeaves\.Pair_(\$CnAny0_\$CnAny1|Int32_Int64)::Shape$' "$out"/generated*.cpp "$out/generated.h" \
+        || { echo 'FAIL: written generic arguments did not admit Pair.Shape' >&2; return 1; }
+    grep -qE '^// OrdinaryReflectionLeaves\.Pair_(\$CnAny0_\$CnAny1|Int32_Int64)::\.ctor$' "$out"/generated*.cpp "$out/generated.h" \
+        || { echo 'FAIL: written generic arguments did not admit Pair..ctor' >&2; return 1; }
+    if grep -qE '^// OrdinaryReflectionLeaves\.Pair_Int32_String::' "$out"/generated*.cpp "$out/generated.h"; then
+        echo 'FAIL: written generic arguments admitted overwritten Pair<Int32, String>' >&2
+        return 1
+    fi
     reflection_assert_lines "$native_file" 1 \
         '== constructor signature binding ==' 'constructor signature binding end' \
         'unretained wrong type: MissingMethodException/MissingMethodException' \
@@ -2810,7 +2819,6 @@ object_methods_library="$PWD/samples/dotnet/ReflectReturnLib/bin/$CONFIG/$TFM/Re
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke OrdinaryReflectionLeaves --no-ildiet \
     -r "$object_methods_library" --link-xml samples/dotnet/ReflectInvoke/keep-object-methods.xml \
     --link-xml samples/dotnet/ReflectInvoke/keep-field-initializers.xml \
-    --link-xml samples/dotnet/ReflectInvoke/keep-written-generic-arguments.xml \
     --reflection-metadata ReflectReturnLib.VirtualFactory=packed \
     --reflection-metadata ReflectFieldValidationSubset.PointerFields=packed \
     --reflection-metadata OrdinaryReflectionLeaves.PropertyBase=packed \
@@ -2823,8 +2831,7 @@ if reflection_full_profile; then
     DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
         ordinary_fixture_diff_gate ReflectInvoke OrdinaryReflectionLeaves --no-ildiet --no-metadata-compression \
             -r "$object_methods_library" --link-xml samples/dotnet/ReflectInvoke/keep-object-methods.xml \
-            --link-xml samples/dotnet/ReflectInvoke/keep-field-initializers.xml \
-            --link-xml samples/dotnet/ReflectInvoke/keep-written-generic-arguments.xml
+            --link-xml samples/dotnet/ReflectInvoke/keep-field-initializers.xml
 fi
 unset -f gate_extra_asserts
 # These drivers have no application pointer field or pointer-returning method.
@@ -3325,7 +3332,7 @@ unset -f gate_extra_asserts
 
 # Recognized reflection runs with no preserve: an unrecognized site or an
 # unselected sibling body would mean the summary admits other than what runs.
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|recognized-prefix-argv:before-nested-names,before-delegate-attributes,before-sequence-defaults,before-isinst-null"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|recognized-prefix-argv:before-nested-names,before-delegate-attributes,before-sequence-defaults,before-isinst-null,before-written-reflected-arrays,before-repeated-array-copies"
 recognized_definitions() {
     local header="// ${3:-RecognizedReflection}.$2"
     cat "$1"/generated*.cpp "$1"/generated.h | grep -A1 -xF -- "$header" \
@@ -3372,6 +3379,45 @@ nullable_type_test_body_asserts() {
         && grep -qF 'Dn2CppObject*' <<< "$definitions" \
         && ! grep -qF 'Dn2CppString*' <<< "$definitions" \
         || { echo 'FAIL: castclass must retain only the public one-argument constructor' >&2; return 1; }
+}
+written_reflected_arrays_body_asserts() {
+    local out="$1" member closed_suffix shape_pat ctor_pat
+    for member in WrittenDirectPair WrittenCopyPair WrittenChainTriple WrittenSymbolicTarget; do
+        if [ "$member" = WrittenChainTriple ]; then
+            closed_suffix='Int32_Int64_Double'
+        else
+            closed_suffix='Int32_Int64'
+        fi
+        if [[ "$out" == *-unshared* ]]; then
+            shape_pat="^// RecognizedReflection\\.${member}_${closed_suffix}::Shape$"
+            ctor_pat="^// RecognizedReflection\\.${member}_${closed_suffix}::\\.ctor$"
+        else
+            shape_pat="^// RecognizedReflection\\.${member}_\\\$CnAny0_[^:]*::Shape$"
+            ctor_pat="^// RecognizedReflection\\.${member}_\\\$CnAny0_[^:]*::\\.ctor$"
+        fi
+        [ "$(grep -hE "^// RecognizedReflection\\.${member}(_[^:]*)?::Shape$" \
+                "$out"/generated*.cpp "$out/generated.h" | wc -l | tr -d ' ')" = 1 ] \
+            && grep -qE "$shape_pat" "$out"/generated*.cpp "$out/generated.h" \
+            || { echo "FAIL: written reflected array admitted unexpected Shape body for $member" >&2; return 1; }
+        [ "$(grep -hE "^// RecognizedReflection\\.${member}(_[^:]*)?::\\.ctor$" \
+                "$out"/generated*.cpp "$out/generated.h" | wc -l | tr -d ' ')" = 1 ] \
+            && grep -qE "$ctor_pat" "$out"/generated*.cpp "$out/generated.h" \
+            || { echo "FAIL: written reflected array admitted unexpected constructor body for $member" >&2; return 1; }
+        if grep -qE "^// RecognizedReflection\\.${member}(_[^:]*)?::Other$" \
+                "$out"/generated*.cpp "$out/generated.h"; then
+            echo "FAIL: written reflected array admitted unselected $member.Other" >&2
+            return 1
+        fi
+    done
+    if grep -qE '^// RecognizedReflection\.(WrittenDirectPair|WrittenCopyPair|WrittenSymbolicTarget)_Int32_String::|^// RecognizedReflection\.WrittenChainTriple_(Boolean|Int32_String|Int32_Int64_Int16)[^:]*::' \
+            "$out"/generated*.cpp "$out/generated.h"; then
+        echo 'FAIL: written reflected array admitted an overwritten instantiation body' >&2
+        return 1
+    fi
+    if grep -qwF ti_RecognizedReflection_WrittenSymbolicTarget_Int32_String "$out/generated.h"; then
+        echo 'FAIL: symbolic written array materialized an overwritten target type identity' >&2
+        return 1
+    fi
 }
 recognized_table_asserts() {
     local out="$1" native member row axis native_file
@@ -3428,6 +3474,10 @@ recognized_table_asserts() {
         'implicit sequence defaults end' \
         '== nullable type tests ==' 'failed as arguments: default' \
         'successful as arguments: argument' 'castclass arguments: argument' 'nullable type tests end' \
+        '== written reflected arrays ==' 'written reflected direct: direct:Int32,Int64' \
+        'written reflected copied: copied:Int32,Int64' 'written reflected chained: chained:Int32,Int64,Double' \
+        'written reflected symbolic: symbolic:Int32,Int64' 'written reflected arrays end' \
+        '== repeated array copies ==' 'written copied loop: original' 'repeated array copies end' \
         || return 1
     if grep -q 'Exception: ' "$native"; then
         echo "FAIL: a recognized reflection case threw" >&2
@@ -3466,6 +3516,19 @@ recognized_table_asserts() {
         gate_output compare "$out/isinst-null-prefix.$axis.stdout" "$out/isinst-null-before.$axis.stdout" || return 1
     done
     nullable_type_test_body_asserts "$out" || return $?
+    gate_capture_ok "$out/written-reflected-arrays-before.native" run_bounded "$out/RecognizedReflectionOnly$EXE_EXT" before-written-reflected-arrays
+    gate_capture_ok "$out/written-reflected-arrays-before.dotnet" reflection_oracle "$_CG_APP" before-written-reflected-arrays
+    for axis in native dotnet; do
+        gate_output select "$out/gate.$axis.stdout" "$out/written-reflected-arrays-prefix.$axis.stdout" --before '== written reflected arrays ==' --policy crlf
+        gate_output compare "$out/written-reflected-arrays-prefix.$axis.stdout" "$out/written-reflected-arrays-before.$axis.stdout" || return 1
+    done
+    written_reflected_arrays_body_asserts "$out" || return $?
+    gate_capture_ok "$out/repeated-array-copies-before.native" run_bounded "$out/RecognizedReflectionOnly$EXE_EXT" before-repeated-array-copies
+    gate_capture_ok "$out/repeated-array-copies-before.dotnet" reflection_oracle "$_CG_APP" before-repeated-array-copies
+    for axis in native dotnet; do
+        gate_output select "$out/gate.$axis.stdout" "$out/repeated-array-copies-prefix.$axis.stdout" --before '== repeated array copies ==' --policy crlf
+        gate_output compare "$out/repeated-array-copies-prefix.$axis.stdout" "$out/repeated-array-copies-before.$axis.stdout" || return 1
+    done
     for member in ObjectBindingNoteAttribute::.ctor InheritedBindingNoteAttribute::.ctor TemplateBindingNoteAttribute::.ctor; do
         [ "$(recognized_body_count "$out" "$member")" = 1 ] \
             || { echo "FAIL: named Delegate.Method must admit exactly $member" >&2; return 1; }
@@ -3580,8 +3643,14 @@ gate_extra_asserts() {
 if reflection_full_profile; then
     DN2CPP_OUT_SUFFIX=-ildiet DN2CPP_STRICT_COMPLETION=1 \
         ordinary_fixture_diff_gate ReflectInvoke RecognizedReflectionOnly System.Linq -r "$recognized_library"
+    DN2CPP_OUT_SUFFIX=-unshared DN2CPP_STRICT_COMPLETION=1 \
+        ordinary_fixture_diff_gate ReflectInvoke RecognizedReflectionOnly --no-ildiet --no-shared-generics \
+        System.Linq -r "$recognized_library"
+    DN2CPP_OUT_SUFFIX=-unshared-ildiet DN2CPP_STRICT_COMPLETION=1 \
+        ordinary_fixture_diff_gate ReflectInvoke RecognizedReflectionOnly --no-shared-generics \
+        System.Linq -r "$recognized_library"
 fi
-unset -f gate_extra_asserts recognized_table_asserts
+unset -f gate_extra_asserts recognized_table_asserts written_reflected_arrays_body_asserts
 
 gate_extra_asserts() {
     local out="$1" native line axis result boundary native_file boundary_file

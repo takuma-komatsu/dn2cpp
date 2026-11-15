@@ -22,7 +22,8 @@ ordinary_fixture_diff_gate() {
         local refs=(-r "$_CG_CORELIB")
         while [ "$#" -gt 0 ]; do
             name="$1"; shift
-            if [ "$name" = --no-ildiet ] || [ "$name" = --no-metadata-compression ]; then
+            if [ "$name" = --no-ildiet ] || [ "$name" = --no-metadata-compression ] \
+                    || [ "$name" = --no-shared-generics ]; then
                 refs+=("$name")
                 continue
             fi

@@ -60,7 +60,9 @@ using ReflectReturnLib;
 // Implicit OrDefault reads retain integer zero and reference null beside source
 // elements; explicit defaults and throwing reads retain their own alternatives.
 // An as expression can return null beside its finite operand; an explicit cast
-// preserves the operand on its normal continuation.
+// preserves the operand on its normal continuation. Writes into reflection-produced
+// and copied arrays preserve surviving elements beside overwritten slots across direct,
+// chained, and symbolic generic arrays.
 // Each case prints what .NET prints, so a target the summary failed to admit shows
 // as a refusal line. Lookups.Echo(Int32), Lookups(Int32), Built(Int32, Int32),
 // Mixer.Mix(String, Int32), Joins.Unpicked, Defaulted.Other, Prefixed.Other, the String
@@ -828,6 +830,39 @@ sealed class CastclassOptions
     private CastclassOptions(string value) => Made = "private";
 }
 
+sealed class WrittenDirectPair<TKey, TValue>
+{
+    public string Shape() => "direct:" + typeof(TKey).Name + "," + typeof(TValue).Name;
+    public string Other() => "other:" + typeof(TKey).Name + "," + typeof(TValue).Name;
+}
+
+sealed class WrittenCopyPair<TKey, TValue>
+{
+    public string Shape() => "copied:" + typeof(TKey).Name + "," + typeof(TValue).Name;
+    public string Other() => "other:" + typeof(TKey).Name + "," + typeof(TValue).Name;
+}
+
+sealed class WrittenChainTriple<TFirst, TSecond, TThird>
+{
+    public string Shape() => "chained:" + typeof(TFirst).Name + "," + typeof(TSecond).Name + "," + typeof(TThird).Name;
+    public string Other() => "other:" + typeof(TFirst).Name + "," + typeof(TSecond).Name + "," + typeof(TThird).Name;
+}
+
+sealed class WrittenSymbolicSeed<TFirst, TSecond>
+{
+}
+
+sealed class WrittenSymbolicTarget<TKey, TValue>
+{
+    public string Shape() => "symbolic:" + typeof(TKey).Name + "," + typeof(TValue).Name;
+    public string Other() => "other:" + typeof(TKey).Name + "," + typeof(TValue).Name;
+}
+
+static class WrittenLoopTarget
+{
+    public static string Run() => "original";
+}
+
 static class Program
 {
     private static int raised;
@@ -843,7 +878,10 @@ static class Program
         bool beforeDelegateAttributes = args.Length > 0 && args[0] == "before-delegate-attributes";
         bool beforeSequenceDefaults = args.Length > 0 && args[0] == "before-sequence-defaults";
         bool beforeIsinstNull = args.Length > 0 && args[0] == "before-isinst-null";
-        if (beforeNestedNames || beforeDelegateAttributes || beforeSequenceDefaults || beforeIsinstNull)
+        bool beforeWrittenReflectedArrays = args.Length > 0 && args[0] == "before-written-reflected-arrays";
+        bool beforeRepeatedArrayCopies = args.Length > 0 && args[0] == "before-repeated-array-copies";
+        if (beforeNestedNames || beforeDelegateAttributes || beforeSequenceDefaults || beforeIsinstNull
+            || beforeWrittenReflectedArrays || beforeRepeatedArrayCopies)
             args = Array.Empty<string>();
 
         Console.WriteLine("== recognized reflection table ==");
@@ -987,6 +1025,19 @@ static class Program
         Show("successful as arguments", SuccessfulAsArguments);
         Show("castclass arguments", CastclassArguments);
         Console.WriteLine("nullable type tests end");
+        if (beforeWrittenReflectedArrays)
+            return;
+        Console.WriteLine("== written reflected arrays ==");
+        Show("written reflected direct", WrittenReflectedDirect);
+        Show("written reflected copied", WrittenReflectedCopied);
+        Show("written reflected chained", WrittenReflectedChained);
+        Show("written reflected symbolic", WrittenReflectedSymbolic<WrittenSymbolicSeed<int, string>>);
+        Console.WriteLine("written reflected arrays end");
+        if (beforeRepeatedArrayCopies)
+            return;
+        Console.WriteLine("== repeated array copies ==");
+        Show("written copied loop", WrittenCopiedLoop);
+        Console.WriteLine("repeated array copies end");
     }
 
     private static void Show(string label, Func<string> run)
@@ -1758,5 +1809,52 @@ static class Program
             flags[0] = BindingFlags.Instance | BindingFlags.NonPublic;
         return ((DefaultElementTarget)Activator.CreateInstance(typeof(DefaultElementTarget), flags[0], null, null, null)!)
             .Made;
+    }
+
+    private static string WrittenReflectedDirect()
+    {
+        Type[] arguments = typeof(WrittenDirectPair<int, string>).GetGenericArguments();
+        arguments[1] = typeof(long);
+        Type closed = typeof(WrittenDirectPair<,>).MakeGenericType(arguments);
+        return (string)closed.GetMethod("Shape")!.Invoke(Activator.CreateInstance(closed), null)!;
+    }
+
+    private static string WrittenReflectedCopied()
+    {
+        Type[] arguments = typeof(WrittenCopyPair<int, string>).GetGenericArguments().ToArray();
+        arguments[1] = typeof(long);
+        Type closed = typeof(WrittenCopyPair<,>).MakeGenericType(arguments);
+        return (string)closed.GetMethod("Shape")!.Invoke(Activator.CreateInstance(closed), null)!;
+    }
+
+    private static string WrittenReflectedChained()
+    {
+        Type[] first = typeof(WrittenChainTriple<bool, string, short>).GetGenericArguments();
+        first[1] = typeof(long);
+        Type[] second = first.ToArray();
+        second[0] = typeof(int);
+        second[2] = typeof(double);
+        Type closed = typeof(WrittenChainTriple<,,>).MakeGenericType(second);
+        return (string)closed.GetMethod("Shape")!.Invoke(Activator.CreateInstance(closed), null)!;
+    }
+
+    private static string WrittenReflectedSymbolic<T>()
+    {
+        Type[] arguments = typeof(T).GetGenericArguments();
+        arguments[1] = typeof(long);
+        Type closed = typeof(WrittenSymbolicTarget<,>).MakeGenericType(arguments);
+        return (string)closed.GetMethod("Shape")!.Invoke(Activator.CreateInstance(closed), null)!;
+    }
+
+    private static string WrittenCopiedLoop()
+    {
+        Type[] types = { typeof(WrittenLoopTarget), typeof(int) };
+        int iteration = 0;
+        do
+        {
+            types = types.ToArray();
+            types[1] = typeof(long);
+        } while (++iteration < 2);
+        return (string)types[0].GetMethod("Run")!.Invoke(null, null)!;
     }
 }
