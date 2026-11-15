@@ -71,9 +71,10 @@ Every export target offers **Stripping Level**, the enum preset option
 `0`) is the default, including for presets without the key; **Medium** (value
 `1`) retains all members of statically referenced types across every assembly.
 The exporter always passes one `--stripping-level high|medium` pair. A matching
-pair in `dotnet/dn2cpp/extra_transpile_args` is deduplicated; an incomplete,
-invalid or conflicting pair fails with a diagnostic directing the user to the
-preset. An invalid stored enum value also fails. The setting is independent of
+pair in either the project or preset's `dotnet/dn2cpp/extra_transpile_args` is
+deduplicated; an incomplete, invalid or conflicting pair fails with a diagnostic
+directing the user to the preset. An invalid stored enum value also fails.
+The setting is independent of
 IL Pre-stripping: disabling the DLL rewrite leaves Medium active in C++ generation.
 See [the retention contract](ARCHITECTURE.md#1-pipeline) for the static-reference
 closure, initialization behavior and runtime-only reflection limits.
@@ -83,7 +84,7 @@ Every export target offers **IL Pre-stripping**, the boolean preset option
 omits the key. For dn2cpp exports, it uses ILDiet to remove unused types and
 methods from managed assemblies at the IL level before C++ conversion.
 Disabling it passes `--no-ildiet` to the CLI; enabling it uses the CLI default
-and preserves an explicit `--no-ildiet` in the project's
+and preserves an explicit `--no-ildiet` in the project or preset's
 `dotnet/dn2cpp/extra_transpile_args`. The following independent
 boolean preset options are visible when dn2cpp is selected on every platform.
 All default to `true`, including when an existing preset omits the key.
@@ -96,7 +97,8 @@ All default to `true`, including when an existing preset omits the key.
 | `dotnet/dn2cpp/compress_metadata` (**Compress Metadata**) | Uses the CLI's metadata compression default. | Adds `--no-metadata-compression`, forcing native, uncompressed rows for all metadata. |
 
 IL Pre-stripping does not alter these options or their argument generation.
-The exporter appends `dotnet/dn2cpp/extra_transpile_args` after these arguments;
+The exporter appends the project's `dotnet/dn2cpp/extra_transpile_args`, then
+the preset's additional transpiler arguments, after these arguments;
 an explicit trim flag there enables the trim even when the preset option is
 disabled. An explicit `--no-metadata-compression` there disables compression
 even when **Compress Metadata** is enabled. Disabling compression overrides
@@ -106,9 +108,32 @@ Reflection beyond the selected level needs `[Preserve]` or a linker descriptor,
 and dynamic engine wrapper lookups need preservation or `--godot-class-root`; see README's
 preservation rules.
 
+Every target also offers these `PackedStringArray` fields in the dn2cpp export
+settings. They are visible only with the dn2cpp backend, and default to empty,
+including for presets without the keys:
+
+| Preset option | Destination |
+|---------------|-------------|
+| `dotnet/dn2cpp/extra_transpile_args` (**Extra Transpile Args**) | Appended to the dn2cpp CLI arguments after the existing project setting with the same name. |
+| `dotnet/dn2cpp/extra_ildiet_args` (**Extra ILDiet Args**) | Forwarded to the ILDiet companion through repeated `--ildiet-arg` options. |
+
+Each element is one literal command-line argument. Enter a flag and its value
+as separate elements, such as `--link-xml` and `C:/game data/link.xml`. Paths
+with spaces need no additional quotes, and shell syntax is not interpreted.
+Unknown options remain errors from the receiving CLI.
+
+The transpiler invokes ILDiet in `--request` mode. For example, put
+`--work-budget` and `5000000` in **Extra ILDiet Args** to override its work
+budget. Use **Extra Transpile Args** for assembly references, roots, preservation
+and stripping options, and the `--ildiet-output` intermediate-directory option.
+The exporter owns the generated C++ directory. Extra ILDiet arguments apply only
+when ILDiet runs; disabling IL Pre-stripping or passing `--no-ildiet` bypasses
+them. The installed toolchain
+must support `--ildiet-arg` and the requested companion options.
+
 To leave a dependency's IL unchanged, append `--ildiet-skip-assembly` and its
-simple assembly name as separate tokens in the existing project setting. For
-example, in `project.godot`:
+simple assembly name as separate elements in **Extra Transpile Args**, or in
+the existing project setting. For example, in `project.godot`:
 
 ```ini
 [dotnet]

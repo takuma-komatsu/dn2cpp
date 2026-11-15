@@ -28,8 +28,8 @@ read_end = plugin.index('            bool keepWebSymbols =', read_start)
 read_options = plugin[read_start:read_end]
 # Pin the handoff through BuildDropIn: the extracted methods must be the ones the
 # real export invokes, with the same resolved options.
-assert re.search(r'BuildDropIn\([^;]+ilPrestripping, optimizationOptions\);', plugin)
-assert 'Transpile(publishOutputDir, assemblyName, ilDir, genDir, ilPrestripping, optimizationOptions);' in exporter
+assert re.search(r'BuildDropIn\([^;]+ilPrestripping, optimizationOptions,\s+extraTranspileArgs, extraILDietArgs\);', plugin)
+assert re.search(r'Transpile\(publishOutputDir, assemblyName, ilDir, genDir, ilPrestripping, optimizationOptions,\s+extraTranspileArgs, extraILDietArgs\);', exporter)
 
 fixture = pathlib.Path(__file__).with_suffix('.cs').read_text(encoding='utf-8')
 for marker, source in [('OPTIONS', options), ('VISIBILITY', visibility), ('TRANSPILE', transpile), ('READ_OPTIONS', read_options)]:

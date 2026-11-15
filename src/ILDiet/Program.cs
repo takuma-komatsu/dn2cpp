@@ -14,13 +14,13 @@ internal static class Program
             if (args.Length == 0 || args.Contains("--help") || args.Contains("-h"))
             {
                 Console.WriteLine("Usage: ildiet <assembly.dll> [-r <reference.dll>] --link-xml <file> [-o <directory>] [--project-root <directory>] [--link-feature <com|sre|remoting>] [--work-budget <n>] [--ildiet-skip-assembly <name>] [--stripping-level high|medium]");
-                Console.WriteLine("       ildiet --request <request.xml> --result <result.xml>");
+                Console.WriteLine("       ildiet --request <request.xml> --result <result.xml> [--work-budget <n>]");
                 return args.Length == 0 ? 1 : 0;
             }
             var request = new DietRequest();
             string? requestPath = null;
             string? resultPath = null;
-            bool strippingLevelSpecified = false;
+            string? directInputOption = null;
             for (int i = 0; i < args.Length; i++)
             {
                 string Value()
@@ -28,10 +28,19 @@ internal static class Program
                     if (++i == args.Length) throw new NotSupportedException("missing value for " + args[i - 1]);
                     return args[i];
                 }
-                switch (args[i])
+                string argument = args[i];
+                switch (argument)
                 {
-                    case "--request": requestPath = Value(); break;
-                    case "--result": resultPath = Value(); break;
+                    case "--request":
+                        if (requestPath is not null)
+                            throw new NotSupportedException("--request may only be specified once");
+                        requestPath = Value();
+                        break;
+                    case "--result":
+                        if (resultPath is not null)
+                            throw new NotSupportedException("--result may only be specified once");
+                        resultPath = Value();
+                        break;
                     case "-o": request.Output = Value(); break;
                     case "-r": request.References.Add(Value()); break;
                     case "--link-xml": request.LinkXml.Add(Value()); break;
@@ -39,24 +48,25 @@ internal static class Program
                     case "--link-feature": request.Features.Add(Value()); break;
                     case "--ildiet-skip-assembly": request.SkipAssemblies.Add(Value()); break;
                     case "--work-budget": request.WorkBudget = DietRequest.ParseWorkBudget(Value()); break;
-                    case "--stripping-level":
-                        request.StrippingLevel = DietRequest.ParseStrippingLevel(Value());
-                        strippingLevelSpecified = true;
-                        break;
+                    case "--stripping-level": request.StrippingLevel = DietRequest.ParseStrippingLevel(Value()); break;
                     default:
                         if (args[i].StartsWith('-') || request.Input.Length != 0)
                             throw new NotSupportedException("unknown argument: " + args[i]);
                         request.Input = args[i];
                         break;
                 }
+                if (argument is not ("--request" or "--result" or "--work-budget"))
+                    directInputOption ??= argument;
             }
             if (requestPath is not null)
             {
-                if (request.Input.Length != 0 || request.References.Count != 0 || request.LinkXml.Count != 0
-                    || request.ProjectRoots.Count != 0 || request.Features.Count != 0 || request.WorkBudget is not null
-                    || request.SkipAssemblies.Count != 0 || request.Output != "ildiet-output" || strippingLevelSpecified)
-                    throw new NotSupportedException("--request cannot be combined with direct input options");
+                if (directInputOption is not null)
+                    throw new NotSupportedException("--request cannot be combined with direct input option '"
+                        + directInputOption + "'; pass input, output and retention options to dn2cpp instead");
+                long? workBudget = request.WorkBudget;
                 request = DietRequest.Read(requestPath);
+                if (workBudget is not null)
+                    request.WorkBudget = workBudget;
                 request.RequestFile = Path.GetFullPath(requestPath);
             }
             if (request.Input.Length == 0) throw new NotSupportedException("an input assembly is required");

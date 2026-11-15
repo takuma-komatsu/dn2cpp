@@ -10,6 +10,9 @@ internal static class ILDietPreprocessor
     internal static List<string> Run(IReadOnlyList<string> paths, TranspileOptions options,
         IEmitBackend backend, out string preservation, out bool cutsValidated, out ILDietResultState state)
     {
+        foreach (string argument in options.ILDietArguments)
+            if (argument is "--request" or "--result")
+                throw new NotSupportedException("--ildiet-arg cannot override reserved ILDiet option: " + argument);
         string cppDirectory = Path.GetFullPath(options.OutDir);
         string output = Path.GetFullPath(options.ILDietOutput ?? Path.Combine(cppDirectory, "ildiet"));
         if (IsWithin(cppDirectory, output))
@@ -77,20 +80,24 @@ internal static class ILDietPreprocessor
             int exitCode;
             try
             {
-                if (File.Exists(host))
-                {
-                    ownsResult = true;
-                    exitCode = ToolProcess.Run(host, new[] { "--request", requestPath, "--result", resultPath });
-                }
-                else
+                var arguments = new List<string>();
+                if (!File.Exists(host))
                 {
                     string dll = Path.Combine(directory, "ILDiet.dll");
                     if (!File.Exists(dll))
                         throw new NotSupportedException(
                             $"ILDiet companion not found: {dll}; restore the CLI installation or use --no-ildiet");
-                    ownsResult = true;
-                    exitCode = ToolProcess.Run("dotnet", new[] { "exec", dll, "--request", requestPath, "--result", resultPath });
+                    host = "dotnet";
+                    arguments.Add("exec");
+                    arguments.Add(dll);
                 }
+                arguments.Add("--request");
+                arguments.Add(requestPath);
+                arguments.Add("--result");
+                arguments.Add(resultPath);
+                arguments.AddRange(options.ILDietArguments);
+                ownsResult = true;
+                exitCode = ToolProcess.Run(host, arguments.ToArray());
             }
             catch (InvalidOperationException ex)
             {

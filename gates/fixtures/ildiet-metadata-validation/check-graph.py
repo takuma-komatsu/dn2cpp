@@ -32,10 +32,10 @@ def request_for(original, output, **attributes):
     return request
 
 
-def execute(request, name, **options):
+def execute(request, name, extra_arguments=(), **options):
     path = directory / (name + "-request.xml")
     ET.ElementTree(request).write(path, encoding="utf-8", xml_declaration=True)
-    return run(companion, "--request", path, **options)
+    return run(companion, "--request", path, *extra_arguments, **options)
 
 
 def validate(output, request=None):
@@ -151,10 +151,11 @@ for mode in ("standalone", "protocol"):
             "--work-budget", "1", "-o", output)
         root, published = validate(output)
     else:
-        request = request_for(original, output, workBudget="1")
-        execute(request, "budget-protocol")
+        request = request_for(original, output, workBudget="2")
+        execute(request, "budget-protocol", extra_arguments=("--work-budget", "1"))
         root, published = validate(output, request)
     assert root.get("fallback") == "budget" and root.get("constructorRegistriesRewritten") == "false"
+    assert root.find("counters").get("work.budget") == "1", "CLI budget did not override the request budget"
     assert all(item.get("mode") == "copied" for item in root.findall("assembly"))
     expected = {"GraphApp.dll": original / "GraphApp.dll", "GraphLib.dll": original / "GraphLib.dll", corelib.name: corelib}
     for filename, source in expected.items():
@@ -188,6 +189,17 @@ for kind in ("missing-version", "old-version", "unknown-element", "unknown-attri
     else: request.set("workBudget", "0")
     execute(request, "invalid-protocol-" + kind, success=False)
 print("graph-validation=standalone-budget,protocol-budget,copy-identical,validate-before-fallback,strict-v2", flush=True)
+
+for option in ("--request", "--result"):
+    output = directory / ("duplicate-" + option[2:])
+    request = request_for(original, output)
+    arguments = (option, directory / "unused-protocol.xml")
+    if option == "--result":
+        arguments += arguments
+    result = execute(request, "duplicate-" + option[2:], extra_arguments=arguments, success=False)
+    assert (option + " may only be specified once").encode() in result.stderr, "duplicate protocol option was not rejected"
+    assert not output.exists() and not (directory / "unused-protocol.xml").exists(), "duplicate protocol option reached publication"
+print("graph-validation=protocol-cli-budget-precedence,unique-protocol-paths", flush=True)
 
 output = directory / "atomic"
 request = request_for(originals[2], output)

@@ -35,6 +35,10 @@ public sealed record TranspileOptions
     /// <summary>Loaded assembly names to copy unchanged through ILDiet without adding executable roots.</summary>
     public IReadOnlyList<string> ILDietSkipAssemblies { get; init; } = Array.Empty<string>();
 
+    /// <summary>Additional literal CLI arguments for the ILDiet companion.
+    /// Ignored when ILDiet is disabled; protocol paths remain owned by the driver.</summary>
+    public IReadOnlyList<string> ILDietArguments { get; init; } = Array.Empty<string>();
+
     /// <summary>Explicit linker descriptor files, in addition to project discovery.</summary>
     public IReadOnlyList<string> LinkXmlFiles { get; init; } = Array.Empty<string>();
 

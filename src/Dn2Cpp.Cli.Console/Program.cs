@@ -22,6 +22,7 @@ bool useILDiet = true;
 StrippingLevel strippingLevel = StrippingLevel.High;
 string? ildietOutput = null;
 var ildietSkipAssemblies = new List<string>();
+var ildietArguments = new List<string>();
 var linkXmlFiles = new List<string>();
 bool sharedGenerics = true;
 bool obfuscate = false;
@@ -138,6 +139,15 @@ for (int i = 0; i < args.Length; i++)
     {
         ildietOutput = args[++i];
     }
+    else if (args[i] == "--ildiet-arg")
+    {
+        if (i + 1 >= args.Length)
+        {
+            Console.Error.WriteLine("error: --ildiet-arg expects an argument");
+            return 1;
+        }
+        ildietArguments.Add(args[++i]);
+    }
     else if (args[i] == "--link-xml" && i + 1 < args.Length)
     {
         linkXmlFiles.Add(args[++i]);
@@ -200,7 +210,7 @@ for (int i = 0; i < args.Length; i++)
 
 if (string.IsNullOrEmpty(input))
 {
-    Console.Error.WriteLine("Usage: dn2cpp-console <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--auto-ref] [--stripping-level <high|medium>] [--no-ildiet] [--ildiet-output <dir>] [--ildiet-skip-assembly <name>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--fp-mode <strict|precise>] [--no-shared-generics] [--obfuscate] [--shadow-stack] [--no-metadata-compression] [--reflection-metadata <type>=native|packed] [--measure] [--verbose]");
+    Console.Error.WriteLine("Usage: dn2cpp-console <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--auto-ref] [--stripping-level <high|medium>] [--no-ildiet] [--ildiet-output <dir>] [--ildiet-skip-assembly <name>] [--ildiet-arg <argument>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--fp-mode <strict|precise>] [--no-shared-generics] [--obfuscate] [--shadow-stack] [--no-metadata-compression] [--reflection-metadata <type>=native|packed] [--measure] [--verbose]");
     return 1;
 }
 
@@ -222,6 +232,7 @@ return TranspileDriver.RunConsole(new TranspileOptions
     StrippingLevel = strippingLevel,
     ILDietOutput = ildietOutput,
     ILDietSkipAssemblies = ildietSkipAssemblies,
+    ILDietArguments = ildietArguments,
     LinkXmlFiles = linkXmlFiles,
     ProjectRoots = projectRoots,
     LinkFeatures = linkFeatures,

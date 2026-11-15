@@ -321,8 +321,10 @@ identical.
 ## Fallback
 
 Graph transitions, dependency edges, demands and scope expansion consume a
-deterministic work budget derived from the original metadata. Standalone
+deterministic work budget derived from the original metadata.
 `--work-budget <n>` and request `workBudget="n"` set a positive explicit budget.
+The CLI option also works with `--request` and overrides its `workBudget`.
+Through dn2cpp, pass `--ildiet-arg --work-budget --ildiet-arg <n>`.
 A summary's local budget produces an unknown summary; it does not by itself
 trigger whole-load-set fallback.
 
@@ -405,6 +407,10 @@ inputs rather than signed distribution assemblies.
   <root assembly="Library" type="Library.Exported" />
 </ildiet>
 ```
+
+Input, output and retention options cannot accompany `--request`; dn2cpp callers
+set those through the transpiler's own options. `--request` and `--result` each
+accept a single occurrence, and dn2cpp owns both paths when invoking ILDiet.
 
 Full roots require an assembly. Reflection roots have their own element. Unknown
 attributes, elements, versions and invalid budgets fail. The result's
