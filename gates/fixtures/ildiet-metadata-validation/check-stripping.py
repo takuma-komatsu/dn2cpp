@@ -41,8 +41,8 @@ def startup_pass(text):
     since an ILDiet rewrite renumbers rows per level."""
     main = text[text.index("DN2CPP_RT_EXPORT int main("):]
     main = main[:main.index("} catch (")]
-    runs = re.findall(r'dn2cpp_cctor_run_startup\(&\w+__ensure, "([^"]+)"\);', main)
-    entry = re.findall(r"\btry \{\s*(\w+?)_m\d+__ensure\(\);", main)
+    runs = re.findall(r'dn2cpp_cctor_run_startup\(&\w+__ensure, "([^"]+)", true\);', main)
+    entry = re.findall(r"^\s+(\w+?)_m\d+__ensure\(\);", main, re.MULTILINE)
     return runs + ["entry " + stem for stem in entry]
 
 

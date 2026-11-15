@@ -222,6 +222,11 @@ assembly-reference depth. A failed initializer caches a `TypeInitializationExcep
 whose `TypeName` identifies its TypeDef and whose `InnerException` retains the
 original failure. Compiled and interpreted guards throw the same cached wrapper on
 the first and later triggers; reflection invocation adds `TargetInvocationException`.
+Console startup runs that pass inside main's
+unhandled-exception handler: a failed initializer prevents Main from running, and a
+shared-library entry returns failure to its host. Hosted backends instead report each
+failed module and continue, including the .NET-module backend's deferred pass.
+Unhandled diagnostics include inner exceptions and any captured managed traces.
 Reflection
 admission lives in `Compilation.ReflectionTargets.cs`: `ScanBodyForGenerics`
 resolves each reached method's `ReflectionSummary` in that method's own

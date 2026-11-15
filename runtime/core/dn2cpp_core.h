@@ -3629,12 +3629,10 @@ inline void dn2cpp_run_initializer(void (*initializer)())
 }
 
 // One entry of the generated startup pass, which runs module initializers only:
-// calls the `<Module>` type's __ensure, then reports and swallows a managed failure,
-// so a library initializer .NET might never run cannot terminate the program and its
-// failure is not silent. `type` names the module (an assembly-qualified `<Module>`),
-// baked by the emitter beside the pointer: a report that cannot name what failed
-// names a class of bug rather than a bug.
-void dn2cpp_cctor_run_startup(void (*ensure)(), const char* type);
+// calls the `<Module>` type's __ensure. Hosted callers report a managed failure and
+// continue; `type` names its module (an assembly-qualified `<Module>`). Console startup
+// passes propagateFailure to reach main's unhandled-exception handler before Main runs.
+void dn2cpp_cctor_run_startup(void (*ensure)(), const char* type, bool propagateFailure = false);
 
 [[noreturn]] void dn2cpp_throw_index_out_of_range();
 [[noreturn]] void dn2cpp_throw_argument_out_of_range();

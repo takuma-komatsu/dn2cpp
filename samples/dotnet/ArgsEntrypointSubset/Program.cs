@@ -11,13 +11,15 @@ namespace ArgsEntrypointSubset;
 //
 // The bucket also owns what the emitted `main()` does BEFORE it calls the managed entry
 // point — see ModuleInitSubset.cs, which pins that a [ModuleInitializer] runs there, and
-// FailedCctorSubset.cs, which pins what that prologue does with a type initializer that
-// THROWS (it must not kill the process, and the type must stay uninitialized forever).
+// FailedCctorSubset.cs, which pins that a failed ordinary type initializer stays
+// unusable after callers catch its exception.
 internal static class Program
 {
     static int Main(string[] args)
     {
-        // FIRST statement: stamps the entry point's place in the startup sequence, so the
+        // Give CLR a use of the library whose initializer native startup also runs.
+        ThrowingModuleInitializer.Initializer.Touch();
+        // Stamp the entry point before its argument handling, so the
         // module-initializer section can assert the initializer ran BEFORE Main rather than
         // merely before its own body (which runs later anyway).
         ModuleInitSubset.Program.MarkMainEntered();

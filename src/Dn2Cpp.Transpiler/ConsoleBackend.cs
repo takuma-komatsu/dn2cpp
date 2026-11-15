@@ -52,8 +52,9 @@ internal sealed class ConsoleBackend : IEmitBackend
             : "DN2CPP_RT_EXPORT int main()");
         sb.AppendLine("#endif");
         sb.AppendLine("{");
-        emitter.EmitInitCalls(sb, cctors);
+        emitter.EmitInitCalls(sb, Array.Empty<MethodInfo>());
         sb.AppendLine("    try {");
+        emitter.EmitModuleInitializerCalls(sb, cctors, propagateFailure: true);
         // The entry point runs with no IL caller, so main triggers its type's initializer;
         // inside the handler, a throwing one is unhandled as in .NET.
         if (emitter.EntryInitializer is { } entryInitializer)

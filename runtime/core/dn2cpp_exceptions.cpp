@@ -1513,7 +1513,7 @@ Dn2CppString* dn2cpp_exception_tostring(Dn2CppObject* ex)
 // Appends a managed string's UTF-8 bytes to `s`.
 static void dn2cpp_append_utf8(std::string& s, Dn2CppString* str);
 
-void dn2cpp_report_unhandled_exception(Dn2CppObject* ex)
+static void dn2cpp_report_unhandled_exception_chain(Dn2CppObject* ex, const char* prefix)
 {
     std::string type;
     dn2cpp_append_utf8(type, dn2cpp_type_tostring(ex->type));
@@ -1522,12 +1522,22 @@ void dn2cpp_report_unhandled_exception(Dn2CppObject* ex)
     char* buf = static_cast<char*>(dn2cpp_alloc(static_cast<size_t>(n) + 1));
     dn2cpp_string_to_utf8(msg, buf, n);
     buf[n] = '\0';
-    std::fprintf(stderr, "Unhandled exception. %s: %s\n", type.c_str(), buf);
+    std::fprintf(stderr, "%s%s: %s\n", prefix, type.c_str(), buf);
+    if (Dn2CppObject* inner = dn2cpp_exception_inner(ex); inner != nullptr)
+    {
+        dn2cpp_report_unhandled_exception_chain(inner, " ---> ");
+        std::fprintf(stderr, "   --- End of inner exception stack trace ---\n");
+    }
     // The trace stamped at throw, when one was captured and resolves —
     // same lines Exception.StackTrace renders, best-effort by design.
     std::string trace;
     if (dn2cpp_exc_trace_render(ex, trace))
         std::fprintf(stderr, "%s\n", trace.c_str());
+}
+
+void dn2cpp_report_unhandled_exception(Dn2CppObject* ex)
+{
+    dn2cpp_report_unhandled_exception_chain(ex, "Unhandled exception. ");
 }
 
 // ---- the host boundary (see the doctrine at the declarations in dn2cpp_core.h)

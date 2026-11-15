@@ -3255,16 +3255,13 @@ internal sealed partial class CppEmitter
     /// <summary>Emits the startup pass over the module initializers in
     /// <paramref name="cctors"/>, for <see cref="EmitInitCalls"/> and for a backend that
     /// defers the pass past its init prologue.</summary>
-    internal void EmitModuleInitializerCalls(StringBuilder sb, IReadOnlyList<MethodInfo> cctors)
+    internal void EmitModuleInitializerCalls(StringBuilder sb, IReadOnlyList<MethodInfo> cctors,
+        bool propagateFailure = false)
     {
         // The startup pass runs module initializers only: every other initializer runs
         // behind the first-use guards, and a module initializer is the one no use site
-        // names. dn2cpp_cctor_run_startup swallows and reports a managed failure: the
-        // console prologue sits AHEAD of the entry point's own try/catch, so an escaping
-        // exception would std::terminate the process, and a library's initializer may be
-        // one .NET never runs because the program never touches that module. The report
-        // names the module as an assembly-qualified `<Module>`, since a report that cannot
-        // name what failed is not one anyone can act on.
+        // names. Console failures reach main's unhandled-exception handler; hosted
+        // backends report each failure with the module's identity and continue.
         foreach (var cctor in cctors)
         {
             var owner = cctor.DeclaringClass;
@@ -3272,7 +3269,8 @@ internal sealed partial class CppEmitter
                 throw new InvalidOperationException(
                     $"{owner.FullName}: only a module initializer runs in the startup pass");
             sb.AppendLine($"    dn2cpp_cctor_run_startup(&{cctor.CppName}__ensure, "
-                + $"\"{Compilation.ReflectionTypeName(owner)}, {owner.Module.AssemblyName}\");");
+                + $"\"{Compilation.ReflectionTypeName(owner)}, {owner.Module.AssemblyName}\""
+                + (propagateFailure ? ", true);" : ");"));
         }
     }
 
