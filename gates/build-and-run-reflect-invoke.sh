@@ -1095,11 +1095,13 @@ gate_extra_asserts() {
         'renamed slot fillers end'
     if reflection_full_profile; then
         DN2CPP_BEFORE_DELEGATE_LISTS=1 gate_capture_ok "$out/before-delegate-lists" run_bounded "$out/ReflectInvoke$EXE_EXT"
-        gate_output select "$out/metadata-layout.stdout" "$out/delegate-lists-prefix.stdout" --before '== remove runs ==' --policy crlf
+        gate_output select "$out/metadata-layout.stdout" "$out/delegate-lists-prefix.stdout" --before '== invocation list remove runs ==' --policy crlf
         gate_output compare "$out/delegate-lists-prefix.stdout" "$out/before-delegate-lists.stdout"
     fi
+    reflection_assert_lines "$native_file" 1 \
+        '== invocation list remove runs ==' 'invocation list remove runs end' \
+        '== reflected bound delegate remove runs ==' 'reflected bound delegate remove runs end'
     reflection_assert_lines "$native_file" any \
-        '== remove runs ==' 'remove runs end' \
         '== invocation lists ==' 'invocation lists end' \
         '== invocation list entries ==' 'invocation list entries end' \
         '== invocation list enumeration ==' 'invocation list enumeration end' \
@@ -1138,7 +1140,7 @@ gate_extra_asserts() {
         gate_output select "$out/metadata-layout.stdout" "$out/existing-constructor-prefix.stdout" --before 'existing-constructor-begin' --policy crlf
         gate_output compare "$out/existing-constructor-prefix.stdout" "$out/before-existing-constructor.stdout"
         DN2CPP_BEFORE_COLD_ACTIVATOR=1 gate_capture_ok "$out/before-cold-activator" run_bounded "$out/ReflectInvoke$EXE_EXT"
-        gate_output select "$out/metadata-layout.stdout" "$out/cold-activator-prefix.stdout" --before 'activator-cold-generic=' --policy crlf
+        gate_output select "$out/metadata-layout.stdout" "$out/cold-activator-prefix.stdout" --before 'activator-cold-generic=73' --policy crlf
         gate_output compare "$out/cold-activator-prefix.stdout" "$out/before-cold-activator.stdout"
     fi
     reflection_assert_lines "$native_file" any \
