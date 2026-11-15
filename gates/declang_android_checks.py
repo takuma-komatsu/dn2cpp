@@ -79,12 +79,18 @@ for entry in resource.iterdir():
     destination = resource_overlay / entry.name
     if not destination.exists():
         link_input(entry, destination)
+incompatible_header = resource_overlay / "string"
+incompatible_header.unlink(missing_ok=True)
 wrapper = identity_work / "clang++"
 # The actual compiler still uses its own resource directory for compilation;
 # the equivalent overlay lets the fingerprint probe observe a safe mutation.
 wrapper.write_text("#!/usr/bin/env python3\nimport os,sys\n"
-                   f"if sys.argv[1:] == ['-print-resource-dir']: print({str(resource_overlay)!r})\n"
-                   f"else: os.execv({str(compiler)!r}, [{str(compiler)!r}, *sys.argv[1:]])\n", encoding="utf-8")
+                   "args = sys.argv[1:]\n"
+                   f"if args == ['-print-resource-dir']: print({str(resource_overlay)!r})\n"
+                   "else:\n"
+                   f"    if '-c' in args and os.path.isfile({str(incompatible_header)!r}):\n"
+                   f"        args += ['-I', {str(resource_overlay)!r}]\n"
+                   f"    os.execv({str(compiler)!r}, [{str(compiler)!r}, *args])\n", encoding="utf-8")
 wrapper.chmod(0o755)
 if os.name == "nt":
     script = wrapper.with_suffix(".py")
@@ -114,12 +120,15 @@ for path in (resource_overlay / "dn2cpp-identity-marker", cmake_copy / "declang_
     assert identity_check(True) == current
     previous = current
 
-old = os.environ.get("DN2CPP_DECLANG_INCOMPATIBLE_COMPILER")
-if not old:
-    candidate = root / "artifacts/declang-distribution/Release-swift5.10-v1.0.0/compiler/bin/clang++"
-    if candidate.is_file() and candidate.resolve() != compiler:
-        old = str(candidate)
-if old:
-    probe = root / "runtime/cmake/declang_probe.cmake"
-    check("incompatible-compiler-ndk", "failed", COMPILER=old)
+# Shadow <string> to exercise the probe's standard-header build and verify
+# that a failure discards the previous success record.
+incompatible_header.write_text("#ifdef __cplusplus\n"
+                               "#error DN2CPP_DECLANG_INCOMPATIBLE_NDK_HEADERS\n"
+                               "#endif\n", encoding="utf-8")
+check("incompatible-compiler-ndk", "DN2CPP_DECLANG_INCOMPATIBLE_NDK_HEADERS",
+      COMPILER=wrapper, ANDROID_NDK=overlay, WORK_DIR=identity_dir)
+log = (work / "incompatible-compiler-ndk.log").read_text(encoding="utf-8")
+assert "DeClang compatibility compile or flatten validation failed" in log, log
+assert not (identity_dir / "identity.txt").exists(), "failed probe retained stale success identity"
 print("Android DeClang identity invalidation checks passed")
+print("Android DeClang incompatible header rejection checks passed")
