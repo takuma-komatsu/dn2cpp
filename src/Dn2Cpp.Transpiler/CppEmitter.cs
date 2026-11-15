@@ -3135,6 +3135,7 @@ internal sealed partial class CppEmitter
             ? "    dn2cpp_runtime_init(&dn2cpp_cpu_features_resolve);"
             : "    dn2cpp_runtime_init();");
         sb.AppendLine("    dn2cpp_set_culture_exception_store(&dn2cpp_image_culture_exception_store);");
+        sb.AppendLine("    dn2cpp_set_type_initialization_exception_store(&dn2cpp_image_type_initialization_exception_store);");
         // The image's per-signature vtable trap thunks, so dn2cpp_exception_message can
         // recognise a trapped get_Message slot without calling it. Before any managed
         // code, like every install below.
@@ -3355,9 +3356,16 @@ internal sealed partial class CppEmitter
             if (compiled)
                 o.Header.AppendLine($"void {cc.CppName}();");
             string body = compiled ? $"&{cc.CppName}" : "nullptr";
+            // CLR initializer failures name the TypeDef, without enclosing types or
+            // constructed generic arguments; the arity suffix remains part of its name.
+            var reader = cc.DeclaringClass.Module.Reader;
+            var definition = reader.GetTypeDefinition(cc.DeclaringClass.Handle);
+            string ns = reader.GetString(definition.Namespace);
+            string name = reader.GetString(definition.Name);
+            string typeName = string.IsNullOrEmpty(ns) ? name : ns + "." + name;
             o.Header.AppendLine(
                 $"inline void {cc.CppName}__ensure() {{ if ({cc.CppName}__done.load(std::memory_order_acquire)) return; "
-                + $"dn2cpp_cctor_run_once(&{cc.CppName}__done, {body}); }}");
+                + $"dn2cpp_cctor_run_once(&{cc.CppName}__done, {body}, {CppUtf8Literal(typeName)}); }}");
         }
         o.Header.AppendLine();
 
@@ -5921,6 +5929,7 @@ internal sealed partial class CppEmitter
         EmitArgumentExceptionStore(sb);
         EmitObjectDisposedExceptionStore(sb);
         EmitCultureExceptionStore(sb);
+        EmitTypeInitializationExceptionStore(sb);
         EmitItfImplSlots(sb);
         EmitRenamedSlotBodies(sb);
         sb.AppendLine();
@@ -5975,6 +5984,23 @@ internal sealed partial class CppEmitter
         {
             sb.AppendLine("    (void)e; (void)objectName;");
             sb.AppendLine("    return false;");
+        }
+        sb.AppendLine("}");
+    }
+
+    private void EmitTypeInitializationExceptionStore(StringBuilder sb)
+    {
+        var name = BoundInstanceField("System.TypeInitializationException", "_typeName");
+        sb.AppendLine("static void dn2cpp_image_type_initialization_exception_store(Dn2CppObject* e, Dn2CppString* typeName)");
+        sb.AppendLine("{");
+        if (name is var (cls, field))
+        {
+            sb.AppendLine($"    if (e->type->instanceSize >= (int32_t)sizeof({cls.CppStructName}))");
+            sb.AppendLine($"        dn2cpp_gc_store_ref(&(({cls.CppStructName}*)e)->{field.CppName}, typeName);");
+        }
+        else
+        {
+            sb.AppendLine("    (void)e; (void)typeName;");
         }
         sb.AppendLine("}");
     }

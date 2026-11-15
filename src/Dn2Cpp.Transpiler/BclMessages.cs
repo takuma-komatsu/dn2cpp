@@ -123,6 +123,7 @@ internal static class BclMessages
         "Arg_DivideByZero",
         "Arg_SynchronizationLockException",
         "Arg_TargetInvocationException",
+        "TypeInitialization_Type",
         "Arg_TargetParameterCountException",
         // Sentences a runtime throw site raises in place of its type's default.
         "RFLCT_Targ_StatMethReqTarg",

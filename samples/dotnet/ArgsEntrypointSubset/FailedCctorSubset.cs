@@ -44,23 +44,19 @@ internal static class Dependent
 
 internal static class Program
 {
-    // The ONE declared divergence this section normalizes: .NET reports a failed type
-    // initializer as TypeInitializationException wrapping the original; dn2cpp models no
-    // TypeInitializationException and re-raises the original itself. Unwrapping compares
-    // what both runtimes agree on — which failure a touch reports — and leaves everything
-    // else (that it throws at all, that it throws EVERY time, that it is the same object
-    // every time, that the process survives) diffed exactly against real .NET.
     internal static string Describe(Exception ex)
     {
-        Exception root = Unwrap(ex);
-        return root.GetType().Name + "/" + root.Message;
+        if (ex is not TypeInitializationException failure)
+            return "unwrapped:" + ex.GetType().Name + "/" + ex.Message;
+        Exception inner = failure.InnerException!;
+        return failure.GetType().Name + "/" + failure.Message + "/" + failure.TypeName
+            + "/inner:" + inner.GetType().Name + "/" + inner.Message;
     }
 
-    private static Exception Unwrap(Exception ex)
+    private static class Nested<T>
     {
-        while (ex is TypeInitializationException && ex.InnerException is not null)
-            ex = ex.InnerException;
-        return ex;
+        static Nested() => throw new InvalidOperationException("generic initializer failed");
+        internal static void Touch() { }
     }
 
     internal static void Run()
@@ -77,11 +73,10 @@ internal static class Program
             }
             catch (Exception ex)
             {
-                Exception root = Unwrap(ex);
                 Console.WriteLine($"failedCctor.touch{i}=threw:{Describe(ex)}");
                 if (firstSeen is null)
-                    firstSeen = root;
-                else if (!ReferenceEquals(firstSeen, root))
+                    firstSeen = ex;
+                else if (!ReferenceEquals(firstSeen, ex))
                     sameEveryTime = false;
             }
         }
@@ -107,5 +102,14 @@ internal static class Program
         // take down the types around it, nor the process.
         Console.WriteLine($"failedCctor.dependent={Dependent.Fallback}");
         Console.WriteLine("failedCctor.survived=True");
+
+        try
+        {
+            Nested<int>.Touch();
+        }
+        catch (TypeInitializationException ex)
+        {
+            Console.WriteLine("failedCctor.nestedGeneric=" + Describe(ex));
+        }
     }
 }

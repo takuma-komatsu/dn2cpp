@@ -662,6 +662,9 @@ const IntrinsicImport g_intrinsicImports[] = {
     { "System.Exception", "get_Message", "():String",
       reinterpret_cast<void*>(&intrinsic_exception_get_message), kShapeRefRetObj, 0, true,
       kRecvException, {}, &dn2cpp_string_type },
+    { "System.Exception", "get_InnerException", "():System.Exception",
+      reinterpret_cast<void*>(&dn2cpp_exception_inner), kShapeRefRetObj, 0, true,
+      kRecvException, {}, &dn2cpp_exception_type },
     { "System.AggregateException", "get_Message", "():String",
       reinterpret_cast<void*>(&intrinsic_aggregate_get_message), kShapeRefRetObj, 0, true,
       kRecvAggregate, {}, &dn2cpp_string_type },
@@ -2829,9 +2832,8 @@ Slot interp_call(const Dn2CppInterpImage* img, uint32_t methodIdx, const Slot* a
 // interpreter-side twin of the AOT __ensure wrappers, matching
 // dn2cpp_cctor_run_once (dn2cpp_gc.cpp): the started flag is set BEFORE the body
 // runs, so a re-entrant access sees the partially-initialized state without
-// recursing; an initializer that throws propagates raw (no
-// TypeInitializationException wrapping, as the AOT guard) and leaves the type
-// UNinitialized, its failure recorded in the image's per-type cctorFailed slot
+// recursing; an initializer that throws leaves the type UNinitialized. Its
+// TypeInitializationException is recorded in the image's per-type cctorFailed slot
 // (GC-scanned, so the exception outlives the throw) and re-raised on every later
 // touch rather than reading half-assigned statics. dn2cpp_rethrow preserves the
 // trace captured at the original throw. Checked before the first static-field
@@ -2865,10 +2867,11 @@ void interp_ensure_cctor(const Dn2CppInterpImage* img, uint32_t typeIdx, int32_t
     }
     catch (const Dn2CppException& e)
     {
-        img->cctorFailed[typeIdx] = e.obj;
-        dn2cpp_gc_write_barrier(&img->cctorFailed[typeIdx]);
+        Dn2CppObject* wrapper = dn2cpp_type_initialization_exception(img->patchTypes[typeIdx]->name, e.obj);
+        dn2cpp_gc_store_ref(&img->cctorFailed[typeIdx], wrapper);
         img->cctorStarted[typeIdx] = kCctorFailed;
-        throw;
+        dn2cpp_exc_inflight_pop(e.obj);
+        dn2cpp_throw(wrapper);
     }
     catch (...)
     {
@@ -3558,7 +3561,8 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                                 // Exception base.Message uses its own getter; callvirt
                                 // still honors the receiver's Message override.
                                 v.ref = insn.op == 0x6F
-                                    && (b.recvKind == kRecvException || b.recvKind == kRecvAggregate)
+                                    && (b.fnPtr == reinterpret_cast<void*>(&intrinsic_exception_get_message)
+                                        || b.fnPtr == reinterpret_cast<void*>(&intrinsic_aggregate_get_message))
                                     ? reinterpret_cast<Dn2CppObject*>(dn2cpp_exception_message(self))
                                     : reinterpret_cast<Dn2CppObject* (*)(Dn2CppObject*)>(b.fnPtr)(self);
                                 if (insn.b & 1)
@@ -4863,7 +4867,8 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                 // Exception base.Message uses its own getter; callvirt
                                 // still honors the receiver's Message override.
                                 v.ref = insn.op == R_CALLVIRT
-                                    && (b.recvKind == kRecvException || b.recvKind == kRecvAggregate)
+                                    && (b.fnPtr == reinterpret_cast<void*>(&intrinsic_exception_get_message)
+                                        || b.fnPtr == reinterpret_cast<void*>(&intrinsic_aggregate_get_message))
                                     ? reinterpret_cast<Dn2CppObject*>(dn2cpp_exception_message(self))
                                     : reinterpret_cast<Dn2CppObject* (*)(Dn2CppObject*)>(b.fnPtr)(self);
                                 if (insn.b & 1)

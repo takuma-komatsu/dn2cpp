@@ -218,7 +218,11 @@ An entry with no IL call site (the entry point, an emitted construction, a
 reflection row's initializer hook) guards the initializer it triggers before
 entering, and `CppEmitter.InitializerGuard` asserts that reachability reached it. Only
 non-framework module initializers run in the startup pass, ordered by
-assembly-reference depth. Reflection
+assembly-reference depth. A failed initializer caches a `TypeInitializationException`
+whose `TypeName` identifies its TypeDef and whose `InnerException` retains the
+original failure. Compiled and interpreted guards throw the same cached wrapper on
+the first and later triggers; reflection invocation adds `TargetInvocationException`.
+Reflection
 admission lives in `Compilation.ReflectionTargets.cs`: `ScanBodyForGenerics`
 resolves each reached method's `ReflectionSummary` in that method's own
 instantiation, and each live site selects what its known operands name, per

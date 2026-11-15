@@ -25,11 +25,9 @@
 # same exception instance, asserts a static assigned before the throw is still
 # unreadable, and asserts a catch-and-fall-back caller (the AngleSharp/Thrive shape: a
 # second Encoding.GetEncoding SIGSEGV'd on a null static) survives. Diffed exactly vs
-# real .NET, with ONE normalization written out at its site: .NET reports a failed
-# initializer as TypeInitializationException wrapping the original and dn2cpp models no
-# TypeInitializationException, so the section unwraps before printing. Everything else —
-# that it throws, that it throws every time, the identity, the survival — is compared
-# raw against the real-.NET oracle rather than frozen.
+# real .NET, including TypeInitializationException, its TypeName and original
+# InnerException. A nested generic initializer preserves the TypeDef name rather
+# than exposing a constructed reflection name.
 #
 # GenericCctorFirstUseSubset pins the corresponding successful first-use path: closed
 # generic initializers stay dormant until first use, so startup cannot freeze or inspect
@@ -106,8 +104,8 @@ echo "== Precise type initializers run on every trigger, and only on a trigger =
                 'late initializers end' 'generic activation=True/registered' \
                 'new constraint=True/registered' 'generic struct activation=16/registered' \
                 'constructor invoke=True/registered' 'type activation=True/registered' \
-                'type activation failure0=wrapped:True/InvalidOperationException:activation initializer failed' \
-                'type activation failure1=wrapped:True/InvalidOperationException:activation initializer failed' \
+                'type activation failure0=wrapped:True/TypeInitializationException:InitializerTriggersOnly.ActivationFailure/InvalidOperationException:activation initializer failed' \
+                'type activation failure1=wrapped:True/TypeInitializationException:InitializerTriggersOnly.ActivationFailure/InvalidOperationException:activation initializer failed' \
                 'method invoke=17/registered' 'static property=18/registered' \
                 'uninitialized object=True/registered' 'boxed before call=not-run' \
                 'boxed interface call=19/registered' 'boxed ToString=text/registered' \
@@ -207,7 +205,9 @@ echo "-- startup module initializer failure report (stderr) --"
 # matched case the failing one). The phrase pins the whole contract: the boundary
 # report ran, it names the MODULE whose initializer failed, and it carries the
 # original exception rather than only a class of bug.
-if ! grep -F "unhandled managed exception in the startup static constructor of <Module>, ThrowingModuleInitializer: System.InvalidOperationException: module initializer failed on purpose" \
+if ! grep -F "unhandled managed exception in the startup static constructor of <Module>, ThrowingModuleInitializer: System.TypeInitializationException: The type initializer for '<Module>' threw an exception." \
+        "$out/native.err" >/dev/null \
+        || ! grep -F " ---> System.InvalidOperationException: module initializer failed on purpose" \
         "$out/native.err" >/dev/null; then
     echo "FAIL: startup module initializer failure report missing or unnamed on stderr" >&2
     echo "---- native stderr ----" >&2

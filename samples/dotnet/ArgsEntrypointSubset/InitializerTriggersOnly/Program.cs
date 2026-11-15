@@ -1307,6 +1307,7 @@ internal static class Program
         ConstructorInfo constructor = typeof(ConstructedByInfo).GetConstructor(Type.EmptyTypes)!;
         Console.WriteLine($"constructor invoke={constructor.Invoke(null) is ConstructedByInfo}/{Witness.ConstructedByInfo ?? "not-run"}");
         Console.WriteLine($"type activation={Activator.CreateInstance(typeof(ActivatedByType)) is ActivatedByType}/{Witness.ActivatedByType ?? "not-run"}");
+        Exception? initializationFailure = null;
         for (int i = 0; i < 2; i++)
         {
             try
@@ -1315,7 +1316,11 @@ internal static class Program
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"type activation failure{i}=wrapped:{ex is TargetInvocationException}/{Root(ex)}");
+                if (i == 0)
+                    initializationFailure = ex.InnerException;
+                else if (!ReferenceEquals(initializationFailure, ex.InnerException))
+                    throw new InvalidOperationException("reflection changed the cached initializer failure");
+                Console.WriteLine($"type activation failure{i}=wrapped:{ex is TargetInvocationException}/{Failure(ex)}");
             }
         }
         Console.WriteLine($"method invoke={typeof(InvokedStatic).GetMethod("Answer")!.Invoke(null, null)}/{Witness.InvokedStatic ?? "not-run"}");
@@ -1352,14 +1357,13 @@ internal static class Program
         return 0;
     }
 
-    // .NET wraps a failed initializer in a TypeInitializationException, which dn2cpp does
-    // not model; only the wrapping the reflective call itself adds is compared.
-    private static string Root(Exception ex)
+    private static string Failure(Exception ex)
     {
         if (ex is TargetInvocationException { InnerException: { } inner })
             ex = inner;
-        while (ex is TypeInitializationException { InnerException: { } cause })
-            ex = cause;
-        return ex.GetType().Name + ":" + ex.Message;
+        if (ex is TypeInitializationException { InnerException: { } cause } failure)
+            return failure.GetType().Name + ":" + failure.TypeName + "/"
+                + cause.GetType().Name + ":" + cause.Message;
+        return "unwrapped:" + ex.GetType().Name + ":" + ex.Message;
     }
 }

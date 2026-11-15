@@ -604,9 +604,9 @@ static bool dn2cpp_exception_overrides_message(const Dn2CppTypeInfo* ti)
     return fn != nullptr && !dn2cpp_is_vcall_trap(fn);
 }
 
-// The suffix resources take one literal operand. Keep it in UTF-16 so names containing
+// These resources take one literal operand. Keep it in UTF-16 so names containing
 // NUL or unpaired surrogates survive even when the image has no managed Message override.
-static Dn2CppString* dn2cpp_argument_tail(const char* key, Dn2CppString* value)
+static Dn2CppString* dn2cpp_message_with_argument(const char* key, Dn2CppString* value)
 {
     const char* text = dn2cpp_sr_text(key);
     if (text == nullptr)
@@ -633,7 +633,7 @@ static Dn2CppString* dn2cpp_argument_tail(const char* key, Dn2CppString* value)
     {
         if (paramName != nullptr && paramName->length != 0)
         {
-            if (Dn2CppString* tail = dn2cpp_argument_tail(DN2CPP_SR_PARAM_NAME, paramName); tail != nullptr)
+            if (Dn2CppString* tail = dn2cpp_message_with_argument(DN2CPP_SR_PARAM_NAME, paramName); tail != nullptr)
             {
                 Dn2CppString* separator = dn2cpp_string_literal(u" ", 1);
                 DN2CPP_WEB_GC_LIVENESS(message);
@@ -644,7 +644,7 @@ static Dn2CppString* dn2cpp_argument_tail(const char* key, Dn2CppString* value)
         if (actualText != nullptr)
         {
             Dn2CppString* value = dn2cpp_string_from_utf8(actualText->data(), static_cast<int32_t>(actualText->size()));
-            if (Dn2CppString* tail = dn2cpp_argument_tail(DN2CPP_SR_ACTUAL_VALUE, value); tail != nullptr)
+            if (Dn2CppString* tail = dn2cpp_message_with_argument(DN2CPP_SR_ACTUAL_VALUE, value); tail != nullptr)
             {
 #ifdef _WIN32
                 Dn2CppString* newline = dn2cpp_string_literal(u"\r\n", 2);
@@ -705,7 +705,7 @@ bool dn2cpp_culture_exception_store(Dn2CppObject* e, Dn2CppString* invalidCultur
     Dn2CppString* message = dn2cpp_default_message(ti);
     if (message != nullptr && (!argumentStored || !cultureStored || !dn2cpp_exception_overrides_message(ti)))
     {
-        if (Dn2CppString* tail = dn2cpp_argument_tail(DN2CPP_SR_PARAM_NAME, paramName))
+        if (Dn2CppString* tail = dn2cpp_message_with_argument(DN2CPP_SR_PARAM_NAME, paramName))
         {
             Dn2CppString* separator = dn2cpp_string_literal(u" ", 1);
             DN2CPP_WEB_GC_LIVENESS(message);
@@ -720,7 +720,7 @@ bool dn2cpp_culture_exception_store(Dn2CppObject* e, Dn2CppString* invalidCultur
                 static_cast<uint32_t>(invalidCultureId));
             identifier = dn2cpp_string_from_utf8(text, length);
         }
-        if (Dn2CppString* tail = dn2cpp_argument_tail(DN2CPP_SR_CULTURE_INVALID_IDENTIFIER, identifier))
+        if (Dn2CppString* tail = dn2cpp_message_with_argument(DN2CPP_SR_CULTURE_INVALID_IDENTIFIER, identifier))
         {
 #ifdef _WIN32
             Dn2CppString* newline = dn2cpp_string_literal(u"\r\n", 2);
@@ -1097,6 +1097,7 @@ static int32_t dn2cpp_exception_default_hresult(const Dn2CppTypeInfo* ti)
         { &dn2cpp_ambiguous_implementation_exception_type, 0x8013106Au },
         { &dn2cpp_application_exception_type, 0x80131600u },
         { &dn2cpp_target_invocation_exception_type, 0x80131604u },
+        { &dn2cpp_type_initialization_exception_type, 0x80131534u },
         { &dn2cpp_target_exception_type, 0x80131603u },
         { &dn2cpp_target_parameter_count_exception_type, 0x8002000Eu },
         { &dn2cpp_missing_method_exception_type, 0x80131513u },
@@ -1135,6 +1136,24 @@ Dn2CppObject* dn2cpp_exception_new(const Dn2CppTypeInfo* ti, Dn2CppString* messa
     dn2cpp_gc_store_ref(&e->inner, inner);
     e->hresult = dn2cpp_exception_default_hresult(ti);
     return e;
+}
+
+static void (*g_type_initialization_exception_store)(Dn2CppObject*, Dn2CppString*) = nullptr;
+
+void dn2cpp_set_type_initialization_exception_store(void (*store)(Dn2CppObject*, Dn2CppString*))
+{
+    g_type_initialization_exception_store = store;
+}
+
+Dn2CppObject* dn2cpp_type_initialization_exception(const char* typeName, Dn2CppObject* inner)
+{
+    Dn2CppString* name = dn2cpp_string_from_utf8(typeName, static_cast<int32_t>(std::strlen(typeName)));
+    Dn2CppString* message = dn2cpp_message_with_argument(DN2CPP_SR_TYPE_INITIALIZATION, name);
+    Dn2CppObject* wrapper = dn2cpp_exception_new(&dn2cpp_type_initialization_exception_type, message, inner);
+    DN2CPP_WEB_GC_LIVENESS(name);
+    if (g_type_initialization_exception_store != nullptr)
+        g_type_initialization_exception_store(wrapper, name);
+    return wrapper;
 }
 
 Dn2CppObject* dn2cpp_exception_for_hresult(int32_t hresult)

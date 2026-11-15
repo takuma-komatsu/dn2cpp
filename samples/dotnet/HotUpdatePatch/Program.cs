@@ -18,9 +18,8 @@ namespace HotUpdatePatch;
 // interpreted code that tripped it.
 //
 // Every value is printed through the Console.WriteLine intrinsic imports, so
-// `dotnet HotUpdatePatch.dll` is the oracle. Two sections diverge from it
-// deliberately and say so where they sit: the throwing cctor, and the final
-// escaping throw — both crash real .NET, while the transpiled base catches them.
+// `dotnet HotUpdatePatch.dll` is the oracle except for the final escaping
+// throw: the transpiled base catches it, while the standalone CLR process exits.
 internal static class Program
 {
     // An array parked in a patch static slot (a plain reference Slot copy).
@@ -173,39 +172,37 @@ internal static class Program
         Gauge.Reading = Gauge.Reading + 5;
         Gauge.Reading = Gauge.Reading + 5;
         Console.WriteLine(Gauge.Reading);
-        // A patch type whose static initializer THROWS: the type stays
-        // uninitialized, so the first touch raises the initializer's exception
-        // and every later touch — a static-field access and a static call alike
-        // — re-raises the SAME recorded failure instead of reading the
-        // half-assigned Ready (41). Like the AOT guard (dn2cpp_cctor_run_once)
-        // the failure propagates raw rather than wrapped in
-        // TypeInitializationException, so the catches bind the initializer's own
-        // exception type. The dotnet oracle crashes on the first touch: skip
-        // this section when re-deriving the transcript.
+        // Both field and method triggers replay the same TypeInitializationException.
         Console.WriteLine("before first Doomed touch");
+        TypeInitializationException? firstCctorFailure = null;
         try
         {
             Console.WriteLine(Doomed.Ready);
         }
-        catch (InvalidOperationException e)
+        catch (TypeInitializationException e)
         {
-            Console.WriteLine(e.Message);
+            firstCctorFailure = e;
+            Console.WriteLine(e.InnerException!.Message);
         }
         try
         {
             Console.WriteLine(Doomed.Ready);
         }
-        catch (InvalidOperationException e)
+        catch (TypeInitializationException e)
         {
-            Console.WriteLine(e.Message);
+            if (e != firstCctorFailure || e.InnerException is not InvalidOperationException)
+                throw new Exception("field access changed the cached initializer failure");
+            Console.WriteLine(e.InnerException!.Message);
         }
         try
         {
             Console.WriteLine(Doomed.Peek());
         }
-        catch (InvalidOperationException e)
+        catch (TypeInitializationException e)
         {
-            Console.WriteLine(e.Message);
+            if (e != firstCctorFailure || e.InnerException is not InvalidOperationException)
+                throw new Exception("method call changed the cached initializer failure");
+            Console.WriteLine(e.InnerException!.Message);
         }
         Console.WriteLine();
 
@@ -1163,7 +1160,7 @@ internal static class Gauge
 // static: the interpreter's cctor guard records the failure, leaves the type
 // uninitialized, and re-raises the same exception on every later touch — never
 // exposing the half-assigned Ready. Mirrors the AOT dn2cpp_cctor_run_once
-// semantics (raw propagation, no TypeInitializationException wrapping).
+// semantics (one cached TypeInitializationException wrapping the original).
 internal static class Doomed
 {
     public static int Ready;
