@@ -771,6 +771,7 @@ for platform in ("posix", "windows"):
 cli_stubs = r'''
 fake_frontend() {
     local frontend="$1" args dir= jobs= no_metadata=0 rejected= token fp=strict
+    local ildiet=1 ildiet_args=()
     shift
     args="$*"
     while [ "$#" -gt 0 ]; do
@@ -795,9 +796,36 @@ fake_frontend() {
                 [ "$1" = DnZlib ] || rejected="$1"
                 shift ;;
             --no-metadata-compression) no_metadata=1 ;;
+            --no-ildiet) ildiet=0 ;;
+            --ildiet-output) shift ;;
+            --ildiet-arg)
+                if [ "$#" -eq 0 ]; then
+                    rejected='--ildiet-arg expects an argument'
+                else
+                    ildiet_args+=("$1"); shift
+                fi ;;
             --bogus-flag|--tirm-reflection|extra.dll) rejected="$token" ;;
         esac
     done
+    if [ "$ildiet" = 1 ]; then
+        set -- ${ildiet_args[@]+"${ildiet_args[@]}"}
+        while [ "$#" -gt 0 ]; do
+            token="$1"; shift
+            case "$token" in
+                --work-budget)
+                    case "${1:-}" in
+                        '') rejected='missing value for --work-budget' ;;
+                        1) shift ;;
+                        *) rejected='work budget must be a positive integer'; shift ;;
+                    esac ;;
+                --request|--result)
+                    rejected="cannot override reserved ILDiet option: $token"; break ;;
+                -o|--stripping-level)
+                    rejected="direct input option '$token'"; break ;;
+                *) rejected="unknown argument: $token"; break ;;
+            esac
+        done
+    fi
     if [ -n "$rejected" ]; then
         record "REJECT:$frontend:$rejected"
         if [ "${FAKE_REJECT_MODE:-}" = accepted ]; then return 0; fi
@@ -808,6 +836,7 @@ fake_frontend() {
         fi
         return 2
     fi
+    [ -n "$dir" ] || { echo 'fake frontend requires an output directory' >&2; return 97; }
     record "ACCEPT:$frontend:$args"
     [ "${FAKE_ACCEPT_FAIL:-}" != "$frontend:$jobs" ] || return 29
     record "EMIT:$dir:$frontend:$args"
@@ -834,7 +863,7 @@ result, calls = run("cli-args", cli)
 check(result.returncode == 0, result.stderr)
 accepted = [line for line in calls if line.startswith("ACCEPT:")]
 rejected = [line for line in calls if line.startswith("REJECT:")]
-check(len(accepted) == 7 and len(rejected) == 18, (accepted, rejected))
+check(len(accepted) == 7 and len(rejected) == 36, (accepted, rejected))
 check(sum(line.startswith("EMIT:") for line in calls) == 7, calls)
 check(not any(line.startswith("NATIVE:") for line in calls), calls)
 for frontend in ("full", "console"):

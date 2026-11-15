@@ -274,7 +274,9 @@ member's compiled body runs the initializer guard on entry, so a route that
 enters it without a call site, such as a continuation or a runtime callback,
 triggers too. Only module
 initializers run at startup, before the entry point; a referenced library's runs
-even when the program touches nothing else in it. A pointer to a static method,
+even when the program touches nothing else in it. A console startup failure follows
+the unhandled-exception path and never enters Main. Hosted backends report the failed
+module and continue. A pointer to a static method,
 or a delegate bound by reflection, leaves the initializer dormant until invocation.
 A hot-update base build keeps its export contract: every non-private application method and every
 application static constructor.

@@ -970,21 +970,16 @@ void dn2cpp_cctor_run_once(std::atomic<int8_t>* flag, void (*body)(), const char
     dn2cpp_cctor_unlink(&node, nullptr);
 }
 
-void dn2cpp_cctor_run_startup(void (*ensure)(), const char* type)
+void dn2cpp_cctor_run_startup(void (*ensure)(), const char* type, bool propagateFailure)
 {
-    // The startup pass runs module initializers, the one kind no use site names, so a
-    // failure in one surfaces nowhere else: report it at once, naming the module. It
-    // must not be the process's problem either — letting the exception leave `main`'s
-    // init prologue (which sits ahead of the entry point's own handler) terminates via
-    // std::terminate, and .NET runs a library's initializer only when the program first
-    // touches that module, which it may never do. The failure stays recorded against
-    // the initializer, as every failed one does.
     try
     {
         ensure();
     }
     catch (const Dn2CppException& e)
     {
+        if (propagateFailure)
+            throw;
         dn2cpp_report_boundary_exception(e.obj, "the startup static constructor of %s",
             type != nullptr ? type : "<unknown>");
     }

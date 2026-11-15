@@ -40,7 +40,7 @@ internal static class Program
         Registry.Registered = "by-module-initializer";
     }
 
-    // Called on the FIRST line of the bucket's Main, so the sequence numbers order the
+    // Called before the bucket handles arguments, so the sequence numbers order the
     // module initializer against the entry point itself rather than against a section
     // body that runs later anyway.
     internal static void MarkMainEntered() => MainSeq = Seq.Next();
