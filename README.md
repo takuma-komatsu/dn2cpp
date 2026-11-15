@@ -1029,7 +1029,9 @@ optimization changed no results. All are on by default except
   owner of a recognized lookup or enumeration keeps its tables. The
   analysis is unsound by nature, so a stripped type **throws** rather than
   answering empty, and `--reflection-root` is the escape hatch; with this
-  flag, an unrecognized lookup is reported with that remedy.
+  flag, an unrecognized lookup is reported with that remedy. Unknown method or
+  constructor lookups also warn without the flag: unreached library members can
+  lack rows. Explicit roots keep those rows without making their bodies executable.
 - **Reflection metadata storage** defaults to packed records. Types marked with
   `[NoCompressMetadata]` (including derived classes), or named by
   a surviving `typeof` in reachable IL, use native rows for their own reflection

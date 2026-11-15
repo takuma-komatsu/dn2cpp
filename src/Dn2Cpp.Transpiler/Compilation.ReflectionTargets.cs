@@ -611,11 +611,23 @@ internal sealed partial class Compilation
                 }
                 if (api.Op is ReflectionOp.TypeGetType or ReflectionOp.AssemblyGetType)
                     FormNamedTypes(app, index, owner);
-                if (owner.Unknown is not null && api.Kind is ReflectionOpKind.Lookup or ReflectionOpKind.Enumerate
-                    && _trimReflection)
-                    RecordReflectionDiagnostic(app, site, ReflectionDiagnosticKind.Metadata,
-                        Subject(api) + " comes from " + owner.Unknown, null,
-                        api.Name >= 0 ? StringsOf(Op(api.Name)) : null, null);
+                if (owner.Unknown is not null && api.Kind is ReflectionOpKind.Lookup or ReflectionOpKind.Enumerate)
+                {
+                    // Unreached library methods lose their rows even without metadata trimming.
+                    bool listsMethods = api.Op switch
+                    {
+                        ReflectionOp.GetMethod or ReflectionOp.GetMethods or ReflectionOp.GetConstructor
+                            or ReflectionOp.GetConstructors or ReflectionOp.GetMembers or ReflectionOp.GetDefaultMembers => true,
+                        ReflectionOp.GetMember => api.MemberTypes < 0
+                            || MemberTypesMask(Op(api.MemberTypes)) is not int mask
+                            || (mask & (int)(MemberTypes.Method | MemberTypes.Constructor)) != 0,
+                        _ => false,
+                    };
+                    if (_trimReflection || !_hotUpdateBase && listsMethods)
+                        RecordReflectionDiagnostic(app, site, ReflectionDiagnosticKind.Metadata,
+                            Subject(api) + " comes from " + owner.Unknown, null,
+                            api.Name >= 0 ? StringsOf(Op(api.Name)) : null, null);
+                }
                 return;
             }
             case ReflectionOpKind.Instantiate:
