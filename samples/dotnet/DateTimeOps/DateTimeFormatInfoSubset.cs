@@ -23,6 +23,10 @@ internal static class Program
     internal static string InternalMonth(DateTimeFormatInfo info, int month, int style, bool abbreviated) => throw new InvalidOperationException("IL fixture required");
     internal static bool Adjust(DateTimeFormatInfo info, ref int year, ref int month, bool parsed) => throw new InvalidOperationException("IL fixture required");
     internal static bool Tokenize(DateTimeFormatInfo info, ref int token, ref int value) => throw new InvalidOperationException("IL fixture required");
+    internal static string TimeSpanPositive(DateTimeFormatInfo info) => throw new InvalidOperationException("IL fixture required");
+    internal static string TimeSpanPositiveAddress(DateTimeFormatInfo info) => throw new InvalidOperationException("IL fixture required");
+    internal static string TimeSpanNegative(DateTimeFormatInfo info) => throw new InvalidOperationException("IL fixture required");
+    internal static string TimeSpanNegativeAddress(DateTimeFormatInfo info) => throw new InvalidOperationException("IL fixture required");
 
     private static DateTimeFormatInfo Receiver() { trace = trace * 10 + 1; return null; }
     private static DayOfWeek Argument() { trace = trace * 10 + 2; return (DayOfWeek)7; }
@@ -227,5 +231,25 @@ internal static class Program
         Console.WriteLine("clone separator=" + clone.DateSeparator + " invariant separator=" + info.DateSeparator
             + " clone day=" + clone.GetAbbreviatedDayName(DayOfWeek.Monday));
         Console.WriteLine("DateTimeFormatInfo name edges end");
+    }
+
+    public static void RunTimeSpanPatterns()
+    {
+        Console.WriteLine("== DateTimeFormatInfo TimeSpan patterns ==");
+        var info = DateTimeFormatInfo.InvariantInfo;
+        var clone = (DateTimeFormatInfo)info.Clone();
+        clone.DateSeparator = "~";
+        foreach (bool negative in new[] { false, true })
+        {
+            Func<DateTimeFormatInfo, string> direct = negative ? TimeSpanNegative : TimeSpanPositive;
+            Func<DateTimeFormatInfo, string> address = negative ? TimeSpanNegativeAddress : TimeSpanPositiveAddress;
+            string pattern = direct(info);
+            Console.WriteLine("timespan " + (negative ? "negative" : "positive") + "=" + pattern
+                + " address=" + (address(info) == pattern) + " clone=" + (direct(clone) == pattern)
+                + " cached=" + ReferenceEquals(pattern, direct(info)));
+            Console.WriteLine("timespan null " + (negative ? "negative" : "positive")
+                + " direct=" + Show(() => direct(null)) + " address=" + Show(() => address(null)));
+        }
+        Console.WriteLine("DateTimeFormatInfo TimeSpan patterns end");
     }
 }

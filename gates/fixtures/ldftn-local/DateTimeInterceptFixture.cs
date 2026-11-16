@@ -173,6 +173,13 @@ internal static class DateTimeInterceptFixture
         Rewrite(formatOwner, "DateSpanDelegate", dtfi.Methods.Single(method => method.Name == "DateSeparatorTChar"), boundDelegate: true);
         Rewrite(formatOwner, "InternalMonth", dtfi.Methods.Single(method => method.Name == "InternalGetMonthName"));
         Rewrite(formatOwner, "Adjust", dtfi.Methods.Single(method => method.Name == "YearMonthAdjustment"));
+        foreach (var pair in new[] { ("TimeSpanPositive", "get_FullTimeSpanPositivePattern"),
+            ("TimeSpanNegative", "get_FullTimeSpanNegativePattern") })
+        {
+            var getter = dtfi.Methods.Single(method => method.Name == pair.Item2);
+            Rewrite(formatOwner, pair.Item1, getter);
+            Rewrite(formatOwner, pair.Item1 + "Address", getter, address: true);
+        }
         const string dateOwner = "DateTimePrivateSubset.Program";
         Rewrite(dateOwner, "Add", datetime.Methods.Single(method => method.Name == "TryAddTicks"));
         Rewrite(dateOwner, "AddAddress", datetime.Methods.Single(method => method.Name == "TryAddTicks"), address: true);

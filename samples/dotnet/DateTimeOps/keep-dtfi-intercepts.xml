@@ -14,6 +14,8 @@
       <method name="get_GeneralShortTimePattern" />
       <method name="get_GeneralLongTimePattern" />
       <method name="get_DateTimeOffsetPattern" />
+      <method name="get_FullTimeSpanPositivePattern" />
+      <method name="get_FullTimeSpanNegativePattern" />
     </type>
   </assembly>
 </linker>

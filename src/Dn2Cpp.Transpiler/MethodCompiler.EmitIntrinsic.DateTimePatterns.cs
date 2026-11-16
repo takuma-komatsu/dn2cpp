@@ -76,6 +76,8 @@ internal sealed partial class MethodCompiler
             {
                 "get_DateTimeOffsetPattern" => "MM/dd/yyyy HH:mm:ss zzz",
                 "get_GeneralLongTimePattern" => "MM/dd/yyyy HH:mm:ss",
+                "get_FullTimeSpanPositivePattern" => "d':'h':'mm':'ss'.'FFFFFFF",
+                "get_FullTimeSpanNegativePattern" => "'-'d':'h':'mm':'ss'.'FFFFFFF",
                 _ => "MM/dd/yyyy HH:mm"
             };
             Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd(pattern));
