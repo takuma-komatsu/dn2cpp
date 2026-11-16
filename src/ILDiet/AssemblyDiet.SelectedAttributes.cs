@@ -87,12 +87,12 @@ internal sealed partial class AssemblyDiet
             result.AttributeTypes.AddRange(result.Types);
     }
 
-    private bool ApplySelectedAttributeSites()
+    private bool ApplySelectedAttributeSites(bool metadataOnly = false)
     {
         RejectModelActivationQuery("ApplySelectedAttributeSites");
         CheckMutable();
         if (!_selectedAttributeSitesDirty) return false;
-        _selectedAttributeSitesDirty = false;
+        if (!metadataOnly) _selectedAttributeSitesDirty = false;
         _selectingAttributeOwners = true;
         try
         {
@@ -115,6 +115,14 @@ internal sealed partial class AssemblyDiet
                 var inheritValue = SummaryValueOf(read.Caller, read.Summary, SiteOperand(read.Site, api.Inherit));
                 bool inherit = api.Inherit >= 0
                     ? inheritValue.Unknown || inheritValue.Integers.Any(value => value != 0) : api.DefaultInherit;
+                if (metadataOnly)
+                {
+                    foreach (var parameter in owners.AttributeParameters)
+                        SelectAttributeProvider(parameter, classes, open, construct: false);
+                    foreach (var parameter in owners.AttributeReturns)
+                        SelectAttributeProvider(parameter, classes, open, construct: false);
+                    continue;
+                }
                 bool construct = api.Kind == ReflectionOpKind.AttributeInstances;
                 foreach (var reference in owners.AttributeTypes)
                     foreach (var source in SelectedAttributeSources(reference))
@@ -131,6 +139,8 @@ internal sealed partial class AssemblyDiet
                     if (member is ICustomAttributeProvider provider)
                         SelectAttributeProvider(provider, classes, open, construct);
                 foreach (var parameter in owners.AttributeParameters)
+                    SelectAttributeProvider(parameter, classes, open, construct);
+                foreach (var parameter in owners.AttributeReturns)
                     SelectAttributeProvider(parameter, classes, open, construct);
                 foreach (var module in owners.Assemblies)
                     SelectAttributeProvider(module.Assembly, classes, open, construct);
@@ -170,6 +180,8 @@ internal sealed partial class AssemblyDiet
         if (provider is IMemberDefinition owner) KeepAttributeProvider(owner);
         else if (provider is ParameterDefinition parameter && parameter.Method is MethodDefinition method)
             KeepMethodSignature(method);
+        else if (provider is MethodReturnType result && result.Method is MethodDefinition returnMethod)
+            KeepMethodSignature(returnMethod);
     }
 
     private bool UsesSelectedAttributeRetention(CustomAttribute attribute, ICustomAttributeProvider provider)
@@ -182,11 +194,20 @@ internal sealed partial class AssemblyDiet
             return true;
         }
         if (!row.Observed) return true;
+        // A parameter's independent execution root is its method, not a type
+        // token or an unrelated executable member of the declaring type.
+        MethodDefinition? parameterMethod = provider switch
+        {
+            ParameterDefinition parameter when parameter.Method is MethodDefinition method => method,
+            MethodReturnType result when result.Method is MethodDefinition method => method,
+            _ => null,
+        };
+        if (parameterMethod is not null)
+            return Node(parameterMethod) is not { State: var methodState } || (methodState & MethodState.Body) == 0;
         TypeDefinition? owner = provider switch
         {
             TypeDefinition type => type,
             IMemberDefinition member => member.DeclaringType,
-            ParameterDefinition parameter when parameter.Method is MethodDefinition method => method.DeclaringType,
             _ => null,
         };
         // Independently executable owners retain their ordinary attribute roots,

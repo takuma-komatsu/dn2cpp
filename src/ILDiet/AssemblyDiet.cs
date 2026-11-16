@@ -577,6 +577,8 @@ internal sealed partial class AssemblyDiet : IDisposable
 
     private void ApplyExecutableAttributeDelta(MethodDefinition method)
     {
+        MarkAttributes(method.MethodReturnType);
+        foreach (var parameter in method.Parameters) MarkAttributes(parameter);
         if (!method.HasCustomAttributes) return;
         foreach (var attribute in method.CustomAttributes)
         {

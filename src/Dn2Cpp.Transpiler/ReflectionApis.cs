@@ -42,7 +42,7 @@ internal enum ReflectionOp : byte
     TypeInitializer,
     GetMethods, GetConstructors, GetProperties, GetFields, GetEvents, GetMembers, GetNestedTypes,
     GetInterfaces, GetDefaultMembers, AssemblyGetTypes,
-    Accessor, GetParameters, ParameterType, FieldType, PropertyType, ReturnType,
+    Accessor, GetParameters, ReturnParameter, ParameterType, FieldType, PropertyType, ReturnType,
     GetElementType, MakeArrayType, GetGenericTypeDefinition, GetGenericArguments, BaseType,
     MakeGenericType, MakeGenericMethod,
     MethodInvoke, CtorInvoke, PropertyGet, PropertySet, FieldGet, FieldSet, EventAdd, EventRemove,
@@ -182,7 +182,7 @@ internal static class ReflectionApis
         or "GetGetMethod" or "GetSetMethod" or "get_GetMethod" or "get_SetMethod" or "GetAccessors"
         or "GetAddMethod" or "GetRemoveMethod" or "GetRaiseMethod" or "get_AddMethod" or "get_RemoveMethod"
         or "get_RaiseMethod"
-        or "GetParameters" or "get_ParameterType" or "get_FieldType" or "get_PropertyType" or "get_ReturnType"
+        or "GetParameters" or "get_ReturnParameter" or "get_ParameterType" or "get_FieldType" or "get_PropertyType" or "get_ReturnType"
         or "GetElementType" or "MakeArrayType" or "GetGenericTypeDefinition" or "GetGenericArguments"
         or "get_GenericTypeArguments" or "get_BaseType" or "MakeGenericType" or "MakeGenericMethod"
         or "Invoke" or "GetValue" or "SetValue" or "AddEventHandler" or "RemoveEventHandler" or "InvokeMember"
@@ -581,6 +581,8 @@ internal static class ReflectionApis
                     plain && Sig(ps, TTypes));
             case "get_ReturnType":
                 return OnReceiver(ReflectionOp.ReturnType, ReflectionOpKind.TypeIdentity, ps, plain);
+            case "get_ReturnParameter":
+                return OnReceiver(ReflectionOp.ReturnParameter, ReflectionOpKind.TypeIdentity, ps, plain);
         }
         return null;
     }

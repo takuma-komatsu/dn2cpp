@@ -56,6 +56,8 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|repeated-arrays-prefix:${D
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/CutRequestCapture.cs gates/fixtures/ildiet-metadata-validation/cut_authority_admission.py gates/fixtures/ildiet-metadata-validation/selected_cut_admission.py gates/fixtures/ildiet-metadata-validation/cut_request_capture.py"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.cs gates/fixtures/ildiet-metadata-validation/check-stripping.py"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|stripping-levels:high,medium"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|return-parameter-prefix:${DN2CPP_BEFORE_RETURN_PARAMETER_ATTRIBUTES:-}"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/ReturnParameterAttributesSubset.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.Intercepts.cs gates/fixtures/ildiet-metadata-validation/intercept_retention.py"
 gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for ILDiet validation"
 
@@ -424,10 +426,35 @@ gate_extra_asserts() {
         || { echo 'FAIL: application types selected only by name were not listed' >&2; return 1; }
     gate_output witness "$native" 'runtime reflection preservation end' --count any --policy crlf \
         || { echo 'FAIL: runtime reflection preservation section did not run' >&2; return 1; }
+    before="$out/return-attributes-before.native"
+    DN2CPP_BEFORE_RETURN_PARAMETER_ATTRIBUTES=1 gate_capture_ok "$before" run_bounded "$out/ILDietControl$EXE_EXT"
+    gate_output select "$native" "$out/return-attributes-prefix.native.stdout" --before '== return parameter attributes ==' --policy exact
+    gate_output compare "$out/return-attributes-prefix.native.stdout" "$before.stdout"
+    gate_output byte-witness "$native" --count 1 '== return parameter attributes ==' 'return parameter attributes end' \
+        'return native data=True/2' 'ordinary parameter data=True/1' 'return packed data=True/1/T' \
+        'return native instance=native/named/7/-1/True' 'return packed instance=packed/generic/9/U/True' \
+        'late parameter data=1/1' 'late parameter call=17'
+    gate_capture_ok "$out/return-attributes-stubs" dotnet exec "$PROBE" --method-stubs \
+        "$(ildiet_generation "$out/ildiet")/ILDietControl.dll" \
+        'ReturnDataAttribute::.ctor' 'ReturnDataAttribute::set_Name' \
+        'NativeReturnRows::Data' 'NativeReturnRows::Instance' 'NativeReturnRows::Argument' \
+        'PackedReturnRows`1::Data' 'PackedReturnRows`1::Instance' \
+        'ReturnNoteAttribute::.ctor' 'ReturnNoteAttribute::set_Name' 'ReturnKeptAttribute::.ctor' \
+        'LateArgumentAttribute::.ctor' 'LateArgumentAttribute::set_Number' \
+        'LateReturnAttribute::.ctor' 'LateReturnAttribute::set_Number' 'LateExecutedRows::Execute'
+    gate_assert_text "$out/return-attributes-stubs.stdout" "$(printf '%s\n' \
+        'ReturnDataAttribute::.ctor stub=True' 'ReturnDataAttribute::set_Name stub=True' \
+        'NativeReturnRows::Data stub=True' 'NativeReturnRows::Instance stub=True' 'NativeReturnRows::Argument stub=True' \
+        'PackedReturnRows`1::Data stub=True' 'PackedReturnRows`1::Instance stub=True' \
+        'ReturnNoteAttribute::.ctor stub=False' 'ReturnNoteAttribute::set_Name stub=False' 'ReturnKeptAttribute::.ctor stub=False' \
+        'LateArgumentAttribute::.ctor stub=False' 'LateArgumentAttribute::set_Number stub=False' \
+        'LateReturnAttribute::.ctor stub=False' 'LateReturnAttribute::set_Number stub=False' 'LateExecutedRows::Execute stub=False')"
 }
 # Construct(Type) activates attribute-carried types no analyzable site names; their
 # constructors are preserved explicitly.
-corelib_diff_gate ILDietControl -r "$DIET_LIB" --link-xml samples/dotnet/ILDietControl/keep-attribute-constructed.xml
+corelib_diff_gate ILDietControl -r "$DIET_LIB" --link-xml samples/dotnet/ILDietControl/keep-attribute-constructed.xml \
+    --reflection-metadata 'ReflectInvoke.ReturnParameterAttributesSubset+NativeReturnRows=packed' \
+    --reflection-metadata 'ReflectInvoke.ReturnParameterAttributesSubset+PackedReturnRows`1=native'
 unset -f gate_extra_asserts
 DIET_OUT="$_CG_OUT"
 DIET_APP="$_CG_APP"

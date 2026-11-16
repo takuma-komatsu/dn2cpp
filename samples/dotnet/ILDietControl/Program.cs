@@ -94,6 +94,9 @@ internal static class Program
         Report("runtime-name-construction", () => ((Shape)Activator.CreateInstance(byType!)!).Who());
         Report("runtime-name-invoke", () => byAssembly!.GetMethod("Value")!.Invoke(null, null));
         Console.WriteLine("runtime reflection preservation end");
+        if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_RETURN_PARAMETER_ATTRIBUTES") == "1")
+            return;
+        ReflectInvoke.ReturnParameterAttributesSubset.Program.Run();
     }
 
     private static int RunStatic<T>(int value) where T : IStatic<T> => T.Evaluate(value);

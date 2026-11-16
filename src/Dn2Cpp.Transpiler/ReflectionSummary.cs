@@ -84,7 +84,7 @@ internal enum TermKind : byte
     Accessor,
     /// <summary>MakeGenericMethod: child 0 the method, child 1 the arguments.</summary>
     MadeGenericMethod,
-    /// <summary>Parameter <see cref="RTerm.Number"/> of method child 0.</summary>
+    /// <summary>Parameter <see cref="RTerm.Number"/> of method child 0; -1 is its return parameter.</summary>
     Parameter,
     /// <summary>A delegate: child 0 its target methods, child 1 its type.</summary>
     Delegate,
@@ -2489,6 +2489,8 @@ internal sealed class SummaryInterpreter
                 return FreshArray(offset, Known(Term(TermKind.Enumeration, 0, null, (long)api.Op,
                     new[] { Child(target), api.Op is ReflectionOp.GetParameters or ReflectionOp.GetGenericArguments
                         ? -1 : Child(Flags(api, Op)), Optional(api.Name) })));
+            case ReflectionOp.ReturnParameter:
+                return Known(Term(TermKind.Parameter, 0, null, -1, new[] { Child(target) }));
             case ReflectionOp.GetCustomAttributes:
             {
                 int inherit = api.Inherit >= 0 ? Child(Op(api.Inherit)) : Term(TermKind.Int, 0, null, api.DefaultInherit ? 1 : 0);

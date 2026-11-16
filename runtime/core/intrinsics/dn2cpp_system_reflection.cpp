@@ -4800,6 +4800,8 @@ Dn2CppObject* dn2cpp_methodref_return_parameter(Dn2CppMethodRef* m)
     auto* pi = static_cast<Dn2CppParamInfo*>(dn2cpp_alloc(sizeof(Dn2CppParamInfo)));
     *pi = Dn2CppParamInfo{};
     pi->paramType = row.returnType;
+    pi->customAttrs = row.returnCustomAttrs;
+    pi->customAttrCount = row.returnCustomAttrCount;
     pi->reflectionSignature = row.returnReflectionSignature;
     pi->genericDefinitionKey = row.genericDefinitionReturnKey;
     pi->requiredCustomModifiers = row.returnRequiredCustomModifiers;

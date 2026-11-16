@@ -1696,6 +1696,15 @@ rule. Factories retain constant bits and UTF-16 strings, including Decimal and
 DateTime attribute constants. Invoke substitutes the canonical Missing singleton
 before conversion and applies default/by-ref copy-back only after target success.
 
+Return-parameter custom attributes come from ECMA parameter sequence zero and
+follow the method owner's metadata format, including symbolic generic definitions.
+The shared reflection summary preserves that parameter identity: data reads retain
+rows only, while instance reads select attribute constructors and named setters
+without retaining the declaring method's body.
+ILDiet selects parameter provider metadata before lookup closure and constructs attributes
+after bindings settle. A parameter's ordinary attribute roots follow its method's
+execution root, including later body promotion, not a token for its declaring type.
+
 Packed static records are aligned and identified by the low address bit in a
 pointer-sized handle. Native static and dynamic rows retain untagged real
 pointers; dynamic rows keep their existing GC roots. Native views read those

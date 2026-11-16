@@ -587,6 +587,7 @@ internal sealed partial class AssemblyDiet
         internal readonly List<IMemberDefinition> Members = new();
         internal readonly List<TypeReference> AttributeTypes = new();
         internal readonly List<ParameterDefinition> AttributeParameters = new();
+        internal readonly List<MethodReturnType> AttributeReturns = new();
         internal readonly List<ModuleDefinition> Assemblies = new();
         internal readonly List<TypeReference> SymbolicAssemblyOwners = new();
         internal bool ParameterTypesResolved;
@@ -604,6 +605,7 @@ internal sealed partial class AssemblyDiet
             Members.AddRange(other.Members);
             AttributeTypes.AddRange(other.AttributeTypes);
             AttributeParameters.AddRange(other.AttributeParameters);
+            AttributeReturns.AddRange(other.AttributeReturns);
             Assemblies.AddRange(other.Assemblies); SymbolicAssemblyOwners.AddRange(other.SymbolicAssemblyOwners);
             ParameterTypesResolved |= other.ParameterTypesResolved; Strings.AddRange(other.Strings); Integers.AddRange(other.Integers);
             Unknown |= other.Unknown;
@@ -619,6 +621,7 @@ internal sealed partial class AssemblyDiet
     {
         target.Members.AddRange(source.Members);
         target.AttributeParameters.AddRange(source.AttributeParameters);
+        target.AttributeReturns.AddRange(source.AttributeReturns);
         target.Assemblies.AddRange(source.Assemblies);
         target.SymbolicAssemblyOwners.AddRange(source.SymbolicAssemblyOwners);
         target.ParameterTypesResolved |= source.ParameterTypesResolved;
@@ -845,14 +848,22 @@ internal sealed partial class AssemblyDiet
                 if (_selectingAttributeOwners && term.Kind == TermKind.Parameter)
                 {
                     foreach (var member in owners.Members)
-                        if (member is MethodDefinition method && term.Number >= 0 && term.Number < method.Parameters.Count)
-                            result.AttributeParameters.Add(method.Parameters[(int)term.Number]);
+                        if (member is MethodDefinition method)
+                        {
+                            if (term.Number == -1) result.AttributeReturns.Add(method.MethodReturnType);
+                            else if (term.Number >= 0 && term.Number < method.Parameters.Count)
+                                result.AttributeParameters.Add(method.Parameters[(int)term.Number]);
+                        }
                     result.Unknown = owners.Unknown;
                     break;
                 }
                 if (_selectingAttributeOwners && parameterType)
+                {
                     foreach (var parameter in owners.AttributeParameters)
                         AddSummaryType(result, parameter.ParameterType, owners);
+                    foreach (var parameter in owners.AttributeReturns)
+                        AddSummaryType(result, parameter.ReturnType, owners);
+                }
                 foreach (var member in owners.Members)
                     switch (member)
                     {
@@ -861,7 +872,9 @@ internal sealed partial class AssemblyDiet
                         case MethodDefinition method:
                             if (term.Kind == TermKind.Parameter)
                             {
-                                if (term.Number >= 0 && term.Number < method.Parameters.Count)
+                                if (term.Number == -1)
+                                    AddSummaryType(result, method.ReturnType, owners);
+                                else if (term.Number >= 0 && term.Number < method.Parameters.Count)
                                     AddSummaryType(result, method.Parameters[(int)term.Number].ParameterType, owners);
                             }
                             else AddSummaryType(result, method.ReturnType, owners);
@@ -871,7 +884,8 @@ internal sealed partial class AssemblyDiet
                     if (parameterType && owners.ParameterTypesResolved) AddSummaryType(result, owner, owners);
                     else if (IsSymbolic(owner))
                     {
-                        var projection = term.Kind == TermKind.Parameter ? ProjectionKind.ParameterTypes
+                        var projection = term.Kind == TermKind.Parameter
+                            ? term.Number == -1 ? ProjectionKind.ReturnTypes : ProjectionKind.ParameterTypes
                             : (ReflectionOp)term.Number switch
                             {
                                 ReflectionOp.FieldType => ProjectionKind.FieldTypes,
@@ -1528,6 +1542,12 @@ internal sealed partial class AssemblyDiet
 
     private void ApplySummary(MethodDefinition caller, ReflectionSummary summary)
     {
+        // Register provider metadata before lookup work can visit its attributes.
+        // Instance factories still wait for the settled binding pass in Drain.
+        foreach (var site in summary.Sites)
+            if (site.Api.Recognized && ReflectionRoutes.ReadsReflectedAttributes(site.Api.Kind))
+                RegisterSelectedAttributeSite(caller, summary, site);
+        ApplySelectedAttributeSites(metadataOnly: true);
         _summaryValues.Clear();
         foreach (var site in summary.Sites)
         {
@@ -1535,7 +1555,6 @@ internal sealed partial class AssemblyDiet
             var api = site.Api;
             if (!api.Recognized) { _summaryUnknown++; continue; }
             _reflectionRules++;
-            if (ReflectionRoutes.ReadsReflectedAttributes(api.Kind)) RegisterSelectedAttributeSite(caller, summary, site);
             var target = SummaryValueOf(caller, summary, SiteOperand(site, api.Target));
             // Formation contributes bindings even when its metadata result is discarded.
             if (api.Kind == ReflectionOpKind.Instantiate)
