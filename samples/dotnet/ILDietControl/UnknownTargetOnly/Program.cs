@@ -16,6 +16,17 @@ internal static class Program
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        if (Environment.GetEnvironmentVariable("DN2CPP_ARRAY_SHAPES") == "1")
+        {
+            Console.WriteLine("== unknown array shapes ==");
+            UnknownArray(typeof(UnretainedArrayElement), 0);
+            UnknownArray(typeof(UnretainedArrayElement), 2);
+            UnknownArray(typeof(ArrayElementTarget), 0);
+            Type held = typeof(ArrayElementTarget[,]);
+            UnknownArray(held.GetElementType()!, held.GetArrayRank());
+            Console.WriteLine("unknown array shapes end");
+            return;
+        }
         Console.WriteLine("unknown-target prefix");
         if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_UNKNOWN_TARGET") == "1")
             return;
@@ -204,6 +215,19 @@ internal static class Program
             Console.WriteLine("blank refused: " + e.GetType().Name + ": " + e.Message);
         }
         Console.WriteLine("a virtual delegate's method, a name bound per instantiation and an uninitialized parameter type end");
+    }
+
+    private static void UnknownArray(Type element, int rank)
+    {
+        try
+        {
+            Type shape = rank == 0 ? element.MakeArrayType() : element.MakeArrayType(rank);
+            Console.WriteLine("array shape=" + shape.FullName);
+        }
+        catch (NotSupportedException e)
+        {
+            Console.WriteLine("array shape refused: " + e.GetType().Name + ": " + e.Message);
+        }
     }
 
     // The virtual delegate's override is unknown to this method's summary. Its
@@ -440,3 +464,5 @@ internal sealed class ConstructedTarget
 
     public override string ToString() => _label;
 }
+
+internal sealed class UnretainedArrayElement { }

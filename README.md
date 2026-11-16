@@ -289,7 +289,11 @@ known type arguments. Under High, a recognized lookup or enumeration such as
 `typeof(T).GetMethod("Name")` retains metadata only, and a constant name passed
 to `Type.GetType` or `Assembly.GetType` resolves to the type's identity and
 member metadata without its bodies or static constructor; a constant closed
-generic name forms that instantiation as `MakeGenericType` would. An attribute
+generic name forms that instantiation as `MakeGenericType` would. A recognized
+`MakeArrayType` retains the exact SZ or ranked array identity without allocating
+an array or retaining element bodies. Unknown operands can reuse retained shapes;
+an absent shape throws `PlatformNotSupportedException` with a static-shape remedy.
+An attribute
 metadata read such as `IsDefined` or `GetCustomAttributesData` compiles no
 attribute constructor or named-argument setter. A recognized invocation, field
 or property access, event subscription, delegate binding, construction or

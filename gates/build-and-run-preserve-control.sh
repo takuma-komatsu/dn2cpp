@@ -1639,6 +1639,16 @@ echo "== A reflection target from a parameter, a collection, a written-back argu
     }
     gate_extra_asserts() {
         local out="$1" native before prefix
+        DN2CPP_ARRAY_SHAPES=1 gate_capture_ok "$out/array-shapes.native" run_bounded "$out/UnknownTargetOnly$EXE_EXT" || return $?
+        gate_output witness "$out/array-shapes.native.stdout" --count 1 --policy crlf \
+            '== unknown array shapes ==' 'unknown array shapes end' \
+            'array shape refused: PlatformNotSupportedException: ILDietUnknownTargetOnly.UnretainedArrayElement[] in UnknownTargetOnly: the array shape was not retained in this image; fix: retain the exact array shape with a reachable typeof(ILDietUnknownTargetOnly.UnretainedArrayElement).MakeArrayType() call' \
+            'array shape refused: PlatformNotSupportedException: ILDietUnknownTargetOnly.UnretainedArrayElement[,] in UnknownTargetOnly: the array shape was not retained in this image; fix: retain the exact array shape with a reachable typeof(ILDietUnknownTargetOnly.UnretainedArrayElement).MakeArrayType(2) call' \
+            'array shape=ILDietUnknownTargetOnly.ArrayElementTarget[]' \
+            'array shape=ILDietUnknownTargetOnly.ArrayElementTarget[,]' || return $?
+        if grep -Eq 'ti_(arr|md)_.*UnretainedArrayElement' "$out/generated.h"; then
+            echo 'FAIL: an unknown array operand retained a speculative shape' >&2; return 1
+        fi
         native="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-native-58.stdout"
         gate_capture_ok "${native%.stdout}" run_bounded "$out/UnknownTargetOnly$EXE_EXT" || return $?
         gate_output view "$native" "$native.records" --policy crlf

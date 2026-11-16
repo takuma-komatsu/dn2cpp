@@ -874,6 +874,7 @@ static class Program
         // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        bool beforeArrayShapes = args.Length > 0 && args[0] == "before-array-shapes";
         bool beforeNestedNames = args.Length > 0 && args[0] == "before-nested-names";
         bool beforeDelegateAttributes = args.Length > 0 && args[0] == "before-delegate-attributes";
         bool beforeSequenceDefaults = args.Length > 0 && args[0] == "before-sequence-defaults";
@@ -881,7 +882,7 @@ static class Program
         bool beforeWrittenReflectedArrays = args.Length > 0 && args[0] == "before-written-reflected-arrays";
         bool beforeRepeatedArrayCopies = args.Length > 0 && args[0] == "before-repeated-array-copies";
         if (beforeNestedNames || beforeDelegateAttributes || beforeSequenceDefaults || beforeIsinstNull
-            || beforeWrittenReflectedArrays || beforeRepeatedArrayCopies)
+            || beforeWrittenReflectedArrays || beforeRepeatedArrayCopies || beforeArrayShapes)
             args = Array.Empty<string>();
 
         Console.WriteLine("== recognized reflection table ==");
@@ -1038,6 +1039,65 @@ static class Program
         Console.WriteLine("== repeated array copies ==");
         Show("written copied loop", WrittenCopiedLoop);
         Console.WriteLine("repeated array copies end");
+        if (beforeArrayShapes)
+            return;
+        Console.WriteLine("== recognized array shapes ==");
+        Show("known array SZ", KnownArraySZ);
+        Show("known array rank", KnownArrayRank);
+        Show("known array invalid chain", InvalidArrayChain);
+        Show("known array void chain", VoidArrayChain);
+        Console.WriteLine("recognized array shapes end");
+    }
+
+    private sealed class ShapeOnly
+    {
+        public static void Unselected() => throw new Exception("unselected array element body");
+    }
+
+    private static string InvalidArrayChain()
+    {
+        try
+        {
+            typeof(int).MakeArrayType(33).MakeArrayType();
+            return "accepted";
+        }
+        catch (TypeLoadException)
+        {
+            return "TypeLoadException";
+        }
+    }
+
+    private static string VoidArrayChain()
+    {
+        try
+        {
+            typeof(void).MakeArrayType().MakeArrayType();
+            return "accepted";
+        }
+        catch (TypeLoadException)
+        {
+            return "TypeLoadException";
+        }
+    }
+
+    private static string KnownArraySZ()
+    {
+        Type element = typeof(ShapeOnly);
+        Type shape = element.MakeArrayType();
+        return shape.IsSZArray + "/" + (shape.GetArrayRank() == 1) + "/"
+            + ReferenceEquals(shape.GetElementType(), element) + "/"
+            + ReferenceEquals(shape, element.MakeArrayType());
+    }
+
+    private static string KnownArrayRank()
+    {
+        Type element = typeof(ShapeOnly);
+        Type one = element.MakeArrayType(1);
+        Type two = element.MakeArrayType(2);
+        return !one.IsSZArray + "/" + (one.GetArrayRank() == 1) + "/"
+            + (two.GetArrayRank() == 2) + "/" + ReferenceEquals(two.GetElementType(), element) + "/"
+            + ReferenceEquals(two, element.MakeArrayType(2)) + "/"
+            + !ReferenceEquals(one, element.MakeArrayType());
     }
 
     private static void Show(string label, Func<string> run)

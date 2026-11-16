@@ -11,8 +11,7 @@ using System.Runtime.CompilerServices;
 // GetEnumValuesAsUnderlyingType/FindInterfaces/IsVisible family,
 // MemberInfo.CustomAttributes (CustomAttributeData, AttributeType only), and
 // RuntimeHelpers.AllocateTypeAssociatedMemory. Everything here matches real
-// .NET except the marked AOT-boundary divergences: MakeArrayType over an
-// element type never instantiated as an array throws NotSupportedException,
+// .NET except the marked AOT-boundary divergences:
 // CustomAttributeData.ConstructorArguments throws the catchable
 // PlatformNotSupportedException (dn2cpp records AttributeType only),
 // ParameterInfo.DefaultValue throws it too (Invoke's default factories do not
@@ -123,7 +122,7 @@ namespace ReflectLongtailSubset
             Show("haselem-int", typeof(int).HasElementType);
             Show("haselem-rt", new Gadget[0].GetType().HasElementType);
 
-            // -- MakeArrayType: in-image resolution + the AOT boundary --
+            // -- MakeArrayType: known shapes need no array allocation --
             Show("makearr-int", typeof(int).MakeArrayType() == typeof(int[]));
             Show("makearr-ref", tg.MakeArrayType() == typeof(Gadget[]));
             try
@@ -135,10 +134,7 @@ namespace ReflectLongtailSubset
             {
                 Console.WriteLine("makearr-missing=NotSupportedException");
             }
-            // The rank overload denotes a MULTIDIMENSIONAL array type even for
-            // rank 1 (T[*] != T[]) — dn2cpp models no MD array types, so it
-            // throws NotSupportedException (intentional divergence, see the
-            // header comment).
+            // The ranked overload denotes a non-SZ shape, even for rank one.
             try
             {
                 typeof(int).MakeArrayType(2);

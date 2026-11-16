@@ -609,6 +609,24 @@ internal sealed partial class Compilation
                     ApplyAttributeRead(app, site, owner, construct: false);
                     return;
                 }
+                if (api.Op == ReflectionOp.MakeArrayType)
+                {
+                    foreach (var e in owner.Items)
+                    {
+                        if (e.Kind != REntityKind.Type || e.Inherited || e.Type is not { } element
+                            || ContainsCanonPlaceholder(element) || ContainsGenericVar(element))
+                            continue;
+                        element = SignatureForm(element);
+                        if (!ValidArrayElement(element))
+                            continue;
+                        if (api.Arity < 0)
+                            NoteTypeIdentityClosure(TypeDesc.MakeSZArray(element), keepSeed: false);
+                        else
+                            foreach (var rank in Op(api.Arity).Items)
+                                if (rank.Kind == REntityKind.Int && rank.Number is > 0 and <= 32)
+                                    NoteTypeIdentityClosure(TypeDesc.MakeMDArray(element, (int)rank.Number), keepSeed: false);
+                    }
+                }
                 if (api.Op is ReflectionOp.TypeGetType or ReflectionOp.AssemblyGetType)
                     FormNamedTypes(app, index, owner);
                 if (owner.Unknown is not null && api.Kind is ReflectionOpKind.Lookup or ReflectionOpKind.Enumerate)
@@ -3406,6 +3424,10 @@ internal sealed partial class Compilation
         _ => PrimitiveBacked(t),
     };
 
+    private static bool ValidArrayElement(TypeDesc element) =>
+        !element.IsVoid && element.Kind != TypeKind.ByRef && element is not { Class.IsByRefLike: true }
+        && element is not { Kind: TypeKind.Class, Class.FullName: "System.Void" };
+
     /// <summary>A corlib primitive-backing class as the primitive signatures spell it.</summary>
     private static TypeDesc PrimitiveBacked(TypeDesc t) =>
         t.Kind == TypeKind.Class && WellKnownPrimitive(t.Class!.FullName) is { } primitive ? primitive : t;
@@ -3718,11 +3740,14 @@ internal sealed partial class Compilation
                         continue;
                     else if (e.Kind == REntityKind.Type && e.Type is { } element)
                     {
+                        element = SignatureForm(element);
+                        if (!ValidArrayElement(element))
+                            continue;
                         if (t.Number == global::Dn2Cpp.ReflectionTypeName.SZArray)
                             result.Add(TypeEntity(TypeDesc.MakeSZArray(element)));
-                        else if (t.Number > 0)
+                        else if (t.Number is > 0 and <= 32)
                             result.Add(TypeEntity(TypeDesc.MakeMDArray(element, (int)t.Number)));
-                        else
+                        else if (t.Number == 0)
                             result.Unknown ??= "MakeArrayType with a rank not known statically";
                     }
                     else if (e.Kind == REntityKind.Template)
