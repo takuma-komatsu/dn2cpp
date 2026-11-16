@@ -4061,6 +4061,7 @@ internal sealed partial class CppEmitter
             _c.KeepsReflectionMetadata(method.DeclaringClass)
             && (_c.Reachable.Contains(method) || _c.KeepsUnreachedRow(method))
             && (CoreIntrinsics.BrDelegateCallable.Matches(method)
+                || CoreIntrinsics.IsMathOverflowHelper(method)
                 || CoreIntrinsics.IsDateTimeFormatInfoBoundary(method)
                 || CoreIntrinsics.IsDateTimeCultureManagedBody(method)
                 || (CoreIntrinsics.IsRuntimeTypeHandleCopy(method) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(method))

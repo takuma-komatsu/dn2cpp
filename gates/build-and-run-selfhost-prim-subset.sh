@@ -81,6 +81,8 @@
 #     retains, through public APIs only.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
+# Non-public Math metadata stays discoverable without retaining its body; reflected
+# FieldDesc operations use the same explicit CoreCLR boundary as direct calls.
 source "$(dirname "$0")/_common.sh"
 prepare_cli
 source "$(dirname "$0")/_delegate-callable-bodies.sh"
@@ -123,6 +125,14 @@ gate_extra_asserts() {
     gate_capture_ok "$out/runtime-prefix" run_bounded dotnet "$_CG_APP" before-runtime-primitives || return 1
     gate_output prefix "$out/native.stdout" "$out/runtime-prefix.stdout" \
         --before '== Runtime method enumeration contract ==' --policy crlf || return 1
+    gate_output witness "$out/native.stdout" 'math-overflow-helper:True' 'Non-public CoreLib metadata end' --count 1 --policy crlf || return 1
+    gate_capture_ok "$out/corelib-before" run_bounded dotnet "$_CG_APP" before-corelib-nonpublic || return 1
+    gate_output prefix "$out/native.stdout" "$out/corelib-before.stdout" \
+        --before '== Non-public CoreLib metadata ==' --policy crlf || return 1
+    if grep -Eq 'void [[:alnum:]_]*ThrowNegateTwosCompOverflow[[:alnum:]_]*\(' "$out"/generated*.cpp "$out/generated.h"; then
+        echo 'FAIL: a metadata-only Math lookup retained its body' >&2
+        return 1
+    fi
     delegate_callable_asserts "$out"
     delegate_callable_retained_only "$out"
     gc_collector_asserts "$out"
@@ -135,6 +145,7 @@ gate_extra_asserts() {
     gate_output compare "$out/runtime-type-oracle.stderr" "$out/runtime-type-native.stderr"
     gate_capture_ok "$out/runtime-field-boundary" run_bounded "$out/SelfHostPrimSubset$EXE_EXT" native-boundary
     gate_output byte-witness "$out/runtime-field-boundary.stdout" 'field-handle-GetAttributes-direct:PlatformNotSupportedException:System.RuntimeFieldHandle.GetAttributes requires CoreCLR field descriptors. Use FieldInfo instead.' --count 1 --policy crlf
+    gate_output byte-witness "$out/runtime-field-boundary.stdout" 'field-handle-GetAttributes-reflection:PlatformNotSupportedException:System.RuntimeFieldHandle.GetAttributes requires CoreCLR field descriptors. Use FieldInfo instead.' --count 1 --policy crlf
 }
 
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \

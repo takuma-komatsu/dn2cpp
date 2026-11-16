@@ -1406,6 +1406,23 @@ internal static partial class CoreIntrinsics
         };
     }
 
+    internal static bool IsMathOverflowHelper(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.Math"
+            || method.Name != "ThrowNegateTwosCompOverflow"
+            || !method.IsStatic || method.IsVirtual || method.Rva == 0
+            || method.PInvoke is not null
+            || (method.Attributes & (System.Reflection.MethodAttributes.MemberAccessMask
+                | System.Reflection.MethodAttributes.PinvokeImpl)) != System.Reflection.MethodAttributes.Assembly
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0 && signature.ReturnType.IsVoid;
+    }
+
     // FieldDesc addresses and RtFieldInfo are not native FieldInfo metadata handles.
     internal static bool IsCoreClrFieldDescOperation(MethodInfo method)
     {

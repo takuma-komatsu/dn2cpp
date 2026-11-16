@@ -950,6 +950,11 @@ internal sealed partial class Compilation
         CoreIntrinsics.ValidateVectorAlignment(target);
         CoreIntrinsics.ValidateConcreteVectorReduction(target);
         _reflectionSelectionCount++;
+        // Reuse the call lowerings without following runtime-owned implementation bodies.
+        if (CoreIntrinsics.IsMathOverflowHelper(target))
+            NoteIntrinsicFtnTarget(target);
+        if (CoreIntrinsics.IsCoreClrFieldDescOperation(target))
+            NoteInterceptFtnTarget(target);
         if (CoreIntrinsics.BrDelegateCallable.Matches(target)
             || CoreIntrinsics.IsCoreClrGcMemoryQuery(target)
             || CoreIntrinsics.IsCoreClrFinalizerWorker(target)

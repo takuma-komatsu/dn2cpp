@@ -142,5 +142,13 @@ internal static class Program
         ActivationSubset.Program.Run();
         DefaultPrincipalPublicSubset.Program.Run();
         KnownConstantSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-corelib-nonpublic")
+            return;
+        Console.WriteLine("== Non-public CoreLib metadata ==");
+        var overflow = typeof(Math).GetMethod("ThrowNegateTwosCompOverflow",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Console.WriteLine("math-overflow-helper:" + (overflow is not null && overflow.IsAssembly
+            && overflow.IsStatic && overflow.ReturnType == typeof(void) && overflow.GetParameters().Length == 0));
+        Console.WriteLine("Non-public CoreLib metadata end");
     }
 }
