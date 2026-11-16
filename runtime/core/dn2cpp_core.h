@@ -1208,6 +1208,9 @@ struct Dn2CppMethodInfo
     // method), else null. Invoker thunks are shared per signature, so the row
     // carries it.
     void (*initializer)();
+    // ECMA parameter sequence zero belongs to the return, not the method itself.
+    Dn2CppMetadataTable<Dn2CppAttrInfo> returnCustomAttrs;
+    int32_t returnCustomAttrCount;
 };
 
 // A synthesized constructor differs only in its allocation's declaring type.

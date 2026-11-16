@@ -58,6 +58,8 @@
 # Concrete interface dispatch traps retain signature dependencies that relation-only rows do not need.
 # Completion-signature layout probes remain bounded to the original owner snapshot.
 # A class first named by an abstract slot's signature retains callable attribute constructors.
+# Return-parameter attributes retain metadata without bodies, and construct
+# selected attributes with named arguments on native and packed definition rows.
 # Consolidated reflection-invocation gate. Merges the former reflect dynamic-use
 # subset gates into one multi-section program, transpiled once against the
 # tree-shaken real CoreLib and diffed exactly against real .NET. Covers:
@@ -294,6 +296,7 @@ DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflecti
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-leaves-v1|runtime-member-attributes-prefix:${DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES:-}|runtime-return-modifiers-prefix:${DN2CPP_BEFORE_RUNTIME_RETURN_MODIFIERS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-dispatch-v1|dispatch-prefix:${DN2CPP_BEFORE_REFLECTION_DISPATCH:-}|attribute-minted-prefix:${DN2CPP_BEFORE_ATTRIBUTE_MINTED:-}|template-accessors-prefix:${DN2CPP_BEFORE_TEMPLATE_ACCESSORS:-}|pointer-returns-prefix:${DN2CPP_BEFORE_POINTER_RETURNS:-}|delegate-invoke-targets-prefix:${DN2CPP_BEFORE_DELEGATE_INVOKE_TARGETS:-}|null-bound-chains-prefix:${DN2CPP_BEFORE_NULL_BOUND_CHAINS:-}|renamed-slot-bindings-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_BINDINGS:-}|settled-object-virtual-prefix:${DN2CPP_BEFORE_SETTLED_OBJECT_VIRTUAL:-}|renamed-slot-fillers-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_FILLERS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|singular-member-lookups:folding,ambiguity,typed,inheritance|singular-member-prefix:before-singular-member-lookups"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|return-parameter-attributes:packed-definition,native|return-parameter-prefix:before-return-parameter-attributes"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|inherited-gvm-remedy-v1|inherited-gvm-remedy-env:${DN2CPP_INHERITED_GVM_REMEDY:-}|inherited-gvm-remedy-replay:no-ildiet,base-link,actual-xml|stripped-class-remedy-wrapper-v1|stripped-class-remedy-argv:class-remedies|stripped-interface-remedy-wrapper-v1|stripped-interface-remedy-argv:interface-remedies|interface-remedy-prefix-argv:before-interface-remedy-rows|stripped-overrides:${DN2CPP_STRIPPED_OVERRIDES:-}|library-struct-prefix:${DN2CPP_BEFORE_LIBRARY_STRUCT_RETURN:-}|function-pointer-identity-prefix:${DN2CPP_BEFORE_FUNCTION_POINTER_IDENTITY:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|pointer-fields-prefix:${DN2CPP_BEFORE_POINTER_FIELDS:-}|object-methods-prefix-argv:before-object-method-enumeration|property-accessors-prefix-argv:before-property-accessors|property-hiding-prefix-argv:before-property-hiding"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|constructor-messages-prefix-argv:before-constructor-messages"
@@ -2236,7 +2239,7 @@ gate_extra_asserts() {
     done
 
     # Initial intrinsic lookup allocates one native method row; enumeration can
-    # allocate inherited Object rows. Each native row includes its symbolic signature pointer.
+    # allocate inherited Object rows. Each native row includes its symbolic signature and return-attribute table.
     # Synthesized metadata rows hold MethodInfo inline and are interned on cold lookup.
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.
@@ -2265,7 +2268,8 @@ reflection_layout_axis=default
 gate_python gates/fixtures/reflection-gate-inputs-test.py
 bash gates/fixtures/reflection-gate-inputs.sh "${DN2CPP_PYTHON:-}"
 DN2CPP_STRICT_COMPLETION=1 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|strict-completion" \
-    corelib_diff_gate ReflectInvoke --no-ildiet --link-xml samples/dotnet/ReflectInvoke/link.xml System.ComponentModel.TypeConverter System.Linq System.Threading.Tasks.Parallel
+    corelib_diff_gate ReflectInvoke --no-ildiet --link-xml samples/dotnet/ReflectInvoke/link.xml System.ComponentModel.TypeConverter System.Linq System.Threading.Tasks.Parallel \
+        --reflection-metadata 'ReflectInvoke.ReturnParameterAttributesSubset+PackedReturnRows`1=packed'
 for axis in native dotnet; do
     if [ "$axis" = native ]; then
         gate_capture_ok "$_CG_OUT/private-accessors-before.$axis" run_bounded "$_CG_OUT/ReflectInvoke$EXE_EXT" before-inherited-private-accessors
@@ -2284,6 +2288,35 @@ for axis in native dotnet; do
         'cold inherited getter capabilities=False/True methods=False/True' \
         'inherited private property accessors end'
 done
+for axis in native dotnet; do
+    if [ "$axis" = native ]; then
+        gate_capture_ok "$_CG_OUT/return-attributes-before.$axis" run_bounded "$_CG_OUT/ReflectInvoke$EXE_EXT" before-return-parameter-attributes
+    else
+        gate_capture_ok "$_CG_OUT/return-attributes-before.$axis" reflection_oracle "$_CG_APP" before-return-parameter-attributes
+    fi
+    gate_output select "$_CG_OUT/gate.$axis.stdout" "$_CG_OUT/return-attributes-prefix.$axis.stdout" --before '== return parameter attributes ==' --policy exact
+    gate_output compare "$_CG_OUT/return-attributes-prefix.$axis.stdout" "$_CG_OUT/return-attributes-before.$axis.stdout"
+    gate_output byte-witness "$_CG_OUT/gate.$axis.stdout" --count 1 \
+        '== return parameter attributes ==' 'return parameter attributes end' \
+        'return native data=True/2' 'return packed data=True/1/T' \
+        'ordinary parameter data=True/1' \
+        'return native instance=native/named/7/-1/True' 'return packed instance=packed/generic/9/U/True' \
+        'late parameter data=1/1' 'late parameter call=17'
+done
+if grep -Eq '^// (NativeReturnRows|PackedReturnRows[^:]*)::|^// ReturnDataAttribute::(\.ctor|set_Name)$' "$_CG_OUT"/generated*.cpp "$_CG_OUT/generated.h"; then
+    echo 'FAIL: a return-parameter metadata read retained an owner or attribute body' >&2
+    exit 1
+fi
+for member in .ctor set_Name; do
+    grep -qE "^// ReturnNoteAttribute::${member//./\\.}$" "$_CG_OUT"/generated*.cpp "$_CG_OUT/generated.h" \
+        || { echo "FAIL: return attribute construction omitted $member" >&2; exit 1; }
+done
+grep -qE '^// ReturnKeptAttribute::\.ctor$' "$_CG_OUT"/generated*.cpp "$_CG_OUT/generated.h" \
+    || { echo 'FAIL: return attribute independent constructor control was not retained' >&2; exit 1; }
+grep -qE '^extern const Dn2CppMethodInfo md_native_methtab_.*NativeReturnRows\[\]' "$_CG_OUT"/generated*.cpp \
+    || { echo 'FAIL: native return attribute method rows were not exercised' >&2; exit 1; }
+grep -qE '^alignas\(2\) static const uint8_t md_record_definition_.*PackedReturnRows.*_methods\[\]' "$_CG_OUT"/generated*.cpp \
+    || { echo 'FAIL: packed return attribute definition rows were not exercised' >&2; exit 1; }
 if ! reflection_full_profile; then
     exit 0
 fi

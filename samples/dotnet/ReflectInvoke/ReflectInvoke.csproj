@@ -70,5 +70,7 @@
     <Compile Include="RuntimeBaseProjectionSubset.cs" />
     <Compile Remove="RuntimeHeldInterfacesSubset.cs" />
     <Compile Include="RuntimeHeldInterfacesSubset.cs" />
+    <Compile Remove="ReturnParameterAttributesSubset.cs" />
+    <Compile Include="ReturnParameterAttributesSubset.cs" />
   </ItemGroup>
 </Project>

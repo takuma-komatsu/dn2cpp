@@ -408,6 +408,9 @@ namespace ReflectInvoke
         if (args.Length > 0 && args[0] == "before-inherited-private-accessors")
             return;
         InheritedPrivateAccessorSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-return-parameter-attributes")
+            return;
+        ReturnParameterAttributesSubset.Program.Run();
         }
     }
 }

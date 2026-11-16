@@ -90,6 +90,8 @@ constexpr Field Dn2CppMethodInfo_fields[] = {
     { offsetof(Dn2CppMethodInfo, returnReflectionSignature), Encoding::Pointer },
     { offsetof(Dn2CppMethodInfo, definitionSignature), Encoding::Pointer },
     { offsetof(Dn2CppMethodInfo, initializer), Encoding::Pointer },
+    { offsetof(Dn2CppMethodInfo, returnCustomAttrs), Encoding::Pointer },
+    { offsetof(Dn2CppMethodInfo, returnCustomAttrCount), Encoding::Signed32 },
 };
 constexpr Field Dn2CppParamInfo_fields[] = {
     { offsetof(Dn2CppParamInfo, paramType), Encoding::Pointer },

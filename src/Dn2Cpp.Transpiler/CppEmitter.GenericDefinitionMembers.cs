@@ -116,6 +116,14 @@ internal sealed partial class CppEmitter
                 string[] methodNames = method.GetGenericParameters().Select(p => reader.GetString(reader.GetGenericParameter(p).Name)).ToArray();
                 string symbol = "definition_" + stem + "_" + System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(handle);
                 var methodAttributes = attributes ? _e.BuildAttrTable(_sb, symbol, owner.Module, method.GetCustomAttributes()) : (Expr: "nullptr", Count: 0);
+                (string Expr, int Count) returnAttributes = ("nullptr", 0);
+                if (attributes)
+                    foreach (var parameterHandle in method.GetParameters())
+                    {
+                        var parameter = reader.GetParameter(parameterHandle);
+                        if (parameter.SequenceNumber == 0)
+                            returnAttributes = _e.BuildAttrTable(_sb, symbol + "_return", owner.Module, parameter.GetCustomAttributes());
+                    }
                 var parameters = method.GetParameters().Where(p => reader.GetParameter(p).SequenceNumber > 0)
                     .ToDictionary(p => reader.GetParameter(p).SequenceNumber - 1);
                 var parameterRows = new List<MetadataRow>();
@@ -159,6 +167,7 @@ internal sealed partial class CppEmitter
                     MetadataValue.Signed(0), MetadataValue.Ref("nullptr"), MetadataValue.Signed(0), MetadataValue.Signed(0), MetadataValue.Display(display), MetadataValue.Display(display),
                     MetadataValue.Display(returnDisplay), MetadataValue.Display(returnDisplay), MetadataValue.Text("symbolic"), MetadataValue.Signed(0), MetadataValue.Signed(0), MetadataValue.Ref("nullptr"),
                     MetadataValue.Ref(RenderFormalParameters(owner.Module, method.GetGenericParameters())), MetadataValue.Ref("nullptr"), MetadataValue.Ref("nullptr"), MetadataValue.Ref("nullptr"), MetadataValue.Ref("&" + symbol + "_signature"),
+                    MetadataValue.Ref("nullptr"), MetadataValue.Ref(returnAttributes.Expr), MetadataValue.Signed(returnAttributes.Count),
                 }));
             }
             if (methods.Count > 0)

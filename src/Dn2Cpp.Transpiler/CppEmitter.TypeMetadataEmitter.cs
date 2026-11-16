@@ -3629,6 +3629,7 @@ internal sealed partial class CppEmitter
                 // ParameterAttributes word (IsOptional/HasDefault) is emitted on BCL
                 // rows too, unlike the attribute factories.
                 (string Expr, int Count) mca = ("nullptr", 0);
+                (string Expr, int Count) rca = ("nullptr", 0);
                 var paramHandles = new Dictionary<int, ParameterHandle>();
                 try
                 {
@@ -3641,6 +3642,9 @@ internal sealed partial class CppEmitter
                         var par = rdr.GetParameter(pph);
                         if (par.SequenceNumber >= 1)
                             paramHandles[par.SequenceNumber - 1] = pph;
+                        else if (attrCls)
+                            rca = _e.BuildAttrTable(_sb, $"{prefix}_{cls.CppName}_{rows.Count}_return", m.Module,
+                                par.GetCustomAttributes());
                     }
                 }
                 catch (Exception e) when (!Compilation.IsMustEscape(e))
@@ -3899,6 +3903,7 @@ internal sealed partial class CppEmitter
                     MetadataValue.Ref(_e.EmitReflectionSignature(_sb, m, -1)),
                     MetadataValue.Ref(RenderMethodDefinitionSignature(m)),
                     MetadataValue.Ref(initializer),
+                    MetadataValue.Ref(rca.Expr), MetadataValue.Signed(rca.Count),
                 }));
             }
             // The trim can empty a table the member list did not. A zero-length array is
