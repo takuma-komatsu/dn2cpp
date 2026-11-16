@@ -599,6 +599,9 @@ static void dn2cpp_validate_open_arguments(const Dn2CppMethodGenericParameter* p
     const std::vector<const Dn2CppTypeInfo*>& arguments, const std::vector<const Dn2CppTypeInfo*>& types,
     const std::vector<const Dn2CppTypeInfo*>& methods);
 
+static void dn2cpp_validate_closed_type_arguments(const Dn2CppTypeInfo* definition,
+    const std::vector<const Dn2CppTypeInfo*>& arguments);
+
 Dn2CppType* dn2cpp_type_make_generic(Dn2CppType* def, Dn2CppArrayRef* args)
 {
     const Dn2CppTypeInfo* defTi = dn2cpp_type_require(def);
@@ -632,6 +635,8 @@ Dn2CppType* dn2cpp_type_make_generic(Dn2CppType* def, Dn2CppArrayRef* args)
     }
     if (open)
         return dn2cpp_get_type_from_handle(dn2cpp_open_generic_type(defTi, argv));
+    if (haveArgs)
+        dn2cpp_validate_closed_type_arguments(defTi, argv);
     if (metadataOnly)
         dn2cpp_throw_platform_not_supported("Reflection: generic type argument has no runtime layout");
     if (const Dn2CppTypeInfo* cand = dn2cpp_find_aot_instantiation(defTi, argv.data(), argc))
@@ -4096,6 +4101,7 @@ static void dn2cpp_validate_open_arguments(const Dn2CppMethodGenericParameter* p
                 const auto* metadata = definition->reflection().genericMetadata;
                 constructor |= metadata != nullptr && metadata->publicDefaultConstructor;
                 const auto reflection = argument->reflection();
+                constructor |= (reflection.activation & DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR) != 0;
                 for (int32_t j = 0; j < reflection.ctorCount; j++)
                     constructor |= reflection.ctors[j]->paramCount == 0
                         && (reflection.ctors[j]->attrs & DN2CPP_MTHA_PUBLIC) != 0;
@@ -4111,6 +4117,17 @@ static void dn2cpp_validate_open_arguments(const Dn2CppMethodGenericParameter* p
                 dn2cpp_throw_argument();
         }
     }
+}
+
+static void dn2cpp_validate_closed_type_arguments(const Dn2CppTypeInfo* definition,
+    const std::vector<const Dn2CppTypeInfo*>& arguments)
+{
+    std::lock_guard<std::recursive_mutex> lock(g_formal_types_mtx);
+    const auto* metadata = definition->reflection().genericMetadata;
+    if (metadata == nullptr)
+        return;
+    dn2cpp_require_metadata(definition);
+    dn2cpp_validate_open_arguments(metadata->parameters, arguments, arguments, {});
 }
 
 static std::string dn2cpp_reflection_type_spelling(const Dn2CppTypeInfo* type, bool genericArgument = false)

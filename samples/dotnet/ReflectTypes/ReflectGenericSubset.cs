@@ -23,6 +23,11 @@ namespace ReflectGenericSubset
     }
     class InheritedRelations<T> : OpenRelations<T> { }
 
+    class ReferenceConstraint<T> where T : class { }
+    class ValueConstraint<T> where T : struct { }
+    class ConstructorConstraint<T> where T : new() { }
+    class InterfaceConstraint<T> where T : IHolder<string> { }
+
     class Box<T>
     {
         public T Value;
@@ -341,6 +346,38 @@ namespace ReflectGenericSubset
 
         // Stable closed-generic type name (namespace + metadata name + explicit
         // args); Type.FullName's closed form carries assembly version strings.
+        static Type opaqueConstraintArgument;
+        static string ConstraintResult(Func<Type> make)
+        {
+            try { return make().GetGenericArguments()[0].Name; }
+            catch (Exception error) { return error.GetType().Name; }
+        }
+
+        internal static void RunClosedConstraints()
+        {
+            Console.WriteLine("== closed generic constraints ==");
+            Console.WriteLine("known reference=" + ConstraintResult(() => typeof(ReferenceConstraint<>).MakeGenericType(typeof(int))));
+            Console.WriteLine("known value=" + ConstraintResult(() => typeof(ValueConstraint<>).MakeGenericType(typeof(string))));
+            Console.WriteLine("known constructor=" + ConstraintResult(() => typeof(ConstructorConstraint<>).MakeGenericType(typeof(string))));
+            Console.WriteLine("known interface=" + ConstraintResult(() => typeof(InterfaceConstraint<>).MakeGenericType(typeof(Holder<object>))));
+            Type[] definitions = { typeof(ReferenceConstraint<>), typeof(ValueConstraint<>), typeof(ConstructorConstraint<>), typeof(InterfaceConstraint<>) };
+            Type[] valid = { typeof(string), typeof(int), typeof(object), typeof(Holder<string>) };
+            Type[] invalid = { typeof(int), typeof(string), typeof(string), typeof(Holder<object>) };
+            Type[] expected = { typeof(ReferenceConstraint<string>), typeof(ValueConstraint<int>), typeof(ConstructorConstraint<object>), typeof(InterfaceConstraint<Holder<string>>) };
+            for (int i = 0; i < definitions.Length; i++)
+            {
+                Type definition = definitions[i];
+                opaqueConstraintArgument = invalid[i];
+                Console.WriteLine("opaque invalid=" + ConstraintResult(() => definition.MakeGenericType(opaqueConstraintArgument)));
+                opaqueConstraintArgument = valid[i];
+                Type made = definition.MakeGenericType(opaqueConstraintArgument);
+                Console.WriteLine("opaque valid=" + (made == expected[i]) + ":" + (made.GetGenericArguments()[0] == valid[i]));
+            }
+            Console.WriteLine("library constructor=" + ConstraintResult(() => typeof(ConstructorConstraint<>).MakeGenericType(typeof(ArrayList))) + ":" + typeof(ConstructorConstraint<ArrayList>).IsConstructedGenericType);
+            Console.WriteLine("runtime constructor=" + ConstraintResult(() => typeof(ConstructorConstraint<>).MakeGenericType(typeof(Exception))) + ":" + typeof(ConstructorConstraint<Exception>).IsConstructedGenericType);
+            Console.WriteLine("closed generic constraints end");
+        }
+
         internal static void RunOpenInterfaces()
         {
             Console.WriteLine("== open interface metadata ==");

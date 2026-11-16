@@ -1567,3 +1567,19 @@ open contains=True
 open enumeration=3:True
 open fixed=True:True
 open interface metadata end
+== closed generic constraints ==
+known reference=ArgumentException
+known value=ArgumentException
+known constructor=ArgumentException
+known interface=ArgumentException
+opaque invalid=ArgumentException
+opaque valid=True:True
+opaque invalid=ArgumentException
+opaque valid=True:True
+opaque invalid=ArgumentException
+opaque valid=True:True
+opaque invalid=ArgumentException
+opaque valid=True:True
+library constructor=ArrayList:True
+runtime constructor=Exception:True
+closed generic constraints end

@@ -4,6 +4,15 @@
 #include <array>
 #include <utility>
 
+// These runtime-owned types declare a public default constructor without a row.
+inline constexpr Dn2CppTypeReflection dn2cpp_default_ctor_reflection_rows[] = { [] {
+    Dn2CppTypeReflection reflection{};
+    reflection.activation = DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR;
+    return reflection;
+}() };
+inline constexpr Dn2CppMetadataHandle<Dn2CppTypeReflection> dn2cpp_default_ctor_reflection{
+    dn2cpp_default_ctor_reflection_rows };
+
 // Adjacent local blocks keep each record's pointer dependencies together without
 // rooting metadata or accessor thunks belonging to unrelated blocks.
 namespace dn2cpp_native_metadata {
