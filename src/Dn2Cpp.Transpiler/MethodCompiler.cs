@@ -687,6 +687,7 @@ internal sealed partial class MethodCompiler : IEvalStack
 
     public string Compile()
     {
+        CoreIntrinsics.ValidateThreadingPrivate(_method);
         CoreIntrinsics.ValidateUnsupportedAlignedDefault(_method);
         if (SharedTrial && CoreIntrinsics.IsUnsupportedAlignedName(_method.Name)
             && CoreIntrinsics.IsSimdDefaultOwner(_method.DeclaringClass)
@@ -1314,6 +1315,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// Null when the method has no intrinsic lowering to synthesize from.</summary>
     internal string? CompileCoreIntrinsicWrapper()
     {
+        CoreIntrinsics.ValidateThreadingPrivate(_method);
         CoreIntrinsics.ValidateUnsupportedAlignedDefault(_method);
         if (CoreIntrinsics.BrUnsupportedAlignedDefault.Matches(_method)) return CompileUnsupportedAlignedDefaultBody();
         if (CoreIntrinsics.BrDelegateCallable.Matches(_method)) return CompileDelegateCallableBody();
@@ -1406,6 +1408,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsVectorValueMethod(_method)
             || CoreIntrinsics.IsInvariantCompareInfoGetter(_method)
             || CoreIntrinsics.IsDateTimeFormatInfoBoundary(_method)
+            || CoreIntrinsics.IsThreadingPrivate(_method)
             || CoreIntrinsics.IsDateTimeLeapSecondSupport(_method)
             || CoreIntrinsics.IsAppContextOnProcessExit(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(_method)

@@ -953,6 +953,7 @@ internal sealed partial class Compilation
         if (CoreIntrinsics.BrDelegateCallable.Matches(target)
             || CoreIntrinsics.IsCoreClrGcMemoryQuery(target)
             || CoreIntrinsics.IsCoreClrFinalizerWorker(target)
+            || CoreIntrinsics.IsThreadingPrivate(target)
             || CoreIntrinsics.IsWaitHandleTimeoutConversion(target)
             || CoreIntrinsics.IsDateTimeCultureManagedBody(target)
             || CoreIntrinsics.IsScalarNumericLeaf(target)

@@ -436,6 +436,25 @@ internal sealed partial class MethodCompiler
     /// runtime plumbing, so there is nothing worth falling through to.</para></summary>
     private void EmitRuntimePrimitive(MethodInfo callee)
     {
+        if (CoreIntrinsics.IsThreadingPrivate(callee))
+        {
+            bool waiterMember = callee.DeclaringClass.FullName == "System.Threading.Lock";
+            bool waiterQuery = callee.Name == "get_ShouldStopPreemptingWaiters";
+            if (!waiterMember)
+            {
+                var name = Pop();
+                Emit($"(void)({name.Expr});");
+            }
+            var receiver = Pop();
+            Emit($"if ({receiver.Expr} == nullptr) dn2cpp_throw_null_reference();");
+            string message = waiterMember
+                ? $"Lock.{(waiterQuery ? "ShouldStopPreemptingWaiters" : callee.Name)} requires managed Lock waiter-aging state"
+                : "Thread.ThreadNameChanged requires CoreCLR thread-name notification";
+            Emit($"dn2cpp_throw_platform_not_supported(\"{message}\");");
+            if (waiterQuery)
+                Push(StackKind.I4, "int32_t", "0");
+            return;
+        }
         if (TryEmitDateTimeFormatInfoBoundary(callee))
             return;
         if (CoreIntrinsics.IsDateTimeLeapSecondSupport(callee))

@@ -2013,6 +2013,7 @@ internal sealed partial class CppEmitter
             EmitCultureNameValidatorRow();
             EmitStringPrivateEntryPointRows();
             EmitDateTimeParserRows();
+            EmitThreadingPrivateRows();
             _e.EmitArrayTypeInfos(_sb, _emittedEnums);
             _e.EmitMdArrayItfMap(_sb);
             _e.EmitArrayNongenericItfRows(_sb);
@@ -2163,6 +2164,32 @@ internal sealed partial class CppEmitter
                     if (CoreIntrinsics.IsDateTimeTryAddTicks(method)) _e._dateTimeTryAddTicksRow = address;
                     else if (CoreIntrinsics.IsDateTimeTryCreate(method)) _e._dateTimeTryCreateRow = address;
                     else _e._dateTimeLocalConstructorRow = address;
+                }
+            }
+        }
+
+        // Thread and Lock keep runtime-owned identities; these retained rows are named-only.
+        private void EmitThreadingPrivateRows()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.FullName is not ("System.Threading.Thread" or "System.Threading.Lock")) continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsThreadingPrivate(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "threadingprivatetab_" + method.Name);
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained threading private member has no metadata row.");
+                    }
+                    switch (method.Name)
+                    {
+                        case "ThreadNameChanged": _e._threadNameChangedRow = address; break;
+                        case "get_ShouldStopPreemptingWaiters": _e._lockShouldStopPreemptingWaitersRow = address; break;
+                        case "ResetWaiterStartTime": _e._lockResetWaiterStartTimeRow = address; break;
+                        case "RecordWaiterStartTime": _e._lockRecordWaiterStartTimeRow = address; break;
+                    }
                 }
             }
         }
@@ -4062,6 +4089,7 @@ internal sealed partial class CppEmitter
             && (_c.Reachable.Contains(method) || _c.KeepsUnreachedRow(method))
             && (CoreIntrinsics.BrDelegateCallable.Matches(method)
                 || CoreIntrinsics.IsDateTimeFormatInfoBoundary(method)
+                || CoreIntrinsics.IsThreadingPrivate(method)
                 || CoreIntrinsics.IsDateTimeCultureManagedBody(method)
                 || (CoreIntrinsics.IsRuntimeTypeHandleCopy(method) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(method))
                 || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(method)

@@ -101,6 +101,7 @@ internal sealed partial class Compilation
                 var h = (MethodDefinitionHandle)handle;
                 if (!module.MethodMap.TryGetValue(h, out var mi))
                     return null;
+                CoreIntrinsics.ValidateThreadingPrivate(mi);
                 CoreIntrinsics.ValidateConcreteVectorElement(mi);
                 CoreIntrinsics.ValidateVectorFloatingPointTernary(mi);
                 CoreIntrinsics.ValidateVectorLog(mi);
@@ -544,6 +545,8 @@ internal sealed partial class Compilation
                 // Every cut below probes the same MemberReference's parent type
                 // name; read it once (a pure metadata read).
                 string? mrParent = MemberRefParentTypeName(module, (MemberReferenceHandle)handle);
+                if (CoreIntrinsics.IsThreadingPrivateName(mrParent, mrName))
+                    return ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
                 if (mrParent == "System.Threading.WaitHandle" && mrName == "ToTimeoutMilliseconds")
                 {
                     var helper = ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
@@ -1617,6 +1620,12 @@ internal sealed partial class Compilation
         if (DelegateCallableBodyContract.IsName(cls.FullName, name)
             && !CoreIntrinsics.IsDelegateCallableReference(resolved, sig, reader.GetBlobReader(mr.Signature)))
             throw new NotSupportedException("Delegate callable member requires its exact CoreLib reference and declaration");
+        if (CoreIntrinsics.IsThreadingPrivateName(cls.FullName, name)
+            && (!CoreIntrinsics.IsThreadingPrivate(resolved)
+                || mr.Parent.Kind is not (HandleKind.TypeDefinition or HandleKind.TypeReference)
+                || !CoreIntrinsics.IsThreadingPrivateSignature(reader.GetBlobReader(mr.Signature), name)
+                || !CoreIntrinsics.IsThreadingPrivateDecodedSignature(sig, name)))
+            throw new NotSupportedException($"{cls.Name}.{name} requires its exact CoreLib reference and declaration");
         if (CoreIntrinsics.IsDateTimeManagedBody(resolved)
             && !CoreIntrinsics.IsDateTimeManagedBodyReference(resolved, sig, reader.GetBlobReader(mr.Signature)))
             throw new NotSupportedException("DateTime arithmetic member requires its exact CoreLib reference and declaration");
@@ -2319,6 +2328,8 @@ internal sealed partial class Compilation
         if (mr.Parent.Kind is not (HandleKind.TypeReference or HandleKind.TypeDefinition))
             return null;
         string? full = MemberRefParentTypeName(module, handle);
+        if (CoreIntrinsics.IsThreadingPrivateName(full, reader.GetString(mr.Name)))
+            return ResolveMemberRefMethod(module, handle, callerCtx);
         if (reader.StringComparer.Equals(mr.Name, "IsKnownConstant")
             && full == "System.Runtime.CompilerServices.RuntimeHelpers")
             return CoreIntrinsics.ValidateKnownConstantCallable(ResolveMemberRefMethod(module, handle, callerCtx));

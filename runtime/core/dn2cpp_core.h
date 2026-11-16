@@ -1433,6 +1433,10 @@ void dn2cpp_set_dateonly_deconstruct_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> 
 void dn2cpp_set_resourcemanager_default_type_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 void dn2cpp_set_datetime_parser_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> addTicks,
     Dn2CppMetadataHandle<Dn2CppMethodInfo> tryCreate, Dn2CppMetadataHandle<Dn2CppMethodInfo> localConstructor);
+// Retained Thread/Lock private boundaries participate only in named lookup.
+void dn2cpp_set_threading_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> threadName,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> shouldStopWaiters,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> resetWaiterTime, Dn2CppMetadataHandle<Dn2CppMethodInfo> recordWaiterTime);
 Dn2CppObject* dn2cpp_delegate_object_virtual_invoker(void* fn, Dn2CppObject* receiver,
     Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
 // Signature invokers mark the exact Delegate value rows while honoring fn.

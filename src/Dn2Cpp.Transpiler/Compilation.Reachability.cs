@@ -14,6 +14,7 @@ internal sealed partial class Compilation
 
     private void Reach(MethodInfo m)
     {
+        CoreIntrinsics.ValidateThreadingPrivate(m);
         CoreIntrinsics.ValidateUnsupportedAlignedDefault(m);
         NoteMediumMethod(m);
         if (_reflectedTemplateBodies.Count > 0 && !_reachingReflectedTemplateBody)
@@ -215,6 +216,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsUInt128Checked(m)
             || CoreIntrinsics.IsInvariantCompareInfoGetter(m)
             || CoreIntrinsics.IsDateTimeFormatInfoBoundary(m)
+            || CoreIntrinsics.IsThreadingPrivate(m)
             || CoreIntrinsics.IsAppContextOnProcessExit(m)
             || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(m)
             || CoreIntrinsics.IsRuntimeTypeHandleFields(m)
