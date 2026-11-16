@@ -50,6 +50,7 @@ internal static partial class CoreIntrinsics
         or "get_UnclonedShortTimePatterns" or "get_UnclonedLongTimePatterns"
         or "GetEraName" or "GetAbbreviatedEraName" or "get_FormatFlags" or "get_HasForceTwoDigitYears"
         or "get_GeneralShortTimePattern" or "get_GeneralLongTimePattern" or "get_DateTimeOffsetPattern"
+        or "get_FullTimeSpanPositivePattern" or "get_FullTimeSpanNegativePattern"
         or "get_Calendar" or "set_Calendar" or "Tokenize" or "YearMonthAdjustment"
         || IsDateTimeFormatInfoSpanName(name) || IsDateTimeFormatInfoParserFlagGetterName(name);
 
@@ -92,7 +93,8 @@ internal static partial class CoreIntrinsics
         if (name == "get_HasForceTwoDigitYears" || IsDateTimeFormatInfoParserFlagGetterName(name))
             return IsDateTimeFormatInfoParserFlagGetterSignature(blob)
                 && IsDateTimeFormatInfoParserFlagGetterDecodedSignature(signature);
-        if (name is "get_GeneralShortTimePattern" or "get_GeneralLongTimePattern" or "get_DateTimeOffsetPattern")
+        if (name is "get_GeneralShortTimePattern" or "get_GeneralLongTimePattern" or "get_DateTimeOffsetPattern"
+            or "get_FullTimeSpanPositivePattern" or "get_FullTimeSpanNegativePattern")
             return IsDateTimeFormatInfoGeneralTimePatternSignature(blob)
                 && IsDateTimeFormatInfoGeneralTimePatternDecodedSignature(signature);
         if (IsDateTimeFormatInfoSpanName(name))

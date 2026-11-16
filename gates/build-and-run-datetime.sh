@@ -28,7 +28,7 @@
 # datetime-tz, datetimeoffset.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/DateTimeInterceptFixture.cs gates/fixtures/ldftn-local/DateTimeTCharFixture.cs gates/fixtures/ldftn-local/AbbreviatedDayFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj gates/expected/datetime-refusals.txt"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|datetime-private-calls:fixture,direct-only-emission|public-ctor:no-corelib,no-ildiet|refusals:native-frozen|tchar:malformed-return-owner|day:malformed-return|dtfi-name-edges:prefix|cli:$(_gate_cli_hash)"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|datetime-private-calls:fixture,direct-only-emission|public-ctor:no-corelib,no-ildiet|refusals:native-frozen|tchar:malformed-return-owner|day:malformed-return|dtfi-name-edges:prefix|dtfi-timespan-patterns:prefix|cli:$(_gate_cli_hash)"
 
 # Keep the rewritten input private to this gate; the suite prebuild stays intact.
 _corelib_gate_core() {
@@ -47,6 +47,8 @@ _corelib_gate_core() {
     gate_output witness "$out/fixture.stdout" \
         'AddAddress=ldftn+calli:System.Boolean System.DateTime::TryAddTicks(System.Int64,System.DateTime&)' \
         'DateSpanDelegate=ldftn+delegate:System.ReadOnlySpan`1<TChar> System.Globalization.DateTimeFormatInfo::DateSeparatorTChar()' \
+        'TimeSpanPositiveAddress=ldftn+calli:System.String System.Globalization.DateTimeFormatInfo::get_FullTimeSpanPositivePattern()' \
+        'TimeSpanNegativeAddress=ldftn+calli:System.String System.Globalization.DateTimeFormatInfo::get_FullTimeSpanNegativePattern()' \
         --count 1 --policy crlf
     invoke_cli "$_CG_APP" -r "$_CG_CORELIB" "$@" -o "$out"
 }
@@ -144,6 +146,12 @@ gate_extra_asserts() {
         --before '== DateTimeFormatInfo name edges ==' --policy crlf
     gate_output compare "$out/name-edges-prefix.stdout" "$out/name-edges-before.stdout"
     gate_output witness "$out/native.stdout" 'DateTimeFormatInfo name edges end' --count 1 --policy crlf
+
+    gate_capture_ok "$out/timespan-patterns-before" run_bounded dotnet "$_CG_APP" before-dtfi-timespan-patterns
+    gate_output select "$out/native.stdout" "$out/timespan-patterns-prefix.stdout" \
+        --before '== DateTimeFormatInfo TimeSpan patterns ==' --policy crlf
+    gate_output compare "$out/timespan-patterns-prefix.stdout" "$out/timespan-patterns-before.stdout"
+    gate_output witness "$out/native.stdout" 'DateTimeFormatInfo TimeSpan patterns end' --count 1 --policy crlf
 
     local isolated="$out/direct-only" method
     mkdir -p "$isolated/input"

@@ -1198,6 +1198,9 @@ per-culture date formatting remain unsupported. The Char/Byte TChar accessors
 read the existing mutable DateSeparator; other text stays invariant. Char spans
 borrow string storage, while Byte spans use GC-managed UTF-8 buffers, without
 promising CoreCLR cache identity.
+The exact full positive and negative TimeSpan pattern getters use the same
+invariant data boundary, including its decimal separator. Direct calls and
+callable wrappers check the receiver without constructing CultureData state.
 
 Native DateTimeFormatInfo values do not construct CultureData or Calendar state.
 Calendar access refuses explicitly; its setter preserves receiver, read-only and

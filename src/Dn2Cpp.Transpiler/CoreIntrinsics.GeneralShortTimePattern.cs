@@ -7,7 +7,8 @@ internal static partial class CoreIntrinsics
 {
     internal static bool IsDateTimeFormatInfoGeneralTimePattern(MethodInfo method)
     {
-        if (!(method.Name is "get_GeneralShortTimePattern" or "get_GeneralLongTimePattern" or "get_DateTimeOffsetPattern")
+        if (!(method.Name is "get_GeneralShortTimePattern" or "get_GeneralLongTimePattern" or "get_DateTimeOffsetPattern"
+                or "get_FullTimeSpanPositivePattern" or "get_FullTimeSpanNegativePattern")
             || !IsDateTimeFormatInfoMethodOwner(method, MethodAttributes.Assembly | MethodAttributes.HideBySig | MethodAttributes.SpecialName))
             return false;
         var reader = method.Module.Reader;
