@@ -3440,6 +3440,23 @@ recognized_table_asserts() {
     native="$native_file.records"
 
     reflection_assert_lines "$native_file" 1 \
+        '== recognized array shapes ==' 'recognized array shapes end' \
+        'known array SZ: True/True/True/True' 'known array rank: True/True/True/True/True/True' \
+        'known array invalid chain: TypeLoadException' 'known array void chain: TypeLoadException'
+    if grep -Eq '^extern const Dn2CppTypeInfo ti_(md_Int32Md33|arr_Int32Md33|arr_(System_)?Void(Arr)*);$' "$out/generated.h"; then
+        echo 'FAIL: an invalid ranked array escaped into a retained shape' >&2; return 1
+    fi
+    gate_capture_ok "$out/array-shapes-before.native" run_bounded "$out/RecognizedReflectionOnly$EXE_EXT" before-array-shapes
+    gate_capture_ok "$out/array-shapes-before.dotnet" reflection_oracle "$_CG_APP" before-array-shapes
+    for axis in native dotnet; do
+        gate_output select "$out/gate.$axis.stdout" "$out/array-shapes-prefix.$axis.stdout" --before '== recognized array shapes ==' --policy crlf
+        gate_output compare "$out/array-shapes-prefix.$axis.stdout" "$out/array-shapes-before.$axis.stdout" || return 1
+    done
+    if grep -Eq '^// RecognizedReflection.Program[+/]ShapeOnly::' "$out"/generated*.cpp; then
+        echo 'FAIL: retaining an array shape admitted an element body' >&2; return 1
+    fi
+
+    reflection_assert_lines "$native_file" 1 \
         '== recognized reflection table ==' 'recognized reflection table end' \
         'lookup method by types: echo:typed' 'lookup field: 11/revealed/shared' 'lookup property: renamed/12/lookups' \
         'lookup constructor by flags: built:default' 'lookup event: raised 2' \

@@ -11267,14 +11267,21 @@ Dn2CppString* dn2cpp_type_format_type_name(Dn2CppType* t)
     return dn2cpp_string_from_utf8(full, static_cast<int32_t>(std::strlen(full)));
 }
 
-// Type.MakeArrayType(): resolve the SZ-array type-info for this element against
-// the AOT image (registry scan over the emitted ti_arr_ handles). Like
-// MakeGenericType, an array type never statically instantiated does not exist
-// at runtime — NotSupportedException (the IL2CPP-style AOT boundary).
+// Concrete shapes must be retained by the image; signature shapes keep their
+// structural interner. Neither factory admits executable element members.
+[[noreturn]] static void dn2cpp_throw_unretained_array(const Dn2CppTypeInfo* element, int32_t rank, bool nonSz)
+{
+    std::string shape = element->name;
+    shape += !nonSz ? "[]" : rank == 1 ? "[*]" : "[" + std::string(rank - 1, ',') + "]";
+    std::string remedy = "retain the exact array shape with a reachable typeof(" + std::string(element->name)
+        + ").MakeArrayType(" + (nonSz ? std::to_string(rank) : "") + ") call";
+    dn2cpp_throw_unretained(element, shape, "the array shape was not retained in this image", nullptr, remedy.c_str());
+}
+
 Dn2CppType* dn2cpp_type_make_array_type(Dn2CppType* t)
 {
     dn2cpp_type_require(t);
-    if (dn2cpp_signature_kind(t->typeInfo) == 2)
+    if (t->typeInfo == &dn2cpp_void_type || dn2cpp_signature_kind(t->typeInfo) == 2)
         dn2cpp_throw_type_load();
     if ((t->typeInfo->flags & DN2CPP_TF_BYREFLIKE) != 0)
         dn2cpp_throw_type_load();
@@ -11284,14 +11291,9 @@ Dn2CppType* dn2cpp_type_make_array_type(Dn2CppType* t)
         return dn2cpp_get_type_from_handle(dn2cpp_array_ti(t->typeInfo, 1, false));
     if ((t->typeInfo->flags & DN2CPP_TF_ARRAY) != 0)
         return dn2cpp_get_type_from_handle(dn2cpp_array_ti(t->typeInfo, 1));
-    for (int32_t k = 0; k < dn2cpp_type_registry_count; k++)
-    {
-        const Dn2CppTypeInfo* cand = dn2cpp_type_registry[k].type;
-        if ((cand->flags & DN2CPP_TF_ARRAY) != 0 && cand->elementType == t->typeInfo
-            && dn2cpp_is_sz_array(cand))
-            return dn2cpp_get_type_from_handle(cand);
-    }
-    dn2cpp_throw_not_supported();
+    if (const auto* shape = dn2cpp_find_array_ti_rank(t->typeInfo, 1, false))
+        return dn2cpp_get_type_from_handle(shape);
+    dn2cpp_throw_unretained_array(t->typeInfo, 1, false);
 }
 
 Dn2CppType* dn2cpp_type_make_array_type_rank(Dn2CppType* t, int32_t rank)
@@ -11299,21 +11301,19 @@ Dn2CppType* dn2cpp_type_make_array_type_rank(Dn2CppType* t, int32_t rank)
     dn2cpp_type_require(t);
     if (rank <= 0)
         dn2cpp_throw_index_out_of_range();
-    if (dn2cpp_has_signature_array_element(t->typeInfo) && rank > 32)
+    if (rank > 32)
         dn2cpp_throw_type_load();
-    if (dn2cpp_signature_kind(t->typeInfo) == 2)
+    if (t->typeInfo == &dn2cpp_void_type || dn2cpp_signature_kind(t->typeInfo) == 2)
         dn2cpp_throw_type_load();
     if ((t->typeInfo->flags & DN2CPP_TF_BYREFLIKE) != 0)
         dn2cpp_throw_type_load();
     if (dn2cpp_has_signature_array_element(t->typeInfo))
         return dn2cpp_get_type_from_handle(dn2cpp_array_ti(t->typeInfo, rank, true));
     if (dn2cpp_type_contains_generic_parameters(t->typeInfo))
-    {
-        if (rank > 32)
-            dn2cpp_throw_type_load();
         return dn2cpp_get_type_from_handle(dn2cpp_array_ti(t->typeInfo, rank, true));
-    }
-    dn2cpp_throw_not_supported();
+    if (const auto* shape = dn2cpp_find_array_ti_rank(t->typeInfo, rank, true))
+        return dn2cpp_get_type_from_handle(shape);
+    dn2cpp_throw_unretained_array(t->typeInfo, rank, true);
 }
 
 // The registry's array type-info over (elem, rank), or null when the image never

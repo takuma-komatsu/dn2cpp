@@ -944,8 +944,11 @@ extend the public Type policy or supported function-pointer construction.
 
 The exact managed `RuntimeTypeHandle.MakeSZArray()` and `MakeArray(int)` wrappers
 validate their handles before using the existing native array-type policy.
-Ordinary concrete SZ arrays require an emitted registry identity; concrete ranked
-arrays remain unsupported, including rank-one non-SZ arrays. Open and signature
+Concrete SZ and ranked arrays require an emitted registry identity, with rank-one
+non-SZ arrays distinct from SZ arrays. Recognized MakeArrayType sites retain the
+finite valid element/rank shapes they name, without element bodies. Unknown
+operands reuse retained shapes and otherwise throw PlatformNotSupportedException
+with an exact static-shape remedy. Open and signature
 array types use their existing interning and rank limits. These wrappers do not
 expand the native array factory or implement CoreCLR's private loader ABI.
 A direct private MakeArray call with a nonpositive rank throws
