@@ -716,6 +716,12 @@ refuses the virtual helper, which can call arbitrary managed overrides.
 
 ### B. A BCL intrinsic (a `System.*` call) — core lane
 
+The exact CoreLib `Math.ThrowNegateTwosCompOverflow` declaration retains its
+metadata when selected by reflection; lookup alone retains no body. Invocation
+uses the existing Math call lowering. `RuntimeFieldHandle` FieldDesc operations
+likewise reuse their call intercept when invoked by reflection, so their explicit
+CoreCLR descriptor boundary is not mistaken for an unretained body.
+
 1. Add a case to the `switch (declType, name)` in
    `MethodCompiler.TranslateIntrinsic`.
 2. Implement any `dn2cpp_*` helper in `runtime/core`.

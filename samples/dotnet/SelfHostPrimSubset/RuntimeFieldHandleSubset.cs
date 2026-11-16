@@ -102,5 +102,10 @@ internal static unsafe class Program
     }
 
     // A CoreCLR FieldDesc InternalCall has no native body; the rewritten call refuses.
-    internal static void RunNativeBoundary() => Refuse("field-handle-GetAttributes-direct", GetAttributesDirect);
+    internal static void RunNativeBoundary()
+    {
+        Refuse("field-handle-GetAttributes-direct", GetAttributesDirect);
+        Refuse("field-handle-GetAttributes-reflection", () =>
+            typeof(RuntimeFieldHandle).GetMethod("GetAttributes", QueryFlags).Invoke(null, new object[] { null }));
+    }
 }
