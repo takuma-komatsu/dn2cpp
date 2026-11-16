@@ -1555,3 +1555,15 @@ nested ignorecase=True
 nested nongeneric private=True
 nested members=1
 nested metadata end
+== open interface metadata ==
+open lookup=True
+open identity=True
+open contains=True
+open enumeration=3:True
+open fixed=True:True
+open lookup=True
+open identity=True
+open contains=True
+open enumeration=3:True
+open fixed=True:True
+open interface metadata end

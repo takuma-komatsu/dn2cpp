@@ -22,6 +22,12 @@ namespace ReflectTypes
             // line pins only the oracle.
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+            if (args.Length > 0 && args[0] == "open-interfaces")
+            {
+                ReflectGenericSubset.Program.RunOpenInterfaces();
+                return;
+            }
+
             if (args.Length > 0 && args[0] == "nested-metadata")
             {
                 ReflectNestedSubset.Program.RunMetadata();
@@ -104,6 +110,7 @@ namespace ReflectTypes
                 return;
             TypeNameRegistrySubset.Program.RunIgnoreCase();
             ReflectNestedSubset.Program.RunMetadata();
+            ReflectGenericSubset.Program.RunOpenInterfaces();
         }
     }
 }

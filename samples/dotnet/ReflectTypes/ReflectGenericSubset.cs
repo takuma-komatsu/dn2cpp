@@ -14,6 +14,15 @@ using System.Collections.Generic;
 
 namespace ReflectGenericSubset
 {
+    interface IDependent<T> { }
+    interface IFixed { }
+    class OpenRelations<T> : IDependent<T>, IFixed, IHolder<int>
+    {
+        public int Held => 0;
+        public static int Uncalled() => 73;
+    }
+    class InheritedRelations<T> : OpenRelations<T> { }
+
     class Box<T>
     {
         public T Value;
@@ -332,6 +341,27 @@ namespace ReflectGenericSubset
 
         // Stable closed-generic type name (namespace + metadata name + explicit
         // args); Type.FullName's closed form carries assembly version strings.
+        internal static void RunOpenInterfaces()
+        {
+            Console.WriteLine("== open interface metadata ==");
+            foreach (Type owner in new[] { typeof(OpenRelations<>), typeof(InheritedRelations<>) })
+            {
+                Type parameter = owner.GetGenericArguments()[0];
+                Type dependent = owner.GetInterface("IDependent`1");
+                Console.WriteLine("open lookup=" + (dependent != null));
+                Console.WriteLine("open identity=" + (dependent != null && dependent.GetGenericArguments()[0] == parameter));
+                Console.WriteLine("open contains=" + (dependent != null && dependent.ContainsGenericParameters));
+                Type[] interfaces = owner.GetInterfaces();
+                bool enumerated = false;
+                foreach (Type itf in interfaces)
+                    if (itf == dependent) enumerated = true;
+                Console.WriteLine("open enumeration=" + interfaces.Length + ":" + enumerated);
+                Console.WriteLine("open fixed=" + (owner.GetInterface("IFixed") == typeof(IFixed))
+                    + ":" + (owner.GetInterface("IHolder`1") == typeof(IHolder<int>)));
+            }
+            Console.WriteLine("open interface metadata end");
+        }
+
         static string StableName(Type t)
         {
             string s = t.Namespace is { Length: > 0 } ns ? ns + "." + t.Name : t.Name;
