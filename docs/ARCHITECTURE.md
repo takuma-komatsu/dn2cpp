@@ -1721,6 +1721,11 @@ another assembly's matching name.
 Stripped definitions expose formal identity, but constraint and relation queries
 guard the declaring definition through `dn2cpp_require_metadata`.
 
+Generic definitions project interface recipes against their own formal parameter
+identities for public interface lookup and enumeration. The immutable reflected
+closure includes inherited and fixed interfaces without changing executable
+interface dispatch tables or retaining owner bodies.
+
 Constraint recipes reuse existing array and compound interning. Constructed
 constraints reuse an AOT or runtime-template identity when available; otherwise
 they receive an interned metadata-only descriptor with no layout or dispatch.

@@ -686,6 +686,8 @@ static inline bool dn2cpp_itf_row_is_canonical_alias(const Dn2CppInterfaceEntry&
 // Hence the count is derived by COUNTING rather than read off interfaceCount — alias
 // rows interleave with the real ones in the string and SZArray dispatch maps, so "the
 // real rows are a prefix" does not hold.
+static const Dn2CppInterfaceEntry* dn2cpp_definition_interfaces(const Dn2CppTypeInfo* type, int32_t* count);
+
 namespace
 {
 struct Dn2CppEffectiveItfs
@@ -700,7 +702,9 @@ struct Dn2CppEffectiveItfs
     explicit Dn2CppEffectiveItfs(const Dn2CppTypeInfo* type)
         : own(nullptr), ownCount(0), extra(nullptr), extraCount(0), rel(nullptr), relCount(0)
     {
-        own = dn2cpp_type_interfaces(type, &ownCount);
+        own = (type->flags & DN2CPP_TF_GENERICDEF) != 0 && type->reflection().genericMetadata != nullptr
+            ? dn2cpp_definition_interfaces(type, &ownCount)
+            : dn2cpp_type_interfaces(type, &ownCount);
         extra = dn2cpp_array_nongeneric_interfaces(type, &extraCount);
         rel = dn2cpp_relation_interfaces(type, &relCount);
     }
@@ -3628,6 +3632,25 @@ static void dn2cpp_constraint_interfaces(const Dn2CppTypeInfo* type,
         });
         dn2cpp_constraint_interfaces(type->base, visited, result, false);
     }
+}
+
+// Definition relations substitute the owner's formal parameters, never a canonical
+// executable specialization. Published vectors are immutable for concurrent readers.
+static const Dn2CppInterfaceEntry* dn2cpp_definition_interfaces(const Dn2CppTypeInfo* type, int32_t* count)
+{
+    std::lock_guard<std::recursive_mutex> lock(g_formal_types_mtx);
+    dn2cpp_require_metadata(type);
+    static auto& cache = dn2cpp_never_destroyed<std::unordered_map<const Dn2CppTypeInfo*, std::vector<Dn2CppInterfaceEntry>>>();
+    auto found = cache.find(type);
+    if (found == cache.end())
+    {
+        std::vector<const Dn2CppTypeInfo*> visited;
+        std::vector<Dn2CppInterfaceEntry> rows;
+        dn2cpp_constraint_interfaces(type, visited, rows, false);
+        found = cache.emplace(type, std::move(rows)).first;
+    }
+    *count = static_cast<int32_t>(found->second.size());
+    return found->second.data();
 }
 
 static void dn2cpp_complete_formal_type(Dn2CppFormalType* node)

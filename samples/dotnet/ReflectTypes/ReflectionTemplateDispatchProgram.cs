@@ -192,6 +192,7 @@ internal static class ReflectionTemplateDispatchProgram
         {
             ReflectRuntimeInstantiationSubset.Program.RunForbiddenArguments(args, typeof(delegate*<int>));
         }
+        ReflectGenericSubset.Program.RunOpenInterfaces();
     }
 
     private static void RunTemplateConsumers()

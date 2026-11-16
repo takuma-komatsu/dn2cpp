@@ -12,6 +12,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="ReflectionTemplateDispatchProgram.cs" />
+    <Compile Include="ReflectGenericSubset.cs" />
     <Compile Include="ReflectRuntimeInstantiationSubset.cs" />
     <Compile Include="TemplateSignatureAllocationProgram.cs" />
   </ItemGroup>
