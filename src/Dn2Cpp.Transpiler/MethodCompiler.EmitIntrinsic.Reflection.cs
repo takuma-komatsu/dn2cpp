@@ -839,8 +839,7 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_type_name(dn2cpp_type_require({Cast(a, "Dn2CppType*")}))");
                 return true;
             }
-            // MemberInfo.DeclaringType: a FieldInfo's owning type (a Type's enclosing
-            // type isn't modeled → null for top-level, matching.NET).
+            // MemberInfo.DeclaringType: the retained declaration owner.
             case ("System.Reflection.MemberInfo", "get_DeclaringType"):
             {
                 var a = Pop();
@@ -1883,22 +1882,21 @@ internal sealed partial class MethodCompiler
                     $"dn2cpp_type_get_enum_names({Cast(a, "Dn2CppType*")})", sig.ReturnType);
                 return true;
             }
-            // Nested types. The BindingFlags overloads route to the same runtime
-            // helper, which returns the public nested set (NonPublic is a carve-out).
+            // Nested types use visibility and name flags, not instance/static filtering.
             case ("System.Type", "GetNestedTypes"):
             {
-                if (sig.ParameterTypes.Length == 1) Pop(); // BindingFlags (ignored)
+                var flags = sig.ParameterTypes.Length == 1 ? Pop().Expr : "16";
                 var a = Pop();
                 PushReflectionMemberArray(
-                    $"dn2cpp_type_get_nested_types({Cast(a, "Dn2CppType*")})", sig.ReturnType);
+                    $"dn2cpp_type_get_nested_types({Cast(a, "Dn2CppType*")}, {flags})", sig.ReturnType);
                 return true;
             }
             case ("System.Type", "GetNestedType"):
             {
-                if (sig.ParameterTypes.Length == 2) Pop(); // BindingFlags (ignored)
+                var flags = sig.ParameterTypes.Length == 2 ? Pop().Expr : "16";
                 var n = Pop();
                 var a = Pop();
-                Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_get_nested_type({Cast(a, "Dn2CppType*")}, {Cast(n, "Dn2CppString*")})");
+                Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_get_nested_type({Cast(a, "Dn2CppType*")}, {Cast(n, "Dn2CppString*")}, {flags})");
                 return true;
             }
             // RuntimeType Equals uses object identity; header dispatch rejects a non-Type other.

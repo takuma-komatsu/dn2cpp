@@ -1969,8 +1969,8 @@ int32_t dn2cpp_enum_box_try_format(Dn2CppObject* box, Dn2CppItfCharSpan dest, in
                                    Dn2CppItfCharSpan fmt, Dn2CppObject* nfi);
 // Type.GetNestedTypes()/GetNestedType(name): the type's public nested types
 // (the emitted, non-generic ones), wrapped as Type[] / a single Type or null.
-Dn2CppArrayRef* dn2cpp_type_get_nested_types(Dn2CppType* t);
-Dn2CppType* dn2cpp_type_get_nested_type(Dn2CppType* t, Dn2CppString* name);
+Dn2CppArrayRef* dn2cpp_type_get_nested_types(Dn2CppType* t, int32_t flags);
+Dn2CppType* dn2cpp_type_get_nested_type(Dn2CppType* t, Dn2CppString* name, int32_t flags);
 
 // Type.GetType resolves names through reachable type handles and forwarded-name
 // metadata. The folded rank and parent flag preserve CoreCLR's collision order

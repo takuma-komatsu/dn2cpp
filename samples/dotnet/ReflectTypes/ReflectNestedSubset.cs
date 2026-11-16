@@ -1,10 +1,8 @@
 #nullable disable
 using System;
+using System.Reflection;
 
-// (reflection R5 completion): Type.GetNestedTypes / GetNestedType(name). Each
-// type-info gains a table of its *public* nested types (emitted, non-generic) — the
-// default BindingFlags.Public set. Non-public nested types are a carve-out. CoreLib only;
-// diffed exact vs real.NET.
+// Nested reflection includes visibility-filtered retained definition identities.
 
 namespace ReflectNestedSubset
 {
@@ -30,8 +28,49 @@ namespace ReflectNestedSubset
         }
     }
 
+    class MetadataOwner<T>
+    {
+        public class Plain { public static int Uncalled() => 91; }
+        public class Generic<U> { public static int Uncalled() => 92; }
+        private class Hidden<U> { public static int Uncalled() => 93; }
+    }
+
     class Program
-    {internal static void Run()
+    {
+        internal static void RunMetadata()
+        {
+            Console.WriteLine("== nested metadata ==");
+            Type owner = typeof(MetadataOwner<>);
+            Type closed = typeof(MetadataOwner<int>);
+            const BindingFlags both = BindingFlags.Public | BindingFlags.NonPublic;
+            Type plain = owner.GetNestedType("Plain", both);
+            Type generic = owner.GetNestedType("Generic`1", both);
+            Type hidden = owner.GetNestedType("Hidden`1", both);
+            Console.WriteLine("nested definitions=" + (plain != null && plain.IsGenericTypeDefinition)
+                + ":" + (generic != null && generic.IsGenericTypeDefinition)
+                + ":" + (hidden != null && hidden.IsGenericTypeDefinition));
+            Console.WriteLine("nested owners=" + (plain != null && plain.DeclaringType == owner)
+                + ":" + (generic != null && generic.DeclaringType == owner)
+                + ":" + (hidden != null && hidden.DeclaringType == owner));
+            Console.WriteLine("nested closed owner=" + (closed.GetNestedType("Generic`1", both) == generic));
+            Console.WriteLine("nested visibility=" + (generic != null && generic.IsNestedPublic)
+                + ":" + (hidden != null && hidden.IsNestedPrivate));
+            Console.WriteLine("nested arity=" + (plain == null ? -1 : plain.GetGenericArguments().Length)
+                + ":" + (generic == null ? -1 : generic.GetGenericArguments().Length));
+            Console.WriteLine("nested filters=" + owner.GetNestedTypes(BindingFlags.Public).Length
+                + ":" + owner.GetNestedTypes(BindingFlags.NonPublic).Length
+                + ":" + closed.GetNestedTypes(both | BindingFlags.DeclaredOnly | BindingFlags.Instance).Length
+                + ":" + owner.GetNestedTypes(BindingFlags.Default).Length);
+            Console.WriteLine("nested misses=" + (owner.GetNestedType("Generic", both) == null)
+                + ":" + (owner.GetNestedType("Hidden`1") == null)
+                + ":" + (owner.GetNestedType("Missing", both) == null));
+            Console.WriteLine("nested ignorecase=" + (owner.GetNestedType("generic`1", both | BindingFlags.IgnoreCase) == generic));
+            Console.WriteLine("nested nongeneric private=" + (typeof(Outer).GetNestedType("Secret", BindingFlags.NonPublic) != null));
+            Console.WriteLine("nested members=" + owner.GetMember("Hidden*", MemberTypes.NestedType, both).Length);
+            Console.WriteLine("nested metadata end");
+        }
+
+        internal static void Run()
         {
             Console.WriteLine("use=" + Outer.Use());
             // Reference the nested enum as a type so its type-info is emitted.

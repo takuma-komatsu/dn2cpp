@@ -1543,3 +1543,15 @@ runtime linq miss=null
 miss false=null
 miss true=TypeLoadException
 Type.GetType throwOnError and ignoreCase end
+== nested metadata ==
+nested definitions=True:True:True
+nested owners=True:True:True
+nested closed owner=True
+nested visibility=True:True
+nested arity=1:2
+nested filters=2:1:3:0
+nested misses=True:True:True
+nested ignorecase=True
+nested nongeneric private=True
+nested members=1
+nested metadata end

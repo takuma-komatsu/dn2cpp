@@ -22,6 +22,12 @@ namespace ReflectTypes
             // line pins only the oracle.
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+            if (args.Length > 0 && args[0] == "nested-metadata")
+            {
+                ReflectNestedSubset.Program.RunMetadata();
+                return;
+            }
+
             if (args.Length > 0 && args[0] == "type-gettype-ignorecase")
             {
                 TypeNameRegistrySubset.Program.RunIgnoreCase();
@@ -97,6 +103,7 @@ namespace ReflectTypes
             if (args.Length > 0 && args[0] == "before-type-gettype-ignorecase")
                 return;
             TypeNameRegistrySubset.Program.RunIgnoreCase();
+            ReflectNestedSubset.Program.RunMetadata();
         }
     }
 }

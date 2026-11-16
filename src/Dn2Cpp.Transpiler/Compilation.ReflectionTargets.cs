@@ -462,6 +462,7 @@ internal sealed partial class Compilation
             ReflectionOp.GetProperty or ReflectionOp.GetProperties => LookupMemberKind.Property,
             ReflectionOp.GetField or ReflectionOp.GetFields => LookupMemberKind.Field,
             ReflectionOp.GetEvent or ReflectionOp.GetEvents => LookupMemberKind.Event,
+            ReflectionOp.GetNestedType or ReflectionOp.GetNestedTypes => LookupMemberKind.NestedType,
             _ => null,
         };
         if (api.Op == ReflectionOp.GetDefaultMembers)
@@ -478,6 +479,12 @@ internal sealed partial class Compilation
             return;
         var flagSet = api.Flags >= 0 ? FlagAlternatives(Operand(app, site, api.Flags), api.DefaultFlags, out _)
             : new List<int> { api.DefaultFlags };
+        if (kind == LookupMemberKind.NestedType)
+            foreach (var e in owners.Items)
+                if (e.Kind is REntityKind.Definition or REntityKind.Template && e.Assembly is { } module)
+                    foreach (int flags in flagSet)
+                        foreach (string? name in (IEnumerable<string?>?)names ?? new string?[] { null })
+                            SelectNestedTypes(module, e.Definition, name, flags, false, true);
         foreach (var cls in ClassesOf(owners))
             foreach (int flags in flagSet)
                 if (names is null)
@@ -2956,7 +2963,13 @@ internal sealed partial class Compilation
                     ? LookupVisibility.Private : LookupVisibility.NonPublic;
             if (!ReflectionLookupRules.Admits(new LookupRow(nestedName, LookupMemberKind.NestedType, visibility, false), flags, declared))
                 continue;
-            selected.Add(DefinitionEntity(module, nh));
+            var entity = DefinitionEntity(module, nh);
+            if (entity.Type is { } type)
+                NoteNamedType(type);
+            else
+                NoteTypeofOpenGenericDef(BacktickFullName(module, nh), ResolveOpenGenericDefKind(module, nh),
+                    GenericParamNames(module, nh));
+            selected.Add(entity);
         }
         return selected;
     }
@@ -5059,7 +5072,7 @@ internal sealed partial class Compilation
                     foreach (var itf in TemplateInterfaces(app, templateModule, e.Definition, result))
                         result.Add(TypeEntity(TypeDesc.MakeClass(itf)));
                     continue;
-                case ReflectionOp.GetNestedTypes when e.Kind == REntityKind.Template && e.Assembly is { } nestingModule:
+                case ReflectionOp.GetNestedTypes when e.Kind is REntityKind.Template or REntityKind.Definition && e.Assembly is { } nestingModule:
                     foreach (int flags in flagSet)
                         result.AddRange(SelectNestedTypes(nestingModule, e.Definition, null, flags, false, true));
                     continue;
