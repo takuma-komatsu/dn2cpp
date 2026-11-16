@@ -193,6 +193,7 @@ internal static class ReflectionTemplateDispatchProgram
             ReflectRuntimeInstantiationSubset.Program.RunForbiddenArguments(args, typeof(delegate*<int>));
         }
         ReflectGenericSubset.Program.RunOpenInterfaces();
+        ReflectGenericSubset.Program.RunClosedConstraints();
     }
 
     private static void RunTemplateConsumers()
@@ -231,13 +232,12 @@ internal static class ReflectionTemplateDispatchProgram
         {
             Console.WriteLine("listing fault=" + e.GetType().Name);
         }
-        // .NET throws ArgumentException; the image has no instantiation to return, so the
-        // runtime refuses with its NotSupportedException.
+        // Constraint rejection precedes the missing-instantiation boundary.
         try
         {
             Console.WriteLine("constrained object=" + typeof(ConsumerConstrained<>).MakeGenericType(typeof(object)).Name);
         }
-        catch (Exception e) when (e is ArgumentException or NotSupportedException)
+        catch (ArgumentException)
         {
             Console.WriteLine("constrained object=refused");
         }

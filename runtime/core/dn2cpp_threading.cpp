@@ -676,7 +676,7 @@ Dn2CppParallelLoopResult dn2cpp_parallel_foreach_r8_state(Dn2CppArrayN* src, Dn2
 // Parallel.* call reading it).
 extern const Dn2CppType dn2cpp_parallel_options_type_obj;
 const Dn2CppTypeInfo dn2cpp_parallel_options_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.ParallelOptions", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppParallelOptions), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_parallel_options_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.ParallelOptions", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppParallelOptions), 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_parallel_options_type_obj);
 const Dn2CppType dn2cpp_parallel_options_type_obj = { { &dn2cpp_type_type }, &dn2cpp_parallel_options_type };
 
 Dn2CppObject* dn2cpp_parallel_options_new()
@@ -739,11 +739,11 @@ const Dn2CppType dn2cpp_autoresetevent_type_obj = { { &dn2cpp_type_type }, &dn2c
 // over-accept this arrangement exists to avoid.
 extern const Dn2CppType dn2cpp_manualreseteventslim_type_obj;
 Dn2CppTypeInfo dn2cpp_manualreseteventslim_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.ManualResetEventSlim", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_manualreseteventslim_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.ManualResetEventSlim", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_manualreseteventslim_type_obj);
 const Dn2CppType dn2cpp_manualreseteventslim_type_obj = { { &dn2cpp_type_type }, &dn2cpp_manualreseteventslim_type };
 extern const Dn2CppType dn2cpp_safewaithandle_type_obj;
 Dn2CppTypeInfo dn2cpp_safewaithandle_type =
-    dn2cpp_ti_with_typeobject({ "Microsoft.Win32.SafeHandles.SafeWaitHandle", &dn2cpp_safehandle_zero_or_minus_one_type, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_safewaithandle_type_obj);
+    dn2cpp_ti_with_typeobject({ "Microsoft.Win32.SafeHandles.SafeWaitHandle", &dn2cpp_safehandle_zero_or_minus_one_type, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_safewaithandle_type_obj);
 const Dn2CppType dn2cpp_safewaithandle_type_obj = { { &dn2cpp_type_type }, &dn2cpp_safewaithandle_type };
 
 struct Dn2CppSemaphore : Dn2CppObject
@@ -1701,7 +1701,7 @@ int64_t dn2cpp_barrier_current_phase(Dn2CppObject* o)
 // interface mouth is what needs the row.
 extern const Dn2CppType dn2cpp_rwlock_type_obj;
 Dn2CppTypeInfo dn2cpp_rwlock_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.ReaderWriterLockSlim", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_rwlock_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.ReaderWriterLockSlim", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_rwlock_type_obj);
 const Dn2CppType dn2cpp_rwlock_type_obj = { { &dn2cpp_type_type }, &dn2cpp_rwlock_type };
 
 struct Dn2CppRwReadHold

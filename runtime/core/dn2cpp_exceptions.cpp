@@ -139,7 +139,7 @@ bool dn2cpp_is_vcall_trap(const void* fn)
 // of the uniform exception layout; built by dn2cpp_aggregate_exception_new.
 extern const Dn2CppType dn2cpp_aggregate_exception_type_obj;
 const Dn2CppTypeInfo dn2cpp_aggregate_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.AggregateException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_aggregate_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.AggregateException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_aggregate_exception_type_obj);
 const Dn2CppType dn2cpp_aggregate_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_aggregate_exception_type };
 
 // The in-flight exception list (see the declaration comment in dn2cpp.h): one
@@ -1717,14 +1717,14 @@ DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_stacktrace,
 );
 
 extern const Dn2CppType dn2cpp_stackframe_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_stackframe_type_reflection, dn2cpp_ownflds_stackframe, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_stackframe_type_reflection, dn2cpp_ownflds_stackframe, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, {}, 0, DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR);
 const Dn2CppTypeInfo dn2cpp_stackframe_type =
     dn2cpp_ti_with_typeobject({ "System.Diagnostics.StackFrame", nullptr, nullptr, nullptr, dn2cpp_stackframe_tostring, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppStackFrame), 0, 0, 0, 0, 0, dn2cpp_stackframe_type_reflection },
                               &dn2cpp_stackframe_type_obj);
 const Dn2CppType dn2cpp_stackframe_type_obj = { { &dn2cpp_type_type }, &dn2cpp_stackframe_type };
 
 extern const Dn2CppType dn2cpp_stacktrace_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_stacktrace_type_reflection, dn2cpp_ownflds_stacktrace, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_stacktrace_type_reflection, dn2cpp_ownflds_stacktrace, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, {}, 0, DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR);
 const Dn2CppTypeInfo dn2cpp_stacktrace_type =
     dn2cpp_ti_with_typeobject({ "System.Diagnostics.StackTrace", nullptr, nullptr, nullptr, dn2cpp_stacktrace_tostring, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppStackTrace), 0, 0, 0, 0, 0, dn2cpp_stacktrace_type_reflection },
                               &dn2cpp_stacktrace_type_obj);

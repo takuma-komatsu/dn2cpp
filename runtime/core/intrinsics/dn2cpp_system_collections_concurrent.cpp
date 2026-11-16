@@ -1,3 +1,4 @@
+#include "dn2cpp_metadata_native.h"
 // dn2cpp_system_collections_concurrent.cpp — System.Collections.Concurrent
 // intrinsics. Currently: BlockingCollection<T>, a producer/consumer blocking queue
 // backed by a real mutex + condition variables. One per-namespace intrinsic unit
@@ -56,7 +57,7 @@ struct Dn2CppBlockingCollection : Dn2CppObject
 // dispatch row, whose entry names program-specific emitted type-info.
 extern const Dn2CppType dn2cpp_blockingcollection_type_obj;
 Dn2CppTypeInfo dn2cpp_blockingcollection_type =
-    dn2cpp_ti_with_typeobject({ "System.Collections.Concurrent.BlockingCollection`1", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppBlockingCollection), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_blockingcollection_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Collections.Concurrent.BlockingCollection`1", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppBlockingCollection), 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_blockingcollection_type_obj);
 const Dn2CppType dn2cpp_blockingcollection_type_obj = { { &dn2cpp_type_type }, &dn2cpp_blockingcollection_type };
 extern const Dn2CppType dn2cpp_blockingnode_type_obj;
 static const Dn2CppTypeInfo dn2cpp_blockingnode_type =

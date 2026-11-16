@@ -49,7 +49,7 @@
 // Each static type-info bakes its interned Type companion in (lock-free typeof/GetType).
 extern const Dn2CppType dn2cpp_object_type_obj;
 const Dn2CppTypeInfo dn2cpp_object_type =
-    dn2cpp_ti_with_typeobject({ "System.Object", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_object_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Object", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_object_type_obj);
 const Dn2CppType dn2cpp_object_type_obj = { { &dn2cpp_type_type }, &dn2cpp_object_type };
 
 // EqualityComparer<T>.Default is read once per element on the dictionary-probe and
@@ -691,7 +691,7 @@ const Dn2CppTypeInfo dn2cpp_void_type =
 const Dn2CppType dn2cpp_void_type_obj = { { &dn2cpp_type_type }, &dn2cpp_void_type };
 extern const Dn2CppType dn2cpp_exception_type_obj;
 const Dn2CppTypeInfo dn2cpp_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.Exception", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Exception", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_exception_type_obj);
 const Dn2CppType dn2cpp_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_exception_type };
 // System.Enum is non-const like String: every emitted per-enum type-info bases on
 // this handle and deliberately carries no interface rows of its own, so the ONE
@@ -732,35 +732,35 @@ void dn2cpp_enum_set_interfaces(const Dn2CppInterfaceEntry* entries, int32_t cou
 // (dn2cpp_intrinsic_set_base), so the chain is .NET's.
 extern const Dn2CppType dn2cpp_overflow_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_overflow_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.OverflowException", &dn2cpp_arithmetic_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_overflow_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.OverflowException", &dn2cpp_arithmetic_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_overflow_exception_type_obj);
 const Dn2CppType dn2cpp_overflow_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_overflow_exception_type };
 extern const Dn2CppType dn2cpp_index_out_of_range_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_index_out_of_range_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.IndexOutOfRangeException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_index_out_of_range_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.IndexOutOfRangeException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_index_out_of_range_exception_type_obj);
 const Dn2CppType dn2cpp_index_out_of_range_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_index_out_of_range_exception_type };
 extern const Dn2CppType dn2cpp_argument_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_argument_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.ArgumentException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_argument_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.ArgumentException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_argument_exception_type_obj);
 const Dn2CppType dn2cpp_argument_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_argument_exception_type };
 extern const Dn2CppType dn2cpp_culture_not_found_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_culture_not_found_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.Globalization.CultureNotFoundException", &dn2cpp_argument_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_culture_not_found_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Globalization.CultureNotFoundException", &dn2cpp_argument_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_culture_not_found_exception_type_obj);
 const Dn2CppType dn2cpp_culture_not_found_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_culture_not_found_exception_type };
 extern const Dn2CppType dn2cpp_com_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_com_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.Runtime.InteropServices.COMException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_com_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Runtime.InteropServices.COMException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_com_exception_type_obj);
 const Dn2CppType dn2cpp_com_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_com_exception_type };
 extern const Dn2CppType dn2cpp_argument_out_of_range_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_argument_out_of_range_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.ArgumentOutOfRangeException", &dn2cpp_argument_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_argument_out_of_range_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.ArgumentOutOfRangeException", &dn2cpp_argument_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_argument_out_of_range_exception_type_obj);
 const Dn2CppType dn2cpp_argument_out_of_range_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_argument_out_of_range_exception_type };
 extern const Dn2CppType dn2cpp_argument_null_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_argument_null_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.ArgumentNullException", &dn2cpp_argument_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_argument_null_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.ArgumentNullException", &dn2cpp_argument_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_argument_null_exception_type_obj);
 const Dn2CppType dn2cpp_argument_null_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_argument_null_exception_type };
 extern const Dn2CppType dn2cpp_invalid_operation_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_invalid_operation_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.InvalidOperationException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_invalid_operation_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.InvalidOperationException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_invalid_operation_exception_type_obj);
 const Dn2CppType dn2cpp_invalid_operation_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_invalid_operation_exception_type };
 // Based on InvalidOperationException (as in .NET: ObjectDisposedException :
 // InvalidOperationException). The base link is what keeps a `catch
@@ -772,95 +772,95 @@ Dn2CppTypeInfo dn2cpp_object_disposed_exception_type =
 const Dn2CppType dn2cpp_object_disposed_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_object_disposed_exception_type };
 extern const Dn2CppType dn2cpp_out_of_memory_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_out_of_memory_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.OutOfMemoryException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_out_of_memory_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.OutOfMemoryException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_out_of_memory_exception_type_obj);
 const Dn2CppType dn2cpp_out_of_memory_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_out_of_memory_exception_type };
 extern const Dn2CppType dn2cpp_arithmetic_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_arithmetic_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.ArithmeticException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_arithmetic_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.ArithmeticException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_arithmetic_exception_type_obj);
 const Dn2CppType dn2cpp_arithmetic_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_arithmetic_exception_type };
 extern const Dn2CppType dn2cpp_invalid_cast_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_invalid_cast_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.InvalidCastException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_invalid_cast_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.InvalidCastException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_invalid_cast_exception_type_obj);
 const Dn2CppType dn2cpp_invalid_cast_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_invalid_cast_exception_type };
 extern const Dn2CppType dn2cpp_type_load_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_type_load_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.TypeLoadException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_type_load_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.TypeLoadException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_type_load_exception_type_obj);
 const Dn2CppType dn2cpp_type_load_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_type_load_exception_type };
 extern const Dn2CppType dn2cpp_dll_not_found_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_dll_not_found_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.DllNotFoundException", &dn2cpp_type_load_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_dll_not_found_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.DllNotFoundException", &dn2cpp_type_load_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_dll_not_found_exception_type_obj);
 const Dn2CppType dn2cpp_dll_not_found_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_dll_not_found_exception_type };
 extern const Dn2CppType dn2cpp_entry_point_not_found_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_entry_point_not_found_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.EntryPointNotFoundException", &dn2cpp_type_load_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_entry_point_not_found_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.EntryPointNotFoundException", &dn2cpp_type_load_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_entry_point_not_found_exception_type_obj);
 const Dn2CppType dn2cpp_entry_point_not_found_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_entry_point_not_found_exception_type };
 extern const Dn2CppType dn2cpp_not_supported_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_not_supported_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.NotSupportedException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_not_supported_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.NotSupportedException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_not_supported_exception_type_obj);
 const Dn2CppType dn2cpp_not_supported_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_not_supported_exception_type };
 extern const Dn2CppType dn2cpp_format_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_format_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.FormatException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_format_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.FormatException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_format_exception_type_obj);
 const Dn2CppType dn2cpp_format_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_format_exception_type };
 // Based on NotSupportedException (as in .NET: PNSE : NotSupportedException), so
 // `catch (NotSupportedException)` also matches the dynamic-code-generation traps.
 extern const Dn2CppType dn2cpp_platform_not_supported_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_platform_not_supported_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.PlatformNotSupportedException", &dn2cpp_not_supported_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_platform_not_supported_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.PlatformNotSupportedException", &dn2cpp_not_supported_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_platform_not_supported_exception_type_obj);
 const Dn2CppType dn2cpp_platform_not_supported_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_platform_not_supported_exception_type };
 // File error paths (real .NET exception types, so `catch`/GetType match).
 extern const Dn2CppType dn2cpp_io_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_io_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.IO.IOException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_io_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.IO.IOException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_io_exception_type_obj);
 const Dn2CppType dn2cpp_io_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_io_exception_type };
 extern const Dn2CppType dn2cpp_file_not_found_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_file_not_found_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.IO.FileNotFoundException", &dn2cpp_io_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_file_not_found_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.IO.FileNotFoundException", &dn2cpp_io_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_file_not_found_exception_type_obj);
 const Dn2CppType dn2cpp_file_not_found_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_file_not_found_exception_type };
 extern const Dn2CppType dn2cpp_file_load_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_file_load_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.IO.FileLoadException", &dn2cpp_io_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_file_load_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.IO.FileLoadException", &dn2cpp_io_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_file_load_exception_type_obj);
 const Dn2CppType dn2cpp_file_load_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_file_load_exception_type };
 extern const Dn2CppType dn2cpp_directory_not_found_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_directory_not_found_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.IO.DirectoryNotFoundException", &dn2cpp_io_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_directory_not_found_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.IO.DirectoryNotFoundException", &dn2cpp_io_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_directory_not_found_exception_type_obj);
 const Dn2CppType dn2cpp_directory_not_found_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_directory_not_found_exception_type };
 extern const Dn2CppType dn2cpp_path_too_long_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_path_too_long_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.IO.PathTooLongException", &dn2cpp_io_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_path_too_long_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.IO.PathTooLongException", &dn2cpp_io_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_path_too_long_exception_type_obj);
 const Dn2CppType dn2cpp_path_too_long_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_path_too_long_exception_type };
 extern const Dn2CppType dn2cpp_unauthorized_access_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_unauthorized_access_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.UnauthorizedAccessException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_unauthorized_access_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.UnauthorizedAccessException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_unauthorized_access_exception_type_obj);
 const Dn2CppType dn2cpp_unauthorized_access_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_unauthorized_access_exception_type };
 extern const Dn2CppType dn2cpp_key_not_found_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_key_not_found_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.Collections.Generic.KeyNotFoundException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_key_not_found_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Collections.Generic.KeyNotFoundException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_key_not_found_exception_type_obj);
 const Dn2CppType dn2cpp_key_not_found_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_key_not_found_exception_type };
 // Array.Copy over two arrays of different rank, or a one-dimensional Array search,
 // sort or reversal over an MD array, matching .NET's RankException.
 extern const Dn2CppType dn2cpp_rank_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_rank_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.RankException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_rank_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.RankException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_rank_exception_type_obj);
 const Dn2CppType dn2cpp_rank_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_rank_exception_type };
 // Array.Copy over two arrays whose element types no arm of the CLR's
 // compatibility verdict relates, matching .NET's
 // ArrayTypeMismatchException. Direct System.Exception base, like RankException.
 extern const Dn2CppType dn2cpp_array_type_mismatch_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_array_type_mismatch_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.ArrayTypeMismatchException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_array_type_mismatch_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.ArrayTypeMismatchException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_array_type_mismatch_exception_type_obj);
 const Dn2CppType dn2cpp_array_type_mismatch_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_array_type_mismatch_exception_type };
 // Reflection member lookup with several undecidable matches (Type.GetMethod /
 // GetProperty), matching .NET's AmbiguousMatchException.
 extern const Dn2CppType dn2cpp_ambiguous_match_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_ambiguous_match_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.Reflection.AmbiguousMatchException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_ambiguous_match_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Reflection.AmbiguousMatchException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_ambiguous_match_exception_type_obj);
 const Dn2CppType dn2cpp_ambiguous_match_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_ambiguous_match_exception_type };
 // An invoked interface slot with no most specific implementation, matching
 // .NET's AmbiguousImplementationException, which derives from Exception.
 extern const Dn2CppType dn2cpp_ambiguous_implementation_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_ambiguous_implementation_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.Runtime.AmbiguousImplementationException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_ambiguous_implementation_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Runtime.AmbiguousImplementationException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_ambiguous_implementation_exception_type_obj);
 const Dn2CppType dn2cpp_ambiguous_implementation_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_ambiguous_implementation_exception_type };
 
 extern const Dn2CppType dn2cpp_type_initialization_exception_type_obj;
@@ -870,51 +870,51 @@ const Dn2CppType dn2cpp_type_initialization_exception_type_obj = { { &dn2cpp_typ
 extern const Dn2CppType dn2cpp_target_invocation_exception_type_obj;
 extern const Dn2CppType dn2cpp_application_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_application_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.ApplicationException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_application_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.ApplicationException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_application_exception_type_obj);
 const Dn2CppType dn2cpp_application_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_application_exception_type };
 Dn2CppTypeInfo dn2cpp_target_invocation_exception_type =
     dn2cpp_ti_with_typeobject({ "System.Reflection.TargetInvocationException", &dn2cpp_application_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_target_invocation_exception_type_obj);
 const Dn2CppType dn2cpp_target_invocation_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_target_invocation_exception_type };
 extern const Dn2CppType dn2cpp_target_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_target_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.Reflection.TargetException", &dn2cpp_application_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_target_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Reflection.TargetException", &dn2cpp_application_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_target_exception_type_obj);
 const Dn2CppType dn2cpp_target_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_target_exception_type };
 extern const Dn2CppType dn2cpp_target_parameter_count_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_target_parameter_count_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.Reflection.TargetParameterCountException", &dn2cpp_application_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_target_parameter_count_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Reflection.TargetParameterCountException", &dn2cpp_application_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_target_parameter_count_exception_type_obj);
 const Dn2CppType dn2cpp_target_parameter_count_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_target_parameter_count_exception_type };
 // Activator/ConstructorInfo constructor resolution with no matching ctor,
 // matching .NET's MissingMethodException.
 extern const Dn2CppType dn2cpp_member_access_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_member_access_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.MemberAccessException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_member_access_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.MemberAccessException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_member_access_exception_type_obj);
 const Dn2CppType dn2cpp_member_access_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_member_access_exception_type };
 extern const Dn2CppType dn2cpp_missing_method_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_missing_method_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.MissingMethodException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_missing_method_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.MissingMethodException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_missing_method_exception_type_obj);
 const Dn2CppType dn2cpp_missing_method_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_missing_method_exception_type };
 // FieldInfo.SetValue on a constant or a static read-only field, matching .NET's
 // FieldAccessException.
 extern const Dn2CppType dn2cpp_field_access_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_field_access_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.FieldAccessException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_field_access_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.FieldAccessException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_field_access_exception_type_obj);
 const Dn2CppType dn2cpp_field_access_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_field_access_exception_type };
 // MethodBase.Invoke on a static abstract interface member, matching .NET's
 // BadImageFormatException.
 extern const Dn2CppType dn2cpp_bad_image_format_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_bad_image_format_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.BadImageFormatException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_bad_image_format_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.BadImageFormatException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_bad_image_format_exception_type_obj);
 const Dn2CppType dn2cpp_bad_image_format_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_bad_image_format_exception_type };
 extern const Dn2CppType dn2cpp_missing_manifest_resource_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_missing_manifest_resource_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.Resources.MissingManifestResourceException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_missing_manifest_resource_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Resources.MissingManifestResourceException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_missing_manifest_resource_exception_type_obj);
 const Dn2CppType dn2cpp_missing_manifest_resource_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_missing_manifest_resource_exception_type };
 // A runtime entry point's null managed receiver (a null FieldInfo's GetValue),
 // matching .NET's NullReferenceException for the instance call it stands in
 // for.
 extern const Dn2CppType dn2cpp_null_reference_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_null_reference_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.NullReferenceException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_null_reference_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.NullReferenceException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_null_reference_exception_type_obj);
 const Dn2CppType dn2cpp_null_reference_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_null_reference_exception_type };
 
 // System.DivideByZeroException — raised by the emitted div/rem guards, the
@@ -922,7 +922,7 @@ const Dn2CppType dn2cpp_null_reference_exception_type_obj = { { &dn2cpp_type_typ
 // `catch (ArithmeticException)` around numeric parsing is a shape real code writes.
 extern const Dn2CppType dn2cpp_divide_by_zero_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_divide_by_zero_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.DivideByZeroException", &dn2cpp_arithmetic_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_divide_by_zero_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.DivideByZeroException", &dn2cpp_arithmetic_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_divide_by_zero_exception_type_obj);
 const Dn2CppType dn2cpp_divide_by_zero_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_divide_by_zero_exception_type };
 
 // System.Threading.LockRecursionException — raised by ReaderWriterLockSlim's
@@ -931,20 +931,20 @@ const Dn2CppType dn2cpp_divide_by_zero_exception_type_obj = { { &dn2cpp_type_typ
 // matching real .NET. Direct System.Exception base, as in .NET.
 extern const Dn2CppType dn2cpp_lock_recursion_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_lock_recursion_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.LockRecursionException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_lock_recursion_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.LockRecursionException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_lock_recursion_exception_type_obj);
 const Dn2CppType dn2cpp_lock_recursion_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_lock_recursion_exception_type };
 // System.Threading.SynchronizationLockException — raised by ReaderWriterLockSlim's
 // Exit* paths when the calling thread does not hold the lock being released
 // matching real .NET.
 extern const Dn2CppType dn2cpp_synchronization_lock_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_synchronization_lock_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.SynchronizationLockException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_synchronization_lock_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.SynchronizationLockException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_synchronization_lock_exception_type_obj);
 const Dn2CppType dn2cpp_synchronization_lock_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_synchronization_lock_exception_type };
 // System.Threading.ThreadStateException — raised by Thread.Start on a thread already
 // started and by Thread.Join on one never started, as in .NET.
 extern const Dn2CppType dn2cpp_thread_state_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_thread_state_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.ThreadStateException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_thread_state_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.ThreadStateException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_thread_state_exception_type_obj);
 const Dn2CppType dn2cpp_thread_state_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_thread_state_exception_type };
 
 // Mutex-interned fallback behind the lock-free typeObject fast path (inline in

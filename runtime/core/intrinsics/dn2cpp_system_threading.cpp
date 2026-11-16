@@ -1,3 +1,4 @@
+#include "dn2cpp_metadata_native.h"
 // dn2cpp_system_threading.cpp — System.Threading.Interlocked / Monitor / Volatile
 // intrinsics, backed by real hardware atomics and per-object mutexes.
 //
@@ -506,7 +507,7 @@ extern const Dn2CppType dn2cpp_lock_type_obj;
 const Dn2CppTypeInfo dn2cpp_lock_type = dn2cpp_ti_with_typeobject({
     "System.Threading.Lock", &dn2cpp_object_type, nullptr, nullptr, nullptr, nullptr,
     nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-    sizeof(Dn2CppObject), 0, DN2CPP_TF_SEALED, 0, 0, 0, nullptr }, &dn2cpp_lock_type_obj);
+    sizeof(Dn2CppObject), 0, DN2CPP_TF_SEALED, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_lock_type_obj);
 const Dn2CppType dn2cpp_lock_type_obj = { { &dn2cpp_type_type }, &dn2cpp_lock_type };
 
 void dn2cpp_lock_enter(Dn2CppObject* lock)
@@ -780,7 +781,7 @@ struct Dn2CppThreadLocal : Dn2CppObject  // GC-allocated
 // the shallow clone and GetUninitializedObject size an allocation from.
 extern const Dn2CppType dn2cpp_threadlocal_type_obj;
 Dn2CppTypeInfo dn2cpp_threadlocal_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.ThreadLocal`1", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppThreadLocal), 0, 0, 0, 0, 0, nullptr },
+    dn2cpp_ti_with_typeobject({ "System.Threading.ThreadLocal`1", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppThreadLocal), 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection },
                               &dn2cpp_threadlocal_type_obj);
 const Dn2CppType dn2cpp_threadlocal_type_obj = { { &dn2cpp_type_type }, &dn2cpp_threadlocal_type };
 

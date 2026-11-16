@@ -1,3 +1,4 @@
+#include "dn2cpp_metadata_native.h"
 // dn2cpp_tasks.cpp — async machinery of the dn2cpp runtime:
 // the async/await scheduler, cancellation,
 // TaskCompletionSource, System.Threading.Thread, the Task.Run worker pool,
@@ -1394,7 +1395,7 @@ Dn2CppTask* dn2cpp_task_from_exception(Dn2CppObject* exception)
 // bare Exception type if a program cancels without ever naming the type.
 extern const Dn2CppType dn2cpp_operation_canceled_exception_type_obj;
 static const Dn2CppTypeInfo dn2cpp_operation_canceled_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.OperationCanceledException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_operation_canceled_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.OperationCanceledException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_operation_canceled_exception_type_obj);
 const Dn2CppType dn2cpp_operation_canceled_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_operation_canceled_exception_type };
 static std::atomic<const Dn2CppTypeInfo*> s_canceled_exc_type{
     &dn2cpp_operation_canceled_exception_type };
@@ -1584,7 +1585,7 @@ static std::condition_variable& g_cts_timer_cv = dn2cpp_never_destroyed<std::con
 
 extern const Dn2CppType dn2cpp_cancel_source_type_obj;
 Dn2CppTypeInfo dn2cpp_cancel_source_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.CancellationTokenSource", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppCancelSource), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_cancel_source_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.CancellationTokenSource", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppCancelSource), 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_cancel_source_type_obj);
 const Dn2CppType dn2cpp_cancel_source_type_obj = { { &dn2cpp_type_type }, &dn2cpp_cancel_source_type };
 
 Dn2CppCancelSource* dn2cpp_cts_new()
