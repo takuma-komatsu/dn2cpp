@@ -1277,6 +1277,12 @@ gate_extra_asserts() {
         gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: invocation diagnosis block missing: $line" >&2; return 1; }
     done
+    gate_output witness "$out/native.stdout" 'template array signatures end' --count 1 --policy crlf
+    if grep -Eq '^struct t_ReflectRuntimeInstantiationSubset_ArrayTemplate_(Int32|String) ' "$out/generated.h"; then
+        echo 'FAIL: array signature probe used a static closed owner' >&2
+        return 1
+    fi
+
 }
 TEMPLATE_SIGNATURES_KEEP=(--link-xml samples/dotnet/ReflectTypes/keep-template-signatures.xml)
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes ReflectionTemplateDispatch --no-ildiet \

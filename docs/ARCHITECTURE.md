@@ -1744,6 +1744,12 @@ validates declared constraints before publishing a handle. Closed type arguments
 use the same recipes before AOT candidate or runtime-template resolution; a missing
 instantiation cannot mask a constraint violation. Open method arguments
 participate in `ContainsGenericParameters` and the invocation and delegate guards.
+Runtime-template array member signatures retain structural recipes instead of
+static array handles containing canonical placeholders. Their element arguments
+resolve against the clone's declaring context, including metadata-only generic
+elements without an executable layout. Metadata queries do not admit additional
+executable members.
+
 Runtime-template delegate binding resolves full location recipes after clone
 publication, against the actual declaring level. Both sides share structural
 interners; unknown names cannot establish equality. Raw address forwarding does

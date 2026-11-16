@@ -70,7 +70,7 @@ internal sealed partial class CppEmitter
                 }
                 foreach (var parameter in method.Signature.ParameterTypes)
                     Note(parameter);
-                if (method.Signature.ParameterTypes.Any(HasSignatureShape) && ReflectionSignature(method) is { } signature)
+                if (method.Signature.ParameterTypes.Any(HasReflectionSignatureShape) && ReflectionSignature(method) is { } signature)
                     foreach (var parameter in signature.ParameterTypes)
                         NoteReflectionSignatureLeaves(parameter.Binding, Note);
             }
@@ -1199,7 +1199,14 @@ internal sealed partial class CppEmitter
                 _e.NoteQueryIdentity(t);
                 return;
             }
-            if (CppEmitter.HasSignatureShape(t) && !Compilation.ContainsGenericVar(t)
+            // Template array signatures substitute their elements from recipes, never
+            // from a static handle containing canonical placeholders.
+            if (t.Kind is TypeKind.SZArray or TypeKind.MDArray && Compilation.ContainsCanonPlaceholder(t))
+            {
+                _c.NoteMdArrayUse();
+                return;
+            }
+            if (HasReflectionSignatureShape(t) && !Compilation.ContainsGenericVar(t)
                 && !Compilation.ContainsCanonPlaceholder(t))
             {
                 _e.NoteReflectionSignatureLeaves(CppEmitter.ArraySignatureFromType(t), _ => { });
@@ -1257,7 +1264,7 @@ internal sealed partial class CppEmitter
                     foreach (var f in cls.Fields)
                     {
                         NoteReflectedType(f.Type);
-                        if (IsSignatureArray(f.Type))
+                        if (IsReflectionSignatureArray(f.Type))
                             _e.NoteReflectionSignatureLeaves(_e.ReflectionFieldSignature(f).Binding, leaf => NoteReflectedType(leaf));
                     }
                 // RenderTypeInfo's generic-argument vector gate (its _genericDefSyms
@@ -1289,7 +1296,7 @@ internal sealed partial class CppEmitter
                     if (!_e.KeepsReflectionMethodRow(cls, m, propertyAccessors))
                         continue;
                     bool definitionOnly = m.Signature.GenericParameterCount > 0 && m.Context.MethodArgs.Length == 0;
-                    var decodedSignature = HasSignatureShape(m.Signature.ReturnType) || m.Signature.ParameterTypes.Any(HasSignatureShape)
+                    var decodedSignature = HasReflectionSignatureShape(m.Signature.ReturnType) || m.Signature.ParameterTypes.Any(HasReflectionSignatureShape)
                         ? _e.ReflectionSignature(m) : null;
                     void NoteSignatureType(TypeDesc type, BindingSignature? binding)
                     {
@@ -1297,7 +1304,7 @@ internal sealed partial class CppEmitter
                             return;
                         bool addedDefinition = definitionOnly && _e._metadataOnlyDefinitions.Contains(m);
                         NoteReflectedType(type, addedDefinition);
-                        if (HasSignatureShape(type) && binding is not null)
+                        if (HasReflectionSignatureShape(type) && binding is not null)
                             _e.NoteReflectionSignatureLeaves(binding, leaf => NoteReflectedType(leaf, addedDefinition));
                     }
                     NoteSignatureType(m.Signature.ReturnType, decodedSignature?.ReturnType.Binding);
@@ -1364,7 +1371,7 @@ internal sealed partial class CppEmitter
 
         private string TypeArgumentVector(TypeDesc[] arguments)
         {
-            if (!arguments.Any(CppEmitter.HasSignatureShape))
+            if (!arguments.Any(HasReflectionSignatureShape))
                 return TypeArgumentVector(string.Join(", ", arguments.Select(a => _e.MemberTypeInfoExpr(a, _emittedEnums))));
             string key = "signature:" + string.Join("|", arguments.Select(Compilation.IdentityMangle));
             if (_genargPools.TryGetValue(key, out var pooled))
@@ -1375,7 +1382,7 @@ internal sealed partial class CppEmitter
             for (int i = 0; i < arguments.Length; i++)
             {
                 var argument = arguments[i];
-                if (CppEmitter.HasSignatureShape(argument))
+                if (HasReflectionSignatureShape(argument))
                 {
                     initializers[i] = "nullptr";
                     string signature = _e.EmitBindingSignature(_sb,
@@ -3418,7 +3425,7 @@ internal sealed partial class CppEmitter
             foreach (var f in cls.Fields)
             {
                 int attrs = MetadataFieldAttrs((int)f.Attributes);
-                var arraySignature = IsSignatureArray(f.Type) ? _e.ReflectionFieldSignature(f) : null;
+                var arraySignature = IsReflectionSignatureArray(f.Type) ? _e.ReflectionFieldSignature(f) : null;
                 string querySignature = arraySignature is not null
                     ? _e.EmitBindingSignature(_sb, _e.QuerySignature(arraySignature.Binding), query: true) : "nullptr";
                 string ftInfo = _e.FieldTypeInfoExpr(f.Type, _emittedEnums);
