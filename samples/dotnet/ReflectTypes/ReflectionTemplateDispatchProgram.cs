@@ -194,6 +194,7 @@ internal static class ReflectionTemplateDispatchProgram
         }
         ReflectGenericSubset.Program.RunOpenInterfaces();
         ReflectGenericSubset.Program.RunClosedConstraints();
+        ReflectRuntimeInstantiationSubset.Program.RunArraySignatures();
     }
 
     private static void RunTemplateConsumers()

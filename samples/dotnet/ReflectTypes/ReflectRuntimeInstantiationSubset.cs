@@ -147,6 +147,8 @@ namespace ReflectRuntimeInstantiationSubset
     {
         public string ArrayName() => new T[0].GetType().Name;
         public Array Sized(int length) => new T[length];
+        public Holder<T>[] NestedArray(Holder<T>[,] values) => null;
+        public Holder<T>[,] NestedMatrix(Holder<T>[] values) => null;
     }
 
     // Only reflection names Show and StaticShow; they reach the base levels'
@@ -668,6 +670,35 @@ namespace ReflectRuntimeInstantiationSubset
                 }
             }
             Console.WriteLine("template delegate method identity end");
+        }
+
+        internal static void RunArraySignatures()
+        {
+            Console.WriteLine("== template array signatures ==");
+            foreach (Type argument in new[] { typeof(int), typeof(string) })
+            {
+                Type owner = typeof(ArrayTemplate<>).MakeGenericType(argument);
+                MethodInfo method = owner.GetMethod("NestedArray");
+                Type result = method.ReturnType;
+                Type element = result.GetElementType();
+                Console.WriteLine(argument.Name + " element=" + (element.GetGenericTypeDefinition() == typeof(Holder<>))
+                    + ":" + (element.GetGenericArguments()[0] == argument));
+                Type parameter = method.GetParameters()[0].ParameterType;
+                MethodInfo matrix = owner.GetMethod("NestedMatrix");
+                Console.WriteLine(argument.Name + " return=" + (result == matrix.GetParameters()[0].ParameterType)
+                    + ":" + (result.GetElementType() == element) + ":" + result.GetArrayRank());
+                Console.WriteLine(argument.Name + " parameter=" + (parameter == matrix.ReturnType)
+                    + ":" + (parameter.GetElementType() == element) + ":" + parameter.GetArrayRank());
+                Type vector = result;
+                Type multidimensional = parameter;
+                result = matrix.ReturnType;
+                parameter = matrix.GetParameters()[0].ParameterType;
+                Console.WriteLine(argument.Name + " matrix=" + (result == multidimensional)
+                    + ":" + (result.GetElementType() == element) + ":" + result.GetArrayRank());
+                Console.WriteLine(argument.Name + " vector=" + (parameter == vector)
+                    + ":" + (parameter.GetElementType() == element) + ":" + parameter.GetArrayRank());
+            }
+            Console.WriteLine("template array signatures end");
         }
 
         internal static void RunReflectedArrays()

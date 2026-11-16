@@ -2916,8 +2916,14 @@ const Dn2CppTypeInfo* dn2cpp_signature_type(const Dn2CppBindingSignature* signat
         return dn2cpp_compound_type(sig.kind, sig.value, children.data(), sig.childCount);
     }
     if ((sig.kind == 6 || sig.kind == 7) && sig.childCount == 1)
+    {
+        // A template's signature may name a closed element with metadata but no
+        // executable instantiation. Signature queries do not require its layout.
+        if (declaring != nullptr && declaring->genericArgCount > 0)
+            return dn2cpp_symbolic_member_type(signature, declaring);
         return dn2cpp_array_ti(dn2cpp_signature_type(&sig.children[0], declaring),
             sig.kind == 6 ? 1 : sig.value, sig.kind == 7);
+    }
     if (sig.kind == 4 && sig.type != nullptr)
     {
         auto* args = dn2cpp_newarr_ref(sig.childCount);

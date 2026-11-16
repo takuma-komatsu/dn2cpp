@@ -525,7 +525,7 @@ internal sealed partial class CppEmitter
             AddType(m.Signature.ReturnType, activationDemand: true);
             foreach (var p in m.Signature.ParameterTypes)
                 AddType(p, activationDemand: true);
-            if ((HasSignatureShape(m.Signature.ReturnType) || m.Signature.ParameterTypes.Any(HasSignatureShape))
+            if ((HasReflectionSignatureShape(m.Signature.ReturnType) || m.Signature.ParameterTypes.Any(HasReflectionSignatureShape))
                 && ReflectionSignature(m) is { } signature)
             {
                 NoteReflectionSignatureLeaves(signature.ReturnType.Binding, type => AddType(type));
@@ -587,7 +587,7 @@ internal sealed partial class CppEmitter
                 _c.EnsureCompleted(c);
                 if (_c.KeepsReflectionMetadata(c))
                     foreach (var field in c.Fields)
-                        if (IsSignatureArray(field.Type))
+                        if (IsReflectionSignatureArray(field.Type))
                             NoteReflectionSignatureLeaves(ReflectionFieldSignature(field).Binding, type => AddType(type));
                 var propertyAccessors = ReflectionAccessorHandles(c);
                 foreach (var m in ReflectionMethods(c))
@@ -606,7 +606,7 @@ internal sealed partial class CppEmitter
                     AddSignatureType(m.Signature.ReturnType);
                     foreach (var p in m.Signature.ParameterTypes)
                         AddSignatureType(p);
-                    if ((HasSignatureShape(m.Signature.ReturnType) || m.Signature.ParameterTypes.Any(HasSignatureShape))
+                    if ((HasReflectionSignatureShape(m.Signature.ReturnType) || m.Signature.ParameterTypes.Any(HasReflectionSignatureShape))
                         && ReflectionSignature(m) is { } signature)
                     {
                         NoteReflectionSignatureLeaves(signature.ReturnType.Binding, AddSignatureType);
@@ -4632,7 +4632,7 @@ internal sealed partial class CppEmitter
     private string FieldTypeInfoExpr(TypeDesc t, HashSet<ClassInfo> emittedEnums)
     {
         t = ReflectionIdentityType(t);
-        if (t.Kind is TypeKind.SZArray or TypeKind.MDArray && HasSignatureShape(t))
+        if (IsReflectionSignatureArray(t))
             return "&dn2cpp_object_type";
         if (t is { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive or TypeKind.Class or TypeKind.External or TypeKind.SZArray or TypeKind.MDArray } el }
             && ArrayTypeInfoDeclared(el, "reflected member type (array)"))

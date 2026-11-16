@@ -195,6 +195,13 @@ internal sealed partial class CppEmitter
     internal static bool HasSignatureShape(TypeDesc type) => type.Kind is TypeKind.ByRef or TypeKind.Pointer
         || type.Element is { } element && HasSignatureShape(element);
 
+    // Canonical arrays need recipes in metadata; shared bodies use rgctx identities.
+    private static bool HasReflectionSignatureShape(TypeDesc type) => HasSignatureShape(type)
+        || type.Kind is TypeKind.SZArray or TypeKind.MDArray && Compilation.ContainsCanonPlaceholder(type);
+
+    private static bool IsReflectionSignatureArray(TypeDesc type) =>
+        type.Kind is TypeKind.SZArray or TypeKind.MDArray && HasReflectionSignatureShape(type);
+
     private static BindingSignature PointerQuerySignature(TypeDesc type, BindingSignature? functionPointer)
     {
         if (type.IsFunctionPointer)
@@ -229,7 +236,7 @@ internal sealed partial class CppEmitter
         var type = parameter < 0 ? method.Signature.ReturnType : method.Signature.ParameterTypes[parameter];
         if (type is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.TypedReference })
             return EmitBindingSignature(sb, new BindingSignature(type: type), query: true);
-        if (!HasSignatureShape(type))
+        if (!HasReflectionSignatureShape(type))
             return "nullptr";
         var signature = ReflectionSignature(method);
         var spelled = signature is { } decoded
