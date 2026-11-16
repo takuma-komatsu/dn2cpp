@@ -1,0 +1,20 @@
+thread notify direct=PlatformNotSupportedException/True|unchanged=True
+thread notify null name=PlatformNotSupportedException/True|unchanged=True
+thread notify address=PlatformNotSupportedException/True|unchanged=True
+thread notify null direct=NullReferenceException|unchanged=True
+thread notify null address=NullReferenceException|unchanged=True
+thread notify reflection=PlatformNotSupportedException/True|unchanged=True
+thread notify name effects=2
+thread notification boundary end
+lock waiter direct=PlatformNotSupportedException/True
+lock waiter address=PlatformNotSupportedException/True
+lock waiter null direct=NullReferenceException
+lock waiter null address=NullReferenceException
+lock waiter reflection=PlatformNotSupportedException/True
+lock reset direct=PlatformNotSupportedException/True
+lock reset address=PlatformNotSupportedException/True
+lock record direct=PlatformNotSupportedException/True
+lock record address=PlatformNotSupportedException/True
+lock reset null=NullReferenceException
+lock record null=NullReferenceException
+lock waiter boundary end

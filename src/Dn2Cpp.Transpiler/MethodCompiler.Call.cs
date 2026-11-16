@@ -515,6 +515,7 @@ internal sealed partial class MethodCompiler
             case HandleKind.MethodDefinition:
             {
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
+                CoreIntrinsics.ValidateThreadingPrivate(callee);
                 CoreIntrinsics.ValidateConcreteVectorElement(callee);
                 CoreIntrinsics.ValidateVectorFloatingPointTernary(callee);
                 CoreIntrinsics.ValidateVectorLog(callee);

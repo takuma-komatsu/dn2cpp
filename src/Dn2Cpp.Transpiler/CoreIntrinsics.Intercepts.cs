@@ -626,6 +626,7 @@ internal static partial class CoreIntrinsics
         extra: static mi => LoweredRuntimePrimitive(mi.DeclaringClass.FullName, mi.Name)
             || IsInvariantCompareInfoGetter(mi)
             || IsDateTimeFormatInfoBoundary(mi)
+            || IsThreadingPrivate(mi)
             || IsDateTimeLeapSecondSupport(mi)
             || IsCoreClrGcMemoryQuery(mi)
             || IsCoreClrFinalizerWorker(mi)

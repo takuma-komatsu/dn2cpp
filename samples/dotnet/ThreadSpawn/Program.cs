@@ -132,6 +132,11 @@ static class Program
         // Pin both cultures first: gate output must not depend on the host locale.
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        if (args.Length != 0 && args[0] == "threading-private-boundary")
+        {
+            ThreadingPrivateSubset.NotificationBoundary();
+            return;
+        }
 
         var threads = new Thread[N];
         for (int i = 0; i < N; i++)
@@ -204,5 +209,8 @@ static class Program
         if (args.Length != 0 && args[0] == "before-init-cycle")
             return;
         RunInitCycle();
+        if (args.Length != 0 && args[0] == "before-thread-names")
+            return;
+        ThreadingPrivateSubset.PublicNames();
     }
 }

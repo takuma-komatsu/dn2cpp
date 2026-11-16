@@ -13,6 +13,19 @@ bodies on the mapped owner. Ordinary calls, addresses and retained reflection
 share the same bodies, preserving argument effects and exceptions. A false hint
 selects the caller's normal algorithm; it is not a claim that a value is mutable.
 
+The exact private `Thread.ThreadNameChanged(string)` wrapper requires CoreCLR's
+native thread-name notification and throws `PlatformNotSupportedException` in
+dn2cpp, after checking its receiver. Direct calls, addresses and retained
+reflection share this boundary. It does not update the managed `Thread.Name`
+property; that public property retains the runtime's own name storage. The raw
+QCall notification import keeps its independent native-binding policy.
+The private `Lock.ShouldStopPreemptingWaiters` getter and its
+`ResetWaiterStartTime` / `RecordWaiterStartTime` helpers likewise check their
+receivers and throw: the native mutex table has no managed Lock waiter-aging timestamp.
+Public Lock acquisition and ownership continue through that table.
+Retained private boundary rows attach to the runtime-owned identities for named
+lookup and invocation; they do not claim a complete `GetMethods()` catalog.
+
 ResourceManager's exact CoreLib `MagicNumber` and `HeaderVersionNumber` readonly
 fields lower to their resource-header values without introducing managed static
 storage on the runtime-owned type. Its reflection rows expose the same values.

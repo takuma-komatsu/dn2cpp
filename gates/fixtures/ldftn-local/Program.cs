@@ -5,6 +5,9 @@ using Mono.Cecil.Cil;
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+if (ThreadingPrivateFixture.Run(args))
+    return;
+
 if (ResourceHeaderFieldFixture.Run(args))
     return;
 
