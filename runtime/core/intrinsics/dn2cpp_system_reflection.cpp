@@ -1565,38 +1565,52 @@ Dn2CppObject* dn2cpp_enum_to_object(Dn2CppType* t, int64_t value)
     return dn2cpp_box(ti, &v, sizeof(int32_t));
 }
 
-// Type.GetNestedTypes(): the type's public nested types (emitted, non-generic), wrapped
-// as Type[]. Non-public / generic / unreached nested types are not in the table.
-Dn2CppArrayRef* dn2cpp_type_get_nested_types(Dn2CppType* t)
+static void dn2cpp_require_metadata(const Dn2CppTypeInfo* ti);
+static bool dn2cpp_member_name_matches(const char* candidate, Dn2CppString* name, int32_t flags, bool pattern);
+
+static bool dn2cpp_nested_matches(const Dn2CppTypeInfo* nested, int32_t flags)
+{
+    // TypeAttributes.NestedPublic; all other nested visibilities are NonPublic.
+    return (dn2cpp_type_il_attrs(nested) & 7) == 2 ? (flags & 0x10) != 0 : (flags & 0x20) != 0;
+}
+
+Dn2CppArrayRef* dn2cpp_type_get_nested_types(Dn2CppType* t, int32_t flags)
 {
     const Dn2CppTypeInfo* ti = dn2cpp_type_require(t);
-    int32_t n = ti->reflection().nestedCount;
-    Dn2CppArrayRef* arr = dn2cpp_newarr_ref(n);
-    for (int32_t i = 0; i < n; i++)
-        dn2cpp_gc_store_ref(&arr->data[i],
-            reinterpret_cast<Dn2CppObject*>(dn2cpp_get_type_from_handle(ti->reflection().nestedTypes[i])));
+    dn2cpp_require_metadata(ti);
+    const auto reflection = ti->reflection();
+    int32_t count = 0;
+    for (int32_t i = 0; i < reflection.nestedCount; i++)
+        if (dn2cpp_nested_matches(reflection.nestedTypes[i], flags))
+            count++;
+    Dn2CppArrayRef* arr = dn2cpp_newarr_ref(count);
+    int32_t index = 0;
+    for (int32_t i = 0; i < reflection.nestedCount; i++)
+        if (dn2cpp_nested_matches(reflection.nestedTypes[i], flags))
+            dn2cpp_gc_store_ref(&arr->data[index++],
+                reinterpret_cast<Dn2CppObject*>(dn2cpp_get_type_from_handle(reflection.nestedTypes[i])));
     return arr;
 }
 
-// Whole-string compare of a managed UTF-16 string against an ASCII C string (defined
-// below in the field-enumeration section; forward-declared for the nested-type lookup).
-static bool dn2cpp_ascii_str_eq(const char* c, const Dn2CppString* s);
-
-// Type.GetNestedType(name): the matching public nested type or null. Name is the simple
-// nested-type name (e.g. "Inner").
-Dn2CppType* dn2cpp_type_get_nested_type(Dn2CppType* t, Dn2CppString* name)
+Dn2CppType* dn2cpp_type_get_nested_type(Dn2CppType* t, Dn2CppString* name, int32_t flags)
 {
     const Dn2CppTypeInfo* ti = dn2cpp_type_require(t);
     if (name == nullptr)
-        return nullptr;
-    for (int32_t i = 0; i < ti->reflection().nestedCount; i++)
+        dn2cpp_throw_argument_null_param("name");
+    dn2cpp_require_metadata(ti);
+    const auto reflection = ti->reflection();
+    const Dn2CppTypeInfo* found = nullptr;
+    for (int32_t i = 0; i < reflection.nestedCount; i++)
     {
-        // A nested type-info's name is its full CLR reflection name
-        // ("Ns.Outer+Inner"); GetNestedType matches on the simple-name tail.
-        if (dn2cpp_ascii_str_eq(dn2cpp_simple_type_name(ti->reflection().nestedTypes[i]->name), name))
-            return dn2cpp_get_type_from_handle(ti->reflection().nestedTypes[i]);
+        const auto* nested = reflection.nestedTypes[i];
+        if (!dn2cpp_nested_matches(nested, flags)
+            || !dn2cpp_member_name_matches(dn2cpp_simple_type_name(nested->name), name, flags, false))
+            continue;
+        if (found != nullptr)
+            dn2cpp_throw_ambiguous_text(nullptr);
+        found = nested;
     }
-    return nullptr;
+    return found == nullptr ? nullptr : dn2cpp_get_type_from_handle(found);
 }
 
 // The ']' closing the bracket group that opens at s[p], or len when unterminated.
@@ -2418,6 +2432,15 @@ Dn2CppType* dn2cpp_memberinfo_declaring_type(Dn2CppObject* m)
         const auto* ti = reinterpret_cast<Dn2CppType*>(m)->typeInfo;
         if ((ti->flags & DN2CPP_TF_GENERICPARAM) != 0)
             return dn2cpp_get_type_from_handle(dn2cpp_type_generic_parameter_declaring_type(ti));
+        if ((ti->flags & DN2CPP_TF_NESTED) != 0)
+            for (int32_t i = 0; i < dn2cpp_type_registry_count; i++)
+            {
+                const auto* owner = dn2cpp_type_registry[i].type;
+                const auto reflection = owner->reflection();
+                for (int32_t j = 0; j < reflection.nestedCount; j++)
+                    if (reflection.nestedTypes[j] == ti)
+                        return dn2cpp_get_type_from_handle(owner->genericDef != nullptr ? owner->genericDef : owner);
+            }
     }
     return nullptr;
 }
@@ -9622,17 +9645,13 @@ static int32_t dn2cpp_collect_member_matches(const Dn2CppTypeInfo* type, Dn2CppS
             if (flags & DN2CPP_BF_DECLAREDONLY)
                 break;
         }
-    if ((memberTypes & (DN2CPP_MT_NESTEDTYPE | DN2CPP_MT_TYPEINFO)) != 0
-        && (flags & DN2CPP_BF_PUBLIC) != 0)
+    if ((memberTypes & (DN2CPP_MT_NESTEDTYPE | DN2CPP_MT_TYPEINFO)) != 0)
     {
         const auto reflection = type->reflection();
         for (int32_t i = 0; i < reflection.nestedCount; i++)
         {
             const Dn2CppTypeInfo* nested = reflection.nestedTypes[i];
-            // The nested table holds the public emitted set; its entries carry the
-            // full CLR reflection name ("Ns.Outer+Inner"), and .NET's GetMember
-            // contract matches the pattern against the simple-name tail.
-            if (!dn2cpp_member_name_matches(dn2cpp_simple_type_name(nested->name), name, flags, true))
+            if (!dn2cpp_nested_matches(nested, flags) || !dn2cpp_member_name_matches(dn2cpp_simple_type_name(nested->name), name, flags, true))
                 continue;
             if (out != nullptr)
                 dn2cpp_gc_store_ref(&out[n], reinterpret_cast<Dn2CppObject*>(

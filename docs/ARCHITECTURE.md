@@ -260,7 +260,12 @@ metadata, never its bodies or initializer, and a closed generic name forms as
 template closes to its exact identity only after its constraints are proved.
 A qualified name searches its assembly by simple name
 and then where that assembly forwards the name, a framework facade the load set
-omits standing for CoreLib, and array modifiers of any rank apply. An
+omits standing for CoreLib, and array modifiers of any rank apply. Nested lookups and listings retain
+selected definition identities, including non-public and generic declarations,
+without retaining their executable bodies. Nested tables carry those existing
+handles; visibility and arity come from their metadata. Closed generic owners
+list the same nested definitions as their open owner, and the public declaring-type
+query recovers that retained owner from its nested table. An
 assembly-scoped `ignoreCase` lookup of an ASCII name without generic arguments
 folds ASCII case; any other `ignoreCase` name, a name matching several types and
 a by-ref or pointer modifier are unknown. Each known assembly receiver is a

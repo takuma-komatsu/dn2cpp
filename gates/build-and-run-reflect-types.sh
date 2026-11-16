@@ -340,7 +340,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|forbidden-generic-argument
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|string-clone-copies-native-argv:string-clone-copies"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|type-gettype-ignorecase|before-type-gettype-ignorecase"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/TypeGetTypeIgnoreCase/TypeGetTypeIgnoreCase.csproj samples/dotnet/TypeGetTypeIgnoreCase/Program.cs samples/dotnet/TypeGetTypeIgnoreCase/ShadowCoreType.cs samples/dotnet/TypeGetTypeIgnoreCase/PaddingTypes.cs samples/dotnet/TypeGetTypeIgnoreCase/ForwardedNestedTypes.cs samples/dotnet/TypeGetTypeIgnoreCaseForwarder/TypeGetTypeIgnoreCaseForwarder.csproj samples/dotnet/TypeGetTypeIgnoreCaseForwarder/Forwarder.cs samples/dotnet/TypeGetTypeIgnoreCaseForwarded/TypeGetTypeIgnoreCaseForwarded.csproj samples/dotnet/TypeGetTypeIgnoreCaseForwarded/Program.cs"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|template-constraint-fallbacks-prefix-argv:before-template-constraint-fallbacks"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|template-constraint-fallbacks-prefix-argv:before-template-constraint-fallbacks|nested-metadata"
 
 EXPFILE="$(dirname "$0")/expected/reflect-types.txt"
 ATTRIBUTE_ENUMERATION_KEEP=(--link-xml samples/dotnet/ReflectTypes/keep-attribute-enumeration.xml)
@@ -402,6 +402,14 @@ gate_extra_asserts() {
     gate_string_clone_prefix_asserts "$1"
     gate_type_gettype_ignorecase_asserts "$1"
     gate_intrinsic_template_row_asserts "$1"
+    gate_capture_ok "$1/nested-metadata-oracle" run_bounded dotnet "$_CG_APP" nested-metadata
+    gate_capture_ok "$1/nested-metadata-native" run_bounded "$1/ReflectTypes$EXE_EXT" nested-metadata
+    gate_output compare "$1/nested-metadata-native.stdout" "$1/nested-metadata-oracle.stdout" --policy crlf
+    gate_output witness "$1/nested-metadata-native.stdout" 'nested metadata end' --count 1 --policy crlf
+    if grep -E '^// ReflectNestedSubset[.]MetadataOwner.*::(Uncalled|[.]ctor)' "$1"/generated*.cpp; then
+        echo 'FAIL: nested metadata retained executable bodies' >&2
+        return 1
+    fi
 }
 DN2CPP_GATE_RUN_ARGS=string-clone-copies \
     corelib_freeze_gate ReflectTypes "$EXPFILE" "${BCL[@]}" --no-ildiet "${ATTRIBUTE_ENUMERATION_KEEP[@]}"

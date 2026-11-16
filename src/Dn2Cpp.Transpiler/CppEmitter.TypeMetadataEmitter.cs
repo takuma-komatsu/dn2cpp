@@ -4599,17 +4599,7 @@ internal sealed partial class CppEmitter
                     genArgCount = cls.Context.TypeArgs.Length;
                 }
             }
-            // Nested-type table: the type's public nested types. The enum metadata
-            // members (24-26) are 0 for a class — spelled out so the nested fields land in
-            // the right positional slots.
-            var nested = _e.PublicNestedTypes(cls, _emittedEnums);
-            string nestedExpr = "nullptr";
-            if (nested.Count > 0)
-            {
-                string arr = "nested_" + cls.CppName;
-                _sb.AppendLine($"static const Dn2CppTypeInfo* const {arr}[] = {{ {string.Join(", ", nested.Select(n => _e.TypeInfoRef(n, "nested-type table row")))} }};");
-                nestedExpr = arr;
-            }
+            var (nestedExpr, nestedCount) = NestedTypeTable(cls.Module, cls.Handle, cls.CppName);
             // Trailing rgctx member: the grouped instantiation's slot table
             // (see the rgctx tables above); every other type leaves it null.
             string rgctxExpr = _rgctxTableSyms.Contains(cls) ? $"rgctx_{cls.CppName}" : "nullptr";
@@ -4627,7 +4617,7 @@ internal sealed partial class CppEmitter
                 Events = eventsExpr, EventCount = eventCount,
                 Initializer = _initializerRows.GetValueOrDefault(cls, "nullptr"),
                 CustomAttrs = typeAttrs.Expr, CustomAttrCount = typeAttrs.Count, GenericDef = genDefExpr,
-                GenericArgs = genArgsExpr, GenericArgCount = genArgCount, NestedTypes = nestedExpr, NestedCount = nested.Count,
+                GenericArgs = genArgsExpr, GenericArgCount = genArgCount, NestedTypes = nestedExpr, NestedCount = nestedCount,
                 AssemblyName = string.IsNullOrEmpty(cls.Module.AssemblyName) ? null : cls.Module.AssemblyName, FinalizeFn = finalize, Rgctx = rgctxExpr, TypeObject = "&ty_" + cls.CppName,
                 IlAttrs = unchecked((uint)tIlAttrs), MetadataToken = tToken, DefaultMemberName = DefaultMemberName(cls), MarshalSize = _c.MarshalStampSize(cls),
                 EventSourceName = EventSourceIdentity(cls)?.Name, EventSourceGuid = EventSourceIdentity(cls)?.Guid,

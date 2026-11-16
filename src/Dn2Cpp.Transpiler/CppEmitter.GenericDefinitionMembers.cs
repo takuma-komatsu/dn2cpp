@@ -55,8 +55,39 @@ internal sealed partial class CppEmitter
             return signature.Primitive is { } primitive ? _e.ReflectionSignatureType(primitive) : signature.Name ?? "<unavailable>";
         }
 
+        // Nested declarations are definition identities even on a closed owner.
+        // Only already-retained handles enter the table; no member body is admitted here.
+        private (string Expr, int Count) NestedTypeTable(Module module, TypeDefinitionHandle handle, string stem)
+        {
+            var entries = new List<string>();
+            foreach (var nestedHandle in module.Reader.GetTypeDefinition(handle).GetNestedTypes())
+            {
+                var definition = module.Reader.GetTypeDefinition(nestedHandle);
+                if (definition.GetGenericParameters().Count != 0)
+                {
+                    string name = MethodCompiler.OpenDefBacktickName(module, nestedHandle)
+                        ?? throw new InvalidOperationException("Nested definition has no name");
+                    if (_c.TypeofOpenGenericDefs.ContainsKey(name) || _e._genericDefSyms.ContainsKey(name)
+                        || _e.TopoOrder().Any(c => c.Module == module && c.Handle == nestedHandle
+                            && !c.IsEnum && !_e.IsCanonicalWorld(c) && _e.GenericDefInfo(c) is not null))
+                        entries.Add("&gendef_" + CppNaming.GenericDefinitionStem(name));
+                }
+                else if (module.ClassMap.TryGetValue(nestedHandle, out var nested)
+                    && (nested.IsEnum ? _emittedEnums.Contains(nested) : _e._emit.Contains(nested)))
+                    entries.Add(_e.TypeInfoRef(nested, "nested-type table row"));
+            }
+            if (entries.Count == 0)
+                return ("nullptr", 0);
+            string symbol = "nested_" + stem;
+            _sb.AppendLine($"static const Dn2CppTypeInfo* const {symbol}[] = {{ {string.Join(", ", entries)} }};");
+            return (symbol, entries.Count);
+        }
+
         private TypeMetadata GenericDefinitionMembers(TypeMetadata data)
         {
+            if (_c.OpenGenericDefHandleByName(data.Name) is { } nestedOwner)
+                (data.NestedTypes, data.NestedCount) = NestedTypeTable(nestedOwner.Module, nestedOwner.Handle,
+                    "gendef_" + CppNaming.GenericDefinitionStem(data.Name));
             if (!_constraintDefinitions.TryGetValue("generic:" + data.Name, out var owner))
                 return data;
             var reader = owner.Module.Reader;

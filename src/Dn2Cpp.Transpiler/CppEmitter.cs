@@ -4571,42 +4571,6 @@ internal sealed partial class CppEmitter
         return MethodCompiler.EnumMetadataMembersModel(en).OrderBy(MethodCompiler.EnumSortKey(en)).ToList();
     }
 
-    /// <summary>A type's public nested types that are emitted and non-generic —
-    /// the default <c>Type.GetNestedTypes()</c> (BindingFlags.Public) set. Non-public /
-    /// generic / unreached nested types are carved out (their type-info isn't emitted, or
-    /// the open generic nested def isn't a type here). A generic enclosing type is also
-    /// skipped: its template's nested handles don't name the closed nested instances.</summary>
-    private List<ClassInfo> PublicNestedTypes(ClassInfo cls, HashSet<ClassInfo> emittedEnums)
-    {
-        var result = new List<ClassInfo>();
-        if (cls.GenericArity > 0)
-            return result;
-        try
-        {
-            var reader = cls.Module.Reader;
-            var td = reader.GetTypeDefinition(cls.Handle);
-            foreach (var nh in td.GetNestedTypes())
-            {
-                var ntd = reader.GetTypeDefinition(nh);
-                if ((ntd.Attributes & System.Reflection.TypeAttributes.VisibilityMask)
-                    != System.Reflection.TypeAttributes.NestedPublic)
-                    continue;
-                // Include a nested type only if its type-info is actually emitted.
-                // A nested enum's ti_ is emitted from ReferencedTypes (emittedEnums), not
-                // the class loop — and an enum can land in _emit without being referenced
-                // as a type token, in which case no ti_ is emitted and listing it here
-                // would dangle. So gate enums on emittedEnums and classes on _emit.
-                if (cls.Module.ClassMap.TryGetValue(nh, out var nested)
-                    && nested.GenericArity == 0
-                    && (nested.IsEnum ? emittedEnums.Contains(nested) : _emit.Contains(nested)))
-                    result.Add(nested);
-            }
-        }
-        catch (Exception e) when (!Compilation.IsMustEscape(e))
-        { /* unreadable metadata -> no nested types */ }
-        return result;
-    }
-
     /// <summary>For a closed generic instantiation, the CLR open-definition
     /// FullName (with the backtick arity marker, e.g. "System.Collections.Generic.List`1")
     /// and the full type-argument count, including declaring-type parameters.
