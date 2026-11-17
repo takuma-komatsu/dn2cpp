@@ -73,13 +73,13 @@ internal sealed partial class Compilation
         TypeKind.Class => type.Class!.Module.AssemblyName,
         TypeKind.Template => type.TemplateModule!.AssemblyName,
         TypeKind.SZArray or TypeKind.MDArray or TypeKind.Pointer or TypeKind.ByRef => MetadataAssemblyName(type.Element!),
-        TypeKind.External when OpenGenericDefHandleByName(type.ExternalName!) is { } definition => definition.Module.AssemblyName,
+        TypeKind.External when OpenGenericDefHandleByName(OpenGenericDefinitionKey(type) ?? type.ExternalName!) is { } definition => definition.Module.AssemblyName,
         _ => "System.Private.CoreLib",
     };
 
     private string MetadataStorageIdentity(TypeDesc type)
     {
-        if (OpenGenericDefBacktickNameOf(type) is { } definition)
+        if (OpenGenericDefinitionKey(type) is { } definition)
             return "definition:" + MetadataAssemblyName(type) + "::" + definition;
         return type.Kind switch
         {
@@ -120,17 +120,17 @@ internal sealed partial class Compilation
             if (owners.Count == 0 && OpenGenericDefHandleByName(name) is { } definition)
                 owners.Add(definition.Module);
             if (owners.Count == 0)
-                selected = ReflectionMetadataOverride(name, "System.Private.CoreLib", "definition:System.Private.CoreLib::" + name);
+                selected = ReflectionMetadataOverride(GenericDefinitionName(name), "System.Private.CoreLib", "definition:System.Private.CoreLib::" + name);
             foreach (var module in owners.OrderBy(module => module.Index))
             {
-                if (RawMetadataDefinition(module, name) is { } handle)
+                if (RawMetadataDefinition(module, GenericDefinitionName(name)) is { } handle)
                     attributed |= HasUncompressedMetadata(module, handle);
-                bool? choice = ReflectionMetadataOverride(name, module.AssemblyName,
+                bool? choice = ReflectionMetadataOverride(GenericDefinitionName(name), module.AssemblyName,
                     "definition:" + module.AssemblyName + "::" + name);
                 if (choice is null)
                     continue;
                 if (selected is not null && selected != choice)
-                    throw new NotSupportedException($"Conflicting --reflection-metadata formats for shared generic definition '{name}'; its runtime identity is shared across assemblies.");
+                    throw new InvalidOperationException("A generic definition has conflicting metadata ownership.");
                 selected = choice;
             }
             _reflectionDefinitionFormats[name] = !CompressMetadata
@@ -155,7 +155,7 @@ internal sealed partial class Compilation
             var type = ResolveTypeTokenForScan(method.Module, handle, method.Context);
             if (type is null || ContainsCanonPlaceholder(type) || ContainsGenericVar(type))
                 continue;
-            string? openDefinition = OpenGenericDefBacktickNameOf(type);
+            string? openDefinition = OpenGenericDefinitionKey(type);
             if (openDefinition is not null)
             {
                 Module? owner = type.Class?.Module ?? type.TemplateModule
@@ -312,8 +312,10 @@ internal sealed partial class Compilation
 
     private TypeDefinitionHandle? RawMetadataDefinition(Module module, string name)
     {
+        int nested = name.LastIndexOf('+');
         int cut = name.LastIndexOf('.');
-        var key = cut < 0 ? ("", name) : (name.Substring(0, cut), name.Substring(cut + 1));
+        var key = nested >= 0 ? ("", name.Substring(nested + 1))
+            : cut < 0 ? ("", name) : (name.Substring(0, cut), name.Substring(cut + 1));
         if (TypeIndex().TryGetValue(key, out var candidates))
             foreach (var (candidateModule, candidateHandle) in candidates)
                 if (candidateModule == module && MetadataDefinitionName(module, candidateHandle) == name)

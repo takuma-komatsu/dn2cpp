@@ -85,6 +85,9 @@ namespace MultiAssembly
         [NamesType(typeof(Lib.Generic<int>))]
         private sealed class GenericTagged { }
 
+        [NamesType(typeof(Lib.Generic<>))]
+        private sealed class GenericDefinitionTagged { }
+
         public static void RunClosedGenerics()
         {
             Console.WriteLine("assembly-closed-types-begin");
@@ -114,6 +117,37 @@ namespace MultiAssembly
             Console.WriteLine("generic-attribute=" + (argument == libType) + "/"
                 + (argument != appType) + "/" + argument.Assembly.FullName.StartsWith("MultiAssemblyAlias,"));
             Console.WriteLine("assembly-closed-types-end");
+            Console.WriteLine("assembly-name-registry-begin");
+            Console.WriteLine("type-name-lookup="
+                + (typeof(AssemblyScopeCollision.Box).Assembly.GetType("AssemblyScopeCollision.Box") == typeof(AssemblyScopeCollision.Box))
+                + "/" + (typeof(Lib.Box).Assembly.GetType("AssemblyScopeCollision.Box") == typeof(Lib.Box)));
+            Type appDefinition = appType.GetGenericTypeDefinition();
+            Type libDefinition = libType.GetGenericTypeDefinition();
+            Console.WriteLine("generic-definition-distinct=" + (appDefinition != libDefinition));
+            Console.WriteLine("generic-definition-owners=" + (appDefinition.Assembly == appType.Assembly)
+                + "/" + (libDefinition.Assembly == libType.Assembly));
+            Console.WriteLine("generic-definition-lookup="
+                + (appType.Assembly.GetType("AssemblyScopeCollision.Generic`1") == appDefinition)
+                + "/" + (libType.Assembly.GetType("AssemblyScopeCollision.Generic`1") == libDefinition));
+            Console.WriteLine("generic-definition-closed="
+                + (appDefinition.MakeGenericType(typeof(int)) == appType)
+                + "/" + (libDefinition.MakeGenericType(typeof(int)) == libType));
+            Console.WriteLine("generic-name-lookup="
+                + (Type.GetType("AssemblyScopeCollision.Generic`1, MultiAssembly") == appDefinition)
+                + "/" + (Type.GetType("AssemblyScopeCollision.Generic`1, MultiAssemblyAlias") == libDefinition));
+            Console.WriteLine("generic-structural-lookup="
+                + (appType.Assembly.GetType(appType.FullName) == appType)
+                + "/" + (libType.Assembly.GetType(libType.FullName) == libType));
+            Console.WriteLine("generic-unqualified-argument="
+                + (appType.Assembly.GetType("AssemblyScopeCollision.Generic`1[System.Int32]") == null)
+                + "/" + (libType.Assembly.GetType("AssemblyScopeCollision.Generic`1[System.Int32]") == null));
+            Console.WriteLine("library-name-caller="
+                + (metadataAlias::MetadataAssemblyCollision.MetadataDefinition.Lookup()
+                    == metadataAlias::MetadataAssemblyCollision.MetadataDefinition.Read()));
+            object[] definitionAttributes = typeof(GenericDefinitionTagged).GetCustomAttributes(typeof(NamesTypeAttribute), false);
+            Console.WriteLine("generic-definition-attribute="
+                + (((NamesTypeAttribute)definitionAttributes[0]).Type == libDefinition));
+            Console.WriteLine("assembly-name-registry-end");
         }
     }
 }

@@ -186,57 +186,20 @@ internal sealed partial class MethodCompiler
         return t;
     }
 
-    /// <summary>If <paramref name="target"/> is an OPEN generic definition — the operand of
-    /// <c>typeof(List&lt;&gt;)</c> / <c>typeof(IDictionary&lt;,&gt;)</c> — the shared
-    /// <c>&amp;gendef_&lt;sym&gt;</c> open-definition type-info handle its <c>ldtoken</c>
-    /// lowers to, else null. A cross-assembly definition decodes to an <c>External</c>
-    /// backtick name (dn2cpp mints no ClassInfo for it); a same-assembly one to a
-    /// <c>Template</c> over its TypeDef. Either way the symbol mirrors
-    /// <see cref="CppEmitter"/>'s <c>GenericDefInfo</c> naming exactly — so it resolves to the
-    /// same handle a closed instantiation's <c>genericDef</c> points at — and
-    /// <see cref="Compilation.NoteTypeofOpenGenericDef"/> makes the emitter guarantee the
-    /// symbol is defined even when the program instantiates no close of the definition
-    /// (cut ⟹ route).</summary>
+    /// <summary>The handle of an open generic definition, retaining the token's
+    /// defining assembly even when another assembly declares the same name.</summary>
     private string? OpenGenericDefTypeInfoExpr(TypeDesc target)
     {
         // The name plus, for a synthetic gendef (a def no closed instantiation minted a
         // handle for), the definition's KIND bits so IsInterface/IsAbstract/
         // IsValueType/IsSealed answer, and its parameter names so ToString spells the
         // bracket group. All three are facts about the definition's own metadata.
-        (string? Name, GenericDefKind Kind, string? ParamNames) def = target switch
-        {
-            // Cross-assembly: no ClassInfo or Template to open, so the metadata is located
-            // by NAME through the type index — one lookup answering both facts.
-            { Kind: TypeKind.External, ExternalName: { } en } when en.Contains('`') =>
-                _c.OpenGenericDefFactsByName(en),
-            { Kind: TypeKind.Template, TemplateModule: { } tm } =>
-                (OpenDefBacktickName(tm, target.TemplateHandle), Compilation.ResolveOpenGenericDefKind(tm, target.TemplateHandle),
-                 Compilation.GenericParamNames(tm, target.TemplateHandle)),
-            // Defensive: a same-assembly open def that reached ClassMap as an arity-bearing,
-            // argument-free ClassInfo rather than a Template.
-            { Kind: TypeKind.Class, Class: { GenericArity: > 0 } c } when c.Context.TypeArgs.Length == 0
-                => (OpenDefBacktickName(c.Module, c.Handle), ClassKindFlags(c), Compilation.GenericParamNames(c.Module, c.Handle)),
-            _ => (null, GenericDefKind.Unknown, null),
-        };
-        if (def.Name is null)
+        string? key = _c.OpenGenericDefinitionKey(target);
+        if (key is null)
             return null;
-        _c.NoteTypeofOpenGenericDef(def.Name, def.Kind, def.ParamNames);
-        return "&gendef_" + CppNaming.GenericDefinitionStem(def.Name);
-    }
-
-    /// <summary>The <see cref="GenericDefKind"/> bits of a resolved open-definition
-    /// <see cref="ClassInfo"/> — its interface/abstract/value-type/sealed nature (invariant
-    /// across every close). An interface is also abstract, mirroring the type-info kind rule.</summary>
-    private static GenericDefKind ClassKindFlags(ClassInfo c)
-    {
-        if (!c.Handle.IsNil)
-            return Compilation.ResolveOpenGenericDefKind(c.Module, c.Handle);
-        var kind = GenericDefKind.Unknown;
-        if (c.IsValueType) kind |= GenericDefKind.ValueType;
-        if (c.IsInterface) kind |= GenericDefKind.Interface | GenericDefKind.Abstract;
-        else if (c.IsAbstract) kind |= GenericDefKind.Abstract;
-        if (c.IsSealed) kind |= GenericDefKind.Sealed;
-        return kind;
+        var def = _c.OpenGenericDefFactsByName(key);
+        _c.NoteTypeofOpenGenericDef(key, def.Kind, def.ParamNames);
+        return "&gendef_" + CppNaming.GenericDefinitionStem(key);
     }
 
     /// <summary>The CLR backtick name, including the declaring chain, of an open definition.</summary>

@@ -20,7 +20,7 @@ internal sealed partial class CppEmitter
         internal int EnumMemberCount, NestedCount, MetadataToken;
         internal uint IlAttrs;
         internal string? DefaultMemberName, EventSourceName, EventSourceGuid;
-        internal string? GenericParamNames;
+        internal string? GenericParamNames, DefinitionKey;
         internal string Initializer = "nullptr";
         internal ModeledSize? MarshalSize;
         internal int Activation;
@@ -30,7 +30,7 @@ internal sealed partial class CppEmitter
     private void EmitTypeInfo(StringBuilder sb, string symbol, TypeMetadata data)
     {
         if (data.Flags.Contains("DN2CPP_TF_GENERICDEF", StringComparison.Ordinal)
-            && _strippedGenericMetadata.Contains(data.Name))
+            && _strippedGenericMetadata.Contains(data.DefinitionKey ?? data.Name))
             data.Flags = "(" + data.Flags + " | DN2CPP_TF_METADATA_STRIPPED)";
         var coldValues = new List<MetadataValue> {
             MetadataValue.Ref(data.Fields), MetadataValue.Signed(data.FieldCount), MetadataValue.Ref(data.Methods), MetadataValue.Signed(data.MethodCount),
@@ -41,7 +41,7 @@ internal sealed partial class CppEmitter
             MetadataValue.Signed(data.MarshalSize?.Size64 ?? 0), MetadataValue.Text(data.EventSourceName), MetadataValue.Text(data.EventSourceGuid),
             MetadataValue.Text(data.GenericParamNames), MetadataValue.Ref(data.Initializer),
             MetadataValue.Ref(_genericMetadata.TryGetValue(data.Flags.Contains("DN2CPP_TF_GENERICDEF", StringComparison.Ordinal)
-                ? "generic:" + data.Name : "type:" + symbol, out var genericMetadata) ? genericMetadata : "nullptr"),
+                ? "generic:" + (data.DefinitionKey ?? data.Name) : "type:" + symbol, out var genericMetadata) ? genericMetadata : "nullptr"),
             MetadataValue.Ref(data.Events), MetadataValue.Signed(data.EventCount),
         };
         // Trailing and unset for most types, so they are spelled only up to the last one

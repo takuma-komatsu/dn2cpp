@@ -1681,7 +1681,11 @@ The reflection and generic virtual dispatch contracts are in
 [REFLECTION-DISPATCH-DESIGN.md](REFLECTION-DISPATCH-DESIGN.md).
 
 `Dn2CppTypeInfo` keeps type identity, layout, inheritance, dispatch, generic
-arguments and array classification directly addressable. Reflection-only fields
+arguments and array classification directly addressable. Open generic definitions
+are keyed by their defining assembly and full name; their member, constraint and
+runtime-template metadata never shares an identity merely because names match.
+Name lookup retains that assembly through structural generic resolution.
+Reflection-only fields
 are read through `reflection()`. Member handles and tables use the common
 `Dn2CppMetadataHandle` / `Dn2CppMetadataTable` API in
 `runtime/core/dn2cpp_metadata.h`; consumers must not assume a native row array.

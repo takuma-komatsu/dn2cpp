@@ -206,12 +206,11 @@ internal sealed partial class MethodCompiler
             // Type.GetType(string): resolve a CLR FullName against the embedded type
             // name registry. The 1-arg form returns null when missing; the
             // (string, bool throwOnError) form raises TypeLoadException instead.
-            // The 3-arg form passes the caller assembly so folded matches keep
-            // the CLR's caller-before-CoreLib lookup order.
+            // Every overload preserves the CLR's caller-before-CoreLib lookup order.
             case ("System.Type", "GetType") when sig.ParameterTypes is [{ } p0] && p0.IsString:
             {
                 var n = Pop();
-                Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_get_by_name({Cast(n, "Dn2CppString*")}, 0)");
+                Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_get_by_name({Cast(n, "Dn2CppString*")}, 0, 0, \"{CppString(Module.AssemblyName)}\")");
                 return true;
             }
             case ("System.Type", "GetType") when sig.ParameterTypes is [{ IsString: true },
@@ -219,7 +218,7 @@ internal sealed partial class MethodCompiler
             {
                 var throwOnError = Pop();
                 var n = Pop();
-                Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_get_by_name({Cast(n, "Dn2CppString*")}, {Cast(throwOnError, "int32_t")})");
+                Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_get_by_name({Cast(n, "Dn2CppString*")}, {Cast(throwOnError, "int32_t")}, 0, \"{CppString(Module.AssemblyName)}\")");
                 return true;
             }
             case ("System.Type", "GetType") when sig.ParameterTypes is [{ IsString: true },
