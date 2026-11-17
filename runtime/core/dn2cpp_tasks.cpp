@@ -78,10 +78,8 @@ static void dn2cpp_vts_arm(Dn2CppTask* t);
 
 static std::mutex& g_task_mtx = dn2cpp_never_destroyed<std::mutex>();
 
-Dn2CppTask* dn2cpp_task_alloc()
+static void dn2cpp_task_init(Dn2CppTask* t)
 {
-    auto* t = static_cast<Dn2CppTask*>(dn2cpp_alloc(sizeof(Dn2CppTask)));
-    t->type = &dn2cpp_task_type;
     // Relaxed here and in every other pre-completed mint below: the task is private
     // to this thread until the caller publishes it, and that handoff carries it.
     t->status.store(DN2CPP_TASK_PENDING, std::memory_order_relaxed);
@@ -97,7 +95,27 @@ Dn2CppTask* dn2cpp_task_alloc()
     t->asyncState = nullptr;
     t->completionWaitHandle = nullptr;
     t->disposed = 0;
+}
+
+Dn2CppTask* dn2cpp_task_alloc()
+{
+    auto* t = static_cast<Dn2CppTask*>(dn2cpp_alloc(sizeof(Dn2CppTask)));
+    t->type = &dn2cpp_task_type;
+    dn2cpp_task_init(t);
     return t;
+}
+
+void dn2cpp_task_init_promise(Dn2CppTask* task, Dn2CppObject* state, int32_t options)
+{
+    dn2cpp_null_check(task);
+    if ((options & ~0x44) != 0)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ARGUMENT_OUT_OF_RANGE, "creationOptions");
+    if ((options & 0x04) != 0)
+        dn2cpp_throw_platform_not_supported("Task promise attachment requires parent-task tracking");
+    // Keep the allocating subtype's header and fields. Ordinary continuations
+    // already queue to their owner scheduler, including the asynchronous option.
+    dn2cpp_task_init(task);
+    dn2cpp_gc_store_ref(&task->asyncState, state);
 }
 
 void dn2cpp_task_dispose(Dn2CppTask* task)

@@ -8275,12 +8275,14 @@ internal sealed partial class CppEmitter
             // roots at Dn2CppObject — except for runtime-owned prefixes whose hidden
             // fields must precede every user-defined instance field.
             string baseName;
-            if (!IsOpaque(cls) && cls.BaseClass is { } bc && !IsOpaque(bc))
+            if (!IsOpaque(cls) && cls.BaseClass is { IntrinsicCppName: null } bc && !IsOpaque(bc))
                 baseName = bc.CppStructName;
             else if (!IsOpaque(cls) && InheritsFromAggregateException(cls))
                 baseName = "Dn2CppAggregateExceptionObject";
             else if (!IsOpaque(cls) && Compilation.InheritsFromException(cls))
                 baseName = "Dn2CppExceptionObject";
+            else if (!IsOpaque(cls) && cls.BaseClass?.IntrinsicCppName == "Dn2CppTask*")
+                baseName = "Dn2CppTask";
             else if (!IsOpaque(cls) && InheritsFromWaitHandle(cls))
                 baseName = "Dn2CppWaitHandle";
             else
@@ -9551,6 +9553,9 @@ internal sealed partial class CppEmitter
         var result = new List<ClassInfo>();
         void Visit(ClassInfo c)
         {
+            // A Task base is the native prefix, never an empty managed shell.
+            // Its closed identity is emitted by ReferencedIntrinsicTypeInfos.
+            if (c.IntrinsicCppName == "Dn2CppTask*") return;
             if (!visited.Add(c))
                 return;
             // Opaque types root at Dn2CppObject, so don't pull their real base

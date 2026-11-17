@@ -675,6 +675,7 @@ internal sealed partial class MethodCompiler
             // Retained mapped bodies use the callable declaration's receiver ABI,
             // not an emitted managed struct layout.
             string receiverType = CoreIntrinsics.IsScalarNumericLeaf(callee)
+                || CoreIntrinsics.IsTaskPromise(callee)
                 || CoreIntrinsics.IsDateTimeCultureManagedBody(callee)
                 || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(callee)
                 || CoreIntrinsics.BrStringRawByteReference.Matches(callee)
@@ -826,6 +827,23 @@ internal sealed partial class MethodCompiler
         _callSiteToken = insn.Token;
         var handle = SRME.EntityHandle(insn.Token);
         TaintCanonicalVectorOperation(handle);
+        var promiseCtor = handle.Kind == HandleKind.MemberReference
+            ? _c.TryResolveTaskPromiseReference(_module, (MemberReferenceHandle)handle, _method.Context)
+            : handle.Kind == HandleKind.MethodDefinition
+                && CoreIntrinsics.IsTaskPromise(ResolveMethodDef((MethodDefinitionHandle)handle))
+                    ? ResolveMethodDef((MethodDefinitionHandle)handle) : null;
+        if (promiseCtor is not null)
+        {
+            var arguments = PopArgs(promiseCtor, hasThis: false);
+            string task = NewTemp("Dn2CppTask*");
+            Emit($"{task} = (Dn2CppTask*)dn2cpp_alloc(sizeof(Dn2CppTask));");
+            Emit($"{task}->type = {TaskTypeInfo(TypeDesc.MakeClass(promiseCtor.DeclaringClass))};");
+            arguments.Insert(0, task);
+            Emit($"{DirectCall(promiseCtor, arguments)};");
+            _stack.Add(new StackEntry(task, StackKind.Ref, "Dn2CppTask*",
+                StaticType: TypeDesc.MakeClass(promiseCtor.DeclaringClass)));
+            return;
+        }
         if (handle.Kind == HandleKind.MemberReference)
         {
             var mr = _reader.GetMemberReference((MemberReferenceHandle)handle);

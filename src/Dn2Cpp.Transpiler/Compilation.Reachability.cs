@@ -14,6 +14,7 @@ internal sealed partial class Compilation
 
     private void Reach(MethodInfo m)
     {
+        CoreIntrinsics.ValidateTaskPromise(m);
         CoreIntrinsics.ValidateThreadingPrivate(m);
         CoreIntrinsics.ValidateUnsupportedAlignedDefault(m);
         NoteMediumMethod(m);
@@ -216,6 +217,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsUInt128Checked(m)
             || CoreIntrinsics.IsInvariantCompareInfoGetter(m)
             || CoreIntrinsics.IsDateTimeFormatInfoBoundary(m)
+            || CoreIntrinsics.IsTaskPromiseNative(m)
             || CoreIntrinsics.IsThreadingPrivate(m)
             || CoreIntrinsics.IsAppContextOnProcessExit(m)
             || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(m)
@@ -276,6 +278,7 @@ internal sealed partial class Compilation
         if (CoreIntrinsics.IsWaitHandleTimeoutConversion(m)
             || CoreIntrinsics.IsDateTimeCultureManagedBody(m)
             || (CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(m)) || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
+            || CoreIntrinsics.IsTaskPromiseForwarder(m)
             || CoreIntrinsics.IsInterpolationStaticHelper(m)
             || CoreIntrinsics.IsScalarNumericLeaf(m)
             || CoreIntrinsics.IsBinaryIntegerEndianBody(m)
@@ -5521,6 +5524,8 @@ internal sealed partial class Compilation
             spec.IsValueType = !spec.IntrinsicCppName.EndsWith('*');
             if (IsTypedGCHandle(spec))
                 CompleteTypedGCHandleInterfaces(spec);
+            if (CoreIntrinsics.IsTaskPromiseOwner(spec))
+                CompleteTaskPromiseMembers(spec);
             return;
         }
         var module = spec.Module;

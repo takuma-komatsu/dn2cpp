@@ -66,7 +66,7 @@
 # settled, yielding, pending and enumerable inputs, including unsigned high bits.
 # Former gates: whenall, whenany, when-enumerable, configure-await, delay-order,
 # cancellation, custom-awaitable, multi-awaiter.
-# Task sequences and cold scheduling.
+# Task sequences, cold scheduling, and CoreLib-derived promise task initialization.
 # Task and cancellation aggregate construction leaves virtual inner Messages unread.
 source "$(dirname "$0")/_common.sh"
 gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for task call fixtures"
@@ -79,6 +79,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-pending-task
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-cancellation-callback-faults"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-lazy-aggregate-message"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-delay-synchronization"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-derived-task-promises"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|shared-binary:native-delay-deadlines"
 
 # The exception text is platform-owned; its record prefix is the boundary.
@@ -97,14 +98,26 @@ gate_extra_asserts() {
     gate_capture_ok "$out/native-deadlines" run_bounded "./$out/AsyncCombinators$EXE_EXT" native-delay-deadlines
     gate_output compare "$out/native-deadlines.stdout" "$deadline_snapshot" --policy crlf
     native="$out/native.stdout"
+    before="$out/before-derived-task-promises.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-derived-task-promises
+    gate_output prefix "$native" "$before" --before '== derived task promises ==' --policy crlf
+    for line in '== derived task promises ==' \
+        'promise pending: WaitingForActivation,False,False' \
+        'promise identity: True,True,True' 'promise state: True' \
+        'promise completion: True,False,True,RanToCompletion,True' \
+        'promise fields: True,True' 'promise await inline: False' \
+        'derived task promises end'; do
+        gate_output byte-witness "$native" "$line" --policy crlf \
+            || { echo "FAIL: derived task promise witness missing: $line" >&2; return 1; }
+    done
     before="$out/before-delay-synchronization.stdout"
     gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-delay-synchronization
     gate_output prefix "$native" "$before" --before '== delay synchronization ==' --policy crlf
     gate_output byte-witness "$native" '== delay synchronization ==' --policy crlf \
         || { echo 'FAIL: delay synchronization block did not run once' >&2; return 1; }
-    printf '%s\n' 'delay synchronization end' > "$out/delay-end.expected"
-    gate_output suffix "$native" "$out/delay-end.expected" --policy crlf \
-        || { echo 'FAIL: delay synchronization block did not complete last' >&2; return 1; }
+    printf '%s\n' 'derived task promises end' > "$out/promise-end.expected"
+    gate_output suffix "$native" "$out/promise-end.expected" --policy crlf \
+        || { echo 'FAIL: derived task promises block did not complete last' >&2; return 1; }
     for line in 'integer suspension: True,True|True,True' \
         'TimeSpan suspension: True,True|True,True' \
         'dependency pending: True,True|0' 'dependency order: firstsecond'; do

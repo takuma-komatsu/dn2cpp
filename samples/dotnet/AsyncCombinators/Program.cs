@@ -74,6 +74,9 @@ namespace AsyncCombinators
             if (args.Length == 1 && args[0] == "before-delay-synchronization")
                 return;
             DelayOrderSubset.Program.RunSynchronizationChecks();
+            if (args.Length == 1 && args[0] == "before-derived-task-promises")
+                return;
+            SettledCombinatorsSubset.Program.RunPromises();
             // Ends the process: a builder suspension's rejected registration is re-raised
             // as an unhandled ThreadPool exception.
             if (args.Length == 2 && args[0] == "suspension-rejection")

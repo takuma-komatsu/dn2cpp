@@ -1,6 +1,7 @@
 #nullable disable
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -265,6 +266,40 @@ namespace SettledCombinatorsSubset
             source.SetResult(1);
             setting = false;
             Console.WriteLine("ordinary await inline: " + callback.Task.Result);
+        }
+
+        internal static void RunPromises()
+        {
+            Console.WriteLine("== derived task promises ==");
+            Type nodeType = Type.GetType("System.Threading.SemaphoreSlim+TaskNode, System.Private.CoreLib", throwOnError: true);
+            var constructor = nodeType.GetConstructor(BindingFlags.Instance | BindingFlags.NonPublic,
+                null, Type.EmptyTypes, null);
+            var node = (Task<bool>)constructor.Invoke(null);
+            var sibling = (Task<bool>)constructor.Invoke(null);
+            var previous = nodeType.GetField("Prev", BindingFlags.Instance | BindingFlags.NonPublic);
+            var next = nodeType.GetField("Next", BindingFlags.Instance | BindingFlags.NonPublic);
+            previous.SetValue(node, sibling);
+            next.SetValue(node, node);
+            Console.WriteLine("promise pending: " + node.Status + "," + node.IsCompleted + "," + node.IsCompletedSuccessfully);
+            Console.WriteLine("promise identity: " + (node.GetType() == nodeType) + "," + (node is Task)
+                + "," + (node.Id > 0 && sibling.Id > 0 && node.Id != sibling.Id));
+            Console.WriteLine("promise state: " + (node.AsyncState is null));
+            var complete = typeof(Task<bool>).GetMethod("TrySetResult", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+            var callback = new TaskCompletionSource<bool>();
+            int producer = Thread.CurrentThread.ManagedThreadId;
+            bool setting = false;
+            node.GetAwaiter().OnCompleted(() => callback.SetResult(
+                Thread.CurrentThread.ManagedThreadId == producer && setting));
+            setting = true;
+            bool first = (bool)complete.Invoke(node, new object[] { true });
+            setting = false;
+            bool second = (bool)complete.Invoke(node, new object[] { false });
+            Console.WriteLine("promise completion: " + first + "," + second + "," + node.GetAwaiter().GetResult()
+                + "," + node.Status + "," + node.IsCompletedSuccessfully);
+            Console.WriteLine("promise fields: " + ReferenceEquals(previous.GetValue(node), sibling)
+                + "," + ReferenceEquals(next.GetValue(node), node));
+            Console.WriteLine("promise await inline: " + callback.Task.Result);
+            Console.WriteLine("derived task promises end");
         }
 
         internal static void RunPending()

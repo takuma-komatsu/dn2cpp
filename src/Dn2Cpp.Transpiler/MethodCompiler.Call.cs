@@ -515,6 +515,7 @@ internal sealed partial class MethodCompiler
             case HandleKind.MethodDefinition:
             {
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
+                CoreIntrinsics.ValidateTaskPromise(callee);
                 CoreIntrinsics.ValidateThreadingPrivate(callee);
                 CoreIntrinsics.ValidateConcreteVectorElement(callee);
                 CoreIntrinsics.ValidateVectorFloatingPointTernary(callee);
@@ -557,6 +558,7 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.IsDateTimeCultureManagedBody(callee)
                     || (CoreIntrinsics.IsRuntimeTypeHandleCopy(callee) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(callee))
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(callee)
+                    || CoreIntrinsics.IsTaskPromiseForwarder(callee)
                     || CoreIntrinsics.IsInterpolationStaticHelper(callee)
                     || CoreIntrinsics.IsScalarNumericLeaf(callee)
                     || CoreIntrinsics.IsBinaryIntegerEndianBody(callee)
@@ -1010,6 +1012,12 @@ internal sealed partial class MethodCompiler
             }
             case HandleKind.MemberReference:
             {
+                if (_c.TryResolveTaskPromiseReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } taskPromise)
+                {
+                    if (TryEmitMethodDefIntercept(CoreIntrinsics.MdRuntimePrimitive, taskPromise)) return;
+                    EmitManagedCall(taskPromise, isCallvirt);
+                    return;
+                }
                 if (_c.TryResolveDelegateCallableReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } delegateBody)
                 {
                     EmitManagedCall(delegateBody, isCallvirt);

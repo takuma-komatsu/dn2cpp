@@ -1465,8 +1465,9 @@ internal sealed partial class CppEmitter
             foreach (var c in _e._referencedIntrinsicTis)
             {
                 var helperRows = ReferencedIntrinsicHelperRows(c).ToList();
-                var helperTable = helperRows.Count == 0 ? null : BuildMemberTable(c, helperRows,
+                var helperTable = BuildMemberTable(c, helperRows.Where(m => m.Name != ".ctor").ToList(),
                     c.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler" ? "interpolationhelpertab" : "methtab");
+                var helperConstructors = BuildMemberTable(c, helperRows.Where(m => m.Name == ".ctor").ToList(), "ctortab");
                 bool isTask = _c.GenericDefFullName(c) == "System.Threading.Tasks.Task";
                 string interfaces = "nullptr";
                 int interfaceCount = 0;
@@ -1595,6 +1596,7 @@ internal sealed partial class CppEmitter
                     ToStringFn = toString, HashFn = getHash, EqualsFn = equals, Flags = flags,
                     GenericDef = genericDef, GenericArgs = genericArgs, GenericArgCount = genericCount,
                     Methods = helperTable?.Expr ?? "nullptr", MethodCount = helperTable?.Count ?? 0,
+                    Ctors = helperConstructors?.Expr ?? "nullptr", CtorCount = helperConstructors?.Count ?? 0,
                     Activation = CoreIntrinsics.IsGen2GcCallbackType(c) ? AllocationUnsupported
                         : c.IntrinsicCppName is "Dn2CppThreadLocal*" or "Dn2CppBlockingCollection*"
                             ? OmittedPublicDefaultCtor : 0,
@@ -4055,7 +4057,8 @@ internal sealed partial class CppEmitter
 
         private static bool IsReferencedIntrinsicHelperOwner(ClassInfo owner)
         {
-            if (owner.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler")
+            if (owner.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
+                || CoreIntrinsics.IsTaskPromiseOwner(owner))
                 return true;
             if (owner.FullName != "System.Runtime.InteropServices.GCHandle"
                 || owner.Module.AssemblyName != "System.Private.CoreLib" || owner.Handle.IsNil
@@ -4091,7 +4094,8 @@ internal sealed partial class CppEmitter
         private bool IsReferencedIntrinsicHelperRow(MethodInfo method) =>
             method.DeclaringClass.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
                 ? IsInterpolationHelperRow(method)
-                : CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(method) && IsRetainedOpaqueMemberRow(method);
+                : (CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(method) || CoreIntrinsics.IsTaskPromise(method))
+                    && IsRetainedOpaqueMemberRow(method);
 
         private bool IsRetainedOpaqueMemberRow(MethodInfo method) =>
             _c.KeepsReflectionMetadata(method.DeclaringClass)
@@ -4099,10 +4103,12 @@ internal sealed partial class CppEmitter
             && (CoreIntrinsics.BrDelegateCallable.Matches(method)
                 || CoreIntrinsics.IsMathOverflowHelper(method)
                 || CoreIntrinsics.IsDateTimeFormatInfoBoundary(method)
+                || CoreIntrinsics.IsTaskPromiseNative(method)
                 || CoreIntrinsics.IsThreadingPrivate(method)
                 || CoreIntrinsics.IsDateTimeCultureManagedBody(method)
                 || (CoreIntrinsics.IsRuntimeTypeHandleCopy(method) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(method))
                 || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(method)
+                || CoreIntrinsics.IsTaskPromiseForwarder(method)
                 || CoreIntrinsics.IsInterpolationStaticHelper(method)
                 || CoreIntrinsics.IsScalarNumericLeaf(method)
                 || CoreIntrinsics.IsVectorAlignmentManagedBody(method)
