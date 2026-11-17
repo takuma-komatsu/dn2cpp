@@ -1029,7 +1029,7 @@ internal sealed partial class Compilation
         byKey.Add(mkey, mi);
         _methodInstanceCount++;
         _methodInstanceOrder.Add(mi);
-        declClass.Methods.Add(mi); // emitted (and scanned) alongside the declaring class
+        declClass.EnsureMembers().Methods.Add(mi); // emitted (and scanned) alongside the declaring class
         ApplyPreservationToInstantiatedMethod(mi);
         return mi;
     }
