@@ -637,6 +637,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     internal static string ReceiverCppType(ClassInfo cls) => cls.FullName == "System.String"
         ? "Dn2CppString*"
         : cls.IsValueType ? CppTypes.Of(TypeDesc.MakeClass(cls)) + "*"
+        : cls.IntrinsicCppName == "Dn2CppTask*" ? "Dn2CppTask*"
         : CoreIntrinsics.RuntimeOwnsTypeInfo(cls) ? CppTypes.Of(TypeDesc.MakeClass(cls))
         : cls.CppStructName + "*";
 
@@ -687,6 +688,7 @@ internal sealed partial class MethodCompiler : IEvalStack
 
     public string Compile()
     {
+        CoreIntrinsics.ValidateTaskPromise(_method);
         CoreIntrinsics.ValidateThreadingPrivate(_method);
         CoreIntrinsics.ValidateUnsupportedAlignedDefault(_method);
         if (SharedTrial && CoreIntrinsics.IsUnsupportedAlignedName(_method.Name)
@@ -1315,6 +1317,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// Null when the method has no intrinsic lowering to synthesize from.</summary>
     internal string? CompileCoreIntrinsicWrapper()
     {
+        CoreIntrinsics.ValidateTaskPromise(_method);
         CoreIntrinsics.ValidateThreadingPrivate(_method);
         CoreIntrinsics.ValidateUnsupportedAlignedDefault(_method);
         if (CoreIntrinsics.BrUnsupportedAlignedDefault.Matches(_method)) return CompileUnsupportedAlignedDefaultBody();
@@ -1408,6 +1411,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsVectorValueMethod(_method)
             || CoreIntrinsics.IsInvariantCompareInfoGetter(_method)
             || CoreIntrinsics.IsDateTimeFormatInfoBoundary(_method)
+            || CoreIntrinsics.IsTaskPromiseNative(_method)
             || CoreIntrinsics.IsThreadingPrivate(_method)
             || CoreIntrinsics.IsDateTimeLeapSecondSupport(_method)
             || CoreIntrinsics.IsAppContextOnProcessExit(_method)

@@ -436,6 +436,26 @@ internal sealed partial class MethodCompiler
     /// runtime plumbing, so there is nothing worth falling through to.</para></summary>
     private void EmitRuntimePrimitive(MethodInfo callee)
     {
+        if (CoreIntrinsics.IsTaskPromiseNative(callee))
+        {
+            if (callee.Name == "TrySetResult")
+            {
+                string result = callee.Signature.ParameterTypes.Length == 0 ? "0" : EmitTaskResultStore(Pop());
+                var receiver = Pop();
+                Push(StackKind.I4, "int32_t", $"dn2cpp_task_try_set_result((Dn2CppTask*)dn2cpp_null_check({receiver.Expr}), {result})");
+                return;
+            }
+            string state = "nullptr", options = "0";
+            if (callee.Signature.ParameterTypes.Length != 0)
+            {
+                Pop(); // CoreLib's overload discriminator is not read by its body.
+                options = Pop().Expr;
+                state = Cast(Pop(), "Dn2CppObject*");
+            }
+            var self = Pop();
+            Emit($"dn2cpp_task_init_promise((Dn2CppTask*)({self.Expr}), {state}, {options});");
+            return;
+        }
         if (CoreIntrinsics.IsThreadingPrivate(callee))
         {
             bool waiterMember = callee.DeclaringClass.FullName == "System.Threading.Lock";

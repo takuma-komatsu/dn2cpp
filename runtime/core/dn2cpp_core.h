@@ -7770,6 +7770,7 @@ Dn2CppObject* dn2cpp_taskscheduler_default();
 // A fresh pending task (status PENDING). The builder completes it via SetResult/
 // SetException once MoveNext finishes.
 Dn2CppTask* dn2cpp_task_alloc();
+void dn2cpp_task_init_promise(Dn2CppTask* task, Dn2CppObject* state, int32_t options);
 void dn2cpp_task_dispose(Dn2CppTask* task);
 Dn2CppObject* dn2cpp_task_async_wait_handle(Dn2CppTask* task);
 // The shared already-completed (void-result) task behind Task.CompletedTask.

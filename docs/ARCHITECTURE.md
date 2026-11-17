@@ -1574,6 +1574,20 @@ capability contract, not a set of independent constants:
   detected set (the effective set is the implication closure of policy ∩ allowed)
   and can never opt into AVX10.2 or make a getter true that detection left false.
 
+#### CoreLib promise task subclasses
+
+A managed subclass of `Task` or `Task<T>` has the same `Dn2CppTask` prefix as
+ordinary native tasks. Its internal promise constructor initializes that prefix
+in place, preserving the allocating subtype's identity and trailing fields.
+Generic promise constructors retain their CoreLib forwarding IL; the non-generic
+constructors and `TrySetResult` enter the native task lifecycle. Only those
+method declarations are modeled on the otherwise opaque generic task owner.
+The state object is retained, completion is exactly once, and ordinary await
+continuations use the existing scheduler queue. Private promise construction
+rejects `AttachedToParent` because the runtime does not track a current parent
+task. Public delegate constructors and completion-source options keep their
+independent contracts. Stripping levels change retention, not this layout.
+
 #### Adopting a third-party async task type
 
 `Compilation.AdoptCustomAsyncTaskTypes` is the one place a non-BCL type is

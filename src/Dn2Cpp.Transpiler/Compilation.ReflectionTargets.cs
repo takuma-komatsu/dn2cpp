@@ -958,6 +958,7 @@ internal sealed partial class Compilation
         if (CoreIntrinsics.BrDelegateCallable.Matches(target)
             || CoreIntrinsics.IsCoreClrGcMemoryQuery(target)
             || CoreIntrinsics.IsCoreClrFinalizerWorker(target)
+            || CoreIntrinsics.IsTaskPromiseNative(target)
             || CoreIntrinsics.IsThreadingPrivate(target)
             || CoreIntrinsics.IsWaitHandleTimeoutConversion(target)
             || CoreIntrinsics.IsDateTimeCultureManagedBody(target)
@@ -982,6 +983,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(target)
             || CoreIntrinsics.BrArrayNativeLength.Matches(target)
             || CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(target)
+            || CoreIntrinsics.IsTaskPromiseForwarder(target)
             || CoreIntrinsics.IsInterpolationStaticHelper(target)
             || CoreIntrinsics.IsVectorAlignmentManagedBody(target)
             || CoreIntrinsics.IsConcreteVectorReduction(target)
@@ -1188,7 +1190,7 @@ internal sealed partial class Compilation
         if (ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls) || _backend?.ShouldSkipMethodBody(cls, ctor) == true)
             return;
         _reflectionSelectionCount++;
-        if (ctor.Rva != 0 && cls.IntrinsicCppName is null)
+        if (CoreIntrinsics.IsTaskPromise(ctor) || ctor.Rva != 0 && cls.IntrinsicCppName is null)
             Reach(ctor);
         if (EnsureShape(cls).IsValueType)
             NoteReflectionBoxed(cls);

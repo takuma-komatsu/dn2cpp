@@ -4102,6 +4102,7 @@ internal sealed partial class Compilation
 
     public void NoteIntrinsicFtnTarget(MethodInfo m)
     {
+        CoreIntrinsics.ValidateTaskPromise(m);
         CoreIntrinsics.ValidateThreadingPrivate(m);
         CoreIntrinsics.ValidateVectorFloatingPointTernary(m);
         CoreIntrinsics.ValidateVectorLog(m);
@@ -4157,6 +4158,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsDateTimeCultureManagedBody(m)
             || (CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(m))
             || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
+            || CoreIntrinsics.IsTaskPromiseForwarder(m)
             || CoreIntrinsics.IsInterpolationStaticHelper(m)
             || CoreIntrinsics.IsScalarNumericLeaf(m)
             || CoreIntrinsics.IsBinaryIntegerEndianBody(m)
