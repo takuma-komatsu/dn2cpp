@@ -77,6 +77,9 @@ namespace AsyncCombinators
             if (args.Length == 1 && args[0] == "before-derived-task-promises")
                 return;
             SettledCombinatorsSubset.Program.RunPromises();
+            if (args.Length == 1 && args[0] == "before-timed-waitasync")
+                return;
+            WaitAsyncContinueWithSubset.Program.RunTimeouts();
             // Ends the process: a builder suspension's rejected registration is re-raised
             // as an unhandled ThreadPool exception.
             if (args.Length == 2 && args[0] == "suspension-rejection")

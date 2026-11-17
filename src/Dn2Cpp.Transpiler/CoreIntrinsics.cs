@@ -784,6 +784,7 @@ internal static partial class CoreIntrinsics
         ["System.ArgumentOutOfRangeException"] = "&dn2cpp_argument_out_of_range_exception_type",
         ["System.ArgumentNullException"] = "&dn2cpp_argument_null_exception_type",
         ["System.InvalidOperationException"] = "&dn2cpp_invalid_operation_exception_type",
+        ["System.TimeoutException"] = "&dn2cpp_timeout_exception_type",
         // ObjectDisposedException derives from InvalidOperationException, so raising the base
         // type instead would still be caught by `catch (InvalidOperationException)` while
         // `catch (ObjectDisposedException)` — what the caller of a disposed stream actually

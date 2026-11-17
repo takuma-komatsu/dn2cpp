@@ -162,6 +162,96 @@ namespace WaitAsyncContinueWithSubset
             Console.WriteLine("waitasync/continuewith section done");
         }
 
+        internal static void RunTimeouts()
+        {
+            Console.WriteLine("== timed WaitAsync ==");
+            var canceled = new CancellationTokenSource();
+            canceled.Cancel();
+            Task<int> completed = Task.FromResult(17);
+            Console.WriteLine("completed identity: " + ReferenceEquals(completed,
+                completed.WaitAsync(TimeSpan.Zero, canceled.Token)));
+            Console.WriteLine("base identity: " + ReferenceEquals(completed,
+                ((Task)completed).WaitAsync(TimeSpan.Zero)));
+            var pending = new TaskCompletionSource<int>();
+            Console.WriteLine("infinite identity: " + ReferenceEquals(pending.Task,
+                pending.Task.WaitAsync(Timeout.InfiniteTimeSpan)));
+            Task<int> zero = pending.Task.WaitAsync(TimeSpan.Zero, canceled.Token);
+            Console.WriteLine("cancellation precedes zero: " + zero.IsCanceled);
+            Task timeout = ((Task)pending.Task).WaitAsync(TimeSpan.FromMilliseconds(1));
+            try { timeout.GetAwaiter().GetResult(); }
+            catch (TimeoutException e)
+            {
+                Console.WriteLine("timeout: " + timeout.IsFaulted + "/" + e.Message + "/" + e.HResult);
+            }
+            Console.WriteLine("source survives timeout: " + !pending.Task.IsCompleted);
+            pending.SetResult(23);
+            Console.WriteLine("late result: " + pending.Task.Result + "/" + timeout.IsFaulted);
+
+            var live = new CancellationTokenSource();
+            var success = new TaskCompletionSource<int>();
+            Task<int> result = success.Task.WaitAsync(Timeout.InfiniteTimeSpan, live.Token);
+            success.SetResult(31);
+            Console.WriteLine("pending result: " + result.IsCompleted + "/" + result.Result);
+            var failed = new TaskCompletionSource<int>();
+            var failedAgain = new TaskCompletionSource<int>();
+            Task fault = Task.WhenAll(failed.Task, failedAgain.Task).WaitAsync(Timeout.InfiniteTimeSpan, live.Token);
+            failed.SetException(new InvalidOperationException("first"));
+            failedAgain.SetException(new Exception("second"));
+            Console.WriteLine("pending faults: " + fault.IsFaulted + "/" + fault.Exception!.InnerExceptions.Count);
+            var cancelSource = new TaskCompletionSource<int>();
+            Task cancelWait = cancelSource.Task.WaitAsync(TimeSpan.FromDays(1), live.Token);
+            live.Cancel();
+            Console.WriteLine("pending cancellation: " + cancelWait.IsCanceled + "/" + !cancelSource.Task.IsCompleted);
+            cancelSource.SetResult(1);
+
+            foreach (TimeSpan invalid in new[] { TimeSpan.FromMilliseconds(-2), TimeSpan.MaxValue })
+            {
+                try { completed.WaitAsync(invalid); }
+                catch (ArgumentOutOfRangeException e) { Console.WriteLine("invalid timeout: " + e.ParamName); }
+            }
+            RunTimeoutCleanup();
+            Console.WriteLine("timed WaitAsync end");
+        }
+
+        private static void RunTimeoutCleanup()
+        {
+            var source = new TaskCompletionSource<int>();
+            var timedOut = new WeakReference[4];
+            var succeeded = new WeakReference[4];
+            var completions = new TaskCompletionSource<int>[4];
+            // An exited thread leaves no conservative stack roots to the wrappers.
+            var producer = new Thread(() =>
+            {
+                for (int i = 0; i < timedOut.Length; i++)
+                {
+                    Task bounded = source.Task.WaitAsync(TimeSpan.FromMilliseconds(1));
+                    try { bounded.GetAwaiter().GetResult(); }
+                    catch (TimeoutException) { }
+                    timedOut[i] = new WeakReference(bounded);
+                    completions[i] = new TaskCompletionSource<int>();
+                    Task early = completions[i].Task.WaitAsync(TimeSpan.FromDays(1));
+                    succeeded[i] = new WeakReference(early);
+                }
+            });
+            producer.Start();
+            producer.Join();
+            // Completion must unlink the timer from its exited owner's scheduler.
+            for (int i = 0; i < completions.Length; i++)
+                completions[i].SetResult(i);
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            bool timeoutCollected = false;
+            bool successCollected = false;
+            for (int i = 0; i < timedOut.Length; i++)
+            {
+                timeoutCollected |= !timedOut[i].IsAlive;
+                successCollected |= !succeeded[i].IsAlive;
+            }
+            Console.WriteLine("timeout cleanup: " + timeoutCollected + "/" + successCollected);
+            GC.KeepAlive(source);
+        }
+
         internal static void __GateEntry() => Run().GetAwaiter().GetResult();
     }
 }

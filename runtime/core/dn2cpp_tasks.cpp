@@ -381,8 +381,8 @@ void dn2cpp_task_throw_if_faulted(Dn2CppTask* t)
 // behaves exactly as the old single-threaded model: every continuation's owner is
 // the main scheduler, every completion happens on main, the run-queue mutex is
 // uncontended, and no cross-thread wakeup ever fires.
-//   - timers + virtual clock are touched ONLY by the owning thread (Task.Delay is
-//     called by the owner; advance_timers runs inside its task_block) -> no lock.
+//   - virtual time advances only on the owner. Timer list changes use `mtx` so
+//     another thread completing a timed wait can remove its losing timer.
 //   - the run queue may receive cross-thread pushes (a worker completing a Task the
 //     owner awaits routes the continuation here) -> guarded by `mtx`, with `cv` so
 //     task_block can sleep until a cross-thread completion arrives.
@@ -391,8 +391,8 @@ struct Dn2CppScheduler
 {
     Dn2CppCont* head = nullptr;
     Dn2CppCont* tail = nullptr;
-    Dn2CppTimer* timers = nullptr;       // owner-only
-    Dn2CppTimer* timers_tail = nullptr;  // owner-only
+    Dn2CppTimer* timers = nullptr;       // guarded by mtx
+    Dn2CppTimer* timers_tail = nullptr;  // guarded by mtx
     int64_t virtual_now = 0;             // owner-only
     int64_t timer_seq = 0;               // owner-only
     // Real-time base of the frame pump (owner-only): virtual_now advances by the
@@ -405,7 +405,7 @@ struct Dn2CppScheduler
     // an arbitrary number of queued resumptions/timers costs one count.
     bool pool_worker = false;                 // fixed before the worker runs managed code
     std::atomic<bool> pool_local_principal{false}; // transitions under mtx; read by pool wait
-    std::mutex mtx;                      // guards head/tail (cross-thread push)
+    std::mutex mtx;                      // guards continuation and timer lists
     std::condition_variable cv;          // task_block waits here
 };
 
@@ -861,6 +861,23 @@ static void dn2cpp_task_on_completed_sync(Dn2CppTask* t, void (*fn)(void*), void
         fn(state);
 }
 
+// A detached continuation may already be running; removing only a still-linked
+// node leaves that callback's immutable state intact for its losing completion.
+static void dn2cpp_task_remove_continuation(Dn2CppTask* task, void (*fn)(void*), void* state)
+{
+    std::lock_guard<std::mutex> lk(g_task_mtx);
+    for (Dn2CppCont** p = &task->continuations; *p != nullptr; p = &(*p)->next)
+    {
+        Dn2CppCont* current = *p;
+        if (current->fn == fn && current->state == state)
+        {
+            dn2cpp_gc_store_ref(p, current->next);
+            dn2cpp_gc_store_ref(&current->next, static_cast<Dn2CppCont*>(nullptr));
+            return;
+        }
+    }
+}
+
 // Invoke a no-arg System.Action delegate and its multicast chain. The continuation
 // a custom suspending awaiter receives is an Action wrapping a boxed state machine's
 // MoveNext (or any user Action); the uniform delegate layout's {target, method, prev}
@@ -900,11 +917,12 @@ void dn2cpp_sched_post_action(Dn2CppObject* action)
 // queue is empty, jumping to the earliest pending timer. This makes concurrent delays
 // complete in duration order — Delay(10) before Delay(50) — deterministically and
 // instantly (no real sleeping), while ready work (Task.Yield, resumed awaiters)
-// always runs first. Timers are owner-only: each thread's Task.Delay feeds its own
-// queue and its own task_block advances its own clock, so no lock is needed here.
+// always runs first. Each thread advances its own clock; the timer list is locked
+// because a timed wait can finish and remove its timer from another thread.
 struct Dn2CppTimer
 {
     Dn2CppTask* task;
+    Dn2CppScheduler* owner;
     int64_t due;        // virtual time (ms) at which the delay completes
     int64_t seq;        // insertion order: ties at the same `due` fire FIFO
     Dn2CppTimer* next;
@@ -948,44 +966,108 @@ static void dn2cpp_pending_timer_unlink(Dn2CppTimer* e)
 static bool dn2cpp_sched_advance_timers(int64_t limit)
 {
     Dn2CppScheduler* s = dn2cpp_sched_self();
-    if (s->timers == nullptr)
-        return false;
-    int64_t minDue = s->timers->due;
-    for (Dn2CppTimer* e = s->timers->next; e != nullptr; e = e->next)
-        if (e->due < minDue)
-            minDue = e->due;
-    if (minDue > limit)
-        return false;
-    s->virtual_now = minDue;
-    // Detach the due entries (insertion order preserved) and rebuild the rest.
     Dn2CppTimer* dueHead = nullptr;
-    Dn2CppTimer* dueTail = nullptr;
-    Dn2CppTimer* keepHead = nullptr;
-    Dn2CppTimer* keepTail = nullptr;
-    for (Dn2CppTimer* e = s->timers; e != nullptr;)
     {
-        Dn2CppTimer* next = e->next;
-        dn2cpp_gc_store_ref(&e->next, static_cast<Dn2CppTimer*>(nullptr));
-        Dn2CppTimer** head = e->due == minDue ? &dueHead : &keepHead;
-        Dn2CppTimer** tail = e->due == minDue ? &dueTail : &keepTail;
-        if (*tail != nullptr)
-            dn2cpp_gc_store_ref(&(*tail)->next, e);
-        else
-            *head = e;
-        *tail = e;
-        e = next;
+        std::lock_guard<std::mutex> lk(s->mtx);
+        if (s->timers == nullptr)
+            return false;
+        int64_t minDue = s->timers->due;
+        for (Dn2CppTimer* e = s->timers->next; e != nullptr; e = e->next)
+            if (e->due < minDue)
+                minDue = e->due;
+        if (minDue > limit)
+            return false;
+        s->virtual_now = minDue;
+        // Detach due entries in insertion order. Cancellation can only unlink
+        // entries still on the scheduler, never this thread's detached list.
+        Dn2CppTimer* dueTail = nullptr;
+        Dn2CppTimer* keepHead = nullptr;
+        Dn2CppTimer* keepTail = nullptr;
+        for (Dn2CppTimer* e = s->timers; e != nullptr;)
+        {
+            Dn2CppTimer* next = e->next;
+            dn2cpp_gc_store_ref(&e->next, static_cast<Dn2CppTimer*>(nullptr));
+            Dn2CppTimer** head = e->due == minDue ? &dueHead : &keepHead;
+            Dn2CppTimer** tail = e->due == minDue ? &dueTail : &keepTail;
+            if (*tail != nullptr)
+                dn2cpp_gc_store_ref(&(*tail)->next, e);
+            else
+                *head = e;
+            *tail = e;
+            e = next;
+        }
+        s->timers = keepHead;
+        s->timers_tail = keepTail;
     }
-    s->timers = keepHead;
-    s->timers_tail = keepTail;
     for (Dn2CppTimer* e = dueHead; e != nullptr;)
     {
         Dn2CppTimer* next = e->next;
         if (e->task->status == DN2CPP_TASK_PENDING) // skip a delay already canceled
             dn2cpp_task_set_result(e->task, 0);
-        dn2cpp_pending_timer_unlink(e); // fired (its continuations are rooted now) — drop the entry
+        dn2cpp_pending_timer_unlink(e);
         e = next;
     }
     return true;
+}
+
+// Preparation precedes publication, so a timed wait's cleanup can safely inspect
+// its immutable timer handle even if it completes while registrations are armed.
+static Dn2CppTimer* dn2cpp_task_timer_new(Dn2CppTask* task, int64_t ms)
+{
+    Dn2CppScheduler* s = dn2cpp_sched_self();
+    auto* e = static_cast<Dn2CppTimer*>(dn2cpp_alloc(sizeof(Dn2CppTimer)));
+    dn2cpp_gc_store_ref(&e->task, task);
+    e->owner = s;
+    e->due = s->virtual_now + ms;
+    e->seq = s->timer_seq++;
+    return e;
+}
+
+static void dn2cpp_task_timer_schedule(Dn2CppTimer* e)
+{
+    dn2cpp_pending_timer_link(e);
+    Dn2CppScheduler* s = e->owner;
+    std::lock_guard<std::mutex> lk(s->mtx);
+    if (s->timers_tail != nullptr)
+        dn2cpp_gc_store_ref(&s->timers_tail->next, e);
+    else
+        s->timers = e;
+    s->timers_tail = e;
+}
+
+static void dn2cpp_task_timer_cancel(Dn2CppTimer* timer)
+{
+    if (timer == nullptr)
+        return;
+    Dn2CppScheduler* s = timer->owner;
+    bool removed = false;
+    {
+        std::lock_guard<std::mutex> lk(s->mtx);
+        Dn2CppTimer* previous = nullptr;
+        for (Dn2CppTimer** p = &s->timers; *p != nullptr; p = &(*p)->next)
+        {
+            if (*p == timer)
+            {
+                if (previous != nullptr)
+                    dn2cpp_gc_store_ref(&previous->next, timer->next);
+                else
+                    s->timers = timer->next;
+                if (s->timers_tail == timer)
+                    s->timers_tail = previous;
+                dn2cpp_gc_store_ref(&timer->next, static_cast<Dn2CppTimer*>(nullptr));
+                removed = true;
+                break;
+            }
+            previous = *p;
+        }
+    }
+    if (removed)
+    {
+        // Never nest the scheduler and global-root locks. A timer already
+        // detached for firing is unrooted by its owner instead.
+        dn2cpp_pending_timer_unlink(timer);
+        dn2cpp_pool_wake_for_scheduler();
+    }
 }
 
 int64_t dn2cpp_task_delay_ms(int32_t ms)
@@ -1017,18 +1099,7 @@ Dn2CppTask* dn2cpp_task_delay(int64_t ms)
     Dn2CppTask* t = dn2cpp_task_alloc();
     if (ms < 0)
         return t;
-    Dn2CppScheduler* s = dn2cpp_sched_self();
-    auto* e = static_cast<Dn2CppTimer*>(dn2cpp_alloc(sizeof(Dn2CppTimer)));
-    dn2cpp_gc_store_ref(&e->task, t);
-    e->due = s->virtual_now + ms;
-    e->seq = s->timer_seq++;
-    e->next = nullptr;
-    dn2cpp_pending_timer_link(e);
-    if (s->timers_tail != nullptr)
-        dn2cpp_gc_store_ref(&s->timers_tail->next, e);
-    else
-        s->timers = e;
-    s->timers_tail = e;
+    dn2cpp_task_timer_schedule(dn2cpp_task_timer_new(t, ms));
     return t;
 }
 
@@ -1508,7 +1579,7 @@ Dn2CppTask* dn2cpp_task_from_canceled()
 // TCS may race concurrent TrySet* calls — the PENDING check and the transition
 // happen under the same g_task_mtx hold, so exactly one caller wins.
 static int32_t dn2cpp_task_try_complete(Dn2CppTask* t, int32_t status, uint64_t result,
-                                        Dn2CppObject* exception)
+                                        Dn2CppObject* exception, Dn2CppObject* aggregate = nullptr)
 {
     Dn2CppCont* conts;
     {
@@ -1518,6 +1589,7 @@ static int32_t dn2cpp_task_try_complete(Dn2CppTask* t, int32_t status, uint64_t 
         t->result = result;
         dn2cpp_gc_write_barrier(&t->result);
         dn2cpp_gc_store_ref(&t->exception, exception);
+        dn2cpp_gc_store_ref(&t->exceptionAggregate, aggregate);
         t->status.store(status, std::memory_order_release); // settled last, as above
         if (t->completionWaitHandle != nullptr)
             dn2cpp_event_set_if_open(t->completionWaitHandle);
@@ -1659,7 +1731,7 @@ void dn2cpp_cts_cancel(Dn2CppCancelSource* src, bool throwOnFirstException)
                 // A pending Task.Delay bound to this source: its timer entry is skipped
                 // once the task leaves PENDING.
                 if (r->task->status == DN2CPP_TASK_PENDING)
-                    dn2cpp_task_set_canceled(r->task);
+                    dn2cpp_task_try_set_canceled(r->task);
             }
             else if (r->callback != nullptr)
             {
@@ -3980,6 +4052,100 @@ Dn2CppTask* dn2cpp_task_wait_async(Dn2CppTask* t, Dn2CppCancelSource* src)
     }
     dn2cpp_task_on_completed(t, &dn2cpp_wait_async_settle, w);
     return wt;
+}
+
+struct Dn2CppTimedWaitAsync
+{
+    Dn2CppTask* antecedent;
+    Dn2CppTask* task;
+    Dn2CppTimer* timer;
+    Dn2CppCancelReg* registration;
+};
+
+static void dn2cpp_wait_async_timeout_settle(void* p)
+{
+    auto* w = static_cast<Dn2CppTimedWaitAsync*>(p);
+    Dn2CppTask* a = w->antecedent;
+    // Publish the entire fault set with the winning status. A competing timeout
+    // or cancellation must not leave the antecedent's aggregate on its result.
+    dn2cpp_task_try_complete(w->task, a->status.load(std::memory_order_acquire),
+        a->result, a->exception, a->exceptionAggregate.load(std::memory_order_acquire));
+}
+
+static void dn2cpp_wait_async_timeout_expire(void* p)
+{
+    auto* task = static_cast<Dn2CppTask*>(p);
+    if (task->status != DN2CPP_TASK_PENDING)
+        return;
+    dn2cpp_task_try_set_exception(task, dn2cpp_exception_new(&dn2cpp_timeout_exception_type,
+        dn2cpp_default_message(&dn2cpp_timeout_exception_type), nullptr));
+}
+
+static void dn2cpp_wait_async_cleanup(void* p)
+{
+    auto* w = static_cast<Dn2CppTimedWaitAsync*>(p);
+    dn2cpp_task_remove_continuation(w->antecedent, &dn2cpp_wait_async_timeout_settle, w);
+    dn2cpp_task_timer_cancel(w->timer);
+    dn2cpp_cts_unregister(w->registration);
+}
+
+Dn2CppTask* dn2cpp_task_wait_async_timeout(Dn2CppTask* t, int64_t ticks,
+    Dn2CppCancelSource* src, const Dn2CppTypeInfo* resultType)
+{
+    int64_t ms = static_cast<int64_t>(static_cast<double>(ticks) / 10000.0);
+    if (ms < -1 || ms > INT64_C(0xFFFFFFFE))
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_TASK_DELAY_SPAN, "timeout");
+    dn2cpp_null_check(t);
+    if (t->status != DN2CPP_TASK_PENDING || (ms == -1 && src == nullptr))
+        return t;
+    if (src != nullptr && dn2cpp_cts_is_cancelled(src))
+        return dn2cpp_task_stamp(dn2cpp_task_from_canceled(), resultType);
+    Dn2CppTask* task = dn2cpp_task_stamp(dn2cpp_task_alloc(), resultType);
+    if (ms == 0)
+    {
+        dn2cpp_wait_async_timeout_expire(task);
+        return task;
+    }
+    auto* w = static_cast<Dn2CppTimedWaitAsync*>(dn2cpp_alloc(sizeof(Dn2CppTimedWaitAsync)));
+    dn2cpp_gc_store_ref(&w->antecedent, t);
+    dn2cpp_gc_store_ref(&w->task, task);
+    if (ms > 0)
+    {
+        dn2cpp_gc_store_ref(&w->timer, dn2cpp_task_timer_new(dn2cpp_task_alloc(), ms));
+        dn2cpp_task_on_completed_sync(w->timer->task, &dn2cpp_wait_async_timeout_expire, task);
+    }
+    if (src != nullptr)
+    {
+        auto* r = static_cast<Dn2CppCancelReg*>(dn2cpp_alloc(sizeof(Dn2CppCancelReg)));
+        dn2cpp_gc_store_ref(&r->source, src);
+        dn2cpp_gc_store_ref(&r->task, task);
+        dn2cpp_gc_store_ref(&w->registration, r);
+    }
+    // All cleanup handles are immutable before any callback can settle task.
+    dn2cpp_task_on_completed_sync(task, &dn2cpp_wait_async_cleanup, w);
+    dn2cpp_task_on_completed_sync(t, &dn2cpp_wait_async_timeout_settle, w);
+    if (src != nullptr && task->status == DN2CPP_TASK_PENDING)
+    {
+        Dn2CppCancelReg* r = w->registration;
+        bool canceled;
+        {
+            std::lock_guard<std::mutex> lk(g_cts_mtx);
+            canceled = src->canceled != 0;
+            if (!canceled)
+            {
+                dn2cpp_gc_store_ref(&r->next, src->regs);
+                dn2cpp_gc_store_ref(&src->regs, r);
+            }
+        }
+        if (canceled)
+            dn2cpp_task_try_set_canceled(task);
+    }
+    if (w->timer != nullptr && task->status == DN2CPP_TASK_PENDING)
+        dn2cpp_task_timer_schedule(w->timer);
+    // A winning completion may have cleaned up before a registration was linked.
+    if (task->status != DN2CPP_TASK_PENDING)
+        dn2cpp_wait_async_cleanup(w);
+    return task;
 }
 
 // ContinueWith with a value-type result: same continuation node, but the delegate is

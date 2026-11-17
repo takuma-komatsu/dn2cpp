@@ -1187,13 +1187,25 @@ internal sealed partial class MethodCompiler
             // cancelled — WaitAsync bounds the wait, not the operation — which is exactly
             // what the runtime node does (dn2cpp_task_wait_async).
             //
-            // The four TIMEOUT overloads — WaitAsync(TimeSpan[, TimeProvider][,
-            // CancellationToken]) — deliberately stay UNMAPPED and reach the loud
-            // "no intrinsic mapping" throw, the same posture SemaphoreSlim.WaitAsync's timed
-            // overloads take next door. They are not more of the same shape: a timeout
-            // settles the wrapper with a TimeoutException rather than cancelling it, so
-            // routing one through this arm would answer a different exception type
-            // (docs/ARCHITECTURE.md §4-B).
+            // TimeProvider overloads retain their separate unsupported boundary: a
+            // custom provider cannot use the runtime's Task.Delay virtual clock.
+            case ("System.Threading.Tasks.Task", "WaitAsync")
+                when sig.ParameterTypes.Length is 1 or 2
+                    && IsTimeSpan(sig.ParameterTypes[0])
+                    && (sig.ParameterTypes.Length == 1
+                        || CppTypes.Of(sig.ParameterTypes[1]) == "Dn2CppCancelToken"):
+            {
+                string source = sig.ParameterTypes.Length == 2 ? $"({Pop().Expr}).source" : "nullptr";
+                var timeout = Pop();
+                var self = Pop();
+                EmitCanceledExcRegistration();
+                // Fast paths return the original task, including a derived or generic
+                // task viewed through Task. Only a new wrapper may receive this tag.
+                Push(StackKind.Ref, "Dn2CppTask*",
+                    $"dn2cpp_task_wait_async_timeout((Dn2CppTask*)({self.Expr}), ({TSVal(timeout)}).ticks, "
+                    + $"{source}, {TaskTypeInfo(sig.ReturnType)})");
+                return true;
+            }
             case ("System.Threading.Tasks.Task", "WaitAsync")
                 when sig.ParameterTypes is [{ } waTok] && CppTypes.Of(waTok) == "Dn2CppCancelToken":
             {

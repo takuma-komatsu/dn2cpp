@@ -2189,6 +2189,7 @@ inline constexpr const char* DN2CPP_SR_EMPTY_WAITHANDLE_ARRAY = "Argument_EmptyW
 inline constexpr const char* DN2CPP_SR_ARGUMENT_NULL_ARRAY_ELEMENT = "ArgumentNull_ArrayElement";
 inline constexpr const char* DN2CPP_SR_ARGUMENT_NULL = "ArgumentNull_Generic";
 inline constexpr const char* DN2CPP_SR_INVALID_OPERATION = "Arg_InvalidOperationException";
+inline constexpr const char* DN2CPP_SR_TIMEOUT = "Arg_TimeoutException";
 inline constexpr const char* DN2CPP_SR_MUST_BE_DELEGATE = "Arg_MustBeDelegate";
 inline constexpr const char* DN2CPP_SR_MUST_BE_ENUM = "Arg_MustBeEnum";
 inline constexpr const char* DN2CPP_SR_MUST_BE_ENUM_BASE_TYPE_OR_ENUM = "Arg_MustBeEnumBaseTypeOrEnum";
@@ -3226,6 +3227,7 @@ extern Dn2CppTypeInfo dn2cpp_com_exception_type;
 extern Dn2CppTypeInfo dn2cpp_argument_out_of_range_exception_type;
 extern Dn2CppTypeInfo dn2cpp_argument_null_exception_type;
 extern Dn2CppTypeInfo dn2cpp_invalid_operation_exception_type;
+extern Dn2CppTypeInfo dn2cpp_timeout_exception_type;
 // System.ObjectDisposedException. Derives from InvalidOperationException, as in
 // .NET — so `catch (InvalidOperationException)` still catches it, while a
 // `catch (ObjectDisposedException)` (the one a caller of a disposed stream,
@@ -5957,6 +5959,10 @@ Dn2CppTask* dn2cpp_task_continue_with_state_result(Dn2CppTask* t, Dn2CppObject* 
 // cancellation section defines the struct further down this header.)
 struct Dn2CppCancelSource;
 Dn2CppTask* dn2cpp_task_wait_async(Dn2CppTask* t, Dn2CppCancelSource* src);
+// TimeSpan overloads use Task.Delay's virtual clock and fault on timeout.
+// Only a newly allocated wrapper is stamped; fast paths preserve task identity.
+Dn2CppTask* dn2cpp_task_wait_async_timeout(Dn2CppTask* t, int64_t ticks,
+    Dn2CppCancelSource* src, const Dn2CppTypeInfo* resultType);
 
 // ThreadPool.QueueUserWorkItem(WaitCallback [, object state]) — fire-and-forget work on
 // the same worker pool. Returns no Task (returns bool, always 1/true); a GC holder keeps
