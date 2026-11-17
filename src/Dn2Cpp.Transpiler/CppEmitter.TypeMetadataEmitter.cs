@@ -1482,7 +1482,9 @@ internal sealed partial class CppEmitter
                     : isTask
                         ? "&dn2cpp_task_type"
                         : "&dn2cpp_object_type";
-                string size = c.IntrinsicCppName == "Dn2CppTask*"
+                string size = c.IntrinsicCppName is "Dn2CppThreadLocal*" or "Dn2CppBlockingCollection*"
+                    ? $"(int32_t)sizeof({c.IntrinsicCppName.Substring(0, c.IntrinsicCppName.Length - 1)})"
+                    : c.IntrinsicCppName == "Dn2CppTask*"
                     ? "(int32_t)sizeof(Dn2CppTask)"
                     : c.IntrinsicCppName == "Dn2CppTaskCompletionSource*"
                         ? "(int32_t)sizeof(Dn2CppTaskCompletionSource)"
@@ -1593,7 +1595,9 @@ internal sealed partial class CppEmitter
                     ToStringFn = toString, HashFn = getHash, EqualsFn = equals, Flags = flags,
                     GenericDef = genericDef, GenericArgs = genericArgs, GenericArgCount = genericCount,
                     Methods = helperTable?.Expr ?? "nullptr", MethodCount = helperTable?.Count ?? 0,
-                    Activation = CoreIntrinsics.IsGen2GcCallbackType(c) ? AllocationUnsupported : 0,
+                    Activation = CoreIntrinsics.IsGen2GcCallbackType(c) ? AllocationUnsupported
+                        : c.IntrinsicCppName is "Dn2CppThreadLocal*" or "Dn2CppBlockingCollection*"
+                            ? OmittedPublicDefaultCtor : 0,
                 });
             }
         }

@@ -6,10 +6,17 @@ internal sealed partial class CppEmitter
 {
     private (string Sym, int Count)? _runtimeInterfaceMaps;
 
+    private static string? ClosedIntrinsicMapPrototype(ClassInfo c) => c.IntrinsicCppName switch {
+        "Dn2CppThreadLocal*" => "dn2cpp_threadlocal_type",
+        "Dn2CppBlockingCollection*" => "dn2cpp_blockingcollection_type",
+        _ => null,
+    };
+
     private void EmitRuntimeInterfaceMaps(StringBuilder sb)
     {
         int sequence = 0;
         var maps = new List<string>();
+        var mapped = new HashSet<string>(StringComparer.Ordinal);
         foreach (var group in _c.RuntimeInterfaceBindings
             .Where(b => _emit.Contains(b.Interface))
             .GroupBy(b => TypeInfoRef(b.Receiver, "runtime interface receiver"))
@@ -17,7 +24,9 @@ internal sealed partial class CppEmitter
         {
             var entries = new List<string>();
             var aliases = new HashSet<ClassInfo>();
-            var existing = _intrinsicItfMaps.FirstOrDefault(m => "&" + m.TypeInfoSym == group.Key);
+            string? shared = ClosedIntrinsicMapPrototype(group.First().Receiver);
+            var existing = _intrinsicItfMaps.FirstOrDefault(m => "&" + m.TypeInfoSym == group.Key
+                || m.TypeInfoSym == shared);
             if (existing.Sym is not null)
                 for (int i = 0; i < existing.Count; i++)
                     entries.Add($"{existing.Sym}[{i}]");
@@ -66,6 +75,16 @@ internal sealed partial class CppEmitter
             string map = $"runtime_itfs_{sequence++}";
             sb.AppendLine($"static const Dn2CppInterfaceEntry {map}[] = {{ {string.Join(", ", entries)} }};");
             maps.Add($"{{ {group.Key}, {map}, {entries.Count} }}");
+            mapped.Add(group.Key);
+        }
+        foreach (var c in _referencedIntrinsicTis)
+        {
+            string? shared = ClosedIntrinsicMapPrototype(c);
+            if (shared is null || mapped.Contains("&" + c.CppTypeInfoName))
+                continue;
+            var existing = _intrinsicItfMaps.FirstOrDefault(m => m.TypeInfoSym == shared);
+            if (existing.Sym is not null)
+                maps.Add($"{{ &{c.CppTypeInfoName}, {existing.Sym}, {existing.Count} }}");
         }
         if (maps.Count == 0)
             return;

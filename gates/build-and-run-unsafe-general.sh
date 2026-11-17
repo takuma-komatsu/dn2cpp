@@ -83,8 +83,7 @@ fi
         gate_capture_ok "$out/native" run_bounded node "$out/TypedReferenceErasure.js"
         gate_output compare "$out/native.stdout" gates/expected/typed-reference-erasure.txt --policy crlf
     else
-        corelib_freeze_gate TypedReferenceErasure gates/expected/typed-reference-erasure.txt \
-            System.Collections.Concurrent "$@"
+        corelib_diff_gate TypedReferenceErasure System.Collections.Concurrent "$@"
     fi
 )
 

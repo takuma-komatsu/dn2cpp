@@ -289,13 +289,8 @@
 # depended on the PROGRAM too (one the emit set carries gets its row from the emitted-class
 # loop), which is why the seed is derived. Every line matches real .NET.
 #
-# ReflectIntrinsicTemplateSubset freezes the intrinsic-open-definition negative:
-# typeof(BlockingCollection<>) + MakeGenericType roots no runtime template
-# (intrinsic levels are shape-ineligible), so the transpile completes, the site
-# warns as ClosedGeneric, and the mint throws the catchable NotSupportedException
-# where real .NET constructs. Every BlockingCollection<T> is one runtime type, so an
-# instantiation the program constructs does not resolve either: both sites' fix and
-# the refusal construct the closed type directly.
+# ReflectIntrinsicTemplateSubset verifies finite closed identities for runtime-modeled
+# generics; their shared storage does not require shared reflection handles.
 #
 # ReflectAttrNullTypeSubset verifies that a null Type attribute argument survives
 # decoding in a positional value, a Type[] element, and a named value.
@@ -391,12 +386,11 @@ gate_type_gettype_ignorecase_asserts() {
     done
 }
 gate_intrinsic_template_row_asserts() {
-    local row=$'\tSystem.Type.MakeGenericType(Type[])\tSystem.Collections.Concurrent.BlockingCollection`1 is modeled by the runtime as one type for every instantiation, so MakeGenericType cannot form it\tconstruct the closed type directly instead of through MakeGenericType'
-    grep -Fxq -- $'ClosedGeneric\tReflectTypes\tReflectIntrinsicTemplateSubset.Program::Run()\tIL_003e'"$row" \
-        "$1/reflection-unrecognized.tsv" \
-        && [ "$(grep -Fc -- "$row" "$1/reflection-unrecognized.tsv")" = 2 ] \
-        && [ "$(awk -F'\t' '$3 == "ReflectIntrinsicTemplateSubset.Program::Run()"' "$1/reflection-unrecognized.tsv" | wc -l | tr -d ' ')" = 2 ] \
-        || { echo "FAIL: the unnamed and the constructed runtime-modeled MakeGenericType sites do not both report" >&2; return 1; }
+    local rows
+    rows=$(awk -F'\t' '$3 == "ReflectIntrinsicTemplateSubset.Program::Run()"' "$1/reflection-unrecognized.tsv")
+    [ "$(printf '%s\n' "$rows" | wc -l | tr -d ' ')" = 1 ] \
+        && grep -Fq 'name the closed generic instantiation statically' <<<"$rows" \
+        || { echo 'FAIL: runtime intrinsic argument must retain its static-name remedy' >&2; return 1; }
 }
 gate_extra_asserts() {
     gate_string_clone_prefix_asserts "$1"

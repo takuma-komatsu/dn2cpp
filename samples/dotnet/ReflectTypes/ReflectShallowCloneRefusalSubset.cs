@@ -75,8 +75,7 @@ namespace ReflectShallowCloneRefusalSubset
             var cts = new CancellationTokenSource();
             Probe("CancellationTokenSource", cts);
 
-            // ThreadLocal<int> retains the bare generic runtime name rather than CLR's
-            // closed spelling. The Type clone is a control: its RuntimeType header and
+            // The Type clone is a control: its RuntimeType header and
             // represented type remain readable on a distinct object.
             var tl = new ThreadLocal<int>(() => 7);
             object tlc = s_mwc.Invoke(tl, null);

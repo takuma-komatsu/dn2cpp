@@ -2,15 +2,7 @@
 using System;
 using System.Collections.Concurrent;
 
-// typeof over an INTRINSIC-MAPPED open generic definition (BlockingCollection<T>
-// lowers to a runtime type) in a program that also calls MakeGenericType: an
-// intrinsic chain level is shape-ineligible as a runtime template, so the
-// transpile must complete — not emit a template row naming a type-info nothing
-// defines — and minting degrades to the catchable NotSupportedException naming
-// the instantiation. Every BlockingCollection<T> is one runtime type, so not even
-// an instantiation the program constructs resolves, and the refusal says to
-// construct it directly. Real .NET constructs both; the freeze carries the
-// divergence.
+// Runtime-modeled generics retain finite closed identities without runtime templates.
 namespace ReflectIntrinsicTemplateSubset
 {
     internal static class Program
@@ -29,11 +21,31 @@ namespace ReflectIntrinsicTemplateSubset
             {
                 Console.WriteLine("closed: NotSupportedException");
             }
-            var named = new BlockingCollection<long> { 7 };
+            try
+            {
+                Type argument = Type.GetType(new string("System.Double".ToCharArray()));
+                _ = open.MakeGenericType(argument);
+                Console.WriteLine("unnamed runtime type: constructed");
+            }
+            catch (NotSupportedException e)
+            {
+                Console.WriteLine("unnamed runtime type: " + e.GetType().Name + ": " + e.Message);
+            }
+            using var named = new BlockingCollection<long> { 7 };
             try
             {
                 Type closed = open.MakeGenericType(typeof(long));
                 Console.WriteLine("named closed: " + closed.Name + " " + named.Count);
+                Console.WriteLine("identity: " + (closed == typeof(BlockingCollection<long>))
+                    + " " + (closed == named.GetType())
+                    + " " + (closed.GetGenericTypeDefinition() == open)
+                    + " " + (closed.GetGenericArguments()[0] == typeof(long)));
+                using var local = new System.Threading.ThreadLocal<string>();
+                Type localType = typeof(System.Threading.ThreadLocal<>).MakeGenericType(typeof(string));
+                Console.WriteLine("thread local identity: " + (localType == local.GetType())
+                    + " " + (localType == typeof(System.Threading.ThreadLocal<string>))
+                    + " " + (localType.GetGenericTypeDefinition() == typeof(System.Threading.ThreadLocal<>))
+                    + " " + (localType.GetGenericArguments()[0] == typeof(string)));
             }
             catch (NotSupportedException e)
             {

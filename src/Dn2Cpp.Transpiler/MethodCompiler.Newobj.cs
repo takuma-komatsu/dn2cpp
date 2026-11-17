@@ -1364,8 +1364,9 @@ internal sealed partial class MethodCompiler
                 ? $"(Dn2CppObject*)({Pop().Expr})" // Func<T> valueFactory
                 : "nullptr";                         // parameterless ctor => default(T)
             var (tlKind, tlTi, tlSize, tlBoxFn) = ThreadLocalKindTiSize(elemT);
+            string tlTypeInfo = TypeInfoExpr(TypeDesc.MakeClass(tlCls), SRME.GetToken(tlMr.Parent))!;
             Push(StackKind.Ref, "Dn2CppThreadLocal*",
-                $"(Dn2CppThreadLocal*)dn2cpp_threadlocal_new({factory}, {tlTi}, {tlSize}, {tlKind}, {tlBoxFn})");
+                $"(Dn2CppThreadLocal*)dn2cpp_threadlocal_new({factory}, {tlTi}, {tlSize}, {tlKind}, {tlBoxFn}, {tlTypeInfo})");
             return;
         }
         // new BlockingCollection<T>() / BlockingCollection<T>(int boundedCapacity) — a
@@ -1410,8 +1411,9 @@ internal sealed partial class MethodCompiler
             string objectName = elemInfo == "nullptr" ? "nullptr" :
                 $"dn2cpp_string_concat3({prefix}, " +
                 $"dn2cpp_type_assembly_qualified_name(dn2cpp_get_type_from_handle({elemInfo})), {suffix})";
+            string bcTypeInfo = TypeInfoExpr(TypeDesc.MakeClass(bcCls), SRME.GetToken(bcMr.Parent))!;
             Push(StackKind.Ref, "Dn2CppBlockingCollection*",
-                $"(Dn2CppBlockingCollection*)dn2cpp_blockingcoll_new({capacity}, {objectName})");
+                $"(Dn2CppBlockingCollection*)dn2cpp_blockingcoll_new({capacity}, {objectName}, {bcTypeInfo})");
             return;
         }
 

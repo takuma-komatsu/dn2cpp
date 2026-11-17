@@ -1077,7 +1077,7 @@ ReaderWriterLockSlim -> PlatformNotSupportedException: MemberwiseClone of 'Syste
 Timer -> PlatformNotSupportedException: MemberwiseClone of 'System.Threading.Timer' is not supported
 Thread -> PlatformNotSupportedException: MemberwiseClone of 'System.Threading.Thread' is not supported
 CancellationTokenSource -> clone same=False
-ThreadLocal<int> -> clone type=System.Threading.ThreadLocal`1 same=False
+ThreadLocal<int> -> clone type=System.Threading.ThreadLocal`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]] same=False
 Type -> clone type=System.RuntimeType named=System.Int32 same=False
 == one CLR type, one type-info ==
 typeof(Root).BaseType == typeof(object) -> True
@@ -1238,11 +1238,11 @@ c-fix GetValues(typeof(Hue)) == typeof(Hue[]) = True name=Hue[]
 c-fix GetValues walk = 12
 c-DIVERGES GetValues(runtime Type) name=Object[]
 c-DIVERGES-but-works GetValues(runtime Type) walk = 12
-== bound handles (d): erased ThreadLocal and exact Task identity ==
+== bound handles (d): closed ThreadLocal and Task identity ==
 d-right ThreadLocal<string> = True
 d-right Task<string> = True
 d-right GetType()==typeof(ThreadLocal<string>) = True
-d-DIVERGES ThreadLocal<int> = True
+d-exact ThreadLocal<int> = False
 d-exact Task<int> = False
 d-data ThreadLocal value = held
 d-other ThreadLocal<string> from object = False
@@ -1444,8 +1444,11 @@ wide<> base  : GenericDefAssignabilitySubset.WideBase`19[System.Int32,System.Int
 ngroot<-wide : True
 -- intrinsic open definition as MakeGenericType input --
 open: BlockingCollection`1
-closed: NotSupportedException
-named closed: PlatformNotSupportedException: System.Collections.Concurrent.BlockingCollection`1[System.Int64] in System.Collections.Concurrent: the runtime models every instantiation of this definition as one type, so MakeGenericType cannot form it; fix: construct the closed type directly instead of through MakeGenericType
+closed: BlockingCollection`1
+unnamed runtime type: PlatformNotSupportedException: System.Collections.Concurrent.BlockingCollection`1[System.Double] in System.Collections.Concurrent: this closed generic instantiation has no compiled code; fix: name the closed generic instantiation statically
+named closed: BlockingCollection`1 1
+identity: True True True True
+thread local identity: True True True True
 == ldtoken member handles ==
 memberref-method=PlatformNotSupportedException
 methoddef=PlatformNotSupportedException

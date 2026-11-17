@@ -44,13 +44,7 @@ struct Dn2CppBlockingNode : Dn2CppObject
 // The collection handle. GC-allocated: its head/tail keep the whole FIFO node chain
 // (and thus every queued value) GC-reachable. The element type is irrelevant here —
 // the call site boxes/unboxes by T's kind, so one storage shape serves every T.
-struct Dn2CppBlockingCollection : Dn2CppObject
-{
-    Dn2CppBlockingControl* ctl;  // non-GC control block (sync + counters)
-    Dn2CppBlockingNode* head;    // dequeue end (oldest); nullptr when empty
-    Dn2CppBlockingNode* tail;    // enqueue end (newest); nullptr when empty
-    Dn2CppString* objectName;     // closed generic name for disposed diagnostics
-};
+
 
 // Each static type-info bakes its interned Type companion in (lock-free typeof/GetType).
 // Non-const and externally visible: the generated init prologue installs its IDisposable
@@ -114,10 +108,10 @@ static void dn2cpp_blockingcoll_require_live(Dn2CppBlockingCollection* c)
         dn2cpp_throw_object_disposed_named(c->objectName);
 }
 
-Dn2CppObject* dn2cpp_blockingcoll_new(int32_t boundedCapacity, Dn2CppString* objectName)
+Dn2CppObject* dn2cpp_blockingcoll_new(int32_t boundedCapacity, Dn2CppString* objectName, const Dn2CppTypeInfo* type)
 {
     auto* c = static_cast<Dn2CppBlockingCollection*>(dn2cpp_alloc(sizeof(Dn2CppBlockingCollection)));
-    c->type = &dn2cpp_blockingcollection_type;
+    c->type = type;
     c->ctl = new Dn2CppBlockingControl();
     c->ctl->boundedCapacity = boundedCapacity;
     c->ctl->count = 0;

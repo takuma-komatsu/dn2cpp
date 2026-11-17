@@ -2253,13 +2253,8 @@ internal sealed partial class Compilation
         switch (slot.Kind)
         {
             case RgctxSlotKind.TypeInfo:
-                return RgctxTypeInfoEntry(RgctxResolveTypeToken(module, handle, ctx));
             case RgctxSlotKind.TypedReferenceTypeInfo:
-            {
-                var type = RgctxResolveTypeToken(module, handle, ctx);
-                return CoreIntrinsics.HasExactTypedReferenceIdentity(type)
-                    ? RgctxTypeInfoEntry(type) : "nullptr";
-            }
+                return RgctxTypeInfoEntry(RgctxResolveTypeToken(module, handle, ctx));
             case RgctxSlotKind.TaskTypeInfo:
                 return RgctxTypeInfoEntry(RgctxTaskTypeForSite(module, handle, ctx, scope));
             case RgctxSlotKind.TypeArg0TypeInfo:

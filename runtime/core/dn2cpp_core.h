@@ -6234,8 +6234,19 @@ int32_t dn2cpp_timer_dispose(Dn2CppObject* t); // Dispose: stop + join, returns 
 // and `kind != 0` are in bijection, which is why dn2cpp_threadlocal_get dispatches on
 // the pointer rather than re-deriving the kind.
 typedef Dn2CppObject* (*Dn2CppThreadLocalBoxFn)(Dn2CppObject* factory);
+struct Dn2CppThreadLocalNode;
+struct Dn2CppThreadLocal : Dn2CppObject  // GC-allocated
+{
+    Dn2CppObject* factory;            // Func<T> delegate, or null (=> default(T))
+    const Dn2CppTypeInfo* ti;         // type-info for boxing a value-type T (null for reference T)
+    int32_t size;                     // sizeof(T) for boxing/default (0 for reference T)
+    int32_t kind;                     // 0=ref 1=i4 2=i8 3=r4 4=r8 5=struct
+    Dn2CppThreadLocalBoxFn boxFn;     // emitted "call the factory at T's ABI and box" thunk (null iff kind==0)
+    Dn2CppThreadLocalNode* head;      // per-thread node list (GC-reachable from this instance)
+};
+
 Dn2CppObject* dn2cpp_threadlocal_new(Dn2CppObject* factory, const Dn2CppTypeInfo* ti, int32_t size,
-                                     int32_t kind, Dn2CppThreadLocalBoxFn boxFn);
+                                     int32_t kind, Dn2CppThreadLocalBoxFn boxFn, const Dn2CppTypeInfo* type);
 Dn2CppObject* dn2cpp_threadlocal_get(Dn2CppObject* h);      // this thread's value (lazy factory / default(T))
 void dn2cpp_threadlocal_set(Dn2CppObject* h, Dn2CppObject* boxedOrRef); // this thread's value
 int32_t dn2cpp_threadlocal_is_created(Dn2CppObject* h);     // 1 if this thread has a value, else 0
@@ -6248,7 +6259,17 @@ int32_t dn2cpp_threadlocal_is_created(Dn2CppObject* h);     // 1 if this thread 
 // GC-allocated collection, so they stay reachable while a consumer is blocked.
 // boundedCapacity 0 => unbounded. Add/Take throw a catchable InvalidOperationException
 // when adding is completed (Add after CompleteAdding; Take on a completed-empty queue).
-Dn2CppObject* dn2cpp_blockingcoll_new(int32_t boundedCapacity, Dn2CppString* objectName);
+struct Dn2CppBlockingControl;
+struct Dn2CppBlockingNode;
+struct Dn2CppBlockingCollection : Dn2CppObject
+{
+    Dn2CppBlockingControl* ctl;  // non-GC control block (sync + counters)
+    Dn2CppBlockingNode* head;    // dequeue end (oldest); nullptr when empty
+    Dn2CppBlockingNode* tail;    // enqueue end (newest); nullptr when empty
+    Dn2CppString* objectName;     // closed generic name for disposed diagnostics
+};
+
+Dn2CppObject* dn2cpp_blockingcoll_new(int32_t boundedCapacity, Dn2CppString* objectName, const Dn2CppTypeInfo* type);
 void dn2cpp_blockingcoll_add(Dn2CppObject* coll, Dn2CppObject* boxedOrRef);
 int32_t dn2cpp_blockingcoll_tryadd(Dn2CppObject* coll, Dn2CppObject* boxedOrRef, int32_t timeoutMs);
 Dn2CppObject* dn2cpp_blockingcoll_take(Dn2CppObject* coll);

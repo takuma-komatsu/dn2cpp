@@ -1038,8 +1038,7 @@ internal static partial class CoreIntrinsics
     /// to be a decision somebody wrote down, not a gap somebody did not notice. Named by
     /// the C++ symbol, since that is what the gate reads out of the runtime sources.
     ///
-    /// <para>Two reasons only. A handle that models MORE THAN ONE CLR type is a deliberate
-    /// type ERASURE, and a row would make the erasure worse rather than better. A handle
+    /// <para>A shared layout prototype is not a closed CLR identity. A handle
     /// whose CLR name is not a
     /// <c>ClassInfo.FullName</c> at all cannot be keyed here: a nested FullName carries no
     /// enclosing type (closed specializations still carry their mangled arguments), so a
@@ -1048,8 +1047,8 @@ internal static partial class CoreIntrinsics
     private static readonly Dictionary<string, string> s_runtimeTypeInfoNotRowed = new()
     {
         ["dn2cpp_yield_awaiter_type"] = "erasure: YieldAwaitable+YieldAwaiter is nested, and its FullName is the bare \"YieldAwaiter\"",
-        ["dn2cpp_threadlocal_type"] = "erasure: every ThreadLocal<T> shares one handle (T rides as data, not in the header)",
-        ["dn2cpp_blockingcollection_type"] = "erasure: every BlockingCollection<T> shares one handle, ditto",
+        ["dn2cpp_threadlocal_type"] = "shared layout prototype; closed ThreadLocal<T> instances use emitted handles",
+        ["dn2cpp_blockingcollection_type"] = "shared layout prototype; closed BlockingCollection<T> instances use emitted handles",
         ["dn2cpp_array_i4_type"] = "erasure: the conservative shared int32[] handle a runtime-allocated array carries; the precise identity is ti_arr_Int32",
         ["dn2cpp_array_ref_type"] = "erasure: the conservative shared object[] handle, ditto",
         ["dn2cpp_array_n_type"] = "erasure: the imprecise packed (element-unknown) array handle — its name is the abstract base's, not a CLR array type",
@@ -1563,29 +1562,6 @@ internal static partial class CoreIntrinsics
     /// per-call-site probe skips declaring-type resolution for the overwhelming
     /// majority of calls.</summary>
     public static bool IsConstFoldedStringCallName(string name) => s_constFoldedStringCallNames.Contains(name);
-
-    /// <summary>Whether every closed instantiation of an arity-stripped generic definition
-    /// lowers to one runtime handle whose header records no type arguments (the erasures
-    /// <see cref="s_runtimeTypeInfoNotRowed"/> lists), so no closed type of it has an
-    /// identity of its own.</summary>
-    public static bool SharesOneRuntimeType(string strippedFullName) =>
-        IntrinsicGenericCppType(strippedFullName) is "Dn2CppThreadLocal*" or "Dn2CppBlockingCollection*";
-
-    // Validate the concrete token before metadata can erase a compound's leaf.
-    internal static bool HasExactTypedReferenceIdentity(TypeDesc type)
-    {
-        if (type.FunctionSignature is { } signature)
-        {
-            foreach (var child in signature.Types)
-                if (!HasExactTypedReferenceIdentity(child))
-                    return false;
-        }
-        if (type.Kind is TypeKind.SZArray or TypeKind.MDArray or TypeKind.ByRef or TypeKind.Pointer)
-            return type.Element is null || HasExactTypedReferenceIdentity(type.Element);
-        if (type.Class is { } cls)
-            return cls.IntrinsicCppName is not ("Dn2CppThreadLocal*" or "Dn2CppBlockingCollection*");
-        return type.ExternalName is null || !SharesOneRuntimeType(type.ExternalName);
-    }
 
     /// <summary>Whether the runtime struct behind an intrinsic value type (an
     /// IntrinsicCppName without a trailing <c>*</c>) embeds a pointer into collectible
