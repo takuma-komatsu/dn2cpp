@@ -47,8 +47,7 @@ int32_t dn2cpp_type_is_generic_type_definition(const Dn2CppTypeInfo* ti)
 // Definitions include open generic declarations and builtins, not compound or formal identities.
 int32_t dn2cpp_type_is_type_definition(const Dn2CppTypeInfo* ti)
 {
-    // These erased runtime handles only represent constructed instances; open
-    // declarations use separate generic-definition handles.
+    // Shared layout prototypes do not represent generic declarations.
     if (ti == &dn2cpp_threadlocal_type || ti == &dn2cpp_blockingcollection_type)
         return 0;
     // Enum rows omit generic-owner arguments, so an ordinary enum cannot be
@@ -154,11 +153,6 @@ static constexpr char kDn2CppUnretainedMember[] =
 static constexpr char kDn2CppUnretainedOverride[] = "the receiver's override was not retained";
 static constexpr char kDn2CppUnretainedClosedGeneric[] =
     "this closed generic instantiation has no compiled code";
-static constexpr char kDn2CppUnretainedOneType[] =
-    "the runtime models every instantiation of this definition as one type, so MakeGenericType cannot form it";
-static constexpr char kDn2CppUnretainedOneTypeFix[] =
-    "construct the closed type directly instead of through MakeGenericType";
-
 static std::string dn2cpp_unretained_subject(const Dn2CppTypeInfo* owner, const std::string& member)
 {
     return dn2cpp_utf8_of(dn2cpp_type_tostring(owner)) + "::" + member;
@@ -570,22 +564,6 @@ static const Dn2CppTypeInfo* dn2cpp_try_synthesize_generic(
     return dn2cpp_synthesize_instantiation(row, args);
 }
 
-extern Dn2CppTypeInfo dn2cpp_threadlocal_type;
-extern Dn2CppTypeInfo dn2cpp_blockingcollection_type;
-
-// Whether the runtime models every instantiation of a definition as one shared type
-// whose header records no type arguments, so no closed type of it carries the identity
-// MakeGenericType resolves, even one the program constructs.
-static bool dn2cpp_definition_is_one_runtime_type(const Dn2CppTypeInfo* defTi)
-{
-    if (defTi->name == nullptr)
-        return false;
-    for (const Dn2CppTypeInfo* shared : { &dn2cpp_threadlocal_type, &dn2cpp_blockingcollection_type })
-        if (std::strcmp(shared->name, defTi->name) == 0)
-            return true;
-    return false;
-}
-
 // Type.MakeGenericType(args): resolve the (definition, args) instantiation against the
 // program's reachability-generated closed types (scanned via the type registry). Like
 // IL2CPP, an instantiation that AOT never generated is not built at runtime — it throws
@@ -657,8 +635,6 @@ Dn2CppType* dn2cpp_type_make_generic(Dn2CppType* def, Dn2CppArrayRef* args)
             closed += ",";
         closed += argv[i] != nullptr ? dn2cpp_utf8_of(dn2cpp_type_tostring(argv[i])) : "<null>";
     }
-    if (dn2cpp_definition_is_one_runtime_type(defTi))
-        dn2cpp_throw_unretained(defTi, closed + "]", kDn2CppUnretainedOneType, nullptr, kDn2CppUnretainedOneTypeFix);
     dn2cpp_throw_unretained(defTi, closed + "]", kDn2CppUnretainedClosedGeneric, nullptr, nullptr);
 }
 

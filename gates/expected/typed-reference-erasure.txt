@@ -1,8 +1,8 @@
-direct=PlatformNotSupportedException
-generic integer=PlatformNotSupportedException
-generic string=PlatformNotSupportedException
-generic queue=PlatformNotSupportedException
-generic matrix=PlatformNotSupportedException
+direct=accepted
+generic integer=accepted
+generic string=accepted
+generic queue=accepted
+generic matrix=accepted
 generic container=accepted
-target integer=PlatformNotSupportedException
-target matrix=PlatformNotSupportedException
+target integer=InvalidCastException
+target matrix=InvalidCastException

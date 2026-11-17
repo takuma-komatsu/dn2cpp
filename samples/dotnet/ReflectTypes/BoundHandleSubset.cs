@@ -28,12 +28,7 @@ namespace BoundHandleSubset
     //     would make ldelem read a pointer as an integer — the reason is written at the
     //     lowering (MethodCompiler.EmitIntrinsic.EnumArray.cs).
     //
-    // (d) THE ERASED GENERICS. One Dn2CppThreadLocal struct serves every T, so no
-    //     per-instantiation ti_ is stamped on an instance. Task<T> is the counterexample:
-    //     one Dn2CppTask struct carries a per-close runtime type handle.
-    //     BlockingCollection<T> rides the identical IntrinsicCppName arm but lives in
-    //     System.Collections.Concurrent, which this bucket does not reference; its
-    //     agreeing half is asserted by build-and-run-blocking-collection.sh instead.
+    // (d) SHARED LAYOUTS retain the exact closed generic identity in their headers.
     //
     // Every line here matches real .NET except those whose label starts "DIVERGES",
     // which are asserted precisely so a change to them is visible. (Another line carries
@@ -256,18 +251,15 @@ namespace BoundHandleSubset
                 rseen += ((Hue)v == Hue.Green) ? 10 : 1;
             Console.WriteLine("c-DIVERGES-but-works GetValues(runtime Type) walk = " + rseen);
 
-            Console.WriteLine("== bound handles (d): erased ThreadLocal and exact Task identity ==");
+            Console.WriteLine("== bound handles (d): closed ThreadLocal and Task identity ==");
             object tl = new ThreadLocal<string>();
             object tk = Task.FromResult("x");
             Console.WriteLine("d-right ThreadLocal<string> = " + (tl is ThreadLocal<string>));
             Console.WriteLine("d-right Task<string> = " + (tk is Task<string>));
             Console.WriteLine("d-right GetType()==typeof(ThreadLocal<string>) = "
                 + (tl.GetType() == typeof(ThreadLocal<string>)));
-            // ThreadLocal remains erased; Task keeps its closed result identity.
-            Console.WriteLine("d-DIVERGES ThreadLocal<int> = " + (tl is ThreadLocal<int>));
+            Console.WriteLine("d-exact ThreadLocal<int> = " + (tl is ThreadLocal<int>));
             Console.WriteLine("d-exact Task<int> = " + (tk is Task<int>));
-            // The erasure is only about the HEADER: T rides as data, so the instance
-            // still behaves at its own T.
             ((ThreadLocal<string>)tl).Value = "held";
             Console.WriteLine("d-data ThreadLocal value = " + ((ThreadLocal<string>)tl).Value);
             // A non-family type is unaffected: the arms key on the runtime STRUCT, so

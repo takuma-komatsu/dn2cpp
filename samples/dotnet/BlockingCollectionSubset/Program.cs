@@ -193,10 +193,9 @@ static class Program
     }
 
     // The IDisposable INTERFACE mouth. BlockingCollection<T> is intrinsic — a
-    // Dn2CppBlockingCollection* with no per-class emitted type-info — so `using` (a
+    // Dn2CppBlockingCollection* with a closed type-info — so `using` (a
     // callvirt IDisposable::Dispose), an interface-typed local and isinst/castclass all
-    // depend on the init prologue installing an interface-dispatch map onto its runtime
-    // type-info, while the DIRECT Dispose() call is routed at the intrinsic call site and
+    // depend on the init prologue installing its interface-dispatch map, while the DIRECT Dispose() call is routed at the intrinsic call site and
     // works regardless. The later disposal section checks operations after either route.
     static void DisposeMouths()
     {
@@ -227,17 +226,8 @@ static class Program
         q4.Dispose();
     }
 
-    // Every BlockingCollection<T> shares one runtime struct and one type-info handle, so
-    // the type token must name that SHARED handle (the choice Task<T> already made): a
-    // per-instantiation ti_ nothing stamps on an instance makes `o is
-    // BlockingCollection<string>` read False for every T.
-    //
-    // The residue — one handle cannot tell instantiations apart, so `o is
-    // BlockingCollection<int>` on a <string> reads True where .NET reads False — is
-    // deliberately NOT probed here: this gate diffs against real .NET, so a known
-    // divergence has nowhere to live in it. It is asserted in the reflect-types bucket's
-    // frozen BoundHandleSubset section, beside the identical Task<T> line.
-    static void ErasedIdentity()
+    // Shared storage retains the closed identity used by casts and GetType.
+    static void ClosedIdentity()
     {
         object bc = new BlockingCollection<string>();
         Console.WriteLine(bc is BlockingCollection<string>);           // True
@@ -260,7 +250,7 @@ static class Program
         TryTimeouts();
         ReferenceAndWidthKinds();
         DisposeMouths();
-        ErasedIdentity();
+        ClosedIdentity();
         if (args.Length == 1 && args[0] == "before-collection-validation")
             return;
         BlockingCollectionValidationSubset.RunChecks();

@@ -767,18 +767,8 @@ struct Dn2CppThreadLocalNode : Dn2CppObject  // GC-allocated; scanned for `value
     Dn2CppThreadLocalNode* next;
 };
 
-struct Dn2CppThreadLocal : Dn2CppObject  // GC-allocated
-{
-    Dn2CppObject* factory;            // Func<T> delegate, or null (=> default(T))
-    const Dn2CppTypeInfo* ti;         // type-info for boxing a value-type T (null for reference T)
-    int32_t size;                     // sizeof(T) for boxing/default (0 for reference T)
-    int32_t kind;                     // 0=ref 1=i4 2=i8 3=r4 4=r8 5=struct
-    Dn2CppThreadLocalBoxFn boxFn;     // emitted "call the factory at T's ABI and box" thunk (null iff kind==0)
-    Dn2CppThreadLocalNode* head;      // per-thread node list (GC-reachable from this instance)
-};
 
-// Defined after the struct so the type-info can state the struct's extent: it is what
-// the shallow clone and GetUninitializedObject size an allocation from.
+
 extern const Dn2CppType dn2cpp_threadlocal_type_obj;
 Dn2CppTypeInfo dn2cpp_threadlocal_type =
     dn2cpp_ti_with_typeobject({ "System.Threading.ThreadLocal`1", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppThreadLocal), 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection },
@@ -836,10 +826,10 @@ static Dn2CppObject* dn2cpp_threadlocal_make_initial(Dn2CppThreadLocal* h)
 }
 
 Dn2CppObject* dn2cpp_threadlocal_new(Dn2CppObject* factory, const Dn2CppTypeInfo* ti, int32_t size,
-                                     int32_t kind, Dn2CppThreadLocalBoxFn boxFn)
+                                     int32_t kind, Dn2CppThreadLocalBoxFn boxFn, const Dn2CppTypeInfo* type)
 {
     auto* h = static_cast<Dn2CppThreadLocal*>(dn2cpp_alloc(sizeof(Dn2CppThreadLocal)));
-    h->type = &dn2cpp_threadlocal_type;
+    h->type = type;
     dn2cpp_gc_store_ref(&h->factory, factory);
     h->ti = ti;
     h->size = size;

@@ -15,9 +15,9 @@ internal static class Program
         {
             return __reftype(__makeref(value)) is null ? "null" : "accepted";
         }
-        catch (PlatformNotSupportedException)
+        catch (InvalidCastException)
         {
-            return "PlatformNotSupportedException";
+            return "InvalidCastException";
         }
     }
 
@@ -29,9 +29,9 @@ internal static class Program
             _ = __refvalue(reference, T);
             return "accepted";
         }
-        catch (PlatformNotSupportedException)
+        catch (InvalidCastException)
         {
-            return "PlatformNotSupportedException";
+            return "InvalidCastException";
         }
     }
 
@@ -49,9 +49,9 @@ internal static class Program
             TypedReference reference = __makeref(integer);
             Console.WriteLine("direct=" + (__reftype(reference) is null ? "null" : "accepted"));
         }
-        catch (PlatformNotSupportedException)
+        catch (InvalidCastException)
         {
-            Console.WriteLine("direct=PlatformNotSupportedException");
+            Console.WriteLine("direct=InvalidCastException");
         }
         Console.WriteLine("generic integer=" + Probe(ref integer));
         Console.WriteLine("generic string=" + Probe(ref text));

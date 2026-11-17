@@ -325,10 +325,9 @@ so a compiler-generated name such as `<>c` pastes as written. A closed generic
 instantiation's remedy is to name it statically, since a rule on a generic
 definition never creates a closed instantiation; a rule on a generic definition's
 member keeps that member's shared body on the definition's runtime-instantiation
-template instead. A definition the runtime models as one type for every
-instantiation, such as `BlockingCollection<T>`, has no closed type
-`MakeGenericType` can form, so its remedy is to construct the closed type
-directly. The warning describes the site and does not prove whether a
+template instead. Runtime-modeled generic types such as `BlockingCollection<T>`
+share native storage but retain separate closed identities; `MakeGenericType`
+can resolve their instantiations present in the AOT image. The warning describes the site and does not prove whether a
 rule covers its target: the warning and its row remain after one does. At run
 time, reflection that needs a body the image does not hold — a member it found,
 a receiver's override, a closed generic instantiation — throws a catchable
@@ -722,9 +721,6 @@ Full ECMA-335 IL coverage. What that means concretely:
   Typed-reference IL (`mkrefany`, `refanytype`, `refanyval`) preserves the
   referenced storage and exact type identity; extraction with a different
   type throws `InvalidCastException`. See `gates/build-and-run-unsafe-general.sh`.
-  `ThreadLocal<T>` and `BlockingCollection<T>` use erased runtime type handles;
-  typed references to them, or compound handles containing that erasure, throw
-  `PlatformNotSupportedException`. Ordinary closed generic types remain supported.
 - **UTF-16 strings** with .NET `System.String` semantics; UTF-8
   conversion happens only at the console / Godot / P/Invoke boundary.
 - **Exception handling** — structural EH-region reconstruction into C++

@@ -1522,10 +1522,6 @@ internal sealed partial class Compilation
             }
             var tuples = ArgumentTuples(args, out bool argsKnown, closeTemplates: true);
             bool templated = false;
-            bool oneType = RuntimeModelsAsOneType(BacktickFullName(module, e.Definition));
-            if (oneType && report && site >= 0)
-                RecordReflectionDiagnostic(app, app.Summary.Sites[site], ReflectionDiagnosticKind.ClosedGeneric,
-                    BacktickFullName(module, e.Definition) + OneRuntimeTypeReason, null, null, DirectConstructionRemedy);
             if (tuples.Count > 0)
             {
                 var parameters = module.Reader.GetTypeDefinition(e.Definition).GetGenericParameters();
@@ -1564,9 +1560,9 @@ internal sealed partial class Compilation
                         cls = StaticReflectionType(module, e.Definition, tuple);
                         if (cls is null)
                             continue;
-                        // A runtime-modeled closed type is a lowering, not a class the image
-                        // emits for reflection to find.
-                        if (cls.IntrinsicCppName is not null && !oneType && report && site >= 0)
+                        if (cls.IntrinsicCppName is not null
+                            && cls.IntrinsicCppName is not ("Dn2CppThreadLocal*" or "Dn2CppBlockingCollection*")
+                            && report && site >= 0)
                             RecordReflectionDiagnostic(app, app.Summary.Sites[site], ReflectionDiagnosticKind.ClosedGeneric,
                                 BacktickFullName(module, e.Definition) + " is modeled by the runtime and has no"
                                 + " runtime-instantiation template; only instantiations the program names resolve",
@@ -1580,7 +1576,7 @@ internal sealed partial class Compilation
             if (!argsKnown)
             {
                 string? unknown = ArgumentsUnknown(args);
-                SelectTemplate(app, site, module, e.Definition, report && unknown is not null && !oneType,
+                SelectTemplate(app, site, module, e.Definition, report && unknown is not null,
                     "the type arguments come from " + unknown, null);
                 argumentsUnknown ??= unknown ?? "type arguments with no known closed tuple";
             }
@@ -1598,30 +1594,12 @@ internal sealed partial class Compilation
             result.Unknown = "MakeGenericType over " + argumentsUnknown;
         // The site reports even when its result goes unused: no template or body is
         // selected for a definition it cannot name.
-        if (report && site >= 0 && receiverUnknown is null && unclosable is not null && RuntimeModelsAsOneType(unclosable))
-            RecordReflectionDiagnostic(app, app.Summary.Sites[site], ReflectionDiagnosticKind.ClosedGeneric,
-                unclosable + OneRuntimeTypeReason, null, null, DirectConstructionRemedy);
-        else if (report && site >= 0 && (receiverUnknown ?? unclosable) is not null)
+        if (report && site >= 0 && (receiverUnknown ?? unclosable) is not null)
             RecordReflectionDiagnostic(app, app.Summary.Sites[site], ReflectionDiagnosticKind.ClosedGeneric,
                 (receiverUnknown is not null ? "the generic definition comes from " + receiverUnknown
                     : unclosable + " is modeled by the runtime and has no runtime-instantiation template")
                 + "; only instantiations the program names resolve", null, null, null);
         return result;
-    }
-
-    private const string OneRuntimeTypeReason =
-        " is modeled by the runtime as one type for every instantiation, so MakeGenericType cannot form it";
-
-    /// <summary>The ClosedGeneric member kind whose remedy bypasses MakeGenericType.</summary>
-    private const string DirectConstructionRemedy = "direct construction";
-
-    /// <summary>Whether the runtime models every instantiation of a definition, by its
-    /// backtick full name, as one type that records no type arguments: MakeGenericType
-    /// finds no closed type of it, even one the program constructs.</summary>
-    private static bool RuntimeModelsAsOneType(string backtickName)
-    {
-        int tick = backtickName.IndexOf('`');
-        return tick > 0 && CoreIntrinsics.SharesOneRuntimeType(backtickName.Substring(0, tick));
     }
 
     /// <summary>Re-applies the site being applied when the definition (module index and
@@ -5634,9 +5612,7 @@ internal sealed partial class Compilation
         if (kind == ReflectionDiagnosticKind.Metadata)
             return "--reflection-root " + (owner ?? "TYPE");
         if (kind == ReflectionDiagnosticKind.ClosedGeneric)
-            return memberKind == DirectConstructionRemedy
-                ? "construct the closed type directly instead of through MakeGenericType"
-                : "name the closed generic instantiation statically";
+            return "name the closed generic instantiation statically";
         return PreserveFixPrefix + PreserveDescriptor(assembly, owner, names, memberKind);
     }
 

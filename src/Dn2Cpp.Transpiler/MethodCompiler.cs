@@ -3617,19 +3617,15 @@ internal sealed partial class MethodCompiler : IEvalStack
             {
                 var value = Pop();
                 var target = ResolveCastTarget(insn.Token);
-                // The shared slot validates the actual substitution before its
-                // metadata can erase a ThreadLocal/BlockingCollection array leaf.
+                // Resolve compound tokens against the exact shared instantiation.
                 if (SharedTrial && Compilation.ContainsCanonPlaceholder(target))
                     Push(StackKind.Ptr, "const Dn2CppTypeInfo*", "(const Dn2CppTypeInfo*)"
                         + RgctxSlotAccess(RgctxSlotKind.TypedReferenceTypeInfo, insn.Token, "typedref-identity", target));
-                else if (!CoreIntrinsics.HasExactTypedReferenceIdentity(target))
-                    Push(StackKind.Ptr, "const Dn2CppTypeInfo*", "nullptr");
                 else
-                    // Share ldtoken's precise array and signature identity.
                     Translate(new Instruction { Offset = insn.Offset, NextOffset = insn.NextOffset,
                         OpCode = ILOpCode.Ldtoken, Token = insn.Token });
                 var handle = Pop();
-                Emit($"if ({handle.Expr} == nullptr) dn2cpp_throw_platform_not_supported(\"TypedReference requires an exact type identity; ThreadLocal<T> and BlockingCollection<T> use erased handles\");");
+                Emit($"if ({handle.Expr} == nullptr) dn2cpp_throw_platform_not_supported(\"TypedReference requires an exact type identity\");");
                 if (op == ILOpCode.Mkrefany)
                 {
                     Push(StackKind.Struct, "Dn2CppTypedReference",

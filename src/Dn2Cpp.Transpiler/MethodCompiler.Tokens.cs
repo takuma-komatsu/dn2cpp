@@ -340,22 +340,6 @@ internal sealed partial class MethodCompiler
                             && t.Class.GenericArity == 0
                             && t.Class.FullName == "System.Threading.Tasks.Task"
             => "&dn2cpp_task_type",
-        // ThreadLocal<T> and BlockingCollection<T> remain erased — one
-        // struct, one runtime handle, T riding as data rather than in the header
-        // (CoreIntrinsics.s_runtimeTypeInfoNotRowed). Without an arm here they fall to the
-        // Class arm's never-stamped ti_, and `o is ThreadLocal<string>` reads False on an
-        // object whose type IS ThreadLocal<string>.
-        //
-        // The residue of the erasure, stated rather than hidden: one handle cannot
-        // distinguish instantiations, so `o is ThreadLocal<int>` on a ThreadLocal<string>
-        // reads TRUE where real .NET reads False. Exact whenever the program holds a single instantiation, and
-        // over-accepting only a test a correct program does not write; a per-instantiation
-        // handle would mean giving each close its own runtime struct, i.e. dropping the
-        // erasure.
-        TypeKind.Class when t.Class!.IntrinsicCppName == "Dn2CppThreadLocal*"
-            => "&dn2cpp_threadlocal_type",
-        TypeKind.Class when t.Class!.IntrinsicCppName == "Dn2CppBlockingCollection*"
-            => "&dn2cpp_blockingcollection_type",
         // The one answer for a class: its type-info symbol. That is the runtime's own
         // handle whenever the runtime defines one — the exception set the traps stamp, the
         // reflection hierarchy every Dn2CppType/Dn2CppMethodRef carries, the degraded
