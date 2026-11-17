@@ -328,7 +328,7 @@ internal sealed partial class Compilation
             {
                 served.Add(defName);
                 foreach (var level in levels)
-                    served.Add(BacktickFullName(level.Module, level.Handle));
+                    served.Add(GenericDefinitionKey(level.Module, level.Handle));
             }
             // A site whose definitions several templates would serve reports once, with
             // every definition's reason.
@@ -502,7 +502,7 @@ internal sealed partial class Compilation
             if (e.Kind == REntityKind.Assembly && e.Assembly is { } module)
                 foreach (var h in module.Reader.TypeDefinitions)
                     if (module.Reader.GetTypeDefinition(h).GetGenericParameters().Count != 0)
-                        NoteTypeofOpenGenericDef(BacktickFullName(module, h), ResolveOpenGenericDefKind(module, h),
+                        NoteTypeofOpenGenericDef(GenericDefinitionKey(module, h), ResolveOpenGenericDefKind(module, h),
                             GenericParamNames(module, h));
     }
 
@@ -2139,7 +2139,7 @@ internal sealed partial class Compilation
         string reason, TypeDesc[]? tuple)
     {
         _makeGenericTypeUsed = true;
-        string name = BacktickFullName(module, def);
+        string name = GenericDefinitionKey(module, def);
         if (SharedGenericsEnabled && _reflectionTemplateSelections.Add(name) && _typeofOpenGenericDefSeen.Add(name))
             _typeofOpenGenericDefNames.Add(name);
         if (!_templateRequests.TryGetValue(name, out var request))
@@ -2147,7 +2147,7 @@ internal sealed partial class Compilation
         request.Add(tuple);
         if (report && site >= 0)
             RecordTemplateDiagnostic(app, app.Summary.Sites[site], name,
-                reason + ", and " + name + " has no runtime-instantiation template; only instantiations the program names resolve",
+                reason + ", and " + GenericDefinitionName(name) + " has no runtime-instantiation template; only instantiations the program names resolve",
                 module, def, tuple);
     }
 
@@ -2200,7 +2200,7 @@ internal sealed partial class Compilation
                         InvokeSelected(member, app, accessor, publicAccessors);
             return;
         }
-        string name = BacktickFullName(module, def);
+        string name = GenericDefinitionKey(module, def);
         if (!_templateMemberSelections.TryGetValue(name, out var selections))
             _templateMemberSelections[name] = selections = new List<TemplateSelection>();
         var selection = new TemplateSelection(lookup, accessor, construct, arguments, e.Tuple, publicAccessors);
@@ -2951,7 +2951,7 @@ internal sealed partial class Compilation
             if (entity.Type is { } type)
                 NoteNamedType(type);
             else
-                NoteTypeofOpenGenericDef(BacktickFullName(module, nh), ResolveOpenGenericDefKind(module, nh),
+                NoteTypeofOpenGenericDef(GenericDefinitionKey(module, nh), ResolveOpenGenericDefKind(module, nh),
                     GenericParamNames(module, nh));
             selected.Add(entity);
         }

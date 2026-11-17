@@ -6227,7 +6227,7 @@ internal sealed partial class Compilation
                             // presence in reachable IL is what scopes the $CnAny
                             // template pass to definitions the program can name.
                             if (lastLdtokenType is { } lot
-                                && OpenGenericDefBacktickNameOf(lot) is { } odn
+                                && OpenGenericDefinitionKey(lot) is { } odn
                                 && _typeofOpenGenericDefSeen.Add(odn))
                                 _typeofOpenGenericDefNames.Add(odn);
                         }

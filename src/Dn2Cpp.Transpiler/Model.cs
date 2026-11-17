@@ -1471,8 +1471,13 @@ internal static class CppNaming
     public static string GenericDefinitionStem(string name)
     {
         const string prefix = "dn2cpp_nested_";
+        const string scopedPrefix = "dn2cpp_scoped_";
+        int scope = name.IndexOf('\0');
+        if (scope >= 0)
+            return scopedPrefix + name.Substring(0, scope) + "_" + GenericDefinitionStem(name.Substring(scope + 1));
         string flat = Sanitize(name);
-        if (!name.Contains('+') && !flat.StartsWith(prefix, StringComparison.Ordinal))
+        if (!name.Contains('+') && !flat.StartsWith(prefix, StringComparison.Ordinal)
+            && !flat.StartsWith(scopedPrefix, StringComparison.Ordinal))
             return flat;
         var sb = new System.Text.StringBuilder(prefix);
         const string hex = "0123456789ABCDEF";

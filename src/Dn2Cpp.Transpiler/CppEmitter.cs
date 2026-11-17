@@ -4578,8 +4578,7 @@ internal sealed partial class CppEmitter
         return MethodCompiler.EnumMetadataMembersModel(en).OrderBy(MethodCompiler.EnumSortKey(en)).ToList();
     }
 
-    /// <summary>For a closed generic instantiation, the CLR open-definition
-    /// FullName (with the backtick arity marker, e.g. "System.Collections.Generic.List`1")
+    /// <summary>For a closed generic instantiation, the assembly-scoped definition key
     /// and the full type-argument count, including declaring-type parameters.
     /// Nested definitions retain each level's own arity and '+' separator.</summary>
     private (string DefName, int Arity)? GenericDefInfo(ClassInfo cls)
@@ -4588,17 +4587,7 @@ internal sealed partial class CppEmitter
             return null;
         try
         {
-            var reader = cls.Module.Reader;
-            var td = reader.GetTypeDefinition(cls.Handle);
-            string name = reader.GetString(td.Name);          // "List`1" (keeps the backtick)
-            for (var declaring = td.GetDeclaringType(); !declaring.IsNil; declaring = td.GetDeclaringType())
-            {
-                td = reader.GetTypeDefinition(declaring);
-                name = reader.GetString(td.Name) + "+" + name;
-            }
-            string ns = reader.GetString(td.Namespace);
-            string full = string.IsNullOrEmpty(ns) ? name : ns + "." + name;
-            return (full, cls.Context.TypeArgs.Length);
+            return (_c.GenericDefinitionKey(cls.Module, cls.Handle), cls.Context.TypeArgs.Length);
         }
         catch (Exception e) when (!Compilation.IsMustEscape(e))
         {
@@ -4941,6 +4930,8 @@ internal sealed partial class CppEmitter
         if (t.Kind == TypeKind.GenericVar && t.GenVarIsMethod
             && methodGenericNames is not null && (uint)t.GenVarIndex < (uint)methodGenericNames.Count)
             return methodGenericNames[t.GenVarIndex];
+        if (t.Kind == TypeKind.Template)
+            return RawSignatureProvider.TypeDefinitionName(t.TemplateModule!.Reader, t.TemplateHandle);
         if (t.Kind is TypeKind.External or TypeKind.ExternalGeneric)
             return t.ExternalName!;
         return t.ToString();
@@ -5167,6 +5158,7 @@ internal sealed partial class CppEmitter
     {
         TypeKind.SZArray or TypeKind.MDArray => AttrTypeAssembly(t.Element!),
         TypeKind.Class => AssemblyDisplayName(t.Class!.Module),
+        TypeKind.Template => AssemblyDisplayName(t.TemplateModule!),
         _ => _c.FindClassByFullName(ReflectionSignatureType(t, true)) is { } c
             ? AssemblyDisplayName(c.Module)
             : "System.Private.CoreLib",
@@ -5410,10 +5402,10 @@ internal sealed partial class CppEmitter
             // the drop visible. Scoped to open definition names (a backtick, no
             // argument list) so an ordinary tree-shaken typeof stays a quiet
             // IL2CPP-style strip.
-            if (td.Kind == TypeKind.External && td.ExternalName!.Contains('`')
-                && !td.ExternalName.Contains('['))
+            string? openName = Compilation.OpenGenericDefBacktickNameOf(td);
+            if (openName is not null && !openName.Contains('['))
                 Console.Error.WriteLine(
-                    $"warning: dropping a custom attribute whose typeof({td.ExternalName}) argument " +
+                    $"warning: dropping a custom attribute whose typeof({openName}) argument " +
                     "names an open generic definition with no emitted instantiation (no reflectable type handle)");
             return null;
         }
@@ -5455,18 +5447,11 @@ internal sealed partial class CppEmitter
             case TypeKind.MDArray:
                 string md = "ti_md_" + Compilation.ArrayElemMangle(td);
                 return TypeInfoSymbolDefined(md) ? "&" + md : null;
+            case TypeKind.Template:
             case TypeKind.External:
-                // An OPEN generic definition — typeof(Foo<>) — decodes to an External
-                // TypeDesc carrying the CLR backtick name (no ClassInfo is minted for an
-                // open definition, so Compilation.ResolveSerializedTypeName answers
-                // External). It is never emitted as a bare ti_, and dropping it drops the
-                // whole attribute (the array build short-circuits on the first null
-                // element): Godot's [AssemblyHasScripts] over abstract generic Node bases
-                // would register no scripts. Route it to the shared open-definition handle
-                // (DN2CPP_TF_GENERICDEF), emitted by EmitTypeInfos for every definition
-                // with at least one emitted close; EmitTypeInfos precedes both attribute
-                // passes, so _genericDefSyms is complete here.
-                return _genericDefSyms.TryGetValue(td.ExternalName!, out var defSym) ? "&" + defSym : null;
+                // Open definitions use their owner-scoped handle, not a ClassInfo.
+                // EmitTypeInfos precedes the attribute passes and completes this map.
+                return _genericDefSyms.TryGetValue(_c.OpenGenericDefinitionKey(td) ?? td.ExternalName!, out var defSym) ? "&" + defSym : null;
         }
         return null;
     }
@@ -6186,7 +6171,7 @@ internal sealed partial class CppEmitter
         // scan them and (parity with .NET) GetType("Namespace.Type`N") resolve the
         // definition. Populated by EmitTypeInfos, which runs before this method.
         foreach (var (defName, sym) in _genericDefSyms)
-            Add(defName, "&" + sym, _c.OpenGenericDefHandleByName(defName)?.Module.AssemblyName);
+            Add(Compilation.GenericDefinitionName(defName), "&" + sym, _c.OpenGenericDefHandleByName(defName)?.Module.AssemblyName);
         // Per-element array type names: Type.GetType("System.Int32[]") etc.
         // resolve to the emitted ti_arr_ handle. Populated by EmitArrayTypeInfos (run by
         // EmitTypeInfos, which precedes this method).
@@ -6423,7 +6408,7 @@ internal sealed partial class CppEmitter
             if (kind == 4 && t is { Kind: TypeKind.Class, Class: { } generic }
                 && GenericDefInfo(generic) is { } definition)
             {
-                name = "\"" + CLiteral(definition.DefName) + "\"";
+                name = "\"" + CLiteral(Compilation.GenericDefinitionName(definition.DefName)) + "\"";
                 if (_genericDefSyms.TryGetValue(definition.DefName, out var defSymbol))
                     type = "&" + defSymbol;
             }

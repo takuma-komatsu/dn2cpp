@@ -96,12 +96,14 @@ internal sealed partial class CppEmitter
             var definitionOwner = resolved is { Kind: TypeKind.Template, TemplateModule: { } templateModule }
                 ? (Module: templateModule, Handle: resolved.TemplateHandle)
                 : resolved is { Kind: TypeKind.Class, Class: { } cls }
-                    ? (Module: cls.Module, Handle: cls.Handle) : _c.OpenGenericDefHandleByName(name);
+                    ? (Module: cls.Module, Handle: cls.Handle) : _c.OpenGenericDefHandleByName(resolved is null ? name : _c.OpenGenericDefinitionKey(resolved) ?? name);
             if (definitionOwner is not { } owner)
                 return;
             var reader = owner.Module.Reader;
             var definition = reader.GetTypeDefinition(owner.Handle);
             bool generic = definition.GetGenericParameters().Count != 0;
+            if (generic)
+                name = _c.GenericDefinitionKey(owner.Module, owner.Handle);
             var type = generic ? null : _c.GetTypeDescForDefinition(owner.Module, owner.Handle);
             string key = generic ? "generic:" + name : "type:" + (type is { Kind: TypeKind.Class, Class: { } leafClass }
                 ? CoreIntrinsics.RuntimeOwnsTypeInfo(leafClass) ? leafClass.CppTypeInfoName : leafClass.CppTypeInfoDefName
@@ -179,6 +181,8 @@ internal sealed partial class CppEmitter
             }
             string type = signature.Kind != 4 && signature.Primitive is { Kind: TypeKind.Primitive or TypeKind.Class } leaf
                 ? MethodCompiler.TypeInfoExprOf(_e.ReflectionIdentityType(leaf)) ?? "nullptr" : "nullptr";
+            if (signature.Primitive is { } definitionType && _c.OpenGenericDefinitionKey(definitionType) is { } key)
+                type = "&gendef_" + CppNaming.GenericDefinitionStem(key);
             string name = signature.Name is { } n ? "\"" + CLiteral(n) + "\"" : "nullptr";
             _sb.AppendLine($"static const Dn2CppBindingSignature {symbol} = {{ {signature.Kind}, {type}, {signature.Value}, {childExpr}, {children.Length}, {name} }};");
             return "&" + symbol;

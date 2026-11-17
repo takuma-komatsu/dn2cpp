@@ -2854,7 +2854,7 @@ Dn2CppString* dn2cpp_type_assembly_qualified_name(Dn2CppType* t);
 // Assembly.GetType(name[, throwOnError[, ignoreCase]]): the type-name registry
 // lookup restricted to the receiver assembly's own types (dn2cpp_type_get_by_name
 // resolves across every loaded assembly). A trailing assembly-qualified suffix
-// (after the first ',') is ignored like dn2cpp_type_get_by_name; ignoreCase
+// (after the first ',') is ignored by Assembly.GetType; ignoreCase
 // compares ASCII case-insensitively (CLR identifiers). A miss returns null, or
 // throws TypeLoadException when throwOnError.
 Dn2CppType* dn2cpp_assembly_get_type(const char* asmName, Dn2CppString* name,

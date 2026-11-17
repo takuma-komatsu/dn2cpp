@@ -1640,7 +1640,7 @@ internal sealed partial class Compilation
             bool named = index >= _typeofOpenGenericDefNames.Count;
             ClassInfo? namedClass = named ? signatureNamed[index - _typeofOpenGenericDefNames.Count] : null;
             string defName = namedClass is not null
-                ? RawSignatureProvider.TypeDefinitionName(namedClass.Module.Reader, namedClass.Handle)
+                ? GenericDefinitionKey(namedClass.Module, namedClass.Handle)
                 : _typeofOpenGenericDefNames[index];
             bool selected = !named && _reflectionTemplateSelections.Contains(defName) && TemplateStillRequested(defName);
             if (!named && (built.Contains(defName) || !selected && !_makeGenericTypeUnknownReceiver))
@@ -1650,11 +1650,9 @@ internal sealed partial class Compilation
                 tmpl = namedClass;
             else
             {
-                int cut = defName.LastIndexOf('.');
-                var key = cut < 0 ? ("", defName) : (defName[..cut], defName[(cut + 1)..]);
-                if (!TypeIndex().TryGetValue(key, out var cands) || cands.Count == 0)
+                if (OpenGenericDefHandleByName(defName) is not { } owner)
                     continue;
-                var (module, handle) = cands[0];
+                var (module, handle) = owner;
                 try
                 {
                     int arity = module.Reader.GetTypeDefinition(handle).GetGenericParameters().Count;
@@ -1704,7 +1702,7 @@ internal sealed partial class Compilation
         // a deriving template carries, so what sites ask of it is asked of that level.
         foreach (var (_, tmpl) in RuntimeInstantiationTemplates.ToList())
             for (ClassInfo? lv = tmpl.BaseClass; lv is not null && ContainsCanonPlaceholder(lv); lv = lv.BaseClass)
-                if (BacktickFullName(lv.Module, lv.Handle) is var levelName && !built.Contains(levelName))
+                if (GenericDefinitionKey(lv.Module, lv.Handle) is var levelName && !built.Contains(levelName))
                     CollectTemplateSelections(lv, levelName, asked);
         ReachAskedTemplateMembers(asked);
     }
@@ -2131,10 +2129,7 @@ internal sealed partial class Compilation
                 var td = reader.GetTypeDefinition(cls.Handle);
                 if (td.GetDeclaringType().IsNil)
                 {
-                    string name = reader.GetString(td.Name);
-                    string ns = reader.GetString(td.Namespace);
-                    string full = string.IsNullOrEmpty(ns) ? name : ns + "." + name;
-                    sym = "gendef_" + CppNaming.GenericDefinitionStem(full);
+                    sym = "gendef_" + CppNaming.GenericDefinitionStem(GenericDefinitionKey(cls.Module, cls.Handle));
                 }
             }
             catch (Exception e) when (!IsMustEscape(e))

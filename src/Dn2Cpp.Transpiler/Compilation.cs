@@ -1155,7 +1155,7 @@ internal sealed partial class Compilation
     /// the shared <c>gendef_&lt;sym&gt;</c> open-definition type-info handle — the same one a
     /// closed instantiation's <c>genericDef</c> points at, so <c>GetGenericTypeDefinition()
     /// == typeof(Def&lt;&gt;)</c> holds and <c>IsGenericTypeDefinition</c>/<c>FullName</c>
-    /// answer. The keys are the backtick full names; the emitter synthesizes a gendef for any
+    /// answer. The keys preserve the defining assembly; the emitter synthesizes a gendef for any
     /// that no emitted closed instantiation already minted, so a body naming
     /// <c>&amp;gendef_&lt;sym&gt;</c> never links against an undefined symbol (cut ⟹ route).
     /// The value carries the definition's KIND bits so the synthetic handle answers
@@ -1165,7 +1165,7 @@ internal sealed partial class Compilation
     /// exists of). It carries the definition's type-parameter NAMES on the same terms — the
     /// bracket group <c>Type.ToString()</c> appends. Both are facts about one TypeDef, so both
     /// degrade together and only where none is found: a cross-assembly (<c>External</c>) def
-    /// resolves through the type index by name.</summary>
+    /// resolves through its assembly-scoped TypeRef.</summary>
     public Dictionary<string, (GenericDefKind Kind, string? ParamNames)> TypeofOpenGenericDefs { get; } =
         new(System.StringComparer.Ordinal);
 
@@ -1654,6 +1654,8 @@ internal sealed partial class Compilation
     /// RAW name, arity backtick included.</summary>
     internal (Module Module, TypeDefinitionHandle Handle)? OpenGenericDefHandleByName(string defName)
     {
+        if (_scopedGenericDefinitions.TryGetValue(defName, out var scoped))
+            return scoped;
         int nested = defName.LastIndexOf('+');
         if (nested >= 0)
         {
@@ -1793,9 +1795,8 @@ internal sealed partial class Compilation
     /// II.23.3): <c>Ns.Outer+Inner`1[[Arg, Asm],[Arg, Asm]][]</c>, optionally followed by
     /// <c>, Assembly, Version=…</c>. A CoreLib primitive, at any depth, is the primitive a
     /// signature decodes, so a closed generic keys the same instantiation a body names.
-    /// An open generic definition, and anything unresolved, answers the External type-name
-    /// prefix: for the definition that is the backtick name its open-definition handle is
-    /// keyed on, otherwise a type no attribute can render. Only Discovery mints a closed
+    /// An open generic definition retains its template owner; an unresolved type answers
+    /// the External type-name prefix. Only Discovery mints a closed
     /// generic; a later decode finds the instantiations that exist.</summary>
     internal TypeDesc ResolveSerializedTypeName(string name)
     {
@@ -1915,7 +1916,7 @@ internal sealed partial class Compilation
     }
 
     /// <summary>The type a '+'-separated chain names, closed over <paramref name="args"/>
-    /// when it is generic; null for an open definition and for anything unresolved. Each
+    /// when it is generic; null for anything unresolved. Each
     /// nested link is looked up among its declaring type's nested types, since the type
     /// index keys every nested type under an empty namespace.</summary>
     private TypeDesc? ResolveSerializedChain(string chain, TypeDesc[]? args, string? assembly)
@@ -1973,8 +1974,11 @@ internal sealed partial class Compilation
     {
         if (module.ClassMap.TryGetValue(handle, out var cls))
             return args is null ? TypeDesc.MakeClass(cls) : null;
-        if (args is null || !module.GenericTemplates.Contains(handle)
-            || module.Reader.GetTypeDefinition(handle).GetGenericParameters().Count != args.Length)
+        if (!module.GenericTemplates.Contains(handle))
+            return null;
+        if (args is null)
+            return TypeDesc.MakeTemplate(module, handle);
+        if (module.Reader.GetTypeDefinition(handle).GetGenericParameters().Count != args.Length)
             return null;
         if (Phase == EmitPhase.Discovery)
             return TypeDesc.MakeClass(Instantiate(module, handle, args));

@@ -11,8 +11,8 @@
 #
 # Also pins field closure for the full canonical-owner layout floated by an opaque
 # referenced-only base chain. Its by-value field requires both size and alignment.
-# A shared open-generic metadata row honors typeof tokens and explicit format
-# selectors from every assembly declaring that full name.
+# Open-generic metadata keeps assembly identity in lookup, construction and
+# explicit storage selectors, even when assemblies declare the same full name.
 # Attribute storage policies resolve external ancestry and assembly scopes without
 # adding retention roots, including when ILDiet removes unreachable code.
 # Same-name application and library types keep the defining assembly in calls,
@@ -47,13 +47,13 @@ DN2CPP_SKIP_BUILD=1 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS $helper_
     --link-xml "$helper_results"
 
 shared_definition_layout() {
-    local out="$1" format="$2" other=record
+    local out="$1" format="$2" module="${3:-1}" other=record
     [ "$format" = record ] && other=native
-    local symbol=refl_gendef_MetadataAssemblyCollision_Subject_1
+    local symbol="refl_gendef_dn2cpp_scoped_m${module}_MetadataAssemblyCollision_Subject_1"
     grep -qw "md_${format}_$symbol" "$out"/generated*.cpp \
-        || { echo "FAIL: $out did not emit $format shared generic metadata" >&2; return 1; }
+        || { echo "FAIL: $out did not emit $format assembly-scoped generic metadata" >&2; return 1; }
     if grep -qw "md_${other}_$symbol" "$out"/generated*.cpp; then
-        echo "FAIL: $out emitted both formats for one shared generic definition" >&2
+        echo "FAIL: $out emitted both formats for one generic definition" >&2
         return 1
     fi
 }
@@ -72,7 +72,13 @@ done
 for closed_line in 'assembly-closed-types-begin' 'generic-bodies=application/library' \
     'generic-distinct=True/True/True' 'generic-owners=True/True' \
     'generic-tests=True/False' 'generic-statics=1/2/67' \
-    'generic-attribute=True/True/True' 'assembly-closed-types-end'; do
+    'generic-attribute=True/True/True' 'assembly-closed-types-end' \
+    'assembly-name-registry-begin' 'type-name-lookup=True/True' \
+    'generic-definition-distinct=True' 'generic-definition-owners=True/True' \
+    'generic-definition-lookup=True/True' 'generic-definition-closed=True/True' \
+    'generic-name-lookup=True/True' 'generic-structural-lookup=True/True' \
+    'generic-unqualified-argument=True/True' \
+    'library-name-caller=True' 'generic-definition-attribute=True' 'assembly-name-registry-end'; do
     gate_output witness "$oracle_out/full.stdout" "$closed_line" --count any --policy crlf \
         || { echo "FAIL: closed type identity witness missing: $closed_line" >&2; exit 1; }
 done
@@ -120,7 +126,8 @@ policy_layout() {
     fi
 }
 for out in artifacts/multiasm artifacts/multiasm-inference; do
-    shared_definition_layout "$out" native
+    shared_definition_layout "$out" record 1
+    shared_definition_layout "$out" native 2
     metadata_section_parity "$out"
     policy_layout "$out" ti_MultiAssembly_MetadataExternalPolicy native
     policy_layout "$out" ti_MultiAssembly_MetadataDerived native
@@ -129,7 +136,8 @@ for out in artifacts/multiasm artifacts/multiasm-inference; do
     policy_layout "$out" ti_MetadataCompressionCollision_MarkedSubject native
     policy_layout "$out" ti_MultiAssembly_MetadataScopeUnmarked record
     policy_layout "$out" ti_MultiAssembly_MetadataScopeMarked native
-    policy_layout "$out" gendef_MetadataCompressionCollision_SharedSubject_1 native
+    policy_layout "$out" gendef_dn2cpp_scoped_m1_MetadataCompressionCollision_SharedSubject_1 record
+    policy_layout "$out" gendef_dn2cpp_scoped_m2_MetadataCompressionCollision_SharedSubject_1 native
     policy_layout "$out" ti_m1_MetadataCompressionCollision_SharedSubject_Int32 record
     policy_layout "$out" ti_m2_MetadataCompressionCollision_SharedSubject_String native
 done
@@ -138,25 +146,26 @@ if grep -Eq 'MetadataUnreachable|MustRemainUnreachable' artifacts/multiasm/gener
     exit 1
 fi
 
-echo "== qualified metadata formats for an assembly-shared generic definition =="
+echo "== qualified metadata formats for assembly-scoped generic definitions =="
 metadata_emit_layout() {
     local name="$1" format="$2"
     shift 2
     local out="artifacts/multiasm-metadata-$name"
     invoke_cli "$app" -r "$lib" -r "$aliaslib" --no-ildiet --link-xml "$helper_results" -o "$out" "$@"
-    shared_definition_layout "$out" "$format"
+    shared_definition_layout "$out" "$format" 1
+    shared_definition_layout "$out" native 2
 }
 if [ "$DN2CPP_MULTIASSEMBLY_FULL" = 1 ]; then
     metadata_emit_layout first-packed record \
         --reflection-metadata 'MiniCorlib::MetadataAssemblyCollision.Subject`1=packed'
     compile_console artifacts/multiasm-metadata-first-packed MultiAssembly
     metadata_section_parity artifacts/multiasm-metadata-first-packed
-    metadata_emit_layout second-native native \
+    metadata_emit_layout second-native record \
         --reflection-metadata 'MultiAssemblyAlias::MetadataAssemblyCollision.Subject`1=native'
     metadata_emit_layout both-native native \
         --reflection-metadata 'MiniCorlib::MetadataAssemblyCollision.Subject`1=native' \
         --reflection-metadata 'MultiAssemblyAlias::MetadataAssemblyCollision.Subject`1=native'
-    metadata_emit_layout policy-packed native \
+    metadata_emit_layout policy-packed record \
         --reflection-metadata 'MultiAssemblyAlias::MetadataCompressionCollision.SharedSubject`1=packed' \
         --reflection-metadata 'MultiAssembly.MetadataExternalPolicy=packed' \
         --reflection-metadata 'MiniBcl.MetadataMiddle=packed'
@@ -165,12 +174,14 @@ else
     # These storage selectors affect different types; their executable roots agree.
     metadata_emit_layout combined-packed record \
         --reflection-metadata 'MiniCorlib::MetadataAssemblyCollision.Subject`1=packed' \
+        --reflection-metadata 'MultiAssemblyAlias::MetadataAssemblyCollision.Subject`1=native' \
         --reflection-metadata 'MultiAssemblyAlias::MetadataCompressionCollision.SharedSubject`1=packed' \
         --reflection-metadata 'MultiAssembly.MetadataExternalPolicy=packed' \
         --reflection-metadata 'MiniBcl.MetadataMiddle=packed'
     packed_out=artifacts/multiasm-metadata-combined-packed
 fi
-policy_layout "$packed_out" gendef_MetadataCompressionCollision_SharedSubject_1 record
+policy_layout "$packed_out" gendef_dn2cpp_scoped_m1_MetadataCompressionCollision_SharedSubject_1 record
+policy_layout "$packed_out" gendef_dn2cpp_scoped_m2_MetadataCompressionCollision_SharedSubject_1 record
 policy_layout "$packed_out" ti_MultiAssembly_MetadataExternalPolicy record
 policy_layout "$packed_out" ti_MiniBcl_MetadataMiddle record
 policy_layout "$packed_out" ti_MultiAssembly_MetadataDerived native
@@ -186,13 +197,10 @@ metadata_reject_layout() {
         > "$out/diagnostic.log" 2>&1 || status=$?
     if [ "$status" -ne 2 ] || ! grep -Fq -- "$diagnostic" "$out/diagnostic.log"; then
         cat "$out/diagnostic.log" >&2
-        echo "FAIL: shared generic metadata policy $name was not rejected" >&2
+        echo "FAIL: assembly-scoped generic metadata policy $name was not rejected" >&2
         return 1
     fi
 }
-metadata_reject_layout conflicting 'Conflicting --reflection-metadata formats for shared generic definition' \
-    --reflection-metadata 'MiniCorlib::MetadataAssemblyCollision.Subject`1=native' \
-    --reflection-metadata 'MultiAssemblyAlias::MetadataAssemblyCollision.Subject`1=packed'
 metadata_reject_layout ambiguous 'Ambiguous --reflection-metadata selector' \
     --reflection-metadata 'MetadataAssemblyCollision.Subject`1=native'
 

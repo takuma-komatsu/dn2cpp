@@ -1137,17 +1137,13 @@ runtime-owned type represented in the loaded metadata accepts `native`;
 selecting `packed` for it is unsupported while compression is enabled.
 `--no-metadata-compression` overrides even those selectors to native storage.
 A type absent from the load set is unmatched even if the runtime has a builtin
-implementation. Selector syntax, matching, ambiguity, overlap and conflicting
-shared-definition choices are validated even when their storage choice is
-overridden.
+implementation. Selector syntax, matching, ambiguity and overlap are validated
+even when their storage choice is overridden.
 
-Open generic definitions with the same CLR name share the runtime's existing
-definition handle across assemblies. That shared row uses native storage if
-any owner has the marker (including through inheritance), or any surviving
-`typeof` names it. A qualified explicit selector overrides the
-shared row's attribute or automatic choice; qualified selectors requesting
-different formats for that row are rejected. Closed generic types retain their
-individual choices.
+Open generic definitions retain their defining assembly, even when another
+assembly declares the same CLR name. Their metadata storage choices are likewise
+independent: a marker, surviving `typeof` or qualified selector applies only to
+that assembly's definition. Closed generic types retain their individual choices.
 
 Automatic selection recognizes `ldtoken <type>` followed by
 `System.Type.GetTypeFromHandle`, allowing intervening `nop` instructions.

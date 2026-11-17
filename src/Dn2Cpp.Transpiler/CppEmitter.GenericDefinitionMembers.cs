@@ -65,8 +65,7 @@ internal sealed partial class CppEmitter
                 var definition = module.Reader.GetTypeDefinition(nestedHandle);
                 if (definition.GetGenericParameters().Count != 0)
                 {
-                    string name = MethodCompiler.OpenDefBacktickName(module, nestedHandle)
-                        ?? throw new InvalidOperationException("Nested definition has no name");
+                    string name = _c.GenericDefinitionKey(module, nestedHandle);
                     if (_c.TypeofOpenGenericDefs.ContainsKey(name) || _e._genericDefSyms.ContainsKey(name)
                         || _e.TopoOrder().Any(c => c.Module == module && c.Handle == nestedHandle
                             && !c.IsEnum && !_e.IsCanonicalWorld(c) && _e.GenericDefInfo(c) is not null))
@@ -85,17 +84,18 @@ internal sealed partial class CppEmitter
 
         private TypeMetadata GenericDefinitionMembers(TypeMetadata data)
         {
-            if (_c.OpenGenericDefHandleByName(data.Name) is { } nestedOwner)
+            string key = data.DefinitionKey ?? data.Name;
+            if (_c.OpenGenericDefHandleByName(key) is { } nestedOwner)
                 (data.NestedTypes, data.NestedCount) = NestedTypeTable(nestedOwner.Module, nestedOwner.Handle,
-                    "gendef_" + CppNaming.GenericDefinitionStem(data.Name));
-            if (!_constraintDefinitions.TryGetValue("generic:" + data.Name, out var owner))
+                    "gendef_" + CppNaming.GenericDefinitionStem(key));
+            if (!_constraintDefinitions.TryGetValue("generic:" + key, out var owner))
                 return data;
             var reader = owner.Module.Reader;
             var definition = reader.GetTypeDefinition(owner.Handle);
-            string stem = CppNaming.GenericDefinitionStem(data.Name);
+            string stem = CppNaming.GenericDefinitionStem(key);
             string declaring = "&gendef_" + stem;
             string[] typeNames = definition.GetGenericParameters().Select(p => reader.GetString(reader.GetGenericParameter(p).Name)).ToArray();
-            bool available = !_e._strippedGenericMetadata.Contains(data.Name);
+            bool available = !_e._strippedGenericMetadata.Contains(key);
             if (available)
                 data.Flags = "(" + data.Flags + " | DN2CPP_TF_OBJECT_MEMBER_ROWS)";
             bool attributes = available && _c.KeepsTypeAttributeMetadata(owner.Module, owner.Handle);

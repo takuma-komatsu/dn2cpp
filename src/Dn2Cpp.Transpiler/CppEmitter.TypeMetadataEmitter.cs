@@ -1455,7 +1455,7 @@ internal sealed partial class CppEmitter
                     GenericDefRelations(defBase, defAnc.Base, defAnc.Interfaces, c.IsValueType, c.IsInterface);
                 _e.EmitTypeInfo(_sb, defSym, GenericDefinitionMembers(new TypeMetadata {
                     Native = _c.UsesNativeReflectionMetadata(gi.DefName),
-                    Name = gi.DefName, Base = dfBase, Interfaces = dfItfs, InterfaceCount = dfItfCount,
+                    Name = Compilation.GenericDefinitionName(gi.DefName), DefinitionKey = gi.DefName, Base = dfBase, Interfaces = dfItfs, InterfaceCount = dfItfCount,
                     Flags = defFlags, GenericDef = "&" + defSym, TypeObject = "&ty_" + defSym,
                     GenericParamNames = Compilation.GenericParamNames(c.Module, c.Handle),
                     AssemblyName = string.IsNullOrEmpty(c.Module.AssemblyName) ? null : c.Module.AssemblyName,
@@ -1838,7 +1838,7 @@ internal sealed partial class CppEmitter
                 // as before, so its text is unchanged.
                 _e.EmitTypeInfo(_sb, sym, GenericDefinitionMembers(new TypeMetadata {
                     Native = _c.UsesNativeReflectionMetadata(gi.DefName),
-                    Name = gi.DefName, Base = relBase, Interfaces = relItfs, InterfaceCount = relItfCount,
+                    Name = Compilation.GenericDefinitionName(gi.DefName), DefinitionKey = gi.DefName, Base = relBase, Interfaces = relItfs, InterfaceCount = relItfCount,
                     Flags = defFlags, GenericDef = "&" + sym, TypeObject = "&ty_" + sym, VarianceMask = varMask,
                     GenericParamNames = Compilation.GenericParamNames(cls.Module, cls.Handle),
                     AssemblyName = string.IsNullOrEmpty(cls.Module.AssemblyName) ? null : cls.Module.AssemblyName,
@@ -1876,7 +1876,7 @@ internal sealed partial class CppEmitter
                     (def.Kind & GenericDefKind.Delegate) != 0);
                 uint synthAttrs = 0;
                 int synthToken = 0;
-                string? synthAssembly = null;
+                string? synthAssembly = _c.OpenGenericDefHandleByName(defName)?.Module.AssemblyName;
                 if ((def.Kind & GenericDefKind.Nested) != 0)
                 {
                     flagBits.Add("DN2CPP_TF_NESTED");
@@ -1899,7 +1899,7 @@ internal sealed partial class CppEmitter
                     symBase, synthAnc.Base, synthAnc.Interfaces, synthValueType, synthInterface);
                 _e.EmitTypeInfo(_sb, sym, GenericDefinitionMembers(new TypeMetadata {
                     Native = _c.UsesNativeReflectionMetadata(defName),
-                    Name = defName, Base = synthBase, Interfaces = synthItfs, InterfaceCount = synthItfCount,
+                    Name = Compilation.GenericDefinitionName(defName), DefinitionKey = defName, Base = synthBase, Interfaces = synthItfs, InterfaceCount = synthItfCount,
                     Flags = defFlags, GenericDef = "&" + sym, TypeObject = "&ty_" + sym, GenericParamNames = def.ParamNames,
                     IlAttrs = synthAttrs, MetadataToken = synthToken, AssemblyName = synthAssembly,
                 }));

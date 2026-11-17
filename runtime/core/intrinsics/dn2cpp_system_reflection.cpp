@@ -1790,7 +1790,7 @@ static const Dn2CppTypeInfo* dn2cpp_type_registry_find_nested(const char* name, 
 // AssemblyQualifiedName round-trip (a serializer's `$type`) working.
 static const Dn2CppTypeInfo* dn2cpp_resolve_type_name(const char* s, size_t len, int depth = 0,
     int32_t ignoreCase = 0, const char* callerAssembly = nullptr,
-    const char* forcedAssembly = nullptr)
+    const char* forcedAssembly = nullptr, const char* argumentAssembly = nullptr)
 {
     // The nesting a REAL name can carry is the type graph's, which is shallow; the
     // string is caller-supplied, so cap the recursion rather than the input.
@@ -1836,7 +1836,7 @@ static const Dn2CppTypeInfo* dn2cpp_resolve_type_name(const char* s, size_t len,
             if (arraySuffix)
             {
                 const Dn2CppTypeInfo* element = dn2cpp_resolve_type_name(
-                    s, bracket, depth + 1, ignoreCase, callerAssembly, requested);
+                    s, bracket, depth + 1, ignoreCase, callerAssembly, requested, argumentAssembly);
                 if (element == nullptr)
                     return nullptr;
                 for (int32_t i = 0; i < dn2cpp_type_registry_count; i++)
@@ -1884,7 +1884,8 @@ static const Dn2CppTypeInfo* dn2cpp_resolve_type_name(const char* s, size_t len,
         // The FullName spelling wraps each argument in its own brackets, with that
         // argument's assembly display name inside them.
         if (alen >= 2 && a[0] == '[' && a[alen - 1] == ']') { a++; alen -= 2; }
-        const Dn2CppTypeInfo* at = dn2cpp_resolve_type_name(a, alen, depth + 1, ignoreCase, callerAssembly);
+        const Dn2CppTypeInfo* at = dn2cpp_resolve_type_name(a, alen, depth + 1, ignoreCase,
+            callerAssembly, argumentAssembly, argumentAssembly);
         if (at == nullptr)
             return nullptr;
         args[argc++] = at;
@@ -1914,7 +1915,8 @@ static const Dn2CppTypeInfo* dn2cpp_resolve_type_name(const char* s, size_t len,
 // (CLR identifiers/namespaces), so byte equality against the narrowed unit is
 // equivalent for units <= 0xFF, and any unit above 0xFF is a definite miss.
 static const Dn2CppTypeInfo* dn2cpp_resolve_managed_type_name(const Dn2CppString* name,
-    int32_t ignoreCase = 0, const char* callerAssembly = nullptr)
+    int32_t ignoreCase = 0, const char* callerAssembly = nullptr,
+    const char* forcedAssembly = nullptr, const char* argumentAssembly = nullptr)
 {
     int32_t len = name->length;
     char stackBuf[256];
@@ -1928,15 +1930,15 @@ static const Dn2CppTypeInfo* dn2cpp_resolve_managed_type_name(const Dn2CppString
     }
     const Dn2CppTypeInfo* ti =
         representable ? dn2cpp_resolve_type_name(buf, static_cast<size_t>(len), 0,
-            ignoreCase, callerAssembly) : nullptr;
+            ignoreCase, callerAssembly, forcedAssembly, argumentAssembly) : nullptr;
     if (buf != stackBuf)
         delete[] buf;
     return ti;
 }
 
 // Type.GetType(string): resolve a CLR FullName against the embedded registry
-// (whose static half is hash-indexed). A trailing assembly-qualified suffix is
-// ignored, matching the common "Namespace.Type[, Assembly]" usage. Returns the
+// (whose static half is hash-indexed), preserving caller and requested assembly.
+// Returns the
 // same type handle as typeof on that type (registry entries point at the shared
 // Dn2CppTypeInfo), so Type.GetType("System.Int32") == typeof(int).
 Dn2CppType* dn2cpp_type_get_by_name(Dn2CppString* name, int32_t throwOnError,
@@ -10916,9 +10918,9 @@ Dn2CppType* dn2cpp_assembly_get_type(const char* asmName, Dn2CppString* name,
             if (owned(e->type) && matches(e->name))
                 return dn2cpp_get_type_from_handle(e->type);
         // A closed generic spelled the way FullName spells it matches no registry
-        // name; resolve it structurally. Case-sensitive — the composed form comes
-        // from FullName, never from a user's casing.
-        if (const Dn2CppTypeInfo* ti = dn2cpp_resolve_managed_type_name(name))
+        // name; unqualified definitions and arguments stay in the receiver assembly.
+        // An argument's explicit assembly qualification overrides that scope.
+        if (const Dn2CppTypeInfo* ti = dn2cpp_resolve_managed_type_name(name, ignoreCase, asmName, asmName, asmName))
             if (owned(ti))
                 return dn2cpp_get_type_from_handle(ti);
     }
