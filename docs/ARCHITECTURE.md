@@ -2210,9 +2210,10 @@ The exact two-string `Activator.CreateInstance` overload resolves a nonnull
 assembly name through the linked registry before validating the type name. It
 uses existing type lookup and public parameterless activation, then constructs
 an ordinary managed `ObjectHandle`; a null instance produces a null handle.
-Null assembly names explicitly refuse caller-sensitive assembly resolution,
-rather than guessing an entry assembly. `AppDomain.CreateInstance` rejects a null
-assembly name with `ArgumentNullException` before reaching this overload.
+Direct calls resolve null assembly names in the calling method's module, not
+the entry assembly. Address-taken and reflection-invoked wrappers still refuse
+null assembly names because they do not carry the invoking caller's identity.
+`AppDomain.CreateInstance` rejects a null assembly name with `ArgumentNullException` before reaching this overload.
 Linked-name matching and reflection/constructor retention keep their general
 limits; this is not a contextual loader or version-binding engine.
 The wrapper and instance are allocating operations for NoAlloc analysis.
@@ -2222,8 +2223,8 @@ managed handle, passing case matching, constructor flags and arguments to the
 existing bounded activation engine. Nonempty activation attributes are rejected
 after assembly/type lookup but before binder selection. Nonnull binders remain
 unsupported; culture is evaluated but the existing non-parse DefaultBinder path
-does not consume it. This does not add caller-sensitive loading, custom binder
-execution or culture-dependent conversion.
+does not consume it. This does not add contextual loading, custom binder execution or
+culture-dependent conversion.
 
 The exact three-argument named overload treats its object array as activation
 attributes, never constructor arguments. It uses the same validation and managed

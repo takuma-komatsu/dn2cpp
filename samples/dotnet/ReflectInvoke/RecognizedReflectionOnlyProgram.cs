@@ -863,6 +863,9 @@ static class WrittenLoopTarget
     public static string Run() => "original";
 }
 
+public sealed class NamedDefaultOnly { public NamedDefaultOnly() {} }
+public sealed class NamedArgumentOnly { public NamedArgumentOnly(int value) { if (value != 19) throw new Exception(); } }
+
 static class Program
 {
     private static int raised;
@@ -874,6 +877,7 @@ static class Program
         // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        bool beforeNamedActivation = args.Length > 0 && args[0] == "before-named-activation";
         bool beforeArrayShapes = args.Length > 0 && args[0] == "before-array-shapes";
         bool beforeNestedNames = args.Length > 0 && args[0] == "before-nested-names";
         bool beforeDelegateAttributes = args.Length > 0 && args[0] == "before-delegate-attributes";
@@ -882,7 +886,7 @@ static class Program
         bool beforeWrittenReflectedArrays = args.Length > 0 && args[0] == "before-written-reflected-arrays";
         bool beforeRepeatedArrayCopies = args.Length > 0 && args[0] == "before-repeated-array-copies";
         if (beforeNestedNames || beforeDelegateAttributes || beforeSequenceDefaults || beforeIsinstNull
-            || beforeWrittenReflectedArrays || beforeRepeatedArrayCopies || beforeArrayShapes)
+            || beforeWrittenReflectedArrays || beforeRepeatedArrayCopies || beforeArrayShapes || beforeNamedActivation)
             args = Array.Empty<string>();
 
         Console.WriteLine("== recognized reflection table ==");
@@ -1047,6 +1051,30 @@ static class Program
         Show("known array invalid chain", InvalidArrayChain);
         Show("known array void chain", VoidArrayChain);
         Console.WriteLine("recognized array shapes end");
+        if (beforeNamedActivation)
+            return;
+        Console.WriteLine("== named activation ==");
+        Show("named caller default", () => Activator.CreateInstance(null, "RecognizedReflection.NamedDefaultOnly")!.Unwrap()!.GetType().Name);
+        Show("named caller attributes", () => Activator.CreateInstance(null, "RecognizedReflection.NamedDefaultOnly", null)!.Unwrap()!.GetType().Name);
+        Show("named caller arguments", () => Activator.CreateInstance(null, "RecognizedReflection.NamedArgumentOnly", false,
+            BindingFlags.Public | BindingFlags.Instance, null, new object[] { 19 }, null, null)!.Unwrap()!.GetType().Name);
+        Show("named explicit", () => Activator.CreateInstance("RecognizedReflectionOnly", "RecognizedReflection.NamedDefaultOnly")!.Unwrap()!.GetType().Name);
+        Show("named type miss", NamedTypeMiss);
+        Show("named assembly miss", NamedAssemblyMiss);
+        Show("named library caller", () => ReflectReturnLib.LibraryFactory.CreateNamed().GetType().Assembly.GetName().Name!);
+        Console.WriteLine("named activation end");
+    }
+
+    private static string NamedTypeMiss()
+    {
+        try { Activator.CreateInstance(null, "Absent"); return "unexpected"; }
+        catch (Exception e) { return e.GetType().Name; }
+    }
+
+    private static string NamedAssemblyMiss()
+    {
+        try { Activator.CreateInstance("AbsentAssembly", "Absent"); return "unexpected"; }
+        catch (Exception e) { return e.GetType().Name; }
     }
 
     private sealed class ShapeOnly

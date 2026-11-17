@@ -33,6 +33,7 @@ public struct UnusedResult : ILibraryResult
 
 public static class LibraryFactory
 {
+    public static object CreateNamed() => System.Activator.CreateInstance(null, "ReflectReturnLib.VirtualFactory")!.Unwrap()!;
     public static LibraryResult Make() => new LibraryResult { Number = 17 };
     public static UnusedResult Unused() => new UnusedResult();
 }

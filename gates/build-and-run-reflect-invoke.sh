@@ -3473,6 +3473,17 @@ recognized_table_asserts() {
     native="$native_file.records"
 
     reflection_assert_lines "$native_file" 1 \
+        '== named activation ==' 'named caller default: NamedDefaultOnly' \
+        'named caller attributes: NamedDefaultOnly' 'named caller arguments: NamedArgumentOnly' \
+        'named explicit: NamedDefaultOnly' 'named type miss: TypeLoadException' \
+        'named assembly miss: FileNotFoundException' 'named library caller: ReflectReturnLib' 'named activation end'
+    gate_capture_ok "$out/named-before.native" run_bounded "$out/RecognizedReflectionOnly$EXE_EXT" before-named-activation
+    gate_capture_ok "$out/named-before.dotnet" reflection_oracle "$_CG_APP" before-named-activation
+    for axis in native dotnet; do
+        gate_output select "$out/gate.$axis.stdout" "$out/named-prefix.$axis.stdout" --before '== named activation ==' --policy crlf
+        gate_output compare "$out/named-prefix.$axis.stdout" "$out/named-before.$axis.stdout" --policy crlf
+    done
+    reflection_assert_lines "$native_file" 1 \
         '== recognized array shapes ==' 'recognized array shapes end' \
         'known array SZ: True/True/True/True' 'known array rank: True/True/True/True/True/True' \
         'known array invalid chain: TypeLoadException' 'known array void chain: TypeLoadException'
