@@ -762,6 +762,11 @@ extern const Dn2CppType dn2cpp_invalid_operation_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_invalid_operation_exception_type =
     dn2cpp_ti_with_typeobject({ "System.InvalidOperationException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_invalid_operation_exception_type_obj);
 const Dn2CppType dn2cpp_invalid_operation_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_invalid_operation_exception_type };
+
+extern const Dn2CppType dn2cpp_timeout_exception_type_obj;
+Dn2CppTypeInfo dn2cpp_timeout_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.TimeoutException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_timeout_exception_type_obj);
+const Dn2CppType dn2cpp_timeout_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_timeout_exception_type };
 // Based on InvalidOperationException (as in .NET: ObjectDisposedException :
 // InvalidOperationException). The base link is what keeps a `catch
 // (InvalidOperationException)` catching it — and getting the DERIVED type right is
