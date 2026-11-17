@@ -1676,6 +1676,11 @@ echo "== A reflection target from a parameter, a collection, a written-back argu
         if grep -Eq 'ti_(arr|md)_.*UnretainedArrayElement' "$out/generated.h"; then
             echo 'FAIL: an unknown array operand retained a speculative shape' >&2; return 1
         fi
+        DN2CPP_BEFORE_NAMED_ACTIVATION=1 gate_capture_ok "$out/named-before.native" run_bounded "$out/UnknownTargetOnly$EXE_EXT" || return $?
+        gate_output select "$out/native.stdout" "$out/named-prefix.native.stdout" --before '== unknown named activation ==' --policy crlf
+        gate_output compare "$out/named-prefix.native.stdout" "$out/named-before.native.stdout" --policy crlf
+        gate_output witness "$out/native.stdout" --count 1 --policy crlf \
+            '== unknown named activation ==' 'named static=held' 'unknown named activation end' || return $?
         native="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-native-58.stdout"
         gate_capture_ok "${native%.stdout}" run_bounded "$out/UnknownTargetOnly$EXE_EXT" || return $?
         gate_output view "$native" "$native.records" --policy crlf
@@ -1752,7 +1757,7 @@ echo "== A reflection target from a parameter, a collection, a written-back argu
     # Ordinary member fixes fill in their build-time placeholders; the cases below
     # check where runtime identity makes the remedy more specific or boxing widens it.
     remedies=$(sed -n 's/^.* refused: PlatformNotSupportedException: .*; fix: \[Preserve\] on the target, or link\.xml //p' "$unknown_expected")
-    [ "$(wc -l <<< "$remedies" | tr -d ' ')" = 19 ] \
+    [ "$(wc -l <<< "$remedies" | tr -d ' ')" = 20 ] \
         || { echo "FAIL: the frozen refusals do not print every remedy" >&2; exit 1; }
     diff -u <(sort -u <<< "$remedies") <(grep -o '<assembly .*</assembly>' "$unknown_keep" | sort) \
         || { echo "FAIL: the preserve is not the set of printed remedies" >&2; exit 1; }
@@ -1788,7 +1793,7 @@ echo "== A reflection target from a parameter, a collection, a written-back argu
     [ "$(awk -F'\t' '$1 == "AttributeInstances" && $3 == "ILDietUnknownTargetOnly.Program::VirtualCommand(ILDietUnknownTargetOnly.CommandBase)" && $7 == "[Preserve] on the target, or link.xml <assembly fullname=\"ASSEMBLY\"><type fullname=\"TYPE\" preserve=\"all\" /></assembly>"' "$unknown_rows" | wc -l | tr -d ' ')" = 1 ] \
         && [ "$(grep -Fxc '<assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.CommandAttribute"><method name=".ctor" /></type></assembly>' <<< "$remedies")" = 1 ] \
         || { echo 'FAIL: the unknown attribute remedy does not name only its constructor' >&2; exit 1; }
-    diff -u <(grep -Fv "$generated_owner" "$unknown_rows" | grep -Fv 'Program::BindNamed(' | grep -Fv 'Program::VirtualCommand(' | cut -f7 | sed 's/^\[Preserve\] on the target, or link\.xml //' | sort) \
+    diff -u <(awk -F'\t' '$1 == "Execution"' "$unknown_rows" | grep -Fv "$generated_owner" | grep -Fv 'Program::BindNamed(' | grep -Fv 'Program::VirtualCommand(' | cut -f7 | sed 's/^\[Preserve\] on the target, or link\.xml //' | sort) \
         <(grep -Fv "$generated_owner" <<< "$remedies" | grep -Ev 'ILDietUnknownTargetOnly\.(MergedA|MergedB|AddedTarget|CommandAttribute)"' | sed 's/<assembly fullname="[^"]*">/<assembly fullname="ASSEMBLY">/; s/<type fullname="[^"]*">/<type fullname="TYPE">/; s|<type fullname="[^"]*" preserve="all" />|<type fullname="TYPE"><method name=".ctor" /></type>|' | sort) \
         || { echo "FAIL: a build-time fix does not name the member its refusal names" >&2; exit 1; }
     DN2CPP_OUT_SUFFIX=-kept

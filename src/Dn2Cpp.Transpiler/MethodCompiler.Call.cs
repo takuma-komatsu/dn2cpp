@@ -2565,6 +2565,14 @@ internal sealed partial class MethodCompiler
         }
 
         var args = PopArgs(callee, hasThis: !callee.IsStatic);
+        if (CoreIntrinsics.BrActivatorNamed.Matches(callee))
+        {
+            // A direct named activation resolves null in the calling method's module,
+            // not the CoreLib wrapper or the entry assembly.
+            string assembly = NewTemp("Dn2CppString*");
+            Emit($"{assembly} = {args[0]};");
+            args[0] = $"({assembly} != nullptr ? {assembly} : {_literals.GetOrAdd(Module.AssemblyName)})";
+        }
 
         // ECMA-335 attaches the null test to `callvirt`, not to instance calls in
         // general, and this is where it is easy to lose: the C# compiler emits

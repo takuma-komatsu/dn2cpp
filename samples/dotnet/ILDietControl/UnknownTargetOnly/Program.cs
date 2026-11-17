@@ -215,7 +215,18 @@ internal static class Program
             Console.WriteLine("blank refused: " + e.GetType().Name + ": " + e.Message);
         }
         Console.WriteLine("a virtual delegate's method, a name bound per instantiation and an uninitialized parameter type end");
+        if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_NAMED_ACTIVATION") == "1")
+            return;
+        Console.WriteLine("== unknown named activation ==");
+        Console.WriteLine("named static root=" + new NamedHeld());
+        Console.WriteLine("named static=" + NamedPair("UnknownTargetOnly", "ILDietUnknownTargetOnly.NamedHeld"));
+        try { Console.WriteLine("named unknown=" + NamedPair(null, "ILDietUnknownTargetOnly.ConstructedTarget")); }
+        catch (NotSupportedException e) { Console.WriteLine("named unknown refused: " + e.GetType().Name + ": " + e.Message); }
+        Console.WriteLine("unknown named activation end");
     }
+
+    private static string NamedPair(string? assembly, string name) =>
+        Activator.CreateInstance(assembly, name)!.Unwrap()!.ToString()!;
 
     private static void UnknownArray(Type element, int rank)
     {
@@ -466,3 +477,5 @@ internal sealed class ConstructedTarget
 }
 
 internal sealed class UnretainedArrayElement { }
+
+internal sealed class NamedHeld { public override string ToString() => "held"; }
