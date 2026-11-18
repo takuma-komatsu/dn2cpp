@@ -79,7 +79,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-pending-task
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-cancellation-callback-faults"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-lazy-aggregate-message"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-delay-synchronization"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-derived-task-promises|prefix:before-timed-waitasync"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-derived-task-promises|prefix:before-timed-waitasync|prefix:before-semaphore-waiters"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|shared-binary:native-delay-deadlines"
 
 # The exception text is platform-owned; its record prefix is the boundary.
@@ -98,6 +98,16 @@ gate_extra_asserts() {
     gate_capture_ok "$out/native-deadlines" run_bounded "./$out/AsyncCombinators$EXE_EXT" native-delay-deadlines
     gate_output compare "$out/native-deadlines.stdout" "$deadline_snapshot" --policy crlf
     native="$out/native.stdout"
+    before="$out/before-semaphore-waiters.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-semaphore-waiters
+    gate_output prefix "$native" "$before" --before '== semaphore waiter helpers ==' --policy crlf
+    for line in 'queue remove: True/True/False' 'queue links cleared: True/True/True/True' \
+        'queue release: 0/True/0/True/True/True' 'released removal: False' \
+        'queue FIFO: True/True' 'null waiter: NullReferenceException' 'timeout helper removal: True' \
+        'cancel helper removal: True/True' 'remove/release linearization: True' \
+        'native queue root: True' 'abandoned queue collected: True' 'semaphore waiter helpers end'; do
+        gate_output byte-witness "$native" "$line" --policy crlf || return 1
+    done
     before="$out/before-timed-waitasync.stdout"
     gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-timed-waitasync
     gate_output prefix "$native" "$before" --before '== timed WaitAsync ==' --policy crlf
@@ -120,9 +130,9 @@ gate_extra_asserts() {
     gate_output prefix "$native" "$before" --before '== delay synchronization ==' --policy crlf
     gate_output byte-witness "$native" '== delay synchronization ==' --policy crlf \
         || { echo 'FAIL: delay synchronization block did not run once' >&2; return 1; }
-    printf '%s\n' 'timed WaitAsync end' > "$out/promise-end.expected"
+    printf '%s\n' 'semaphore waiter helpers end' > "$out/promise-end.expected"
     gate_output suffix "$native" "$out/promise-end.expected" --policy crlf \
-        || { echo 'FAIL: timed WaitAsync block did not complete last' >&2; return 1; }
+        || { echo 'FAIL: semaphore waiter helpers block did not complete last' >&2; return 1; }
     for line in 'integer suspension: True,True|True,True' \
         'TimeSpan suspension: True,True|True,True' \
         'dependency pending: True,True|0' 'dependency order: firstsecond'; do

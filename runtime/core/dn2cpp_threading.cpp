@@ -688,11 +688,10 @@ Dn2CppObject* dn2cpp_parallel_options_new()
 }
 
 // ===== SemaphoreSlim / ManualResetEvent(Slim) / AutoResetEvent ===============
-// Native-allocated (so the std::mutex/condition_variable members get real ctors) with a
-// managed type header. They live for the program (a small, bounded leak, like monitors);
-// a managed field holding one is simply ignored by the conservative GC (not in its heap).
+// SemaphoreSlim uses scanned GC storage and placement construction so its waiter
+// queue has the semaphore lifetime. Events use native storage with a managed header.
 extern const Dn2CppType dn2cpp_semaphore_type_obj;
-// NO_SHALLOW_CLONE: Dn2CppSemaphore is `new`-allocated on the NATIVE heap and embeds
+// NO_SHALLOW_CLONE: Dn2CppSemaphore embeds
 // a std::mutex + std::condition_variable (same for the event/countdown/barrier/rwlock
 // handles below). See the flag's definition in dn2cpp_core.h for why the bit and not
 // a missing extent.
@@ -752,6 +751,11 @@ struct Dn2CppSemaphore : Dn2CppObject
     std::condition_variable cv;
     int count;
     int maxCount;
+    int waiters = 0;
+    Dn2CppTask* asyncHead = nullptr;
+    Dn2CppTask* asyncTail = nullptr;
+    size_t previousOffset = 0;
+    size_t nextOffset = 0;
 };
 
 struct Dn2CppEvent : Dn2CppWaitHandle
@@ -778,7 +782,7 @@ static std::mutex& g_wait_handle_mutex = dn2cpp_never_destroyed<std::mutex>();
 
 Dn2CppObject* dn2cpp_semaphore_new(int32_t initial, int32_t maxCount)
 {
-    auto* s = new Dn2CppSemaphore();
+    auto* s = new (dn2cpp_alloc(sizeof(Dn2CppSemaphore))) Dn2CppSemaphore();
     s->type = &dn2cpp_semaphore_type;
     s->count = initial;
     s->maxCount = maxCount;
@@ -789,7 +793,9 @@ void dn2cpp_semaphore_wait(Dn2CppObject* o)
 {
     auto* s = static_cast<Dn2CppSemaphore*>(o);
     std::unique_lock<std::mutex> lk(s->m);
+    ++s->waiters;
     s->cv.wait(lk, [s] { return s->count > 0; });
+    --s->waiters;
     s->count--;
 }
 
@@ -833,24 +839,108 @@ int32_t dn2cpp_semaphore_wait_timeout(Dn2CppObject* o, int32_t ms)
         ms = 0;
     auto* s = static_cast<Dn2CppSemaphore*>(o);
     std::unique_lock<std::mutex> lk(s->m);
-    if (!s->cv.wait_for(lk, std::chrono::milliseconds(ms), [s] { return s->count > 0; }))
+    ++s->waiters;
+    bool acquired = s->cv.wait_for(lk, std::chrono::milliseconds(ms), [s] { return s->count > 0; });
+    --s->waiters;
+    if (!acquired)
         return 0;
     s->count--;
     return 1;
+}
+
+// The generated slots have TaskNode* type. Copy their pointer representation instead
+// of accessing them through a differently typed Dn2CppTask** lvalue.
+static Dn2CppTask* dn2cpp_semaphore_waiter_link(Dn2CppTask* task, size_t offset)
+{
+    Dn2CppTask* value;
+    std::memcpy(&value, reinterpret_cast<char*>(task) + offset, sizeof(value));
+    return value;
+}
+
+static void dn2cpp_semaphore_set_waiter_link(Dn2CppTask* task, size_t offset, Dn2CppTask* value)
+{
+    auto* slot = reinterpret_cast<char*>(task) + offset;
+    std::memcpy(slot, &value, sizeof(value));
+    dn2cpp_gc_write_barrier(slot);
+}
+
+// Called with the semaphore mutex held. The scanned semaphore and actual managed
+// TaskNode links keep the queue alive only while its owner remains reachable.
+static bool dn2cpp_semaphore_remove_waiter_locked(Dn2CppSemaphore* s, Dn2CppTask* task,
+    size_t previousOffset, size_t nextOffset)
+{
+    Dn2CppTask* previous = dn2cpp_semaphore_waiter_link(task, previousOffset);
+    Dn2CppTask* next = dn2cpp_semaphore_waiter_link(task, nextOffset);
+    bool present = s->asyncHead == task || previous != nullptr;
+    if (next != nullptr)
+        dn2cpp_semaphore_set_waiter_link(next, previousOffset, previous);
+    if (previous != nullptr)
+        dn2cpp_semaphore_set_waiter_link(previous, nextOffset, next);
+    if (s->asyncHead == task)
+        dn2cpp_gc_store_ref(&s->asyncHead, next);
+    if (s->asyncTail == task)
+        dn2cpp_gc_store_ref(&s->asyncTail, previous);
+    dn2cpp_semaphore_set_waiter_link(task, previousOffset, static_cast<Dn2CppTask*>(nullptr));
+    dn2cpp_semaphore_set_waiter_link(task, nextOffset, static_cast<Dn2CppTask*>(nullptr));
+    return present;
+}
+
+Dn2CppTask* dn2cpp_semaphore_create_async_waiter(Dn2CppObject* o, const Dn2CppTypeInfo* nodeType,
+    size_t nodeSize, size_t previousOffset, size_t nextOffset)
+{
+    dn2cpp_null_check(o);
+    auto* task = static_cast<Dn2CppTask*>(dn2cpp_alloc(nodeSize));
+    task->type = nodeType;
+    dn2cpp_task_init_promise(task, nullptr, 64);
+    auto* s = static_cast<Dn2CppSemaphore*>(o);
+    std::lock_guard<std::mutex> lk(s->m);
+    if (s->asyncHead == nullptr)
+    {
+        dn2cpp_gc_store_ref(&s->asyncHead, task);
+        s->previousOffset = previousOffset;
+        s->nextOffset = nextOffset;
+    }
+    else
+    {
+        dn2cpp_semaphore_set_waiter_link(s->asyncTail, nextOffset, task);
+        dn2cpp_semaphore_set_waiter_link(task, previousOffset, s->asyncTail);
+    }
+    dn2cpp_gc_store_ref(&s->asyncTail, task);
+    return task;
+}
+
+int32_t dn2cpp_semaphore_remove_async_waiter(Dn2CppObject* o, Dn2CppTask* task,
+    size_t previousOffset, size_t nextOffset)
+{
+    dn2cpp_null_check(o);
+    dn2cpp_null_check(task);
+    auto* s = static_cast<Dn2CppSemaphore*>(o);
+    std::lock_guard<std::mutex> lk(s->m);
+    return dn2cpp_semaphore_remove_waiter_locked(s, task, previousOffset, nextOffset);
 }
 
 int32_t dn2cpp_semaphore_release(Dn2CppObject* o, int32_t count)
 {
     auto* s = static_cast<Dn2CppSemaphore*>(o);
     int prev;
+    Dn2CppCont* ready = nullptr;
     {
         std::lock_guard<std::mutex> lk(s->m);
         prev = s->count;
         s->count += count;
+        while (s->asyncHead != nullptr && s->count > s->waiters)
+        {
+            Dn2CppTask* task = s->asyncHead;
+            dn2cpp_semaphore_remove_waiter_locked(s, task, s->previousOffset, s->nextOffset);
+            --s->count;
+            dn2cpp_task_try_set_result_deferred(task, 1, &ready);
+        }
     }
     for (int32_t i = 0; i < count; i++)
         s->cv.notify_one();
-    return prev; // SemaphoreSlim.Release returns the count before the release
+    // Statuses are published in FIFO order under s->m; callbacks may reenter it.
+    dn2cpp_task_dispatch_deferred(ready);
+    return prev;
 }
 
 int32_t dn2cpp_semaphore_count(Dn2CppObject* o)

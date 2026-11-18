@@ -2174,12 +2174,12 @@ internal sealed partial class CppEmitter
             }
         }
 
-        // Thread and Lock keep runtime-owned identities; these retained rows are named-only.
+        // Threading primitives keep runtime-owned identities; these retained rows are named-only.
         private void EmitThreadingPrivateRows()
         {
             foreach (var cls in _c.Classes.ToList())
             {
-                if (cls.FullName is not ("System.Threading.Thread" or "System.Threading.Lock")) continue;
+                if (cls.FullName is not ("System.Threading.Thread" or "System.Threading.Lock" or "System.Threading.SemaphoreSlim")) continue;
                 foreach (var method in cls.Methods)
                 {
                     if (!CoreIntrinsics.IsThreadingPrivate(method) || !IsRetainedOpaqueMemberRow(method)) continue;
@@ -2191,6 +2191,8 @@ internal sealed partial class CppEmitter
                     }
                     switch (method.Name)
                     {
+                        case "CreateAndAddAsyncWaiter": _e._semaphoreCreateAsyncWaiterRow = address; break;
+                        case "RemoveAsyncWaiter": _e._semaphoreRemoveAsyncWaiterRow = address; break;
                         case "ThreadNameChanged": _e._threadNameChangedRow = address; break;
                         case "get_ShouldStopPreemptingWaiters": _e._lockShouldStopPreemptingWaitersRow = address; break;
                         case "ResetWaiterStartTime": _e._lockResetWaiterStartTimeRow = address; break;

@@ -3183,8 +3183,9 @@ internal sealed partial class CppEmitter
         if (_dateTimeTryAddTicksRow is not null || _dateTimeTryCreateRow is not null || _dateTimeLocalConstructorRow is not null)
             sb.AppendLine($"    dn2cpp_set_datetime_parser_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeTryAddTicksRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeTryCreateRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_dateTimeLocalConstructorRow ?? "nullptr"}));");
         if (_threadNameChangedRow is not null || _lockShouldStopPreemptingWaitersRow is not null
-            || _lockResetWaiterStartTimeRow is not null || _lockRecordWaiterStartTimeRow is not null)
-            sb.AppendLine($"    dn2cpp_set_threading_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_threadNameChangedRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_lockShouldStopPreemptingWaitersRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_lockResetWaiterStartTimeRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_lockRecordWaiterStartTimeRow ?? "nullptr"}));");
+            || _lockResetWaiterStartTimeRow is not null || _lockRecordWaiterStartTimeRow is not null
+            || _semaphoreCreateAsyncWaiterRow is not null || _semaphoreRemoveAsyncWaiterRow is not null)
+            sb.AppendLine($"    dn2cpp_set_threading_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_threadNameChangedRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_lockShouldStopPreemptingWaitersRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_lockResetWaiterStartTimeRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_lockRecordWaiterStartTimeRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_semaphoreCreateAsyncWaiterRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_semaphoreRemoveAsyncWaiterRow ?? "nullptr"}));");
         if (_stringRawByteReferenceRow is not null || _stringNullTerminatedLengthRow is not null)
             sb.AppendLine($"    dn2cpp_set_string_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_stringRawByteReferenceRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_stringNullTerminatedLengthRow ?? "nullptr"}));");
         if (_cultureNameValidatorRow is { } cultureNameValidatorRow)
@@ -3977,6 +3978,8 @@ internal sealed partial class CppEmitter
     private string? _lockShouldStopPreemptingWaitersRow;
     private string? _lockResetWaiterStartTimeRow;
     private string? _lockRecordWaiterStartTimeRow;
+    private string? _semaphoreCreateAsyncWaiterRow;
+    private string? _semaphoreRemoveAsyncWaiterRow;
     private (string Sym, int Count)? _delegateInterfaceTargets;
 
     /// <summary>Records the base of each unbound reference-type runtime handle whose

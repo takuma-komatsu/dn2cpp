@@ -1436,10 +1436,11 @@ void dn2cpp_set_dateonly_deconstruct_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> 
 void dn2cpp_set_resourcemanager_default_type_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 void dn2cpp_set_datetime_parser_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> addTicks,
     Dn2CppMetadataHandle<Dn2CppMethodInfo> tryCreate, Dn2CppMetadataHandle<Dn2CppMethodInfo> localConstructor);
-// Retained Thread/Lock private boundaries participate only in named lookup.
+// Retained threading-private boundaries participate only in named lookup.
 void dn2cpp_set_threading_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> threadName,
     Dn2CppMetadataHandle<Dn2CppMethodInfo> shouldStopWaiters,
-    Dn2CppMetadataHandle<Dn2CppMethodInfo> resetWaiterTime, Dn2CppMetadataHandle<Dn2CppMethodInfo> recordWaiterTime);
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> resetWaiterTime, Dn2CppMetadataHandle<Dn2CppMethodInfo> recordWaiterTime,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> createAsyncWaiter, Dn2CppMetadataHandle<Dn2CppMethodInfo> removeAsyncWaiter);
 Dn2CppObject* dn2cpp_delegate_object_virtual_invoker(void* fn, Dn2CppObject* receiver,
     Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
 // Signature invokers mark the exact Delegate value rows while honoring fn.
@@ -6128,6 +6129,11 @@ int32_t dn2cpp_semaphore_count(Dn2CppObject* s);             // SemaphoreSlim.Cu
 // token yields a pre-completed task; otherwise the blocking acquire escapes to
 // the worker pool and the task completes when a Release hands over a token.
 Dn2CppTask* dn2cpp_semaphore_wait_async(Dn2CppObject* s);
+// Retained CoreLib TaskNode helpers share the native semaphore's release/count lock.
+Dn2CppTask* dn2cpp_semaphore_create_async_waiter(Dn2CppObject* semaphore,
+    const Dn2CppTypeInfo* nodeType, size_t nodeSize, size_t previousOffset, size_t nextOffset);
+int32_t dn2cpp_semaphore_remove_async_waiter(Dn2CppObject* semaphore, Dn2CppTask* node,
+    size_t previousOffset, size_t nextOffset);
 Dn2CppObject* dn2cpp_event_new(int32_t initial, int32_t manualReset, const Dn2CppTypeInfo* ti);
 Dn2CppObject* dn2cpp_safewaithandle_new(intptr_t handle, int32_t ownsHandle);
 Dn2CppObject* dn2cpp_waithandle_get_safe(Dn2CppObject* waitHandle);
@@ -7966,6 +7972,9 @@ Dn2CppTask* dn2cpp_task_from_canceled();
 // had already settled (thread-safe — concurrent TrySet* calls see one winner);
 // the Set* forms throw InvalidOperationException instead of returning 0.
 int32_t dn2cpp_task_try_set_result(Dn2CppTask* t, uint64_t result);
+// Publish under an external lock; accumulate GC-linked callbacks for dispatch after unlocking.
+void dn2cpp_task_try_set_result_deferred(Dn2CppTask* t, uint64_t result, Dn2CppCont** batch);
+void dn2cpp_task_dispatch_deferred(Dn2CppCont* batch);
 int32_t dn2cpp_task_try_set_exception(Dn2CppTask* t, Dn2CppObject* exception);
 int32_t dn2cpp_task_try_set_canceled(Dn2CppTask* t);
 void dn2cpp_tcs_set_result(Dn2CppTask* t, uint64_t result);

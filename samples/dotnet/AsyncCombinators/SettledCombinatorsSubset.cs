@@ -302,6 +302,107 @@ namespace SettledCombinatorsSubset
             Console.WriteLine("derived task promises end");
         }
 
+        internal static void RunSemaphoreWaiters()
+        {
+            Console.WriteLine("== semaphore waiter helpers ==");
+            var add = typeof(SemaphoreSlim).GetMethod("CreateAndAddAsyncWaiter", BindingFlags.Instance | BindingFlags.NonPublic);
+            var remove = typeof(SemaphoreSlim).GetMethod("RemoveAsyncWaiter", BindingFlags.Instance | BindingFlags.NonPublic);
+            Type nodeType = Type.GetType("System.Threading.SemaphoreSlim+TaskNode, System.Private.CoreLib", true);
+            var previous = nodeType.GetField("Prev", BindingFlags.Instance | BindingFlags.NonPublic);
+            var next = nodeType.GetField("Next", BindingFlags.Instance | BindingFlags.NonPublic);
+            var semaphore = new SemaphoreSlim(0);
+            // Private helpers require exclusion from every operation on this instance.
+            // All helper calls and releases below share this test lock.
+            object gate = new object();
+            lock (gate)
+            {
+                var head = (Task<bool>)add.Invoke(semaphore, null);
+                var middle = (Task<bool>)add.Invoke(semaphore, null);
+                var survivor = (Task<bool>)add.Invoke(semaphore, null);
+                var tail = (Task<bool>)add.Invoke(semaphore, null);
+                bool linked = ReferenceEquals(next.GetValue(head), middle)
+                    && ReferenceEquals(previous.GetValue(tail), survivor);
+                bool removed = (bool)remove.Invoke(semaphore, new object[] { middle })
+                    && (bool)remove.Invoke(semaphore, new object[] { tail })
+                    && (bool)remove.Invoke(semaphore, new object[] { head });
+                bool repeated = (bool)remove.Invoke(semaphore, new object[] { head });
+                Console.WriteLine("queue remove: " + linked + "/" + removed + "/" + repeated);
+                Console.WriteLine("queue links cleared: " + (previous.GetValue(survivor) is null)
+                    + "/" + (next.GetValue(survivor) is null) + "/" + (previous.GetValue(middle) is null)
+                    + "/" + (next.GetValue(middle) is null));
+                int before = semaphore.Release();
+                Console.WriteLine("queue release: " + before + "/" + survivor.Result + "/" + semaphore.CurrentCount
+                    + "/" + !head.IsCompleted + "/" + !middle.IsCompleted + "/" + !tail.IsCompleted);
+                Console.WriteLine("released removal: " + remove.Invoke(semaphore, new object[] { survivor }));
+                var first = (Task<bool>)add.Invoke(semaphore, null);
+                var second = (Task<bool>)add.Invoke(semaphore, null);
+                semaphore.Release();
+                bool firstOnly = first.IsCompletedSuccessfully && first.Result
+                    && !second.IsCompleted && semaphore.CurrentCount == 0;
+                semaphore.Release();
+                Console.WriteLine("queue FIFO: " + firstOnly + "/"
+                    + (second.IsCompletedSuccessfully && second.Result && semaphore.CurrentCount == 0));
+                try { remove.Invoke(semaphore, new object[] { null }); }
+                catch (TargetInvocationException e) { Console.WriteLine("null waiter: " + e.InnerException.GetType().Name); }
+            }
+            Task<bool> expired;
+            lock (gate) expired = (Task<bool>)add.Invoke(semaphore, null);
+            try { expired.WaitAsync(TimeSpan.FromMilliseconds(1)).GetAwaiter().GetResult(); }
+            catch (TimeoutException) { }
+            lock (gate)
+                Console.WriteLine("timeout helper removal: " + remove.Invoke(semaphore, new object[] { expired }));
+            Task<bool> canceled;
+            lock (gate) canceled = (Task<bool>)add.Invoke(semaphore, null);
+            var source = new CancellationTokenSource();
+            Task bounded = canceled.WaitAsync(Timeout.InfiniteTimeSpan, source.Token);
+            source.Cancel();
+            lock (gate)
+                Console.WriteLine("cancel helper removal: " + bounded.IsCanceled + "/"
+                    + remove.Invoke(semaphore, new object[] { canceled }));
+
+            bool races = true;
+            for (int i = 0; i < 8; i++)
+            {
+                Task<bool> waiter;
+                lock (gate) waiter = (Task<bool>)add.Invoke(semaphore, null);
+                bool removed = false;
+                var remover = new Thread(() => { lock (gate) removed = (bool)remove.Invoke(semaphore, new object[] { waiter }); });
+                var releaser = new Thread(() => { lock (gate) semaphore.Release(); });
+                remover.Start();
+                releaser.Start();
+                remover.Join();
+                releaser.Join();
+                races &= removed ? !waiter.IsCompleted && semaphore.CurrentCount == 1
+                    : waiter.IsCompleted && waiter.Result && semaphore.CurrentCount == 0;
+                if (removed) semaphore.Wait(0);
+            }
+            Console.WriteLine("remove/release linearization: " + races);
+            WeakReference queued = null;
+            var abandoned = new WeakReference[4];
+            var producer = new Thread(() =>
+            {
+                lock (gate) queued = new WeakReference(add.Invoke(semaphore, null));
+                for (int i = 0; i < abandoned.Length; i++)
+                {
+                    var temporary = new SemaphoreSlim(0);
+                    abandoned[i] = new WeakReference(add.Invoke(temporary, null));
+                }
+            });
+            producer.Start();
+            producer.Join();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            var rooted = (Task<bool>)queued.Target;
+            lock (gate) semaphore.Release();
+            Console.WriteLine("native queue root: " + (rooted is not null && rooted.Result));
+            bool collected = false;
+            for (int i = 0; i < abandoned.Length; i++)
+                collected |= !abandoned[i].IsAlive;
+            Console.WriteLine("abandoned queue collected: " + collected);
+            Console.WriteLine("semaphore waiter helpers end");
+        }
+
         internal static void RunPending()
         {
             Console.WriteLine("== pending task joins ==");

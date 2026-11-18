@@ -4509,16 +4509,19 @@ void dn2cpp_set_datetime_parser_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> addT
     g_datetime_parser_rows[2] = localConstructor;
 }
 
-static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_threading_private_rows[4];
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_threading_private_rows[6];
 
 void dn2cpp_set_threading_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> threadName,
     Dn2CppMetadataHandle<Dn2CppMethodInfo> shouldStopWaiters,
-    Dn2CppMetadataHandle<Dn2CppMethodInfo> resetWaiterTime, Dn2CppMetadataHandle<Dn2CppMethodInfo> recordWaiterTime)
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> resetWaiterTime, Dn2CppMetadataHandle<Dn2CppMethodInfo> recordWaiterTime,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> createAsyncWaiter, Dn2CppMetadataHandle<Dn2CppMethodInfo> removeAsyncWaiter)
 {
     g_threading_private_rows[0] = threadName;
     g_threading_private_rows[1] = shouldStopWaiters;
     g_threading_private_rows[2] = resetWaiterTime;
     g_threading_private_rows[3] = recordWaiterTime;
+    g_threading_private_rows[4] = createAsyncWaiter;
+    g_threading_private_rows[5] = removeAsyncWaiter;
 }
 
 // The named-lookup hook: appends the rows a lookup on `queried` finds after the
@@ -4559,7 +4562,7 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     for (int32_t i = 0; i < 2 && !named; i++)
         named = g_datetime_parser_rows[i] != nullptr
             && dn2cpp_member_name_matches(g_datetime_parser_rows[i]->name, name, bindingFlags, false);
-    for (int32_t i = 0; i < 4 && !named; i++)
+    for (int32_t i = 0; i < 6 && !named; i++)
         named = g_threading_private_rows[i] != nullptr
             && dn2cpp_member_name_matches(g_threading_private_rows[i]->name, name, bindingFlags, false);
     for (int32_t k = 0; k < g_meta_member_count && !named; k++)
@@ -4570,9 +4573,9 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     for (const Dn2CppTypeInfo* ti = queried; ti != nullptr; ti = dn2cpp_meta_next_level(ti))
     {
         bool inherited = (ti != queried);
-        if (ti == &dn2cpp_thread_type || ti == &dn2cpp_lock_type)
+        if (ti == &dn2cpp_thread_type || ti == &dn2cpp_lock_type || ti == &dn2cpp_semaphore_type)
         {
-            for (int32_t i = 0; i < 4; i++)
+            for (int32_t i = 0; i < 6; i++)
             {
                 const auto method = g_threading_private_rows[i];
                 if (method == nullptr) continue;
