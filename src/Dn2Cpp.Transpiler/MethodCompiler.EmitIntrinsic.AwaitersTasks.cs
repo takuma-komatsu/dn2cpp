@@ -399,11 +399,9 @@ internal sealed partial class MethodCompiler
             // on an already-canceled token).
             case ("System.Threading.Tasks.ValueTask", "FromCanceled"):
             {
-                Pop(); // CancellationToken (its canceled state is not re-validated)
-                EmitCanceledExcRegistration();
+                string canceled = EmitFromCanceledTask(sig.ParameterTypes, allowCapturedException: false);
                 string task = TaskBackingType(sig.ReturnType) is { } taskType
-                    ? StampTask("dn2cpp_task_from_canceled()", taskType)
-                    : "dn2cpp_task_from_canceled()";
+                    ? StampTask(canceled, taskType) : canceled;
                 Push(StackKind.Struct, "Dn2CppTaskAwaiter", $"Dn2CppTaskAwaiter{{ {task} }}");
                 return true;
             }
@@ -652,7 +650,7 @@ internal sealed partial class MethodCompiler
             {
                 var t = Pop();
                 EmitCanceledExcRegistration();
-                Emit($"if (dn2cpp_cts_is_cancelled(((Dn2CppCancelToken*)({t.Expr}))->source)) dn2cpp_throw_canceled();");
+                Emit($"if (dn2cpp_cts_is_cancelled(((Dn2CppCancelToken*)({t.Expr}))->source)) dn2cpp_throw_canceled(((Dn2CppCancelToken*)({t.Expr}))->source);");
                 return true;
             }
             // ---- The Register / UnsafeRegister family ----

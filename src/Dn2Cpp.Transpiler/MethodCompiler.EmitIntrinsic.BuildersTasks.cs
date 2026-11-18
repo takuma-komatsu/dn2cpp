@@ -1007,23 +1007,23 @@ internal sealed partial class MethodCompiler
             case ("System.Threading.Tasks.Task", "Run")
                 when DelegateReturnsTask(sig.ParameterTypes[0]):
             {
-                if (sig.ParameterTypes.Length == 2)
-                    Pop(); // CancellationToken (ignored)
+                string source = sig.ParameterTypes.Length == 2 ? $"({Pop().Expr}).source" : "nullptr";
                 var del = Pop(); // Func<Task>
-                PushStampedTask($"dn2cpp_task_run_unwrap((Dn2CppObject*)({del.Expr}))", sig.ReturnType);
+                EmitCanceledExcRegistration();
+                PushStampedTask($"dn2cpp_task_run_unwrap((Dn2CppObject*)({del.Expr}), {source})", sig.ReturnType);
                 return true;
             }
             // Task.Run(Action [, CancellationToken]) -> Task, dispatched to the real
             // worker pool. Matches only when the first parameter is System.Action (the
             // Func<Task> unwrap overload is handled by the case above). A trailing
-            // CancellationToken is unmodeled.
+            // CancellationToken is retained and checked before the delegate runs.
             case ("System.Threading.Tasks.Task", "Run")
                 when DelegateParamName(sig.ParameterTypes[0]) == "System.Action":
             {
-                if (sig.ParameterTypes.Length == 2)
-                    Pop(); // CancellationToken (ignored)
+                string source = sig.ParameterTypes.Length == 2 ? $"({Pop().Expr}).source" : "nullptr";
                 var del = Pop(); // Action
-                PushStampedTask($"dn2cpp_task_run_void((Dn2CppObject*)({del.Expr}))", sig.ReturnType);
+                EmitCanceledExcRegistration();
+                PushStampedTask($"dn2cpp_task_run_void((Dn2CppObject*)({del.Expr}), DN2CPP_TASK_DENY_CHILD_ATTACH, {source})", sig.ReturnType);
                 return true;
             }
             // Task.Factory is an opaque nullptr sentinel, only ever the receiver of
@@ -1063,6 +1063,7 @@ internal sealed partial class MethodCompiler
                 int kept = hasState ? 2 : 1; // delegate [+ state]
                 StackEntry? schedulerHint = null;
                 string options = "0";
+                string source = "nullptr";
                 for (int i = sig.ParameterTypes.Length - 1; i >= kept; i--)
                 {
                     var hint = Pop();
@@ -1070,23 +1071,26 @@ internal sealed partial class MethodCompiler
                         schedulerHint = hint;
                     else if (sig.ParameterTypes[i] is { Kind: TypeKind.Class, Class.FullName: "System.Threading.Tasks.TaskCreationOptions" })
                         options = Cast(hint, "int32_t");
+                    else if (CppTypes.Of(sig.ParameterTypes[i]) == "Dn2CppCancelToken")
+                        source = $"({hint.Expr}).source";
                 }
                 if (schedulerHint is { } sh)
                     EmitArgumentRequired(sh, "scheduler");
+                EmitCanceledExcRegistration();
                 if (hasState)
                 {
                     var state = Pop(); // object? state (passed to the delegate)
                     var del = Pop();   // Action<object?>
                     Pop();             // receiver — the Task.Factory nullptr sentinel
                     PushStampedTask(
-                        $"dn2cpp_task_run_void_state((Dn2CppObject*)({del.Expr}), {Cast(state, "Dn2CppObject*")}, {options})",
+                        $"dn2cpp_task_run_void_state((Dn2CppObject*)({del.Expr}), {Cast(state, "Dn2CppObject*")}, {options}, {source})",
                         sig.ReturnType);
                 }
                 else
                 {
                     var del = Pop(); // Action
                     Pop();           // receiver — the Task.Factory nullptr sentinel
-                    PushStampedTask($"dn2cpp_task_run_void((Dn2CppObject*)({del.Expr}), {options})", sig.ReturnType);
+                    PushStampedTask($"dn2cpp_task_run_void((Dn2CppObject*)({del.Expr}), {options}, {source})", sig.ReturnType);
                 }
                 return true;
             }
@@ -1231,7 +1235,7 @@ internal sealed partial class MethodCompiler
                         "is not supported (expected a leading Action delegate)");
                 bool cwHasState = cwDel.Context.TypeArgs.Length == 2;
                 int cwKept = cwHasState ? 2 : 1; // delegate [+ state]
-                string cwOpts = PopContinuationHints(sig.ParameterTypes, cwKept, out var cwScheduler);
+                string cwOpts = PopContinuationHints(sig.ParameterTypes, cwKept, out var cwScheduler, out string cwSource);
                 var cwState = cwHasState ? Pop() : null;
                 var cwD = Pop();
                 var cwT = Pop();
@@ -1242,7 +1246,7 @@ internal sealed partial class MethodCompiler
                 string kind = cwHasState ? "DN2CPP_CONTWITH_VOID_STATE" : "DN2CPP_CONTWITH_VOID";
                 PushStampedTask(
                     $"dn2cpp_task_continue_with((Dn2CppTask*)({cwT.Expr}), (Dn2CppObject*)({cwD.Expr}), "
-                    + $"{stateExpr}, {kind}, {cwOpts})", sig.ReturnType);
+                    + $"{stateExpr}, {kind}, {cwOpts}, {cwSource})", sig.ReturnType);
                 return true;
             }
             // ---- TaskCompletionSource(<T>) -----------------------------------------
@@ -1290,19 +1294,18 @@ internal sealed partial class MethodCompiler
                 return true;
             }
             // SetCanceled([CancellationToken]) — the transition allocates its own
-            // OperationCanceledException (the token argument is popped and ignored);
-            // register the exception type so a typed catch matches an awaited fault.
+            // TaskCanceledException carries the token of the winning transition.
+            // Register its actual managed layout before the runtime constructs it.
             case ("System.Threading.Tasks.TaskCompletionSource", "SetCanceled"):
             case ("System.Threading.Tasks.TaskCompletionSource", "TrySetCanceled"):
             {
-                if (sig.ParameterTypes.Length == 1)
-                    Pop(); // CancellationToken (ignored — the OCE carries no token)
+                string source = sig.ParameterTypes.Length == 1 ? $"({Pop().Expr}).source" : "nullptr";
                 var t = Pop();
                 EmitCanceledExcRegistration();
                 if (name == "SetCanceled")
-                    Emit($"dn2cpp_tcs_set_canceled(((Dn2CppTaskCompletionSource*)({t.Expr}))->task);");
+                    Emit($"dn2cpp_tcs_set_canceled(((Dn2CppTaskCompletionSource*)({t.Expr}))->task, {source});");
                 else
-                    Push(StackKind.I4, "int32_t", $"dn2cpp_task_try_set_canceled(((Dn2CppTaskCompletionSource*)({t.Expr}))->task)");
+                    Push(StackKind.I4, "int32_t", $"dn2cpp_task_try_set_canceled(((Dn2CppTaskCompletionSource*)({t.Expr}))->task, {source})");
                 return true;
             }
             // Task state inspection (also inherited by Task<T>): map directly to the
@@ -1350,6 +1353,13 @@ internal sealed partial class MethodCompiler
                 PushEntry(new StackEntry($"dn2cpp_task_exception((Dn2CppTask*)({t.Expr}))",
                     StackKind.Ref, "Dn2CppObject*",
                     StaticType: TypeDesc.MakeExternal("System.AggregateException")));
+                return true;
+            }
+            case ("System.Threading.Tasks.Task", "get_CancellationToken"):
+            {
+                var task = Pop();
+                Push(StackKind.Struct, "Dn2CppCancelToken",
+                    $"dn2cpp_task_cancellation_token((Dn2CppTask*)({task.Expr}))");
                 return true;
             }
             case ("System.Threading.Tasks.Task", "get_CreationOptions"):
@@ -1406,9 +1416,7 @@ internal sealed partial class MethodCompiler
             // canceled token).
             case ("System.Threading.Tasks.Task", "FromCanceled"):
             {
-                Pop(); // CancellationToken (its canceled state is not re-validated)
-                EmitCanceledExcRegistration();
-                PushStampedTask("dn2cpp_task_from_canceled()", sig.ReturnType);
+                PushStampedTask(EmitFromCanceledTask(sig.ParameterTypes, allowCapturedException: true), sig.ReturnType);
                 return true;
             }
 
@@ -1523,23 +1531,18 @@ internal sealed partial class MethodCompiler
     /// C++ expression for its <c>TaskContinuationOptions</c>, or <c>"0"</c> when the
     /// overload carries none.
     ///
-    /// <para><b>The distinction this method exists to keep is between a HINT and a
-    /// FILTER.</b> A trailing CancellationToken is a scheduling hint
-    /// dn2cpp's cooperative scheduler does not honour, so dropping it changes nothing an
-    /// awaiting program can observe. <c>TaskContinuationOptions</c> is not that: its
-    /// NotOnRanToCompletion / NotOnFaulted / NotOnCanceled bits — which the OnlyOn* names
-    /// are pairs of — decide whether the delegate RUNS, and dropping them would run an
-    /// OnlyOnFaulted continuation after a successful antecedent. So the value is carried
-    /// to the runtime node, and as a RUN-TIME operand rather than folded, because the IL
-    /// is free to compute it. A TaskScheduler hint is validated for null after the
-    /// delegate, then its scheduling choice is ignored.</para>
+    /// <para>The token is associated with the returned task. Continuation options
+    /// also decide whether its delegate runs, so both values remain runtime operands.
+    /// A TaskScheduler is validated for null after the delegate; native execution
+    /// retains its existing scheduler policy.</para>
     ///
     /// <para>Shared by the non-generic <c>ContinueWith</c> arm and the generic
     /// <c>ContinueWith&lt;TNewResult&gt;</c> one in MethodCompiler.GenericIntrinsic.cs —
     /// one popper, so the two cannot disagree about which trailing argument is which.</para></summary>
     private string PopContinuationHints(System.Collections.Immutable.ImmutableArray<TypeDesc> pts, int kept,
-                                        out StackEntry? scheduler)
+                                        out StackEntry? scheduler, out string source)
     {
+        source = "nullptr";
         string options = "0";
         scheduler = null;
         for (int i = pts.Length - 1; i >= kept; i--)
@@ -1549,6 +1552,8 @@ internal sealed partial class MethodCompiler
                 options = $"(int32_t)({popped.Expr})";
             if (pts[i] is { Kind: TypeKind.Class, Class.FullName: "System.Threading.Tasks.TaskScheduler" })
                 scheduler = popped;
+            if (CppTypes.Of(pts[i]) == "Dn2CppCancelToken")
+                source = $"({popped.Expr}).source";
         }
         return options;
     }

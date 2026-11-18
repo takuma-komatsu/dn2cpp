@@ -39,6 +39,7 @@ namespace FileReal
             BoundedImportSubset.Program.__GateEntry();
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_IO_VALIDATION") == "1") return 0;
             IoErrorSubset.Program.Run(dir);
+            StreamAsyncSubset.Program.RunCapturedCancellation();
             return 0;
         }
     }

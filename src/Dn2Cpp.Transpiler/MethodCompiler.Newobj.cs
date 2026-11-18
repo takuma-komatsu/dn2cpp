@@ -2354,12 +2354,16 @@ internal sealed partial class MethodCompiler
         bool hasState = delCls.Context.TypeArgs.Length == (tres is null ? 1 : 2);
         int kept = hasState ? 2 : 1; // delegate [+ state]
         string options = "0";
+        string source = "nullptr";
         for (int i = ps.Length - 1; i >= kept; i--)
         {
             var hint = Pop();
             if (ps[i] is { Kind: TypeKind.Class, Class.FullName: "System.Threading.Tasks.TaskCreationOptions" })
                 options = Cast(hint, "int32_t");
+            else if (CppTypes.Of(ps[i]) == "Dn2CppCancelToken")
+                source = $"({hint.Expr}).source";
         }
+        EmitCanceledExcRegistration();
         if (hasState)
         {
             var state = Pop(); // object? state (passed to the delegate)
@@ -2377,7 +2381,7 @@ internal sealed partial class MethodCompiler
             string invoke = tres is not null && CppTypes.KindOf(tres) == StackKind.Struct
                 ? ", " + TaskStructResultStateThunk(CppTypes.Of(tres)) : "";
             PushStampedTask(
-                $"{stateFunction}((Dn2CppObject*)({sdel.Expr}), {Cast(state, "Dn2CppObject*")}{invoke}, {options})",
+                $"{stateFunction}((Dn2CppObject*)({sdel.Expr}), {Cast(state, "Dn2CppObject*")}{invoke}, {options}, {source})",
                 taskType);
             return;
         }
@@ -2388,7 +2392,7 @@ internal sealed partial class MethodCompiler
         {
             var sdel = Pop(); // Func<TResult>
             PushStampedTask(
-                $"dn2cpp_task_cold_struct((Dn2CppObject*)({sdel.Expr}), {TaskStructResultThunk(CppTypes.Of(tres))}, {options})",
+                $"dn2cpp_task_cold_struct((Dn2CppObject*)({sdel.Expr}), {TaskStructResultThunk(CppTypes.Of(tres))}, {options}, {source})",
                 taskType);
             return;
         }
@@ -2404,7 +2408,7 @@ internal sealed partial class MethodCompiler
                 "result kind not supported yet (int/long/float/double/reference only)"),
         };
         var del = Pop(); // Action or Func<TResult>
-        PushStampedTask($"{fn}((Dn2CppObject*)({del.Expr}), {options})", taskType);
+        PushStampedTask($"{fn}((Dn2CppObject*)({del.Expr}), {options}, {source})", taskType);
     }
 
     /// <summary>The IValueTaskSource-backed <c>new ValueTask(&lt;T&gt;)(source,

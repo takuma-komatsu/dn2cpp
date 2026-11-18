@@ -12,6 +12,12 @@ namespace AsyncCombinators
         {
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+            if (args.Length == 1 && (args[0] == "fresh-cancellation-filter"
+                || args[0] == "fresh-cancellation-filter-generic"))
+            {
+                TaskCancellationTokenSubset.Program.RunFreshFilter(args[0] == "fresh-cancellation-filter-generic");
+                return;
+            }
             if (args.Length == 1 && args[0] == "native-delay-deadlines")
             {
                 DelayOrderSubset.Program.RunNativeDeadlineProbe();
@@ -86,6 +92,9 @@ namespace AsyncCombinators
             if (args.Length == 1 && args[0] == "before-task-creation-options")
                 return;
             TaskCreationOptionsSubset.Program.Run();
+            if (args.Length == 1 && args[0] == "before-task-cancellation-tokens")
+                return;
+            TaskCancellationTokenSubset.Program.Run();
             // Ends the process: a builder suspension's rejected registration is re-raised
             // as an unhandled ThreadPool exception.
             if (args.Length == 2 && args[0] == "suspension-rejection")

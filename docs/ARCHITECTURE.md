@@ -1609,6 +1609,36 @@ The options word is atomic because cancellation can update it concurrently with 
 Creation flags describe the task while scheduling follows the existing native
 contract for parent attachment, cancellation and scheduler selection.
 
+#### Task cancellation identity
+
+A native task stores its associated cancellation source independently of callback
+registrations. Delegate tasks retain their supplied token after success or failure.
+Promise tasks start without an associated token and publish one only when a
+cancellation transition wins. Losing completion attempts cannot change that token.
+The internal Task token getter exposes this state to ordinary CoreLib callers,
+including TaskCanceledException(Task), without pruning debugger proxies or their
+attribute metadata.
+
+Cancellation propagates through the winning Delay, WaitAsync and unwrapping paths.
+Non-generic WhenAll selects the first canceled completion, while generic WhenAll
+selects the first canceled input. Faults still take precedence over cancellation.
+Native cancellation exceptions use the emitted OperationCanceledException token
+field offset, so caught exceptions and task-associated tokens preserve the same
+source identity without assuming a managed field layout. The shared image
+initialization registers that layout before managed entry points run. Cancellation
+without a captured exception stores only its token and creates a fresh exception
+when awaited. An actual captured OCE or TCE retains its identity across task
+transfers, independently of its runtime exception type. The internal
+Task.FromCanceled(OCE) factories retain that captured exception and its token,
+including an unrequested token. Their lowering is distinct from the public
+CancellationToken factories used by Task and ValueTask.
+
+Cold tasks and unwrapping Run calls handle tokens that were already canceled at
+construction. Queued delegate tasks check their associated token before invoking
+the delegate. This does not add cancellation registrations to those tasks or
+interrupt work after its delegate starts. Existing explicit unsupported scheduling
+and parent-attachment boundaries remain in force.
+
 #### CoreLib promise task subclasses
 
 A managed subclass of `Task` or `Task<T>` has the same `Dn2CppTask` prefix as

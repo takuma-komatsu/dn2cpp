@@ -1609,17 +1609,15 @@ internal sealed partial class MethodCompiler
         if (declType == "System.Threading.Tasks.Task" && name == "FromCanceled")
         {
             var tsig = DecodeGenericCallSignature(msh, methodArgs);
-            Pop(); // CancellationToken
-            EmitCanceledExcRegistration();
-            PushStampedTask("dn2cpp_task_from_canceled()", tsig.ReturnType);
+            PushStampedTask(EmitFromCanceledTask(tsig.ParameterTypes, allowCapturedException: true), tsig.ReturnType);
             return;
         }
         if (declType == "System.Threading.Tasks.ValueTask" && name == "FromCanceled")
         {
-            Pop(); // CancellationToken
-            EmitCanceledExcRegistration();
+            var tsig = DecodeGenericCallSignature(msh, methodArgs);
+            string canceled = EmitFromCanceledTask(tsig.ParameterTypes, allowCapturedException: false);
             Push(StackKind.Struct, "Dn2CppTaskAwaiter",
-                $"Dn2CppTaskAwaiter{{ {StampTask("dn2cpp_task_from_canceled()", TaskTypeForResult(methodArgs[0]))} }}");
+                $"Dn2CppTaskAwaiter{{ {StampTask(canceled, TaskTypeForResult(methodArgs[0]))} }}");
             return;
         }
 
@@ -1929,18 +1927,18 @@ internal sealed partial class MethodCompiler
             // the overload whose delegate result is Task<TResult> unwraps.
             bool unwrap = DelegateReturnsTask(rsig.ParameterTypes[0])
                 && rsig.ParameterTypes[0].Class!.Context.TypeArgs[0].Class != tres.Class;
-            if (rsig.ParameterTypes.Length == 2)
-                Pop(); // trailing CancellationToken (ignored)
+            string source = rsig.ParameterTypes.Length == 2 ? $"({Pop().Expr}).source" : "nullptr";
             var del = Pop(); // Func<TResult> or Func<Task<TResult>>
+            EmitCanceledExcRegistration();
             if (unwrap)
             {
-                PushStampedTask($"dn2cpp_task_run_unwrap((Dn2CppObject*)({del.Expr}))", rsig.ReturnType);
+                PushStampedTask($"dn2cpp_task_run_unwrap((Dn2CppObject*)({del.Expr}), {source})", rsig.ReturnType);
                 return;
             }
             if (DelegateReturnsTask(rsig.ParameterTypes[0]))
             {
                 // A returned inner task can own this worker's scheduler callbacks.
-                PushStampedTask($"dn2cpp_task_run_nested((Dn2CppObject*)({del.Expr}), DN2CPP_TASK_DENY_CHILD_ATTACH)",
+                PushStampedTask($"dn2cpp_task_run_nested((Dn2CppObject*)({del.Expr}), DN2CPP_TASK_DENY_CHILD_ATTACH, {source})",
                     rsig.ReturnType);
                 return;
             }
@@ -1950,7 +1948,7 @@ internal sealed partial class MethodCompiler
             if (CppTypes.KindOf(tres) == StackKind.Struct)
             {
                 PushStampedTask(
-                    $"dn2cpp_task_run_struct((Dn2CppObject*)({del.Expr}), {TaskStructResultThunk(CppTypes.Of(tres))})",
+                    $"dn2cpp_task_run_struct((Dn2CppObject*)({del.Expr}), {TaskStructResultThunk(CppTypes.Of(tres))}, DN2CPP_TASK_DENY_CHILD_ATTACH, {source})",
                     rsig.ReturnType);
                 return;
             }
@@ -1965,7 +1963,7 @@ internal sealed partial class MethodCompiler
                     $"{Method.DeclaringClass.FullName}.{Method.Name}: Task.Run<{tres}> " +
                     "result kind not supported yet (int/long/float/double/reference only)"),
             };
-            PushStampedTask($"{fn}((Dn2CppObject*)({del.Expr}))", rsig.ReturnType);
+            PushStampedTask($"{fn}((Dn2CppObject*)({del.Expr}), DN2CPP_TASK_DENY_CHILD_ATTACH, {source})", rsig.ReturnType);
             return;
         }
 
@@ -2004,7 +2002,7 @@ internal sealed partial class MethodCompiler
             if (CallIsVirtual)
                 NullCheckReceiverUnder(cwsig.ParameterTypes.Length);
             bool cwHasState = cwDel.Context.TypeArgs.Length == 3;
-            string cwOpts = PopContinuationHints(cwsig.ParameterTypes, cwHasState ? 2 : 1, out var cwScheduler);
+            string cwOpts = PopContinuationHints(cwsig.ParameterTypes, cwHasState ? 2 : 1, out var cwScheduler, out string cwSource);
             if (cwHasState)
             {
                 var state = Pop();
@@ -2015,7 +2013,7 @@ internal sealed partial class MethodCompiler
                     EmitArgumentRequired(scheduler, "scheduler");
                 PushStampedTask($"dn2cpp_task_continue_with_state_result((Dn2CppTask*)({antecedent.Expr}), "
                     + $"(Dn2CppObject*)({continuation.Expr}), {Cast(state, "Dn2CppObject*")}, "
-                    + $"{TaskContWithStateResultThunk(tnew)}, {cwOpts})", cwsig.ReturnType);
+                    + $"{TaskContWithStateResultThunk(tnew)}, {cwOpts}, {cwSource})", cwsig.ReturnType);
                 return;
             }
             // A value-type continuation result rides the boxing trampoline (the ContinueWith
@@ -2029,7 +2027,7 @@ internal sealed partial class MethodCompiler
                     EmitArgumentRequired(cs, "scheduler");
                 PushStampedTask(
                     $"dn2cpp_task_continue_with_struct((Dn2CppTask*)({cwts.Expr}), " +
-                    $"(Dn2CppObject*)({cwds.Expr}), {TaskStructContWithThunk(CppTypes.Of(tnew))}, {cwOpts})",
+                    $"(Dn2CppObject*)({cwds.Expr}), {TaskStructContWithThunk(CppTypes.Of(tnew))}, {cwOpts}, {cwSource})",
                     cwsig.ReturnType);
                 return;
             }
@@ -2051,7 +2049,7 @@ internal sealed partial class MethodCompiler
                 EmitArgumentRequired(cs2, "scheduler");
             PushStampedTask(
                 $"dn2cpp_task_continue_with((Dn2CppTask*)({cwt.Expr}), (Dn2CppObject*)({cwd.Expr}), "
-                + $"nullptr, {cwKind}, {cwOpts})", cwsig.ReturnType);
+                + $"nullptr, {cwKind}, {cwOpts}, {cwSource})", cwsig.ReturnType);
             return;
         }
 
@@ -2082,6 +2080,7 @@ internal sealed partial class MethodCompiler
             int kept = hasState ? 2 : 1; // delegate [+ state]
             StackEntry? schedulerHint = null;
             string options = "0";
+            string source = "nullptr";
             for (int i = fsig.ParameterTypes.Length - 1; i >= kept; i--)
             {
                 var hint = Pop();
@@ -2089,6 +2088,8 @@ internal sealed partial class MethodCompiler
                     schedulerHint = hint;
                 else if (fsig.ParameterTypes[i] is { Kind: TypeKind.Class, Class.FullName: "System.Threading.Tasks.TaskCreationOptions" })
                     options = Cast(hint, "int32_t");
+                else if (CppTypes.Of(fsig.ParameterTypes[i]) == "Dn2CppCancelToken")
+                    source = $"({hint.Expr}).source";
             }
             StackEntry? state = null;
             if (hasState)
@@ -2098,11 +2099,12 @@ internal sealed partial class MethodCompiler
             EmitArgumentRequired(fdel, "function");
             if (schedulerHint is { } sh)
                 EmitArgumentRequired(sh, "scheduler");
+            EmitCanceledExcRegistration();
             if (DelegateReturnsTask(fsig.ParameterTypes[0]))
             {
                 if (hasState)
                     throw new NotSupportedException($"{Method.DeclaringClass.FullName}.{Method.Name}: TaskFactory.StartNew with state and Task-returning delegate is not supported yet");
-                PushStampedTask($"dn2cpp_task_run_nested((Dn2CppObject*)({fdel.Expr}), {options})", fsig.ReturnType);
+                PushStampedTask($"dn2cpp_task_run_nested((Dn2CppObject*)({fdel.Expr}), {options}, {source})", fsig.ReturnType);
                 return;
             }
             // A value-type result rides the same boxing trampoline as Task.Run<TStruct>.
@@ -2111,7 +2113,7 @@ internal sealed partial class MethodCompiler
                 if (hasState)
                     throw new NotSupportedException($"{Method.DeclaringClass.FullName}.{Method.Name}: TaskFactory.StartNew<{tres}> with state and struct result is not supported yet");
                 PushStampedTask(
-                    $"dn2cpp_task_run_struct((Dn2CppObject*)({fdel.Expr}), {TaskStructResultThunk(CppTypes.Of(tres))}, {options})",
+                    $"dn2cpp_task_run_struct((Dn2CppObject*)({fdel.Expr}), {TaskStructResultThunk(CppTypes.Of(tres))}, {options}, {source})",
                     fsig.ReturnType);
                 return;
             }
@@ -2132,9 +2134,9 @@ internal sealed partial class MethodCompiler
                     "result kind not supported yet (int/long/float/double/reference only)"),
             };
             if (hasState && state is not null)
-                PushStampedTask($"{ffn}((Dn2CppObject*)({fdel.Expr}), {Cast(state, "Dn2CppObject*")}, {options})", fsig.ReturnType);
+                PushStampedTask($"{ffn}((Dn2CppObject*)({fdel.Expr}), {Cast(state, "Dn2CppObject*")}, {options}, {source})", fsig.ReturnType);
             else
-                PushStampedTask($"{ffn}((Dn2CppObject*)({fdel.Expr}), {options})", fsig.ReturnType);
+                PushStampedTask($"{ffn}((Dn2CppObject*)({fdel.Expr}), {options}, {source})", fsig.ReturnType);
             return;
         }
 

@@ -5851,67 +5851,69 @@ void dn2cpp_thread_set_name(Dn2CppThread* t, Dn2CppString* n);  // Name (set)
 // a Task the worker completes; an awaiting cooperative thread is woken via the bridge
 // (Dn2CppCont.owner). The result kind selects how the worker's return value is packed.
 struct Dn2CppTask; // full definition below
+struct Dn2CppCancelSource;
+struct Dn2CppCancelToken;
 constexpr int32_t DN2CPP_TASK_OPTIONS_MASK = 0x5f;
 constexpr int32_t DN2CPP_TASK_DENY_CHILD_ATTACH = 8;
 constexpr int32_t DN2CPP_TASK_ASYNC_CONTINUATIONS = 64;
 
-Dn2CppTask* dn2cpp_task_run_void(Dn2CppObject* del, int32_t options = DN2CPP_TASK_DENY_CHILD_ATTACH); // Task.Run(Action)
-Dn2CppTask* dn2cpp_task_run_i4(Dn2CppObject* del, int32_t options = DN2CPP_TASK_DENY_CHILD_ATTACH);   // Task.Run(Func<int/bool/...>)
-Dn2CppTask* dn2cpp_task_run_i8(Dn2CppObject* del, int32_t options = DN2CPP_TASK_DENY_CHILD_ATTACH);   // Task.Run(Func<long/IntPtr/...>)
-Dn2CppTask* dn2cpp_task_run_r4(Dn2CppObject* del, int32_t options = DN2CPP_TASK_DENY_CHILD_ATTACH);   // Task.Run(Func<float>)
-Dn2CppTask* dn2cpp_task_run_r8(Dn2CppObject* del, int32_t options = DN2CPP_TASK_DENY_CHILD_ATTACH);   // Task.Run(Func<double>)
-Dn2CppTask* dn2cpp_task_run_ref(Dn2CppObject* del, int32_t options = DN2CPP_TASK_DENY_CHILD_ATTACH);  // Task.Run(Func<T> : reference)
+Dn2CppTask* dn2cpp_task_run_void(Dn2CppObject* del, int32_t options = DN2CPP_TASK_DENY_CHILD_ATTACH, Dn2CppCancelSource* source = nullptr); // Task.Run(Action)
+Dn2CppTask* dn2cpp_task_run_i4(Dn2CppObject* del, int32_t options = DN2CPP_TASK_DENY_CHILD_ATTACH, Dn2CppCancelSource* source = nullptr);   // Task.Run(Func<int/bool/...>)
+Dn2CppTask* dn2cpp_task_run_i8(Dn2CppObject* del, int32_t options = DN2CPP_TASK_DENY_CHILD_ATTACH, Dn2CppCancelSource* source = nullptr);   // Task.Run(Func<long/IntPtr/...>)
+Dn2CppTask* dn2cpp_task_run_r4(Dn2CppObject* del, int32_t options = DN2CPP_TASK_DENY_CHILD_ATTACH, Dn2CppCancelSource* source = nullptr);   // Task.Run(Func<float>)
+Dn2CppTask* dn2cpp_task_run_r8(Dn2CppObject* del, int32_t options = DN2CPP_TASK_DENY_CHILD_ATTACH, Dn2CppCancelSource* source = nullptr);   // Task.Run(Func<double>)
+Dn2CppTask* dn2cpp_task_run_ref(Dn2CppObject* del, int32_t options = DN2CPP_TASK_DENY_CHILD_ATTACH, Dn2CppCancelSource* source = nullptr);  // Task.Run(Func<T> : reference)
 // Task.Run(Func<TStruct> : value type) — a struct result does not fit the 8-byte slot,
 // so `invoke` is a transpiler-emitted trampoline that runs the delegate and returns a
 // heap-boxed pointer (dn2cpp_struct_result_box) in the slot; the awaiting side copies it
 // back by the same T (PushTaskResult's Struct arm). The struct's exact ABI is stamped into
 // the trampoline at the call site, so the worker never needs a struct-return ABI.
-Dn2CppTask* dn2cpp_task_run_struct(Dn2CppObject* del, uint64_t (*invoke)(Dn2CppObject*), int32_t options = DN2CPP_TASK_DENY_CHILD_ATTACH);
+Dn2CppTask* dn2cpp_task_run_struct(Dn2CppObject* del, uint64_t (*invoke)(Dn2CppObject*), int32_t options = DN2CPP_TASK_DENY_CHILD_ATTACH, Dn2CppCancelSource* source = nullptr);
 // Task.Run(Func<Task> / Func<Task<T>>): the delegate returns an INNER task; the outer
 // task settles with the inner's status/result/exception (the async-lambda unwrap). One
 // entry point for every result kind — the 8-byte result slot is copied opaquely and the
 // awaiting side reinterprets it by T (0 for a void inner Task).
-Dn2CppTask* dn2cpp_task_run_unwrap(Dn2CppObject* del);
+Dn2CppTask* dn2cpp_task_run_unwrap(Dn2CppObject* del, Dn2CppCancelSource* source = nullptr);
 // TaskFactory.StartNew(Func<Task> / Func<Task<T>>): NO unwrap — the outer Task<Task<T>>
 // settles with the inner task pointer as soon as the delegate returns (real .NET's
 // nested-task semantics). The pool worker then drives its own scheduler until the inner
 // settles: a suspended async lambda parks its Task.Delay timers and continuations on the
 // worker's thread-local scheduler, which no other thread can drain.
-Dn2CppTask* dn2cpp_task_run_nested(Dn2CppObject* del, int32_t options = 0);
+Dn2CppTask* dn2cpp_task_run_nested(Dn2CppObject* del, int32_t options = 0, Dn2CppCancelSource* source = nullptr);
 // TaskFactory.StartNew(Action<object?>, object? state[, hints...]): like
 // dn2cpp_task_run_void but the worker invokes the 1-arg delegate with `state`
 // (the base Stream.FlushAsync shape). Both are GC-rooted while queued/running.
-Dn2CppTask* dn2cpp_task_run_void_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0);
-Dn2CppTask* dn2cpp_task_run_i4_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0);
-Dn2CppTask* dn2cpp_task_run_i8_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0);
-Dn2CppTask* dn2cpp_task_run_r4_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0);
-Dn2CppTask* dn2cpp_task_run_r8_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0);
-Dn2CppTask* dn2cpp_task_run_ref_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0);
+Dn2CppTask* dn2cpp_task_run_void_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0, Dn2CppCancelSource* source = nullptr);
+Dn2CppTask* dn2cpp_task_run_i4_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0, Dn2CppCancelSource* source = nullptr);
+Dn2CppTask* dn2cpp_task_run_i8_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0, Dn2CppCancelSource* source = nullptr);
+Dn2CppTask* dn2cpp_task_run_r4_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0, Dn2CppCancelSource* source = nullptr);
+Dn2CppTask* dn2cpp_task_run_r8_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0, Dn2CppCancelSource* source = nullptr);
+Dn2CppTask* dn2cpp_task_run_ref_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0, Dn2CppCancelSource* source = nullptr);
 
 // ---- cold tasks: `new Task(...)` / `new Task<T>(...)` + Start / RunSynchronously ----
 // A cold (unstarted) task holds its delegate and result-kind thunk until Start()
 // submits it to the worker pool or RunSynchronously() runs it inline on the calling
 // thread. The result kind is fixed at the newobj site, mirroring dn2cpp_task_run_*.
-Dn2CppTask* dn2cpp_task_cold_void(Dn2CppObject* del, int32_t options = 0); // new Task(Action)
-Dn2CppTask* dn2cpp_task_cold_i4(Dn2CppObject* del, int32_t options = 0);   // new Task<int/bool/...>(Func<T>)
-Dn2CppTask* dn2cpp_task_cold_i8(Dn2CppObject* del, int32_t options = 0);
-Dn2CppTask* dn2cpp_task_cold_r4(Dn2CppObject* del, int32_t options = 0);
-Dn2CppTask* dn2cpp_task_cold_r8(Dn2CppObject* del, int32_t options = 0);
-Dn2CppTask* dn2cpp_task_cold_ref(Dn2CppObject* del, int32_t options = 0);
+Dn2CppTask* dn2cpp_task_cold_void(Dn2CppObject* del, int32_t options = 0, Dn2CppCancelSource* source = nullptr); // new Task(Action)
+Dn2CppTask* dn2cpp_task_cold_i4(Dn2CppObject* del, int32_t options = 0, Dn2CppCancelSource* source = nullptr);   // new Task<int/bool/...>(Func<T>)
+Dn2CppTask* dn2cpp_task_cold_i8(Dn2CppObject* del, int32_t options = 0, Dn2CppCancelSource* source = nullptr);
+Dn2CppTask* dn2cpp_task_cold_r4(Dn2CppObject* del, int32_t options = 0, Dn2CppCancelSource* source = nullptr);
+Dn2CppTask* dn2cpp_task_cold_r8(Dn2CppObject* del, int32_t options = 0, Dn2CppCancelSource* source = nullptr);
+Dn2CppTask* dn2cpp_task_cold_ref(Dn2CppObject* del, int32_t options = 0, Dn2CppCancelSource* source = nullptr);
 // new Task<TStruct>(Func<TStruct> : value type): a struct result rides a transpiler-emitted
 // boxing trampoline (same `invoke` shape as dn2cpp_task_run_struct), stored as the cold
 // task's result thunk until Start() / RunSynchronously() runs it.
-Dn2CppTask* dn2cpp_task_cold_struct(Dn2CppObject* del, uint64_t (*invoke)(Dn2CppObject*), int32_t options = 0);
+Dn2CppTask* dn2cpp_task_cold_struct(Dn2CppObject* del, uint64_t (*invoke)(Dn2CppObject*), int32_t options = 0, Dn2CppCancelSource* source = nullptr);
 // new Task(Action<object?>, object? state): the worker/inline run invokes the
 // 1-arg delegate with `state` (same shape as dn2cpp_task_run_void_state).
-Dn2CppTask* dn2cpp_task_cold_void_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0);
-Dn2CppTask* dn2cpp_task_cold_i4_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0);
-Dn2CppTask* dn2cpp_task_cold_i8_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0);
-Dn2CppTask* dn2cpp_task_cold_r4_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0);
-Dn2CppTask* dn2cpp_task_cold_r8_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0);
-Dn2CppTask* dn2cpp_task_cold_ref_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0);
+Dn2CppTask* dn2cpp_task_cold_void_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0, Dn2CppCancelSource* source = nullptr);
+Dn2CppTask* dn2cpp_task_cold_i4_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0, Dn2CppCancelSource* source = nullptr);
+Dn2CppTask* dn2cpp_task_cold_i8_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0, Dn2CppCancelSource* source = nullptr);
+Dn2CppTask* dn2cpp_task_cold_r4_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0, Dn2CppCancelSource* source = nullptr);
+Dn2CppTask* dn2cpp_task_cold_r8_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0, Dn2CppCancelSource* source = nullptr);
+Dn2CppTask* dn2cpp_task_cold_ref_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options = 0, Dn2CppCancelSource* source = nullptr);
 Dn2CppTask* dn2cpp_task_cold_struct_state(Dn2CppObject* del, Dn2CppObject* state,
-    uint64_t (*invoke)(Dn2CppObject*, Dn2CppObject*), int32_t options = 0);
+    uint64_t (*invoke)(Dn2CppObject*, Dn2CppObject*), int32_t options = 0, Dn2CppCancelSource* source = nullptr);
 // Task.Start(): claim the cold work exactly once and submit it to the worker pool.
 // A second Start, or Start on a task that was never cold (an async-method task,
 // Task.Run, a settled task), throws InvalidOperationException like real .NET.
@@ -5945,16 +5947,16 @@ enum
 // of those) are read, and a continuation they exclude settles CANCELED rather than running,
 // which is what .NET does. Pass 0 for the overloads that take no options.
 Dn2CppTask* dn2cpp_task_continue_with(Dn2CppTask* t, Dn2CppObject* del, Dn2CppObject* state,
-                                     int32_t kind, int32_t options);
+                                     int32_t kind, int32_t options, Dn2CppCancelSource* source = nullptr);
 // Task.ContinueWith(Func<Task, TStruct> : value type): the continuation's struct result
 // does not fit the 8-byte slot, so `invoke` is a transpiler-emitted trampoline taking
 // (delegate, settled antecedent) that heap-boxes the result (dn2cpp_struct_result_box)
 // into the slot — the ContinueWith mirror of dn2cpp_task_run_struct.
 Dn2CppTask* dn2cpp_task_continue_with_struct(Dn2CppTask* t, Dn2CppObject* del,
                                             uint64_t (*invoke)(Dn2CppObject*, Dn2CppObject*),
-                                            int32_t options);
+                                            int32_t options, Dn2CppCancelSource* source = nullptr);
 Dn2CppTask* dn2cpp_task_continue_with_state_result(Dn2CppTask* t, Dn2CppObject* del,
-    Dn2CppObject* state, uint64_t (*invoke)(Dn2CppObject*, Dn2CppObject*, Dn2CppObject*), int32_t options);
+    Dn2CppObject* state, uint64_t (*invoke)(Dn2CppObject*, Dn2CppObject*, Dn2CppObject*), int32_t options, Dn2CppCancelSource* source = nullptr);
 // Task.WaitAsync(CancellationToken): a task that mirrors `t`'s outcome, but settles
 // CANCELED as soon as `src` cancels — whichever happens first wins, exactly once. `t`
 // itself keeps running; WaitAsync bounds the WAIT, not the work. A null source can never
@@ -7681,7 +7683,7 @@ struct Dn2CppTask : Dn2CppObject
     // drain-only accessor would leave the generated and intrinsic readers racing.
     std::atomic<int32_t> status; // DN2CPP_TASK_*
     int32_t id;                // Task.Id — positive, minted at alloc (fills the pad after status)
-    Dn2CppObject* exception;   // managed exception object when faulted
+    Dn2CppObject* exception;   // captured fault/cancellation exception; null for synthetic cancellation
     // Task.Exception cache: the AggregateException wrapper, minted on first
     // get_Exception read (identity-stable). Never stored into `exception` —
     // await/Wait re-raise the bare fault. Atomic because that mint happens AFTER the
@@ -7709,6 +7711,7 @@ struct Dn2CppTask : Dn2CppObject
     Dn2CppObject* completionWaitHandle;
     int32_t disposed; // negative: cached-task Dispose is a no-op
     std::atomic<int32_t> creationOptions; // public flags; cancellation can add async continuations
+    std::atomic<Dn2CppCancelSource*> cancellationSource; // associated token, independent of registrations
 };
 
 struct Dn2CppTaskCompletionSource : Dn2CppObject
@@ -7786,7 +7789,8 @@ Dn2CppObject* dn2cpp_taskscheduler_default();
 
 // A fresh pending task (status PENDING). The builder completes it via SetResult/
 // SetException once MoveNext finishes.
-Dn2CppTask* dn2cpp_task_alloc(int32_t options = 0);
+Dn2CppTask* dn2cpp_task_alloc(int32_t options = 0, Dn2CppCancelSource* source = nullptr);
+Dn2CppCancelToken dn2cpp_task_cancellation_token(Dn2CppTask* task);
 void dn2cpp_task_init_promise(Dn2CppTask* task, Dn2CppObject* state, int32_t options);
 void dn2cpp_task_dispose(Dn2CppTask* task);
 Dn2CppObject* dn2cpp_task_async_wait_handle(Dn2CppTask* task);
@@ -7971,7 +7975,7 @@ Dn2CppTask* dn2cpp_task_from_exception(Dn2CppObject* exception);
 // Task.FromCanceled(<T>) / ValueTask.FromCanceled(<T>): a pre-completed CANCELED
 // task carrying an OperationCanceledException; awaiting it or reading .Result
 // re-raises it (same path as an awaited canceled Task.Delay).
-Dn2CppTask* dn2cpp_task_from_canceled();
+Dn2CppTask* dn2cpp_task_from_canceled(Dn2CppCancelSource* source = nullptr);
 // TaskCompletionSource(<T>) owns a separate Dn2CppTask* it completes. Exactly-once
 // transitions: TrySet* returns 1 on the winning transition and 0 when the task
 // had already settled (thread-safe — concurrent TrySet* calls see one winner);
@@ -7981,10 +7985,10 @@ int32_t dn2cpp_task_try_set_result(Dn2CppTask* t, uint64_t result);
 void dn2cpp_task_try_set_result_deferred(Dn2CppTask* t, uint64_t result, Dn2CppCont** batch);
 void dn2cpp_task_dispatch_deferred(Dn2CppCont* batch);
 int32_t dn2cpp_task_try_set_exception(Dn2CppTask* t, Dn2CppObject* exception);
-int32_t dn2cpp_task_try_set_canceled(Dn2CppTask* t);
+int32_t dn2cpp_task_try_set_canceled(Dn2CppTask* t, Dn2CppCancelSource* source = nullptr);
 void dn2cpp_tcs_set_result(Dn2CppTask* t, uint64_t result);
 void dn2cpp_tcs_set_exception(Dn2CppTask* t, Dn2CppObject* exception);
-void dn2cpp_tcs_set_canceled(Dn2CppTask* t);
+void dn2cpp_tcs_set_canceled(Dn2CppTask* t, Dn2CppCancelSource* source = nullptr);
 // Enqueue a resumption on the cooperative run queue.
 void dn2cpp_sched_post(void (*fn)(void*), void* state);
 // Action form of dn2cpp_sched_post: enqueue a System.Action (and its multicast
@@ -8117,7 +8121,7 @@ Dn2CppTask* dn2cpp_task_delay_ct(int64_t ms, Dn2CppCancelSource* src);
 // Register the real OperationCanceledException type-info (emitted in generated code)
 // so a CANCELED task / ThrowIfCancellationRequested throws an object catchable by a
 // typed `catch (OperationCanceledException)` — not just catch (Exception).
-void dn2cpp_set_canceled_exception_type(const Dn2CppTypeInfo* ti);
+void dn2cpp_set_canceled_exception_type(const Dn2CppTypeInfo* ti, size_t tokenOffset = SIZE_MAX);
 // Register the real TaskCanceledException type-info (emitted in generated code): a
 // CANCELED **task** then carries a TaskCanceledException, as in real .NET, while the
 // token-side throw (ThrowIfCancellationRequested) keeps OperationCanceledException.
@@ -8125,7 +8129,7 @@ void dn2cpp_set_canceled_exception_type(const Dn2CppTypeInfo* ti);
 // CoreLib does not carry the type cannot observe the difference.
 void dn2cpp_set_task_canceled_exception_type(const Dn2CppTypeInfo* ti);
 // Throw an OperationCanceledException now (CancellationToken.ThrowIfCancellationRequested).
-[[noreturn]] void dn2cpp_throw_canceled();
+[[noreturn]] void dn2cpp_throw_canceled(Dn2CppCancelSource* source = nullptr);
 
 // Reinterpret a Task<T> result slot as a double and back (C++17, no
 // std::bit_cast). float results ride the same R8 stack slot, so they round-trip
