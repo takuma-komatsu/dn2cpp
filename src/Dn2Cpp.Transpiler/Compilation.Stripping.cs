@@ -389,13 +389,7 @@ internal sealed partial class Compilation
         }
         NoteMediumConstraints(module, definition.GetGenericParameters(), context);
         NoteMediumAttributes(module, definition.GetCustomAttributes());
-        // ThreadLocal's native storage replaces its entire managed slot/ID graph.
-        // Those absent fields cannot make its FinalizationHelper executable; an
-        // independent allocation, preservation or reflection demand still can.
-        bool nativeThreadLocalStorage = module.AssemblyName == "System.Private.CoreLib"
-            && definition.GetDeclaringType().IsNil
-            && reader.StringComparer.Equals(definition.Namespace, "System.Threading")
-            && reader.StringComparer.Equals(definition.Name, "ThreadLocal`1");
+        string storageOwner = RawSignatureProvider.TypeDefinitionName(reader, handle);
         bool nativeThreadPool = module.AssemblyName == "System.Private.CoreLib"
             && definition.GetDeclaringType().IsNil
             && reader.StringComparer.Equals(definition.Namespace, "System.Threading")
@@ -403,7 +397,8 @@ internal sealed partial class Compilation
         foreach (var fieldHandle in definition.GetFields())
         {
             var field = reader.GetFieldDefinition(fieldHandle);
-            if (!nativeThreadLocalStorage)
+            if (!CoreIntrinsicTypeMaps.ReplacesManagedStorage(module.AssemblyName, storageOwner,
+                (field.Attributes & System.Reflection.FieldAttributes.Static) != 0))
             {
                 var fieldType = field.DecodeSignature(SigProvider, context);
                 // Native enqueue owns both the work queue and worker wakeup. This

@@ -82,10 +82,13 @@ type still participates. Existing intrinsic and explicit-cut boundaries govern
 body analysis.
 Member-specific cuts retain callable wrappers from the same lowering used by
 address-taken calls; retention never restores their replaced IL bodies.
-ThreadLocal's opaque native storage also replaces its managed slot and ID fields.
-Those field signatures do not introduce Medium executable dependencies on CoreLib
-storage helpers. Independent executable or explicit reflection/preservation demands
-still follow the ordinary retention paths; the helpers are not replaced by no-op bodies.
+Native storage ownership is explicit and shared by both retention stages; an
+intrinsic type is not automatically field-opaque. ThreadLocal replaces its managed
+slot and ID fields. SystemTimeProviderTimer replaces its instance storage with the
+native timer's callback, state and scheduling data; its static fields remain ordinary
+retention edges. These field signatures retain metadata without introducing Medium
+executable dependencies on the replaced CoreLib storage helpers. Independent executable
+or explicit reflection/preservation demands still follow the ordinary retention paths; the helpers are not replaced by no-op bodies.
 ThreadPool's `s_workQueue` singleton likewise retains its metadata without adding
 an executable dependency on the managed ThreadPoolWorkQueue. State-machine attributes
 on native ThreadPool methods retain their type identities without reviving the
