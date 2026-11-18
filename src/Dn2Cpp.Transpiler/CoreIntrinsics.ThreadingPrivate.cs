@@ -6,7 +6,8 @@ namespace Dn2Cpp;
 internal static partial class CoreIntrinsics
 {
     internal static bool IsThreadingPrivateName(string? owner, string name) =>
-        owner == "System.Threading.Thread" && name == "ThreadNameChanged"
+        IsSemaphoreWaiterName(owner, name)
+        || owner == "System.Threading.Thread" && name == "ThreadNameChanged"
         || owner == "System.Threading.Lock" && name is "get_ShouldStopPreemptingWaiters" or "ResetWaiterStartTime" or "RecordWaiterStartTime";
 
     internal static void ValidateThreadingPrivate(MethodInfo method)
@@ -19,6 +20,8 @@ internal static partial class CoreIntrinsics
     internal static bool IsThreadingPrivate(MethodInfo method)
     {
         var owner = method.DeclaringClass;
+        if (IsSemaphoreWaiterName(owner.FullName, method.Name))
+            return IsSemaphoreWaiter(method);
         bool waiterMember = owner.FullName == "System.Threading.Lock";
         bool waiterQuery = method.Name == "get_ShouldStopPreemptingWaiters";
         if (!IsThreadingPrivateName(owner.FullName, method.Name)
@@ -48,14 +51,18 @@ internal static partial class CoreIntrinsics
     }
 
     internal static bool IsThreadingPrivateSignature(BlobReader blob, string name) =>
-        name != "ThreadNameChanged"
+        name is "CreateAndAddAsyncWaiter" or "RemoveAsyncWaiter"
+            ? IsSemaphoreWaiterSignature(blob, name)
+            : name != "ThreadNameChanged"
             ? blob.RemainingBytes == 3 && blob.ReadByte() == 0x20 && blob.ReadByte() == 0
                 && blob.ReadByte() == (byte)(name == "get_ShouldStopPreemptingWaiters" ? SignatureTypeCode.Boolean : SignatureTypeCode.Void)
             : blob.RemainingBytes == 4 && blob.ReadByte() == 0x20 && blob.ReadByte() == 1
                 && blob.ReadByte() == (byte)SignatureTypeCode.Void && blob.ReadByte() == (byte)SignatureTypeCode.String;
 
     internal static bool IsThreadingPrivateDecodedSignature(MethodSignature<TypeDesc> signature, string name) =>
-        signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+        name is "CreateAndAddAsyncWaiter" or "RemoveAsyncWaiter"
+            ? IsSemaphoreWaiterDecodedSignature(signature, name)
+            : signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
         && (name != "ThreadNameChanged"
             ? signature.RequiredParameterCount == 0 && signature.ParameterTypes.Length == 0
                 && signature.ReturnType is { Kind: TypeKind.Primitive, IsCanonPlaceholder: false }

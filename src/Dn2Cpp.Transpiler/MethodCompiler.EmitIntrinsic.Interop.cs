@@ -458,6 +458,11 @@ internal sealed partial class MethodCompiler
         }
         if (CoreIntrinsics.IsThreadingPrivate(callee))
         {
+            if (CoreIntrinsics.IsSemaphoreWaiterName(callee.DeclaringClass.FullName, callee.Name))
+            {
+                EmitSemaphoreWaiter(callee);
+                return;
+            }
             bool waiterMember = callee.DeclaringClass.FullName == "System.Threading.Lock";
             bool waiterQuery = callee.Name == "get_ShouldStopPreemptingWaiters";
             if (!waiterMember)

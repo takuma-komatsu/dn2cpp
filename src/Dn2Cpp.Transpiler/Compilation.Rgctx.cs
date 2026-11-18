@@ -642,6 +642,9 @@ internal sealed partial class Compilation
         "dn2cpp_invariant_compare_info_", // a cold lookup allocates the rooted comparer
         "dn2cpp_culture_sort_name(", // Chinese compatibility names allocate a literal header
         "dn2cpp_dtfi_invariant_",    // cold name/pattern lookup allocates rooted arrays and strings
+        "dn2cpp_semaphore_new(", // scanned semaphore owns its managed waiter queue
+        "dn2cpp_semaphore_create_async_waiter(", // allocates a promise
+        "dn2cpp_semaphore_release(", // waiter callback dispatch can allocate managed join results
         // String constructors and producers.
         "dn2cpp_string_from",       // every string-from-* constructor (chars/wcs/mbs/utf8/…)
         "dn2cpp_string_repeat_char",

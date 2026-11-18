@@ -464,7 +464,7 @@ internal sealed partial class MethodCompiler
                 Pop(); // this
                 return true;
             }
-            // The native SemaphoreSlim/Slim objects live for the program. WaitHandle
+            // SemaphoreSlim/Slim do not own an OS handle to close. WaitHandle
             // disposal is different: a managed subclass can own an attached Windows
             // HANDLE, and closing the WaitHandle must release that SafeWaitHandle.
             case ("System.Threading.SemaphoreSlim", "Dispose"):

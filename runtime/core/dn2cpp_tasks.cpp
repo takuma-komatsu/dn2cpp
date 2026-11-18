@@ -1578,10 +1578,9 @@ Dn2CppTask* dn2cpp_task_from_canceled()
 // dn2cpp_task_complete (whose callers settle a task they exclusively own), a
 // TCS may race concurrent TrySet* calls — the PENDING check and the transition
 // happen under the same g_task_mtx hold, so exactly one caller wins.
-static int32_t dn2cpp_task_try_complete(Dn2CppTask* t, int32_t status, uint64_t result,
-                                        Dn2CppObject* exception, Dn2CppObject* aggregate = nullptr)
+static int32_t dn2cpp_task_try_complete_deferred(Dn2CppTask* t, int32_t status, uint64_t result,
+    Dn2CppObject* exception, Dn2CppObject* aggregate, Dn2CppCont*& conts)
 {
-    Dn2CppCont* conts;
     {
         std::lock_guard<std::mutex> lk(g_task_mtx);
         if (t->status != DN2CPP_TASK_PENDING)
@@ -1596,8 +1595,37 @@ static int32_t dn2cpp_task_try_complete(Dn2CppTask* t, int32_t status, uint64_t 
         conts = t->continuations;
         dn2cpp_gc_store_ref(&t->continuations, static_cast<Dn2CppCont*>(nullptr));
     }
-    dn2cpp_fire_conts(conts);
     return 1;
+}
+
+static int32_t dn2cpp_task_try_complete(Dn2CppTask* t, int32_t status, uint64_t result,
+    Dn2CppObject* exception, Dn2CppObject* aggregate = nullptr)
+{
+    Dn2CppCont* conts = nullptr;
+    int32_t won = dn2cpp_task_try_complete_deferred(t, status, result, exception, aggregate, conts);
+    if (won)
+        dn2cpp_fire_conts(conts);
+    return won;
+}
+
+void dn2cpp_task_try_set_result_deferred(Dn2CppTask* t, uint64_t result, Dn2CppCont** batch)
+{
+    Dn2CppCont* conts = nullptr;
+    if (!dn2cpp_task_try_complete_deferred(t, DN2CPP_TASK_SUCCEEDED, result, nullptr, nullptr, conts)
+        || conts == nullptr)
+        return;
+    // Each detached list is reversed registration order. Prepend the later task's
+    // whole list so the final reversal also preserves completion-batch order.
+    Dn2CppCont* tail = conts;
+    while (tail->next != nullptr)
+        tail = tail->next;
+    dn2cpp_gc_store_ref(&tail->next, *batch);
+    *batch = conts; // caller-owned stack root, not a GC heap slot
+}
+
+void dn2cpp_task_dispatch_deferred(Dn2CppCont* batch)
+{
+    dn2cpp_fire_conts(batch);
 }
 
 int32_t dn2cpp_task_try_set_result(Dn2CppTask* t, uint64_t result)

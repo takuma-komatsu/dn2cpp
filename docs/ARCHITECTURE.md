@@ -1588,6 +1588,14 @@ rejects `AttachedToParent` because the runtime does not track a current parent
 task. Public delegate constructors and completion-source options keep their
 independent contracts. Stripping levels change retention, not this layout.
 
+SemaphoreSlim's retained private async-waiter add/remove helpers operate on the
+native semaphore's queue and actual TaskNode links. The scanned semaphore keeps
+pending nodes alive only for its own lifetime. Release detaches nodes and publishes
+their completed status in FIFO order under the semaphore lock, then dispatches
+continuations outside that lock. Synchronous waiters retain their reserved permits.
+This bridge does not expose the other managed SemaphoreSlim fields or expand the
+public timeout/cancellation overload contracts.
+
 #### Adopting a third-party async task type
 
 `Compilation.AdoptCustomAsyncTaskTypes` is the one place a non-BCL type is
