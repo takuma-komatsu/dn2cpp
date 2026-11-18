@@ -5748,7 +5748,7 @@ internal sealed partial class Compilation
     /// (<see cref="KeepsUnretainedAttributeRow"/>) when <paramref name="unretained"/>, whose
     /// row names the attribute's type-info.</summary>
     private void ReachAttributesOf(Module module, CustomAttributeHandleCollection handles, bool reach,
-        bool unretained = true)
+        bool unretained = true, bool identityOnlyStateMachines = false)
     {
         // A row only another route rendered is read by nothing unless attributes are read.
         bool keep = reach || _reflectionAttrUsed;
@@ -5775,9 +5775,15 @@ internal sealed partial class Compilation
                 if (!da.AttrClass.IsValueType && !da.AttrClass.IsAbstract)
                     ReachAllocatedType(da.AttrClass);
             }
+            // Retaining a replaced method's state-machine attribute preserves its
+            // type identity, not a reflection-member seed. Actual reads use the default.
+            bool keepFixedArguments = keep && !(identityOnlyStateMachines && da.AttrClass.FullName is
+                "System.Runtime.CompilerServices.AsyncStateMachineAttribute"
+                or "System.Runtime.CompilerServices.IteratorStateMachineAttribute"
+                or "System.Runtime.CompilerServices.AsyncIteratorStateMachineAttribute");
             var ps = da.Ctor.Signature.ParameterTypes;
             for (int i = 0; i < da.Fixed.Length; i++)
-                NoteAttrArg(da.Fixed[i].Type, da.Fixed[i].Value, i < ps.Length && ps[i].IsObject, keep);
+                NoteAttrArg(da.Fixed[i].Type, da.Fixed[i].Value, i < ps.Length && ps[i].IsObject, keepFixedArguments);
             foreach (var na in da.Named)
             {
                 // The member may be declared on an attribute BASE class — walk the

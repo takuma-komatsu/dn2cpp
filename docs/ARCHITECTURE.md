@@ -86,6 +86,20 @@ ThreadLocal's opaque native storage also replaces its managed slot and ID fields
 Those field signatures do not introduce Medium executable dependencies on CoreLib
 storage helpers. Independent executable or explicit reflection/preservation demands
 still follow the ordinary retention paths; the helpers are not replaced by no-op bodies.
+ThreadPool's `s_workQueue` singleton likewise retains its metadata without adding
+an executable dependency on the managed ThreadPoolWorkQueue. State-machine attributes
+on native ThreadPool methods retain their type identities without reviving the
+managed iterator or async bodies. Other attribute arguments retain their usual demands.
+Native enqueue roots the submitted work, starts the worker pool and signals its
+queue; other fields and
+independent demands for the managed queue keep their ordinary retention behavior.
+Method signatures on native ThreadPool and the existing no-op framework EventSource
+providers retain metadata identities without introducing executable type-wide demands
+for unused return types or discarded tracing payloads. Independently constructed or
+explicitly preserved payload types keep their normal executable retention.
+Retained framework-provider methods use callable wrappers of the existing no-listener
+lowering, including its unsupported-return checks; retention never restores their
+managed tracing bodies. User-defined providers keep their ordinary managed behavior.
 
 Closed generic types carry their known arguments through this closure. Open
 definitions are traversed symbolically; they do not imply every possible type or

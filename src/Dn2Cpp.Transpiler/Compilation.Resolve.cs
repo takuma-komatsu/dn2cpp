@@ -267,7 +267,7 @@ internal sealed partial class Compilation
                 // it AHEAD of its own intrinsic-type route, where it does fire.
                 if (CoreIntrinsics.MdEventSourceIsEnabled.Matches(mi))
                     return null;
-                if (IsFrameworkEventSourceProvider(mi.DeclaringClass))
+                if (CoreIntrinsics.MdFrameworkEventSourceProvider.Matches(mi))
                     return null;
                 // Const-folded getters (see CoreIntrinsics.ConstFoldedGetter) are
                 // emitted as constants, never as calls. The edge must not exist:

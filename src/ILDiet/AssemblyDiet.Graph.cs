@@ -165,6 +165,13 @@ internal sealed partial class AssemblyDiet
             NoteMediumMethod(method);
             ReachDefaultPrincipalTarget(method);
         }
+        // Framework tracing calls and retained callables use the primary's
+        // no-listener lowering, so their copied or stripped IL is metadata only.
+        if ((state & MethodState.Body) != 0 && IsFrameworkEventSourceProvider(method.DeclaringType))
+        {
+            KeepCutMethod(method);
+            state = (state & ~MethodState.Body) | MethodState.Metadata;
+        }
         if ((state & MethodState.Body) != 0 && _cutMethods.Contains(method))
         {
             KeepCutMethod(method);

@@ -299,6 +299,13 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
             || CoreIntrinsics.IsCustomAttributeDataConstructorBase(m))
             _intrinsicTypeTranspiled.Add(m);
+        // Medium, reflection and virtual dispatch can retain a provider member
+        // without a call token. Keep its callable replacement, never its managed IL.
+        if (CoreIntrinsics.MdFrameworkEventSourceProvider.Matches(m))
+        {
+            NoteInterceptFtnTarget(m);
+            return;
+        }
         // Methods of an intrinsic-mapped type are emitted inline, never
         // transpiled. Call edges already skip them (ResolveCallTarget), but an
         // allocated subtype's vtable can still surface an inherited intrinsic
