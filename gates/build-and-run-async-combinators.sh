@@ -79,7 +79,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-pending-task
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-cancellation-callback-faults"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-lazy-aggregate-message"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-delay-synchronization"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-derived-task-promises|prefix:before-timed-waitasync|prefix:before-semaphore-waiters"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-derived-task-promises|prefix:before-timed-waitasync|prefix:before-semaphore-waiters|prefix:before-task-creation-options"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|shared-binary:native-delay-deadlines"
 
 # The exception text is platform-owned; its record prefix is the boundary.
@@ -130,9 +130,20 @@ gate_extra_asserts() {
     gate_output prefix "$native" "$before" --before '== delay synchronization ==' --policy crlf
     gate_output byte-witness "$native" '== delay synchronization ==' --policy crlf \
         || { echo 'FAIL: delay synchronization block did not run once' >&2; return 1; }
-    printf '%s\n' 'semaphore waiter helpers end' > "$out/promise-end.expected"
+    before="$out/before-task-creation-options.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-task-creation-options
+    gate_output prefix "$native" "$before" --before '== task creation options ==' --policy crlf
+    for line in '== task creation options ==' 'source pending: 64' \
+        'run: 8' 'run unwrap: 0' 'factory: 9' 'run nested: 8' \
+        'run nested identity: True' 'run nested worker: 31' \
+        'wait pending identity: True' 'wait completed identity: True' \
+        'semaphore cancelable: 0' 'delay canceled: 64' \
+        'delay completed then canceled: 0' 'options null: True'; do
+        gate_output byte-witness "$native" "$line" --policy crlf || return 1
+    done
+    printf '%s\n' 'task creation options end' > "$out/promise-end.expected"
     gate_output suffix "$native" "$out/promise-end.expected" --policy crlf \
-        || { echo 'FAIL: semaphore waiter helpers block did not complete last' >&2; return 1; }
+        || { echo 'FAIL: task creation options block did not complete last' >&2; return 1; }
     for line in 'integer suspension: True,True|True,True' \
         'TimeSpan suspension: True,True|True,True' \
         'dependency pending: True,True|0' 'dependency order: firstsecond'; do

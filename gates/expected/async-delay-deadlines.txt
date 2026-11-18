@@ -1,3 +1,5 @@
 == native delay deadlines ==
 BDCA|yx|done
+detached delay completed: True options=0
+claimed delay canceled: True options=64
 native delay deadlines end

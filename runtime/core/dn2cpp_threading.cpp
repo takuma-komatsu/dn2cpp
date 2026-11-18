@@ -966,7 +966,7 @@ static uint64_t dn2cpp_run_semaphore_wait(Dn2CppObject* sem)
     return 0;
 }
 
-Dn2CppTask* dn2cpp_semaphore_wait_async(Dn2CppObject* o)
+Dn2CppTask* dn2cpp_semaphore_wait_async(Dn2CppObject* o, bool cancelable)
 {
     auto* s = static_cast<Dn2CppSemaphore*>(o);
     {
@@ -977,7 +977,8 @@ Dn2CppTask* dn2cpp_semaphore_wait_async(Dn2CppObject* o)
             return dn2cpp_task_completed();
         }
     }
-    return dn2cpp_pool_submit(o, &dn2cpp_run_semaphore_wait);
+    return dn2cpp_pool_submit(o, &dn2cpp_run_semaphore_wait,
+        cancelable ? 0 : DN2CPP_TASK_ASYNC_CONTINUATIONS);
 }
 
 // `ti` is the CONSTRUCTED type's handle, supplied by the newobj lowering; null

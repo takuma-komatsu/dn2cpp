@@ -1595,6 +1595,20 @@ capability contract, not a set of independent constants:
   detected set (the effective set is the implication closure of policy ∩ allowed)
   and can never opt into AVX10.2 or make a getter true that detection left false.
 
+#### Task creation options
+
+Native tasks retain public creation-option bits independently of their lifecycle.
+Task.Run delegate tasks carry DenyChildAttach. Its unwrapping promises carry None.
+Constructors, completion sources and StartNew retain their supplied public bits,
+while continuations exclude condition and synchronous-execution flags. Forwarding
+operations preserve the original task and its options. A cancellable delay adds
+RunContinuationsAsynchronously when cancellation invokes its callback. Completion
+unregisters the callback so later cancellation leaves the options unchanged. A
+registration detached by Cancel can still be disarmed until its callback is claimed.
+The options word is atomic because cancellation can update it concurrently with reads.
+Creation flags describe the task while scheduling follows the existing native
+contract for parent attachment, cancellation and scheduler selection.
+
 #### CoreLib promise task subclasses
 
 A managed subclass of `Task` or `Task<T>` has the same `Dn2CppTask` prefix as

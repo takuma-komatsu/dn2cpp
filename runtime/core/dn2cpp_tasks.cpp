@@ -78,7 +78,7 @@ static void dn2cpp_vts_arm(Dn2CppTask* t);
 
 static std::mutex& g_task_mtx = dn2cpp_never_destroyed<std::mutex>();
 
-static void dn2cpp_task_init(Dn2CppTask* t)
+static void dn2cpp_task_init(Dn2CppTask* t, int32_t options)
 {
     // Relaxed here and in every other pre-completed mint below: the task is private
     // to this thread until the caller publishes it, and that handoff carries it.
@@ -95,13 +95,14 @@ static void dn2cpp_task_init(Dn2CppTask* t)
     t->asyncState = nullptr;
     t->completionWaitHandle = nullptr;
     t->disposed = 0;
+    t->creationOptions.store(options & DN2CPP_TASK_OPTIONS_MASK, std::memory_order_relaxed);
 }
 
-Dn2CppTask* dn2cpp_task_alloc()
+Dn2CppTask* dn2cpp_task_alloc(int32_t options)
 {
     auto* t = static_cast<Dn2CppTask*>(dn2cpp_alloc(sizeof(Dn2CppTask)));
     t->type = &dn2cpp_task_type;
-    dn2cpp_task_init(t);
+    dn2cpp_task_init(t, options);
     return t;
 }
 
@@ -114,7 +115,7 @@ void dn2cpp_task_init_promise(Dn2CppTask* task, Dn2CppObject* state, int32_t opt
         dn2cpp_throw_platform_not_supported("Task promise attachment requires parent-task tracking");
     // Keep the allocating subtype's header and fields. Ordinary continuations
     // already queue to their owner scheduler, including the asynchronous option.
-    dn2cpp_task_init(task);
+    dn2cpp_task_init(task, options);
     dn2cpp_gc_store_ref(&task->asyncState, state);
 }
 
@@ -221,7 +222,7 @@ Dn2CppTask* dn2cpp_task_completed()
 Dn2CppTask dn2cpp_task_default_completed{
     { &dn2cpp_task_type }, DN2CPP_TASK_SUCCEEDED,
     dn2cpp_task_next_id(), nullptr, nullptr, 0, nullptr, nullptr, nullptr, nullptr,
-    DN2CPP_TASK_ORIGIN_STARTED, nullptr, nullptr, -1 };
+    DN2CPP_TASK_ORIGIN_STARTED, nullptr, nullptr, -1, 0 };
 
 Dn2CppTask* dn2cpp_task_from_result(uint64_t result, bool doNotDispose)
 {
@@ -355,12 +356,12 @@ Dn2CppTask* dn2cpp_vtask_as_task(Dn2CppTask* task, const Dn2CppTypeInfo* type, b
 }
 
 Dn2CppTaskCompletionSource* dn2cpp_tcs_alloc(const Dn2CppTypeInfo* type,
-                                              const Dn2CppTypeInfo* taskType, Dn2CppObject* state)
+                                              const Dn2CppTypeInfo* taskType, Dn2CppObject* state, int32_t options)
 {
     auto* source = static_cast<Dn2CppTaskCompletionSource*>(
         dn2cpp_alloc(sizeof(Dn2CppTaskCompletionSource)));
     source->type = type;
-    dn2cpp_gc_store_ref(&source->task, dn2cpp_task_stamp(dn2cpp_task_alloc(), taskType));
+    dn2cpp_gc_store_ref(&source->task, dn2cpp_task_stamp(dn2cpp_task_alloc(options), taskType));
     dn2cpp_gc_store_ref(&source->task->asyncState, state);
     return source;
 }
@@ -1678,7 +1679,9 @@ void dn2cpp_tcs_set_canceled(Dn2CppTask* t)
 struct Dn2CppCancelReg
 {
     Dn2CppCancelSource* source;  // owning source (for unregister)
-    Dn2CppTask* task;            // non-null: a pending Delay to transition to CANCELED
+    Dn2CppTask* task;            // non-null: a pending task to transition to CANCELED
+    bool delay;                // only Delay cancellation adds RunContinuationsAsynchronously
+    bool delayArmed;           // guarded by g_cts_mtx; consumed by claim or cleanup
     Dn2CppObject* callback;      // non-null: an Action to invoke on Cancel()
     Dn2CppObject* stateCallback; // non-null: an Action<object> to invoke with `state`
     Dn2CppObject* tokenCallback; // non-null: an Action<object, CancellationToken>
@@ -1694,6 +1697,16 @@ struct Dn2CppCancelReg
 // IsCancellationRequested without re-entering it), so the lock never wraps user
 // code and cross-thread cancellation cannot self-deadlock.
 static std::mutex& g_cts_mtx = dn2cpp_never_destroyed<std::mutex>();
+
+static bool dn2cpp_delay_claim_cancellation(Dn2CppCancelReg* registration)
+{
+    std::lock_guard<std::mutex> lock(g_cts_mtx);
+    if (!registration->delayArmed)
+        return false;
+    registration->delayArmed = false;
+    return true;
+}
+
 // Every CancelAfter timer thread waits here, so a reschedule / Cancel / Dispose on any
 // source wakes every waiter with one notify_all. One shared variable rather than one per
 // source keeps Dn2CppCancelSource a plain GC block with no members needing a constructor
@@ -1756,8 +1769,14 @@ void dn2cpp_cts_cancel(Dn2CppCancelSource* src, bool throwOnFirstException)
         {
             if (r->task != nullptr)
             {
-                // A pending Task.Delay bound to this source: its timer entry is skipped
-                // once the task leaves PENDING.
+                // Delay's cancellation callback sets this bit before trying to settle,
+                // even if an in-flight timer completion won the race. WaitAsync does not.
+                if (r->delay)
+                {
+                    if (!dn2cpp_delay_claim_cancellation(r))
+                        continue;
+                    r->task->creationOptions.fetch_or(DN2CPP_TASK_ASYNC_CONTINUATIONS, std::memory_order_relaxed);
+                }
                 if (r->task->status == DN2CPP_TASK_PENDING)
                     dn2cpp_task_try_set_canceled(r->task);
             }
@@ -1805,6 +1824,7 @@ static void dn2cpp_cts_link_one(Dn2CppCancelSource* child, Dn2CppCancelSource* p
     auto* r = static_cast<Dn2CppCancelReg*>(dn2cpp_alloc(sizeof(Dn2CppCancelReg)));
     r->source = parent;
     r->task = nullptr;
+    r->delay = false;
     r->callback = nullptr;
     r->stateCallback = nullptr;
     r->tokenCallback = nullptr;
@@ -1894,6 +1914,7 @@ Dn2CppCancelReg* dn2cpp_cts_register(Dn2CppCancelSource* src, Dn2CppObject* call
     auto* r = static_cast<Dn2CppCancelReg*>(dn2cpp_alloc(sizeof(Dn2CppCancelReg)));
     r->source = src;
     r->task = nullptr;
+    r->delay = false;
     r->callback = callback;
     r->stateCallback = nullptr;
     r->tokenCallback = nullptr;
@@ -1927,6 +1948,7 @@ Dn2CppCancelReg* dn2cpp_cts_register_state(Dn2CppCancelSource* src, Dn2CppObject
     auto* r = static_cast<Dn2CppCancelReg*>(dn2cpp_alloc(sizeof(Dn2CppCancelReg)));
     r->source = src;
     r->task = nullptr;
+    r->delay = false;
     r->callback = nullptr;
     r->stateCallback = callback;
     r->tokenCallback = nullptr;
@@ -1976,6 +1998,7 @@ Dn2CppCancelReg* dn2cpp_cts_register_state_token(Dn2CppCancelSource* src, Dn2Cpp
     auto* r = static_cast<Dn2CppCancelReg*>(dn2cpp_alloc(sizeof(Dn2CppCancelReg)));
     r->source = src;
     r->task = nullptr;
+    r->delay = false;
     r->callback = nullptr;
     r->stateCallback = nullptr;
     r->tokenCallback = callback;
@@ -2251,6 +2274,19 @@ Dn2CppCancelSource* dn2cpp_cts_new_after(int64_t ms, const char* paramName)
     return s;
 }
 
+static void dn2cpp_delay_unregister(void* state)
+{
+    auto* registration = static_cast<Dn2CppCancelReg*>(state);
+    {
+        // Cancel may already have detached the list. Disarm the node itself so a
+        // younger callback can finish the delay before its cancellation is claimed.
+        // A callback that already claimed the node keeps its right to run.
+        std::lock_guard<std::mutex> lock(g_cts_mtx);
+        registration->delayArmed = false;
+    }
+    dn2cpp_cts_unregister(registration);
+}
+
 Dn2CppTask* dn2cpp_task_delay_ct(int64_t ms, Dn2CppCancelSource* src)
 {
     // Already-canceled source: the delay is born canceled (no timer scheduled).
@@ -2268,6 +2304,8 @@ Dn2CppTask* dn2cpp_task_delay_ct(int64_t ms, Dn2CppCancelSource* src)
         auto* r = static_cast<Dn2CppCancelReg*>(dn2cpp_alloc(sizeof(Dn2CppCancelReg)));
         r->source = src;
         r->task = t;
+        r->delay = true;
+        r->delayArmed = true;
         r->callback = nullptr;
         r->stateCallback = nullptr;
         r->tokenCallback = nullptr;
@@ -2283,8 +2321,12 @@ Dn2CppTask* dn2cpp_task_delay_ct(int64_t ms, Dn2CppCancelSource* src)
                 dn2cpp_gc_store_ref(&src->regs, r);
             }
         }
-        if (raced)
-            dn2cpp_task_set_canceled(t);
+        dn2cpp_task_on_completed_sync(t, &dn2cpp_delay_unregister, r);
+        if (raced && dn2cpp_delay_claim_cancellation(r))
+        {
+            t->creationOptions.fetch_or(DN2CPP_TASK_ASYNC_CONTINUATIONS, std::memory_order_relaxed);
+            dn2cpp_task_try_set_canceled(t);
+        }
     }
     return t;
 }
@@ -3436,9 +3478,9 @@ static void dn2cpp_pool_enqueue(Dn2CppTask* t, Dn2CppObject* del, Dn2CppObject* 
     g_pool_cv.notify_one();
 }
 
-Dn2CppTask* dn2cpp_pool_submit(Dn2CppObject* del, uint64_t (*invoke)(Dn2CppObject*))
+Dn2CppTask* dn2cpp_pool_submit(Dn2CppObject* del, uint64_t (*invoke)(Dn2CppObject*), int32_t options)
 {
-    Dn2CppTask* t = dn2cpp_task_alloc();
+    Dn2CppTask* t = dn2cpp_task_alloc(options);
     t->startKind = DN2CPP_TASK_ORIGIN_STARTED;
     dn2cpp_pool_enqueue(t, del, nullptr, invoke, nullptr);
     return t;
@@ -3448,9 +3490,9 @@ Dn2CppTask* dn2cpp_pool_submit(Dn2CppObject* del, uint64_t (*invoke)(Dn2CppObjec
 // item carries a 2-arg thunk; the worker invokes it with the holder node's del + state
 // (both rooted by the node from enqueue until the task settles).
 static Dn2CppTask* dn2cpp_pool_submit_state(Dn2CppObject* del, Dn2CppObject* state,
-                                            uint64_t (*invoke2)(Dn2CppObject*, Dn2CppObject*))
+                                            uint64_t (*invoke2)(Dn2CppObject*, Dn2CppObject*), int32_t options)
 {
-    Dn2CppTask* t = dn2cpp_task_alloc();
+    Dn2CppTask* t = dn2cpp_task_alloc(options);
     t->startKind = DN2CPP_TASK_ORIGIN_STARTED;
     dn2cpp_gc_store_ref(&t->asyncState, state);
     dn2cpp_pool_enqueue(t, del, state, nullptr, invoke2);
@@ -3487,9 +3529,9 @@ static Dn2CppTask* dn2cpp_pool_submit_unwrap(Dn2CppObject* del)
 // scheduler until the inner settles (see the worker loop). The outer task stays counted
 // in g_inflight_async_tasks from here until the drain finishes, keeping a thread that
 // awaits the inner task asleep (not deadlock-failed) for the whole inner-task lifetime.
-static Dn2CppTask* dn2cpp_pool_submit_nested(Dn2CppObject* del)
+static Dn2CppTask* dn2cpp_pool_submit_nested(Dn2CppObject* del, int32_t options)
 {
-    Dn2CppTask* t = dn2cpp_task_alloc();
+    Dn2CppTask* t = dn2cpp_task_alloc(options);
     t->startKind = DN2CPP_TASK_ORIGIN_STARTED;
     // A caller holding the task also keeps its worker delegate reachable.
     dn2cpp_gc_store_ref(&t->workerKeepAlive, del);
@@ -3567,52 +3609,52 @@ static uint64_t dn2cpp_run_ref(Dn2CppObject* del)
         reinterpret_cast<Dn2CppObject* (*)(Dn2CppObject*)>(d->method)(d->target)));
 }
 
-Dn2CppTask* dn2cpp_task_run_void(Dn2CppObject* del)
+Dn2CppTask* dn2cpp_task_run_void(Dn2CppObject* del, int32_t options)
 {
     dn2cpp_task_require_delegate(del, "action");
-    return dn2cpp_pool_submit(del, &dn2cpp_run_void);
+    return dn2cpp_pool_submit(del, &dn2cpp_run_void, options);
 }
-Dn2CppTask* dn2cpp_task_run_i4(Dn2CppObject* del)
+Dn2CppTask* dn2cpp_task_run_i4(Dn2CppObject* del, int32_t options)
 {
     dn2cpp_task_require_delegate(del, "function");
-    return dn2cpp_pool_submit(del, &dn2cpp_run_i4);
+    return dn2cpp_pool_submit(del, &dn2cpp_run_i4, options);
 }
-Dn2CppTask* dn2cpp_task_run_i8(Dn2CppObject* del)
+Dn2CppTask* dn2cpp_task_run_i8(Dn2CppObject* del, int32_t options)
 {
     dn2cpp_task_require_delegate(del, "function");
-    return dn2cpp_pool_submit(del, &dn2cpp_run_i8);
+    return dn2cpp_pool_submit(del, &dn2cpp_run_i8, options);
 }
-Dn2CppTask* dn2cpp_task_run_r4(Dn2CppObject* del)
+Dn2CppTask* dn2cpp_task_run_r4(Dn2CppObject* del, int32_t options)
 {
     dn2cpp_task_require_delegate(del, "function");
-    return dn2cpp_pool_submit(del, &dn2cpp_run_r4);
+    return dn2cpp_pool_submit(del, &dn2cpp_run_r4, options);
 }
-Dn2CppTask* dn2cpp_task_run_r8(Dn2CppObject* del)
+Dn2CppTask* dn2cpp_task_run_r8(Dn2CppObject* del, int32_t options)
 {
     dn2cpp_task_require_delegate(del, "function");
-    return dn2cpp_pool_submit(del, &dn2cpp_run_r8);
+    return dn2cpp_pool_submit(del, &dn2cpp_run_r8, options);
 }
-Dn2CppTask* dn2cpp_task_run_ref(Dn2CppObject* del)
+Dn2CppTask* dn2cpp_task_run_ref(Dn2CppObject* del, int32_t options)
 {
     dn2cpp_task_require_delegate(del, "function");
-    return dn2cpp_pool_submit(del, &dn2cpp_run_ref);
+    return dn2cpp_pool_submit(del, &dn2cpp_run_ref, options);
 }
 // A struct result carries its own boxing thunk (the transpiler stamps in the struct's
 // exact type); the worker packs the boxed pointer into the 8-byte slot like any other run.
-Dn2CppTask* dn2cpp_task_run_struct(Dn2CppObject* del, uint64_t (*invoke)(Dn2CppObject*))
+Dn2CppTask* dn2cpp_task_run_struct(Dn2CppObject* del, uint64_t (*invoke)(Dn2CppObject*), int32_t options)
 {
     dn2cpp_task_require_delegate(del, "function");
-    return dn2cpp_pool_submit(del, invoke);
+    return dn2cpp_pool_submit(del, invoke, options);
 }
 Dn2CppTask* dn2cpp_task_run_unwrap(Dn2CppObject* del)
 {
     dn2cpp_task_require_delegate(del, "function");
     return dn2cpp_pool_submit_unwrap(del);
 }
-Dn2CppTask* dn2cpp_task_run_nested(Dn2CppObject* del)
+Dn2CppTask* dn2cpp_task_run_nested(Dn2CppObject* del, int32_t options)
 {
     dn2cpp_task_require_delegate(del, "function");
-    return dn2cpp_pool_submit_nested(del);
+    return dn2cpp_pool_submit_nested(del, options);
 }
 
 // TaskFactory.StartNew(Action<object?>, state): run the 1-arg delegate chain with the
@@ -3660,45 +3702,45 @@ static uint64_t dn2cpp_run_ref_state(Dn2CppObject* del, Dn2CppObject* state)
         reinterpret_cast<Dn2CppObject* (*)(Dn2CppObject*, Dn2CppObject*)>(d->method)(d->target, state)));
 }
 
-Dn2CppTask* dn2cpp_task_run_void_state(Dn2CppObject* del, Dn2CppObject* state)
+Dn2CppTask* dn2cpp_task_run_void_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options)
 {
     dn2cpp_task_require_delegate(del, "action");
-    return dn2cpp_pool_submit_state(del, state, &dn2cpp_run_void_state);
+    return dn2cpp_pool_submit_state(del, state, &dn2cpp_run_void_state, options);
 }
-Dn2CppTask* dn2cpp_task_run_i4_state(Dn2CppObject* del, Dn2CppObject* state)
+Dn2CppTask* dn2cpp_task_run_i4_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options)
 {
     dn2cpp_task_require_delegate(del, "function");
-    return dn2cpp_pool_submit_state(del, state, &dn2cpp_run_i4_state);
+    return dn2cpp_pool_submit_state(del, state, &dn2cpp_run_i4_state, options);
 }
-Dn2CppTask* dn2cpp_task_run_i8_state(Dn2CppObject* del, Dn2CppObject* state)
+Dn2CppTask* dn2cpp_task_run_i8_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options)
 {
     dn2cpp_task_require_delegate(del, "function");
-    return dn2cpp_pool_submit_state(del, state, &dn2cpp_run_i8_state);
+    return dn2cpp_pool_submit_state(del, state, &dn2cpp_run_i8_state, options);
 }
-Dn2CppTask* dn2cpp_task_run_r4_state(Dn2CppObject* del, Dn2CppObject* state)
+Dn2CppTask* dn2cpp_task_run_r4_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options)
 {
     dn2cpp_task_require_delegate(del, "function");
-    return dn2cpp_pool_submit_state(del, state, &dn2cpp_run_r4_state);
+    return dn2cpp_pool_submit_state(del, state, &dn2cpp_run_r4_state, options);
 }
-Dn2CppTask* dn2cpp_task_run_r8_state(Dn2CppObject* del, Dn2CppObject* state)
+Dn2CppTask* dn2cpp_task_run_r8_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options)
 {
     dn2cpp_task_require_delegate(del, "function");
-    return dn2cpp_pool_submit_state(del, state, &dn2cpp_run_r8_state);
+    return dn2cpp_pool_submit_state(del, state, &dn2cpp_run_r8_state, options);
 }
-Dn2CppTask* dn2cpp_task_run_ref_state(Dn2CppObject* del, Dn2CppObject* state)
+Dn2CppTask* dn2cpp_task_run_ref_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options)
 {
     dn2cpp_task_require_delegate(del, "function");
-    return dn2cpp_pool_submit_state(del, state, &dn2cpp_run_ref_state);
+    return dn2cpp_pool_submit_state(del, state, &dn2cpp_run_ref_state, options);
 }
 
 // ---- cold tasks: `new Task(...)` / `new Task<T>(...)` + Start / RunSynchronously ----
 
 static Dn2CppTask* dn2cpp_task_cold(Dn2CppObject* del, Dn2CppObject* state,
                                     uint64_t (*invoke)(Dn2CppObject*),
-                                    uint64_t (*invoke2)(Dn2CppObject*, Dn2CppObject*))
+                                    uint64_t (*invoke2)(Dn2CppObject*, Dn2CppObject*), int32_t options)
 {
     dn2cpp_task_require_delegate(del, "action");
-    Dn2CppTask* t = dn2cpp_task_alloc();
+    Dn2CppTask* t = dn2cpp_task_alloc(options);
     auto* c = static_cast<Dn2CppTaskCold*>(dn2cpp_alloc(sizeof(Dn2CppTaskCold)));
     dn2cpp_gc_store_ref(&c->del, del);
     dn2cpp_gc_store_ref(&c->state, state);
@@ -3710,29 +3752,29 @@ static Dn2CppTask* dn2cpp_task_cold(Dn2CppObject* del, Dn2CppObject* state,
     return t;
 }
 
-Dn2CppTask* dn2cpp_task_cold_void(Dn2CppObject* del) { return dn2cpp_task_cold(del, nullptr, &dn2cpp_run_void, nullptr); }
-Dn2CppTask* dn2cpp_task_cold_i4(Dn2CppObject* del) { return dn2cpp_task_cold(del, nullptr, &dn2cpp_run_i4, nullptr); }
-Dn2CppTask* dn2cpp_task_cold_i8(Dn2CppObject* del) { return dn2cpp_task_cold(del, nullptr, &dn2cpp_run_i8, nullptr); }
-Dn2CppTask* dn2cpp_task_cold_r4(Dn2CppObject* del) { return dn2cpp_task_cold(del, nullptr, &dn2cpp_run_r4, nullptr); }
-Dn2CppTask* dn2cpp_task_cold_r8(Dn2CppObject* del) { return dn2cpp_task_cold(del, nullptr, &dn2cpp_run_r8, nullptr); }
-Dn2CppTask* dn2cpp_task_cold_ref(Dn2CppObject* del) { return dn2cpp_task_cold(del, nullptr, &dn2cpp_run_ref, nullptr); }
-Dn2CppTask* dn2cpp_task_cold_struct(Dn2CppObject* del, uint64_t (*invoke)(Dn2CppObject*))
+Dn2CppTask* dn2cpp_task_cold_void(Dn2CppObject* del, int32_t options) { return dn2cpp_task_cold(del, nullptr, &dn2cpp_run_void, nullptr, options); }
+Dn2CppTask* dn2cpp_task_cold_i4(Dn2CppObject* del, int32_t options) { return dn2cpp_task_cold(del, nullptr, &dn2cpp_run_i4, nullptr, options); }
+Dn2CppTask* dn2cpp_task_cold_i8(Dn2CppObject* del, int32_t options) { return dn2cpp_task_cold(del, nullptr, &dn2cpp_run_i8, nullptr, options); }
+Dn2CppTask* dn2cpp_task_cold_r4(Dn2CppObject* del, int32_t options) { return dn2cpp_task_cold(del, nullptr, &dn2cpp_run_r4, nullptr, options); }
+Dn2CppTask* dn2cpp_task_cold_r8(Dn2CppObject* del, int32_t options) { return dn2cpp_task_cold(del, nullptr, &dn2cpp_run_r8, nullptr, options); }
+Dn2CppTask* dn2cpp_task_cold_ref(Dn2CppObject* del, int32_t options) { return dn2cpp_task_cold(del, nullptr, &dn2cpp_run_ref, nullptr, options); }
+Dn2CppTask* dn2cpp_task_cold_struct(Dn2CppObject* del, uint64_t (*invoke)(Dn2CppObject*), int32_t options)
 {
-    return dn2cpp_task_cold(del, nullptr, invoke, nullptr);
+    return dn2cpp_task_cold(del, nullptr, invoke, nullptr, options);
 }
-Dn2CppTask* dn2cpp_task_cold_void_state(Dn2CppObject* del, Dn2CppObject* state)
+Dn2CppTask* dn2cpp_task_cold_void_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options)
 {
-    return dn2cpp_task_cold(del, state, nullptr, &dn2cpp_run_void_state);
+    return dn2cpp_task_cold(del, state, nullptr, &dn2cpp_run_void_state, options);
 }
-Dn2CppTask* dn2cpp_task_cold_i4_state(Dn2CppObject* del, Dn2CppObject* state) { return dn2cpp_task_cold(del, state, nullptr, &dn2cpp_run_i4_state); }
-Dn2CppTask* dn2cpp_task_cold_i8_state(Dn2CppObject* del, Dn2CppObject* state) { return dn2cpp_task_cold(del, state, nullptr, &dn2cpp_run_i8_state); }
-Dn2CppTask* dn2cpp_task_cold_r4_state(Dn2CppObject* del, Dn2CppObject* state) { return dn2cpp_task_cold(del, state, nullptr, &dn2cpp_run_r4_state); }
-Dn2CppTask* dn2cpp_task_cold_r8_state(Dn2CppObject* del, Dn2CppObject* state) { return dn2cpp_task_cold(del, state, nullptr, &dn2cpp_run_r8_state); }
-Dn2CppTask* dn2cpp_task_cold_ref_state(Dn2CppObject* del, Dn2CppObject* state) { return dn2cpp_task_cold(del, state, nullptr, &dn2cpp_run_ref_state); }
+Dn2CppTask* dn2cpp_task_cold_i4_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options) { return dn2cpp_task_cold(del, state, nullptr, &dn2cpp_run_i4_state, options); }
+Dn2CppTask* dn2cpp_task_cold_i8_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options) { return dn2cpp_task_cold(del, state, nullptr, &dn2cpp_run_i8_state, options); }
+Dn2CppTask* dn2cpp_task_cold_r4_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options) { return dn2cpp_task_cold(del, state, nullptr, &dn2cpp_run_r4_state, options); }
+Dn2CppTask* dn2cpp_task_cold_r8_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options) { return dn2cpp_task_cold(del, state, nullptr, &dn2cpp_run_r8_state, options); }
+Dn2CppTask* dn2cpp_task_cold_ref_state(Dn2CppObject* del, Dn2CppObject* state, int32_t options) { return dn2cpp_task_cold(del, state, nullptr, &dn2cpp_run_ref_state, options); }
 Dn2CppTask* dn2cpp_task_cold_struct_state(Dn2CppObject* del, Dn2CppObject* state,
-    uint64_t (*invoke)(Dn2CppObject*, Dn2CppObject*))
+    uint64_t (*invoke)(Dn2CppObject*, Dn2CppObject*), int32_t options)
 {
-    return dn2cpp_task_cold(del, state, nullptr, invoke);
+    return dn2cpp_task_cold(del, state, nullptr, invoke, options);
 }
 
 // Claim a cold task's unstarted work exactly once, under g_task_mtx (the same
@@ -3952,7 +3994,7 @@ Dn2CppTask* dn2cpp_task_continue_with(Dn2CppTask* t, Dn2CppObject* del, Dn2CppOb
                                       int32_t kind, int32_t options)
 {
     dn2cpp_null_check(t);
-    Dn2CppTask* ct = dn2cpp_task_alloc();
+    Dn2CppTask* ct = dn2cpp_task_alloc(options);
     ct->startKind = DN2CPP_TASK_ORIGIN_CONTINUATION;
     dn2cpp_gc_store_ref(&ct->asyncState, state);
     // A caller holding the continuation task also keeps its delegate reachable.
@@ -3974,7 +4016,7 @@ Dn2CppTask* dn2cpp_task_continue_with_state_result(Dn2CppTask* t, Dn2CppObject* 
     Dn2CppObject* state, uint64_t (*invoke)(Dn2CppObject*, Dn2CppObject*, Dn2CppObject*), int32_t options)
 {
     dn2cpp_null_check(t);
-    Dn2CppTask* task = dn2cpp_task_alloc();
+    Dn2CppTask* task = dn2cpp_task_alloc(options);
     task->startKind = DN2CPP_TASK_ORIGIN_CONTINUATION;
     dn2cpp_gc_store_ref(&task->asyncState, state);
     dn2cpp_gc_store_ref(&task->workerKeepAlive, del);
@@ -4058,6 +4100,7 @@ Dn2CppTask* dn2cpp_task_wait_async(Dn2CppTask* t, Dn2CppCancelSource* src)
             auto* r = static_cast<Dn2CppCancelReg*>(dn2cpp_alloc(sizeof(Dn2CppCancelReg)));
             r->source = src;
             r->task = wt;
+            r->delay = false;
             r->callback = nullptr;
             r->stateCallback = nullptr;
             r->tokenCallback = nullptr;
@@ -4183,7 +4226,7 @@ Dn2CppTask* dn2cpp_task_continue_with_struct(Dn2CppTask* t, Dn2CppObject* del,
                                              int32_t options)
 {
     dn2cpp_null_check(t);
-    Dn2CppTask* ct = dn2cpp_task_alloc();
+    Dn2CppTask* ct = dn2cpp_task_alloc(options);
     ct->startKind = DN2CPP_TASK_ORIGIN_CONTINUATION;
     // A caller holding the continuation task also keeps its delegate reachable.
     dn2cpp_gc_store_ref(&ct->workerKeepAlive, del);
