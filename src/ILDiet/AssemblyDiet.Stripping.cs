@@ -48,6 +48,34 @@ internal sealed partial class AssemblyDiet
         }
     }
 
+    private bool MediumNativeSignatureOwner(TypeReference reference)
+    {
+        if (Resolve(reference) is not { } type)
+            return false;
+        string assembly = type.Module.Assembly.Name.Name;
+        if (assembly == "System.Private.CoreLib" && type.DeclaringType is null
+            && type.FullName == "System.Threading.ThreadPool")
+            return true;
+        return IsFrameworkEventSourceProvider(type);
+    }
+
+    private bool IsFrameworkEventSourceProvider(TypeDefinition type)
+    {
+        string assembly = type.Module.Assembly.Name.Name;
+        if (assembly != "System.Private.CoreLib" && !assembly.StartsWith("System.", StringComparison.Ordinal))
+            return false;
+        var seen = new HashSet<TypeDefinition>();
+        for (var current = type; seen.Add(current) && current.BaseType is { } parent;)
+        {
+            if (parent.FullName == "System.Diagnostics.Tracing.EventSource")
+                return true;
+            if (Resolve(parent) is not { } next)
+                break;
+            current = next;
+        }
+        return false;
+    }
+
     private void NoteMediumMethod(MethodReference method)
     {
         if (_request.StrippingLevel != StrippingLevel.Medium) return;
@@ -56,8 +84,18 @@ internal sealed partial class AssemblyDiet
         try
         {
             NoteMediumType(method.DeclaringType);
-            NoteMediumType(method.ReturnType);
-            foreach (var parameter in method.Parameters) NoteMediumType(parameter.ParameterType);
+            // Match Compilation's native ThreadPool and no-op framework-provider
+            // boundaries without dropping signature identities from metadata.
+            if (MediumNativeSignatureOwner(method.DeclaringType))
+            {
+                MarkSignatureType(method.ReturnType);
+                foreach (var parameter in method.Parameters) MarkSignatureType(parameter.ParameterType);
+            }
+            else
+            {
+                NoteMediumType(method.ReturnType);
+                foreach (var parameter in method.Parameters) NoteMediumType(parameter.ParameterType);
+            }
             if (method is GenericInstanceMethod generic)
                 foreach (var argument in generic.GenericArguments) NoteMediumType(argument);
         }
@@ -105,10 +143,19 @@ internal sealed partial class AssemblyDiet
         bool nativeThreadLocalStorage = type.Module.Assembly.Name.Name == "System.Private.CoreLib"
             && type.DeclaringType is null && type.Namespace == "System.Threading"
             && type.Name == "ThreadLocal`1";
+        bool nativeThreadPool = type.Module.Assembly.Name.Name == "System.Private.CoreLib"
+            && type.DeclaringType is null && type.Namespace == "System.Threading"
+            && type.Name == "ThreadPool";
         foreach (var field in type.Fields)
         {
             _fields.Add(field);
-            if (nativeThreadLocalStorage)
+            // Match Compilation: native enqueue replaces only this queue singleton,
+            // not other fields or independent demands for the managed work queue.
+            bool nativeWorkQueue = nativeThreadPool && field.IsStatic && field.IsInitOnly
+                && field.Name == "s_workQueue" && field.FieldType is not TypeSpecification
+                && Resolve(field.FieldType) is { FullName: "System.Threading.ThreadPoolWorkQueue" } queue
+                && queue.Module == type.Module;
+            if (nativeThreadLocalStorage || nativeWorkQueue)
                 MarkSignatureType(field.FieldType);
             else
                 NoteMediumType(field.FieldType);
@@ -135,7 +182,7 @@ internal sealed partial class AssemblyDiet
         foreach (var method in type.Methods)
         {
             NoteMediumMethod(method);
-            NoteMediumAttributes(method);
+            NoteMediumAttributes(method, signatureOnly: nativeThreadPool);
             NoteMediumAttributes(method.MethodReturnType);
             foreach (var parameter in method.Parameters) NoteMediumAttributes(parameter);
             foreach (var parameter in method.GenericParameters) NoteMediumParameter(parameter);
@@ -175,7 +222,7 @@ internal sealed partial class AssemblyDiet
         }
     }
 
-    private void NoteMediumAttributes(ICustomAttributeProvider provider)
+    private void NoteMediumAttributes(ICustomAttributeProvider provider, bool signatureOnly = false)
     {
         if (!provider.HasCustomAttributes) return;
         foreach (var attribute in provider.CustomAttributes)
@@ -183,7 +230,16 @@ internal sealed partial class AssemblyDiet
             NoteMediumType(attribute.AttributeType);
             try
             {
-                foreach (var argument in attribute.ConstructorArguments) NoteMediumAttributeArgument(argument);
+                // Reuse the ordinary signature-only attribute boundary: a native
+                // ThreadPool method must not revive its managed state machine.
+                bool stateMachine = signatureOnly && IsStateMachineAttribute(attribute);
+                foreach (var argument in attribute.ConstructorArguments)
+                    if (stateMachine && argument.Value is TypeReference machine)
+                    {
+                        NoteMediumType(argument.Type);
+                        MarkSignatureType(machine);
+                    }
+                    else NoteMediumAttributeArgument(argument);
                 foreach (var argument in attribute.Fields) NoteMediumAttributeArgument(argument.Argument);
                 foreach (var argument in attribute.Properties) NoteMediumAttributeArgument(argument.Argument);
             }

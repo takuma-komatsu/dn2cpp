@@ -31,8 +31,8 @@ internal sealed partial class MethodCompiler
                 EmitRuntimePrimitive(callee);
                 return true;
             case InterceptEmitArm.EventSourceNoOp:
-                // Cannot decline: the helper's first arm tests exactly this row's
-                // predicate (the provider arm behind it is a separate route).
+                // Both the IsEnabled and framework-provider rows replay their
+                // existing no-listener lowering through this arm.
                 if (!TryEmitEventSourceNoOp(callee))
                     throw new InvalidOperationException(
                         $"EventSourceNoOp arm declined {callee.DeclaringClass.FullName}.{callee.Name}");
@@ -630,10 +630,8 @@ internal sealed partial class MethodCompiler
                 // ResourceManager/ICU) — out of the tree.
                 if (TryEmitMethodDefIntercept(CoreIntrinsics.MdEventSourceIsEnabled, callee))
                     return;
-                // The provider members behind the same fold: not a descriptor row —
-                // IsFrameworkEventSourceProvider needs the ClassInfo, so the route
-                // stays the non-pure helper (its IsEnabled arm was answered above).
-                if (TryEmitEventSourceNoOp(callee))
+                // The provider row also supplies retained callable wrappers.
+                if (TryEmitMethodDefIntercept(CoreIntrinsics.MdFrameworkEventSourceProvider, callee))
                     return;
                 // Regex.Compile -> a dead null factory (its dynamic-code guard is
                 // const-folded false, so RegexOptions.Compiled degrades to the
@@ -1414,12 +1412,11 @@ internal sealed partial class MethodCompiler
                     // Log singleton must never be dereferenced (GetKeys does execute
                     // at runtime, so the fold must be safe, not merely a dead-code
                     // assumption).
-                    // The IsEnabled fold is the descriptor row; the provider fold
-                    // behind it stays the non-pure helper (it needs the ClassInfo),
+                    // Both folds use the same descriptor rows as retained callables,
                     // exactly as in the MethodDefinition arm.
                     if (TryEmitMethodDefIntercept(CoreIntrinsics.MdEventSourceIsEnabled, real))
                         return;
-                    if (TryEmitEventSourceNoOp(real))
+                    if (TryEmitMethodDefIntercept(CoreIntrinsics.MdFrameworkEventSourceProvider, real))
                         return;
                     // Regex.Compile referenced cross-assembly — same null-factory
                     // folding as the MethodDefinition branch above (same row).

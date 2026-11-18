@@ -2947,6 +2947,12 @@ internal static partial class CoreIntrinsics
         extra: static mi => mi.Signature.ReturnType is
             { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean });
 
+    /// <summary>A retained framework tracing method uses the same no-listener
+    /// lowering as a direct call; retaining it never restores its managed body.</summary>
+    public static readonly MethodDefIntercept MdFrameworkEventSourceProvider = new(
+        InterceptCutKind.Cut, InterceptEmitArm.EventSourceNoOp,
+        extra: static mi => Compilation.IsFrameworkEventSourceProvider(mi.DeclaringClass));
+
     /// <summary>Regex.Compile folds to a dead null RegexRunnerFactory (its
     /// dynamic-code guard is const-folded false — the IL2CPP/NativeAOT posture),
     /// keeping RegexCompiler and the Reflection.Emit closure out of the tree.</summary>
@@ -3147,6 +3153,7 @@ internal static partial class CoreIntrinsics
     [
         MdRuntimePrimitive,
         MdEventSourceIsEnabled,
+        MdFrameworkEventSourceProvider,
         MdRegexCompileFold,
         MdConstFoldedGetter,
         MdConstFoldedStringCall,

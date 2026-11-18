@@ -137,8 +137,64 @@ internal sealed partial class Compilation
         _mediumPending.Enqueue(type);
     }
 
-    private void NoteMediumSignature(MethodSignature<TypeDesc> signature)
+    private bool MediumNativeSignatureOwner(TypeDesc? owner)
     {
+        if (owner?.Class is { } cls)
+        {
+            if (cls.Module.AssemblyName != "System.Private.CoreLib"
+                && !cls.Module.AssemblyName.StartsWith("System.", StringComparison.Ordinal))
+                return false;
+            return cls.Module.AssemblyName == "System.Private.CoreLib" && cls.FullName == "System.Threading.ThreadPool"
+                || IsFrameworkEventSourceProvider(EnsureShape(cls));
+        }
+        if (owner is not { Kind: TypeKind.Template, TemplateModule: { } module })
+            return false;
+        if (module.AssemblyName != "System.Private.CoreLib"
+            && !module.AssemblyName.StartsWith("System.", StringComparison.Ordinal))
+            return false;
+        // An open provider has no ClassInfo of its own. Follow raw definitions,
+        // including open generic bases, with the same ancestry test as the closed helper.
+        var handle = owner.TemplateHandle;
+        var context = GenericContext.Empty;
+        var seen = new HashSet<(int, TypeDefinitionHandle)>();
+        while (seen.Add((module.Index, handle)))
+        {
+            var definition = module.Reader.GetTypeDefinition(handle);
+            if (definition.BaseType.IsNil)
+                break;
+            var parent = ResolveTypeTokenForScan(module, definition.BaseType, context);
+            if (parent?.Class?.FullName == "System.Diagnostics.Tracing.EventSource"
+                || parent?.ExternalName == "System.Diagnostics.Tracing.EventSource")
+                return true;
+            var (parentModule, parentHandle) = TemplateOrClassDef(parent);
+            if (parentModule is null)
+                break;
+            module = parentModule;
+            handle = parentHandle;
+            context = parent?.Class?.Context ?? GenericContext.Empty;
+        }
+        return false;
+    }
+
+    private void NoteMediumSignatureIdentity(TypeDesc type)
+    {
+        if (type.Kind is TypeKind.ByRef or TypeKind.Pointer && type.Element is { } element)
+            NoteMediumSignatureIdentity(element);
+        else if (type.FunctionSignature is { } function)
+            foreach (var part in function.Types) NoteMediumSignatureIdentity(part);
+        else
+            NoteTypeIdentityClosure(type, keepSeed: false);
+    }
+
+    private void NoteMediumSignature(MethodSignature<TypeDesc> signature, bool metadataOnly = false)
+    {
+        if (metadataOnly)
+        {
+            NoteMediumSignatureIdentity(signature.ReturnType);
+            foreach (var parameter in signature.ParameterTypes)
+                NoteMediumSignatureIdentity(parameter);
+            return;
+        }
         NoteMediumType(signature.ReturnType);
         foreach (var parameter in signature.ParameterTypes)
             NoteMediumType(parameter);
@@ -149,7 +205,7 @@ internal sealed partial class Compilation
         if (_strippingLevel != StrippingLevel.Medium || !_mediumMethods.Add(method))
             return;
         NoteMediumType(TypeDesc.MakeClass(method.DeclaringClass));
-        NoteMediumSignature(method.Signature);
+        NoteMediumSignature(method.Signature, MediumNativeSignatureOwner(TypeDesc.MakeClass(method.DeclaringClass)));
         foreach (var argument in method.Context.MethodArgs)
             NoteMediumType(argument);
     }
@@ -195,9 +251,11 @@ internal sealed partial class Compilation
             case HandleKind.MethodDefinition:
             {
                 var method = reader.GetMethodDefinition((MethodDefinitionHandle)handle);
-                NoteMediumType(GetTypeDescForDefinition(module, method.GetDeclaringType()));
+                var owner = GetTypeDescForDefinition(module, method.GetDeclaringType());
+                NoteMediumType(owner);
                 NoteMediumSignature(method.DecodeSignature(SigProvider,
-                    new GenericContext(context.TypeArgs, methodArguments ?? Array.Empty<TypeDesc>())));
+                    new GenericContext(context.TypeArgs, methodArguments ?? Array.Empty<TypeDesc>())),
+                    MediumNativeSignatureOwner(owner));
                 break;
             }
             case HandleKind.MemberReference:
@@ -211,7 +269,7 @@ internal sealed partial class Compilation
                 if (member.GetKind() == MemberReferenceKind.Field)
                     NoteMediumType(member.DecodeFieldSignature(SigProvider, memberContext));
                 else
-                    NoteMediumSignature(member.DecodeMethodSignature(SigProvider, memberContext));
+                    NoteMediumSignature(member.DecodeMethodSignature(SigProvider, memberContext), MediumNativeSignatureOwner(owner));
                 break;
             }
             case HandleKind.MethodSpecification:
@@ -338,19 +396,38 @@ internal sealed partial class Compilation
             && definition.GetDeclaringType().IsNil
             && reader.StringComparer.Equals(definition.Namespace, "System.Threading")
             && reader.StringComparer.Equals(definition.Name, "ThreadLocal`1");
+        bool nativeThreadPool = module.AssemblyName == "System.Private.CoreLib"
+            && definition.GetDeclaringType().IsNil
+            && reader.StringComparer.Equals(definition.Namespace, "System.Threading")
+            && reader.StringComparer.Equals(definition.Name, "ThreadPool");
         foreach (var fieldHandle in definition.GetFields())
         {
             var field = reader.GetFieldDefinition(fieldHandle);
             if (!nativeThreadLocalStorage)
-                NoteMediumType(field.DecodeSignature(SigProvider, context));
+            {
+                var fieldType = field.DecodeSignature(SigProvider, context);
+                // Native enqueue owns both the work queue and worker wakeup. This
+                // replaced singleton is metadata, not a managed scheduling edge.
+                bool nativeWorkQueue = nativeThreadPool
+                    && (field.Attributes & (System.Reflection.FieldAttributes.Static | System.Reflection.FieldAttributes.InitOnly))
+                        == (System.Reflection.FieldAttributes.Static | System.Reflection.FieldAttributes.InitOnly)
+                    && reader.StringComparer.Equals(field.Name, "s_workQueue")
+                    && fieldType is { Kind: TypeKind.Class, Class: { FullName: "System.Threading.ThreadPoolWorkQueue" } queue }
+                    && queue.Module == module;
+                if (!nativeWorkQueue)
+                    NoteMediumType(fieldType);
+            }
             NoteMediumAttributes(module, field.GetCustomAttributes());
         }
+        // Replaced calls do not consume their signature types as managed runtime
+        // state. Keep metadata without promoting discarded payloads or return types.
+        bool nativeSignatures = MediumNativeSignatureOwner(GetTypeDescForDefinition(module, handle));
         foreach (var methodHandle in definition.GetMethods())
         {
             var method = reader.GetMethodDefinition(methodHandle);
-            NoteMediumSignature(method.DecodeSignature(SigProvider, context));
+            NoteMediumSignature(method.DecodeSignature(SigProvider, context), nativeSignatures);
             NoteMediumConstraints(module, method.GetGenericParameters(), context);
-            NoteMediumAttributes(module, method.GetCustomAttributes());
+            NoteMediumAttributes(module, method.GetCustomAttributes(), signatureOnly: nativeThreadPool);
             foreach (var parameter in method.GetParameters())
                 NoteMediumAttributes(module, reader.GetParameter(parameter).GetCustomAttributes());
             if ((context.TypeArgs.Length == 0 && definition.GetGenericParameters().Count > 0
@@ -382,7 +459,8 @@ internal sealed partial class Compilation
     // instantiation. Runtime replacements keep the same managed-body boundary.
     private bool MediumTraversesOpenBody(Module module, TypeDefinitionHandle owner, MethodDefinition method)
     {
-        if (method.RelativeVirtualAddress == 0)
+        if (method.RelativeVirtualAddress == 0
+            || MediumNativeSignatureOwner(GetTypeDescForDefinition(module, owner)))
             return false;
         var reader = module.Reader;
         string name = reader.GetString(method.Name);
@@ -422,13 +500,20 @@ internal sealed partial class Compilation
         }
     }
 
-    private void NoteMediumAttributes(Module module, CustomAttributeHandleCollection handles)
+    private void NoteMediumAttributes(Module module, CustomAttributeHandleCollection handles, bool signatureOnly = false)
     {
         foreach (var handle in handles)
         {
             var attribute = module.Reader.GetCustomAttribute(handle);
-            if (AttributeTypeName(module.Reader, attribute) is { } name)
+            string? name = AttributeTypeName(module.Reader, attribute);
+            if (name is not null)
                 NoteUserTypeofFrameworkType(name);
+            // A native ThreadPool method has no managed body to supply this
+            // state machine. Keep its attribute value as an identity, not code.
+            bool stateMachine = signatureOnly && name is
+                "System.Runtime.CompilerServices.AsyncStateMachineAttribute"
+                or "System.Runtime.CompilerServices.IteratorStateMachineAttribute"
+                or "System.Runtime.CompilerServices.AsyncIteratorStateMachineAttribute";
             NoteMediumOperand(module, attribute.Constructor, GenericContext.Empty);
             CustomAttributeValue<TypeDesc> value;
             try { value = attribute.DecodeValue(AttrProvider); }
@@ -443,11 +528,17 @@ internal sealed partial class Compilation
                     + exception.Message, exception);
             }
             foreach (var argument in value.FixedArguments)
-                NoteMediumAttributeArgument(argument.Type, argument.Value);
+                if (stateMachine && argument.Value is TypeDesc machine)
+                {
+                    NoteMediumType(argument.Type);
+                    NoteTypeIdentityClosure(machine, keepSeed: false);
+                }
+                else
+                    NoteMediumAttributeArgument(argument.Type, argument.Value);
             foreach (var argument in value.NamedArguments)
                 NoteMediumAttributeArgument(argument.Type, argument.Value);
         }
-        ReachAttributesOf(module, handles, reach: true);
+        ReachAttributesOf(module, handles, reach: true, identityOnlyStateMachines: signatureOnly);
     }
 
     private string MediumAttributeTarget(Module module, EntityHandle parent)
