@@ -672,6 +672,31 @@ internal sealed partial class MethodCompiler
             : _reader.GetMemberReference((MemberReferenceHandle)ms.Method).DecodeMethodSignature(_c.SigProvider, ctx);
     }
 
+    // CoreLib also calls Task.FromCanceled(OperationCanceledException). Its captured
+    // exception must survive await, unlike the public token-only factory.
+    private string EmitFromCanceledTask(System.Collections.Immutable.ImmutableArray<TypeDesc> parameters,
+        bool allowCapturedException)
+    {
+        if (parameters is [{ Kind: TypeKind.Class, Class.FullName: "System.Threading.CancellationToken" }])
+        {
+            var token = Pop();
+            EmitCanceledExcRegistration();
+            return $"dn2cpp_task_from_canceled(({token.Expr}).source)";
+        }
+        if (allowCapturedException
+            && parameters is [{ Kind: TypeKind.Class, Class.FullName: "System.OperationCanceledException" }])
+        {
+            var exception = Pop();
+            EmitCanceledExcRegistration();
+            Emit($"(void)dn2cpp_null_check({Cast(exception, "Dn2CppObject*")});");
+            string task = NewTemp("Dn2CppTask*");
+            Emit($"{task} = dn2cpp_task_alloc();");
+            Emit($"dn2cpp_task_set_exception_or_canceled({task}, {Cast(exception, "Dn2CppObject*")});");
+            return task;
+        }
+        throw new NotSupportedException("FromCanceled requires a CancellationToken or a supported captured exception overload");
+    }
+
     /// <summary>Emits the one-time registration of the real OperationCanceledException
     /// and TaskCanceledException type-infos with the runtime, so a CANCELED task carries
     /// a TaskCanceledException and ThrowIfCancellationRequested throws an
@@ -679,8 +704,10 @@ internal sealed partial class MethodCompiler
     /// No-op if the type was not reached (a program can't catch what it never names).</summary>
     private void EmitCanceledExcRegistration()
     {
-        if (_c.CanceledExceptionTypeInfoName is { } n)
-            Emit($"dn2cpp_set_canceled_exception_type(&{n});");
+        if (_c.CanceledExceptionTypeInfoName is { } n
+            && _c.CanceledExceptionTokenField is { } token)
+            Emit($"dn2cpp_set_canceled_exception_type(&{n}, "
+                + $"offsetof({token.DeclaringClass.CppStructName}, {token.CppName}));");
         if (_c.TaskCanceledExceptionTypeInfoName is { } tn)
             Emit($"dn2cpp_set_task_canceled_exception_type(&{tn});");
     }

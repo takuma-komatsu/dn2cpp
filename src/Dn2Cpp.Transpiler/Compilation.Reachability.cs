@@ -3848,6 +3848,7 @@ internal sealed partial class Compilation
     /// <summary>The C++ type-info symbol of System.OperationCanceledException once
     /// <see cref="ReachCancellationException"/> has emitted it, else null.</summary>
     internal string? CanceledExceptionTypeInfoName { get; private set; }
+    internal FieldInfo? CanceledExceptionTokenField { get; private set; }
 
     /// <summary>The C++ type-info symbol of System.Threading.Tasks.TaskCanceledException,
     /// reached alongside the OCE one — a CANCELED task carries this type, as in real
@@ -3870,8 +3871,14 @@ internal sealed partial class Compilation
         var (mod, tdh) = cands[0];
         if (!mod.ClassMap.TryGetValue(tdh, out var cls))
             return;
+        // Runtime token access uses the real field offset and allocation extent,
+        // including when no managed constructor or getter makes layout reachable.
+        NoteForceEmit(cls);
         NoteReferencedType(cls);
         ReachAllocatedType(cls);
+        CanceledExceptionTokenField = cls.Fields.FirstOrDefault(field => !field.IsStatic
+            && field.Name == "_cancellationToken" && CppTypes.Of(field.Type) == "Dn2CppCancelToken")
+            ?? throw new NotSupportedException("OperationCanceledException requires its CancellationToken storage field");
         CanceledExceptionTypeInfoName = cls.CppTypeInfoName;
         // TCE derives from OCE, so reaching it here keeps `catch (OperationCanceled
         // Exception)` matching a canceled task through the emitted base chain.
@@ -3880,6 +3887,8 @@ internal sealed partial class Compilation
             var (tceMod, tceTdh) = tceCands[0];
             if (tceMod.ClassMap.TryGetValue(tceTdh, out var tce))
             {
+                // A synthesized TCE needs its inherited OCE storage, not a shell.
+                NoteForceEmit(tce);
                 NoteReferencedType(tce);
                 ReachAllocatedType(tce);
                 TaskCanceledExceptionTypeInfoName = tce.CppTypeInfoName;
@@ -6805,6 +6814,12 @@ internal sealed partial class Compilation
                         // against the real exception type-info, so force-reach/register it
                         // even when cancellation is produced without a token API call.
                         if (IsAsyncTaskBuilderSetException(module, handle, m.Context))
+                            ReachCancellationException();
+                        // Internal FromCanceled(OCE) may be called without a token API
+                        // edge. The native capture still needs the emitted token layout.
+                        if (CallTargetMethodName(module, handle) == "FromCanceled"
+                            && CallTargetTypeName(module, handle) is "System.Threading.Tasks.Task"
+                                or "System.Threading.Tasks.ValueTask")
                             ReachCancellationException();
                         // TaskCompletionSource(<T>).SetCanceled/TrySetCanceled builds the
                         // same runtime OperationCanceledException — same force-reach. The

@@ -91,9 +91,41 @@ namespace StreamAsyncSubset
         }
     }
 
+    // MemoryStream catches an OCE from these slots and calls the internal
+    // Task.FromCanceled(OCE) factories, retaining the original exception.
+    internal sealed class CanceledMemoryStream : MemoryStream
+    {
+        private readonly OperationCanceledException _error;
+        public CanceledMemoryStream(OperationCanceledException error) => _error = error;
+        public override int Read(byte[] buffer, int offset, int count) => throw _error;
+        public override void Write(byte[] buffer, int offset, int count) => throw _error;
+    }
+
     internal static class Program
     {
         internal static void __GateEntry(string dir) => RunAsync(dir).GetAwaiter().GetResult();
+
+        internal static void RunCapturedCancellation()
+        {
+            using var live = new CancellationTokenSource();
+            var error = new OperationCanceledException("synchronous I/O canceled", live.Token);
+            using var canceled = new CanceledMemoryStream(error);
+            byte[] one = new byte[1];
+            ObserveCapturedCancellation("capturedRead", canceled.ReadAsync(one, 0, 1), error);
+            ObserveCapturedCancellation("capturedWrite", canceled.WriteAsync(one, 0, 1), error);
+            ObserveCapturedCancellation("capturedReadMemory", canceled.ReadAsync(new Memory<byte>(one)).AsTask(), error);
+            ObserveCapturedCancellation("capturedWriteMemory", canceled.WriteAsync(new ReadOnlyMemory<byte>(one)).AsTask(), error);
+        }
+
+        private static void ObserveCapturedCancellation(string name, Task task, OperationCanceledException expected)
+        {
+            try { task.GetAwaiter().GetResult(); Console.WriteLine(name + "=False"); }
+            catch (OperationCanceledException caught)
+            {
+                Console.WriteLine(name + "=" + (task.IsCanceled && ReferenceEquals(caught, expected)
+                    && new TaskCanceledException(task).CancellationToken == expected.CancellationToken));
+            }
+        }
 
         private static async Task RunAsync(string dir)
         {

@@ -3134,6 +3134,14 @@ internal sealed partial class CppEmitter
         sb.AppendLine(_c.UsesPlatformIsa
             ? "    dn2cpp_runtime_init(&dn2cpp_cpu_features_resolve);"
             : "    dn2cpp_runtime_init();");
+        // Install the reached cancellation layout before any managed entry point.
+        // A linked token or an exported callback need not run a CTS constructor.
+        if (_c.CanceledExceptionTypeInfoName is { } canceledType
+            && _c.CanceledExceptionTokenField is { } cancellationToken)
+            sb.AppendLine($"    dn2cpp_set_canceled_exception_type(&{canceledType}, "
+                + $"offsetof({cancellationToken.DeclaringClass.CppStructName}, {cancellationToken.CppName}));");
+        if (_c.TaskCanceledExceptionTypeInfoName is { } taskCanceledType)
+            sb.AppendLine($"    dn2cpp_set_task_canceled_exception_type(&{taskCanceledType});");
         sb.AppendLine("    dn2cpp_set_culture_exception_store(&dn2cpp_image_culture_exception_store);");
         sb.AppendLine("    dn2cpp_set_type_initialization_exception_store(&dn2cpp_image_type_initialization_exception_store);");
         // The image's per-signature vtable trap thunks, so dn2cpp_exception_message can

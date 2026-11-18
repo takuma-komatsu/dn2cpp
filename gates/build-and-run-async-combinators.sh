@@ -79,8 +79,8 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-pending-task
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-cancellation-callback-faults"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-lazy-aggregate-message"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-delay-synchronization"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-derived-task-promises|prefix:before-timed-waitasync|prefix:before-semaphore-waiters|prefix:before-task-creation-options"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|shared-binary:native-delay-deadlines"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-derived-task-promises|prefix:before-timed-waitasync|prefix:before-semaphore-waiters|prefix:before-task-creation-options|prefix:before-task-cancellation-tokens"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|shared-binary:native-delay-deadlines|shared-binary:fresh-cancellation-filters"
 
 # The exception text is platform-owned; its record prefix is the boundary.
 async_lifecycle_prefix() {
@@ -97,6 +97,13 @@ gate_extra_asserts() {
     # Only argv differs; keep the frozen run inside the aggregate's cache receipt.
     gate_capture_ok "$out/native-deadlines" run_bounded "./$out/AsyncCombinators$EXE_EXT" native-delay-deadlines
     gate_output compare "$out/native-deadlines.stdout" "$deadline_snapshot" --policy crlf
+    local mode
+    for mode in fresh-cancellation-filter fresh-cancellation-filter-generic; do
+        gate_capture_ok "$out/$mode-oracle" run_bounded dotnet "$_CG_APP" "$mode"
+        gate_capture_ok "$out/$mode-native" run_bounded "./$out/AsyncCombinators$EXE_EXT" "$mode"
+        gate_output compare "$out/$mode-native.stdout" "$out/$mode-oracle.stdout" --policy crlf || return 1
+        gate_output byte-witness "$out/$mode-native.stdout" 'fresh filter: True' --policy crlf || return 1
+    done
     native="$out/native.stdout"
     before="$out/before-semaphore-waiters.stdout"
     gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-semaphore-waiters
@@ -141,9 +148,20 @@ gate_extra_asserts() {
         'delay completed then canceled: 0' 'options null: True'; do
         gate_output byte-witness "$native" "$line" --policy crlf || return 1
     done
-    printf '%s\n' 'task creation options end' > "$out/promise-end.expected"
+    before="$out/before-task-cancellation-tokens.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-task-cancellation-tokens
+    gate_output prefix "$native" "$before" --before '== task cancellation tokens ==' --policy crlf
+    for line in '== task cancellation tokens ==' 'cold token: True' \
+        'promise losing token: True' 'join completion token: True' \
+        'join input token: True' 'unwrap inner token: True' \
+        'synthetic cancellation identity: True' 'synthetic transfer identity: True' \
+        'captured OCE identity: True' 'captured TCE identity: True' \
+        'pre-canceled tasks: True' 'pre-canceled tokens: True' 'pre-canceled start: True'; do
+        gate_output byte-witness "$native" "$line" --policy crlf || return 1
+    done
+    printf '%s\n' 'task cancellation tokens end' > "$out/promise-end.expected"
     gate_output suffix "$native" "$out/promise-end.expected" --policy crlf \
-        || { echo 'FAIL: task creation options block did not complete last' >&2; return 1; }
+        || { echo 'FAIL: task cancellation tokens block did not complete last' >&2; return 1; }
     for line in 'integer suspension: True,True|True,True' \
         'TimeSpan suspension: True,True|True,True' \
         'dependency pending: True,True|0' 'dependency order: firstsecond'; do
