@@ -100,10 +100,18 @@ internal sealed partial class AssemblyDiet
             NoteMediumType(implementation.InterfaceType);
             NoteMediumAttributes(implementation);
         }
+        // Match Compilation's native ThreadLocal storage boundary: retain field
+        // signatures as metadata without reviving the replaced slot/ID helpers.
+        bool nativeThreadLocalStorage = type.Module.Assembly.Name.Name == "System.Private.CoreLib"
+            && type.DeclaringType is null && type.Namespace == "System.Threading"
+            && type.Name == "ThreadLocal`1";
         foreach (var field in type.Fields)
         {
             _fields.Add(field);
-            NoteMediumType(field.FieldType);
+            if (nativeThreadLocalStorage)
+                MarkSignatureType(field.FieldType);
+            else
+                NoteMediumType(field.FieldType);
             NoteMediumAttributes(field);
             MarkMarshal(field);
         }

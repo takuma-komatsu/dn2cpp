@@ -331,10 +331,18 @@ internal sealed partial class Compilation
         }
         NoteMediumConstraints(module, definition.GetGenericParameters(), context);
         NoteMediumAttributes(module, definition.GetCustomAttributes());
+        // ThreadLocal's native storage replaces its entire managed slot/ID graph.
+        // Those absent fields cannot make its FinalizationHelper executable; an
+        // independent allocation, preservation or reflection demand still can.
+        bool nativeThreadLocalStorage = module.AssemblyName == "System.Private.CoreLib"
+            && definition.GetDeclaringType().IsNil
+            && reader.StringComparer.Equals(definition.Namespace, "System.Threading")
+            && reader.StringComparer.Equals(definition.Name, "ThreadLocal`1");
         foreach (var fieldHandle in definition.GetFields())
         {
             var field = reader.GetFieldDefinition(fieldHandle);
-            NoteMediumType(field.DecodeSignature(SigProvider, context));
+            if (!nativeThreadLocalStorage)
+                NoteMediumType(field.DecodeSignature(SigProvider, context));
             NoteMediumAttributes(module, field.GetCustomAttributes());
         }
         foreach (var methodHandle in definition.GetMethods())

@@ -82,6 +82,10 @@ type still participates. Existing intrinsic and explicit-cut boundaries govern
 body analysis.
 Member-specific cuts retain callable wrappers from the same lowering used by
 address-taken calls; retention never restores their replaced IL bodies.
+ThreadLocal's opaque native storage also replaces its managed slot and ID fields.
+Those field signatures do not introduce Medium executable dependencies on CoreLib
+storage helpers. Independent executable or explicit reflection/preservation demands
+still follow the ordinary retention paths; the helpers are not replaced by no-op bodies.
 
 Closed generic types carry their known arguments through this closure. Open
 definitions are traversed symbolically; they do not imply every possible type or
