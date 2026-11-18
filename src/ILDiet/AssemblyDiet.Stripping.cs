@@ -138,11 +138,7 @@ internal sealed partial class AssemblyDiet
             NoteMediumType(implementation.InterfaceType);
             NoteMediumAttributes(implementation);
         }
-        // Match Compilation's native ThreadLocal storage boundary: retain field
-        // signatures as metadata without reviving the replaced slot/ID helpers.
-        bool nativeThreadLocalStorage = type.Module.Assembly.Name.Name == "System.Private.CoreLib"
-            && type.DeclaringType is null && type.Namespace == "System.Threading"
-            && type.Name == "ThreadLocal`1";
+        string storageOwner = Name(type);
         bool nativeThreadPool = type.Module.Assembly.Name.Name == "System.Private.CoreLib"
             && type.DeclaringType is null && type.Namespace == "System.Threading"
             && type.Name == "ThreadPool";
@@ -155,7 +151,8 @@ internal sealed partial class AssemblyDiet
                 && field.Name == "s_workQueue" && field.FieldType is not TypeSpecification
                 && Resolve(field.FieldType) is { FullName: "System.Threading.ThreadPoolWorkQueue" } queue
                 && queue.Module == type.Module;
-            if (nativeThreadLocalStorage || nativeWorkQueue)
+            if (CoreIntrinsicTypeMaps.ReplacesManagedStorage(type.Module.Assembly.Name.Name,
+                storageOwner, field.IsStatic) || nativeWorkQueue)
                 MarkSignatureType(field.FieldType);
             else
                 NoteMediumType(field.FieldType);

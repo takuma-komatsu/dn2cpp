@@ -6,6 +6,14 @@ namespace Dn2Cpp;
 // The same data also bounds the original-definition retention graph.
 internal static class CoreIntrinsicTypeMaps
 {
+    // These native layouts replace managed storage, not just member bodies. A
+    // field signature remains metadata; it cannot revive the absent storage graph.
+    // Other intrinsic layouts may expose real fields and are not implicitly opaque.
+    public static bool ReplacesManagedStorage(string assembly, string owner, bool isStatic) =>
+        assembly == "System.Private.CoreLib"
+        && (owner == "System.Threading.ThreadLocal`1"
+            || !isStatic && owner == "System.TimeProvider+SystemTimeProviderTimer");
+
     public static bool IsPrimitiveBigMulOwner(string? owner) => owner is
         "System.Int32" or "System.UInt32" or "System.Int64" or "System.UInt64" or "System.IntPtr" or "System.UIntPtr";
 
