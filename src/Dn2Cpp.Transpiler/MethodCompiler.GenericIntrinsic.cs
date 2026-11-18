@@ -1925,13 +1925,23 @@ internal sealed partial class MethodCompiler
         {
             var tres = methodArgs[0];
             var rsig = DecodeGenericCallSignature(msh, methodArgs);
-            bool unwrap = DelegateReturnsTask(rsig.ParameterTypes[0]);
+            // Explicit Run<Task<T>>(Func<Task<T>>) returns Task<Task<T>>; only
+            // the overload whose delegate result is Task<TResult> unwraps.
+            bool unwrap = DelegateReturnsTask(rsig.ParameterTypes[0])
+                && rsig.ParameterTypes[0].Class!.Context.TypeArgs[0].Class != tres.Class;
             if (rsig.ParameterTypes.Length == 2)
                 Pop(); // trailing CancellationToken (ignored)
             var del = Pop(); // Func<TResult> or Func<Task<TResult>>
             if (unwrap)
             {
                 PushStampedTask($"dn2cpp_task_run_unwrap((Dn2CppObject*)({del.Expr}))", rsig.ReturnType);
+                return;
+            }
+            if (DelegateReturnsTask(rsig.ParameterTypes[0]))
+            {
+                // A returned inner task can own this worker's scheduler callbacks.
+                PushStampedTask($"dn2cpp_task_run_nested((Dn2CppObject*)({del.Expr}), DN2CPP_TASK_DENY_CHILD_ATTACH)",
+                    rsig.ReturnType);
                 return;
             }
             // A value-type result rides a boxing trampoline (TaskStructResultThunk): the
@@ -2071,11 +2081,14 @@ internal sealed partial class MethodCompiler
             bool hasState = dcl.Context.TypeArgs.Length == 2;
             int kept = hasState ? 2 : 1; // delegate [+ state]
             StackEntry? schedulerHint = null;
+            string options = "0";
             for (int i = fsig.ParameterTypes.Length - 1; i >= kept; i--)
             {
                 var hint = Pop();
                 if (fsig.ParameterTypes[i] is { Kind: TypeKind.Class, Class.FullName: "System.Threading.Tasks.TaskScheduler" })
                     schedulerHint = hint;
+                else if (fsig.ParameterTypes[i] is { Kind: TypeKind.Class, Class.FullName: "System.Threading.Tasks.TaskCreationOptions" })
+                    options = Cast(hint, "int32_t");
             }
             StackEntry? state = null;
             if (hasState)
@@ -2089,7 +2102,7 @@ internal sealed partial class MethodCompiler
             {
                 if (hasState)
                     throw new NotSupportedException($"{Method.DeclaringClass.FullName}.{Method.Name}: TaskFactory.StartNew with state and Task-returning delegate is not supported yet");
-                PushStampedTask($"dn2cpp_task_run_nested((Dn2CppObject*)({fdel.Expr}))", fsig.ReturnType);
+                PushStampedTask($"dn2cpp_task_run_nested((Dn2CppObject*)({fdel.Expr}), {options})", fsig.ReturnType);
                 return;
             }
             // A value-type result rides the same boxing trampoline as Task.Run<TStruct>.
@@ -2098,7 +2111,7 @@ internal sealed partial class MethodCompiler
                 if (hasState)
                     throw new NotSupportedException($"{Method.DeclaringClass.FullName}.{Method.Name}: TaskFactory.StartNew<{tres}> with state and struct result is not supported yet");
                 PushStampedTask(
-                    $"dn2cpp_task_run_struct((Dn2CppObject*)({fdel.Expr}), {TaskStructResultThunk(CppTypes.Of(tres))})",
+                    $"dn2cpp_task_run_struct((Dn2CppObject*)({fdel.Expr}), {TaskStructResultThunk(CppTypes.Of(tres))}, {options})",
                     fsig.ReturnType);
                 return;
             }
@@ -2119,9 +2132,9 @@ internal sealed partial class MethodCompiler
                     "result kind not supported yet (int/long/float/double/reference only)"),
             };
             if (hasState && state is not null)
-                PushStampedTask($"{ffn}((Dn2CppObject*)({fdel.Expr}), {Cast(state, "Dn2CppObject*")})", fsig.ReturnType);
+                PushStampedTask($"{ffn}((Dn2CppObject*)({fdel.Expr}), {Cast(state, "Dn2CppObject*")}, {options})", fsig.ReturnType);
             else
-                PushStampedTask($"{ffn}((Dn2CppObject*)({fdel.Expr}))", fsig.ReturnType);
+                PushStampedTask($"{ffn}((Dn2CppObject*)({fdel.Expr}), {options})", fsig.ReturnType);
             return;
         }
 

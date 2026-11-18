@@ -374,10 +374,14 @@ internal sealed partial class MethodCompiler
             case ("System.Threading.SemaphoreSlim", "WaitAsync")
                 when sig.ParameterTypes.Length == 0 || !IsTimeoutParam(sig.ParameterTypes[0]):
             {
-                for (int i = 0; i < sig.ParameterTypes.Length; i++)
-                    Pop(); // CancellationToken (ignored)
+                string cancelable = "false";
+                if (sig.ParameterTypes.Length != 0)
+                {
+                    var token = Pop();
+                    cancelable = $"({token.Expr}).source != nullptr";
+                }
                 var o = Pop();
-                PushStampedTask($"dn2cpp_semaphore_wait_async((Dn2CppObject*)({o.Expr}))", sig.ReturnType);
+                PushStampedTask($"dn2cpp_semaphore_wait_async((Dn2CppObject*)({o.Expr}), {cancelable})", sig.ReturnType);
                 return true;
             }
             // ---- ManualResetEvent(Slim) / AutoResetEvent ----

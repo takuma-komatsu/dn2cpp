@@ -83,6 +83,9 @@ namespace AsyncCombinators
             if (args.Length == 1 && args[0] == "before-semaphore-waiters")
                 return;
             SettledCombinatorsSubset.Program.RunSemaphoreWaiters();
+            if (args.Length == 1 && args[0] == "before-task-creation-options")
+                return;
+            TaskCreationOptionsSubset.Program.Run();
             // Ends the process: a builder suspension's rejected registration is re-raised
             // as an unhandled ThreadPool exception.
             if (args.Length == 2 && args[0] == "suspension-rejection")

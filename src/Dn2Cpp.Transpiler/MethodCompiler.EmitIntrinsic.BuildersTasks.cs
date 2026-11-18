@@ -1046,8 +1046,8 @@ internal sealed partial class MethodCompiler
                 return true;
             // TaskFactory.StartNew(Action[, ...]) / StartNew(Action<object?>, object?
             // state[, ...]) -> Task on the same worker pool as Task.Run. The trailing
-            // CancellationToken / TaskCreationOptions affect scheduling only; a
-            // TaskScheduler is validated, then the delegate runs on
+            // creation options remain observable, cancellation retains its native
+            // boundary, and TaskScheduler is validated before the delegate runs on
             // the real pool. The 5-arg state form is what the base Stream.FlushAsync
             // compiles (`Task.Factory.StartNew(static s => ..., this, ct,
             // DenyChildAttach, TaskScheduler.Default)`). The generic StartNew<TResult>
@@ -1062,11 +1062,14 @@ internal sealed partial class MethodCompiler
                     && dcl.Context.TypeArgs.Length == 1;
                 int kept = hasState ? 2 : 1; // delegate [+ state]
                 StackEntry? schedulerHint = null;
+                string options = "0";
                 for (int i = sig.ParameterTypes.Length - 1; i >= kept; i--)
                 {
                     var hint = Pop();
                     if (sig.ParameterTypes[i] is { Kind: TypeKind.Class, Class.FullName: "System.Threading.Tasks.TaskScheduler" })
                         schedulerHint = hint;
+                    else if (sig.ParameterTypes[i] is { Kind: TypeKind.Class, Class.FullName: "System.Threading.Tasks.TaskCreationOptions" })
+                        options = Cast(hint, "int32_t");
                 }
                 if (schedulerHint is { } sh)
                     EmitArgumentRequired(sh, "scheduler");
@@ -1076,14 +1079,14 @@ internal sealed partial class MethodCompiler
                     var del = Pop();   // Action<object?>
                     Pop();             // receiver — the Task.Factory nullptr sentinel
                     PushStampedTask(
-                        $"dn2cpp_task_run_void_state((Dn2CppObject*)({del.Expr}), {Cast(state, "Dn2CppObject*")})",
+                        $"dn2cpp_task_run_void_state((Dn2CppObject*)({del.Expr}), {Cast(state, "Dn2CppObject*")}, {options})",
                         sig.ReturnType);
                 }
                 else
                 {
                     var del = Pop(); // Action
                     Pop();           // receiver — the Task.Factory nullptr sentinel
-                    PushStampedTask($"dn2cpp_task_run_void((Dn2CppObject*)({del.Expr}))", sig.ReturnType);
+                    PushStampedTask($"dn2cpp_task_run_void((Dn2CppObject*)({del.Expr}), {options})", sig.ReturnType);
                 }
                 return true;
             }
@@ -1185,7 +1188,7 @@ internal sealed partial class MethodCompiler
             // Task.WaitAsync(CancellationToken) -> a task mirroring this one's outcome that
             // settles CANCELED as soon as the token cancels. The awaited work is NOT
             // cancelled — WaitAsync bounds the wait, not the operation — which is exactly
-            // what the runtime node does (dn2cpp_task_wait_async).
+            // what the shared timeout/cancellation runtime node does.
             //
             // TimeProvider overloads retain their separate unsupported boundary: a
             // custom provider cannot use the runtime's Task.Delay virtual clock.
@@ -1211,9 +1214,11 @@ internal sealed partial class MethodCompiler
             {
                 var waT = Pop();  // CancellationToken (by value)
                 var waSelf = Pop();
-                PushStampedTask(
-                    $"dn2cpp_task_wait_async((Dn2CppTask*)({waSelf.Expr}), ({waT.Expr}).source)",
-                    sig.ReturnType);
+                EmitCanceledExcRegistration();
+                // Share the infinite-timeout forwarding path without re-stamping this.
+                Push(StackKind.Ref, "Dn2CppTask*",
+                    $"dn2cpp_task_wait_async_timeout((Dn2CppTask*)({waSelf.Expr}), -10000LL, "
+                    + $"({waT.Expr}).source, {TaskTypeInfo(sig.ReturnType)})");
                 return true;
             }
             case ("System.Threading.Tasks.Task", "ContinueWith"):
@@ -1345,6 +1350,15 @@ internal sealed partial class MethodCompiler
                 PushEntry(new StackEntry($"dn2cpp_task_exception((Dn2CppTask*)({t.Expr}))",
                     StackKind.Ref, "Dn2CppObject*",
                     StaticType: TypeDesc.MakeExternal("System.AggregateException")));
+                return true;
+            }
+            case ("System.Threading.Tasks.Task", "get_CreationOptions"):
+            {
+                var task = Pop();
+                string local = NewTemp("Dn2CppTask*");
+                Emit($"{local} = (Dn2CppTask*)({task.Expr});");
+                Emit($"dn2cpp_null_check({local});");
+                Push(StackKind.I4, "int32_t", $"{local}->creationOptions.load(std::memory_order_relaxed)");
                 return true;
             }
             // Task.Status: the same status field widened to real .NET's TaskStatus,

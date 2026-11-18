@@ -87,6 +87,23 @@ namespace DelayOrderSubset
             Console.WriteLine("== native delay deadlines ==");
             RunNativeDeadlines().Wait();
             Console.WriteLine(s_log);
+            // Native Wait drains its owner's virtual timer and all synchronous
+            // completion cleanup before the younger cancellation callback returns.
+            using (var source = new CancellationTokenSource())
+            {
+                Task delay = Task.Delay(100, source.Token);
+                source.Token.Register(() => delay.Wait());
+                source.Cancel();
+                Console.WriteLine("detached delay completed: " + delay.IsCompletedSuccessfully
+                    + " options=" + (int)delay.CreationOptions);
+            }
+            using (var source = new CancellationTokenSource())
+            {
+                Task delay = Task.Delay(Timeout.Infinite, source.Token);
+                source.Cancel();
+                Console.WriteLine("claimed delay canceled: " + delay.IsCanceled
+                    + " options=" + (int)delay.CreationOptions);
+            }
             Console.WriteLine("native delay deadlines end");
         }
 
