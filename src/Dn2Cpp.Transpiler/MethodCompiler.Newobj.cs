@@ -2154,6 +2154,8 @@ internal sealed partial class MethodCompiler
                     || invokeRow.Signature.ParameterTypes.Length != bound.Signature.ParameterTypes.Length + 1)
                     return false;
                 var parameters = invokeRow.Signature.ParameterTypes;
+                if (CoreIntrinsics.IsTaskSchedulerId(bound))
+                    return _c.IsTaskSchedulerDelegateArgument(parameters[0], bound.DeclaringClass);
                 return _c.IsTaskSchedulerDelegateArgument(parameters[0], bound.DeclaringClass)
                     && _c.IsTaskSchedulerDelegateArgument(parameters[1], bound.Signature.ParameterTypes[0].Class!)
                     && (bound.Signature.ParameterTypes.Length == 1 || parameters[2] == bound.Signature.ParameterTypes[1]);
@@ -2186,6 +2188,8 @@ internal sealed partial class MethodCompiler
                 // Open ldftn binds no receiver: discard the delegate's target slot,
                 // not its first Invoke argument. The managed body owns null semantics.
                 string receiverCpp = NfiErasedAbi(CppTypes.Of(invokeRow!.Signature.ParameterTypes[0]));
+                if (CoreIntrinsics.IsTaskSchedulerId(bound))
+                    return $"(void*)+[](Dn2CppObject*, {receiverCpp} self) -> int32_t {{ return {bound.Emittable.CppName}((Dn2CppObject*)self); }}";
                 string taskCpp = NfiErasedAbi(CppTypes.Of(invokeRow.Signature.ParameterTypes[1]));
                 if (CoreIntrinsics.IsTaskFinish(bound))
                     return $"(void*)+[](Dn2CppObject*, {receiverCpp} self, {taskCpp} executed) -> void {{ {bound.Emittable.CppName}((Dn2CppTask*)self, executed); }}";

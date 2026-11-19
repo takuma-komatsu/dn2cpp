@@ -6,6 +6,37 @@ namespace Dn2Cpp;
 
 internal sealed partial class MethodCompiler
 {
+    // Only the storage is native: CoreLib still performs its volatile reads,
+    // interlocked increment, zero skip and compare-exchange on these locations.
+    private bool TryTaskSchedulerIdStorage(FieldInfo field, ILOpCode op)
+    {
+        if (field.Name is not ("m_taskSchedulerId" or "s_taskSchedulerIdCounter")
+            || field.DeclaringClass.FullName != "System.Threading.Tasks.TaskScheduler"
+            || field.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib")
+            return false;
+        bool counter = field.Name == "s_taskSchedulerIdCounter";
+        var attributes = counter ? System.Reflection.FieldAttributes.Assembly | System.Reflection.FieldAttributes.Static
+            : System.Reflection.FieldAttributes.Private;
+        if (field.Attributes != attributes || field.IsThreadStatic
+            || field.Type is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32, IsCanonPlaceholder: false }
+            || counter != (op is ILOpCode.Ldsfld or ILOpCode.Ldsflda or ILOpCode.Stsfld))
+            throw new NotSupportedException("TaskScheduler identity requires its exact CoreLib storage");
+        bool store = op is ILOpCode.Stfld or ILOpCode.Stsfld;
+        var value = store ? Pop().Expr : null;
+        string address = counter ? "dn2cpp_taskscheduler_id_counter()"
+            : $"&(dn2cpp_null_check((Dn2CppTaskScheduler*)({Pop().Expr}))->id)";
+        if (store)
+            Emit($"__atomic_store_n({address}, (int32_t)({value}), __ATOMIC_SEQ_CST);");
+        else if (op is ILOpCode.Ldflda or ILOpCode.Ldsflda)
+        {
+            Push(StackKind.Ptr, "int32_t*", address);
+            Top = Top with { StaticType = TypeDesc.MakeByRef(field.Type) };
+        }
+        else
+            Push(StackKind.I4, "int32_t", $"__atomic_load_n({address}, __ATOMIC_SEQ_CST)");
+        return true;
+    }
+
     private void PushVar((string Name, string CppType, StackKind Kind, TypeDesc? Type) v)
     {
         // A typed reference can write a promoted slot without retaining SlotAddr.

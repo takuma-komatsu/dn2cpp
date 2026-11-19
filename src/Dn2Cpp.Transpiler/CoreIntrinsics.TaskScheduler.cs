@@ -6,7 +6,10 @@ namespace Dn2Cpp;
 internal static partial class CoreIntrinsics
 {
     internal static bool IsTaskSchedulerOperationName(string? owner, string name) =>
-        owner == "System.Threading.Tasks.TaskScheduler" && name is "TryRunInline" or "InternalQueueTask";
+        owner == "System.Threading.Tasks.TaskScheduler" && name is "TryRunInline" or "InternalQueueTask" or "get_Id";
+
+    internal static bool IsTaskSchedulerId(MethodInfo method) =>
+        method.Name == "get_Id" && IsTaskSchedulerOperation(method);
 
     internal static bool IsTaskSchedulerInline(MethodInfo method) =>
         method.Name == "TryRunInline" && IsTaskSchedulerOperation(method);
@@ -20,7 +23,9 @@ internal static partial class CoreIntrinsics
             || owner.IsValueType || owner.IsInterface || owner.IsEnum || owner.IsByRefLike
             || owner.GenericArity != 0 || owner.Context.TypeArgs.Length != 0 || owner.Context.MethodArgs.Length != 0
             || method.Context.TypeArgs.Length != 0 || method.Context.MethodArgs.Length != 0
-            || method.Attributes != (MethodAttributes.Assembly | MethodAttributes.HideBySig)
+            || method.Attributes != (method.Name == "get_Id"
+                ? MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName
+                : MethodAttributes.Assembly | MethodAttributes.HideBySig)
             || method.ImplAttributes != MethodImplAttributes.IL || method.Rva == 0 || method.PInvoke is not null)
             return false;
         var reader = method.Module.Reader;
@@ -39,6 +44,9 @@ internal static partial class CoreIntrinsics
 
     internal static bool IsTaskSchedulerOperationSignature(string name, BlobReader blob)
     {
+        if (name == "get_Id")
+            return blob.RemainingBytes == 3 && blob.ReadByte() == 0x20 && blob.ReadByte() == 0
+                && blob.ReadByte() == (byte)SignatureTypeCode.Int32;
         bool inline = name == "TryRunInline";
         if (!inline && name != "InternalQueueTask") return false;
         return blob.RemainingBytes >= (inline ? 6 : 5)
@@ -52,6 +60,10 @@ internal static partial class CoreIntrinsics
 
     internal static bool IsTaskSchedulerOperationDecodedSignature(MethodInfo method, MethodSignature<TypeDesc> signature)
     {
+        if (method.Name == "get_Id")
+            return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+                && signature.RequiredParameterCount == 0 && signature.ParameterTypes.Length == 0
+                && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32, IsCanonPlaceholder: false };
         bool inline = method.Name == "TryRunInline";
         if ((!inline && method.Name != "InternalQueueTask")
             || signature.Header.RawValue != 0x20 || signature.GenericParameterCount != 0

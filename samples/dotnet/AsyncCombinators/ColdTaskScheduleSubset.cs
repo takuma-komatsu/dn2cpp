@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -18,6 +20,47 @@ internal static class Program
             string param = ex is ArgumentException arg ? " [" + arg.ParamName + "]" : "";
             Console.WriteLine(label + " -> " + ex.GetType().Name + ": " + ex.Message + param);
         }
+    }
+
+    private sealed class IdentityOnlyScheduler : TaskScheduler
+    {
+        protected override IEnumerable<Task> GetScheduledTasks() => Array.Empty<Task>();
+        protected override void QueueTask(Task task) => throw new NotSupportedException();
+        protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued) => false;
+    }
+
+    internal static void RunSchedulerIds()
+    {
+        Console.WriteLine("== scheduler ids ==");
+        var defaultScheduler = TaskScheduler.Default;
+        int defaultId = defaultScheduler.Id;
+        var property = typeof(TaskScheduler).GetProperty(nameof(TaskScheduler.Id));
+        Console.WriteLine("default/current/reflected: " + (defaultId > 0) + "/" +
+            (defaultScheduler.Id == defaultId) + "/" + (TaskScheduler.Current.Id == defaultId) + "/" +
+            ((int)property.GetValue(defaultScheduler) == defaultId));
+
+        // Exercise identity without depending on construction or dispatch of custom schedulers.
+        var first = (TaskScheduler)RuntimeHelpers.GetUninitializedObject(typeof(IdentityOnlyScheduler));
+        var second = (TaskScheduler)RuntimeHelpers.GetUninitializedObject(typeof(IdentityOnlyScheduler));
+        int secondId = second.Id;
+        int taskId = new Task(() => { }).Id;
+        int firstId = first.Id;
+        Console.WriteLine("read order and independent task counter: " + (secondId > defaultId) + "/" +
+            (firstId == secondId + 1) + "/" + (taskId > 0) + "/" + (first.Id == firstId));
+
+        var shared = (TaskScheduler)RuntimeHelpers.GetUninitializedObject(typeof(IdentityOnlyScheduler));
+        using var start = new ManualResetEventSlim();
+        int left = 0;
+        int right = 0;
+        var reader1 = new Thread(() => { start.Wait(); left = shared.Id; });
+        var reader2 = new Thread(() => { start.Wait(); right = shared.Id; });
+        reader1.Start();
+        reader2.Start();
+        start.Set();
+        reader1.Join();
+        reader2.Join();
+        Console.WriteLine("shared first read: " + (left > firstId) + "/" + (left == right) + "/" +
+            (left == shared.Id));
     }
 
     internal static void __GateEntry()

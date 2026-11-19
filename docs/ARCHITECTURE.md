@@ -1619,6 +1619,12 @@ their scheduling phase; unwrapping promises do not inherit the delegate's phase.
 A settled status takes precedence over WaitingToRun or Running. Ordinary await
 resumptions remain on their owning scheduler, without acquiring a Task start claim.
 
+The default scheduler and generated scheduler subclasses share a native identity
+field. CoreLib's `TaskScheduler.Id` getter assigns it lazily from its own counter,
+independent of task IDs. The default pool claims its ID when the scheduler statics
+are initialized. Identity does not implement the protected scheduler constructor,
+its debugger bookkeeping, or custom queue and dispatch operations.
+
 The retained CoreLib `TaskScheduler.TryRunInline` helper rejects native promises,
 actionless precompleted tasks, unassigned cold tasks and continuations, invoked
 delegates, and canceled tasks without running work. A protected start alone does

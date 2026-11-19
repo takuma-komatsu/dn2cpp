@@ -3199,6 +3199,8 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    dn2cpp_set_string_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_stringRawByteReferenceRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_stringNullTerminatedLengthRow ?? "nullptr"}));");
         if (_cultureNameValidatorRow is { } cultureNameValidatorRow)
             sb.AppendLine($"    dn2cpp_set_culture_name_validator_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({cultureNameValidatorRow}));");
+        if (_schedulerIdentityMetadata is { } schedulerIdentity)
+            sb.AppendLine($"    dn2cpp_set_taskscheduler_identity_metadata({schedulerIdentity.Methods}, {schedulerIdentity.Props}, {schedulerIdentity.PropertyCount});");
         for (int i = 0; i < _taskSchedulerRows.Length; i++)
             if (_taskSchedulerRows[i] is { } taskSchedulerRow)
                 sb.AppendLine($"    dn2cpp_set_task_scheduler_row({i}, Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({taskSchedulerRow}));");
@@ -3994,6 +3996,7 @@ internal sealed partial class CppEmitter
     private string? _taskMarkStartedRow;
     private readonly string?[] _taskPrivateRows = new string?[4];
     private readonly string?[] _taskSchedulerRows = new string?[2];
+    private (string Methods, string Props, int PropertyCount)? _schedulerIdentityMetadata;
     private string? _cultureNameValidatorRow;
     private string? _stringRawByteReferenceRow;
     private string? _stringNullTerminatedLengthRow;
@@ -8201,6 +8204,14 @@ internal sealed partial class CppEmitter
                     return true;
             return false;
         }
+        static bool InheritsFromTaskScheduler(ClassInfo c)
+        {
+            for (var b = c; b is not null; b = b.BaseClass)
+                if (b.FullName == "System.Threading.Tasks.TaskScheduler" && b.Module.AssemblyName == "System.Private.CoreLib"
+                    || b.BaseClass is null && b.ExternalBaseName == "System.Threading.Tasks.TaskScheduler")
+                    return true;
+            return false;
+        }
         static bool InheritsFromWaitHandle(ClassInfo c)
         {
             for (var b = c; b is not null; b = b.BaseClass)
@@ -8312,6 +8323,8 @@ internal sealed partial class CppEmitter
                 baseName = "Dn2CppExceptionObject";
             else if (!IsOpaque(cls) && cls.BaseClass?.IntrinsicCppName == "Dn2CppTask*")
                 baseName = "Dn2CppTask";
+            else if (InheritsFromTaskScheduler(cls))
+                baseName = "Dn2CppTaskScheduler";
             else if (!IsOpaque(cls) && InheritsFromWaitHandle(cls))
                 baseName = "Dn2CppWaitHandle";
             else
