@@ -4,7 +4,7 @@ namespace Dn2Cpp;
 
 internal sealed partial class Compilation
 {
-    internal bool IsTaskSchedulerInlineDelegateArgument(TypeDesc argument, ClassInfo parameter)
+    internal bool IsTaskSchedulerDelegateArgument(TypeDesc argument, ClassInfo parameter)
     {
         if (argument is not { Kind: TypeKind.Class, IsCanonPlaceholder: false,
             Class: { IsValueType: false, IsInterface: false } actual }) return false;
@@ -35,7 +35,7 @@ internal sealed partial class Compilation
             var definition = reader.GetMethodDefinition(handle);
             string name = reader.GetString(definition.Name);
             if (owner.FullName == "System.Threading.Tasks.TaskScheduler"
-                ? name != "TryRunInline"
+                ? !CoreIntrinsics.IsTaskSchedulerOperationName(owner.FullName, name)
                 : !CoreIntrinsics.IsTaskLifecycleCandidate(name, reader.GetBlobReader(definition.Signature))) continue;
             var method = new MethodInfo
             {
@@ -54,21 +54,21 @@ internal sealed partial class Compilation
         var reader = module.Reader;
         var reference = reader.GetMemberReference(handle);
         string name = reader.GetString(reference.Name);
-        if (name == "TryRunInline" && reference.Parent.Kind == HandleKind.TypeSpecification)
+        if (name is ("TryRunInline" or "InternalQueueTask") && reference.Parent.Kind == HandleKind.TypeSpecification)
         {
             var schedulerOwner = reader.GetTypeSpecification((TypeSpecificationHandle)reference.Parent)
                 .DecodeSignature(SigProvider, context).Class;
-            if (CoreIntrinsics.IsTaskSchedulerInlineName(schedulerOwner?.FullName, name))
-                throw new NotSupportedException("TaskScheduler.TryRunInline requires an unmodified CoreLib owner");
+            if (CoreIntrinsics.IsTaskSchedulerOperationName(schedulerOwner?.FullName, name))
+                throw new NotSupportedException("TaskScheduler operation requires an unmodified CoreLib owner");
         }
-        if (CoreIntrinsics.IsTaskSchedulerInlineName(MemberRefParentTypeName(module, handle), name))
+        if (CoreIntrinsics.IsTaskSchedulerOperationName(MemberRefParentTypeName(module, handle), name))
         {
             var target = ResolveMemberRefMethod(module, handle, context);
-            if (!CoreIntrinsics.IsTaskSchedulerInline(target)
-                || !CoreIntrinsics.IsTaskSchedulerInlineSignature(reader.GetBlobReader(reference.Signature))
-                || !CoreIntrinsics.IsTaskSchedulerInlineDecodedSignature(target,
+            if (!CoreIntrinsics.IsTaskSchedulerOperation(target)
+                || !CoreIntrinsics.IsTaskSchedulerOperationSignature(name, reader.GetBlobReader(reference.Signature))
+                || !CoreIntrinsics.IsTaskSchedulerOperationDecodedSignature(target,
                     reference.DecodeMethodSignature(SigProvider, target.DeclaringClass.Context)))
-                throw new NotSupportedException("TaskScheduler.TryRunInline requires its exact CoreLib reference and declaration");
+                throw new NotSupportedException("TaskScheduler operation requires its exact CoreLib reference and declaration");
             return target;
         }
         if (!CoreIntrinsics.IsTaskLifecycleCandidate(name, reader.GetBlobReader(reference.Signature))) return null;

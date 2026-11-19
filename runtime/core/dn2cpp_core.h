@@ -1429,7 +1429,7 @@ void dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodIn
 // Exact retained CultureInfo getter; no general intrinsic-type metadata mutation.
 void dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 void dn2cpp_set_task_mark_started_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
-void dn2cpp_set_task_scheduler_inline_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+void dn2cpp_set_task_scheduler_row(int32_t slot, Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 void dn2cpp_set_culture_name_validator_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 // Only the two exact retained String entries participate in named lookup.
 void dn2cpp_set_string_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> rawByte,
@@ -5856,6 +5856,7 @@ struct Dn2CppTask; // full definition below
 struct Dn2CppCancelSource;
 struct Dn2CppCancelToken;
 constexpr int32_t DN2CPP_TASK_OPTIONS_MASK = 0x5f;
+constexpr int32_t DN2CPP_TASK_LONG_RUNNING = 2;
 constexpr int32_t DN2CPP_TASK_DENY_CHILD_ATTACH = 8;
 constexpr int32_t DN2CPP_TASK_ASYNC_CONTINUATIONS = 64;
 
@@ -7678,13 +7679,14 @@ enum
     DN2CPP_TASK_ORIGIN_ASYNC_UNEXPOSED = 4,
     DN2CPP_TASK_ORIGIN_POOL = 5,
     DN2CPP_TASK_ORIGIN_ACTIVE_CONTINUATION = 6, // assigned when its antecedent dispatches it
+    DN2CPP_TASK_ORIGIN_UNOWNED_QUEUE = 7, // directly queued cold delegate with no scheduler assignment
 };
 
 enum
 {
     DN2CPP_TASK_NOT_STARTED = 0,
-    DN2CPP_TASK_SCHEDULED,
-    DN2CPP_TASK_INVOKED,
+    DN2CPP_TASK_SCHEDULED = 1,
+    DN2CPP_TASK_INVOKED = 2, // independent of the caller's protected start
 };
 
 struct Dn2CppTask : Dn2CppObject
@@ -7803,6 +7805,7 @@ Dn2CppTask* dn2cpp_task_alloc(int32_t options = 0, Dn2CppCancelSource* source = 
 Dn2CppCancelToken dn2cpp_task_cancellation_token(Dn2CppTask* task);
 int32_t dn2cpp_task_mark_started(Dn2CppTask* task);
 int32_t dn2cpp_taskscheduler_try_run_inline(Dn2CppObject* scheduler, Dn2CppTask* task, int32_t previouslyQueued);
+void dn2cpp_taskscheduler_internal_queue(Dn2CppObject* scheduler, Dn2CppTask* task);
 int32_t dn2cpp_task_public_status(Dn2CppTask* task);
 void dn2cpp_task_init_promise(Dn2CppTask* task, Dn2CppObject* state, int32_t options);
 void dn2cpp_task_dispose(Dn2CppTask* task);

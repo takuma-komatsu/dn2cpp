@@ -31,9 +31,9 @@ internal static partial class CoreIntrinsics
 
     internal static void ValidateTaskLifecycle(MethodInfo method)
     {
-        if (IsTaskSchedulerInlineName(method.DeclaringClass.FullName, method.Name)
-            && !IsTaskSchedulerInline(method))
-            throw new NotSupportedException("TaskScheduler.TryRunInline requires its exact CoreLib declaration");
+        if (IsTaskSchedulerOperationName(method.DeclaringClass.FullName, method.Name)
+            && !IsTaskSchedulerOperation(method))
+            throw new NotSupportedException("TaskScheduler operation requires its exact CoreLib declaration");
         if (IsTaskLifecycleOwner(method.DeclaringClass) && !method.Handle.IsNil
             && IsTaskLifecycleCandidate(method.Name, method.Module.Reader.GetBlobReader(
                 method.Module.Reader.GetMethodDefinition(method.Handle).Signature))
@@ -43,7 +43,7 @@ internal static partial class CoreIntrinsics
 
     internal static bool IsTaskLifecycle(MethodInfo method)
     {
-        if (IsTaskSchedulerInline(method)) return true;
+        if (IsTaskSchedulerOperation(method)) return true;
         var owner = method.DeclaringClass;
         if (method.Name is not (".ctor" or "TrySetResult" or "MarkStarted") || !IsTaskLifecycleOwner(owner)
             || method.Module.AssemblyName != "System.Private.CoreLib" || owner.Module != method.Module
