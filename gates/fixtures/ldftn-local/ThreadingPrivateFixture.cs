@@ -82,6 +82,18 @@ internal static class ThreadingPrivateFixture
                 il.Emit(OpCodes.Ret);
             }
         }
+        var schedulerInline = core.MainModule.GetType("System.Threading.Tasks.TaskScheduler")
+            .Methods.Single(method => method.Name == "TryRunInline");
+        var openInline = owner.Methods.Single(method => method.Name == "OpenSchedulerInline");
+        var ctorRef = new MethodReference(".ctor", module.TypeSystem.Void, openInline.ReturnType) { HasThis = true };
+        ctorRef.Parameters.Add(new ParameterDefinition(module.TypeSystem.Object));
+        ctorRef.Parameters.Add(new ParameterDefinition(module.TypeSystem.IntPtr));
+        openInline.Body = new MethodBody(openInline);
+        var inlineIl = openInline.Body.GetILProcessor();
+        inlineIl.Emit(OpCodes.Ldarg_0);
+        inlineIl.Emit(OpCodes.Ldftn, module.ImportReference(schedulerInline));
+        inlineIl.Emit(OpCodes.Newobj, ctorRef);
+        inlineIl.Emit(OpCodes.Ret);
         if (!module.Types.Any(type => type.Name == "IgnoresAccessChecksToAttribute"))
         {
             var bypass = new TypeDefinition("System.Runtime.CompilerServices", "IgnoresAccessChecksToAttribute",
@@ -102,6 +114,10 @@ internal static class ThreadingPrivateFixture
         app.Write(path, new WriterParameters { Timestamp = 0, DeterministicMvid = true });
         using var check = AssemblyDefinition.ReadAssembly(path);
         var bodies = check.MainModule.GetType("ThreadingPrivateSubset").Methods;
+        var inlineOps = bodies.Single(method => method.Name == "OpenSchedulerInline").Body.Instructions;
+        if (inlineOps.Count != 4 || inlineOps[0].OpCode != OpCodes.Ldarg_0 || inlineOps[1].OpCode != OpCodes.Ldftn
+            || ((MethodReference)inlineOps[1].Operand).FullName != schedulerInline.FullName || inlineOps[2].OpCode != OpCodes.Newobj)
+            throw new InvalidOperationException("TaskScheduler inline delegate fixture changed");
         var direct = bodies.Single(method => method.Name == "Direct").Body.Instructions.Single(instruction => instruction.OpCode == OpCodes.Call);
         var address = bodies.Single(method => method.Name == "Address").Body.Instructions.Single(instruction => instruction.OpCode == OpCodes.Ldftn);
         if (((MethodReference)address.Operand).FullName != target.FullName

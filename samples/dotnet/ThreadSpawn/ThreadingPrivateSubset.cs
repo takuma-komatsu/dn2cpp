@@ -2,6 +2,7 @@ using System;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 
 internal static class ThreadingPrivateSubset
 {
@@ -37,6 +38,10 @@ internal static class ThreadingPrivateSubset
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal static void LockRecordAddress(System.Threading.Lock? receiver) => throw new InvalidOperationException("unpatched lock record address");
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static Func<TaskScheduler, Task<int>, bool, bool> OpenSchedulerInline(object target) =>
+        throw new InvalidOperationException("unpatched scheduler inline address");
 
     internal static void PublicNames()
     {
@@ -122,5 +127,16 @@ internal static class ThreadingPrivateSubset
         RunLock("lock reset null", () => { LockResetDirect(null); return false; }, "ResetWaiterStartTime");
         RunLock("lock record null", () => { LockRecordAddress(null); return false; }, "RecordWaiterStartTime");
         Console.WriteLine("lock waiter boundary end");
+
+        var inline = OpenSchedulerInline(new object());
+        var scheduler = TaskScheduler.Default;
+        var task = new Task<int>(() => 42);
+        bool unowned = inline(scheduler, task, false);
+        var mark = typeof(Task).GetMethod("MarkStarted", BindingFlags.Instance | BindingFlags.NonPublic);
+        mark!.Invoke(task, null);
+        task.Start(scheduler);
+        bool ran = inline(scheduler, task, false);
+        Console.WriteLine("scheduler inline address=" + (inline.Target is null) + "/" + unowned
+            + "/" + ran + "/" + (ran ? task.Result : -1));
     }
 }

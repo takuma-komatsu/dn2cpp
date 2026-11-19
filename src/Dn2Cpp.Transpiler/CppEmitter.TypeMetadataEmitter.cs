@@ -2021,6 +2021,7 @@ internal sealed partial class CppEmitter
             EmitDateTimeParserRows();
             EmitThreadingPrivateRows();
             EmitTaskMarkStartedRow();
+            EmitTaskSchedulerInlineRow();
             _e.EmitArrayTypeInfos(_sb, _emittedEnums);
             _e.EmitMdArrayItfMap(_sb);
             _e.EmitArrayNongenericItfRows(_sb);
@@ -2220,6 +2221,27 @@ internal sealed partial class CppEmitter
                             throw new InvalidOperationException("Retained Task.MarkStarted has no metadata row.");
                     }
                     _e._taskMarkStartedRow = address;
+                    return;
+                }
+            }
+        }
+
+        // Scheduler identity remains runtime-owned; only the exact retained helper is attached.
+        private void EmitTaskSchedulerInlineRow()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.FullName != "System.Threading.Tasks.TaskScheduler") continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsTaskSchedulerInline(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "taskschedulerinlinetab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained TaskScheduler.TryRunInline has no metadata row.");
+                    }
+                    _e._taskSchedulerInlineRow = address;
                     return;
                 }
             }

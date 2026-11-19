@@ -1619,6 +1619,21 @@ their scheduling phase; unwrapping promises do not inherit the delegate's phase.
 A settled status takes precedence over WaitingToRun or Running. Ordinary await
 resumptions remain on their owning scheduler, without acquiring a Task start claim.
 
+The retained CoreLib `TaskScheduler.TryRunInline` helper rejects native promises,
+actionless precompleted tasks, unassigned cold tasks and continuations, invoked
+delegates, and canceled tasks without running work. A protected start alone does
+not assign a scheduler to a continuation waiting on its antecedent.
+A cold task whose scheduler was assigned after a separate protected start keeps
+its unqueued work. The default scheduler can invoke that work once when it is not
+claimed to be queued; claiming it was queued returns false without consuming it.
+Inline cold execution and `RunSynchronously` acknowledge a caught cancellation
+exception only when its token matches the task's requested, non-default token.
+They retain that exception's identity; other delegate exceptions fault the task.
+Other pending work throws `PlatformNotSupportedException`: native queues do not
+expose the managed scheduler's queue-removal and virtual inline-dispatch protocol.
+This boundary does not replace public native task scheduling or silently decline
+eligible work whose dispatch is not represented.
+
 #### Task cancellation identity
 
 A native task stores its associated cancellation source independently of callback

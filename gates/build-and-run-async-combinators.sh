@@ -67,6 +67,8 @@
 # Former gates: whenall, whenany, when-enumerable, configure-await, delay-order,
 # cancellation, custom-awaitable, multi-awaiter.
 # Task sequences, cold scheduling, protected starts, and CoreLib-derived promise task initialization.
+# Default scheduler inline execution distinguishes an unassigned task, a missing
+# queue entry, and an owned delegate that can run exactly once.
 # Task and cancellation aggregate construction leaves virtual inner Messages unread.
 source "$(dirname "$0")/_common.sh"
 gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for task call fixtures"
@@ -80,6 +82,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-cancellation
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-lazy-aggregate-message"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-delay-synchronization"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-derived-task-promises|prefix:before-timed-waitasync|prefix:before-semaphore-waiters|prefix:before-task-creation-options|prefix:before-task-cancellation-tokens|prefix:before-protected-task-start"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-scheduler-inline"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|shared-binary:native-delay-deadlines|shared-binary:fresh-cancellation-filters"
 
 # The exception text is platform-owned; its record prefix is the boundary.
@@ -114,8 +117,15 @@ gate_extra_asserts() {
         'protected task start end'; do
         gate_output byte-witness "$native" "$line" --policy crlf || return 1
     done
+    before="$out/before-scheduler-inline.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-scheduler-inline
+    gate_output prefix "$native" "$before" --before '== scheduler inline ==' --policy crlf || return 1
     printf '%s\n' 'protected task start end' > "$out/protected-start-end.expected"
-    gate_output suffix "$native" "$out/protected-start-end.expected" --policy crlf || return 1
+    gate_output suffix "$before" "$out/protected-start-end.expected" --policy crlf || return 1
+    printf '%s\n' 'scheduler inline: True/False/False/True/False/RanToCompletion/1' \
+        'scheduler inline ineligible: False/False|True/False/False|True/False/False' \
+        'scheduler inline cancellation: True/Canceled|True/Faulted' > "$out/scheduler-inline.expected"
+    gate_output suffix "$native" "$out/scheduler-inline.expected" --after '== scheduler inline ==' --policy crlf || return 1
     before="$out/before-semaphore-waiters.stdout"
     gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-semaphore-waiters
     gate_output prefix "$native" "$before" --before '== semaphore waiter helpers ==' --policy crlf

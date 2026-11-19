@@ -438,6 +438,14 @@ internal sealed partial class MethodCompiler
     {
         if (CoreIntrinsics.IsTaskLifecycleNative(callee))
         {
+            if (CoreIntrinsics.IsTaskSchedulerInline(callee))
+            {
+                var queued = Pop();
+                var task = Pop();
+                var scheduler = Pop();
+                Push(StackKind.I4, "int32_t", $"dn2cpp_taskscheduler_try_run_inline((Dn2CppObject*)({scheduler.Expr}), (Dn2CppTask*)({task.Expr}), {queued.Expr})");
+                return;
+            }
             if (callee.Name == "MarkStarted")
             {
                 var receiver = Pop();
