@@ -3208,9 +3208,9 @@ internal sealed partial class CppEmitter
             sb.AppendLine("    dn2cpp_set_task_exception_holder_rethrow(&dn2cpp_image_task_holder_rethrow);");
             sb.AppendLine("    dn2cpp_set_task_exception_holder_dispatch(&dn2cpp_image_task_holder_dispatch_faults, &dn2cpp_image_task_holder_dispatch_cancellation, &dn2cpp_image_task_holder_normalize);");
         }
-        for (int i = 0; i < _taskAddExceptionRows.Length; i++)
-            if (_taskAddExceptionRows[i] is { } taskExceptionRow)
-                sb.AppendLine($"    dn2cpp_set_task_add_exception_row({i + 1}, Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({taskExceptionRow}));");
+        for (int i = 0; i < _taskPrivateRows.Length; i++)
+            if (_taskPrivateRows[i] is { } taskPrivateRow)
+                sb.AppendLine($"    dn2cpp_set_task_private_row({i}, Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({taskPrivateRow}));");
         if (_taskMarkStartedRow is { } taskMarkStartedRow)
             sb.AppendLine($"    dn2cpp_set_task_mark_started_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({taskMarkStartedRow}));");
         if (_cultureCompareInfoRow is { } cultureCompareInfoRow)
@@ -3992,7 +3992,7 @@ internal sealed partial class CppEmitter
     private string? _resourceManagerDefaultTypeRow;
     private string? _cultureCompareInfoRow;
     private string? _taskMarkStartedRow;
-    private readonly string?[] _taskAddExceptionRows = new string?[2];
+    private readonly string?[] _taskPrivateRows = new string?[4];
     private readonly string?[] _taskSchedulerRows = new string?[2];
     private string? _cultureNameValidatorRow;
     private string? _stringRawByteReferenceRow;

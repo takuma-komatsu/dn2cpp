@@ -87,6 +87,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-derived-task
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-scheduler-inline"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-scheduler-queue"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-task-add-exception"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-task-finish"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|shared-binary:native-delay-deadlines|shared-binary:fresh-cancellation-filters"
 
 # The exception text is platform-owned; its record prefix is the boundary.
@@ -144,6 +145,13 @@ gate_extra_asserts() {
         'task add proxy: True/True'; do
         gate_output byte-witness "$native" "$line" --policy crlf || return 1
     done
+    before="$out/before-task-finish.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-task-finish
+    gate_output prefix "$native" "$before" --before '== task finish ==' --policy crlf || return 1
+    printf '%s\n' 'task finish False: Created/False/False/Faulted/True/True/0/True' \
+        'task finish True: Created/False/False/RanToCompletion/True/True/0/True' \
+        'task finish struct: True/True/True' > "$out/task-finish.expected"
+    gate_output suffix "$native" "$out/task-finish.expected" --after '== task finish ==' --policy crlf || return 1
     before="$out/before-semaphore-waiters.stdout"
     gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-semaphore-waiters
     gate_output prefix "$native" "$before" --before '== semaphore waiter helpers ==' --policy crlf

@@ -2038,7 +2038,7 @@ internal sealed partial class CppEmitter
             EmitDateTimeParserRows();
             EmitThreadingPrivateRows();
             EmitTaskMarkStartedRow();
-            EmitTaskAddExceptionRows();
+            EmitAdditionalTaskPrivateRows();
             EmitTaskSchedulerRows();
             _e.EmitArrayTypeInfos(_sb, _emittedEnums);
             _e.EmitMdArrayItfMap(_sb);
@@ -2244,22 +2244,23 @@ internal sealed partial class CppEmitter
             }
         }
 
-        private void EmitTaskAddExceptionRows()
+        private void EmitAdditionalTaskPrivateRows()
         {
             foreach (var cls in _c.Classes.ToList())
             {
                 if (cls.FullName != "System.Threading.Tasks.Task") continue;
                 foreach (var method in cls.Methods)
                 {
-                    if (!CoreIntrinsics.IsTaskAddException(method) || !IsRetainedOpaqueMemberRow(method)) continue;
-                    int arity = method.Signature.ParameterTypes.Length;
+                    if (!(CoreIntrinsics.IsTaskAddException(method) || CoreIntrinsics.IsTaskFinish(method))
+                        || !IsRetainedOpaqueMemberRow(method)) continue;
+                    int slot = CoreIntrinsics.IsTaskFinish(method) ? 3 : method.Signature.ParameterTypes.Length;
                     if (!_memberAddr.TryGetValue(method, out var address))
                     {
-                        BuildMemberTable(cls, new List<MethodInfo> { method }, "taskaddexceptiontab_" + arity);
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "taskprivatetab_" + slot);
                         if (!_memberAddr.TryGetValue(method, out address))
-                            throw new InvalidOperationException("Retained Task.AddException has no metadata row.");
+                            throw new InvalidOperationException("Retained Task private member has no metadata row.");
                     }
-                    _e._taskAddExceptionRows[arity - 1] = address;
+                    _e._taskPrivateRows[slot] = address;
                 }
             }
         }

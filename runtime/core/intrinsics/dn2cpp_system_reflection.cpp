@@ -4517,17 +4517,23 @@ void dn2cpp_set_task_scheduler_row(int32_t slot, Dn2CppMetadataHandle<Dn2CppMeth
         g_task_scheduler_rows[slot] = method;
 }
 
-static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_task_private_rows[3];
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_task_private_rows[4];
+
+void dn2cpp_set_task_private_row(int32_t slot, Dn2CppMetadataHandle<Dn2CppMethodInfo> method)
+{
+    if (slot >= 0 && slot < 4)
+        g_task_private_rows[slot] = method;
+}
 
 void dn2cpp_set_task_mark_started_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method)
 {
-    g_task_private_rows[0] = method;
+    dn2cpp_set_task_private_row(0, method);
 }
 
 void dn2cpp_set_task_add_exception_row(int32_t arity, Dn2CppMetadataHandle<Dn2CppMethodInfo> method)
 {
     if (arity == 1 || arity == 2)
-        g_task_private_rows[arity] = method;
+        dn2cpp_set_task_private_row(arity, method);
 }
 
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_threading_private_rows[6];
@@ -4576,8 +4582,8 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     const auto resourceManager = g_resourcemanager_default_type_row;
     const bool resourceManagerNamed = resourceManager != nullptr
         && dn2cpp_member_name_matches(resourceManager->name, name, bindingFlags, false);
-    bool taskPrivateNamed[3];
-    for (int32_t i = 0; i < 3; i++)
+    bool taskPrivateNamed[4];
+    for (int32_t i = 0; i < 4; i++)
         taskPrivateNamed[i] = g_task_private_rows[i] != nullptr
             && dn2cpp_member_name_matches(g_task_private_rows[i]->name, name, bindingFlags, false);
     bool taskSchedulerNamed[2];
@@ -4585,7 +4591,7 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
         taskSchedulerNamed[i] = g_task_scheduler_rows[i] != nullptr
             && dn2cpp_member_name_matches(g_task_scheduler_rows[i]->name, name, bindingFlags, false);
     bool named = factoryNamed || dateOnlyNamed || cultureCompareInfoNamed || cultureNameValidatorNamed
-        || resourceManagerNamed || taskPrivateNamed[0] || taskPrivateNamed[1] || taskPrivateNamed[2]
+        || resourceManagerNamed || taskPrivateNamed[0] || taskPrivateNamed[1] || taskPrivateNamed[2] || taskPrivateNamed[3]
         || taskSchedulerNamed[0] || taskSchedulerNamed[1];
     for (int32_t i = 0; i < 2 && !named; i++)
         named = g_string_private_rows[i] != nullptr
@@ -4619,7 +4625,7 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
         }
         if (ti == &dn2cpp_task_type)
         {
-            for (int32_t i = 0; i < 3; i++)
+            for (int32_t i = 0; i < 4; i++)
             {
                 if (!taskPrivateNamed[i]) continue;
                 const auto method = g_task_private_rows[i];

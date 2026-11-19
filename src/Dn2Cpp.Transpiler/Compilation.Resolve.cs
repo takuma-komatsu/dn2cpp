@@ -137,6 +137,8 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(mi)
                     || CoreIntrinsics.IsTaskManagedForwarder(mi)
                     || CoreIntrinsics.IsTaskAddException(mi)
+                    || CoreIntrinsics.IsTaskFinish(mi)
+                    || CoreIntrinsics.IsTaskSchedulerOperation(mi)
                     || CoreIntrinsics.IsInterpolationStaticHelper(mi)
                     || CoreIntrinsics.IsScalarNumericLeaf(mi)
                     || CoreIntrinsics.IsBinaryIntegerEndianBody(mi)
