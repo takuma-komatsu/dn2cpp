@@ -453,6 +453,13 @@ internal sealed partial class MethodCompiler
                 Emit($"dn2cpp_taskscheduler_internal_queue((Dn2CppObject*)({scheduler.Expr}), (Dn2CppTask*)({task.Expr}));");
                 return;
             }
+            if (CoreIntrinsics.IsTaskFinish(callee))
+            {
+                var executed = Pop();
+                var task = Pop();
+                Emit($"dn2cpp_task_finish((Dn2CppTask*)({task.Expr}), {executed.Expr});");
+                return;
+            }
             if (CoreIntrinsics.IsTaskAddException(callee))
             {
                 var cancellation = Pop();

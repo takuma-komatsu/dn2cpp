@@ -2169,8 +2169,13 @@ internal sealed partial class MethodCompiler
                     && _c.IsTaskExceptionDelegateArgument(parameters[1])
                     && (bound.Signature.ParameterTypes.Length == 1 || parameters[2] == bound.Signature.ParameterTypes[1]);
             }
-            bool OpensTaskOperation(MethodInfo bound) => OpensSchedulerOperation(bound) || OpensTaskException(bound);
-            bool UnsupportedSchedulerOpen(MethodInfo bound) => (CoreIntrinsics.IsTaskSchedulerOperation(bound) || CoreIntrinsics.IsTaskAddException(bound))
+            bool OpensTaskFinish(MethodInfo bound) => CoreIntrinsics.IsTaskFinish(bound)
+                && invokeRow is not null && invokeRow.Signature.ReturnType == bound.Signature.ReturnType
+                && invokeRow.Signature.ParameterTypes is [{ } receiver, { } executed]
+                && _c.IsTaskSchedulerDelegateArgument(receiver, bound.DeclaringClass)
+                && executed == bound.Signature.ParameterTypes[0];
+            bool OpensTaskOperation(MethodInfo bound) => OpensSchedulerOperation(bound) || OpensTaskException(bound) || OpensTaskFinish(bound);
+            bool UnsupportedSchedulerOpen(MethodInfo bound) => (CoreIntrinsics.IsTaskSchedulerOperation(bound) || CoreIntrinsics.IsTaskAddException(bound) || CoreIntrinsics.IsTaskFinish(bound))
                 && (invokeRow is null || invokeRow.Signature.ParameterTypes.Length != bound.Signature.ParameterTypes.Length)
                 && !OpensTaskOperation(bound);
             const string unsupportedSchedulerOpen = "TaskScheduler operation open delegate requires assignable scheduler/task references and an exact remaining signature";
@@ -2182,6 +2187,8 @@ internal sealed partial class MethodCompiler
                 // not its first Invoke argument. The managed body owns null semantics.
                 string receiverCpp = NfiErasedAbi(CppTypes.Of(invokeRow!.Signature.ParameterTypes[0]));
                 string taskCpp = NfiErasedAbi(CppTypes.Of(invokeRow.Signature.ParameterTypes[1]));
+                if (CoreIntrinsics.IsTaskFinish(bound))
+                    return $"(void*)+[](Dn2CppObject*, {receiverCpp} self, {taskCpp} executed) -> void {{ {bound.Emittable.CppName}((Dn2CppTask*)self, executed); }}";
                 if (CoreIntrinsics.IsTaskAddException(bound))
                 {
                     string parameter = bound.Signature.ParameterTypes.Length == 2 ? ", int32_t cancellation" : "";

@@ -1699,6 +1699,24 @@ without changing its published status or refiring continuations. Its first
 managed holder starts with the settled native fault set and its prior observation
 state, so rearming the holder does not lose earlier faults.
 
+The internal `Task.Finish(bool)` settles a pending task without invoking its
+delegate. It uses the same recorded-fault arbitration and release publication as
+delegate completion: waiters see the terminal state, and the completion handle is
+signaled before continuations dispatch. Recording a cancellation exception or
+requesting cancellation alone does not acknowledge it. An undispatched action is
+released; the task's public async state is retained. Where a struct payload
+was never returned, result readers and generic joins expose its zero-initialized
+value rather than interpreting the empty slot as a boxed address.
+
+Finishing before delegate execution does not wait for children. Finishing after
+execution can require child countdown and fault collection; either path can
+also require parent notification. Native delegate scopes distinguish an actual
+attachment from an `AttachedToParent` option with no eligible current parent.
+The runtime does not own that parent/child completion protocol and explicitly
+refuses this entry on tasks that participated in one. It also refuses to take
+completion away from already dispatched native work, or to finish an already
+reserved or terminal task. Ordinary native task scheduling is unchanged.
+
 #### CoreLib promise task subclasses
 
 A managed subclass of `Task` or `Task<T>` has the same `Dn2CppTask` prefix as

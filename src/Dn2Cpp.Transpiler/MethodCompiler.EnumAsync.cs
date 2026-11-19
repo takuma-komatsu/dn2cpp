@@ -995,9 +995,7 @@ internal sealed partial class MethodCompiler
             StackKind.I8 => $"(int64_t)({taskExpr}->result)",
             StackKind.R8 => $"dn2cpp_bits_r8({taskExpr}->result)", // narrows to float for Task<float>
             StackKind.Ref => $"({CppTypes.Of(t)})(uintptr_t)({taskExpr}->result)",
-            // A struct result is heap-boxed in the slot (EmitTaskResultStore) — load
-            // it back by dereferencing the boxed pointer as T.
-            StackKind.Struct => $"(*({CppTypes.Of(t)}*)(uintptr_t)({taskExpr}->result))",
+            StackKind.Struct => $"dn2cpp_task_struct_result<{CppTypes.Of(t)}>({taskExpr}->result)",
             _ => throw new NotSupportedException(
                 $"async Task<{t}>.Result of kind {k} is not supported yet"),
         };

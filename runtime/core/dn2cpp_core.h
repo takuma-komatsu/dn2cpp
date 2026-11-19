@@ -1428,6 +1428,7 @@ void dn2cpp_set_delegate_method_catalog(const Dn2CppDelegateMethodCatalog* rows,
 void dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 // Exact retained CultureInfo getter; no general intrinsic-type metadata mutation.
 void dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+void dn2cpp_set_task_private_row(int32_t slot, Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 void dn2cpp_set_task_mark_started_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 void dn2cpp_set_task_add_exception_row(int32_t arity, Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 void dn2cpp_set_task_scheduler_row(int32_t slot, Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
@@ -5860,6 +5861,7 @@ struct Dn2CppCancelSource;
 struct Dn2CppCancelToken;
 constexpr int32_t DN2CPP_TASK_OPTIONS_MASK = 0x5f;
 constexpr int32_t DN2CPP_TASK_LONG_RUNNING = 2;
+constexpr int32_t DN2CPP_TASK_ATTACHED_TO_PARENT = 4;
 constexpr int32_t DN2CPP_TASK_DENY_CHILD_ATTACH = 8;
 constexpr int32_t DN2CPP_TASK_ASYNC_CONTINUATIONS = 64;
 
@@ -7692,6 +7694,13 @@ enum
     DN2CPP_TASK_INVOKED = 2, // independent of the caller's protected start
 };
 
+enum : uint8_t
+{
+    DN2CPP_TASK_HAS_UNTRACKED_PARENT = 1,
+    DN2CPP_TASK_HAS_UNTRACKED_CHILD = 2,
+    DN2CPP_TASK_EXPLICIT_FINISH = 4,
+};
+
 struct Dn2CppTask : Dn2CppObject
 {
     // The publication point: a settle stores it last with release, so every read —
@@ -7730,6 +7739,7 @@ struct Dn2CppTask : Dn2CppObject
     std::atomic<Dn2CppObject*> exceptionHolder; // task-owned, installed once
     int32_t exceptionHolderState; // guarded while pending, published with terminal status
     bool nativeFaultObserved; // protected by the task mutex, before holder installation
+    std::atomic<uint8_t> finishProvenance; // actual attachment history and exclusive Finish ownership
 };
 
 struct Dn2CppTaskCompletionSource : Dn2CppObject
@@ -7821,6 +7831,7 @@ Dn2CppObject* dn2cpp_taskscheduler_default();
 Dn2CppTask* dn2cpp_task_alloc(int32_t options = 0, Dn2CppCancelSource* source = nullptr);
 Dn2CppCancelToken dn2cpp_task_cancellation_token(Dn2CppTask* task);
 int32_t dn2cpp_task_mark_started(Dn2CppTask* task);
+void dn2cpp_task_finish(Dn2CppTask* task, int32_t userDelegateExecute);
 int32_t dn2cpp_taskscheduler_try_run_inline(Dn2CppObject* scheduler, Dn2CppTask* task, int32_t previouslyQueued);
 void dn2cpp_taskscheduler_internal_queue(Dn2CppObject* scheduler, Dn2CppTask* task);
 int32_t dn2cpp_task_public_status(Dn2CppTask* task);
@@ -8002,6 +8013,13 @@ Dn2CppArrayRef* dn2cpp_reflist_to_array(Dn2CppRefList* l);
 Dn2CppArrayRef* dn2cpp_refspan_to_array(Dn2CppObject** data, int32_t len);
 // Heap-box a struct Task<T> result so it fits the 8-byte slot as a pointer.
 void* dn2cpp_struct_result_box(const void* src, int32_t size);
+
+// A successfully completed task with no returned payload exposes default(T).
+template<class T>
+inline T dn2cpp_task_struct_result(uint64_t slot)
+{
+    return slot == 0 ? T{} : *reinterpret_cast<const T*>(static_cast<uintptr_t>(slot));
+}
 // Task.FromException<T>(ex) / Task.FromException(ex): a pre-completed FAULTED task
 // carrying the exception; awaiting it or reading .Result re-raises it.
 Dn2CppTask* dn2cpp_task_from_exception(Dn2CppObject* exception);

@@ -107,6 +107,9 @@ namespace AsyncCombinators
             if (args.Length == 1 && args[0] == "before-task-add-exception")
                 return;
             WhenAllFaultSetSubset.Program.RunAddedExceptions();
+            if (args.Length == 1 && args[0] == "before-task-finish")
+                return;
+            WhenAllFaultSetSubset.Program.RunFinish();
             // Ends the process: a builder suspension's rejected registration is re-raised
             // as an unhandled ThreadPool exception.
             if (args.Length == 2 && args[0] == "suspension-rejection")

@@ -83,6 +83,56 @@ namespace WhenAllFaultSetSubset
                 + "/" + ReferenceEquals(proxyAwaited, first));
         }
 
+        internal static void RunFinish()
+        {
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+            var finish = typeof(Task).GetMethod("Finish", flags, null, new[] { typeof(bool) }, null);
+            var add = typeof(Task).GetMethod("AddException", flags, null, new[] { typeof(object) }, null);
+            Console.WriteLine("== task finish ==");
+            foreach (bool fault in new[] { true, false })
+            {
+                int bodies = 0;
+                var task = new Task(() => bodies++);
+                var first = new ArgumentException("first recorded fault");
+                var second = new InvalidOperationException("second recorded fault");
+                if (fault)
+                {
+                    add.Invoke(task, new object[] { first });
+                    add.Invoke(task, new object[] { second });
+                }
+                var waiter = ((IAsyncResult)task).AsyncWaitHandle;
+                var continuation = task.ContinueWith(t => t.IsCompleted && waiter.WaitOne(0));
+                string before = task.Status + "/" + waiter.WaitOne(0) + "/" + continuation.IsCompleted;
+                finish.Invoke(task, new object[] { !fault });
+                if (!continuation.Wait(TimeSpan.FromSeconds(8)))
+                    throw new TimeoutException("Finish continuation did not complete");
+                Exception awaited = null;
+                try { task.GetAwaiter().GetResult(); }
+                catch (Exception error) { awaited = error; }
+                var errors = task.Exception;
+                bool ordered = fault
+                    ? errors?.InnerExceptions.Count == 2 && ReferenceEquals(errors.InnerExceptions[0], first)
+                      && ReferenceEquals(errors.InnerExceptions[1], second) && ReferenceEquals(awaited, first)
+                    : errors is null && awaited is null;
+                Console.WriteLine("task finish " + !fault + ": " + before + "/" + task.Status + "/"
+                    + waiter.WaitOne(0) + "/" + continuation.Result + "/" + bodies + "/" + ordered);
+            }
+            var unreturned = new Task<FinishValue>(() => new FinishValue(1, "invoked"));
+            var joined = Task.WhenAll(unreturned);
+            finish.Invoke(unreturned, new object[] { true });
+            static bool IsDefault(FinishValue value) => value.Number == 0 && value.Text is null;
+            Console.WriteLine("task finish struct: " + IsDefault(unreturned.Result)
+                + "/" + IsDefault(new ValueTask<FinishValue>(unreturned).GetAwaiter().GetResult())
+                + "/" + IsDefault(joined.Result[0]));
+        }
+
+        private readonly struct FinishValue
+        {
+            internal readonly int Number;
+            internal readonly string Text;
+            internal FinishValue(int number, string text) { Number = number; Text = text; }
+        }
+
         private sealed class MessageFault : Exception
         {
             internal int Reads;

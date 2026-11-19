@@ -620,7 +620,7 @@ internal sealed partial class MethodCompiler
                     EmitManagedCall(callee, isCallvirt);
                     return;
                 }
-                if (CoreIntrinsics.IsTaskSchedulerOperation(callee) || CoreIntrinsics.IsTaskAddException(callee))
+                if (CoreIntrinsics.IsTaskSchedulerOperation(callee) || CoreIntrinsics.IsTaskAddException(callee) || CoreIntrinsics.IsTaskFinish(callee))
                 {
                     EmitManagedCall(callee, isCallvirt);
                     return;
@@ -1017,7 +1017,7 @@ internal sealed partial class MethodCompiler
             {
                 if (_c.TryResolveTaskLifecycleReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } taskMember)
                 {
-                    if (CoreIntrinsics.IsTaskSchedulerOperation(taskMember) || CoreIntrinsics.IsTaskAddException(taskMember))
+                    if (CoreIntrinsics.IsTaskSchedulerOperation(taskMember) || CoreIntrinsics.IsTaskAddException(taskMember) || CoreIntrinsics.IsTaskFinish(taskMember))
                     {
                         EmitManagedCall(taskMember, isCallvirt);
                         return;

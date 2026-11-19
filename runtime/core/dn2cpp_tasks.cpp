@@ -215,6 +215,28 @@ void dn2cpp_task_add_exception(Dn2CppTask* task, Dn2CppObject* exception, int32_
     g_task_holder_add(holder, exception, representsCancellation);
 }
 
+// TLS contains only the address of the active scanned stack scope, not a GC pointer.
+struct Dn2CppTaskDelegateScope
+{
+    static thread_local Dn2CppTaskDelegateScope* active;
+    Dn2CppTask* task;
+    Dn2CppTaskDelegateScope* previous = active;
+
+    explicit Dn2CppTaskDelegateScope(Dn2CppTask* current) : task(current) { active = this; }
+    ~Dn2CppTaskDelegateScope() { active = previous; }
+    Dn2CppTaskDelegateScope(const Dn2CppTaskDelegateScope&) = delete;
+    Dn2CppTaskDelegateScope& operator=(const Dn2CppTaskDelegateScope&) = delete;
+};
+
+thread_local Dn2CppTaskDelegateScope* Dn2CppTaskDelegateScope::active = nullptr;
+
+template<class Fn>
+static decltype(auto) dn2cpp_task_invoke_as(Dn2CppTask* task, Fn&& invoke)
+{
+    Dn2CppTaskDelegateScope scope(task);
+    return invoke();
+}
+
 static void dn2cpp_task_init(Dn2CppTask* t, int32_t options, Dn2CppCancelSource* source)
 {
     // Relaxed here and in every other pre-completed mint below: the task is private
@@ -238,6 +260,17 @@ static void dn2cpp_task_init(Dn2CppTask* t, int32_t options, Dn2CppCancelSource*
     t->disposed = 0;
     t->creationOptions.store(options & DN2CPP_TASK_OPTIONS_MASK, std::memory_order_relaxed);
     dn2cpp_gc_store_ref(&t->cancellationSource, source);
+    t->finishProvenance.store(0, std::memory_order_relaxed);
+    if ((options & DN2CPP_TASK_ATTACHED_TO_PARENT) != 0)
+    {
+        const auto* scope = Dn2CppTaskDelegateScope::active;
+        auto* parent = scope != nullptr ? scope->task : nullptr;
+        if (parent != nullptr && (parent->creationOptions.load(std::memory_order_relaxed) & DN2CPP_TASK_DENY_CHILD_ATTACH) == 0)
+        {
+            t->finishProvenance.store(DN2CPP_TASK_HAS_UNTRACKED_PARENT, std::memory_order_relaxed);
+            parent->finishProvenance.fetch_or(DN2CPP_TASK_HAS_UNTRACKED_CHILD, std::memory_order_release);
+        }
+    }
 }
 
 Dn2CppTask* dn2cpp_task_alloc(int32_t options, Dn2CppCancelSource* source)
@@ -404,7 +437,7 @@ Dn2CppTask* dn2cpp_task_completed()
 Dn2CppTask dn2cpp_task_default_completed{
     { &dn2cpp_task_type }, DN2CPP_TASK_SUCCEEDED,
     dn2cpp_task_next_id(), nullptr, nullptr, 0, nullptr, nullptr, nullptr, nullptr,
-    DN2CPP_TASK_ORIGIN_PRECOMPLETED, DN2CPP_TASK_NOT_STARTED, nullptr, nullptr, -1, 0, nullptr, nullptr, 0, false };
+    DN2CPP_TASK_ORIGIN_PRECOMPLETED, DN2CPP_TASK_NOT_STARTED, nullptr, nullptr, -1, 0, nullptr, nullptr, 0, false, 0 };
 
 Dn2CppTask* dn2cpp_task_from_result(uint64_t result, bool doNotDispose)
 {
@@ -466,9 +499,8 @@ static Dn2CppString* dn2cpp_task_result_tostring(Dn2CppTask* task,
         && (resultType->flags & DN2CPP_TF_ENUM) == 0)
     {
         payload = reinterpret_cast<const void*>(static_cast<uintptr_t>(bits));
-        // default(ValueTask<TStruct>) has no task/result allocation at all, but its
-        // successful result is still default(TStruct). Materialize that zero value
-        // without waiting or mutating the shared sentinel.
+        // No stored struct payload (including default(ValueTask<T>)) means
+        // default(T). Do not mutate the shared default-task sentinel.
         if (payload == nullptr)
             payload = dn2cpp_alloc(static_cast<size_t>(resultType->instanceSize));
     }
@@ -896,7 +928,7 @@ static bool dn2cpp_sched_run_one()
     }
     // `c` (and through it the state) is now rooted by this frame; drop the global link.
     dn2cpp_pending_cont_unlink(c);
-    c->fn(c->state);
+    dn2cpp_task_invoke_as(nullptr, [&] { c->fn(c->state); });
     return true;
 }
 
@@ -941,7 +973,7 @@ struct Dn2CppJoinDrain
             head = c->next;
             if (head == nullptr)
                 tail = nullptr;
-            c->fn(c->state);
+            dn2cpp_task_invoke_as(nullptr, [&] { c->fn(c->state); });
         }
     }
 };
@@ -950,6 +982,7 @@ thread_local Dn2CppJoinDrain* Dn2CppJoinDrain::active = nullptr;
 
 static void dn2cpp_cont_with_run(void* state);
 static bool dn2cpp_cont_with_prepare(Dn2CppCont* node);
+static void dn2cpp_task_release_action_locked(Dn2CppTask* task);
 
 // Join notifications finish before the outer completion returns. Ordinary await
 // continuations still go to their owner scheduler, in registration order.
@@ -984,7 +1017,7 @@ static void dn2cpp_fire_conts(Dn2CppCont* conts)
 // Detach a completing task's continuation list under g_task_mtx (so a concurrent
 // await-registration sees a settled status), then fire it outside the lock.
 static Dn2CppCont* dn2cpp_task_publish_locked(Dn2CppTask* t, int32_t status, uint64_t result,
-    Dn2CppObject* exception, bool cacheSynchronous, Dn2CppCancelSource* source)
+    Dn2CppObject* exception, bool cacheSynchronous, Dn2CppCancelSource* source, bool releaseAction = false)
 {
     if (status == DN2CPP_TASK_CANCELED)
         dn2cpp_gc_store_ref(&t->cancellationSource, source);
@@ -1000,6 +1033,8 @@ static Dn2CppCont* dn2cpp_task_publish_locked(Dn2CppTask* t, int32_t status, uin
         g_task_completed.notify_all();
     if (t->completionWaitHandle != nullptr)
         dn2cpp_event_set_if_open(t->completionWaitHandle);
+    if (releaseAction)
+        dn2cpp_task_release_action_locked(t);
     auto* conts = t->continuations;
     dn2cpp_gc_store_ref(&t->continuations, static_cast<Dn2CppCont*>(nullptr));
     return conts;
@@ -1011,16 +1046,21 @@ static void dn2cpp_task_complete(Dn2CppTask* t, int32_t status, uint64_t result,
     Dn2CppCont* conts;
     {
         std::lock_guard<std::mutex> lock(g_task_mtx);
+        if (t->finishProvenance.load(std::memory_order_relaxed) & DN2CPP_TASK_EXPLICIT_FINISH)
+            return;
         conts = dn2cpp_task_publish_locked(t, status, result, exception, cacheSynchronous, source);
     }
     dn2cpp_fire_conts(conts);
 }
 
+enum class Dn2CppTaskFinishKind { Normal, PromiseCancellation, BeforeDelegate, AfterDelegate };
+
 // A delegate Finish (and a promise TrySetException) drains previously recorded
 // faults. Direct promise result and cancellation transitions do not.
 static bool dn2cpp_task_finish_recorded(Dn2CppTask* t, int32_t status, uint64_t result,
     Dn2CppObject* exception, Dn2CppCancelSource* source = nullptr, Dn2CppArrayRef* payloads = nullptr,
-    bool hasDispatch = false, Dn2CppObject* cancelDispatch = nullptr, bool directCancellation = false)
+    bool hasDispatch = false, Dn2CppObject* cancelDispatch = nullptr,
+    Dn2CppTaskFinishKind kind = Dn2CppTaskFinishKind::Normal)
 {
     // Dispatch payloads require a real holder; plain source exceptions can
     // keep the same compact native aggregate when no holder has been needed.
@@ -1029,6 +1069,30 @@ static bool dn2cpp_task_finish_recorded(Dn2CppTask* t, int32_t status, uint64_t 
     std::unique_lock<std::mutex> lock(g_task_mtx);
     if (t->status != DN2CPP_TASK_PENDING || t->exceptionHolderState == DN2CPP_TASK_HOLDER_RESERVED)
         return false;
+    bool explicitFinish = kind == Dn2CppTaskFinishKind::BeforeDelegate || kind == Dn2CppTaskFinishKind::AfterDelegate;
+    if (explicitFinish)
+    {
+        uint8_t provenance = t->finishProvenance.load(std::memory_order_acquire);
+        int32_t origin = t->startKind.load(std::memory_order_relaxed);
+        const char* unsupported = nullptr;
+        if (provenance & DN2CPP_TASK_HAS_UNTRACKED_PARENT)
+            unsupported = "Task.Finish requires notification of its attached parent";
+        else if (provenance & DN2CPP_TASK_HAS_UNTRACKED_CHILD)
+            unsupported = kind == Dn2CppTaskFinishKind::AfterDelegate
+                ? "Task.Finish requires the attached-child countdown and fault collection"
+                : "Task.Finish before delegate execution cannot collect faults from previously attached children";
+        else if (origin == DN2CPP_TASK_ORIGIN_POOL || origin == DN2CPP_TASK_ORIGIN_UNOWNED_QUEUE
+            || origin == DN2CPP_TASK_ORIGIN_ACTIVE_CONTINUATION
+            || (origin == DN2CPP_TASK_ORIGIN_COLD && t->cold == nullptr))
+            unsupported = "Task.Finish cannot take completion ownership from dispatched native work";
+        if (unsupported != nullptr)
+        {
+            lock.unlock();
+            dn2cpp_throw_platform_not_supported(unsupported);
+        }
+        t->finishProvenance.fetch_or(DN2CPP_TASK_EXPLICIT_FINISH, std::memory_order_relaxed);
+        result = t->result;
+    }
     auto* holder = t->exceptionHolder.load(std::memory_order_relaxed);
     if (holder == nullptr && !hasDispatch && cancelDispatch == nullptr)
     {
@@ -1037,7 +1101,7 @@ static bool dn2cpp_task_finish_recorded(Dn2CppTask* t, int32_t status, uint64_t 
             dn2cpp_gc_store_ref(&t->exceptionAggregate, nativeAggregate);
             exception = payloads->length == 0 ? nullptr : payloads->data[0];
         }
-        auto* conts = dn2cpp_task_publish_locked(t, status, result, exception, false, source);
+        auto* conts = dn2cpp_task_publish_locked(t, status, result, exception, false, source, explicitFinish);
         lock.unlock();
         dn2cpp_fire_conts(conts);
         return true;
@@ -1083,7 +1147,7 @@ static bool dn2cpp_task_finish_recorded(Dn2CppTask* t, int32_t status, uint64_t 
             g_task_holder_add(holder, cancelDispatch, true);
         else if (status == DN2CPP_TASK_CANCELED && exception != nullptr)
             g_task_holder_add(holder, exception, true);
-        auto* recorded = directCancellation ? nullptr : g_task_holder_snapshot(holder);
+        auto* recorded = kind == Dn2CppTaskFinishKind::PromiseCancellation ? nullptr : g_task_holder_snapshot(holder);
         if (recorded != nullptr)
         {
             // A cancellation acknowledgement cannot displace recorded faults.
@@ -1097,7 +1161,7 @@ static bool dn2cpp_task_finish_recorded(Dn2CppTask* t, int32_t status, uint64_t 
             dn2cpp_gc_store_ref(&t->exceptionAggregate, nativeAggregate);
         t->exceptionHolderState = recorded == nullptr ? DN2CPP_TASK_HOLDER_UNPUBLISHED
             : DN2CPP_TASK_HOLDER_OWNS_FAULTS;
-        conts = dn2cpp_task_publish_locked(t, status, result, exception, false, source);
+        conts = dn2cpp_task_publish_locked(t, status, result, exception, false, source, explicitFinish);
     }
     dn2cpp_fire_conts(conts);
     return true;
@@ -1109,7 +1173,17 @@ static void dn2cpp_task_finish_canceled_promise(Dn2CppTask* task, uint64_t resul
     // TrySetCanceled records the winning cancellation payload, but does not
     // run delegate Finish arbitration against previously recorded faults.
     dn2cpp_task_finish_recorded(task, DN2CPP_TASK_CANCELED, result,
-        exception, source, nullptr, false, dispatch, true);
+        exception, source, nullptr, false, dispatch, Dn2CppTaskFinishKind::PromiseCancellation);
+}
+
+void dn2cpp_task_finish(Dn2CppTask* task, int32_t userDelegateExecute)
+{
+    dn2cpp_null_check(task);
+    // A recorded cancellation EDI (or a requested token) is not an acknowledgement.
+    // The delegate exception path supplies Canceled only after matching the token.
+    auto kind = userDelegateExecute ? Dn2CppTaskFinishKind::AfterDelegate : Dn2CppTaskFinishKind::BeforeDelegate;
+    if (!dn2cpp_task_finish_recorded(task, DN2CPP_TASK_SUCCEEDED, 0, nullptr, nullptr, nullptr, false, nullptr, kind))
+        dn2cpp_throw_platform_not_supported("Task.Finish requires one pending completion owner");
 }
 
 void dn2cpp_task_set_result(Dn2CppTask* t, uint64_t result)
@@ -1189,7 +1263,7 @@ void dn2cpp_async_await_on_completed(Dn2CppTask* t, void (*fn)(void*), void* sta
 static void dn2cpp_task_on_completed_sync(Dn2CppTask* t, void (*fn)(void*), void* state)
 {
     if (dn2cpp_task_register_cont(t, fn, state, true) != nullptr)
-        fn(state);
+        dn2cpp_task_invoke_as(nullptr, [&] { fn(state); });
 }
 
 // A detached continuation may already be running; removing only a still-linked
@@ -1655,9 +1729,11 @@ static void dn2cpp_when_all_finish(Dn2CppWhenAllState* s)
         {
             void* boxed = reinterpret_cast<void*>(static_cast<uintptr_t>(
                 reinterpret_cast<Dn2CppTask*>(s->tasks->data[i])->result));
-            dn2cpp_gc_memmove_refs(
-                static_cast<char*>(a->data) + static_cast<size_t>(i) * s->elemSize,
-                boxed, static_cast<size_t>(s->elemSize));
+            // The zero slot is default(T) when no delegate supplied a result.
+            if (boxed != nullptr)
+                dn2cpp_gc_memmove_refs(
+                    static_cast<char*>(a->data) + static_cast<size_t>(i) * s->elemSize,
+                    boxed, static_cast<size_t>(s->elemSize));
         }
         arr = reinterpret_cast<Dn2CppObject*>(a);
     }
@@ -3216,7 +3292,7 @@ void dn2cpp_sched_pump()
         dn2cpp_pending_cont_unlink(c);
         try
         {
-            c->fn(c->state);
+            dn2cpp_task_invoke_as(nullptr, [&] { c->fn(c->state); });
         }
         catch (Dn2CppException& __ex)
         {
@@ -3854,7 +3930,8 @@ static void dn2cpp_pool_worker()
                 // (0 for a void inner Task). A synchronous throw before the inner Task is
                 // returned (a non-async Func<Task> body) is caught below and faults the
                 // outer, matching real .NET's eager fault.
-                Dn2CppTask* inner = dn2cpp_pool_inner_chain(it.del);
+                // The hidden Task.Run owner denies child attachment.
+                Dn2CppTask* inner = dn2cpp_task_invoke_as(nullptr, [&] { return dn2cpp_pool_inner_chain(it.del); });
                 // Unwrapping a null task is CANCELED on .NET, not a crash: an async lambda
                 // whose body returns null hands one back, and the outer is all the caller
                 // holds.
@@ -3880,7 +3957,7 @@ static void dn2cpp_pool_worker()
                 // decrements g_inflight_async_tasks only after the drain, so a thread
                 // awaiting the inner task stays asleep (counted in flight) instead of
                 // tripping the deadlock guard.
-                Dn2CppTask* inner = dn2cpp_pool_inner_chain(it.del);
+                Dn2CppTask* inner = dn2cpp_task_invoke_as(it.task, [&] { return dn2cpp_pool_inner_chain(it.del); });
                 dn2cpp_task_finish_recorded(it.task, DN2CPP_TASK_SUCCEEDED,
                     static_cast<uint64_t>(reinterpret_cast<uintptr_t>(inner)), nullptr);
                 if (inner != nullptr)
@@ -3908,12 +3985,12 @@ static void dn2cpp_pool_worker()
             {
                 // State-carrying Task item: the 2-arg thunk reads the delegate and
                 // its state argument from the GC-rooted holder node.
-                uint64_t r = it.invoke2(it.node->del, it.node->state);
+                uint64_t r = dn2cpp_task_invoke_as(it.task, [&] { return it.invoke2(it.node->del, it.node->state); });
                 dn2cpp_task_finish_recorded(it.task, DN2CPP_TASK_SUCCEEDED, r, nullptr);
             }
             else
             {
-                uint64_t r = it.invoke(it.del);
+                uint64_t r = dn2cpp_task_invoke_as(it.task, [&] { return it.invoke(it.del); });
                 dn2cpp_task_finish_recorded(it.task, DN2CPP_TASK_SUCCEEDED, r, nullptr);
             }
         }
@@ -4395,10 +4472,12 @@ static Dn2CppTaskCold* dn2cpp_task_claim_cold(Dn2CppTask* t, bool synchronous,
     Dn2CppTaskCold* c;
     bool marked = false;
     bool dispatchedUnowned;
+    bool finishing;
     {
         std::lock_guard<std::mutex> lk(g_task_mtx);
         dispatchedUnowned = t->startKind == DN2CPP_TASK_ORIGIN_UNOWNED_QUEUE;
-        c = t->cold;
+        finishing = (t->finishProvenance.load(std::memory_order_relaxed) & DN2CPP_TASK_EXPLICIT_FINISH) != 0;
+        c = finishing ? nullptr : t->cold;
         if (c != nullptr && c->scheduler != nullptr)
             c = nullptr;
         if (c != nullptr)
@@ -4410,6 +4489,9 @@ static Dn2CppTaskCold* dn2cpp_task_claim_cold(Dn2CppTask* t, bool synchronous,
                 dn2cpp_gc_store_ref(&t->cold, static_cast<Dn2CppTaskCold*>(nullptr));
         }
     }
+    if (finishing)
+        dn2cpp_throw_sr0(&dn2cpp_invalid_operation_exception_type,
+            synchronous ? DN2CPP_SR_TASK_SYNC_COMPLETED : DN2CPP_SR_TASK_START_COMPLETED);
     if (dispatchedUnowned)
         dn2cpp_throw_platform_not_supported("Starting an already dispatched unowned task requires managed scheduler queue coordination");
     if (c == nullptr)
@@ -4440,7 +4522,10 @@ static void dn2cpp_task_invoke_cold(Dn2CppTask* t, Dn2CppTaskCold* c)
     }
     try
     {
-        uint64_t r = c->invoke2 != nullptr ? c->invoke2(c->del, c->state) : c->invoke(c->del);
+        uint64_t r = dn2cpp_task_invoke_as(t, [&]
+        {
+            return c->invoke2 != nullptr ? c->invoke2(c->del, c->state) : c->invoke(c->del);
+        });
         dn2cpp_task_finish_recorded(t, DN2CPP_TASK_SUCCEEDED, r, nullptr);
     }
     catch (const Dn2CppException& e)
@@ -4466,7 +4551,8 @@ int32_t dn2cpp_taskscheduler_try_run_inline(Dn2CppObject*, Dn2CppTask* task, int
     {
         std::lock_guard<std::mutex> lock(g_task_mtx);
         int32_t origin = task->startKind.load(std::memory_order_relaxed);
-        if (task->status == DN2CPP_TASK_CANCELED || (task->execution & DN2CPP_TASK_INVOKED)
+        if ((task->finishProvenance.load(std::memory_order_relaxed) & DN2CPP_TASK_EXPLICIT_FINISH)
+            || task->status == DN2CPP_TASK_CANCELED || (task->execution & DN2CPP_TASK_INVOKED)
             || origin == DN2CPP_TASK_ORIGIN_PROMISE || origin == DN2CPP_TASK_ORIGIN_ASYNC_UNEXPOSED
             || origin == DN2CPP_TASK_ORIGIN_PRECOMPLETED || origin == DN2CPP_TASK_ORIGIN_CONTINUATION
             || origin == DN2CPP_TASK_ORIGIN_UNOWNED_QUEUE)
@@ -4518,7 +4604,8 @@ void dn2cpp_taskscheduler_internal_queue(Dn2CppObject* scheduler, Dn2CppTask* ta
         if (task->status == DN2CPP_TASK_CANCELED
             && (origin == DN2CPP_TASK_ORIGIN_COLD || origin == DN2CPP_TASK_ORIGIN_UNOWNED_QUEUE))
             return;
-        if (origin == DN2CPP_TASK_ORIGIN_COLD)
+        if (origin == DN2CPP_TASK_ORIGIN_COLD
+            && (task->finishProvenance.load(std::memory_order_relaxed) & DN2CPP_TASK_EXPLICIT_FINISH) == 0)
         {
             work = task->cold;
             if (work != nullptr)
@@ -4572,6 +4659,18 @@ struct Dn2CppContWith
     uint64_t (*invokeStruct)(Dn2CppObject*, Dn2CppObject*);
     uint64_t (*invokeState)(Dn2CppObject*, Dn2CppObject*, Dn2CppObject*);
 };
+
+// The antecedent can still own a registration for this continuation. Clear the
+// delegate there as well, without clearing the continuation task's public state.
+static void dn2cpp_task_release_action_locked(Dn2CppTask* t)
+{
+    dn2cpp_gc_store_ref(&t->cold, static_cast<Dn2CppTaskCold*>(nullptr));
+    if (t->startKind == DN2CPP_TASK_ORIGIN_CONTINUATION && t->workerKeepAlive != nullptr)
+    {
+        auto* continuation = static_cast<Dn2CppContWith*>(t->workerKeepAlive);
+        dn2cpp_gc_store_ref(&continuation->del, static_cast<Dn2CppObject*>(nullptr));
+    }
+}
 
 // The ContinueWith result-kind thunks: the two-argument mirror of the dn2cpp_run_*
 // family above — the same prev-first multicast walk and result packing, with the
@@ -4673,6 +4772,8 @@ static bool dn2cpp_cont_with_prepare(Dn2CppCont* node)
     // Filtering leaves the continuation unassigned. For eligible work the
     // scheduler is assigned even if a separate protected start already won.
     std::lock_guard<std::mutex> lock(g_task_mtx);
+    if (c->task->finishProvenance.load(std::memory_order_relaxed) & DN2CPP_TASK_EXPLICIT_FINISH)
+        return false;
     c->task->startKind = DN2CPP_TASK_ORIGIN_ACTIVE_CONTINUATION;
     return dn2cpp_task_mark_started_locked(c->task);
 }
@@ -4689,35 +4790,38 @@ static void dn2cpp_cont_with_run(void* p)
     try
     {
         uint64_t r = 0;
-        if (c->invokeState != nullptr)
-            r = c->invokeState(c->del, ante, c->state);
-        else switch (c->kind)
+        dn2cpp_task_invoke_as(c->task, [&]
         {
-            case DN2CPP_CONTWITH_VOID: // Action<Task> (multicast-aware)
-                dn2cpp_paramthread_invoke(c->del, ante);
-                break;
-            case DN2CPP_CONTWITH_VOID_STATE: // Action<Task, object?>
-                dn2cpp_paramthread_invoke_state(c->del, ante, c->state);
-                break;
-            case DN2CPP_CONTWITH_I4:
-                r = dn2cpp_contwith_i4(c->del, ante);
-                break;
-            case DN2CPP_CONTWITH_I8:
-                r = dn2cpp_contwith_i8(c->del, ante);
-                break;
-            case DN2CPP_CONTWITH_R4:
-                r = dn2cpp_contwith_r4(c->del, ante);
-                break;
-            case DN2CPP_CONTWITH_R8:
-                r = dn2cpp_contwith_r8(c->del, ante);
-                break;
-            case DN2CPP_CONTWITH_STRUCT: // Func<Task, TStruct> — the trampoline boxes the result
-                r = c->invokeStruct(c->del, ante);
-                break;
-            default: // DN2CPP_CONTWITH_REF
-                r = dn2cpp_contwith_ref(c->del, ante);
-                break;
-        }
+            if (c->invokeState != nullptr)
+                r = c->invokeState(c->del, ante, c->state);
+            else switch (c->kind)
+            {
+                case DN2CPP_CONTWITH_VOID: // Action<Task> (multicast-aware)
+                    dn2cpp_paramthread_invoke(c->del, ante);
+                    break;
+                case DN2CPP_CONTWITH_VOID_STATE: // Action<Task, object?>
+                    dn2cpp_paramthread_invoke_state(c->del, ante, c->state);
+                    break;
+                case DN2CPP_CONTWITH_I4:
+                    r = dn2cpp_contwith_i4(c->del, ante);
+                    break;
+                case DN2CPP_CONTWITH_I8:
+                    r = dn2cpp_contwith_i8(c->del, ante);
+                    break;
+                case DN2CPP_CONTWITH_R4:
+                    r = dn2cpp_contwith_r4(c->del, ante);
+                    break;
+                case DN2CPP_CONTWITH_R8:
+                    r = dn2cpp_contwith_r8(c->del, ante);
+                    break;
+                case DN2CPP_CONTWITH_STRUCT: // Func<Task, TStruct> — the trampoline boxes the result
+                    r = c->invokeStruct(c->del, ante);
+                    break;
+                default: // DN2CPP_CONTWITH_REF
+                    r = dn2cpp_contwith_ref(c->del, ante);
+                    break;
+            }
+        });
         dn2cpp_task_finish_recorded(c->task, DN2CPP_TASK_SUCCEEDED, r, nullptr);
     }
     catch (const Dn2CppException& e)
