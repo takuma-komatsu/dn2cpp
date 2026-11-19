@@ -446,6 +446,13 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", $"dn2cpp_taskscheduler_try_run_inline((Dn2CppObject*)({scheduler.Expr}), (Dn2CppTask*)({task.Expr}), {queued.Expr})");
                 return;
             }
+            if (CoreIntrinsics.IsTaskSchedulerOperation(callee))
+            {
+                var task = Pop();
+                var scheduler = Pop();
+                Emit($"dn2cpp_taskscheduler_internal_queue((Dn2CppObject*)({scheduler.Expr}), (Dn2CppTask*)({task.Expr}));");
+                return;
+            }
             if (callee.Name == "MarkStarted")
             {
                 var receiver = Pop();

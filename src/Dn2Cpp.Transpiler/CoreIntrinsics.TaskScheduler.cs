@@ -5,13 +5,16 @@ namespace Dn2Cpp;
 
 internal static partial class CoreIntrinsics
 {
-    internal static bool IsTaskSchedulerInlineName(string? owner, string name) =>
-        owner == "System.Threading.Tasks.TaskScheduler" && name == "TryRunInline";
+    internal static bool IsTaskSchedulerOperationName(string? owner, string name) =>
+        owner == "System.Threading.Tasks.TaskScheduler" && name is "TryRunInline" or "InternalQueueTask";
 
-    internal static bool IsTaskSchedulerInline(MethodInfo method)
+    internal static bool IsTaskSchedulerInline(MethodInfo method) =>
+        method.Name == "TryRunInline" && IsTaskSchedulerOperation(method);
+
+    internal static bool IsTaskSchedulerOperation(MethodInfo method)
     {
         var owner = method.DeclaringClass;
-        if (!IsTaskSchedulerInlineName(owner.FullName, method.Name)
+        if (!IsTaskSchedulerOperationName(owner.FullName, method.Name)
             || method.Module.AssemblyName != "System.Private.CoreLib" || owner.Module != method.Module
             || owner.Handle.IsNil || method.Handle.IsNil || method.IsSynthetic
             || owner.IsValueType || owner.IsInterface || owner.IsEnum || owner.IsByRefLike
@@ -30,24 +33,34 @@ internal static partial class CoreIntrinsics
             && reader.StringComparer.Equals(definition.Name, method.Name)
             && definition.Attributes == method.Attributes && definition.ImplAttributes == method.ImplAttributes
             && definition.RelativeVirtualAddress == method.Rva
-            && IsTaskSchedulerInlineSignature(reader.GetBlobReader(definition.Signature))
-            && (!method.SignatureReady || IsTaskSchedulerInlineDecodedSignature(method, method.Signature));
+            && IsTaskSchedulerOperationSignature(method.Name, reader.GetBlobReader(definition.Signature))
+            && (!method.SignatureReady || IsTaskSchedulerOperationDecodedSignature(method, method.Signature));
     }
 
-    internal static bool IsTaskSchedulerInlineSignature(BlobReader blob) =>
-        blob.RemainingBytes >= 6 && blob.ReadByte() == 0x20 && blob.ReadByte() == 2
-        && blob.ReadByte() == (byte)SignatureTypeCode.Boolean && blob.ReadByte() == 0x12
-        && blob.TryReadCompressedInteger(out int token) && (token >> 2) != 0 && (token & 3) <= 1
-        && blob.RemainingBytes == 1 && blob.ReadByte() == (byte)SignatureTypeCode.Boolean;
-
-    internal static bool IsTaskSchedulerInlineDecodedSignature(MethodInfo method, MethodSignature<TypeDesc> signature)
+    internal static bool IsTaskSchedulerOperationSignature(string name, BlobReader blob)
     {
-        if (signature.Header.RawValue != 0x20 || signature.GenericParameterCount != 0
-            || signature.RequiredParameterCount != 2
-            || signature.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean, IsCanonPlaceholder: false }
-            || signature.ParameterTypes is not [
-                { Kind: TypeKind.Class, IsCanonPlaceholder: false, Class: { } task },
-                { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean, IsCanonPlaceholder: false }]
+        bool inline = name == "TryRunInline";
+        if (!inline && name != "InternalQueueTask") return false;
+        return blob.RemainingBytes >= (inline ? 6 : 5)
+            && blob.ReadByte() == 0x20 && blob.ReadByte() == (inline ? 2 : 1)
+            && blob.ReadByte() == (byte)(inline ? SignatureTypeCode.Boolean : SignatureTypeCode.Void)
+            && blob.ReadByte() == 0x12
+            && blob.TryReadCompressedInteger(out int token) && (token >> 2) != 0 && (token & 3) <= 1
+            && (inline ? blob.RemainingBytes == 1 && blob.ReadByte() == (byte)SignatureTypeCode.Boolean
+                : blob.RemainingBytes == 0);
+    }
+
+    internal static bool IsTaskSchedulerOperationDecodedSignature(MethodInfo method, MethodSignature<TypeDesc> signature)
+    {
+        bool inline = method.Name == "TryRunInline";
+        if ((!inline && method.Name != "InternalQueueTask")
+            || signature.Header.RawValue != 0x20 || signature.GenericParameterCount != 0
+            || signature.RequiredParameterCount != (inline ? 2 : 1)
+            || signature.ParameterTypes.Length != (inline ? 2 : 1)
+            || (inline ? signature.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean, IsCanonPlaceholder: false }
+                : !signature.ReturnType.IsVoid)
+            || signature.ParameterTypes[0] is not { Kind: TypeKind.Class, IsCanonPlaceholder: false, Class: { } task }
+            || (inline && signature.ParameterTypes[1] is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean, IsCanonPlaceholder: false })
             || task.Module != method.Module || task.FullName != "System.Threading.Tasks.Task"
             || task.Handle.IsNil || task.GenericArity != 0 || task.Context.TypeArgs.Length != 0
             || task.Context.MethodArgs.Length != 0 || task.IsValueType || task.IsInterface)

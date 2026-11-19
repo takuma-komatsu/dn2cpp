@@ -2144,25 +2144,24 @@ internal sealed partial class MethodCompiler
             var invokeRow = cls.Methods.FirstOrDefault(candidate => candidate.Name == "Invoke");
             bool ClosesOverInstance(MethodInfo bound) => !bound.IsStatic && invokeRow is not null
                 && invokeRow.Signature.ParameterTypes.Length == bound.Signature.ParameterTypes.Length;
-            bool OpensSchedulerInline(MethodInfo bound)
+            bool OpensSchedulerOperation(MethodInfo bound)
             {
-                if (!CoreIntrinsics.IsTaskSchedulerInline(bound)) return false;
-                if (invokeRow is not null && invokeRow.Signature.ParameterTypes.Length == 2)
+                if (!CoreIntrinsics.IsTaskSchedulerOperation(bound)) return false;
+                if (invokeRow is not null && invokeRow.Signature.ParameterTypes.Length == bound.Signature.ParameterTypes.Length)
                     return false; // Closed-instance binding keeps its receiver slot.
-                if (invokeRow is not null
-                    && invokeRow.Signature.ReturnType == bound.Signature.ReturnType
-                    && invokeRow.Signature.ParameterTypes is [var receiver, var task, var queued]
-                    && _c.IsTaskSchedulerInlineDelegateArgument(receiver, bound.DeclaringClass)
-                    && _c.IsTaskSchedulerInlineDelegateArgument(task, bound.Signature.ParameterTypes[0].Class!)
-                    && queued == bound.Signature.ParameterTypes[1])
-                    return true;
-                return false;
+                if (invokeRow is null || invokeRow.Signature.ReturnType != bound.Signature.ReturnType
+                    || invokeRow.Signature.ParameterTypes.Length != bound.Signature.ParameterTypes.Length + 1)
+                    return false;
+                var parameters = invokeRow.Signature.ParameterTypes;
+                return _c.IsTaskSchedulerDelegateArgument(parameters[0], bound.DeclaringClass)
+                    && _c.IsTaskSchedulerDelegateArgument(parameters[1], bound.Signature.ParameterTypes[0].Class!)
+                    && (bound.Signature.ParameterTypes.Length == 1 || parameters[2] == bound.Signature.ParameterTypes[1]);
             }
-            bool UnsupportedSchedulerOpen(MethodInfo bound) => CoreIntrinsics.IsTaskSchedulerInline(bound)
-                && (invokeRow is null || invokeRow.Signature.ParameterTypes.Length != 2)
-                && !OpensSchedulerInline(bound);
-            const string unsupportedSchedulerOpen = "TaskScheduler.TryRunInline open delegate requires assignable scheduler/task references and Boolean argument/result";
-            string SchedulerInlineAdapter(MethodInfo bound)
+            bool UnsupportedSchedulerOpen(MethodInfo bound) => CoreIntrinsics.IsTaskSchedulerOperation(bound)
+                && (invokeRow is null || invokeRow.Signature.ParameterTypes.Length != bound.Signature.ParameterTypes.Length)
+                && !OpensSchedulerOperation(bound);
+            const string unsupportedSchedulerOpen = "TaskScheduler operation open delegate requires assignable scheduler/task references and an exact remaining signature";
+            string SchedulerOperationAdapter(MethodInfo bound)
             {
                 NoteFtnTargetBody(bound.Emittable);
                 _c.NoteNamedBodySymbol(_method, bound.Emittable);
@@ -2170,7 +2169,11 @@ internal sealed partial class MethodCompiler
                 // not its first Invoke argument. The managed body owns null semantics.
                 string receiverCpp = NfiErasedAbi(CppTypes.Of(invokeRow!.Signature.ParameterTypes[0]));
                 string taskCpp = NfiErasedAbi(CppTypes.Of(invokeRow.Signature.ParameterTypes[1]));
-                return $"(void*)+[](Dn2CppObject*, {receiverCpp} self, {taskCpp} task, int32_t queued) -> int32_t {{ return {bound.Emittable.CppName}((Dn2CppObject*)self, (Dn2CppTask*)task, queued); }}";
+                bool inline = CoreIntrinsics.IsTaskSchedulerInline(bound);
+                string tailParameter = inline ? ", int32_t queued" : "";
+                string tailArgument = inline ? ", queued" : "";
+                string result = inline ? "int32_t" : "void";
+                return $"(void*)+[](Dn2CppObject*, {receiverCpp} self, {taskCpp} task{tailParameter}) -> {result} {{ return {bound.Emittable.CppName}((Dn2CppObject*)self, (Dn2CppTask*)task{tailArgument}); }}";
             }
             string nullTargetCheck = $"if ({dg}->f_target == nullptr) dn2cpp_throw_delegate_null_this();";
             bool identityEmitted = false;
@@ -2207,15 +2210,15 @@ internal sealed partial class MethodCompiler
                     {
                         int invokeArity = invokeRow.Signature.ParameterTypes.Length;
                         int targetArity = method.Signature.ParameterTypes.Length;
-                        if (!OpensSchedulerInline(method) && invokeArity != targetArity
+                        if (!OpensSchedulerOperation(method) && invokeArity != targetArity
                             && (!method.IsStatic || invokeArity != targetArity - 1
                                 || CppTypes.KindOf(method.Signature.ParameterTypes[0]) != StackKind.Ref))
                             continue;
                     }
                     NoteFtnTarget(method, fromVirtFtn);
                     string? adapterExpr = null;
-                    if (OpensSchedulerInline(method))
-                        adapterExpr = SchedulerInlineAdapter(method);
+                    if (OpensSchedulerOperation(method))
+                        adapterExpr = SchedulerOperationAdapter(method);
                     else if (_c.IsBoundedMethod(method.DeclaringClass.FullName, method.Name))
                         adapterExpr = BoundedFtnStub(method, origin.Key - 1, receiverSlot: fromVirtFtn, delegateClass: cls);
                     else if (_c.IsDynamicCodegenMember(method.DeclaringClass, method.Name))
@@ -2242,7 +2245,7 @@ internal sealed partial class MethodCompiler
                         adapterExpr = $"(void*)&{adapter.CppName}";
                     }
                     Emit(literal ? "{" : $"if ({tag} == {origin.Key}) {{");
-                    if (OpensSchedulerInline(method))
+                    if (OpensSchedulerOperation(method))
                         Emit($"    {dg}->f_target = nullptr;");
                     if (ClosesOverInstance(method))
                         Emit("    " + nullTargetCheck);
@@ -2261,10 +2264,10 @@ internal sealed partial class MethodCompiler
             if (!originsSelected && fnPtr.DelegateMethod is { } openMethod)
             {
                 if (UnsupportedSchedulerOpen(openMethod)) throw new NotSupportedException(unsupportedSchedulerOpen);
-                if (OpensSchedulerInline(openMethod))
+                if (OpensSchedulerOperation(openMethod))
                 {
                     Emit($"{dg}->f_target = nullptr;");
-                    Emit($"{dg}->f_method = {SchedulerInlineAdapter(openMethod)};");
+                    Emit($"{dg}->f_method = {SchedulerOperationAdapter(openMethod)};");
                 }
             }
             if (!originsSelected && fnPtr.DelegateMethod is { } boundMethod && ClosesOverInstance(boundMethod))

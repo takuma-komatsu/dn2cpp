@@ -400,6 +400,38 @@ namespace SettledCombinatorsSubset
                 + "|" + CancellationResult(false));
         }
 
+        internal static void RunSchedulerQueue()
+        {
+            var queue = typeof(TaskScheduler).GetMethod("InternalQueueTask",
+                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+            var mark = typeof(Task).GetMethod("MarkStarted",
+                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+            int caller = Environment.CurrentManagedThreadId;
+            int calls = 0;
+            bool offThread = false;
+            using var entered = new ManualResetEventSlim();
+            using var release = new ManualResetEventSlim();
+            var cold = new Task<int>(() =>
+            {
+                Interlocked.Increment(ref calls);
+                offThread = Environment.CurrentManagedThreadId != caller;
+                entered.Set();
+                if (!release.Wait(TimeSpan.FromSeconds(8)))
+                    throw new TimeoutException("queued task was not released");
+                return 42;
+            });
+            queue.Invoke(TaskScheduler.Default, new object[] { cold });
+            bool acknowledged = entered.Wait(TimeSpan.FromSeconds(8));
+            bool first = acknowledged && (bool)mark.Invoke(cold, null);
+            bool second = acknowledged && (bool)mark.Invoke(cold, null);
+            TaskStatus running = cold.Status;
+            release.Set();
+            if (!acknowledged || !cold.Wait(TimeSpan.FromSeconds(8)))
+                throw new TimeoutException("queued task did not complete");
+            Console.WriteLine("scheduler queue: " + offThread + "/" + first + "/" + second
+                + "/" + running + "/" + cold.Result + "/" + calls);
+        }
+
         internal static void RunSemaphoreWaiters()
         {
             Console.WriteLine("== semaphore waiter helpers ==");

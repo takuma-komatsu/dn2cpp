@@ -3198,8 +3198,9 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    dn2cpp_set_string_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_stringRawByteReferenceRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_stringNullTerminatedLengthRow ?? "nullptr"}));");
         if (_cultureNameValidatorRow is { } cultureNameValidatorRow)
             sb.AppendLine($"    dn2cpp_set_culture_name_validator_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({cultureNameValidatorRow}));");
-        if (_taskSchedulerInlineRow is { } taskSchedulerInlineRow)
-            sb.AppendLine($"    dn2cpp_set_task_scheduler_inline_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({taskSchedulerInlineRow}));");
+        for (int i = 0; i < _taskSchedulerRows.Length; i++)
+            if (_taskSchedulerRows[i] is { } taskSchedulerRow)
+                sb.AppendLine($"    dn2cpp_set_task_scheduler_row({i}, Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({taskSchedulerRow}));");
         if (_taskMarkStartedRow is { } taskMarkStartedRow)
             sb.AppendLine($"    dn2cpp_set_task_mark_started_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({taskMarkStartedRow}));");
         if (_cultureCompareInfoRow is { } cultureCompareInfoRow)
@@ -3981,7 +3982,7 @@ internal sealed partial class CppEmitter
     private string? _resourceManagerDefaultTypeRow;
     private string? _cultureCompareInfoRow;
     private string? _taskMarkStartedRow;
-    private string? _taskSchedulerInlineRow;
+    private readonly string?[] _taskSchedulerRows = new string?[2];
     private string? _cultureNameValidatorRow;
     private string? _stringRawByteReferenceRow;
     private string? _stringNullTerminatedLengthRow;

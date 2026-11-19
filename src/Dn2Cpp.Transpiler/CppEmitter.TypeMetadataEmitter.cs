@@ -2021,7 +2021,7 @@ internal sealed partial class CppEmitter
             EmitDateTimeParserRows();
             EmitThreadingPrivateRows();
             EmitTaskMarkStartedRow();
-            EmitTaskSchedulerInlineRow();
+            EmitTaskSchedulerRows();
             _e.EmitArrayTypeInfos(_sb, _emittedEnums);
             _e.EmitMdArrayItfMap(_sb);
             _e.EmitArrayNongenericItfRows(_sb);
@@ -2227,22 +2227,21 @@ internal sealed partial class CppEmitter
         }
 
         // Scheduler identity remains runtime-owned; only the exact retained helper is attached.
-        private void EmitTaskSchedulerInlineRow()
+        private void EmitTaskSchedulerRows()
         {
             foreach (var cls in _c.Classes.ToList())
             {
                 if (cls.FullName != "System.Threading.Tasks.TaskScheduler") continue;
                 foreach (var method in cls.Methods)
                 {
-                    if (!CoreIntrinsics.IsTaskSchedulerInline(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    if (!CoreIntrinsics.IsTaskSchedulerOperation(method) || !IsRetainedOpaqueMemberRow(method)) continue;
                     if (!_memberAddr.TryGetValue(method, out var address))
                     {
-                        BuildMemberTable(cls, new List<MethodInfo> { method }, "taskschedulerinlinetab");
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "taskschedulertab_" + method.Name);
                         if (!_memberAddr.TryGetValue(method, out address))
-                            throw new InvalidOperationException("Retained TaskScheduler.TryRunInline has no metadata row.");
+                            throw new InvalidOperationException("Retained TaskScheduler operation has no metadata row.");
                     }
-                    _e._taskSchedulerInlineRow = address;
-                    return;
+                    _e._taskSchedulerRows[method.Name == "TryRunInline" ? 0 : 1] = address;
                 }
             }
         }

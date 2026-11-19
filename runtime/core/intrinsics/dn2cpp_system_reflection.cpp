@@ -4509,11 +4509,12 @@ void dn2cpp_set_datetime_parser_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> addT
     g_datetime_parser_rows[2] = localConstructor;
 }
 
-static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_task_scheduler_inline_row;
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_task_scheduler_rows[2];
 
-void dn2cpp_set_task_scheduler_inline_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method)
+void dn2cpp_set_task_scheduler_row(int32_t slot, Dn2CppMetadataHandle<Dn2CppMethodInfo> method)
 {
-    g_task_scheduler_inline_row = method;
+    if (slot >= 0 && slot < 2)
+        g_task_scheduler_rows[slot] = method;
 }
 
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_task_mark_started_row;
@@ -4572,10 +4573,11 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     const auto taskMarkStarted = g_task_mark_started_row;
     const bool taskMarkStartedNamed = taskMarkStarted != nullptr
         && dn2cpp_member_name_matches(taskMarkStarted->name, name, bindingFlags, false);
-    const auto taskSchedulerInline = g_task_scheduler_inline_row;
-    const bool taskSchedulerInlineNamed = taskSchedulerInline != nullptr
-        && dn2cpp_member_name_matches(taskSchedulerInline->name, name, bindingFlags, false);
-    bool named = factoryNamed || dateOnlyNamed || cultureCompareInfoNamed || cultureNameValidatorNamed || resourceManagerNamed || taskMarkStartedNamed || taskSchedulerInlineNamed;
+    bool taskSchedulerNamed[2];
+    for (int32_t i = 0; i < 2; i++)
+        taskSchedulerNamed[i] = g_task_scheduler_rows[i] != nullptr
+            && dn2cpp_member_name_matches(g_task_scheduler_rows[i]->name, name, bindingFlags, false);
+    bool named = factoryNamed || dateOnlyNamed || cultureCompareInfoNamed || cultureNameValidatorNamed || resourceManagerNamed || taskMarkStartedNamed || taskSchedulerNamed[0] || taskSchedulerNamed[1];
     for (int32_t i = 0; i < 2 && !named; i++)
         named = g_string_private_rows[i] != nullptr
             && dn2cpp_member_name_matches(g_string_private_rows[i]->name, name, bindingFlags, false);
@@ -4593,13 +4595,18 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     for (const Dn2CppTypeInfo* ti = queried; ti != nullptr; ti = dn2cpp_meta_next_level(ti))
     {
         bool inherited = (ti != queried);
-        if (ti == &dn2cpp_taskscheduler_type && taskSchedulerInlineNamed)
+        if (ti == &dn2cpp_taskscheduler_type)
         {
-            const auto row = taskSchedulerInline.operator->();
-            if (row->declaringType == ti && dn2cpp_member_matches(row->attrs, bindingFlags, inherited)
-                && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
-                && (paramTypes == nullptr || dn2cpp_params_match_types(taskSchedulerInline, paramTypes, queried)))
-                cands.push_back(taskSchedulerInline);
+            for (int32_t i = 0; i < 2; i++)
+            {
+                if (!taskSchedulerNamed[i]) continue;
+                const auto method = g_task_scheduler_rows[i];
+                const auto row = method.operator->();
+                if (row->declaringType == ti && dn2cpp_member_matches(row->attrs, bindingFlags, inherited)
+                    && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
+                    && (paramTypes == nullptr || dn2cpp_params_match_types(method, paramTypes, queried)))
+                    cands.push_back(method);
+            }
         }
         if (ti == &dn2cpp_task_type && taskMarkStartedNamed)
         {

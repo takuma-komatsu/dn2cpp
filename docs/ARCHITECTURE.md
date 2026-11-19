@@ -1626,13 +1626,24 @@ not assign a scheduler to a continuation waiting on its antecedent.
 A cold task whose scheduler was assigned after a separate protected start keeps
 its unqueued work. The default scheduler can invoke that work once when it is not
 claimed to be queued; claiming it was queued returns false without consuming it.
-Inline cold execution and `RunSynchronously` acknowledge a caught cancellation
+Cold delegate execution acknowledges a caught cancellation
 exception only when its token matches the task's requested, non-default token.
-They retain that exception's identity; other delegate exceptions fault the task.
-Other pending work throws `PlatformNotSupportedException`: native queues do not
+It retains that exception's identity; other delegate exceptions fault the task.
+Other pending inline work throws `PlatformNotSupportedException`: native queues do not
 expose the managed scheduler's queue-removal and virtual inline-dispatch protocol.
 This boundary does not replace public native task scheduling or silently decline
 eligible work whose dispatch is not represented.
+
+The retained `TaskScheduler.InternalQueueTask` submits an undispatched cold
+delegate to the default native worker pool. It neither assigns the task's
+scheduler nor takes its protected start. A worker can therefore be running or
+finished when the first start claim succeeds. A cancellation requested before
+dispatch settles an unstarted cold task at the queue boundary; when a protected
+start already won, the worker observes the request. A custom queue or assigned
+scheduler, a dedicated `LongRunning` thread, or a task
+without a reusable work descriptor requires scheduling capabilities this
+helper does not implement; it throws rather than using a different queue or
+pretending to enqueue the task. The threadless Web target also refuses it.
 
 #### Task cancellation identity
 
