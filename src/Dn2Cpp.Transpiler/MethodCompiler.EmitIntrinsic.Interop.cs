@@ -453,6 +453,14 @@ internal sealed partial class MethodCompiler
                 Emit($"dn2cpp_taskscheduler_internal_queue((Dn2CppObject*)({scheduler.Expr}), (Dn2CppTask*)({task.Expr}));");
                 return;
             }
+            if (CoreIntrinsics.IsTaskAddException(callee))
+            {
+                var cancellation = Pop();
+                var value = Pop();
+                var task = Pop();
+                Emit($"dn2cpp_task_add_exception((Dn2CppTask*)({task.Expr}), (Dn2CppObject*)({value.Expr}), {cancellation.Expr});");
+                return;
+            }
             if (callee.Name == "MarkStarted")
             {
                 var receiver = Pop();

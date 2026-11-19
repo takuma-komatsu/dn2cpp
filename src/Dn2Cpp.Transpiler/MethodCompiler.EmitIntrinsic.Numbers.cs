@@ -211,9 +211,9 @@ internal sealed partial class MethodCompiler
             }
             case ("System.AggregateException", ".ctor"):
             {
-                var (inner, message) = EmitAggregateConstructorArguments(sig);
+                var (inner, message, preserveNullMessage) = EmitAggregateConstructorArguments(sig);
                 var self = Pop();
-                Emit($"dn2cpp_aggregate_exception_init((Dn2CppObject*)({self.Expr}), {inner}, {message});");
+                Emit($"dn2cpp_aggregate_exception_init((Dn2CppObject*)({self.Expr}), {inner}, {message}{(preserveNullMessage ? ", false" : "")});");
                 return true;
             }
             case ("System.AggregateException", "get_Message"):

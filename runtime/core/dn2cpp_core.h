@@ -1429,6 +1429,7 @@ void dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodIn
 // Exact retained CultureInfo getter; no general intrinsic-type metadata mutation.
 void dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 void dn2cpp_set_task_mark_started_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+void dn2cpp_set_task_add_exception_row(int32_t arity, Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 void dn2cpp_set_task_scheduler_row(int32_t slot, Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 void dn2cpp_set_culture_name_validator_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 // Only the two exact retained String entries participate in named lookup.
@@ -4405,9 +4406,11 @@ void dn2cpp_report_boundary_exception(Dn2CppObject* exc, const char* where_fmt, 
 // the first element, or null when empty; a null message selects the default text.
 Dn2CppObject* dn2cpp_aggregate_exception_new(Dn2CppArrayRef* inner);
 Dn2CppObject* dn2cpp_aggregate_exception_new(Dn2CppArrayRef* inner, Dn2CppString* message);
+Dn2CppObject* dn2cpp_aggregate_exception_new(Dn2CppArrayRef* inner, Dn2CppString* message, bool use_default_message);
 bool dn2cpp_is_aggregate_exception_type(const Dn2CppTypeInfo* ti);
 // Initialize the aggregate prefix without replacing a derived receiver's type.
 void dn2cpp_aggregate_exception_init(Dn2CppObject* ex, Dn2CppArrayRef* inner, Dn2CppString* message);
+void dn2cpp_aggregate_exception_init(Dn2CppObject* ex, Dn2CppArrayRef* inner, Dn2CppString* message, bool use_default_message);
 // Compose each read from the stored base text and current virtual inner Messages.
 Dn2CppString* dn2cpp_aggregate_exception_message(Dn2CppObject* ex);
 // AggregateException.get_InnerExceptions: the stored Exception[], stamped with the
@@ -7724,6 +7727,9 @@ struct Dn2CppTask : Dn2CppObject
     int32_t disposed; // negative: cached-task Dispose is a no-op
     std::atomic<int32_t> creationOptions; // public flags; cancellation can add async continuations
     std::atomic<Dn2CppCancelSource*> cancellationSource; // associated token, independent of registrations
+    std::atomic<Dn2CppObject*> exceptionHolder; // task-owned, installed once
+    int32_t exceptionHolderState; // guarded while pending, published with terminal status
+    bool nativeFaultObserved; // protected by the task mutex, before holder installation
 };
 
 struct Dn2CppTaskCompletionSource : Dn2CppObject
@@ -7756,6 +7762,17 @@ struct Dn2CppAsyncBuilder
 Dn2CppTask* dn2cpp_async_task_alloc();
 Dn2CppTask* dn2cpp_asyncbuilder_task(Dn2CppAsyncBuilder* builder);
 void dn2cpp_async_task_suspend(Dn2CppTask* task);
+void dn2cpp_set_task_exception_holder_hooks(
+    Dn2CppObject* (*create)(Dn2CppTask*),
+    void (*add)(Dn2CppObject*, Dn2CppObject*, int32_t),
+    Dn2CppArrayRef* (*snapshotFaults)(Dn2CppObject*),
+    Dn2CppObject* (*snapshotCancellation)(Dn2CppObject*),
+    void (*observe)(Dn2CppObject*));
+void dn2cpp_set_task_exception_holder_rethrow(void (*rethrow)(Dn2CppObject*, int32_t));
+void dn2cpp_set_task_exception_holder_dispatch(
+    Dn2CppArrayRef* (*faults)(Dn2CppObject*), Dn2CppObject* (*cancellation)(Dn2CppObject*),
+    Dn2CppArrayRef* (*normalize)(Dn2CppArrayRef*));
+void dn2cpp_task_add_exception(Dn2CppTask* task, Dn2CppObject* exception, int32_t representsCancellation);
 
 // TaskAwaiter / TaskAwaiter<T> — value type.
 struct Dn2CppTaskAwaiter
@@ -8005,6 +8022,9 @@ int32_t dn2cpp_task_try_set_canceled(Dn2CppTask* t, Dn2CppCancelSource* source =
 void dn2cpp_tcs_set_result(Dn2CppTask* t, uint64_t result);
 void dn2cpp_tcs_set_exception(Dn2CppTask* t, Dn2CppObject* exception);
 void dn2cpp_tcs_set_canceled(Dn2CppTask* t, Dn2CppCancelSource* source = nullptr);
+int32_t dn2cpp_tcs_try_set_result(Dn2CppTask* t, uint64_t result);
+int32_t dn2cpp_tcs_try_set_exception(Dn2CppTask* t, Dn2CppObject* exception);
+int32_t dn2cpp_tcs_try_set_canceled(Dn2CppTask* t, Dn2CppCancelSource* source = nullptr);
 // Enqueue a resumption on the cooperative run queue.
 void dn2cpp_sched_post(void (*fn)(void*), void* state);
 // Action form of dn2cpp_sched_post: enqueue a System.Action (and its multicast

@@ -1041,6 +1041,7 @@ internal sealed partial class CppEmitter
         // infos (ti_ handles) and method forward decls (the ctor prototype) it references.
         EmitConsoleErrorWriterAccessor(o);
         EmitInvariantCompareInfoFactories(o);
+        EmitTaskExceptionHolderHooks(o);
         // Hot-update base build: hash the canonical ABI contract over the emitted
         // classes (now final — bodies compiled, opaque fill done) into the base
         // binary, pre-emit the N2M vtable trampolines the patch loader installs
@@ -3201,6 +3202,15 @@ internal sealed partial class CppEmitter
         for (int i = 0; i < _taskSchedulerRows.Length; i++)
             if (_taskSchedulerRows[i] is { } taskSchedulerRow)
                 sb.AppendLine($"    dn2cpp_set_task_scheduler_row({i}, Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({taskSchedulerRow}));");
+        if (_c.TaskExceptionHolderBridge is not null)
+        {
+            sb.AppendLine("    dn2cpp_set_task_exception_holder_hooks(&dn2cpp_image_task_holder_create, &dn2cpp_image_task_holder_add, &dn2cpp_image_task_holder_faults, &dn2cpp_image_task_holder_cancellation, &dn2cpp_image_task_holder_observe);");
+            sb.AppendLine("    dn2cpp_set_task_exception_holder_rethrow(&dn2cpp_image_task_holder_rethrow);");
+            sb.AppendLine("    dn2cpp_set_task_exception_holder_dispatch(&dn2cpp_image_task_holder_dispatch_faults, &dn2cpp_image_task_holder_dispatch_cancellation, &dn2cpp_image_task_holder_normalize);");
+        }
+        for (int i = 0; i < _taskAddExceptionRows.Length; i++)
+            if (_taskAddExceptionRows[i] is { } taskExceptionRow)
+                sb.AppendLine($"    dn2cpp_set_task_add_exception_row({i + 1}, Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({taskExceptionRow}));");
         if (_taskMarkStartedRow is { } taskMarkStartedRow)
             sb.AppendLine($"    dn2cpp_set_task_mark_started_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({taskMarkStartedRow}));");
         if (_cultureCompareInfoRow is { } cultureCompareInfoRow)
@@ -3982,6 +3992,7 @@ internal sealed partial class CppEmitter
     private string? _resourceManagerDefaultTypeRow;
     private string? _cultureCompareInfoRow;
     private string? _taskMarkStartedRow;
+    private readonly string?[] _taskAddExceptionRows = new string?[2];
     private readonly string?[] _taskSchedulerRows = new string?[2];
     private string? _cultureNameValidatorRow;
     private string? _stringRawByteReferenceRow;

@@ -14,6 +14,8 @@ internal sealed partial class Compilation
 
     private void Reach(MethodInfo m)
     {
+        if (CoreIntrinsics.IsManagedTaskEvent(m))
+            NoteUnobservedTaskEventStorage(m);
         CoreIntrinsics.ValidateTaskLifecycle(m);
         CoreIntrinsics.ValidateThreadingPrivate(m);
         CoreIntrinsics.ValidateUnsupportedAlignedDefault(m);
@@ -278,7 +280,7 @@ internal sealed partial class Compilation
         if (CoreIntrinsics.IsWaitHandleTimeoutConversion(m)
             || CoreIntrinsics.IsDateTimeCultureManagedBody(m)
             || (CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(m)) || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
-            || CoreIntrinsics.IsTaskPromiseForwarder(m)
+            || CoreIntrinsics.IsTaskManagedForwarder(m)
             || CoreIntrinsics.IsInterpolationStaticHelper(m)
             || CoreIntrinsics.IsScalarNumericLeaf(m)
             || CoreIntrinsics.IsBinaryIntegerEndianBody(m)

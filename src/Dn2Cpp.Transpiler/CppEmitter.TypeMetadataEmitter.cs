@@ -1974,6 +1974,9 @@ internal sealed partial class CppEmitter
             // self-host fixpoint relies on it). Rendering also interns string literals and
             // attr-factory sequence numbers in class-major order; those indices are
             // emission-order-significant but carry no cross-section invariant.
+            HashSet<string>? primaryInvokers = null;
+            Dictionary<string, string>? primarySlotStubs = null;
+            Dictionary<string, string>? primaryInvokerMissStubs = null;
             var block = new StringBuilder();
             foreach (var cls in _e.TopoOrder())
             {
@@ -1990,6 +1993,11 @@ internal sealed partial class CppEmitter
                 block.Clear();
                 if (_o.MetadataWillRoll)
                 {
+                    // Intrinsic metadata has already emitted local helpers in Data.
+                    // Save that TU's state before entering the first separate chunk.
+                    primaryInvokers ??= new(_invokerThunks, StringComparer.Ordinal);
+                    primarySlotStubs ??= new(_slotStubs, StringComparer.Ordinal);
+                    primaryInvokerMissStubs ??= new(_invokerMissStubs, StringComparer.Ordinal);
                     _invokerThunks.Clear();
                     _slotStubs.Clear();
                     _invokerMissStubs.Clear();
@@ -2007,10 +2015,19 @@ internal sealed partial class CppEmitter
                     _o.AppendMetadata(block.ToString());
             }
 
-            // These catalogs share the primary TU, not the last metadata chunk's local thunks.
-            _invokerThunks.Clear();
-            _invokerMissStubs.Clear();
-            _slotStubs.Clear();
+            // Catalogs return to Data, whose intrinsic helpers precede the chunks.
+            // With no chunk roll, the primary state has remained active throughout.
+            if (primaryInvokers is not null)
+            {
+                _invokerThunks.Clear();
+                _invokerThunks.UnionWith(primaryInvokers);
+                _invokerMissStubs.Clear();
+                foreach (var entry in primaryInvokerMissStubs!)
+                    _invokerMissStubs.Add(entry.Key, entry.Value);
+                _slotStubs.Clear();
+                foreach (var entry in primarySlotStubs!)
+                    _slotStubs.Add(entry.Key, entry.Value);
+            }
             EmitDelegateMethodCatalog();
             EmitMemberNotFoundFactoryRow();
             EmitDateOnlyDeconstructRow();
@@ -2021,6 +2038,7 @@ internal sealed partial class CppEmitter
             EmitDateTimeParserRows();
             EmitThreadingPrivateRows();
             EmitTaskMarkStartedRow();
+            EmitTaskAddExceptionRows();
             EmitTaskSchedulerRows();
             _e.EmitArrayTypeInfos(_sb, _emittedEnums);
             _e.EmitMdArrayItfMap(_sb);
@@ -2222,6 +2240,26 @@ internal sealed partial class CppEmitter
                     }
                     _e._taskMarkStartedRow = address;
                     return;
+                }
+            }
+        }
+
+        private void EmitTaskAddExceptionRows()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.FullName != "System.Threading.Tasks.Task") continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsTaskAddException(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    int arity = method.Signature.ParameterTypes.Length;
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "taskaddexceptiontab_" + arity);
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained Task.AddException has no metadata row.");
+                    }
+                    _e._taskAddExceptionRows[arity - 1] = address;
                 }
             }
         }
@@ -4154,7 +4192,7 @@ internal sealed partial class CppEmitter
                 || CoreIntrinsics.IsDateTimeCultureManagedBody(method)
                 || (CoreIntrinsics.IsRuntimeTypeHandleCopy(method) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(method))
                 || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(method)
-                || CoreIntrinsics.IsTaskPromiseForwarder(method)
+                || CoreIntrinsics.IsTaskManagedForwarder(method)
                 || CoreIntrinsics.IsInterpolationStaticHelper(method)
                 || CoreIntrinsics.IsScalarNumericLeaf(method)
                 || CoreIntrinsics.IsVectorAlignmentManagedBody(method)

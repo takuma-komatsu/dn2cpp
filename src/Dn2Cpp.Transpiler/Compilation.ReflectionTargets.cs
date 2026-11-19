@@ -983,7 +983,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(target)
             || CoreIntrinsics.BrArrayNativeLength.Matches(target)
             || CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(target)
-            || CoreIntrinsics.IsTaskPromiseForwarder(target)
+            || CoreIntrinsics.IsTaskManagedForwarder(target)
             || CoreIntrinsics.IsInterpolationStaticHelper(target)
             || CoreIntrinsics.IsVectorAlignmentManagedBody(target)
             || CoreIntrinsics.IsConcreteVectorReduction(target)

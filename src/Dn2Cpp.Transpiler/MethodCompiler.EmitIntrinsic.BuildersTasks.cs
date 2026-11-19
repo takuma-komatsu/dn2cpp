@@ -1271,7 +1271,7 @@ internal sealed partial class MethodCompiler
                 if (name == "SetResult")
                     Emit($"dn2cpp_tcs_set_result(((Dn2CppTaskCompletionSource*)({t.Expr}))->task, {store});");
                 else
-                    Push(StackKind.I4, "int32_t", $"dn2cpp_task_try_set_result(((Dn2CppTaskCompletionSource*)({t.Expr}))->task, {store})");
+                    Push(StackKind.I4, "int32_t", $"dn2cpp_tcs_try_set_result(((Dn2CppTaskCompletionSource*)({t.Expr}))->task, {store})");
                 return true;
             }
             // Only the single-Exception overloads; SetException(IEnumerable<Exception>)
@@ -1290,7 +1290,7 @@ internal sealed partial class MethodCompiler
                     Emit($"dn2cpp_tcs_set_exception(((Dn2CppTaskCompletionSource*)({t.Expr}))->task, {Cast(ex, "Dn2CppObject*")});");
                 else
                     Push(StackKind.I4, "int32_t",
-                        $"dn2cpp_task_try_set_exception(((Dn2CppTaskCompletionSource*)({t.Expr}))->task, {Cast(ex, "Dn2CppObject*")})");
+                        $"dn2cpp_tcs_try_set_exception(((Dn2CppTaskCompletionSource*)({t.Expr}))->task, {Cast(ex, "Dn2CppObject*")})");
                 return true;
             }
             // SetCanceled([CancellationToken]) — the transition allocates its own
@@ -1305,7 +1305,7 @@ internal sealed partial class MethodCompiler
                 if (name == "SetCanceled")
                     Emit($"dn2cpp_tcs_set_canceled(((Dn2CppTaskCompletionSource*)({t.Expr}))->task, {source});");
                 else
-                    Push(StackKind.I4, "int32_t", $"dn2cpp_task_try_set_canceled(((Dn2CppTaskCompletionSource*)({t.Expr}))->task, {source})");
+                    Push(StackKind.I4, "int32_t", $"dn2cpp_tcs_try_set_canceled(((Dn2CppTaskCompletionSource*)({t.Expr}))->task, {source})");
                 return true;
             }
             // Task state inspection (also inherited by Task<T>): map directly to the

@@ -1675,6 +1675,30 @@ the delegate. This does not add cancellation registrations to those tasks or
 interrupt work after its delegate starts. Existing explicit unsupported scheduling
 and parent-attachment boundaries remain in force.
 
+#### Recording task faults
+
+CoreLib `Task.AddException` appends to a lazily rooted managed
+`TaskExceptionHolder`; it does not complete the task or signal its continuations.
+The holder monitor orders records and observations without executing managed
+enumeration under the task mutex. Delegate completion and the winning promise
+fault transition publish the recorded fault list; direct promise success and
+cancellation do not consult that list. Faults outrank a delegate's cancellation
+acknowledgement. An empty initialized list is distinct from an absent list.
+Promise cancellation replaces a recorded cancellation cause only when supplied a
+new captured exception; it does not promote previously recorded faults.
+Public completion-source setters that lose a fault reservation wait until the
+winner publishes a terminal status, without holding the task mutex.
+
+Await observes the holder and replays the first dispatch record. Blocking waits,
+`Task.Exception`, and fault joins observe ordered snapshots. A canceled task
+still exposes any recorded faults before its cancellation exception to a blocking
+wait, without reporting a fault from `Task.Exception` or await. Joins and proxy
+tasks transfer dispatch records rather than recapturing their source exceptions.
+An already faulted task keeps its original first fault and exposes later records
+without changing its published status or refiring continuations. Its first
+managed holder starts with the settled native fault set and its prior observation
+state, so rearming the holder does not lose earlier faults.
+
 #### CoreLib promise task subclasses
 
 A managed subclass of `Task` or `Task<T>` has the same `Dn2CppTask` prefix as

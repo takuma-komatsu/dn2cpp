@@ -1,9 +1,12 @@
+using System.Reflection;
 using System.Reflection.Metadata;
 
 namespace Dn2Cpp;
 
 internal sealed partial class Compilation
 {
+    internal bool IsTaskExceptionDelegateArgument(TypeDesc argument) => IsReferenceArg(argument);
+
     internal bool IsTaskSchedulerDelegateArgument(TypeDesc argument, ClassInfo parameter)
     {
         if (argument is not { Kind: TypeKind.Class, IsCanonPlaceholder: false,
@@ -35,7 +38,7 @@ internal sealed partial class Compilation
             var definition = reader.GetMethodDefinition(handle);
             string name = reader.GetString(definition.Name);
             if (owner.FullName == "System.Threading.Tasks.TaskScheduler"
-                ? !CoreIntrinsics.IsTaskSchedulerOperationName(owner.FullName, name)
+                ? !(CoreIntrinsics.IsTaskSchedulerOperationName(owner.FullName, name) || CoreIntrinsics.IsManagedTaskEventName(name))
                 : !CoreIntrinsics.IsTaskLifecycleCandidate(name, reader.GetBlobReader(definition.Signature))) continue;
             var method = new MethodInfo
             {
@@ -49,11 +52,49 @@ internal sealed partial class Compilation
         }
     }
 
+    private void NoteUnobservedTaskEventStorage(MethodInfo method)
+    {
+        var field = method.DeclaringClass.Fields.SingleOrDefault(f =>
+            f.Name == "UnobservedTaskException" && f.Attributes == (FieldAttributes.Private | FieldAttributes.Static)
+            && CoreIntrinsics.IsUnobservedTaskEventHandler(f.Type))
+            ?? throw new NotSupportedException("No exact CoreLib UnobservedTaskException backing field");
+        if (IntrinsicManagedStaticFields.Add(field))
+            NoteReferencedType(field.Type.Class!);
+    }
+
     internal MethodInfo? TryResolveTaskLifecycleReference(Module module, MemberReferenceHandle handle, GenericContext context)
     {
         var reader = module.Reader;
         var reference = reader.GetMemberReference(handle);
         string name = reader.GetString(reference.Name);
+        if (CoreIntrinsics.IsManagedTaskEventName(name))
+        {
+            if (reference.Parent.Kind == HandleKind.TypeSpecification
+                && reader.GetTypeSpecification((TypeSpecificationHandle)reference.Parent)
+                    .DecodeSignature(SigProvider, context).Class?.FullName == "System.Threading.Tasks.TaskScheduler")
+                throw new NotSupportedException("UnobservedTaskException requires an unmodified CoreLib owner");
+            if (MemberRefParentTypeName(module, handle) == "System.Threading.Tasks.TaskScheduler")
+            {
+                if (reference.Parent.Kind is not (HandleKind.TypeReference or HandleKind.TypeDefinition))
+                    throw new NotSupportedException("UnobservedTaskException requires its exact CoreLib owner");
+                var target = ResolveMemberRefMethod(module, handle, context);
+                var signature = reference.DecodeMethodSignature(SigProvider, context);
+                var raw = reader.GetBlobReader(reference.Signature);
+                if (!CoreIntrinsics.IsManagedTaskEvent(target)
+                    || raw.RemainingBytes < 5 || raw.ReadByte() != 0
+                    || !raw.TryReadCompressedInteger(out int count) || count != 2
+                    || raw.ReadByte() != (byte)SignatureTypeCode.Void
+                    || raw.ReadByte() != (byte)SignatureTypeCode.Object
+                    || raw.ReadByte() != 0x12
+                    || !raw.TryReadCompressedInteger(out _) || raw.RemainingBytes != 0
+                    || signature.Header.RawValue != 0 || signature.GenericParameterCount != 0
+                    || signature.RequiredParameterCount != 2
+                    || signature.ReturnType != target.Signature.ReturnType
+                    || !signature.ParameterTypes.SequenceEqual(target.Signature.ParameterTypes))
+                    throw new NotSupportedException("UnobservedTaskException requires its exact CoreLib reference and declaration");
+                return target;
+            }
+        }
         if (name is ("TryRunInline" or "InternalQueueTask") && reference.Parent.Kind == HandleKind.TypeSpecification)
         {
             var schedulerOwner = reader.GetTypeSpecification((TypeSpecificationHandle)reference.Parent)
