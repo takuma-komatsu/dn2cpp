@@ -5540,7 +5540,7 @@ internal sealed partial class Compilation
             spec.IsValueType = !spec.IntrinsicCppName.EndsWith('*');
             if (IsTypedGCHandle(spec))
                 CompleteTypedGCHandleInterfaces(spec);
-            if (CoreIntrinsics.IsTaskLifecycleOwner(spec))
+            if (CoreIntrinsics.IsTaskLifecycleOwner(spec) || spec.FullName == "System.Threading.Tasks.TaskScheduler")
                 CompleteTaskLifecycleMembers(spec);
             return;
         }

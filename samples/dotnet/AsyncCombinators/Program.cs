@@ -98,6 +98,9 @@ namespace AsyncCombinators
             if (args.Length == 1 && args[0] == "before-protected-task-start")
                 return;
             SettledCombinatorsSubset.Program.RunProtectedStart();
+            if (args.Length == 1 && args[0] == "before-scheduler-inline")
+                return;
+            SettledCombinatorsSubset.Program.RunSchedulerInline();
             // Ends the process: a builder suspension's rejected registration is re-raised
             // as an unhandled ThreadPool exception.
             if (args.Length == 2 && args[0] == "suspension-rejection")

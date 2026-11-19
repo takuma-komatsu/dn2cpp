@@ -69,6 +69,7 @@ gate_extra_asserts() {
         'lock reset null=NullReferenceException' 'lock record null=NullReferenceException' \
         'lock waiter boundary end' --count 1 --policy crlf
     gate_capture_ok "$out/thread-name-native" run_bounded "./$out/ThreadSpawn$EXE_EXT" threading-private-boundary
+    gate_output witness "$out/thread-name-clr.stdout" 'scheduler inline address=True/False/True/42' --count 1 --policy crlf
     gate_output compare "$out/thread-name-native.stdout" gates/expected/threading-private-boundary.txt --policy crlf
 
     # These inputs differ in metadata, so execution of the aggregate cannot test them.

@@ -18,3 +18,4 @@ lock record address=PlatformNotSupportedException/True
 lock reset null=NullReferenceException
 lock record null=NullReferenceException
 lock waiter boundary end
+scheduler inline address=True/False/True/42

@@ -4,6 +4,27 @@ namespace Dn2Cpp;
 
 internal sealed partial class Compilation
 {
+    internal bool IsTaskSchedulerInlineDelegateArgument(TypeDesc argument, ClassInfo parameter)
+    {
+        if (argument is not { Kind: TypeKind.Class, IsCanonPlaceholder: false,
+            Class: { IsValueType: false, IsInterface: false } actual }) return false;
+        var visited = new HashSet<ClassInfo>();
+        for (var current = actual; current is not null && visited.Add(current);)
+        {
+            if (current == parameter) return true;
+            var next = EnsureShape(current).BaseClass;
+            // Runtime-owned generic shells omit BaseClass, not their metadata ancestry.
+            if (next is null && current.IntrinsicCppName is not null && !current.Handle.IsNil)
+            {
+                var baseType = current.Module.Reader.GetTypeDefinition(current.Handle).BaseType;
+                if (!baseType.IsNil)
+                    next = ResolveTypeTokenForScan(current.Module, baseType, current.Context)?.Class;
+            }
+            current = next;
+        }
+        return false;
+    }
+
     // Task<T> keeps its runtime-owned layout. Lifecycle method shells decode no TPL
     // fields or unrelated signatures and bodies.
     private void CompleteTaskLifecycleMembers(ClassInfo owner)
@@ -13,7 +34,9 @@ internal sealed partial class Compilation
         {
             var definition = reader.GetMethodDefinition(handle);
             string name = reader.GetString(definition.Name);
-            if (!CoreIntrinsics.IsTaskLifecycleCandidate(name, reader.GetBlobReader(definition.Signature))) continue;
+            if (owner.FullName == "System.Threading.Tasks.TaskScheduler"
+                ? name != "TryRunInline"
+                : !CoreIntrinsics.IsTaskLifecycleCandidate(name, reader.GetBlobReader(definition.Signature))) continue;
             var method = new MethodInfo
             {
                 DeclaringClass = owner, Name = name, Handle = handle, Module = owner.Module,
@@ -31,6 +54,23 @@ internal sealed partial class Compilation
         var reader = module.Reader;
         var reference = reader.GetMemberReference(handle);
         string name = reader.GetString(reference.Name);
+        if (name == "TryRunInline" && reference.Parent.Kind == HandleKind.TypeSpecification)
+        {
+            var schedulerOwner = reader.GetTypeSpecification((TypeSpecificationHandle)reference.Parent)
+                .DecodeSignature(SigProvider, context).Class;
+            if (CoreIntrinsics.IsTaskSchedulerInlineName(schedulerOwner?.FullName, name))
+                throw new NotSupportedException("TaskScheduler.TryRunInline requires an unmodified CoreLib owner");
+        }
+        if (CoreIntrinsics.IsTaskSchedulerInlineName(MemberRefParentTypeName(module, handle), name))
+        {
+            var target = ResolveMemberRefMethod(module, handle, context);
+            if (!CoreIntrinsics.IsTaskSchedulerInline(target)
+                || !CoreIntrinsics.IsTaskSchedulerInlineSignature(reader.GetBlobReader(reference.Signature))
+                || !CoreIntrinsics.IsTaskSchedulerInlineDecodedSignature(target,
+                    reference.DecodeMethodSignature(SigProvider, target.DeclaringClass.Context)))
+                throw new NotSupportedException("TaskScheduler.TryRunInline requires its exact CoreLib reference and declaration");
+            return target;
+        }
         if (!CoreIntrinsics.IsTaskLifecycleCandidate(name, reader.GetBlobReader(reference.Signature))) return null;
         ClassInfo? owner;
         if (reference.Parent.Kind == HandleKind.TypeSpecification)

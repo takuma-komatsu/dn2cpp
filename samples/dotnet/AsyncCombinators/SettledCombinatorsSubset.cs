@@ -347,6 +347,59 @@ namespace SettledCombinatorsSubset
             Console.WriteLine("protected task start end");
         }
 
+        internal static void RunSchedulerInline()
+        {
+            Console.WriteLine("== scheduler inline ==");
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+            var inline = typeof(TaskScheduler).GetMethod("TryRunInline", flags);
+            var mark = typeof(Task).GetMethod("MarkStarted", flags);
+            var scheduler = TaskScheduler.Default;
+            bool Inline(Task task, bool queued) => (bool)inline.Invoke(scheduler, new object[] { task, queued });
+
+            int calls = 0;
+            var cold = new Task(() => calls++);
+            bool marked = (bool)mark.Invoke(cold, null);
+            bool noOwner = Inline(cold, false);
+            // Start assigns the scheduler but cannot queue a task whose start flag was already set.
+            cold.Start(scheduler);
+            bool missingQueue = Inline(cold, true);
+            bool ran = Inline(cold, false);
+            bool repeated = Inline(cold, false);
+            Console.WriteLine("scheduler inline: " + marked + "/" + noOwner + "/" + missingQueue + "/"
+                + ran + "/" + repeated + "/" + cold.Status + "/" + calls);
+
+            var promise = new TaskCompletionSource<int>();
+            var canceled = Task.FromCanceled(new CancellationToken(true));
+            var pending = promise.Task.ContinueWith(_ => { calls++; }, scheduler);
+            var completed = Task.FromResult(1999);
+            bool markedPending = (bool)mark.Invoke(pending, null);
+            bool markedCompleted = (bool)mark.Invoke(completed, null);
+            Console.WriteLine("scheduler inline ineligible: " + Inline(promise.Task, false)
+                + "/" + Inline(canceled, true) + "|" + markedPending + "/" + Inline(pending, false)
+                + "/" + Inline(pending, true) + "|" + markedCompleted + "/" + Inline(completed, false)
+                + "/" + Inline(completed, true));
+
+            string CancellationResult(bool matching)
+            {
+                using var associated = new CancellationTokenSource();
+                using var unrelated = new CancellationTokenSource();
+                var canceledBy = matching ? associated : unrelated;
+                var task = new Task(() =>
+                {
+                    associated.Cancel();
+                    if (!matching)
+                        unrelated.Cancel();
+                    canceledBy.Token.ThrowIfCancellationRequested();
+                }, associated.Token);
+                mark.Invoke(task, null);
+                task.Start(scheduler);
+                return Inline(task, false) + "/" + task.Status;
+            }
+
+            Console.WriteLine("scheduler inline cancellation: " + CancellationResult(true)
+                + "|" + CancellationResult(false));
+        }
+
         internal static void RunSemaphoreWaiters()
         {
             Console.WriteLine("== semaphore waiter helpers ==");

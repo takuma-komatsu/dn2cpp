@@ -620,6 +620,11 @@ internal sealed partial class MethodCompiler
                     EmitManagedCall(callee, isCallvirt);
                     return;
                 }
+                if (CoreIntrinsics.IsTaskSchedulerInline(callee))
+                {
+                    EmitManagedCall(callee, isCallvirt);
+                    return;
+                }
                 if (TryEmitMethodDefIntercept(CoreIntrinsics.MdRuntimePrimitive, callee))
                     return;
                 // Framework EventSource tracing guards: EventSource.IsEnabled() ->
@@ -1012,6 +1017,11 @@ internal sealed partial class MethodCompiler
             {
                 if (_c.TryResolveTaskLifecycleReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } taskMember)
                 {
+                    if (CoreIntrinsics.IsTaskSchedulerInline(taskMember))
+                    {
+                        EmitManagedCall(taskMember, isCallvirt);
+                        return;
+                    }
                     if (TryEmitMethodDefIntercept(CoreIntrinsics.MdRuntimePrimitive, taskMember)) return;
                     EmitManagedCall(taskMember, isCallvirt);
                     return;

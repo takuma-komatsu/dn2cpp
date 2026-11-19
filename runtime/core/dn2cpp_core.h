@@ -1429,6 +1429,7 @@ void dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodIn
 // Exact retained CultureInfo getter; no general intrinsic-type metadata mutation.
 void dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 void dn2cpp_set_task_mark_started_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+void dn2cpp_set_task_scheduler_inline_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 void dn2cpp_set_culture_name_validator_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 // Only the two exact retained String entries participate in named lookup.
 void dn2cpp_set_string_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> rawByte,
@@ -7657,10 +7658,11 @@ struct Dn2CppCont
 
 // The not-yet-started work of a cold task (`new Task(...)`): the delegate, its
 // optional state argument, and the result-kind invoke thunk chosen at the newobj
-// site (exactly one of invoke/invoke2 is set). Claimed — nulled off the task —
-// exactly once by Start()/RunSynchronously(); GC-scanned through the task object.
+// site (exactly one of invoke/invoke2 is set). A scheduler claim is separate
+// from dispatch: a protected-start loser retains this GC-scanned unqueued work.
 struct Dn2CppTaskCold
 {
+    Dn2CppObject* scheduler; // null until Start/RunSynchronously claims the scheduler
     Dn2CppObject* del;
     Dn2CppObject* state;
     uint64_t (*invoke)(Dn2CppObject*);
@@ -7672,8 +7674,10 @@ enum
     DN2CPP_TASK_ORIGIN_PROMISE = 0,
     DN2CPP_TASK_ORIGIN_COLD = 1,
     DN2CPP_TASK_ORIGIN_CONTINUATION = 2,
-    DN2CPP_TASK_ORIGIN_STARTED = 3,
+    DN2CPP_TASK_ORIGIN_PRECOMPLETED = 3, // no scheduler or delegate even after a protected start
     DN2CPP_TASK_ORIGIN_ASYNC_UNEXPOSED = 4,
+    DN2CPP_TASK_ORIGIN_POOL = 5,
+    DN2CPP_TASK_ORIGIN_ACTIVE_CONTINUATION = 6, // assigned when its antecedent dispatches it
 };
 
 enum
@@ -7701,7 +7705,7 @@ struct Dn2CppTask : Dn2CppObject
     uint64_t result;           // Task<T> result, reinterpreted by T (0 for Task)
     Dn2CppCont* continuations; // resumptions waiting on this task (fired on complete)
     void* workerKeepAlive; // scanned delegate or continuation state owned by this task
-    Dn2CppTaskCold* cold;      // unclaimed work; protected by the task mutex after publication
+    Dn2CppTaskCold* cold;      // undispatched work; protected by the task mutex after publication
     // The IValueTaskSource bridge this task fronts, or null for every other task.
     // Written once before the task is published and never cleared: it is what lets a
     // synchronous read tell a source-backed ValueTask from a Task-backed one, which the
@@ -7798,6 +7802,7 @@ Dn2CppObject* dn2cpp_taskscheduler_default();
 Dn2CppTask* dn2cpp_task_alloc(int32_t options = 0, Dn2CppCancelSource* source = nullptr);
 Dn2CppCancelToken dn2cpp_task_cancellation_token(Dn2CppTask* task);
 int32_t dn2cpp_task_mark_started(Dn2CppTask* task);
+int32_t dn2cpp_taskscheduler_try_run_inline(Dn2CppObject* scheduler, Dn2CppTask* task, int32_t previouslyQueued);
 int32_t dn2cpp_task_public_status(Dn2CppTask* task);
 void dn2cpp_task_init_promise(Dn2CppTask* task, Dn2CppObject* state, int32_t options);
 void dn2cpp_task_dispose(Dn2CppTask* task);

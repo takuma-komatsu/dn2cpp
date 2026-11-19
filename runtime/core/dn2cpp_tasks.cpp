@@ -232,7 +232,7 @@ Dn2CppTask* dn2cpp_asyncbuilder_task(Dn2CppAsyncBuilder* builder)
     std::lock_guard<std::mutex> lk(g_task_mtx);
     int32_t origin = DN2CPP_TASK_ORIGIN_ASYNC_UNEXPOSED;
     int32_t exposedOrigin = task->status.load(std::memory_order_acquire) == DN2CPP_TASK_SUCCEEDED
-        ? DN2CPP_TASK_ORIGIN_STARTED : DN2CPP_TASK_ORIGIN_PROMISE;
+        ? DN2CPP_TASK_ORIGIN_PRECOMPLETED : DN2CPP_TASK_ORIGIN_PROMISE;
     task->startKind.compare_exchange_strong(origin, exposedOrigin, std::memory_order_relaxed);
     return task;
 }
@@ -250,7 +250,7 @@ void dn2cpp_async_task_suspend(Dn2CppTask* task)
 Dn2CppTask* dn2cpp_task_completed()
 {
     auto* t = dn2cpp_task_alloc();
-    t->startKind = DN2CPP_TASK_ORIGIN_STARTED;
+    t->startKind = DN2CPP_TASK_ORIGIN_PRECOMPLETED;
     t->status.store(DN2CPP_TASK_SUCCEEDED, std::memory_order_relaxed);
     t->disposed = -1;
     return t;
@@ -263,12 +263,12 @@ Dn2CppTask* dn2cpp_task_completed()
 Dn2CppTask dn2cpp_task_default_completed{
     { &dn2cpp_task_type }, DN2CPP_TASK_SUCCEEDED,
     dn2cpp_task_next_id(), nullptr, nullptr, 0, nullptr, nullptr, nullptr, nullptr,
-    DN2CPP_TASK_ORIGIN_STARTED, DN2CPP_TASK_NOT_STARTED, nullptr, nullptr, -1, 0, nullptr };
+    DN2CPP_TASK_ORIGIN_PRECOMPLETED, DN2CPP_TASK_NOT_STARTED, nullptr, nullptr, -1, 0, nullptr };
 
 Dn2CppTask* dn2cpp_task_from_result(uint64_t result, bool doNotDispose)
 {
     auto* t = dn2cpp_task_alloc();
-    t->startKind = DN2CPP_TASK_ORIGIN_STARTED;
+    t->startKind = DN2CPP_TASK_ORIGIN_PRECOMPLETED;
     t->status.store(DN2CPP_TASK_SUCCEEDED, std::memory_order_relaxed);
     t->result = result;
     t->disposed = doNotDispose ? -1 : 0;
@@ -1363,7 +1363,7 @@ static Dn2CppTask* dn2cpp_task_when_all_impl(Dn2CppArrayRef* tasks, int32_t kind
     auto* s = static_cast<Dn2CppWhenAllState*>(dn2cpp_alloc(sizeof(Dn2CppWhenAllState)));
     dn2cpp_gc_store_ref(&s->result, dn2cpp_task_alloc());
     if (tasks->length == 0)
-        s->result->startKind = DN2CPP_TASK_ORIGIN_STARTED;
+        s->result->startKind = DN2CPP_TASK_ORIGIN_PRECOMPLETED;
     dn2cpp_gc_store_ref(&s->tasks, tasks);
     s->remaining.store(tasks->length, std::memory_order_relaxed);
     s->firstCanceled.store(nullptr, std::memory_order_relaxed);
@@ -1685,7 +1685,7 @@ void dn2cpp_task_set_exception_or_canceled(Dn2CppTask* t, Dn2CppObject* exceptio
 Dn2CppTask* dn2cpp_task_from_canceled(Dn2CppCancelSource* source)
 {
     auto* t = dn2cpp_task_alloc(0, source);
-    t->startKind = DN2CPP_TASK_ORIGIN_STARTED;
+    t->startKind = DN2CPP_TASK_ORIGIN_PRECOMPLETED;
     t->status.store(DN2CPP_TASK_CANCELED, std::memory_order_relaxed);
     return t;
 }
@@ -2413,7 +2413,7 @@ Dn2CppTask* dn2cpp_task_delay_ct(int64_t ms, Dn2CppCancelSource* src)
     if (src != nullptr && dn2cpp_cts_is_cancelled(src))
     {
         Dn2CppTask* t = dn2cpp_task_alloc();
-        t->startKind = DN2CPP_TASK_ORIGIN_STARTED;
+        t->startKind = DN2CPP_TASK_ORIGIN_PRECOMPLETED;
         dn2cpp_task_set_canceled(t, src);
         return t;
     }
@@ -3610,7 +3610,7 @@ static void dn2cpp_pool_enqueue(Dn2CppTask* t, Dn2CppObject* del, Dn2CppObject* 
 Dn2CppTask* dn2cpp_pool_submit(Dn2CppObject* del, uint64_t (*invoke)(Dn2CppObject*), int32_t options, Dn2CppCancelSource* source)
 {
     Dn2CppTask* t = dn2cpp_task_alloc(options, source);
-    t->startKind = DN2CPP_TASK_ORIGIN_STARTED;
+    t->startKind = DN2CPP_TASK_ORIGIN_POOL;
     t->execution = DN2CPP_TASK_SCHEDULED;
     dn2cpp_pool_enqueue(t, del, nullptr, invoke, nullptr);
     return t;
@@ -3623,7 +3623,7 @@ static Dn2CppTask* dn2cpp_pool_submit_state(Dn2CppObject* del, Dn2CppObject* sta
                                             uint64_t (*invoke2)(Dn2CppObject*, Dn2CppObject*), int32_t options, Dn2CppCancelSource* source)
 {
     Dn2CppTask* t = dn2cpp_task_alloc(options, source);
-    t->startKind = DN2CPP_TASK_ORIGIN_STARTED;
+    t->startKind = DN2CPP_TASK_ORIGIN_POOL;
     t->execution = DN2CPP_TASK_SCHEDULED;
     dn2cpp_gc_store_ref(&t->asyncState, state);
     dn2cpp_pool_enqueue(t, del, state, nullptr, invoke2);
@@ -3666,7 +3666,7 @@ static Dn2CppTask* dn2cpp_pool_submit_unwrap(Dn2CppObject* del, Dn2CppCancelSour
 static Dn2CppTask* dn2cpp_pool_submit_nested(Dn2CppObject* del, int32_t options, Dn2CppCancelSource* source)
 {
     Dn2CppTask* t = dn2cpp_task_alloc(options, source);
-    t->startKind = DN2CPP_TASK_ORIGIN_STARTED;
+    t->startKind = DN2CPP_TASK_ORIGIN_POOL;
     t->execution = DN2CPP_TASK_SCHEDULED;
     // A caller holding the task also keeps its worker delegate reachable.
     dn2cpp_gc_store_ref(&t->workerKeepAlive, static_cast<void*>(del));
@@ -3884,6 +3884,7 @@ static Dn2CppTask* dn2cpp_task_cold(Dn2CppObject* del, Dn2CppObject* state,
         return t;
     }
     auto* c = static_cast<Dn2CppTaskCold*>(dn2cpp_alloc(sizeof(Dn2CppTaskCold)));
+    c->scheduler = nullptr;
     dn2cpp_gc_store_ref(&c->del, del);
     dn2cpp_gc_store_ref(&c->state, state);
     c->invoke = invoke;
@@ -3931,11 +3932,11 @@ static Dn2CppTaskCold* dn2cpp_task_claim_cold(Dn2CppTask* t, bool synchronous,
         dn2cpp_throw_sr0(&dn2cpp_invalid_operation_exception_type, DN2CPP_SR_TASK_START_COMPLETED);
     if (!synchronous && scheduler == nullptr)
         dn2cpp_throw_argument_null_param("scheduler");
-    if (t->startKind == DN2CPP_TASK_ORIGIN_CONTINUATION)
+    const int32_t origin = t->startKind.load(std::memory_order_acquire);
+    if (origin == DN2CPP_TASK_ORIGIN_CONTINUATION || origin == DN2CPP_TASK_ORIGIN_ACTIVE_CONTINUATION)
         dn2cpp_throw_sr0(&dn2cpp_invalid_operation_exception_type,
             synchronous ? DN2CPP_SR_TASK_SYNC_CONTINUATION : DN2CPP_SR_TASK_START_CONTINUATION);
-    if (t->startKind == DN2CPP_TASK_ORIGIN_PROMISE
-        || t->startKind == DN2CPP_TASK_ORIGIN_ASYNC_UNEXPOSED)
+    if (origin == DN2CPP_TASK_ORIGIN_PROMISE || origin == DN2CPP_TASK_ORIGIN_ASYNC_UNEXPOSED)
         dn2cpp_throw_sr0(&dn2cpp_invalid_operation_exception_type,
             synchronous ? DN2CPP_SR_TASK_SYNC_PROMISE : DN2CPP_SR_TASK_START_PROMISE);
     if (synchronous && status != DN2CPP_TASK_PENDING)
@@ -3945,13 +3946,15 @@ static Dn2CppTaskCold* dn2cpp_task_claim_cold(Dn2CppTask* t, bool synchronous,
     {
         std::lock_guard<std::mutex> lk(g_task_mtx);
         c = t->cold;
-        dn2cpp_gc_store_ref(&t->cold, static_cast<Dn2CppTaskCold*>(nullptr));
+        if (c != nullptr && c->scheduler != nullptr)
+            c = nullptr;
         if (c != nullptr)
         {
+            dn2cpp_gc_store_ref(&c->scheduler, scheduler);
             marked = dn2cpp_task_mark_started_locked(t);
-            // A consumed scheduler claim does not discard an uninvoked action.
-            if (!marked)
-                dn2cpp_gc_store_ref(&t->workerKeepAlive, static_cast<void*>(c->del));
+            // A losing start claim keeps its never-enqueued delegate and thunk.
+            if (marked)
+                dn2cpp_gc_store_ref(&t->cold, static_cast<Dn2CppTaskCold*>(nullptr));
         }
     }
     if (c == nullptr)
@@ -3971,12 +3974,9 @@ void dn2cpp_task_start(Dn2CppTask* t, Dn2CppObject* scheduler)
         dn2cpp_pool_enqueue(t, c->del, c->state, c->invoke, c->invoke2);
 }
 
-void dn2cpp_task_run_synchronously(Dn2CppTask* t, Dn2CppObject* scheduler)
+static void dn2cpp_task_invoke_cold(Dn2CppTask* t, Dn2CppTaskCold* c)
 {
-    Dn2CppTaskCold* c = dn2cpp_task_claim_cold(t, true, scheduler);
-    t->execution = DN2CPP_TASK_INVOKED;
-    // Run inline on the calling thread. A fault settles the task FAULTED — it
-    // surfaces at Wait/Result/await, not here — matching real .NET.
+    // Inline delegate failures settle the task; Wait/Result/await observes them.
     Dn2CppCancelSource* source = t->cancellationSource.load(std::memory_order_acquire);
     if (source != nullptr && dn2cpp_cts_is_cancelled(source))
     {
@@ -3990,9 +3990,58 @@ void dn2cpp_task_run_synchronously(Dn2CppTask* t, Dn2CppObject* scheduler)
     }
     catch (const Dn2CppException& e)
     {
-        dn2cpp_task_set_exception(t, e.obj);
-        dn2cpp_exc_inflight_pop(e.obj);
+        // Cancellation is acknowledged only for this task's requested token.
+        // Keep the caught exception, rather than manufacturing a task exception.
+        if (source != nullptr && dn2cpp_cts_is_cancelled(source)
+            && dn2cpp_canceled_exception_source(e.obj) == source)
+            dn2cpp_task_complete(t, DN2CPP_TASK_CANCELED, t->result, e.obj, false, source);
+        else
+            dn2cpp_task_set_exception(t, e.obj);
+        dn2cpp_exc_inflight_pop(e.obj); // rooted by the task before leaving the catch
     }
+}
+
+void dn2cpp_task_run_synchronously(Dn2CppTask* t, Dn2CppObject* scheduler)
+{
+    Dn2CppTaskCold* c = dn2cpp_task_claim_cold(t, true, scheduler);
+    t->execution = DN2CPP_TASK_INVOKED;
+    dn2cpp_task_invoke_cold(t, c);
+}
+
+int32_t dn2cpp_taskscheduler_try_run_inline(Dn2CppObject*, Dn2CppTask* task, int32_t previouslyQueued)
+{
+    // The managed body reads the task first and delegates to its assigned owner.
+    // A null receiver is rejected by callvirt, not by a direct call's body.
+    dn2cpp_null_check(task);
+    Dn2CppTaskCold* work = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_task_mtx);
+        int32_t origin = task->startKind.load(std::memory_order_relaxed);
+        if (task->status == DN2CPP_TASK_CANCELED || task->execution == DN2CPP_TASK_INVOKED
+            || origin == DN2CPP_TASK_ORIGIN_PROMISE || origin == DN2CPP_TASK_ORIGIN_ASYNC_UNEXPOSED
+            || origin == DN2CPP_TASK_ORIGIN_PRECOMPLETED || origin == DN2CPP_TASK_ORIGIN_CONTINUATION)
+            return false;
+        if (origin == DN2CPP_TASK_ORIGIN_COLD && task->cold != nullptr)
+        {
+            auto* cold = task->cold;
+            if (cold->scheduler == nullptr)
+                return false;
+            if (cold->scheduler == dn2cpp_taskscheduler_default())
+            {
+                // A retained cold node has never entered a queue. Only a false
+                // previouslyQueued claim can dispatch it, exactly once.
+                if (previouslyQueued)
+                    return false;
+                work = cold;
+                task->execution = DN2CPP_TASK_INVOKED;
+                dn2cpp_gc_store_ref(&task->cold, static_cast<Dn2CppTaskCold*>(nullptr));
+            }
+        }
+    }
+    if (work == nullptr)
+        dn2cpp_throw_platform_not_supported("Managed TaskScheduler inline execution requires scheduler-owned task dispatch");
+    dn2cpp_task_invoke_cold(task, work);
+    return true;
 }
 
 // ---- Task.ContinueWith -------------------------------------------------------
@@ -4115,7 +4164,11 @@ static bool dn2cpp_cont_with_prepare(Dn2CppCont* node)
         node->fn = &dn2cpp_cont_with_cancel;
         return true;
     }
-    return dn2cpp_task_mark_started(c->task);
+    // Filtering leaves the continuation unassigned. For eligible work the
+    // scheduler is assigned even if a separate protected start already won.
+    std::lock_guard<std::mutex> lock(g_task_mtx);
+    c->task->startKind = DN2CPP_TASK_ORIGIN_ACTIVE_CONTINUATION;
+    return dn2cpp_task_mark_started_locked(c->task);
 }
 
 static void dn2cpp_cont_with_run(void* p)
