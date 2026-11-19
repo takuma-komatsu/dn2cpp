@@ -1371,32 +1371,12 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", $"{local}->creationOptions.load(std::memory_order_relaxed)");
                 return true;
             }
-            // Task.Status: the same status field widened to real .NET's TaskStatus,
-            // whose values are the ABI (verified against real .NET): Created 0,
-            // WaitingForActivation 1, WaitingToRun 2, Running 3,
-            // WaitingForChildrenToComplete 4, RanToCompletion 5, Canceled 6, Faulted 7.
-            // Three of the four modeled states map exactly (SUCCEEDED/CANCELED/FAULTED);
-            // PENDING is the only one that has to choose, because five real statuses
-            // collapse into it. The `cold` pointer splits the two that are
-            // DETERMINISTICALLY observable and so must be told apart:
-            //   * cold != null  -> `new Task(...)` whose work Start() has not claimed
-            //                      yet, which real .NET reports as Created.
-            //   * cold == null  -> a promise (an async method's task, a TCS's task),
-            //                      which real .NET reports as WaitingForActivation for
-            //                      both shapes.
-            // The remaining collapse is a started task still in flight: real .NET says
-            // WaitingToRun/Running, this says WaitingForActivation — real .NET's own
-            // answer there races the scheduler, so there is no fixed value to match.
             case ("System.Threading.Tasks.Task", "get_Status"):
             {
-                var t = Pop();
-                string tt = NewTemp("Dn2CppTask*");
-                Emit($"{tt} = (Dn2CppTask*)({t.Expr});");
+                var task = Pop();
                 string ct = CppTypes.Of(sig.ReturnType);
                 Push(CppTypes.KindOf(sig.ReturnType), ct,
-                    $"({ct})({tt}->status == DN2CPP_TASK_PENDING ? ({tt}->cold != nullptr ? 0 : 1)"
-                    + $" : ({tt}->status == DN2CPP_TASK_SUCCEEDED ? 5"
-                    + $" : ({tt}->status == DN2CPP_TASK_CANCELED ? 6 : 7)))");
+                    $"({ct})dn2cpp_task_public_status((Dn2CppTask*)({task.Expr}))");
                 return true;
             }
             // Non-generic Task.FromException(Exception) -> a pre-completed faulted

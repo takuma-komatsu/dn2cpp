@@ -42,10 +42,7 @@ namespace TaskStateSubset
         }
 
         // Task.Status over every state a deterministic program can pin. Each case
-        // below is one real .NET reports the same way on every run; the one state
-        // deliberately absent is a STARTED task still in flight (Task.Run's, or a
-        // cold task between Start and completion), where real .NET itself races
-        // between WaitingToRun and Running and so has no fixed answer to assert.
+        // below is one real .NET reports the same way on every run.
         private static async Task<string> Statuses()
         {
             // A cold `new Task(...)` before Start: real .NET reports Created.

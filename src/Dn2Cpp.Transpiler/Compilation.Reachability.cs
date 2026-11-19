@@ -14,7 +14,7 @@ internal sealed partial class Compilation
 
     private void Reach(MethodInfo m)
     {
-        CoreIntrinsics.ValidateTaskPromise(m);
+        CoreIntrinsics.ValidateTaskLifecycle(m);
         CoreIntrinsics.ValidateThreadingPrivate(m);
         CoreIntrinsics.ValidateUnsupportedAlignedDefault(m);
         NoteMediumMethod(m);
@@ -217,7 +217,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsUInt128Checked(m)
             || CoreIntrinsics.IsInvariantCompareInfoGetter(m)
             || CoreIntrinsics.IsDateTimeFormatInfoBoundary(m)
-            || CoreIntrinsics.IsTaskPromiseNative(m)
+            || CoreIntrinsics.IsTaskLifecycleNative(m)
             || CoreIntrinsics.IsThreadingPrivate(m)
             || CoreIntrinsics.IsAppContextOnProcessExit(m)
             || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(m)
@@ -5540,8 +5540,8 @@ internal sealed partial class Compilation
             spec.IsValueType = !spec.IntrinsicCppName.EndsWith('*');
             if (IsTypedGCHandle(spec))
                 CompleteTypedGCHandleInterfaces(spec);
-            if (CoreIntrinsics.IsTaskPromiseOwner(spec))
-                CompleteTaskPromiseMembers(spec);
+            if (CoreIntrinsics.IsTaskLifecycleOwner(spec))
+                CompleteTaskLifecycleMembers(spec);
             return;
         }
         var module = spec.Module;

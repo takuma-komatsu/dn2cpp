@@ -4102,7 +4102,7 @@ internal sealed partial class Compilation
 
     public void NoteIntrinsicFtnTarget(MethodInfo m)
     {
-        CoreIntrinsics.ValidateTaskPromise(m);
+        CoreIntrinsics.ValidateTaskLifecycle(m);
         CoreIntrinsics.ValidateThreadingPrivate(m);
         CoreIntrinsics.ValidateVectorFloatingPointTernary(m);
         CoreIntrinsics.ValidateVectorLog(m);

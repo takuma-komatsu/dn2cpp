@@ -3198,6 +3198,8 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    dn2cpp_set_string_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_stringRawByteReferenceRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_stringNullTerminatedLengthRow ?? "nullptr"}));");
         if (_cultureNameValidatorRow is { } cultureNameValidatorRow)
             sb.AppendLine($"    dn2cpp_set_culture_name_validator_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({cultureNameValidatorRow}));");
+        if (_taskMarkStartedRow is { } taskMarkStartedRow)
+            sb.AppendLine($"    dn2cpp_set_task_mark_started_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({taskMarkStartedRow}));");
         if (_cultureCompareInfoRow is { } cultureCompareInfoRow)
             sb.AppendLine($"    dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({cultureCompareInfoRow}));");
         if (_resourceManagerDefaultTypeRow is { } resourceManagerRow)
@@ -3976,6 +3978,7 @@ internal sealed partial class CppEmitter
     private string? _dateOnlyDeconstructRow;
     private string? _resourceManagerDefaultTypeRow;
     private string? _cultureCompareInfoRow;
+    private string? _taskMarkStartedRow;
     private string? _cultureNameValidatorRow;
     private string? _stringRawByteReferenceRow;
     private string? _stringNullTerminatedLengthRow;

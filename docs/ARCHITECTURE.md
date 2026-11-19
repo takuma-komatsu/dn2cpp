@@ -1609,6 +1609,16 @@ The options word is atomic because cancellation can update it concurrently with 
 Creation flags describe the task while scheduling follows the existing native
 contract for parent attachment, cancellation and scheduler selection.
 
+#### Task scheduling state
+
+A protected start is a single claim, independent of a task's origin and terminal
+state: cancellation or a previous start prevents it, but successful or faulted
+promises need not have been scheduled. The claim alone neither queues nor invokes
+a delegate. Cold starts, queued delegate work and eligible continuations publish
+their scheduling phase; unwrapping promises do not inherit the delegate's phase.
+A settled status takes precedence over WaitingToRun or Running. Ordinary await
+resumptions remain on their owning scheduler, without acquiring a Task start claim.
+
 #### Task cancellation identity
 
 A native task stores its associated cancellation source independently of callback

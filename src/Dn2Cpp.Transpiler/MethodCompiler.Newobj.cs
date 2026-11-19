@@ -675,7 +675,7 @@ internal sealed partial class MethodCompiler
             // Retained mapped bodies use the callable declaration's receiver ABI,
             // not an emitted managed struct layout.
             string receiverType = CoreIntrinsics.IsScalarNumericLeaf(callee)
-                || CoreIntrinsics.IsTaskPromise(callee)
+                || CoreIntrinsics.IsTaskLifecycle(callee)
                 || CoreIntrinsics.IsDateTimeCultureManagedBody(callee)
                 || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(callee)
                 || CoreIntrinsics.BrStringRawByteReference.Matches(callee)
@@ -828,11 +828,11 @@ internal sealed partial class MethodCompiler
         var handle = SRME.EntityHandle(insn.Token);
         TaintCanonicalVectorOperation(handle);
         var promiseCtor = handle.Kind == HandleKind.MemberReference
-            ? _c.TryResolveTaskPromiseReference(_module, (MemberReferenceHandle)handle, _method.Context)
+            ? _c.TryResolveTaskLifecycleReference(_module, (MemberReferenceHandle)handle, _method.Context)
             : handle.Kind == HandleKind.MethodDefinition
-                && CoreIntrinsics.IsTaskPromise(ResolveMethodDef((MethodDefinitionHandle)handle))
+                && CoreIntrinsics.IsTaskLifecycle(ResolveMethodDef((MethodDefinitionHandle)handle))
                     ? ResolveMethodDef((MethodDefinitionHandle)handle) : null;
-        if (promiseCtor is not null)
+        if (promiseCtor is { Name: ".ctor" })
         {
             var arguments = PopArgs(promiseCtor, hasThis: false);
             string task = NewTemp("Dn2CppTask*");

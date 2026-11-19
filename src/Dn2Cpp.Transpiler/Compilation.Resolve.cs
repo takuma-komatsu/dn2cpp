@@ -101,7 +101,7 @@ internal sealed partial class Compilation
                 var h = (MethodDefinitionHandle)handle;
                 if (!module.MethodMap.TryGetValue(h, out var mi))
                     return null;
-                CoreIntrinsics.ValidateTaskPromise(mi);
+                CoreIntrinsics.ValidateTaskLifecycle(mi);
                 CoreIntrinsics.ValidateThreadingPrivate(mi);
                 CoreIntrinsics.ValidateConcreteVectorElement(mi);
                 CoreIntrinsics.ValidateVectorFloatingPointTernary(mi);
@@ -510,7 +510,7 @@ internal sealed partial class Compilation
             }
             case HandleKind.MemberReference:
             {
-                if (TryResolveTaskPromiseReference(module, (MemberReferenceHandle)handle, ctx) is { } taskPromise) return taskPromise;
+                if (TryResolveTaskLifecycleReference(module, (MemberReferenceHandle)handle, ctx) is { } taskPromise) return taskPromise;
                 if (TryResolveDelegateCallableReference(module, (MemberReferenceHandle)handle, ctx) is { } delegateBody) return delegateBody;
                 ValidateNumericMemberRefOwner(module, (MemberReferenceHandle)handle, ctx);
                 if (TryResolveScalarNumericLeafReference(module, (MemberReferenceHandle)handle, ctx) is { } scalarNumericLeaf) return scalarNumericLeaf;
@@ -2315,7 +2315,7 @@ internal sealed partial class Compilation
     /// the member cannot be matched, so callers fall back to intrinsics.</summary>
     public MethodInfo? TryResolveMemberRefMethod(Module module, MemberReferenceHandle handle, GenericContext callerCtx)
     {
-        if (TryResolveTaskPromiseReference(module, handle, callerCtx) is { } taskPromise) return taskPromise;
+        if (TryResolveTaskLifecycleReference(module, handle, callerCtx) is { } taskPromise) return taskPromise;
         if (TryResolveDelegateCallableReference(module, handle, callerCtx) is { } delegateBody) return delegateBody;
         ValidateNumericMemberRefOwner(module, handle, callerCtx);
         if (TryResolveScalarNumericLeafReference(module, handle, callerCtx) is { } scalarNumericLeaf) return scalarNumericLeaf;

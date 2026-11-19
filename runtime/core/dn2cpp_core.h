@@ -1428,6 +1428,7 @@ void dn2cpp_set_delegate_method_catalog(const Dn2CppDelegateMethodCatalog* rows,
 void dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 // Exact retained CultureInfo getter; no general intrinsic-type metadata mutation.
 void dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+void dn2cpp_set_task_mark_started_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 void dn2cpp_set_culture_name_validator_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 // Only the two exact retained String entries participate in named lookup.
 void dn2cpp_set_string_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> rawByte,
@@ -7675,6 +7676,13 @@ enum
     DN2CPP_TASK_ORIGIN_ASYNC_UNEXPOSED = 4,
 };
 
+enum
+{
+    DN2CPP_TASK_NOT_STARTED = 0,
+    DN2CPP_TASK_SCHEDULED,
+    DN2CPP_TASK_INVOKED,
+};
+
 struct Dn2CppTask : Dn2CppObject
 {
     // The publication point: a settle stores it last with release, so every read —
@@ -7692,11 +7700,8 @@ struct Dn2CppTask : Dn2CppObject
     std::atomic<Dn2CppObject*> exceptionAggregate;
     uint64_t result;           // Task<T> result, reinterpreted by T (0 for Task)
     Dn2CppCont* continuations; // resumptions waiting on this task (fired on complete)
-    Dn2CppObject* workerKeepAlive; // Task.Run: keeps the worker delegate GC-reachable
-    // `new Task(...)` work not yet claimed by Start (else null). Atomic for the
-    // null-ness test generated Task.Status makes without the claim's lock; nothing
-    // dereferences it unlocked, so there is nothing to publish through it.
-    std::atomic<Dn2CppTaskCold*> cold;
+    void* workerKeepAlive; // scanned delegate or continuation state owned by this task
+    Dn2CppTaskCold* cold;      // unclaimed work; protected by the task mutex after publication
     // The IValueTaskSource bridge this task fronts, or null for every other task.
     // Written once before the task is published and never cleared: it is what lets a
     // synchronous read tell a source-backed ValueTask from a Task-backed one, which the
@@ -7707,6 +7712,7 @@ struct Dn2CppTask : Dn2CppObject
     // Distinguishes cold tasks from promise and continuation tasks after their
     // delegate has been claimed. Start and RunSynchronously use different errors.
     std::atomic<int32_t> startKind; // DN2CPP_TASK_ORIGIN_*
+    std::atomic<int32_t> execution; // scheduling is independent of task origin and completion
     Dn2CppObject* asyncState;
     Dn2CppObject* completionWaitHandle;
     int32_t disposed; // negative: cached-task Dispose is a no-op
@@ -7791,6 +7797,8 @@ Dn2CppObject* dn2cpp_taskscheduler_default();
 // SetException once MoveNext finishes.
 Dn2CppTask* dn2cpp_task_alloc(int32_t options = 0, Dn2CppCancelSource* source = nullptr);
 Dn2CppCancelToken dn2cpp_task_cancellation_token(Dn2CppTask* task);
+int32_t dn2cpp_task_mark_started(Dn2CppTask* task);
+int32_t dn2cpp_task_public_status(Dn2CppTask* task);
 void dn2cpp_task_init_promise(Dn2CppTask* task, Dn2CppObject* state, int32_t options);
 void dn2cpp_task_dispose(Dn2CppTask* task);
 Dn2CppObject* dn2cpp_task_async_wait_handle(Dn2CppTask* task);

@@ -5,7 +5,7 @@ namespace Dn2Cpp;
 
 internal static partial class CoreIntrinsics
 {
-    internal static bool IsTaskPromiseOwner(ClassInfo owner)
+    internal static bool IsTaskLifecycleOwner(ClassInfo owner)
     {
         if (owner.Handle.IsNil) return false;
         var reader = owner.Module.Reader;
@@ -16,9 +16,9 @@ internal static partial class CoreIntrinsics
     }
 
     // Public delegate constructors are independent of the internal promise family.
-    internal static bool IsTaskPromiseCandidate(string name, BlobReader blob)
+    internal static bool IsTaskLifecycleCandidate(string name, BlobReader blob)
     {
-        if (name == "TrySetResult") return true;
+        if (name is "TrySetResult" or "MarkStarted") return true;
         if (name != ".ctor" || blob.RemainingBytes < 3) return false;
         var header = blob.ReadSignatureHeader();
         if (header.IsGeneric && !blob.TryReadCompressedInteger(out _)) return false;
@@ -29,19 +29,19 @@ internal static partial class CoreIntrinsics
         return blob.ReadByte() == (byte)SignatureTypeCode.Object;
     }
 
-    internal static void ValidateTaskPromise(MethodInfo method)
+    internal static void ValidateTaskLifecycle(MethodInfo method)
     {
-        if (IsTaskPromiseOwner(method.DeclaringClass) && !method.Handle.IsNil
-            && IsTaskPromiseCandidate(method.Name, method.Module.Reader.GetBlobReader(
+        if (IsTaskLifecycleOwner(method.DeclaringClass) && !method.Handle.IsNil
+            && IsTaskLifecycleCandidate(method.Name, method.Module.Reader.GetBlobReader(
                 method.Module.Reader.GetMethodDefinition(method.Handle).Signature))
-            && !IsTaskPromise(method))
-            throw new NotSupportedException("Task promise member requires its exact CoreLib declaration");
+            && !IsTaskLifecycle(method))
+            throw new NotSupportedException("Task lifecycle member requires its exact CoreLib declaration");
     }
 
-    internal static bool IsTaskPromise(MethodInfo method)
+    internal static bool IsTaskLifecycle(MethodInfo method)
     {
         var owner = method.DeclaringClass;
-        if (method.Name is not (".ctor" or "TrySetResult") || !IsTaskPromiseOwner(owner)
+        if (method.Name is not (".ctor" or "TrySetResult" or "MarkStarted") || !IsTaskLifecycleOwner(owner)
             || method.Module.AssemblyName != "System.Private.CoreLib" || owner.Module != method.Module
             || method.Handle.IsNil || method.IsSynthetic || owner.IsValueType || owner.IsInterface
             || owner.IsEnum || owner.IsByRefLike || owner.Context.MethodArgs.Length != 0
@@ -62,22 +62,23 @@ internal static partial class CoreIntrinsics
             && reader.StringComparer.Equals(definition.Name, method.Name)
             && definition.Attributes == method.Attributes && definition.ImplAttributes == method.ImplAttributes
             && definition.RelativeVirtualAddress == method.Rva
-            && IsTaskPromiseSignature(method.Name, generic, reader.GetBlobReader(definition.Signature))
-            && (!method.SignatureReady || IsTaskPromiseDecodedSignature(method, method.Signature));
+            && IsTaskLifecycleSignature(method.Name, generic, reader.GetBlobReader(definition.Signature))
+            && (!method.SignatureReady || IsTaskLifecycleDecodedSignature(method, method.Signature));
     }
 
     internal static bool IsTaskPromiseForwarder(MethodInfo method) =>
-        method.Name == ".ctor" && method.DeclaringClass.GenericArity == 1 && IsTaskPromise(method);
+        method.Name == ".ctor" && method.DeclaringClass.GenericArity == 1 && IsTaskLifecycle(method);
 
-    internal static bool IsTaskPromiseNative(MethodInfo method) =>
-        (method.Name == "TrySetResult" || method.DeclaringClass.GenericArity == 0) && IsTaskPromise(method);
+    internal static bool IsTaskLifecycleNative(MethodInfo method) =>
+        (method.Name == "TrySetResult" || method.DeclaringClass.GenericArity == 0) && IsTaskLifecycle(method);
 
-    internal static bool IsTaskPromiseSignature(string name, bool generic, BlobReader blob)
+    internal static bool IsTaskLifecycleSignature(string name, bool generic, BlobReader blob)
     {
         if (blob.RemainingBytes < 3 || blob.ReadByte() != 0x20
             || !blob.TryReadCompressedInteger(out int count)) return false;
-        if (name == "TrySetResult")
-            return blob.ReadByte() == (byte)SignatureTypeCode.Boolean && count == (generic ? 1 : 0)
+        if (name is "TrySetResult" or "MarkStarted")
+            return (!generic || name == "TrySetResult") && blob.RemainingBytes != 0
+                && blob.ReadByte() == (byte)SignatureTypeCode.Boolean && count == (generic ? 1 : 0)
                 && (!generic || blob.RemainingBytes == 2 && blob.ReadByte() == (byte)SignatureTypeCode.GenericTypeParameter
                     && blob.ReadByte() == 0) && blob.RemainingBytes == 0;
         if (name != ".ctor" || blob.ReadByte() != (byte)SignatureTypeCode.Void) return false;
@@ -89,13 +90,14 @@ internal static partial class CoreIntrinsics
             && blob.RemainingBytes == 0;
     }
 
-    internal static bool IsTaskPromiseDecodedSignature(MethodInfo method, MethodSignature<TypeDesc> signature)
+    internal static bool IsTaskLifecycleDecodedSignature(MethodInfo method, MethodSignature<TypeDesc> signature)
     {
         bool generic = method.DeclaringClass.GenericArity == 1;
         if (signature.Header.RawValue != 0x20 || signature.GenericParameterCount != 0
             || signature.RequiredParameterCount != signature.ParameterTypes.Length) return false;
-        if (method.Name == "TrySetResult")
-            return signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean, IsCanonPlaceholder: false }
+        if (method.Name is "TrySetResult" or "MarkStarted")
+            return (!generic || method.Name == "TrySetResult")
+                && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean, IsCanonPlaceholder: false }
                 && signature.ParameterTypes.Length == (generic ? 1 : 0)
                 && (!generic || ReferenceEquals(signature.ParameterTypes[0], method.Context.TypeArgs[0]));
         if (signature.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Void, IsCanonPlaceholder: false })
