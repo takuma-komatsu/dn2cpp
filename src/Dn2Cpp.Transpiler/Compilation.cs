@@ -4120,6 +4120,8 @@ internal sealed partial class Compilation
         {
             NoteInvariantCompareInfoFactory(m);
         }
+        if (CoreIntrinsics.IsTaskAddException(m) && CoreIntrinsics.IsTaskLifecycleNative(m))
+            NoteTaskExceptionHolder(m);
         if (CoreIntrinsics.IsCoreClrTypeCollectibilityImport(m) || CoreIntrinsics.IsWaitHandleRawWaitImport(m))
         {
             NotePInvokeFtnTarget(m);
@@ -4158,7 +4160,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsDateTimeCultureManagedBody(m)
             || (CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(m))
             || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
-            || CoreIntrinsics.IsTaskPromiseForwarder(m)
+            || CoreIntrinsics.IsTaskManagedForwarder(m)
             || CoreIntrinsics.IsInterpolationStaticHelper(m)
             || CoreIntrinsics.IsScalarNumericLeaf(m)
             || CoreIntrinsics.IsBinaryIntegerEndianBody(m)

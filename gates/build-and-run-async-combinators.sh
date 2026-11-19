@@ -70,6 +70,7 @@
 # Default scheduler inline execution distinguishes an unassigned task, a missing
 # queue entry, and an owned delegate that can run exactly once.
 # Directly queueing a cold task dispatches its body off the calling thread.
+# Stored Task faults remain pending until the body finishes and keep their order and identity.
 # Task and cancellation aggregate construction leaves virtual inner Messages unread.
 source "$(dirname "$0")/_common.sh"
 gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for task call fixtures"
@@ -85,6 +86,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-delay-synchr
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-derived-task-promises|prefix:before-timed-waitasync|prefix:before-semaphore-waiters|prefix:before-task-creation-options|prefix:before-task-cancellation-tokens|prefix:before-protected-task-start"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-scheduler-inline"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-scheduler-queue"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-task-add-exception"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|shared-binary:native-delay-deadlines|shared-binary:fresh-cancellation-filters"
 
 # The exception text is platform-owned; its record prefix is the boundary.
@@ -132,6 +134,16 @@ gate_extra_asserts() {
     gate_output suffix "$before" "$out/scheduler-inline.expected" --after '== scheduler inline ==' --policy crlf || return 1
     gate_output prefix "$native" "$before" --before 'scheduler queue: True/True/False/Running/42/1' --policy crlf || return 1
     gate_output byte-witness "$native" 'scheduler queue: True/True/False/Running/42/1' --policy crlf || return 1
+    before="$out/before-task-add-exception.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-task-add-exception
+    gate_output prefix "$native" "$before" --before 'task add pending: Created/True/False/0' --policy crlf || return 1
+    for line in 'task add pending: Created/True/False/0' \
+        'task add finish: Faulted/1/1/True/True/True' \
+        'task add promise: WaitingForActivation/True/RanToCompletion/73/True' \
+        'task add join: True/True/True/True' \
+        'task add proxy: True/True'; do
+        gate_output byte-witness "$native" "$line" --policy crlf || return 1
+    done
     before="$out/before-semaphore-waiters.stdout"
     gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-semaphore-waiters
     gate_output prefix "$native" "$before" --before '== semaphore waiter helpers ==' --policy crlf

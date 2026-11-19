@@ -2004,16 +2004,24 @@ Dn2CppObject* dn2cpp_aggregate_exception_new(Dn2CppArrayRef* inner)
 
 Dn2CppObject* dn2cpp_aggregate_exception_new(Dn2CppArrayRef* inner, Dn2CppString* message)
 {
+    return dn2cpp_aggregate_exception_new(inner, message, true);
+}
+
+Dn2CppObject* dn2cpp_aggregate_exception_new(Dn2CppArrayRef* inner, Dn2CppString* message, bool use_default_message)
+{
     Dn2CppObject* e = dn2cpp_exception_new(&dn2cpp_aggregate_exception_type, nullptr, nullptr);
-    dn2cpp_aggregate_exception_init(e, inner, message);
+    dn2cpp_aggregate_exception_init(e, inner, message, use_default_message);
     return e;
 }
 
 // `snapshot` becomes the exception's own array: it must hold no nulls and no
 // other owner may mutate it.
-static void dn2cpp_aggregate_exception_adopt(Dn2CppObject* ex, Dn2CppArrayRef* snapshot, Dn2CppString* message)
+static void dn2cpp_aggregate_exception_adopt(Dn2CppObject* ex, Dn2CppArrayRef* snapshot, Dn2CppString* message,
+    bool use_default_message = true)
 {
-    if (message == nullptr)
+    // The named CoreLib EDI overload passes an explicit null through to Exception.
+    // Its ordinary lazy Message fallback must use the exception's actual type.
+    if (message == nullptr && use_default_message)
         message = dn2cpp_string_literal(u"One or more errors occurred.", 28);
     auto* e = reinterpret_cast<Dn2CppAggregateExceptionObject*>(ex);
     dn2cpp_gc_store_ref(&e->message, message);
@@ -2028,6 +2036,11 @@ static void dn2cpp_aggregate_exception_adopt(Dn2CppObject* ex, Dn2CppArrayRef* s
 
 void dn2cpp_aggregate_exception_init(Dn2CppObject* ex, Dn2CppArrayRef* inner, Dn2CppString* message)
 {
+    dn2cpp_aggregate_exception_init(ex, inner, message, true);
+}
+
+void dn2cpp_aggregate_exception_init(Dn2CppObject* ex, Dn2CppArrayRef* inner, Dn2CppString* message, bool use_default_message)
+{
     Dn2CppArrayRef* snapshot = nullptr;
     if (inner != nullptr)
     {
@@ -2039,7 +2052,7 @@ void dn2cpp_aggregate_exception_init(Dn2CppObject* ex, Dn2CppArrayRef* inner, Dn
             dn2cpp_gc_store_ref(&snapshot->data[i], inner->data[i]);
         }
     }
-    dn2cpp_aggregate_exception_adopt(ex, snapshot, message);
+    dn2cpp_aggregate_exception_adopt(ex, snapshot, message, use_default_message);
 }
 
 Dn2CppString* dn2cpp_aggregate_exception_message(Dn2CppObject* ex)
@@ -2139,9 +2152,10 @@ Dn2CppObject* dn2cpp_aggregate_exception_flatten(Dn2CppObject* ex)
         aggregate->innerExceptions != nullptr ? aggregate->innerExceptions->type : nullptr);
     for (size_t i = 0; i < flattened.size(); i++)
         dn2cpp_gc_store_ref(&result->data[i], flattened[i]);
-    // Exact aggregates use the stored base message; subclasses retain virtual Message.
+    // Exact aggregates use base.Message (including its null fallback).
+    // Subclasses retain virtual Message.
     auto* message = ex->type == &dn2cpp_aggregate_exception_type
-        ? aggregate->message : dn2cpp_exception_message(ex);
+        ? dn2cpp_exception_message_stored(ex) : dn2cpp_exception_message(ex);
     Dn2CppObject* e = dn2cpp_exception_new(&dn2cpp_aggregate_exception_type, nullptr, nullptr);
     dn2cpp_aggregate_exception_adopt(e, result, message);
     return e;

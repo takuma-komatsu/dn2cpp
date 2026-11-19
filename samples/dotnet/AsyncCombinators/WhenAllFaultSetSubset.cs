@@ -1,6 +1,8 @@
 #nullable disable
 using System;
 using System.Collections.Generic;
+using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -15,6 +17,72 @@ namespace WhenAllFaultSetSubset
     // Every task here is pre-settled, so the order is the array's. Diffed exact vs .NET.
     internal static class Program
     {
+        internal static void RunAddedExceptions()
+        {
+            var add = typeof(Task).GetMethod("AddException",
+                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly,
+                null, new[] { typeof(object) }, null);
+            void Add(Task task, object payload) => add.Invoke(task, new[] { payload });
+
+            var first = new ArgumentException("stored first");
+            var second = new InvalidOperationException("stored second");
+            var third = new Exception("stored third");
+            var fourth = new Exception("stored fourth");
+            int bodies = 0, continuations = 0;
+            var cold = new Task<int>(() => { bodies++; return 42; });
+            var continuation = cold.ContinueWith(_ => Interlocked.Increment(ref continuations),
+                TaskContinuationOptions.ExecuteSynchronously);
+            Add(cold, first);
+            Add(cold, ExceptionDispatchInfo.Capture(second));
+            Add(cold, new List<Exception> { third });
+            Add(cold, new List<ExceptionDispatchInfo> { ExceptionDispatchInfo.Capture(fourth) });
+            Console.WriteLine("task add pending: " + cold.Status + "/" + (cold.Exception is null)
+                + "/" + cold.IsCompleted + "/" + continuations);
+            cold.RunSynchronously();
+            if (!continuation.Wait(TimeSpan.FromSeconds(8)))
+                throw new TimeoutException("faulted task continuation did not complete");
+
+            bool Matches(AggregateException error) => error?.InnerExceptions.Count == 4
+                && ReferenceEquals(error.InnerExceptions[0], first) && ReferenceEquals(error.InnerExceptions[1], second)
+                && ReferenceEquals(error.InnerExceptions[2], third) && ReferenceEquals(error.InnerExceptions[3], fourth);
+            Exception awaited = null;
+            try { cold.GetAwaiter().GetResult(); }
+            catch (Exception error) { awaited = error; }
+            Console.WriteLine("task add finish: " + cold.Status + "/" + bodies + "/" + continuations
+                + "/" + Matches(cold.Exception) + "/" + Matches(Task.WhenAll(cold, Task.CompletedTask).Exception)
+                + "/" + ReferenceEquals(awaited, first));
+
+            var promise = new TaskCompletionSource<int>();
+            Add(promise.Task, first);
+            Console.WriteLine("task add promise: " + promise.Task.Status + "/" + promise.TrySetResult(73)
+                + "/" + promise.Task.Status + "/" + promise.Task.Result + "/" + (promise.Task.Exception is null));
+
+            var source = new TaskCompletionSource<int>();
+            var joined = Task.WhenAll(source.Task);
+            Add(joined, first);
+            source.SetException(second);
+            Exception joinedAwaited = null;
+            try { joined.GetAwaiter().GetResult(); }
+            catch (Exception error) { joinedAwaited = error; }
+            Console.WriteLine("task add join: " + ReferenceEquals(joinedAwaited, first)
+                + "/" + (joined.Exception.InnerExceptions.Count == 2)
+                + "/" + ReferenceEquals(joined.Exception.InnerExceptions[0], first)
+                + "/" + ReferenceEquals(joined.Exception.InnerExceptions[1], second));
+
+            var proxy = Task.Run<int>(() => cold);
+            try
+            {
+                if (!proxy.Wait(TimeSpan.FromSeconds(8)))
+                    throw new TimeoutException("faulted task proxy did not complete");
+            }
+            catch (AggregateException) { }
+            Exception proxyAwaited = null;
+            try { proxy.GetAwaiter().GetResult(); }
+            catch (Exception error) { proxyAwaited = error; }
+            Console.WriteLine("task add proxy: " + Matches(proxy.Exception)
+                + "/" + ReferenceEquals(proxyAwaited, first));
+        }
+
         private sealed class MessageFault : Exception
         {
             internal int Reads;

@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Reflection.Metadata;
 using System.Text;
 using SRME = System.Reflection.Metadata.Ecma335.MetadataTokens;
@@ -1806,9 +1807,9 @@ internal sealed partial class MethodCompiler
             && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition)
         {
             var aggSig = DecodeCtorSignature(handle);
-            var (innerArr, message) = EmitAggregateConstructorArguments(aggSig);
+            var (innerArr, message, preserveNullMessage) = EmitAggregateConstructorArguments(aggSig, handle);
             string agg = NewTemp("Dn2CppObject*");
-            Emit($"{agg} = dn2cpp_aggregate_exception_new({innerArr}, {message});");
+            Emit($"{agg} = dn2cpp_aggregate_exception_new({innerArr}, {message}{(preserveNullMessage ? ", false" : "")});");
             _stack.Add(new StackEntry(agg, StackKind.Ref, "Dn2CppObject*",
                 StaticType: TypeDesc.MakeExternal("System.AggregateException")));
             return;
@@ -2157,9 +2158,21 @@ internal sealed partial class MethodCompiler
                     && _c.IsTaskSchedulerDelegateArgument(parameters[1], bound.Signature.ParameterTypes[0].Class!)
                     && (bound.Signature.ParameterTypes.Length == 1 || parameters[2] == bound.Signature.ParameterTypes[1]);
             }
-            bool UnsupportedSchedulerOpen(MethodInfo bound) => CoreIntrinsics.IsTaskSchedulerOperation(bound)
+            bool OpensTaskException(MethodInfo bound)
+            {
+                if (!CoreIntrinsics.IsTaskAddException(bound) || invokeRow is null
+                    || invokeRow.Signature.ReturnType != bound.Signature.ReturnType
+                    || invokeRow.Signature.ParameterTypes.Length != bound.Signature.ParameterTypes.Length + 1)
+                    return false;
+                var parameters = invokeRow.Signature.ParameterTypes;
+                return _c.IsTaskSchedulerDelegateArgument(parameters[0], bound.DeclaringClass)
+                    && _c.IsTaskExceptionDelegateArgument(parameters[1])
+                    && (bound.Signature.ParameterTypes.Length == 1 || parameters[2] == bound.Signature.ParameterTypes[1]);
+            }
+            bool OpensTaskOperation(MethodInfo bound) => OpensSchedulerOperation(bound) || OpensTaskException(bound);
+            bool UnsupportedSchedulerOpen(MethodInfo bound) => (CoreIntrinsics.IsTaskSchedulerOperation(bound) || CoreIntrinsics.IsTaskAddException(bound))
                 && (invokeRow is null || invokeRow.Signature.ParameterTypes.Length != bound.Signature.ParameterTypes.Length)
-                && !OpensSchedulerOperation(bound);
+                && !OpensTaskOperation(bound);
             const string unsupportedSchedulerOpen = "TaskScheduler operation open delegate requires assignable scheduler/task references and an exact remaining signature";
             string SchedulerOperationAdapter(MethodInfo bound)
             {
@@ -2169,6 +2182,12 @@ internal sealed partial class MethodCompiler
                 // not its first Invoke argument. The managed body owns null semantics.
                 string receiverCpp = NfiErasedAbi(CppTypes.Of(invokeRow!.Signature.ParameterTypes[0]));
                 string taskCpp = NfiErasedAbi(CppTypes.Of(invokeRow.Signature.ParameterTypes[1]));
+                if (CoreIntrinsics.IsTaskAddException(bound))
+                {
+                    string parameter = bound.Signature.ParameterTypes.Length == 2 ? ", int32_t cancellation" : "";
+                    string argument = bound.Signature.ParameterTypes.Length == 2 ? ", cancellation" : "";
+                    return $"(void*)+[](Dn2CppObject*, {receiverCpp} self, {taskCpp} value{parameter}) -> void {{ {bound.Emittable.CppName}((Dn2CppTask*)self, (Dn2CppObject*)value{argument}); }}";
+                }
                 bool inline = CoreIntrinsics.IsTaskSchedulerInline(bound);
                 string tailParameter = inline ? ", int32_t queued" : "";
                 string tailArgument = inline ? ", queued" : "";
@@ -2210,14 +2229,14 @@ internal sealed partial class MethodCompiler
                     {
                         int invokeArity = invokeRow.Signature.ParameterTypes.Length;
                         int targetArity = method.Signature.ParameterTypes.Length;
-                        if (!OpensSchedulerOperation(method) && invokeArity != targetArity
+                        if (!OpensTaskOperation(method) && invokeArity != targetArity
                             && (!method.IsStatic || invokeArity != targetArity - 1
                                 || CppTypes.KindOf(method.Signature.ParameterTypes[0]) != StackKind.Ref))
                             continue;
                     }
                     NoteFtnTarget(method, fromVirtFtn);
                     string? adapterExpr = null;
-                    if (OpensSchedulerOperation(method))
+                    if (OpensTaskOperation(method))
                         adapterExpr = SchedulerOperationAdapter(method);
                     else if (_c.IsBoundedMethod(method.DeclaringClass.FullName, method.Name))
                         adapterExpr = BoundedFtnStub(method, origin.Key - 1, receiverSlot: fromVirtFtn, delegateClass: cls);
@@ -2245,7 +2264,7 @@ internal sealed partial class MethodCompiler
                         adapterExpr = $"(void*)&{adapter.CppName}";
                     }
                     Emit(literal ? "{" : $"if ({tag} == {origin.Key}) {{");
-                    if (OpensSchedulerOperation(method))
+                    if (OpensTaskOperation(method))
                         Emit($"    {dg}->f_target = nullptr;");
                     if (ClosesOverInstance(method))
                         Emit("    " + nullTargetCheck);
@@ -2264,7 +2283,7 @@ internal sealed partial class MethodCompiler
             if (!originsSelected && fnPtr.DelegateMethod is { } openMethod)
             {
                 if (UnsupportedSchedulerOpen(openMethod)) throw new NotSupportedException(unsupportedSchedulerOpen);
-                if (OpensSchedulerOperation(openMethod))
+                if (OpensTaskOperation(openMethod))
                 {
                     Emit($"{dg}->f_target = nullptr;");
                     Emit($"{dg}->f_method = {SchedulerOperationAdapter(openMethod)};");
@@ -2525,9 +2544,70 @@ internal sealed partial class MethodCompiler
     }
 
     // newobj and base .ctor share validation, snapshot inputs and enumerable materialization.
-    private (string Inner, string Message) EmitAggregateConstructorArguments(MethodSignature<TypeDesc> signature)
+    private bool IsCoreLibAggregateDispatchConstructor(EntityHandle handle, MethodSignature<TypeDesc> signature)
+    {
+        if (signature.Header.RawValue != 0x20 || signature.GenericParameterCount != 0
+            || signature.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Void })
+            return false;
+        MethodInfo? target = handle.Kind switch
+        {
+            HandleKind.MethodDefinition => ResolveMethodDef((MethodDefinitionHandle)handle),
+            HandleKind.MemberReference => _c.ResolveMemberRefMethod(_module, (MemberReferenceHandle)handle, _method.Context),
+            _ => null,
+        };
+        if (target is null || target.Handle.IsNil || target.Rva == 0 || target.Name != ".ctor"
+            || target.Module.AssemblyName != "System.Private.CoreLib"
+            || target.DeclaringClass.FullName != "System.AggregateException"
+            || target.DeclaringClass.Module != target.Module
+            || target.Attributes != (MethodAttributes.Assembly | MethodAttributes.HideBySig
+                | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName)
+            || target.ImplAttributes != MethodImplAttributes.IL)
+            return false;
+        var declared = target.Signature;
+        return declared.Header.RawValue == 0x20 && declared.GenericParameterCount == 0
+            && declared.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Void }
+            && declared.ParameterTypes.SequenceEqual(signature.ParameterTypes);
+    }
+
+    private (string Inner, string Message, bool PreserveNullMessage) EmitAggregateConstructorArguments(MethodSignature<TypeDesc> signature,
+        EntityHandle handle = default)
     {
         var parameters = signature.ParameterTypes;
+        if ((parameters.Length == 1 || parameters is [{ IsString: true }, _])
+            && parameters[^1] is { Kind: TypeKind.Class, Class: { } ediList }
+            && ediList.Module.AssemblyName == "System.Private.CoreLib"
+            && Comp.GenericDefFullName(ediList) == "System.Collections.Generic.List"
+            && ediList.Context.TypeArgs is [{ Kind: TypeKind.Class, Class: { } edi }]
+            && edi.Module.AssemblyName == "System.Private.CoreLib"
+            && edi.FullName == "System.Runtime.ExceptionServices.ExceptionDispatchInfo"
+            && IsCoreLibAggregateDispatchConstructor(handle.IsNil ? SRME.EntityHandle(_callSiteToken) : handle, signature))
+        {
+            var list = Pop();
+            string ediMessage = parameters.Length == 2 ? Cast(Pop(), "Dn2CppString*") : "nullptr";
+            var countGetter = Comp.ReachManagedMethod(ediList, "get_Count", static ps => ps.Length == 0)
+                ?? throw new NotSupportedException("AggregateException requires List<ExceptionDispatchInfo>.Count.");
+            var itemGetter = Comp.ReachManagedMethod(ediList, "get_Item", static ps =>
+                ps is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }])
+                ?? throw new NotSupportedException("AggregateException requires List<ExceptionDispatchInfo>.Item.");
+            var sourceGetter = Comp.ReachManagedMethod(edi, "get_SourceException", static ps => ps.Length == 0)
+                ?? throw new NotSupportedException("AggregateException requires ExceptionDispatchInfo.SourceException.");
+            var listType = CppTypes.Of(TypeDesc.MakeClass(ediList));
+            var receiver = NewTemp(listType);
+            Emit($"{receiver} = {Cast(list, listType)};");
+            Emit($"dn2cpp_null_check({receiver});");
+            string count = NewTemp("int32_t");
+            Emit($"{count} = {DirectCall(countGetter, new List<string> { receiver })};");
+            string array = NewTemp("Dn2CppArrayRef*");
+            Emit($"{array} = dn2cpp_newarr_ref({count});");
+            string item = NewTemp(CppTypes.Of(TypeDesc.MakeClass(edi)));
+            string index = NewTemp("int32_t");
+            Emit($"for ({index} = 0; {index} < {count}; ++{index}) {{");
+            Emit($"    {item} = ({CppTypes.Of(TypeDesc.MakeClass(edi))})({DirectCall(itemGetter, new List<string> { receiver, index })});");
+            Emit($"    dn2cpp_null_check({item});");
+            Emit($"    dn2cpp_gc_store_ref(&{array}->data[{index}], (Dn2CppObject*)({DirectCall(sourceGetter, new List<string> { item })}));");
+            Emit("}");
+            return (array, ediMessage, parameters.Length == 2);
+        }
         bool IsSequence(TypeDesc t) =>
             t is { Kind: TypeKind.SZArray, Element: { } e } && IsExceptionParam(e)
             || t is { Kind: TypeKind.Class, Class: { } c }
@@ -2599,7 +2679,7 @@ internal sealed partial class MethodCompiler
             Emit($"{innerArr} = dn2cpp_newarr_ref(1);");
             Emit($"dn2cpp_gc_store_ref(&{innerArr}->data[0], {singleInner});");
         }
-        return (innerArr, message);
+        return (innerArr, message, false);
     }
 
     /// <summary>Whether a parameter names <c>System.Diagnostics.StackFrame</c> (loaded

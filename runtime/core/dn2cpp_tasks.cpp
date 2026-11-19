@@ -77,6 +77,143 @@ static int32_t dn2cpp_task_next_id()
 static void dn2cpp_vts_arm(Dn2CppTask* t);
 
 static std::mutex& g_task_mtx = dn2cpp_never_destroyed<std::mutex>();
+static std::condition_variable& g_task_completed = dn2cpp_never_destroyed<std::condition_variable>();
+static uint32_t g_task_completion_waiters; // protected by g_task_mtx
+
+// Generated thunks keep the holder's real list, capture, and observation
+// semantics in managed code without embedding any of its field offsets here.
+static Dn2CppObject* (*g_task_holder_create)(Dn2CppTask*);
+static void (*g_task_holder_add)(Dn2CppObject*, Dn2CppObject*, int32_t);
+static Dn2CppArrayRef* (*g_task_holder_snapshot)(Dn2CppObject*);
+static Dn2CppObject* (*g_task_holder_cancellation)(Dn2CppObject*);
+static void (*g_task_holder_observe)(Dn2CppObject*);
+static void (*g_task_holder_rethrow)(Dn2CppObject*, int32_t);
+static Dn2CppArrayRef* (*g_task_holder_dispatch)(Dn2CppObject*);
+static Dn2CppObject* (*g_task_holder_cancel_dispatch)(Dn2CppObject*);
+static Dn2CppArrayRef* (*g_task_holder_normalize_dispatch)(Dn2CppArrayRef*);
+
+enum
+{
+    DN2CPP_TASK_HOLDER_UNPUBLISHED = 0,
+    DN2CPP_TASK_HOLDER_RESERVED,
+    DN2CPP_TASK_HOLDER_OWNS_FAULTS,
+};
+
+void dn2cpp_set_task_exception_holder_hooks(
+    Dn2CppObject* (*create)(Dn2CppTask*),
+    void (*add)(Dn2CppObject*, Dn2CppObject*, int32_t),
+    Dn2CppArrayRef* (*snapshotFaults)(Dn2CppObject*),
+    Dn2CppObject* (*snapshotCancellation)(Dn2CppObject*),
+    void (*observe)(Dn2CppObject*))
+{
+    g_task_holder_create = create;
+    g_task_holder_add = add;
+    g_task_holder_snapshot = snapshotFaults;
+    g_task_holder_cancellation = snapshotCancellation;
+    g_task_holder_observe = observe;
+}
+
+void dn2cpp_set_task_exception_holder_rethrow(void (*rethrow)(Dn2CppObject*, int32_t))
+{
+    g_task_holder_rethrow = rethrow;
+}
+
+void dn2cpp_set_task_exception_holder_dispatch(
+    Dn2CppArrayRef* (*faults)(Dn2CppObject*), Dn2CppObject* (*cancellation)(Dn2CppObject*),
+    Dn2CppArrayRef* (*normalize)(Dn2CppArrayRef*))
+{
+    g_task_holder_dispatch = faults;
+    g_task_holder_cancel_dispatch = cancellation;
+    g_task_holder_normalize_dispatch = normalize;
+}
+
+static Dn2CppObject* dn2cpp_task_holder_for_observation(Dn2CppTask* task)
+{
+    if (g_task_holder_create == nullptr)
+        return nullptr;
+    if (auto* holder = task->exceptionHolder.load(std::memory_order_acquire))
+        return holder;
+    std::lock_guard<std::mutex> lock(g_task_mtx);
+    auto* holder = task->exceptionHolder.load(std::memory_order_relaxed);
+    if (holder == nullptr)
+        task->nativeFaultObserved = true;
+    return holder;
+}
+
+void dn2cpp_task_add_exception(Dn2CppTask* task, Dn2CppObject* exception, int32_t representsCancellation)
+{
+    dn2cpp_null_check(task);
+    if (g_task_holder_create == nullptr || g_task_holder_add == nullptr || g_task_holder_snapshot == nullptr
+        || g_task_holder_cancellation == nullptr || g_task_holder_observe == nullptr)
+        dn2cpp_throw_platform_not_supported("The managed Task exception holder is unavailable");
+    auto* holder = task->exceptionHolder.load(std::memory_order_acquire);
+    if (holder == nullptr)
+    {
+        auto* candidate = g_task_holder_create(task);
+        Dn2CppMonitorGuard guard(candidate);
+        bool seeded = false;
+        bool seededFaults = false;
+        for (;;)
+        {
+            Dn2CppObject* first = nullptr;
+            Dn2CppObject* aggregate = nullptr;
+            bool publish = false;
+            bool observed = false;
+            {
+                std::lock_guard<std::mutex> lock(g_task_mtx);
+                holder = task->exceptionHolder.load(std::memory_order_relaxed);
+                if (holder == nullptr)
+                {
+                    if (!seeded && task->status == DN2CPP_TASK_FAULTED)
+                    {
+                        first = task->exception;
+                        aggregate = task->exceptionAggregate.load(std::memory_order_acquire);
+                    }
+                    else
+                    {
+                        if (seededFaults)
+                            task->exceptionHolderState = DN2CPP_TASK_HOLDER_OWNS_FAULTS;
+                        observed = task->nativeFaultObserved;
+                        dn2cpp_gc_store_ref(&task->exceptionHolder, candidate);
+                        publish = true;
+                    }
+                }
+            }
+            if (publish)
+            {
+                if (observed)
+                    g_task_holder_observe(candidate);
+                g_task_holder_add(candidate, exception, representsCancellation);
+                return;
+            }
+            if (holder != nullptr)
+            {
+                // A racing holder may have been seeded; never finalize both.
+                g_task_holder_observe(candidate);
+                break;
+            }
+            // Seed native faults before exposing the holder. The publication
+            // loop rechecks both holder identity and the pending-to-faulted race.
+            if (aggregate != nullptr)
+            {
+                auto* faults = dn2cpp_aggregate_inner_exceptions(aggregate, nullptr);
+                for (int32_t i = 0; i < faults->length; ++i)
+                    g_task_holder_add(candidate, faults->data[i], false);
+                seededFaults = faults->length != 0;
+            }
+            else if (first != nullptr)
+            {
+                g_task_holder_add(candidate, first, false);
+                seededFaults = true;
+            }
+            seeded = true;
+        }
+    }
+    // The holder may enumerate user objects. Do not run this under g_task_mtx;
+    // a recursive monitor also permits the managed callback to reenter Add.
+    Dn2CppMonitorGuard guard(holder);
+    g_task_holder_add(holder, exception, representsCancellation);
+}
 
 static void dn2cpp_task_init(Dn2CppTask* t, int32_t options, Dn2CppCancelSource* source)
 {
@@ -86,6 +223,9 @@ static void dn2cpp_task_init(Dn2CppTask* t, int32_t options, Dn2CppCancelSource*
     t->id = dn2cpp_task_next_id();
     t->exception = nullptr;
     t->exceptionAggregate.store(nullptr, std::memory_order_relaxed);
+    t->exceptionHolder.store(nullptr, std::memory_order_relaxed);
+    t->exceptionHolderState = DN2CPP_TASK_HOLDER_UNPUBLISHED;
+    t->nativeFaultObserved = false;
     t->result = 0;
     t->continuations = nullptr;
     t->workerKeepAlive = nullptr;
@@ -264,7 +404,7 @@ Dn2CppTask* dn2cpp_task_completed()
 Dn2CppTask dn2cpp_task_default_completed{
     { &dn2cpp_task_type }, DN2CPP_TASK_SUCCEEDED,
     dn2cpp_task_next_id(), nullptr, nullptr, 0, nullptr, nullptr, nullptr, nullptr,
-    DN2CPP_TASK_ORIGIN_PRECOMPLETED, DN2CPP_TASK_NOT_STARTED, nullptr, nullptr, -1, 0, nullptr };
+    DN2CPP_TASK_ORIGIN_PRECOMPLETED, DN2CPP_TASK_NOT_STARTED, nullptr, nullptr, -1, 0, nullptr, nullptr, 0, false };
 
 Dn2CppTask* dn2cpp_task_from_result(uint64_t result, bool doNotDispose)
 {
@@ -410,6 +550,8 @@ Dn2CppTaskCompletionSource* dn2cpp_tcs_alloc(const Dn2CppTypeInfo* type,
 
 static Dn2CppObject* dn2cpp_make_task_canceled_exception(Dn2CppCancelSource* source = nullptr);
 
+static Dn2CppArrayRef* dn2cpp_task_fault_snapshot(Dn2CppTask* t);
+
 void dn2cpp_task_throw_if_faulted(Dn2CppTask* t)
 {
     // Captured cancellation exceptions retain their identity and trace. A
@@ -417,10 +559,39 @@ void dn2cpp_task_throw_if_faulted(Dn2CppTask* t)
     // for each await, including awaits through a forwarding promise.
     if (t != nullptr && (t->status == DN2CPP_TASK_FAULTED || t->status == DN2CPP_TASK_CANCELED))
     {
-        if (t->status == DN2CPP_TASK_CANCELED && t->exception == nullptr)
+        Dn2CppObject* exception = t->exception;
+        auto* holder = t->status == DN2CPP_TASK_FAULTED
+            ? dn2cpp_task_holder_for_observation(t) : t->exceptionHolder.load(std::memory_order_acquire);
+        if (holder != nullptr)
+        {
+            Dn2CppMonitorGuard guard(holder);
+            if (t->status == DN2CPP_TASK_FAULTED)
+            {
+                g_task_holder_observe(holder);
+                if (t->exceptionHolderState == DN2CPP_TASK_HOLDER_OWNS_FAULTS && g_task_holder_rethrow != nullptr)
+                    g_task_holder_rethrow(holder, false);
+            }
+            else
+            {
+                if (g_task_holder_rethrow != nullptr)
+                    g_task_holder_rethrow(holder, true);
+                if (auto* cancellation = g_task_holder_cancellation(holder))
+                    exception = cancellation;
+            }
+        }
+        if (t->status == DN2CPP_TASK_FAULTED && exception == nullptr)
+        {
+            auto* faults = dn2cpp_task_fault_snapshot(t);
+            if (faults->length == 0)
+                dn2cpp_throw(dn2cpp_aggregate_exception_new(faults));
+            exception = faults->data[0];
+            if (exception == nullptr)
+                dn2cpp_throw_null_reference();
+        }
+        if (t->status == DN2CPP_TASK_CANCELED && exception == nullptr)
             dn2cpp_throw(dn2cpp_make_task_canceled_exception(
                 t->cancellationSource.load(std::memory_order_acquire)));
-        dn2cpp_rethrow(t->exception);
+        dn2cpp_rethrow(exception);
     }
 }
 
@@ -812,28 +983,133 @@ static void dn2cpp_fire_conts(Dn2CppCont* conts)
 
 // Detach a completing task's continuation list under g_task_mtx (so a concurrent
 // await-registration sees a settled status), then fire it outside the lock.
+static Dn2CppCont* dn2cpp_task_publish_locked(Dn2CppTask* t, int32_t status, uint64_t result,
+    Dn2CppObject* exception, bool cacheSynchronous, Dn2CppCancelSource* source)
+{
+    if (status == DN2CPP_TASK_CANCELED)
+        dn2cpp_gc_store_ref(&t->cancellationSource, source);
+    t->result = result;
+    dn2cpp_gc_write_barrier(&t->result);
+    dn2cpp_gc_store_ref(&t->exception, exception);
+    if (cacheSynchronous && t->startKind == DN2CPP_TASK_ORIGIN_ASYNC_UNEXPOSED)
+        t->disposed = -1;
+    // Settled last, with release: await-registration gates on it under this
+    // lock, and the drain reads it — and then result/exception — without it.
+    t->status.store(status, std::memory_order_release);
+    if (g_task_completion_waiters != 0)
+        g_task_completed.notify_all();
+    if (t->completionWaitHandle != nullptr)
+        dn2cpp_event_set_if_open(t->completionWaitHandle);
+    auto* conts = t->continuations;
+    dn2cpp_gc_store_ref(&t->continuations, static_cast<Dn2CppCont*>(nullptr));
+    return conts;
+}
+
 static void dn2cpp_task_complete(Dn2CppTask* t, int32_t status, uint64_t result, Dn2CppObject* exception,
     bool cacheSynchronous = false, Dn2CppCancelSource* source = nullptr)
 {
     Dn2CppCont* conts;
     {
-        std::lock_guard<std::mutex> lk(g_task_mtx);
-        if (status == DN2CPP_TASK_CANCELED)
-            dn2cpp_gc_store_ref(&t->cancellationSource, source);
-        t->result = result;
-        dn2cpp_gc_write_barrier(&t->result);
-        dn2cpp_gc_store_ref(&t->exception, exception);
-        if (cacheSynchronous && t->startKind == DN2CPP_TASK_ORIGIN_ASYNC_UNEXPOSED)
-            t->disposed = -1;
-        // Settled last, with release: await-registration gates on it under this
-        // lock, and the drain reads it — and then result/exception — without it.
-        t->status.store(status, std::memory_order_release);
-        if (t->completionWaitHandle != nullptr)
-            dn2cpp_event_set_if_open(t->completionWaitHandle);
-        conts = t->continuations;
-        dn2cpp_gc_store_ref(&t->continuations, static_cast<Dn2CppCont*>(nullptr));
+        std::lock_guard<std::mutex> lock(g_task_mtx);
+        conts = dn2cpp_task_publish_locked(t, status, result, exception, cacheSynchronous, source);
     }
     dn2cpp_fire_conts(conts);
+}
+
+// A delegate Finish (and a promise TrySetException) drains previously recorded
+// faults. Direct promise result and cancellation transitions do not.
+static bool dn2cpp_task_finish_recorded(Dn2CppTask* t, int32_t status, uint64_t result,
+    Dn2CppObject* exception, Dn2CppCancelSource* source = nullptr, Dn2CppArrayRef* payloads = nullptr,
+    bool hasDispatch = false, Dn2CppObject* cancelDispatch = nullptr, bool directCancellation = false)
+{
+    // Dispatch payloads require a real holder; plain source exceptions can
+    // keep the same compact native aggregate when no holder has been needed.
+    Dn2CppObject* nativeAggregate = payloads == nullptr || hasDispatch
+        ? nullptr : dn2cpp_aggregate_exception_new(payloads);
+    std::unique_lock<std::mutex> lock(g_task_mtx);
+    if (t->status != DN2CPP_TASK_PENDING || t->exceptionHolderState == DN2CPP_TASK_HOLDER_RESERVED)
+        return false;
+    auto* holder = t->exceptionHolder.load(std::memory_order_relaxed);
+    if (holder == nullptr && !hasDispatch && cancelDispatch == nullptr)
+    {
+        if (nativeAggregate != nullptr)
+        {
+            dn2cpp_gc_store_ref(&t->exceptionAggregate, nativeAggregate);
+            exception = payloads->length == 0 ? nullptr : payloads->data[0];
+        }
+        auto* conts = dn2cpp_task_publish_locked(t, status, result, exception, false, source);
+        lock.unlock();
+        dn2cpp_fire_conts(conts);
+        return true;
+    }
+    // Reserve before inserting the terminal fault; a losing TrySetException
+    // must not append to the winner's holder. Do not publish completion yet.
+    t->exceptionHolderState = DN2CPP_TASK_HOLDER_RESERVED;
+    lock.unlock();
+    if (holder == nullptr)
+    {
+        auto* candidate = g_task_holder_create(t);
+        {
+            std::lock_guard<std::mutex> publish(g_task_mtx);
+            holder = t->exceptionHolder.load(std::memory_order_relaxed);
+            if (holder == nullptr)
+            {
+                holder = candidate;
+                dn2cpp_gc_store_ref(&t->exceptionHolder, holder);
+            }
+        }
+        if (holder != candidate)
+            g_task_holder_observe(candidate);
+    }
+    Dn2CppCont* conts;
+    {
+        Dn2CppMonitorGuard guard(holder);
+        if (status == DN2CPP_TASK_FAULTED)
+        {
+            if (payloads == nullptr)
+            {
+                if (exception != nullptr)
+                    g_task_holder_add(holder, exception, false);
+            }
+            else
+            {
+                // A collection may include an uninitialized EDI slot. Retain
+                // the collection shape instead of invoking Add(null) per slot.
+                g_task_holder_add(holder, reinterpret_cast<Dn2CppObject*>(
+                    g_task_holder_normalize_dispatch(payloads)), false);
+            }
+        }
+        else if (cancelDispatch != nullptr)
+            g_task_holder_add(holder, cancelDispatch, true);
+        else if (status == DN2CPP_TASK_CANCELED && exception != nullptr)
+            g_task_holder_add(holder, exception, true);
+        auto* recorded = directCancellation ? nullptr : g_task_holder_snapshot(holder);
+        if (recorded != nullptr)
+        {
+            // A cancellation acknowledgement cannot displace recorded faults.
+            status = DN2CPP_TASK_FAULTED;
+            exception = recorded->length == 0 ? nullptr : recorded->data[0];
+        }
+        else if (status == DN2CPP_TASK_CANCELED && (exception == nullptr || cancelDispatch != nullptr))
+            exception = g_task_holder_cancellation(holder);
+        std::lock_guard<std::mutex> publish(g_task_mtx);
+        if (recorded == nullptr && nativeAggregate != nullptr)
+            dn2cpp_gc_store_ref(&t->exceptionAggregate, nativeAggregate);
+        t->exceptionHolderState = recorded == nullptr ? DN2CPP_TASK_HOLDER_UNPUBLISHED
+            : DN2CPP_TASK_HOLDER_OWNS_FAULTS;
+        conts = dn2cpp_task_publish_locked(t, status, result, exception, false, source);
+    }
+    dn2cpp_fire_conts(conts);
+    return true;
+}
+
+static void dn2cpp_task_finish_canceled_promise(Dn2CppTask* task, uint64_t result,
+    Dn2CppCancelSource* source, Dn2CppObject* exception, Dn2CppObject* dispatch = nullptr)
+{
+    // TrySetCanceled records the winning cancellation payload, but does not
+    // run delegate Finish arbitration against previously recorded faults.
+    dn2cpp_task_finish_recorded(task, DN2CPP_TASK_CANCELED, result,
+        exception, source, nullptr, false, dispatch, true);
 }
 
 void dn2cpp_task_set_result(Dn2CppTask* t, uint64_t result)
@@ -1180,39 +1456,140 @@ struct Dn2CppWhenAllState
 
 static void dn2cpp_task_set_canceled(Dn2CppTask* t, Dn2CppCancelSource* source = nullptr);
 
-// What a settled-but-failed task contributes to an aggregate built over it: its
-// Task.Exception's inner set if it has one, else the single stored exception. .NET's
-// WhenAll continuation AddRanges each input's Exception.InnerExceptions, so an input
-// that is itself a WhenAll join FLATTENS — WhenAll(WhenAll(f1,f2), f3) has three
-// inners, not two. A canceled task never mints the wrapper, so it contributes one.
-static int32_t dn2cpp_task_fault_inner_count(Dn2CppTask* t)
+// A plain terminal fault is immutable; AddException may append to the
+// holder of an already faulted task. Snapshot once per observation so two
+// passes cannot count one set and copy a different one.
+static Dn2CppArrayRef* dn2cpp_task_fault_snapshot(Dn2CppTask* t)
 {
     if (t->status == DN2CPP_TASK_CANCELED)
-        return 1;
-    if (t->exceptionAggregate == nullptr)
-        return 1;
-    return dn2cpp_aggregate_inner_exceptions(t->exceptionAggregate, nullptr)->length;
+    {
+        Dn2CppArrayRef* recorded = nullptr;
+        if (auto* holder = t->exceptionHolder.load(std::memory_order_acquire))
+        {
+            Dn2CppMonitorGuard guard(holder);
+            recorded = g_task_holder_snapshot(holder);
+            if (recorded != nullptr)
+                g_task_holder_observe(holder);
+        }
+        int32_t count = recorded == nullptr ? 0 : recorded->length;
+        auto* inner = dn2cpp_newarr_ref(count + 1);
+        for (int32_t i = 0; i < count; ++i)
+        {
+            auto* exception = recorded->data[i];
+            dn2cpp_null_check(exception);
+            dn2cpp_gc_store_ref(&inner->data[i], exception);
+        }
+        dn2cpp_gc_store_ref(&inner->data[count],
+            dn2cpp_make_task_canceled_exception(t->cancellationSource.load(std::memory_order_acquire)));
+        return inner;
+    }
+    auto* base = t->exceptionAggregate.load(std::memory_order_acquire);
+    auto* baseInners = base == nullptr ? nullptr : dn2cpp_aggregate_inner_exceptions(base, nullptr);
+    Dn2CppArrayRef* recorded = nullptr;
+    bool ownsFaults = false;
+    if (auto* holder = dn2cpp_task_holder_for_observation(t))
+    {
+        Dn2CppMonitorGuard guard(holder);
+        recorded = g_task_holder_snapshot(holder);
+        g_task_holder_observe(holder);
+        // The state of a holder installed after terminal publication is only
+        // visible after its own acquire, not the earlier status acquire.
+        ownsFaults = t->exceptionHolderState == DN2CPP_TASK_HOLDER_OWNS_FAULTS;
+    }
+    // A malformed private EDI collection can contain a null entry. It did
+    // not prevent Finish; the observation that dereferences it fails now.
+    if (recorded != nullptr)
+        for (int32_t i = 0; i < recorded->length; ++i)
+            if (recorded->data[i] == nullptr)
+                dn2cpp_throw_null_reference();
+    if (ownsFaults)
+        return recorded;
+    int32_t baseCount = baseInners == nullptr ? 1 : baseInners->length;
+    int32_t tail = recorded == nullptr ? 0 : recorded->length;
+    if (tail == 0 && baseInners != nullptr)
+        return baseInners;
+    auto* inner = dn2cpp_newarr_ref(baseCount + tail);
+    for (int32_t i = 0; i < baseCount; ++i)
+        dn2cpp_gc_store_ref(&inner->data[i], baseInners == nullptr ? t->exception : baseInners->data[i]);
+    for (int32_t i = 0; i < tail; ++i)
+        dn2cpp_gc_store_ref(&inner->data[baseCount + i], recorded->data[i]);
+    return inner;
 }
 
-// Append that set at `k`, answering the next free index.
-static int32_t dn2cpp_task_fault_inners_copy(Dn2CppTask* t, Dn2CppArrayRef* out, int32_t k)
+static void dn2cpp_task_collect_fault(Dn2CppRefList*& faults, Dn2CppTask* t)
 {
-    // Async builders retain the original OCE for await, but blocking waits expose a
-    // TaskCanceledException inside their AggregateException, as real .NET does.
-    if (t->status == DN2CPP_TASK_CANCELED)
+    if (faults == nullptr)
+        faults = dn2cpp_reflist_new();
+    // Normal single faults need no intermediate array.
+    Dn2CppArrayRef* snapshot;
+    if (t->status == DN2CPP_TASK_CANCELED || dn2cpp_task_holder_for_observation(t) != nullptr)
+        snapshot = dn2cpp_task_fault_snapshot(t);
+    else if (auto* aggregate = t->exceptionAggregate.load(std::memory_order_acquire))
+        snapshot = dn2cpp_aggregate_inner_exceptions(aggregate, nullptr);
+    else
     {
-        dn2cpp_gc_store_ref(&out->data[k++], dn2cpp_make_task_canceled_exception(t->cancellationSource.load(std::memory_order_acquire)));
-        return k;
+        dn2cpp_reflist_add(faults, t->exception);
+        return;
     }
-    if (t->exceptionAggregate == nullptr)
+    for (int32_t i = 0; i < snapshot->length; ++i)
+        dn2cpp_reflist_add(faults, snapshot->data[i]);
+}
+
+struct Dn2CppForwardedFaults
+{
+    Dn2CppRefList* payloads = nullptr;
+    bool hasDispatch = false;
+
+    void append(Dn2CppArrayRef* array)
     {
-        dn2cpp_gc_store_ref(&out->data[k++], t->exception);
-        return k;
+        for (int32_t i = 0; i < array->length; ++i)
+            dn2cpp_reflist_add(payloads, array->data[i]);
     }
-    Dn2CppArrayRef* a = dn2cpp_aggregate_inner_exceptions(t->exceptionAggregate, nullptr);
-    for (int32_t i = 0; i < a->length; i++)
-        dn2cpp_gc_store_ref(&out->data[k++], a->data[i]);
-    return k;
+
+    void collect(Dn2CppTask* task)
+    {
+        if (payloads == nullptr)
+            payloads = dn2cpp_reflist_new();
+        Dn2CppArrayRef* dispatch = nullptr;
+        bool ownsFaults = false;
+        if (auto* holder = dn2cpp_task_holder_for_observation(task))
+        {
+            Dn2CppMonitorGuard guard(holder);
+            if (g_task_holder_dispatch != nullptr)
+                dispatch = g_task_holder_dispatch(holder);
+            ownsFaults = task->exceptionHolderState == DN2CPP_TASK_HOLDER_OWNS_FAULTS;
+            g_task_holder_observe(holder);
+        }
+        if (!ownsFaults)
+        {
+            if (auto* aggregate = task->exceptionAggregate.load(std::memory_order_acquire))
+                append(dn2cpp_aggregate_inner_exceptions(aggregate, nullptr));
+            else
+                dn2cpp_reflist_add(payloads, task->exception);
+        }
+        if (dispatch != nullptr)
+        {
+            hasDispatch = true;
+            append(dispatch);
+        }
+    }
+
+    bool finish(Dn2CppTask* task, uint64_t result = 0)
+    {
+        return dn2cpp_task_finish_recorded(task, DN2CPP_TASK_FAULTED, result, nullptr, nullptr,
+            dn2cpp_reflist_to_array(payloads), hasDispatch);
+    }
+};
+
+static Dn2CppObject* dn2cpp_task_cancellation_dispatch(Dn2CppTask* task)
+{
+    if (auto* holder = task->exceptionHolder.load(std::memory_order_acquire))
+    {
+        Dn2CppMonitorGuard guard(holder);
+        if (g_task_holder_cancel_dispatch != nullptr)
+            return g_task_holder_cancel_dispatch(holder);
+    }
+    return nullptr;
 }
 
 // Build the TResult[] from each input task's result slot and complete the WhenAll
@@ -1222,42 +1599,30 @@ static void dn2cpp_when_all_finish(Dn2CppWhenAllState* s)
     // A fault ANYWHERE outranks a cancellation anywhere: .NET's WhenAll is Faulted if
     // any input faulted, Canceled if none did and one was canceled. Without the second
     // arm a canceled input reads as RanToCompletion and its awaiter gets a result.
-    // EVERY faulted input contributes, so the aggregate is sized in one pass and filled
-    // in a second — a cancellation contributes nothing to it.
+    // Every faulted input contributes its observed inners; cancellation contributes
+    // nothing to a faulted WhenAll.
     int32_t n = s->tasks->length;
     Dn2CppTask* canceled = s->kind == DN2CPP_WHENALL_VOID
         ? s->firstCanceled.load(std::memory_order_acquire) : nullptr;
-    int32_t total = 0;
+    Dn2CppForwardedFaults faults;
     for (int32_t i = 0; i < n; i++)
     {
         auto* t = reinterpret_cast<Dn2CppTask*>(s->tasks->data[i]);
         if (t->status == DN2CPP_TASK_FAULTED)
-            total += dn2cpp_task_fault_inner_count(t);
+            faults.collect(t);
         else if (canceled == nullptr && t->status == DN2CPP_TASK_CANCELED)
             canceled = t;
     }
-    if (total > 0)
+    if (faults.payloads != nullptr)
     {
-        Dn2CppArrayRef* inner = dn2cpp_newarr_ref(total);
-        int32_t k = 0;
-        for (int32_t i = 0; i < n; i++)
-        {
-            auto* t = reinterpret_cast<Dn2CppTask*>(s->tasks->data[i]);
-            if (t->status == DN2CPP_TASK_FAULTED)
-                k = dn2cpp_task_fault_inners_copy(t, inner, k);
-        }
-        // Fill the Task.Exception slot while the join is still PENDING: the moment
-        // set_exception publishes FAULTED, a get_Exception read would mint a
-        // one-element wrapper if-absent, and the race closes without a lock.
-        dn2cpp_gc_store_ref(&s->result->exceptionAggregate,
-                            dn2cpp_aggregate_exception_new(inner));
-        dn2cpp_task_set_exception(s->result, inner->data[0]); // await raises InnerExceptions[0]
+        faults.finish(s->result);
         return;
     }
     if (canceled != nullptr)
     {
-        dn2cpp_task_complete(s->result, DN2CPP_TASK_CANCELED, 0, canceled->exception, false,
-            canceled->cancellationSource.load(std::memory_order_acquire));
+        auto* source = canceled->cancellationSource.load(std::memory_order_acquire);
+        dn2cpp_task_finish_canceled_promise(s->result, 0, source, canceled->exception,
+            dn2cpp_task_cancellation_dispatch(canceled));
         return;
     }
     if (s->kind == DN2CPP_WHENALL_VOID) // non-generic WhenAll: no result array
@@ -1675,8 +2040,10 @@ void dn2cpp_task_set_exception_or_canceled(Dn2CppTask* t, Dn2CppObject* exceptio
         && dn2cpp_isinst(exception,
             s_canceled_exc_type.load(std::memory_order_acquire)) != nullptr
         ? DN2CPP_TASK_CANCELED : DN2CPP_TASK_FAULTED;
-    dn2cpp_task_complete(t, status, t->result, exception, false,
-        status == DN2CPP_TASK_CANCELED ? dn2cpp_canceled_exception_source(exception) : nullptr);
+    if (status == DN2CPP_TASK_CANCELED)
+        dn2cpp_task_finish_canceled_promise(t, t->result, dn2cpp_canceled_exception_source(exception), exception);
+    else
+        dn2cpp_task_finish_recorded(t, status, t->result, exception);
 }
 
 // Task.FromCanceled(<T>) / ValueTask.FromCanceled(<T>): a pre-completed CANCELED
@@ -1700,7 +2067,7 @@ static int32_t dn2cpp_task_try_complete_locked(Dn2CppTask* t, int32_t status, ui
     Dn2CppObject* exception, Dn2CppObject* aggregate, Dn2CppCont*& conts,
     Dn2CppCancelSource* source, bool requireUnstarted)
 {
-    if (t->status != DN2CPP_TASK_PENDING
+    if (t->status != DN2CPP_TASK_PENDING || t->exceptionHolderState == DN2CPP_TASK_HOLDER_RESERVED
         || (requireUnstarted && t->execution != DN2CPP_TASK_NOT_STARTED))
         return 0;
     if (status == DN2CPP_TASK_CANCELED)
@@ -1710,6 +2077,8 @@ static int32_t dn2cpp_task_try_complete_locked(Dn2CppTask* t, int32_t status, ui
     dn2cpp_gc_store_ref(&t->exception, exception);
     dn2cpp_gc_store_ref(&t->exceptionAggregate, aggregate);
     t->status.store(status, std::memory_order_release); // settled last, as above
+    if (g_task_completion_waiters != 0)
+        g_task_completed.notify_all();
     if (t->completionWaitHandle != nullptr)
         dn2cpp_event_set_if_open(t->completionWaitHandle);
     conts = t->continuations;
@@ -1733,6 +2102,51 @@ static int32_t dn2cpp_task_try_complete(Dn2CppTask* t, int32_t status, uint64_t 
     if (won)
         dn2cpp_fire_conts(conts);
     return won;
+}
+
+static void dn2cpp_task_forward_completion(Dn2CppTask* target, Dn2CppTask* input, uint64_t result,
+    bool copyNativeAggregate = false)
+{
+    if (target->status != DN2CPP_TASK_PENDING)
+        return;
+    auto status = input->status.load(std::memory_order_acquire);
+    if (status == DN2CPP_TASK_FAULTED)
+    {
+        Dn2CppCont* conts = nullptr;
+        bool forwardedNative = false;
+        {
+            std::lock_guard<std::mutex> lock(g_task_mtx);
+            if (target->status != DN2CPP_TASK_PENDING || target->exceptionHolderState == DN2CPP_TASK_HOLDER_RESERVED)
+                return;
+            if (input->exceptionHolder.load(std::memory_order_relaxed) == nullptr
+                && target->exceptionHolder.load(std::memory_order_relaxed) == nullptr)
+            {
+                // Keep each proxy's existing native-only representation. With
+                // a holder at either end, preserve the recorded dispatch set.
+                if (g_task_holder_create != nullptr)
+                    input->nativeFaultObserved = true;
+                auto* aggregate = copyNativeAggregate ? input->exceptionAggregate.load(std::memory_order_acquire) : nullptr;
+                forwardedNative = dn2cpp_task_try_complete_locked(target, status, result,
+                    input->exception, aggregate, conts, nullptr, false);
+            }
+        }
+        if (forwardedNative)
+        {
+            dn2cpp_fire_conts(conts);
+            return;
+        }
+        Dn2CppForwardedFaults faults;
+        faults.collect(input);
+        faults.finish(target, result);
+    }
+    else if (status == DN2CPP_TASK_CANCELED)
+    {
+        auto* source = input->cancellationSource.load(std::memory_order_acquire);
+        dn2cpp_task_finish_canceled_promise(target, result, source, input->exception,
+            dn2cpp_task_cancellation_dispatch(input));
+    }
+    else
+        dn2cpp_task_try_complete(target, status, result, nullptr);
 }
 
 void dn2cpp_task_try_set_result_deferred(Dn2CppTask* t, uint64_t result, Dn2CppCont** batch)
@@ -1762,12 +2176,40 @@ int32_t dn2cpp_task_try_set_result(Dn2CppTask* t, uint64_t result)
 
 int32_t dn2cpp_task_try_set_exception(Dn2CppTask* t, Dn2CppObject* exception)
 {
-    return dn2cpp_task_try_complete(t, DN2CPP_TASK_FAULTED, 0, exception);
+    return dn2cpp_task_finish_recorded(t, DN2CPP_TASK_FAULTED, 0, exception);
 }
 
 int32_t dn2cpp_task_try_set_canceled(Dn2CppTask* t, Dn2CppCancelSource* source)
 {
     return dn2cpp_task_try_complete(t, DN2CPP_TASK_CANCELED, 0, nullptr, nullptr, source);
+}
+
+static int32_t dn2cpp_tcs_await_winner(Dn2CppTask* t, int32_t won)
+{
+    if (won || t->status != DN2CPP_TASK_PENDING)
+        return won;
+    // The public promises return false only after the winner's terminal
+    // publication. Managed capture/iteration cannot run under this lock.
+    std::unique_lock<std::mutex> lock(g_task_mtx);
+    ++g_task_completion_waiters;
+    g_task_completed.wait(lock, [t] { return t->status != DN2CPP_TASK_PENDING; });
+    --g_task_completion_waiters;
+    return 0;
+}
+
+int32_t dn2cpp_tcs_try_set_result(Dn2CppTask* t, uint64_t result)
+{
+    return dn2cpp_tcs_await_winner(t, dn2cpp_task_try_set_result(t, result));
+}
+
+int32_t dn2cpp_tcs_try_set_exception(Dn2CppTask* t, Dn2CppObject* exception)
+{
+    return dn2cpp_tcs_await_winner(t, dn2cpp_task_try_set_exception(t, exception));
+}
+
+int32_t dn2cpp_tcs_try_set_canceled(Dn2CppTask* t, Dn2CppCancelSource* source)
+{
+    return dn2cpp_tcs_await_winner(t, dn2cpp_task_try_set_canceled(t, source));
 }
 
 // The non-Try setters throw when the task has already settled, like real .NET.
@@ -1780,19 +2222,19 @@ int32_t dn2cpp_task_try_set_canceled(Dn2CppTask* t, Dn2CppCancelSource* source)
 
 void dn2cpp_tcs_set_result(Dn2CppTask* t, uint64_t result)
 {
-    if (!dn2cpp_task_try_set_result(t, result))
+    if (!dn2cpp_tcs_try_set_result(t, result))
         dn2cpp_tcs_throw_settled();
 }
 
 void dn2cpp_tcs_set_exception(Dn2CppTask* t, Dn2CppObject* exception)
 {
-    if (!dn2cpp_task_try_set_exception(t, exception))
+    if (!dn2cpp_tcs_try_set_exception(t, exception))
         dn2cpp_tcs_throw_settled();
 }
 
 void dn2cpp_tcs_set_canceled(Dn2CppTask* t, Dn2CppCancelSource* source)
 {
-    if (!dn2cpp_task_try_set_canceled(t, source))
+    if (!dn2cpp_tcs_try_set_canceled(t, source))
         dn2cpp_tcs_throw_settled();
 }
 
@@ -2618,9 +3060,7 @@ Dn2CppTask* dn2cpp_task_block_wait(Dn2CppTask* t)
         dn2cpp_task_throw_deadlock();
     if (t->status == DN2CPP_TASK_FAULTED || t->status == DN2CPP_TASK_CANCELED)
     {
-        Dn2CppArrayRef* inner = dn2cpp_newarr_ref(dn2cpp_task_fault_inner_count(t));
-        dn2cpp_task_fault_inners_copy(t, inner, 0);
-        dn2cpp_throw(dn2cpp_aggregate_exception_new(inner));
+        dn2cpp_throw(dn2cpp_aggregate_exception_new(dn2cpp_task_fault_snapshot(t)));
     }
     return t;
 }
@@ -2649,24 +3089,15 @@ void dn2cpp_task_wait_all(Dn2CppArrayRef* tasks)
         if (!dn2cpp_task_drain_settle(reinterpret_cast<Dn2CppTask*>(tasks->data[i])))
             dn2cpp_task_throw_deadlock();
     }
-    int32_t total = 0;
+    Dn2CppRefList* faults = nullptr;
     for (int32_t i = 0; i < tasks->length; i++)
     {
         auto* t = reinterpret_cast<Dn2CppTask*>(tasks->data[i]);
         if (t->status == DN2CPP_TASK_FAULTED || t->status == DN2CPP_TASK_CANCELED)
-            total += dn2cpp_task_fault_inner_count(t);
+            dn2cpp_task_collect_fault(faults, t);
     }
-    if (total == 0)
-        return;
-    Dn2CppArrayRef* inner = dn2cpp_newarr_ref(total);
-    int32_t k = 0;
-    for (int32_t i = 0; i < tasks->length; i++)
-    {
-        auto* t = reinterpret_cast<Dn2CppTask*>(tasks->data[i]);
-        if (t->status == DN2CPP_TASK_FAULTED || t->status == DN2CPP_TASK_CANCELED)
-            k = dn2cpp_task_fault_inners_copy(t, inner, k);
-    }
-    dn2cpp_throw(dn2cpp_aggregate_exception_new(inner));
+    if (faults != nullptr)
+        dn2cpp_throw(dn2cpp_aggregate_exception_new(dn2cpp_reflist_to_array(faults)));
 }
 
 // Task.WaitAny(Task[]) -> the index of the first input to settle. Never raises the
@@ -2711,10 +3142,9 @@ int32_t dn2cpp_task_wait_any(Dn2CppArrayRef* tasks)
     dn2cpp_fail("async: Task.WaitAny join completed with a task that is not an input");
 }
 
-// Task.get_Exception. FAULTED is a settled status, so `->exception` is immutable
-// by the time this can observe it; the AggregateException wrapper is minted on
-// the first read and cached in its own slot so every read returns the same
-// object (real .NET identity). The allocations happen OUTSIDE the lock (the
+// Task.get_Exception. FAULTED is a settled status, so the primary exception is
+// immutable. Holder-backed observations follow the holder's current fault set.
+// The ordinary native wrapper is cached on first read. Allocations happen OUTSIDE the lock (the
 // allocator may collect); the install is if-absent under g_task_mtx, so two
 // racing readers agree on one wrapper (the loser's is garbage). A reader that
 // finds one already installed holds no lock, so the slot is atomic: that release
@@ -2725,6 +3155,8 @@ Dn2CppObject* dn2cpp_task_exception(Dn2CppTask* t)
         dn2cpp_throw_null_reference();
     if (t->status != DN2CPP_TASK_FAULTED)
         return nullptr; // SUCCEEDED / PENDING / CANCELED: null, matching real .NET
+    if (dn2cpp_task_holder_for_observation(t) != nullptr)
+        return dn2cpp_aggregate_exception_new(dn2cpp_task_fault_snapshot(t));
     if (t->exceptionAggregate == nullptr)
     {
         Dn2CppArrayRef* inner = dn2cpp_newarr_ref(1);
@@ -3325,9 +3757,9 @@ static void dn2cpp_task_finish_cold_exception(Dn2CppTask* task, Dn2CppObject* ex
 {
     auto* source = task->cancellationSource.load(std::memory_order_acquire);
     if (source != nullptr && dn2cpp_cts_is_cancelled(source) && dn2cpp_canceled_exception_source(exception) == source)
-        dn2cpp_task_complete(task, DN2CPP_TASK_CANCELED, task->result, exception, false, source);
+        dn2cpp_task_finish_recorded(task, DN2CPP_TASK_CANCELED, task->result, exception, source);
     else
-        dn2cpp_task_set_exception(task, exception);
+        dn2cpp_task_finish_recorded(task, DN2CPP_TASK_FAULTED, task->result, exception);
 }
 
 static void dn2cpp_pool_worker()
@@ -3433,8 +3865,7 @@ static void dn2cpp_pool_worker()
                 else
                 {
                     dn2cpp_task_drain(inner);
-                    dn2cpp_task_complete(it.task, inner->status, inner->result, inner->exception, false,
-                        inner->cancellationSource.load(std::memory_order_acquire));
+                    dn2cpp_task_forward_completion(it.task, inner, inner->result);
                 }
             }
             else if (it.nested)
@@ -3450,7 +3881,8 @@ static void dn2cpp_pool_worker()
                 // awaiting the inner task stays asleep (counted in flight) instead of
                 // tripping the deadlock guard.
                 Dn2CppTask* inner = dn2cpp_pool_inner_chain(it.del);
-                dn2cpp_task_set_result(it.task, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(inner)));
+                dn2cpp_task_finish_recorded(it.task, DN2CPP_TASK_SUCCEEDED,
+                    static_cast<uint64_t>(reinterpret_cast<uintptr_t>(inner)), nullptr);
                 if (inner != nullptr)
                 {
                     // The outer task has already settled, so a managed exception
@@ -3477,12 +3909,12 @@ static void dn2cpp_pool_worker()
                 // State-carrying Task item: the 2-arg thunk reads the delegate and
                 // its state argument from the GC-rooted holder node.
                 uint64_t r = it.invoke2(it.node->del, it.node->state);
-                dn2cpp_task_set_result(it.task, r);
+                dn2cpp_task_finish_recorded(it.task, DN2CPP_TASK_SUCCEEDED, r, nullptr);
             }
             else
             {
                 uint64_t r = it.invoke(it.del);
-                dn2cpp_task_set_result(it.task, r);
+                dn2cpp_task_finish_recorded(it.task, DN2CPP_TASK_SUCCEEDED, r, nullptr);
             }
         }
         catch (const Dn2CppException& e)
@@ -3491,7 +3923,7 @@ static void dn2cpp_pool_worker()
             if (origin == DN2CPP_TASK_ORIGIN_COLD || origin == DN2CPP_TASK_ORIGIN_UNOWNED_QUEUE)
                 dn2cpp_task_finish_cold_exception(it.task, e.obj);
             else
-                dn2cpp_task_set_exception(it.task, e.obj);
+                dn2cpp_task_finish_recorded(it.task, DN2CPP_TASK_FAULTED, it.task->result, e.obj);
             dn2cpp_exc_inflight_pop(e.obj);
         }
         dn2cpp_sched_sync_pool_principal(scheduler);
@@ -4009,7 +4441,7 @@ static void dn2cpp_task_invoke_cold(Dn2CppTask* t, Dn2CppTaskCold* c)
     try
     {
         uint64_t r = c->invoke2 != nullptr ? c->invoke2(c->del, c->state) : c->invoke(c->del);
-        dn2cpp_task_set_result(t, r);
+        dn2cpp_task_finish_recorded(t, DN2CPP_TASK_SUCCEEDED, r, nullptr);
     }
     catch (const Dn2CppException& e)
     {
@@ -4286,11 +4718,11 @@ static void dn2cpp_cont_with_run(void* p)
                 r = dn2cpp_contwith_ref(c->del, ante);
                 break;
         }
-        dn2cpp_task_set_result(c->task, r);
+        dn2cpp_task_finish_recorded(c->task, DN2CPP_TASK_SUCCEEDED, r, nullptr);
     }
     catch (const Dn2CppException& e)
     {
-        dn2cpp_task_set_exception(c->task, e.obj);
+        dn2cpp_task_finish_recorded(c->task, DN2CPP_TASK_FAULTED, c->task->result, e.obj);
         dn2cpp_exc_inflight_pop(e.obj);
     }
 }
@@ -4352,22 +4784,7 @@ static void dn2cpp_wait_async_settle(void* p)
 {
     auto* w = static_cast<Dn2CppWaitAsync*>(p);
     Dn2CppTask* a = w->antecedent;
-    switch (a->status)
-    {
-        case DN2CPP_TASK_FAULTED:
-            dn2cpp_task_try_set_exception(w->task, a->exception);
-            break;
-        case DN2CPP_TASK_CANCELED:
-            dn2cpp_task_try_complete(w->task, DN2CPP_TASK_CANCELED, 0, a->exception, nullptr,
-                a->cancellationSource.load(std::memory_order_acquire));
-            break;
-        default:
-            // SUCCEEDED. The result slot is copied verbatim, so a Task<T>'s value survives the
-            // wrapper for every result kind (the slot is 8 bytes whatever T is — a struct
-            // result is already a boxed pointer in it).
-            dn2cpp_task_try_set_result(w->task, a->result);
-            break;
-    }
+    dn2cpp_task_forward_completion(w->task, a, a->result);
 }
 
 Dn2CppTask* dn2cpp_task_wait_async(Dn2CppTask* t, Dn2CppCancelSource* src)
@@ -4442,11 +4859,7 @@ static void dn2cpp_wait_async_timeout_settle(void* p)
 {
     auto* w = static_cast<Dn2CppTimedWaitAsync*>(p);
     Dn2CppTask* a = w->antecedent;
-    // Publish the entire fault set with the winning status. A competing timeout
-    // or cancellation must not leave the antecedent's aggregate on its result.
-    dn2cpp_task_try_complete(w->task, a->status.load(std::memory_order_acquire),
-        a->result, a->exception, a->exceptionAggregate.load(std::memory_order_acquire),
-        a->cancellationSource.load(std::memory_order_acquire));
+    dn2cpp_task_forward_completion(w->task, a, a->result, true);
 }
 
 static void dn2cpp_wait_async_timeout_expire(void* p)

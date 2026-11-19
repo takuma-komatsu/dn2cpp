@@ -18,7 +18,7 @@ internal static partial class CoreIntrinsics
     // Public delegate constructors are independent of the internal promise family.
     internal static bool IsTaskLifecycleCandidate(string name, BlobReader blob)
     {
-        if (name is "TrySetResult" or "MarkStarted") return true;
+        if (name is "TrySetResult" or "MarkStarted" or "AddException") return true;
         if (name != ".ctor" || blob.RemainingBytes < 3) return false;
         var header = blob.ReadSignatureHeader();
         if (header.IsGeneric && !blob.TryReadCompressedInteger(out _)) return false;
@@ -45,7 +45,7 @@ internal static partial class CoreIntrinsics
     {
         if (IsTaskSchedulerOperation(method)) return true;
         var owner = method.DeclaringClass;
-        if (method.Name is not (".ctor" or "TrySetResult" or "MarkStarted") || !IsTaskLifecycleOwner(owner)
+        if (method.Name is not (".ctor" or "TrySetResult" or "MarkStarted" or "AddException") || !IsTaskLifecycleOwner(owner)
             || method.Module.AssemblyName != "System.Private.CoreLib" || owner.Module != method.Module
             || method.Handle.IsNil || method.IsSynthetic || owner.IsValueType || owner.IsInterface
             || owner.IsEnum || owner.IsByRefLike || owner.Context.MethodArgs.Length != 0
@@ -70,16 +70,57 @@ internal static partial class CoreIntrinsics
             && (!method.SignatureReady || IsTaskLifecycleDecodedSignature(method, method.Signature));
     }
 
-    internal static bool IsTaskPromiseForwarder(MethodInfo method) =>
-        method.Name == ".ctor" && method.DeclaringClass.GenericArity == 1 && IsTaskLifecycle(method);
+    internal static bool IsManagedTaskEventName(string name) =>
+        name == "PublishUnobservedTaskException";
+
+    private static bool IsUnobservedTaskEventArgs(TypeDesc t) =>
+        t is { Kind: TypeKind.Class, Class: { FullName: "System.Threading.Tasks.UnobservedTaskExceptionEventArgs" } c }
+        && c.Module.AssemblyName == "System.Private.CoreLib";
+
+    internal static bool IsUnobservedTaskEventHandler(TypeDesc t) =>
+        t is { Kind: TypeKind.Class, Class: { } c }
+        && c.Module.AssemblyName == "System.Private.CoreLib"
+        && c.Module.Reader.StringComparer.Equals(c.Module.Reader.GetTypeDefinition(c.Handle).Name, "EventHandler`1")
+        && c.Module.Reader.StringComparer.Equals(c.Module.Reader.GetTypeDefinition(c.Handle).Namespace, "System")
+        && c.Context.TypeArgs is [{ } a] && IsUnobservedTaskEventArgs(a);
+
+    internal static bool IsManagedTaskEvent(MethodInfo m)
+    {
+        if (!IsManagedTaskEventName(m.Name) || m.DeclaringClass.FullName != "System.Threading.Tasks.TaskScheduler"
+            || m.Module.AssemblyName != "System.Private.CoreLib" || m.Handle.IsNil || m.Rva == 0
+            || m.ImplAttributes != MethodImplAttributes.IL) return false;
+        if (m.Attributes != (MethodAttributes.Static | MethodAttributes.HideBySig | MethodAttributes.Assembly)) return false;
+        var s = m.Signature;
+        return s.Header.RawValue == 0
+            && s.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Void }
+            && s.ParameterTypes is [{ } sender, { } args] && sender.IsObject && IsUnobservedTaskEventArgs(args);
+    }
+
+    internal static bool IsTaskAddException(MethodInfo method) =>
+        method.Name == "AddException" && IsTaskLifecycle(method);
+
+    internal static bool IsTaskAddExceptionForwarder(MethodInfo method) =>
+        IsTaskAddException(method)
+        && method.Module.Reader.GetBlobReader(method.Module.Reader.GetMethodDefinition(method.Handle).Signature).Length == 4;
+
+    internal static bool IsTaskManagedForwarder(MethodInfo method) =>
+        IsManagedTaskEvent(method) ||
+        method.Name == ".ctor" && method.DeclaringClass.GenericArity == 1 && IsTaskLifecycle(method)
+        || IsTaskAddExceptionForwarder(method);
 
     internal static bool IsTaskLifecycleNative(MethodInfo method) =>
-        (method.Name == "TrySetResult" || method.DeclaringClass.GenericArity == 0) && IsTaskLifecycle(method);
+        (method.Name == "TrySetResult" || method.DeclaringClass.GenericArity == 0)
+        && IsTaskLifecycle(method) && !IsTaskAddExceptionForwarder(method);
 
     internal static bool IsTaskLifecycleSignature(string name, bool generic, BlobReader blob)
     {
         if (blob.RemainingBytes < 3 || blob.ReadByte() != 0x20
             || !blob.TryReadCompressedInteger(out int count)) return false;
+        if (name == "AddException")
+            return !generic && count is (1 or 2) && blob.RemainingBytes == count + 1
+                && blob.ReadByte() == (byte)SignatureTypeCode.Void
+                && blob.ReadByte() == (byte)SignatureTypeCode.Object
+                && (count == 1 || blob.ReadByte() == (byte)SignatureTypeCode.Boolean);
         if (name is "TrySetResult" or "MarkStarted")
             return (!generic || name == "TrySetResult") && blob.RemainingBytes != 0
                 && blob.ReadByte() == (byte)SignatureTypeCode.Boolean && count == (generic ? 1 : 0)
@@ -99,6 +140,12 @@ internal static partial class CoreIntrinsics
         bool generic = method.DeclaringClass.GenericArity == 1;
         if (signature.Header.RawValue != 0x20 || signature.GenericParameterCount != 0
             || signature.RequiredParameterCount != signature.ParameterTypes.Length) return false;
+        if (method.Name == "AddException")
+            return !generic && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Void, IsCanonPlaceholder: false }
+                && signature.ParameterTypes.Length is (1 or 2)
+                && signature.ParameterTypes[0] is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object, IsCanonPlaceholder: false }
+                && (signature.ParameterTypes.Length == 1 || signature.ParameterTypes[1] is {
+                    Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean, IsCanonPlaceholder: false });
         if (method.Name is "TrySetResult" or "MarkStarted")
             return (!generic || method.Name == "TrySetResult")
                 && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean, IsCanonPlaceholder: false }
