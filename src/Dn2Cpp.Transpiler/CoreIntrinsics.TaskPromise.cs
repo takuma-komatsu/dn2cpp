@@ -107,13 +107,13 @@ internal static partial class CoreIntrinsics
         && method.Module.Reader.GetBlobReader(method.Module.Reader.GetMethodDefinition(method.Handle).Signature).Length == 4;
 
     internal static bool IsTaskManagedForwarder(MethodInfo method) =>
-        IsManagedTaskEvent(method) ||
+        IsManagedTaskEvent(method) || IsTaskSchedulerId(method) ||
         method.Name == ".ctor" && method.DeclaringClass.GenericArity == 1 && IsTaskLifecycle(method)
         || IsTaskAddExceptionForwarder(method);
 
     internal static bool IsTaskLifecycleNative(MethodInfo method) =>
         (method.Name == "TrySetResult" || method.DeclaringClass.GenericArity == 0)
-        && IsTaskLifecycle(method) && !IsTaskAddExceptionForwarder(method);
+        && IsTaskLifecycle(method) && !IsTaskAddExceptionForwarder(method) && !IsTaskSchedulerId(method);
 
     internal static bool IsTaskLifecycleSignature(string name, bool generic, BlobReader blob)
     {

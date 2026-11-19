@@ -2265,7 +2265,7 @@ internal sealed partial class CppEmitter
             }
         }
 
-        // Scheduler identity remains runtime-owned; only the exact retained helper is attached.
+        // Attach retained member rows without replacing the native scheduler type.
         private void EmitTaskSchedulerRows()
         {
             foreach (var cls in _c.Classes.ToList())
@@ -2274,6 +2274,17 @@ internal sealed partial class CppEmitter
                 foreach (var method in cls.Methods)
                 {
                     if (!CoreIntrinsics.IsTaskSchedulerOperation(method) || !IsRetainedOpaqueMemberRow(method)) continue;
+                    if (CoreIntrinsics.IsTaskSchedulerId(method))
+                    {
+                        // Use the normal public member tables: property lookup, method
+                        // enumeration and Delegate.Method must share the getter's row.
+                        var getter = new List<MethodInfo> { method };
+                        var methods = BuildMemberTable(cls, getter, "scheduleridtab")
+                            ?? throw new InvalidOperationException("Retained TaskScheduler.Id has no getter row.");
+                        var props = BuildPropTable(cls, getter);
+                        _e._schedulerIdentityMetadata = (methods.Expr, props?.Expr ?? "nullptr", props?.Count ?? 0);
+                        continue;
+                    }
                     if (!_memberAddr.TryGetValue(method, out var address))
                     {
                         BuildMemberTable(cls, new List<MethodInfo> { method }, "taskschedulertab_" + method.Name);

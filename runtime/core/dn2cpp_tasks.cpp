@@ -54,14 +54,43 @@ Dn2CppTypeInfo dn2cpp_task_type =
     dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.Task", &dn2cpp_object_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppTask), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_task_type_obj);
 const Dn2CppType dn2cpp_task_type_obj = { { &dn2cpp_type_type }, &dn2cpp_task_type };
 extern const Dn2CppType dn2cpp_taskscheduler_type_obj;
+static Dn2CppTypeReflection g_taskscheduler_reflection;
+
 const Dn2CppTypeInfo dn2cpp_taskscheduler_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.TaskScheduler", &dn2cpp_object_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppObject), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_taskscheduler_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.TaskScheduler", &dn2cpp_object_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppTaskScheduler), 0, 0, 0, 0, 0, &g_taskscheduler_reflection }, &dn2cpp_taskscheduler_type_obj);
 const Dn2CppType dn2cpp_taskscheduler_type_obj = { { &dn2cpp_type_type }, &dn2cpp_taskscheduler_type };
+
+void dn2cpp_set_taskscheduler_identity_metadata(Dn2CppMetadataTable<Dn2CppMethodInfo> methods,
+    Dn2CppMetadataTable<Dn2CppPropInfo> props, int32_t propertyCount)
+{
+    g_taskscheduler_reflection.methods = methods;
+    g_taskscheduler_reflection.methodCount = 1;
+    g_taskscheduler_reflection.props = props;
+    g_taskscheduler_reflection.propCount = propertyCount;
+}
+
+// CoreLib initializes the default pool scheduler (including its Id) on the
+// first static field access, even when that access is another scheduler's Id.
+struct Dn2CppTaskSchedulerStatics
+{
+    int32_t counter = 0;
+    Dn2CppTaskScheduler pool{{&dn2cpp_taskscheduler_type}, ++counter};
+};
+
+static Dn2CppTaskSchedulerStatics& dn2cpp_taskscheduler_statics()
+{
+    static Dn2CppTaskSchedulerStatics state;
+    return state;
+}
 
 Dn2CppObject* dn2cpp_taskscheduler_default()
 {
-    static Dn2CppObject scheduler{&dn2cpp_taskscheduler_type};
-    return &scheduler;
+    return &dn2cpp_taskscheduler_statics().pool;
+}
+
+int32_t* dn2cpp_taskscheduler_id_counter()
+{
+    return &dn2cpp_taskscheduler_statics().counter;
 }
 
 // Task.Id numbering: positive, monotonic, minted once per task at alloc time.

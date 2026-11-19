@@ -87,7 +87,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-derived-task
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-scheduler-inline"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-scheduler-queue"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-task-add-exception"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-task-finish"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-task-finish|prefix:before-scheduler-ids"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|shared-binary:native-delay-deadlines|shared-binary:fresh-cancellation-filters"
 
 # The exception text is platform-owned; its record prefix is the boundary.
@@ -151,7 +151,14 @@ gate_extra_asserts() {
     printf '%s\n' 'task finish False: Created/False/False/Faulted/True/True/0/True' \
         'task finish True: Created/False/False/RanToCompletion/True/True/0/True' \
         'task finish struct: True/True/True' > "$out/task-finish.expected"
-    gate_output suffix "$native" "$out/task-finish.expected" --after '== task finish ==' --policy crlf || return 1
+    before="$out/before-scheduler-ids.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-scheduler-ids
+    gate_output suffix "$before" "$out/task-finish.expected" --after '== task finish ==' --policy crlf || return 1
+    gate_output prefix "$native" "$before" --before '== scheduler ids ==' --policy crlf || return 1
+    printf '%s\n' 'default/current/reflected: True/True/True/True' \
+        'read order and independent task counter: True/True/True/True' \
+        'shared first read: True/True/True' > "$out/scheduler-ids.expected"
+    gate_output suffix "$native" "$out/scheduler-ids.expected" --after '== scheduler ids ==' --policy crlf || return 1
     before="$out/before-semaphore-waiters.stdout"
     gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-semaphore-waiters
     gate_output prefix "$native" "$before" --before '== semaphore waiter helpers ==' --policy crlf
