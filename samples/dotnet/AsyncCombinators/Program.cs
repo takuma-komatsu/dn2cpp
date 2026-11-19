@@ -95,6 +95,9 @@ namespace AsyncCombinators
             if (args.Length == 1 && args[0] == "before-task-cancellation-tokens")
                 return;
             TaskCancellationTokenSubset.Program.Run();
+            if (args.Length == 1 && args[0] == "before-protected-task-start")
+                return;
+            SettledCombinatorsSubset.Program.RunProtectedStart();
             // Ends the process: a builder suspension's rejected registration is re-raised
             // as an unhandled ThreadPool exception.
             if (args.Length == 2 && args[0] == "suspension-rejection")

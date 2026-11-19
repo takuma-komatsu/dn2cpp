@@ -4509,6 +4509,13 @@ void dn2cpp_set_datetime_parser_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> addT
     g_datetime_parser_rows[2] = localConstructor;
 }
 
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_task_mark_started_row;
+
+void dn2cpp_set_task_mark_started_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method)
+{
+    g_task_mark_started_row = method;
+}
+
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_threading_private_rows[6];
 
 void dn2cpp_set_threading_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> threadName,
@@ -4555,7 +4562,10 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     const auto resourceManager = g_resourcemanager_default_type_row;
     const bool resourceManagerNamed = resourceManager != nullptr
         && dn2cpp_member_name_matches(resourceManager->name, name, bindingFlags, false);
-    bool named = factoryNamed || dateOnlyNamed || cultureCompareInfoNamed || cultureNameValidatorNamed || resourceManagerNamed;
+    const auto taskMarkStarted = g_task_mark_started_row;
+    const bool taskMarkStartedNamed = taskMarkStarted != nullptr
+        && dn2cpp_member_name_matches(taskMarkStarted->name, name, bindingFlags, false);
+    bool named = factoryNamed || dateOnlyNamed || cultureCompareInfoNamed || cultureNameValidatorNamed || resourceManagerNamed || taskMarkStartedNamed;
     for (int32_t i = 0; i < 2 && !named; i++)
         named = g_string_private_rows[i] != nullptr
             && dn2cpp_member_name_matches(g_string_private_rows[i]->name, name, bindingFlags, false);
@@ -4573,6 +4583,14 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     for (const Dn2CppTypeInfo* ti = queried; ti != nullptr; ti = dn2cpp_meta_next_level(ti))
     {
         bool inherited = (ti != queried);
+        if (ti == &dn2cpp_task_type && taskMarkStartedNamed)
+        {
+            const auto row = taskMarkStarted.operator->();
+            if (row->declaringType == ti && dn2cpp_member_matches(row->attrs, bindingFlags, inherited)
+                && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
+                && (paramTypes == nullptr || dn2cpp_params_match_types(taskMarkStarted, paramTypes, queried)))
+                cands.push_back(taskMarkStarted);
+        }
         if (ti == &dn2cpp_thread_type || ti == &dn2cpp_lock_type || ti == &dn2cpp_semaphore_type)
         {
             for (int32_t i = 0; i < 6; i++)

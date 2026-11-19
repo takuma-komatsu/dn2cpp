@@ -958,7 +958,7 @@ internal sealed partial class Compilation
         if (CoreIntrinsics.BrDelegateCallable.Matches(target)
             || CoreIntrinsics.IsCoreClrGcMemoryQuery(target)
             || CoreIntrinsics.IsCoreClrFinalizerWorker(target)
-            || CoreIntrinsics.IsTaskPromiseNative(target)
+            || CoreIntrinsics.IsTaskLifecycleNative(target)
             || CoreIntrinsics.IsThreadingPrivate(target)
             || CoreIntrinsics.IsWaitHandleTimeoutConversion(target)
             || CoreIntrinsics.IsDateTimeCultureManagedBody(target)
@@ -1190,7 +1190,7 @@ internal sealed partial class Compilation
         if (ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls) || _backend?.ShouldSkipMethodBody(cls, ctor) == true)
             return;
         _reflectionSelectionCount++;
-        if (CoreIntrinsics.IsTaskPromise(ctor) || ctor.Rva != 0 && cls.IntrinsicCppName is null)
+        if (CoreIntrinsics.IsTaskLifecycle(ctor) || ctor.Rva != 0 && cls.IntrinsicCppName is null)
             Reach(ctor);
         if (EnsureShape(cls).IsValueType)
             NoteReflectionBoxed(cls);

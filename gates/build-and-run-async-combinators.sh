@@ -66,7 +66,7 @@
 # settled, yielding, pending and enumerable inputs, including unsigned high bits.
 # Former gates: whenall, whenany, when-enumerable, configure-await, delay-order,
 # cancellation, custom-awaitable, multi-awaiter.
-# Task sequences, cold scheduling, and CoreLib-derived promise task initialization.
+# Task sequences, cold scheduling, protected starts, and CoreLib-derived promise task initialization.
 # Task and cancellation aggregate construction leaves virtual inner Messages unread.
 source "$(dirname "$0")/_common.sh"
 gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for task call fixtures"
@@ -79,7 +79,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-pending-task
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-cancellation-callback-faults"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-lazy-aggregate-message"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-delay-synchronization"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-derived-task-promises|prefix:before-timed-waitasync|prefix:before-semaphore-waiters|prefix:before-task-creation-options|prefix:before-task-cancellation-tokens"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-derived-task-promises|prefix:before-timed-waitasync|prefix:before-semaphore-waiters|prefix:before-task-creation-options|prefix:before-task-cancellation-tokens|prefix:before-protected-task-start"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|shared-binary:native-delay-deadlines|shared-binary:fresh-cancellation-filters"
 
 # The exception text is platform-owned; its record prefix is the boundary.
@@ -105,6 +105,17 @@ gate_extra_asserts() {
         gate_output byte-witness "$out/$mode-native.stdout" 'fresh filter: True' --policy crlf || return 1
     done
     native="$out/native.stdout"
+    before="$out/before-protected-task-start.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-protected-task-start
+    gate_output prefix "$native" "$before" --before '== protected task start ==' --policy crlf
+    for line in 'cold claim: True/False/WaitingToRun/0' 'promise claim: True/WaitingToRun' \
+        'settled claims: False/True/False/True/False' 'inline delegate: Running/False' \
+        'continuation claim: False/Running' 'filtered claims: True/True/Canceled/WaitingToRun/0' \
+        'protected task start end'; do
+        gate_output byte-witness "$native" "$line" --policy crlf || return 1
+    done
+    printf '%s\n' 'protected task start end' > "$out/protected-start-end.expected"
+    gate_output suffix "$native" "$out/protected-start-end.expected" --policy crlf || return 1
     before="$out/before-semaphore-waiters.stdout"
     gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-semaphore-waiters
     gate_output prefix "$native" "$before" --before '== semaphore waiter helpers ==' --policy crlf
@@ -160,8 +171,8 @@ gate_extra_asserts() {
         gate_output byte-witness "$native" "$line" --policy crlf || return 1
     done
     printf '%s\n' 'task cancellation tokens end' > "$out/promise-end.expected"
-    gate_output suffix "$native" "$out/promise-end.expected" --policy crlf \
-        || { echo 'FAIL: task cancellation tokens block did not complete last' >&2; return 1; }
+    gate_output suffix "$out/before-protected-task-start.stdout" "$out/promise-end.expected" --policy crlf \
+        || { echo 'FAIL: task cancellation tokens block did not complete before protected starts' >&2; return 1; }
     for line in 'integer suspension: True,True|True,True' \
         'TimeSpan suspension: True,True|True,True' \
         'dependency pending: True,True|0' 'dependency order: firstsecond'; do

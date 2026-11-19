@@ -302,6 +302,51 @@ namespace SettledCombinatorsSubset
             Console.WriteLine("derived task promises end");
         }
 
+        internal static void RunProtectedStart()
+        {
+            Console.WriteLine("== protected task start ==");
+            var method = typeof(Task).GetMethod("MarkStarted",
+                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+            bool Mark(Task task) => (bool)method.Invoke(task, null);
+
+            int calls = 0;
+            var cold = new Task(() => calls++);
+            bool first = Mark(cold);
+            cold.Start(); // Claims a scheduler, not a second start.
+            Console.WriteLine("cold claim: " + first + "/" + Mark(cold) + "/" + cold.Status + "/" + calls);
+
+            var source = new TaskCompletionSource<int>();
+            var completed = Task.FromResult(987);
+            var faulted = Task.FromException(new InvalidOperationException());
+            var canceled = Task.FromCanceled(new CancellationToken(true));
+            Console.WriteLine("promise claim: " + Mark(source.Task) + "/" + source.Task.Status);
+            source.SetResult(9);
+            Console.WriteLine("settled claims: " + Mark(source.Task) + "/" + Mark(completed) + "/"
+                + Mark(completed) + "/" + Mark(faulted) + "/" + Mark(canceled));
+            _ = faulted.Exception;
+
+            Task sync = null;
+            sync = new Task(() => Console.WriteLine("inline delegate: " + sync.Status + "/" + Mark(sync)));
+            sync.RunSynchronously();
+            var antecedent = new TaskCompletionSource<int>();
+            Task<int> continuation = null;
+            continuation = antecedent.Task.ContinueWith(_ => (int)continuation.Status);
+            antecedent.SetResult(1);
+            Console.WriteLine("continuation claim: " + Mark(continuation) + "/" + (TaskStatus)continuation.Result);
+            using var tokenSource = new CancellationTokenSource();
+            var filteredAntecedent = new TaskCompletionSource<int>();
+            Task Filtered(CancellationToken token) => filteredAntecedent.Task.ContinueWith(
+                _ => calls++, token, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+            var filteredNone = Filtered(CancellationToken.None);
+            var filteredToken = Filtered(tokenSource.Token);
+            bool markedNone = Mark(filteredNone);
+            bool markedToken = Mark(filteredToken);
+            filteredAntecedent.SetResult(1);
+            Console.WriteLine("filtered claims: " + markedNone + "/" + markedToken + "/"
+                + filteredNone.Status + "/" + filteredToken.Status + "/" + calls);
+            Console.WriteLine("protected task start end");
+        }
+
         internal static void RunSemaphoreWaiters()
         {
             Console.WriteLine("== semaphore waiter helpers ==");

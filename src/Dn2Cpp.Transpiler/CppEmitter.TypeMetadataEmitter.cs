@@ -2020,6 +2020,7 @@ internal sealed partial class CppEmitter
             EmitStringPrivateEntryPointRows();
             EmitDateTimeParserRows();
             EmitThreadingPrivateRows();
+            EmitTaskMarkStartedRow();
             _e.EmitArrayTypeInfos(_sb, _emittedEnums);
             _e.EmitMdArrayItfMap(_sb);
             _e.EmitArrayNongenericItfRows(_sb);
@@ -2198,6 +2199,28 @@ internal sealed partial class CppEmitter
                         case "ResetWaiterStartTime": _e._lockResetWaiterStartTimeRow = address; break;
                         case "RecordWaiterStartTime": _e._lockRecordWaiterStartTimeRow = address; break;
                     }
+                }
+            }
+        }
+
+        // Task keeps its runtime-owned identity; expose only the retained start claim.
+        private void EmitTaskMarkStartedRow()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.FullName != "System.Threading.Tasks.Task") continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (method.Name != "MarkStarted" || !CoreIntrinsics.IsTaskLifecycleNative(method)
+                        || !IsRetainedOpaqueMemberRow(method)) continue;
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "taskmarkstartedtab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained Task.MarkStarted has no metadata row.");
+                    }
+                    _e._taskMarkStartedRow = address;
+                    return;
                 }
             }
         }
@@ -4060,7 +4083,7 @@ internal sealed partial class CppEmitter
         private static bool IsReferencedIntrinsicHelperOwner(ClassInfo owner)
         {
             if (owner.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
-                || CoreIntrinsics.IsTaskPromiseOwner(owner))
+                || CoreIntrinsics.IsTaskLifecycleOwner(owner))
                 return true;
             if (owner.FullName != "System.Runtime.InteropServices.GCHandle"
                 || owner.Module.AssemblyName != "System.Private.CoreLib" || owner.Handle.IsNil
@@ -4096,7 +4119,7 @@ internal sealed partial class CppEmitter
         private bool IsReferencedIntrinsicHelperRow(MethodInfo method) =>
             method.DeclaringClass.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
                 ? IsInterpolationHelperRow(method)
-                : (CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(method) || CoreIntrinsics.IsTaskPromise(method))
+                : (CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(method) || CoreIntrinsics.IsTaskLifecycle(method))
                     && IsRetainedOpaqueMemberRow(method);
 
         private bool IsRetainedOpaqueMemberRow(MethodInfo method) =>
@@ -4105,7 +4128,7 @@ internal sealed partial class CppEmitter
             && (CoreIntrinsics.BrDelegateCallable.Matches(method)
                 || CoreIntrinsics.IsMathOverflowHelper(method)
                 || CoreIntrinsics.IsDateTimeFormatInfoBoundary(method)
-                || CoreIntrinsics.IsTaskPromiseNative(method)
+                || CoreIntrinsics.IsTaskLifecycleNative(method)
                 || CoreIntrinsics.IsThreadingPrivate(method)
                 || CoreIntrinsics.IsDateTimeCultureManagedBody(method)
                 || (CoreIntrinsics.IsRuntimeTypeHandleCopy(method) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(method))

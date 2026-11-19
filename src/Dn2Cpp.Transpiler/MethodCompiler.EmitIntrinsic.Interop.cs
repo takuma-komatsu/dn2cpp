@@ -436,8 +436,14 @@ internal sealed partial class MethodCompiler
     /// runtime plumbing, so there is nothing worth falling through to.</para></summary>
     private void EmitRuntimePrimitive(MethodInfo callee)
     {
-        if (CoreIntrinsics.IsTaskPromiseNative(callee))
+        if (CoreIntrinsics.IsTaskLifecycleNative(callee))
         {
+            if (callee.Name == "MarkStarted")
+            {
+                var receiver = Pop();
+                Push(StackKind.I4, "int32_t", $"dn2cpp_task_mark_started((Dn2CppTask*)({receiver.Expr}))");
+                return;
+            }
             if (callee.Name == "TrySetResult")
             {
                 string result = callee.Signature.ParameterTypes.Length == 0 ? "0" : EmitTaskResultStore(Pop());
