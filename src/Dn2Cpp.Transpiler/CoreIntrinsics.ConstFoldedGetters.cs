@@ -1,3 +1,6 @@
+using System.Reflection;
+using System.Reflection.Metadata;
+
 namespace Dn2Cpp;
 
 internal static partial class CoreIntrinsics
@@ -66,6 +69,30 @@ internal static partial class CoreIntrinsics
     /// const-folded. See <see cref="s_constFoldedGetters"/>.</summary>
     public static bool? ConstFoldedGetter(string declType, string name) =>
         s_constFoldedGetters.TryGetValue((declType, name), out bool v) ? v : null;
+
+    /// <summary>The exact private Rune helper whose callers all select a different
+    /// path under invariant globalization. Medium may still describe its signature,
+    /// but type-wide retention alone must not resurrect the non-invariant body.</summary>
+    internal static bool IsRuneNonInvariantCasingBody(MethodInfo method)
+    {
+        var owner = method.DeclaringClass;
+        if (method.Name != "ChangeCaseCultureAware" || owner.FullName != "System.Text.Rune"
+            || method.Module != owner.Module || method.Module.AssemblyName != "System.Private.CoreLib"
+            || !owner.IsValueType || method.Handle.IsNil || method.IsSynthetic || method.Rva == 0
+            || (method.Attributes & (MethodAttributes.MemberAccessMask | MethodAttributes.Static))
+                != (MethodAttributes.Private | MethodAttributes.Static)
+            || ConstFoldedGetter("System.Globalization.GlobalizationMode", "get_Invariant") != true)
+            return false;
+
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { } result } && result == owner
+            && signature.ParameterTypes is
+                [{ Kind: TypeKind.Class, Class: { } rune },
+                 { Kind: TypeKind.Class, Class: { FullName: "System.Globalization.TextInfo", IsValueType: false } textInfo },
+                 { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }]
+            && rune == owner && textInfo.Module == owner.Module;
+    }
 
     /// <summary>Name-only prefilter for <see cref="ConstFoldedGetter"/>, so a
     /// per-call-site probe skips declaring-type resolution for the overwhelming
