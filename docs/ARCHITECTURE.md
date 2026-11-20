@@ -110,6 +110,9 @@ lowering when it can supply a result. A member that it refuses retains metadata 
 unless an independent executable edge demands it, which still fails explicitly.
 Retention never restores managed tracing bodies. User-defined providers keep their
 ordinary managed behavior.
+In invariant globalization, public Rune casing follows the existing scalar casing
+path. Type-wide retention keeps the private non-invariant casing helper's metadata,
+not its executable body; an independent request to run it still fails explicitly.
 
 Closed generic types carry their known arguments through this closure. Open
 definitions are traversed symbolically; they do not imply every possible type or

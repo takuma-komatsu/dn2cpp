@@ -353,6 +353,8 @@ internal sealed partial class Compilation
         foreach (var method in cls.Methods.ToList())
         {
             NoteMediumMethod(method);
+            if (CoreIntrinsics.IsRuneNonInvariantCasingBody(method))
+                continue;
             // Retention needs a callable symbol, but cannot revive IL replaced by
             // a member-specific cut. Reuse the same body as an address-taken call.
             if (cls.IntrinsicCppName is null && !CoreIntrinsics.IsIntrinsicType(cls.FullName)

@@ -90,6 +90,24 @@ static partial class StrippingLevelValidation
             Cut(provider, "ScopeId", am.TypeSystem.Int32);
             entry.Emit(OpCodes.Ldtoken, am.ImportReference(provider));
             entry.Emit(OpCodes.Pop);
+
+            var textInfo = Type("System.Globalization", "TextInfo", obj);
+            var valueType = cm.GetType("System.ValueType");
+            Type("System", "UInt32", valueType);
+            var rune = Type("System.Text", "Rune", valueType);
+            rune.Attributes |= TypeAttributes.Sealed | TypeAttributes.SequentialLayout;
+            rune.Fields.Add(new FieldDefinition("_value", FieldAttributes.Private, am.TypeSystem.UInt32));
+            var nonInvariant = Method(rune, "ChangeCaseCultureAware", rune);
+            nonInvariant.Parameters.Add(new ParameterDefinition(rune));
+            nonInvariant.Parameters.Add(new ParameterDefinition(textInfo));
+            nonInvariant.Parameters.Add(new ParameterDefinition(am.TypeSystem.Boolean));
+            nonInvariant.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Call, fail));
+            nonInvariant.Body.Instructions.Insert(1, Instruction.Create(OpCodes.Ldarg_0));
+            // A namesake with a different signature must remain ordinarily callable.
+            var namesake = Method(rune, nonInvariant.Name, am.TypeSystem.Int32);
+            namesake.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Ldc_I4_7));
+            entry.Emit(OpCodes.Ldtoken, am.ImportReference(rune));
+            entry.Emit(OpCodes.Pop);
         }
         if (mode == "called")
         {

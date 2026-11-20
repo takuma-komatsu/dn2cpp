@@ -40,6 +40,9 @@ def validate_intercept_retention(probe, cli, original, directory, modes=("raw", 
                         "Type-wide retention emitted a refused provider callable"
                     scope = re.search(r"\bTplEventSource_ScopeId_\w+\([^;]*?\)\s*\{", text)
                     assert bool(scope) == (level == "medium"), "Wrong callable policy for a safe provider return"
+                    casing = re.findall(r"\b(Rune_ChangeCaseCultureAware_\w+)\(([^;()]*)\)\s*\{", text)
+                    assert len(casing) == (level == "medium") and all(not args for _, args in casing), \
+                        "Rune's non-invariant helper became callable or its namesake was dropped"
                     if level == "medium":
                         table = re.search(r"\bmd_native_methtab_System_Threading_Tasks_TplEventSource\[\] = \{([^;]*)\};", text)
                         assert table, "Retained provider has no method metadata table"
@@ -49,8 +52,20 @@ def validate_intercept_retention(probe, cli, original, directory, modes=("raw", 
                             "Refused provider helper lost its signature row or became invocable"
                         assert re.search(r"\(void\*\)&TplEventSource_ScopeId_\w+, \(void\*\)&inv_", table[1]), \
                             "Safe provider wrapper lost its reflection invoker"
+                        rune = re.search(r"\bmd_native_methtab_System_Text_Rune\[\] = \{([^;]*)\};", text)
+                        assert rune, "Retained Rune has no method metadata table"
+                        helper = re.search(r"\{\s*md_name_\d+, &ti_System_Text_Rune, &ti_System_Text_Rune, "
+                                           r"(parmpool_\d+), 3LL, [^,]+, -1LL, 0, 0,", rune[1])
+                        assert helper, "Rune's non-invariant helper lost its signature row or became invocable"
+                        parameters = re.search(r"\bmd_native_" + helper[1] + r"\[\] = \{([^;]*)\};", text)
+                        assert parameters and re.findall(r"\{\s*(&\w+),", parameters[1]) == [
+                            "&ti_System_Text_Rune", "&dn2cpp_textinfo_type", "&dn2cpp_bool_type"], \
+                            "Rune's non-invariant helper lost its parameter types"
+                        assert re.search(r"\(void\*\)&" + casing[0][0] + r", \(void\*\)&inv_", rune[1]), \
+                            "Rune's supported namesake lost its reflection invoker"
                 records.append({"kind": kind, "level": level, "mode": mode,
                                 "command": list(map(str, arguments)), "exit": result.returncode})
     (directory / "intercept-results.json").write_text(json.dumps(records, indent=2) + "\n")
     print("stripping-intercepts=retained-callable-members,cut-body-absent,direct-and-address", flush=True)
     print("stripping-eventsource-retention=refused-signature-only,supported-callable", flush=True)
+    print("stripping-rune-retention=non-invariant-signature-only,namesake-callable", flush=True)
