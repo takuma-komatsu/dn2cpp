@@ -35,7 +35,22 @@ def validate_intercept_retention(probe, cli, original, directory, modes=("raw", 
                     if level == "medium":
                         assert re.search(r"\(void\*\)&Buffer_" + member + r"_\w+, \(void\*\)&inv_", text), \
                             "Retained cut member lacks a reflection invoker: " + member
+                if kind == "retained":
+                    assert not re.search(r"\bTplEventSource_CreateGuidForTaskID_\w+", text), \
+                        "Type-wide retention emitted a refused provider callable"
+                    scope = re.search(r"\bTplEventSource_ScopeId_\w+\([^;]*?\)\s*\{", text)
+                    assert bool(scope) == (level == "medium"), "Wrong callable policy for a safe provider return"
+                    if level == "medium":
+                        table = re.search(r"\bmd_native_methtab_System_Threading_Tasks_TplEventSource\[\] = \{([^;]*)\};", text)
+                        assert table, "Retained provider has no method metadata table"
+                        # The GUID helper is the fixture's only one-argument Guid-returning provider member.
+                        assert re.search(r"\{\s*md_name_\d+, &ti_System_Threading_Tasks_TplEventSource, &ti_System_Guid, "
+                                         r"parmpool_\d+, 1LL, [^,]+, -1LL, 0, 0,", table[1]), \
+                            "Refused provider helper lost its signature row or became invocable"
+                        assert re.search(r"\(void\*\)&TplEventSource_ScopeId_\w+, \(void\*\)&inv_", table[1]), \
+                            "Safe provider wrapper lost its reflection invoker"
                 records.append({"kind": kind, "level": level, "mode": mode,
                                 "command": list(map(str, arguments)), "exit": result.returncode})
     (directory / "intercept-results.json").write_text(json.dumps(records, indent=2) + "\n")
     print("stripping-intercepts=retained-callable-members,cut-body-absent,direct-and-address", flush=True)
+    print("stripping-eventsource-retention=refused-signature-only,supported-callable", flush=True)

@@ -44,9 +44,9 @@ static partial class StrippingLevelValidation
         var buffer = Type("System", "Buffer", obj);
         var touch = Method(buffer, "Touch", am.TypeSystem.Void);
         touch.Attributes = MethodAttributes.Public | MethodAttributes.Static;
-        MethodDefinition Cut(string name, TypeReference result, params TypeReference[] arguments)
+        MethodDefinition Cut(TypeDefinition owner, string name, TypeReference result, params TypeReference[] arguments)
         {
-            var method = Method(buffer, name, result);
+            var method = Method(owner, name, result);
             method.Attributes = MethodAttributes.Public | MethodAttributes.Static;
             foreach (var argument in arguments) method.Parameters.Add(new ParameterDefinition(argument));
             method.Body.Instructions.Clear();
@@ -56,11 +56,11 @@ static partial class StrippingLevelValidation
             il.Emit(OpCodes.Ret);
             return method;
         }
-        var copy = Cut("BlockCopy", am.TypeSystem.Void, array, am.TypeSystem.Int32, array,
+        var copy = Cut(buffer, "BlockCopy", am.TypeSystem.Void, array, am.TypeSystem.Int32, array,
             am.TypeSystem.Int32, am.TypeSystem.Int32);
-        var length = Cut("ByteLength", am.TypeSystem.Int32, array);
-        var get = Cut("GetByte", am.TypeSystem.Byte, array, am.TypeSystem.Int32);
-        var set = Cut("SetByte", am.TypeSystem.Void, array, am.TypeSystem.Int32, am.TypeSystem.Byte);
+        var length = Cut(buffer, "ByteLength", am.TypeSystem.Int32, array);
+        var get = Cut(buffer, "GetByte", am.TypeSystem.Byte, array, am.TypeSystem.Int32);
+        var set = Cut(buffer, "SetByte", am.TypeSystem.Void, array, am.TypeSystem.Int32, am.TypeSystem.Byte);
         var main = am.EntryPoint;
         main.ReturnType = am.TypeSystem.Int32;
         main.Body = new MethodBody(main) { InitLocals = true };
@@ -71,6 +71,26 @@ static partial class StrippingLevelValidation
             entry.Emit(OpCodes.Call, am.ImportReference(setter));
         }
         entry.Emit(OpCodes.Call, am.ImportReference(touch));
+        if (mode == "retained")
+        {
+            var eventSource = Type("System.Diagnostics.Tracing", "EventSource", obj);
+            var provider = Type("System.Threading.Tasks", "TplEventSource", eventSource);
+            var guid = Type("System", "Guid", cm.GetType("System.ValueType"));
+            guid.Attributes |= TypeAttributes.Sealed | TypeAttributes.SequentialLayout;
+            for (int i = 0; i != 4; i++)
+                guid.Fields.Add(new FieldDefinition("_" + i, FieldAttributes.Private, am.TypeSystem.Int32));
+            var helper = Method(provider, "CreateGuidForTaskID", guid);
+            helper.Parameters.Add(new ParameterDefinition(am.TypeSystem.Int32));
+            helper.Body.Instructions.Clear();
+            var helperBody = helper.Body.GetILProcessor();
+            helperBody.Emit(OpCodes.Call, fail);
+            helperBody.Emit(OpCodes.Ldnull);
+            helperBody.Emit(OpCodes.Throw);
+            // A safe non-void provider return still needs a callable wrapper.
+            Cut(provider, "ScopeId", am.TypeSystem.Int32);
+            entry.Emit(OpCodes.Ldtoken, am.ImportReference(provider));
+            entry.Emit(OpCodes.Pop);
+        }
         if (mode == "called")
         {
             var bytes = new ArrayType(am.TypeSystem.Byte);

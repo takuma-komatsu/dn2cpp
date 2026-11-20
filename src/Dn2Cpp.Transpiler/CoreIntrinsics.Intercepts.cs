@@ -2947,11 +2947,24 @@ internal static partial class CoreIntrinsics
         extra: static mi => mi.Signature.ReturnType is
             { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean });
 
-    /// <summary>A retained framework tracing method uses the same no-listener
-    /// lowering as a direct call; retaining it never restores its managed body.</summary>
+    /// <summary>Framework tracing bodies always stay cut. A direct call either
+    /// uses the no-listener lowering or refuses an unsupported member.</summary>
     public static readonly MethodDefIntercept MdFrameworkEventSourceProvider = new(
         InterceptCutKind.Cut, InterceptEmitArm.EventSourceNoOp,
         extra: static mi => Compilation.IsFrameworkEventSourceProvider(mi.DeclaringClass));
+
+    /// <summary>For a member matched by the no-listener arm, whether that arm
+    /// can supply a callable body. The correlation GUID and PLINQ query ID compute
+    /// real values even without a listener and have no valid zero substitute.</summary>
+    internal static bool CanReplayFrameworkEventSourceNoOp(MethodInfo method)
+    {
+        var result = method.Signature.ReturnType;
+        return result.IsVoid
+            || result.Kind is not (TypeKind.ByRef or TypeKind.Pointer or TypeKind.GenericVar)
+            && (method.DeclaringClass.FullName, method.Name) is not
+                (("System.Linq.Parallel.PlinqEtwProvider", "NextQueryId")
+                or ("System.Threading.Tasks.TplEventSource", "CreateGuidForTaskID"));
+    }
 
     /// <summary>Regex.Compile folds to a dead null RegexRunnerFactory (its
     /// dynamic-code guard is const-folded false — the IL2CPP/NativeAOT posture),

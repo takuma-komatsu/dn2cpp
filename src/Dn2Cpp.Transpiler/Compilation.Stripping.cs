@@ -359,8 +359,15 @@ internal sealed partial class Compilation
                 && cls.PlatformIsa is null && !IsBoundedMethod(cls.FullName, method.Name)
                 && !LowersToPInvoke(method)
                 && (method.PInvoke is not { } import || NativeImplFor(import) is null)
-                && CoreIntrinsics.TryFindCutRow(method, out _))
+                && CoreIntrinsics.TryFindCutRow(method, out var row))
+            {
+                // Type-wide retention is not an invocation of an unsupported tracing member.
+                // Its signature and reflection row stay; no callable symbol is requested here.
+                if (row.EmitArm == InterceptEmitArm.EventSourceNoOp
+                    && !CoreIntrinsics.CanReplayFrameworkEventSourceNoOp(method))
+                    continue;
                 NoteInterceptFtnTarget(method);
+            }
             else
                 Reach(method);
             ReachRootInitializer(method);
