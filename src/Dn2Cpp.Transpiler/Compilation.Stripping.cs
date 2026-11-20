@@ -356,7 +356,8 @@ internal sealed partial class Compilation
             NoteMediumMethod(method);
             if (CoreIntrinsics.IsRuneNonInvariantCasingBody(method)
                 || IsUnsupportedEncodingRangeGetString(method)
-                || IsUnsupportedFixedCStrConversion(method))
+                || IsUnsupportedFixedCStrConversion(method)
+                || IsLegacyAsAnyMarshalAccessor(method))
                 continue;
             // Retention needs a callable symbol, but cannot revive IL replaced by
             // a member-specific cut. Reuse the same body as an address-taken call.
@@ -469,6 +470,94 @@ internal sealed partial class Compilation
                  { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }];
     }
 
+    private static bool IsCoreLibMarshalDefinition(Module module, TypeDefinitionHandle handle)
+    {
+        if (module.AssemblyName != "System.Private.CoreLib" || handle.IsNil)
+            return false;
+        const TypeAttributes staticClass = TypeAttributes.Abstract | TypeAttributes.Sealed;
+        var reader = module.Reader;
+        var owner = reader.GetTypeDefinition(handle);
+        return owner.GetDeclaringType().IsNil && owner.GetGenericParameters().Count == 0
+            && (owner.Attributes & (TypeAttributes.VisibilityMask | TypeAttributes.Interface | staticClass))
+                == (TypeAttributes.Public | staticClass)
+            && reader.StringComparer.Equals(owner.Namespace, "System.Runtime.InteropServices")
+            && reader.StringComparer.Equals(owner.Name, "Marshal");
+    }
+
+    // The obsolete object overloads use CoreCLR's AsAny marshaller. Retaining Marshal
+    // does not make that boundary executable, and must not affect its IntPtr overloads.
+    internal static bool IsLegacyAsAnyMarshalAccessor(MethodInfo method)
+    {
+        var owner = method.DeclaringClass;
+        const MethodAttributes accessor = MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig;
+        if (owner.FullName != "System.Runtime.InteropServices.Marshal" || method.Module != owner.Module
+            || method.IsSynthetic || method.Handle.IsNil || method.Attributes != accessor
+            || method.ImplAttributes != MethodImplAttributes.IL || method.Rva == 0 || method.PInvoke is not null
+            || !IsCoreLibMarshalDefinition(method.Module, owner.Handle))
+            return false;
+        var (value, write) = method.Name switch
+        {
+            "ReadByte" => (SignatureTypeCode.Byte, false),
+            "ReadInt16" => (SignatureTypeCode.Int16, false),
+            "ReadInt32" => (SignatureTypeCode.Int32, false),
+            "ReadInt64" => (SignatureTypeCode.Int64, false),
+            "ReadIntPtr" => (SignatureTypeCode.IntPtr, false),
+            "WriteByte" => (SignatureTypeCode.Byte, true),
+            "WriteInt16" => (SignatureTypeCode.Int16, true),
+            "WriteInt32" => (SignatureTypeCode.Int32, true),
+            "WriteInt64" => (SignatureTypeCode.Int64, true),
+            "WriteIntPtr" => (SignatureTypeCode.IntPtr, true),
+            _ => (SignatureTypeCode.Invalid, false),
+        };
+        if (value == SignatureTypeCode.Invalid)
+            return false;
+        var reader = method.Module.Reader;
+        var definition = reader.GetMethodDefinition(method.Handle);
+        if (definition.GetDeclaringType() != owner.Handle || definition.GetGenericParameters().Count != 0)
+            return false;
+        var raw = reader.GetBlobReader(definition.Signature);
+        if (raw.RemainingBytes != (write ? 6 : 5) || raw.ReadByte() != 0 || raw.ReadByte() != (write ? 3 : 2)
+            || raw.ReadByte() != (byte)(write ? SignatureTypeCode.Void : value)
+            || raw.ReadByte() != (byte)SignatureTypeCode.Object || raw.ReadByte() != (byte)SignatureTypeCode.Int32)
+            return false;
+        if (!write)
+            return true;
+        var parameter = (SignatureTypeCode)raw.ReadByte();
+        return parameter == value || value == SignatureTypeCode.Int16 && parameter == SignatureTypeCode.Char;
+    }
+
+    // Even without an instantiated accessor, an open helper's locals and operands
+    // would independently give AsAny type-wide authority through the Marshal sweep.
+    private static bool IsLegacyAsAnyMarshalOpenHelper(MetadataReader reader, MethodDefinition method)
+    {
+        const MethodAttributes helper = MethodAttributes.Private | MethodAttributes.Static | MethodAttributes.HideBySig;
+        if (method.Attributes != helper || method.ImplAttributes != MethodImplAttributes.IL
+            || method.RelativeVirtualAddress == 0 || method.GetGenericParameters().Count != 1)
+            return false;
+        bool write = reader.StringComparer.Equals(method.Name, "WriteValueSlow");
+        if (!write && !reader.StringComparer.Equals(method.Name, "ReadValueSlow"))
+            return false;
+        var raw = reader.GetBlobReader(method.Signature);
+        if (!Take(ref raw, 0x10) || !Take(ref raw, 1) || !Take(ref raw, write ? 4 : 3)
+            || !(write ? Take(ref raw, (byte)SignatureTypeCode.Void) : MethodParameter(ref raw))
+            || !Take(ref raw, (byte)SignatureTypeCode.Object) || !Take(ref raw, (byte)SignatureTypeCode.Int32)
+            || write && !MethodParameter(ref raw)
+            || !Take(ref raw, (byte)SignatureTypeCode.GenericTypeInstance) || !Take(ref raw, 0x12)
+            || !raw.TryReadCompressedInteger(out int token) || (token & 3) != 0
+            || (token >> 2) == 0 || (token >> 2) > reader.TypeDefinitions.Count
+            || !Take(ref raw, 3) || !Take(ref raw, (byte)SignatureTypeCode.IntPtr)
+            || !Take(ref raw, (byte)SignatureTypeCode.Int32) || !MethodParameter(ref raw) || raw.RemainingBytes != 0)
+            return false;
+        var callback = reader.GetTypeDefinition(SRME.TypeDefinitionHandle(token >> 2));
+        return callback.GetDeclaringType().IsNil && callback.GetGenericParameters().Count == 3
+            && reader.StringComparer.Equals(callback.Namespace, "System")
+            && reader.StringComparer.Equals(callback.Name, write ? "Action`3" : "Func`3");
+
+        static bool Take(ref BlobReader raw, int value) => raw.RemainingBytes > 0 && raw.ReadByte() == value;
+        static bool MethodParameter(ref BlobReader raw) =>
+            Take(ref raw, (byte)SignatureTypeCode.GenericMethodParameter) && Take(ref raw, 0);
+    }
+
     private void RetainMediumDefinition(Module module, TypeDefinitionHandle handle, GenericContext context)
     {
         if (handle.IsNil)
@@ -513,6 +602,7 @@ internal sealed partial class Compilation
         // Replaced calls do not consume their signature types as managed runtime
         // state. Keep metadata without promoting discarded payloads or return types.
         bool nativeSignatures = MediumNativeSignatureOwner(GetTypeDescForDefinition(module, handle));
+        bool marshal = storageOwner == "System.Runtime.InteropServices.Marshal" && IsCoreLibMarshalDefinition(module, handle);
         foreach (var methodHandle in definition.GetMethods())
         {
             var method = reader.GetMethodDefinition(methodHandle);
@@ -523,6 +613,7 @@ internal sealed partial class Compilation
                 NoteMediumAttributes(module, reader.GetParameter(parameter).GetCustomAttributes());
             if ((context.TypeArgs.Length == 0 && definition.GetGenericParameters().Count > 0
                     || method.GetGenericParameters().Count > 0)
+                && !(marshal && IsLegacyAsAnyMarshalOpenHelper(reader, method))
                 && MediumTraversesOpenBody(module, handle, method))
             {
                 var body = module.PE.GetMethodBody(method.RelativeVirtualAddress);
