@@ -108,6 +108,34 @@ static partial class StrippingLevelValidation
             namesake.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Ldc_I4_7));
             entry.Emit(OpCodes.Ldtoken, am.ImportReference(rune));
             entry.Emit(OpCodes.Pop);
+
+            var encoding = Type("System.Text", "Encoding", obj);
+            encoding.Attributes |= TypeAttributes.Abstract;
+            var utf32 = Type("System.Text", "UTF32Encoding", encoding);
+            utf32.Attributes |= TypeAttributes.Sealed;
+            const MethodAttributes rangeAttributes = MethodAttributes.Public | MethodAttributes.Virtual
+                | MethodAttributes.HideBySig;
+            var baseRange = new MethodDefinition("GetString",
+                rangeAttributes | MethodAttributes.NewSlot | MethodAttributes.Abstract, am.TypeSystem.String);
+            encoding.Methods.Add(baseRange);
+            var range = new MethodDefinition(baseRange.Name, rangeAttributes, am.TypeSystem.String);
+            utf32.Methods.Add(range);
+            foreach (var method in new[] { baseRange, range })
+            {
+                method.Parameters.Add(new ParameterDefinition(new ArrayType(am.TypeSystem.Byte)));
+                method.Parameters.Add(new ParameterDefinition(am.TypeSystem.Int32));
+                method.Parameters.Add(new ParameterDefinition(am.TypeSystem.Int32));
+            }
+            var rangeBody = range.Body.GetILProcessor();
+            rangeBody.Emit(OpCodes.Call, fail);
+            rangeBody.Emit(OpCodes.Ldnull);
+            rangeBody.Emit(OpCodes.Throw);
+
+            var utf32Namesake = Method(utf32, range.Name, am.TypeSystem.String);
+            utf32Namesake.Parameters.Add(new ParameterDefinition(am.TypeSystem.Int32));
+            utf32Namesake.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Ldstr, "UTF32 namesake"));
+            entry.Emit(OpCodes.Ldtoken, am.ImportReference(utf32));
+            entry.Emit(OpCodes.Pop);
         }
         if (mode == "called")
         {
