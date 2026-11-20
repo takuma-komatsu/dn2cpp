@@ -354,7 +354,9 @@ internal sealed partial class Compilation
         foreach (var method in cls.Methods.ToList())
         {
             NoteMediumMethod(method);
-            if (CoreIntrinsics.IsRuneNonInvariantCasingBody(method) || IsUnsupportedEncodingRangeGetString(method))
+            if (CoreIntrinsics.IsRuneNonInvariantCasingBody(method)
+                || IsUnsupportedEncodingRangeGetString(method)
+                || IsUnsupportedFixedCStrConversion(method))
                 continue;
             // Retention needs a callable symbol, but cannot revive IL replaced by
             // a member-specific cut. Reuse the same body as an address-taken call.
@@ -423,6 +425,47 @@ internal sealed partial class Compilation
             && signature.ParameterTypes is
                 [{ Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte } },
                  { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+                 { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }];
+    }
+
+    // The CoreCLR stub is not needed by dn2cpp's layout-only ByValTStr model.
+    // A type sweep keeps its signature without demanding the conversion body.
+    private static bool IsUnsupportedFixedCStrConversion(MethodInfo method)
+    {
+        const MethodAttributes expected = MethodAttributes.Assembly | MethodAttributes.Static | MethodAttributes.HideBySig;
+        const TypeAttributes staticClass = TypeAttributes.Abstract | TypeAttributes.Sealed;
+        var owner = method.DeclaringClass;
+        if (method.Name != "ConvertFixedToManaged" || owner.FullName != "System.StubHelpers.CSTRMarshaler"
+            || method.Module != owner.Module || method.Module.AssemblyName != "System.Private.CoreLib"
+            || owner.Handle.IsNil || owner.IsValueType || owner.IsInterface || owner.GenericArity != 0
+            || method.Handle.IsNil || method.IsSynthetic || method.Rva == 0
+            || method.Attributes != expected || method.ImplAttributes != MethodImplAttributes.IL || method.PInvoke is not null)
+            return false;
+
+        var reader = method.Module.Reader;
+        var type = reader.GetTypeDefinition(owner.Handle);
+        var definition = reader.GetMethodDefinition(method.Handle);
+        if (!type.GetDeclaringType().IsNil || type.GetGenericParameters().Count != 0
+            || (type.Attributes & (TypeAttributes.VisibilityMask | staticClass)) != (TypeAttributes.NotPublic | staticClass)
+            || !reader.StringComparer.Equals(type.Namespace, "System.StubHelpers")
+            || !reader.StringComparer.Equals(type.Name, "CSTRMarshaler")
+            || definition.GetDeclaringType() != owner.Handle
+            || !reader.StringComparer.Equals(definition.Name, "ConvertFixedToManaged")
+            || definition.Attributes != expected || definition.ImplAttributes != MethodImplAttributes.IL
+            || definition.RelativeVirtualAddress != method.Rva || definition.GetGenericParameters().Count != 0)
+            return false;
+
+        var raw = reader.GetBlobReader(definition.Signature);
+        if (raw.RemainingBytes != 5 || raw.ReadByte() != 0 || raw.ReadByte() != 2
+            || raw.ReadByte() != (byte)SignatureTypeCode.String || raw.ReadByte() != (byte)SignatureTypeCode.IntPtr
+            || raw.ReadByte() != (byte)SignatureTypeCode.Int32)
+            return false;
+
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.RequiredParameterCount == 2 && signature.ReturnType.IsString
+            && signature.ParameterTypes is
+                [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.IntPtr },
                  { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }];
     }
 

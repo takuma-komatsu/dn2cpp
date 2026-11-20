@@ -82,6 +82,24 @@ def validate_intercept_retention(probe, cli, original, directory, modes=("raw", 
                                 f"{owner}: range override lost its parameter types"
                             assert re.search(r"\(void\*\)&" + bodies[0] + r", \(void\*\)&inv_", table[1]), \
                                 f"{owner}: namesake lost its reflection invoker"
+
+                    cstr_bodies = re.findall(r"\b(CSTRMarshaler_ConvertFixedToManaged_\w+)\([^;()]*\)\s*\{", text)
+                    assert len(cstr_bodies) == (level == "medium"), \
+                        "CSTRMarshaler's conversion became callable or its namesake was dropped"
+                    if level == "medium":
+                        cstr = re.search(
+                            r"\bmd_native_methtab_System_StubHelpers_CSTRMarshaler\[\] = \{([^;]*)\};", text)
+                        assert cstr, "Retained CSTRMarshaler has no method metadata table"
+                        convert_row = re.search(
+                            r"\{\s*md_name_\d+, &ti_System_StubHelpers_CSTRMarshaler, &dn2cpp_string_type, "
+                            r"(parmpool_\d+), 2LL, [^,]+, -1LL, 0, 0,", cstr[1])
+                        assert convert_row, "CSTRMarshaler's conversion lost its signature row or became invocable"
+                        parameters = re.search(r"\bmd_native_" + convert_row[1] + r"\[\] = \{([^;]*)\};", text)
+                        assert parameters and re.findall(r"\{\s*(&\w+),", parameters[1]) == [
+                            "&dn2cpp_intptr_type", "&dn2cpp_int32_type"], \
+                            "CSTRMarshaler's conversion lost its parameter types"
+                        assert re.search(r"\(void\*\)&" + cstr_bodies[0] + r", \(void\*\)&inv_", cstr[1]), \
+                            "CSTRMarshaler's namesake lost its reflection invoker"
                 records.append({"kind": kind, "level": level, "mode": mode,
                                 "command": list(map(str, arguments)), "exit": result.returncode})
     (directory / "intercept-results.json").write_text(json.dumps(records, indent=2) + "\n")

@@ -23,6 +23,7 @@ static partial class StrippingLevelValidation
             return type;
         }
         Type("System", "Byte", cm.GetType("System.ValueType"));
+        Type("System", "IntPtr", cm.GetType("System.ValueType"));
         var array = Type("System", "Array", obj);
         var culture = Type("System.Globalization", "CultureInfo", obj);
         var invariant = Method(culture, "get_InvariantCulture", culture);
@@ -141,6 +142,25 @@ static partial class StrippingLevelValidation
             }
             RetainEncoding("UTF32Encoding", isSealed: true);
             RetainEncoding("UTF7Encoding", isSealed: false);
+
+            var cstr = Type("System.StubHelpers", "CSTRMarshaler", obj);
+            cstr.Attributes = TypeAttributes.NotPublic | TypeAttributes.Abstract | TypeAttributes.Sealed;
+            var convert = Method(cstr, "ConvertFixedToManaged", am.TypeSystem.String);
+            convert.Attributes = MethodAttributes.Assembly | MethodAttributes.Static | MethodAttributes.HideBySig;
+            convert.Parameters.Add(new ParameterDefinition(am.TypeSystem.IntPtr));
+            convert.Parameters.Add(new ParameterDefinition(am.TypeSystem.Int32));
+            convert.Body.Instructions.Clear();
+            var convertBody = convert.Body.GetILProcessor();
+            convertBody.Emit(OpCodes.Call, fail);
+            convertBody.Emit(OpCodes.Ldnull);
+            convertBody.Emit(OpCodes.Throw);
+
+            var convertNamesake = Method(cstr, convert.Name, am.TypeSystem.String);
+            convertNamesake.Parameters.Add(new ParameterDefinition(am.TypeSystem.Int32));
+            convertNamesake.Parameters.Add(new ParameterDefinition(am.TypeSystem.Int32));
+            convertNamesake.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Ldstr, "CSTR namesake"));
+            entry.Emit(OpCodes.Ldtoken, am.ImportReference(cstr));
+            entry.Emit(OpCodes.Pop);
         }
         if (mode == "called")
         {
