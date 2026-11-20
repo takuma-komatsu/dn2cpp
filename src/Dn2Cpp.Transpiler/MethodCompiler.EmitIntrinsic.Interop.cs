@@ -1692,8 +1692,7 @@ internal sealed partial class MethodCompiler
     /// return type's default, which is exactly the value .NET returns when no listener is
     /// attached, and which its paired stop method already accepts;</item>
     /// <item>a byref / pointer / generic-parameter return, or a member that computes a
-    /// real value even with no listener (see <see cref="IsRealValueProviderMember"/>), has
-    /// no safe default and still fails loudly.</item>
+    /// real value even with no listener, has no safe default and still fails loudly.</item>
     /// </list>
     /// Reached both intra-assembly (MethodDef) and cross-assembly (MemberRef), and the
     /// guards do execute at runtime, so the lowering must fold safely rather than assume
@@ -1740,8 +1739,7 @@ internal sealed partial class MethodCompiler
             // (a forward guard — no modeled zero), and the members that compute a real
             // value even with no listener attached.
             TypeDesc rt = callee.Signature.ReturnType;
-            if (rt.Kind is TypeKind.ByRef or TypeKind.Pointer or TypeKind.GenericVar
-                || IsRealValueProviderMember(dt, callee.Name))
+            if (!CoreIntrinsics.CanReplayFrameworkEventSourceNoOp(callee))
                 throw new NotSupportedException(
                     $"{Method.DeclaringClass.FullName}.{Method.Name}: call to "
                     + $"{dt}.{callee.Name} — a non-void member on a no-op EventSource "
@@ -1758,16 +1756,6 @@ internal sealed partial class MethodCompiler
         }
         return false;
     }
-
-    /// <summary>The only two framework EventSource-provider members whose value is computed
-    /// unconditionally — not gated on a listener — so folding them to their return-type
-    /// default would be a wrong answer, not the no-listener answer:
-    /// <c>PlinqEtwProvider.NextQueryId</c> (a monotonic query-id counter) and
-    /// <c>TplEventSource.CreateGuidForTaskID</c> (a deterministic Guid from the task
-    /// id).</summary>
-    private static bool IsRealValueProviderMember(string declType, string name) =>
-        (declType == "System.Linq.Parallel.PlinqEtwProvider" && name == "NextQueryId")
-        || (declType == "System.Threading.Tasks.TplEventSource" && name == "CreateGuidForTaskID");
 
     /// <summary>The runtime primitives the real <c>ArrayPool&lt;T&gt;.Shared</c> BCL IL
     /// reaches, each an in-CoreLib MethodDef call whose real body is a QCall/InternalCall or

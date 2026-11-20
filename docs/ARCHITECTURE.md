@@ -106,8 +106,10 @@ providers retain metadata identities without introducing executable type-wide de
 for unused return types or discarded tracing payloads. Independently constructed or
 explicitly preserved payload types keep their normal executable retention.
 Retained framework-provider methods use callable wrappers of the existing no-listener
-lowering, including its unsupported-return checks; retention never restores their
-managed tracing bodies. User-defined providers keep their ordinary managed behavior.
+lowering when it can supply a result. A member that it refuses retains metadata only
+unless an independent executable edge demands it, which still fails explicitly.
+Retention never restores managed tracing bodies. User-defined providers keep their
+ordinary managed behavior.
 
 Closed generic types carry their known arguments through this closure. Open
 definitions are traversed symbolically; they do not imply every possible type or
