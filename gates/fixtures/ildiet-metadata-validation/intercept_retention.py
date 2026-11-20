@@ -64,22 +64,24 @@ def validate_intercept_retention(probe, cli, original, directory, modes=("raw", 
                         assert re.search(r"\(void\*\)&" + casing[0][0] + r", \(void\*\)&inv_", rune[1]), \
                             "Rune's supported namesake lost its reflection invoker"
 
-                    utf32_bodies = re.findall(r"\b(UTF32Encoding_GetString_\w+)\([^;()]*\)\s*\{", text)
-                    assert len(utf32_bodies) == (level == "medium"), \
-                        "The UTF-32 range override became callable or its namesake was dropped"
-                    if level == "medium":
-                        utf32 = re.search(r"\bmd_native_methtab_System_Text_UTF32Encoding\[\] = \{([^;]*)\};", text)
-                        assert utf32, "Retained UTF32Encoding has no method metadata table"
-                        range_row = re.search(
-                            r"\{\s*md_name_\d+, &ti_System_Text_UTF32Encoding, &dn2cpp_string_type, "
-                            r"(parmpool_\d+), 3LL, [^,]+, \d+LL, 0, 0,", utf32[1])
-                        assert range_row, "UTF-32 range override lost its signature row or became invocable"
-                        parameters = re.search(r"\bmd_native_" + range_row[1] + r"\[\] = \{([^;]*)\};", text)
-                        assert parameters and re.findall(r"\{\s*(&\w+),", parameters[1]) == [
-                            "&ti_arr_Byte", "&dn2cpp_int32_type", "&dn2cpp_int32_type"], \
-                            "UTF-32 range override lost its parameter types"
-                        assert re.search(r"\(void\*\)&" + utf32_bodies[0] + r", \(void\*\)&inv_", utf32[1]), \
-                            "UTF-32 namesake lost its reflection invoker"
+                    for owner in ("UTF32Encoding", "UTF7Encoding"):
+                        bodies = re.findall(rf"\b({owner}_GetString_\w+)\([^;()]*\)\s*\{{", text)
+                        assert len(bodies) == (level == "medium"), \
+                            f"{owner}: range override became callable or namesake was dropped"
+                        if level == "medium":
+                            table = re.search(
+                                rf"\bmd_native_methtab_System_Text_{owner}\[\] = \{{([^;]*)\}};", text)
+                            assert table, f"{owner}: no retained method metadata table"
+                            range_row = re.search(
+                                rf"\{{\s*md_name_\d+, &ti_System_Text_{owner}, &dn2cpp_string_type, "
+                                r"(parmpool_\d+), 3LL, [^,]+, \d+LL, 0, 0,", table[1])
+                            assert range_row, f"{owner}: range override lost its signature row or became invocable"
+                            parameters = re.search(r"\bmd_native_" + range_row[1] + r"\[\] = \{([^;]*)\};", text)
+                            assert parameters and re.findall(r"\{\s*(&\w+),", parameters[1]) == [
+                                "&ti_arr_Byte", "&dn2cpp_int32_type", "&dn2cpp_int32_type"], \
+                                f"{owner}: range override lost its parameter types"
+                            assert re.search(r"\(void\*\)&" + bodies[0] + r", \(void\*\)&inv_", table[1]), \
+                                f"{owner}: namesake lost its reflection invoker"
                 records.append({"kind": kind, "level": level, "mode": mode,
                                 "command": list(map(str, arguments)), "exit": result.returncode})
     (directory / "intercept-results.json").write_text(json.dumps(records, indent=2) + "\n")

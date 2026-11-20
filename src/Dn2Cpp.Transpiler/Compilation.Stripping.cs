@@ -354,7 +354,7 @@ internal sealed partial class Compilation
         foreach (var method in cls.Methods.ToList())
         {
             NoteMediumMethod(method);
-            if (CoreIntrinsics.IsRuneNonInvariantCasingBody(method) || IsUtf32RangeGetString(method))
+            if (CoreIntrinsics.IsRuneNonInvariantCasingBody(method) || IsUnsupportedEncodingRangeGetString(method))
                 continue;
             // Retention needs a callable symbol, but cannot revive IL replaced by
             // a member-specific cut. Reuse the same body as an address-taken call.
@@ -383,13 +383,14 @@ internal sealed partial class Compilation
             ReachAllocatedType(cls);
     }
 
-    // The concrete UTF-32 range override has no lowering for arbitrary receiver state.
-    // Keep its signature without treating a type sweep as a request to execute it.
-    private static bool IsUtf32RangeGetString(MethodInfo method)
+    // The concrete UTF-7 and UTF-32 range overrides have no lowering for their
+    // receiver state. A type sweep keeps their signatures, not executable bodies.
+    private static bool IsUnsupportedEncodingRangeGetString(MethodInfo method)
     {
         const MethodAttributes expected = MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.HideBySig;
         var owner = method.DeclaringClass;
-        if (method.Name != "GetString" || owner.FullName != "System.Text.UTF32Encoding"
+        if (method.Name != "GetString"
+            || owner.FullName is not ("System.Text.UTF7Encoding" or "System.Text.UTF32Encoding")
             || method.Module != owner.Module || method.Module.AssemblyName != "System.Private.CoreLib"
             || owner.Handle.IsNil || owner.IsValueType || owner.IsInterface || owner.GenericArity != 0
             || owner.BaseClass is not { FullName: "System.Text.Encoding" } encoding || encoding.Module != owner.Module
@@ -402,7 +403,8 @@ internal sealed partial class Compilation
         var definition = reader.GetMethodDefinition(method.Handle);
         if (!type.GetDeclaringType().IsNil || type.GetGenericParameters().Count != 0
             || !reader.StringComparer.Equals(type.Namespace, "System.Text")
-            || !reader.StringComparer.Equals(type.Name, "UTF32Encoding")
+            || !reader.StringComparer.Equals(type.Name,
+                owner.FullName == "System.Text.UTF7Encoding" ? "UTF7Encoding" : "UTF32Encoding")
             || definition.GetDeclaringType() != owner.Handle || !reader.StringComparer.Equals(definition.Name, "GetString")
             || definition.Attributes != expected || definition.ImplAttributes != MethodImplAttributes.IL
             || definition.RelativeVirtualAddress != method.Rva || definition.GetGenericParameters().Count != 0)

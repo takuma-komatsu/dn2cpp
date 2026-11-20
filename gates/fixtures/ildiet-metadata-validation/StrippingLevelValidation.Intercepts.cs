@@ -111,31 +111,36 @@ static partial class StrippingLevelValidation
 
             var encoding = Type("System.Text", "Encoding", obj);
             encoding.Attributes |= TypeAttributes.Abstract;
-            var utf32 = Type("System.Text", "UTF32Encoding", encoding);
-            utf32.Attributes |= TypeAttributes.Sealed;
             const MethodAttributes rangeAttributes = MethodAttributes.Public | MethodAttributes.Virtual
                 | MethodAttributes.HideBySig;
-            var baseRange = new MethodDefinition("GetString",
-                rangeAttributes | MethodAttributes.NewSlot | MethodAttributes.Abstract, am.TypeSystem.String);
-            encoding.Methods.Add(baseRange);
-            var range = new MethodDefinition(baseRange.Name, rangeAttributes, am.TypeSystem.String);
-            utf32.Methods.Add(range);
-            foreach (var method in new[] { baseRange, range })
+            MethodDefinition AddRange(TypeDefinition owner, MethodAttributes attributes)
             {
+                var method = new MethodDefinition("GetString", attributes, am.TypeSystem.String);
+                owner.Methods.Add(method);
                 method.Parameters.Add(new ParameterDefinition(new ArrayType(am.TypeSystem.Byte)));
                 method.Parameters.Add(new ParameterDefinition(am.TypeSystem.Int32));
                 method.Parameters.Add(new ParameterDefinition(am.TypeSystem.Int32));
+                return method;
             }
-            var rangeBody = range.Body.GetILProcessor();
-            rangeBody.Emit(OpCodes.Call, fail);
-            rangeBody.Emit(OpCodes.Ldnull);
-            rangeBody.Emit(OpCodes.Throw);
+            AddRange(encoding, rangeAttributes | MethodAttributes.NewSlot | MethodAttributes.Abstract);
+            void RetainEncoding(string name, bool isSealed)
+            {
+                var owner = Type("System.Text", name, encoding);
+                if (isSealed) owner.Attributes |= TypeAttributes.Sealed;
+                var range = AddRange(owner, rangeAttributes);
+                var rangeBody = range.Body.GetILProcessor();
+                rangeBody.Emit(OpCodes.Call, fail);
+                rangeBody.Emit(OpCodes.Ldnull);
+                rangeBody.Emit(OpCodes.Throw);
 
-            var utf32Namesake = Method(utf32, range.Name, am.TypeSystem.String);
-            utf32Namesake.Parameters.Add(new ParameterDefinition(am.TypeSystem.Int32));
-            utf32Namesake.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Ldstr, "UTF32 namesake"));
-            entry.Emit(OpCodes.Ldtoken, am.ImportReference(utf32));
-            entry.Emit(OpCodes.Pop);
+                var encodingNamesake = Method(owner, range.Name, am.TypeSystem.String);
+                encodingNamesake.Parameters.Add(new ParameterDefinition(am.TypeSystem.Int32));
+                encodingNamesake.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Ldstr, name + " namesake"));
+                entry.Emit(OpCodes.Ldtoken, am.ImportReference(owner));
+                entry.Emit(OpCodes.Pop);
+            }
+            RetainEncoding("UTF32Encoding", isSealed: true);
+            RetainEncoding("UTF7Encoding", isSealed: false);
         }
         if (mode == "called")
         {
