@@ -78,8 +78,13 @@ constructors, methods and property/event accessors and their reflection metadata
 Retained bodies and member structure add further demands until the queue drains.
 A nested type's declaring owner and custom-modifier marker types keep their
 metadata identity without acquiring type-wide authority. The wrapped signature
-type still participates. Existing intrinsic and explicit-cut boundaries govern
-body analysis.
+type still participates. The CoreLib `DebuggerTypeProxyAttribute(System.Type)`
+constructor names a debugger view, not an executable dependency. On a
+Medium-retained owner its fixed argument keeps the view's type identity, even
+for an open generic with no closed use. Its named arguments and independently
+called or explicitly preserved view members follow their usual rules. An
+attribute with that same name in another assembly is an ordinary attribute.
+Existing intrinsic and explicit-cut boundaries govern body analysis.
 Member-specific cuts retain callable wrappers from the same lowering used by
 address-taken calls; retention never restores their replaced IL bodies.
 Native storage ownership is explicit and shared by both retention stages; an

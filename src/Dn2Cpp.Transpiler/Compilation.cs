@@ -5779,7 +5779,8 @@ internal sealed partial class Compilation
             }
             // Retaining a replaced method's state-machine attribute preserves its
             // type identity, not a reflection-member seed. Actual reads use the default.
-            bool keepFixedArguments = keep && !(identityOnlyStateMachines && da.AttrClass.FullName is
+            bool keepFixedArguments = keep && !IsMediumProxyConstructor(da.Ctor)
+                && !(identityOnlyStateMachines && da.AttrClass.FullName is
                 "System.Runtime.CompilerServices.AsyncStateMachineAttribute"
                 or "System.Runtime.CompilerServices.IteratorStateMachineAttribute"
                 or "System.Runtime.CompilerServices.AsyncIteratorStateMachineAttribute");

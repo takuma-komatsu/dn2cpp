@@ -5283,7 +5283,8 @@ internal sealed partial class CppEmitter
         var argExprs = new List<string>();
         for (int i = 0; i < ps.Length; i++)
         {
-            if (RenderAttrValue(ps[i], da.Fixed[i].Type, da.Fixed[i].Value, pre, ref arrSeq) is not { } e)
+            if (RenderAttrValue(ps[i], da.Fixed[i].Type, da.Fixed[i].Value, pre, ref arrSeq,
+                    requireResolvedOpenView: _c.IsMediumProxyConstructor(da.Ctor)) is not { } e)
                 return null;
             // A pointer-typed parameter (Type/string/array) gets an explicit cast to
             // the ctor's exact C++ parameter type (e.g. Dn2CppType* -> t_System_Type*
@@ -5413,7 +5414,8 @@ internal sealed partial class CppEmitter
         };
     }
 
-    private string? RenderAttrValue(TypeDesc target, TypeDesc encoded, object? value, List<string> pre, ref int arrSeq)
+    private string? RenderAttrValue(TypeDesc target, TypeDesc encoded, object? value, List<string> pre, ref int arrSeq,
+        bool requireResolvedOpenView = false)
     {
         if (target.IsObject)
             return RenderBoxedAttrValue(encoded, value, pre, ref arrSeq);
@@ -5425,7 +5427,10 @@ internal sealed partial class CppEmitter
                 return "(Dn2CppType*)nullptr";
             if (value is not TypeDesc td)
                 return null;
-            if (AttrTypeHandle(td) is { } handle)
+            // A different retained proxy can already have a handle with this display name.
+            bool unresolvedOpenView = requireResolvedOpenView && td is { Kind: TypeKind.External, ExternalAssembly: not null }
+                && Compilation.OpenGenericDefBacktickNameOf(td) is not null;
+            if (!unresolvedOpenView && AttrTypeHandle(td) is { } handle)
                 return $"dn2cpp_get_type_from_handle({handle})";
             // An open definition with no emitted instantiation has no handle, so it
             // stays unrenderable — and dropping it drops the WHOLE attribute. Keep

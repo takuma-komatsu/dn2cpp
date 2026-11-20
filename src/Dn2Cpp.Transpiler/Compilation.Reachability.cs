@@ -5260,11 +5260,7 @@ internal sealed partial class Compilation
     private DecodedAttribute? DecodeCustomAttribute(Module module, CustomAttributeHandle handle, bool reachedCtorsOnly)
     {
         var ca = module.Reader.GetCustomAttribute(handle);
-        MethodInfo? ctor = null;
-        if (ca.Constructor.Kind == HandleKind.MethodDefinition)
-            module.MethodMap.TryGetValue((MethodDefinitionHandle)ca.Constructor, out ctor);
-        else if (ca.Constructor.Kind == HandleKind.MemberReference)
-            ctor = ResolveAttrCtorRef(module, (MemberReferenceHandle)ca.Constructor);
+        MethodInfo? ctor = ResolveAttributeConstructor(module, ca.Constructor);
         if (ctor is null
             || (IsFrameworkAssemblyName(ctor.DeclaringClass.Module.AssemblyName)
                 && !IsUserTypeofNamedFrameworkType(ctor.DeclaringClass.FullName))
@@ -5281,6 +5277,13 @@ internal sealed partial class Compilation
             Named = val.NamedArguments,
         };
     }
+
+    private MethodInfo? ResolveAttributeConstructor(Module module, EntityHandle handle) => handle.Kind switch
+    {
+        HandleKind.MethodDefinition => module.MethodMap.GetValueOrDefault((MethodDefinitionHandle)handle),
+        HandleKind.MemberReference => ResolveAttrCtorRef(module, (MemberReferenceHandle)handle),
+        _ => null,
+    };
 
     /// <summary>Resolves a custom attribute's constructor MemberReference to the loaded
     /// attribute class's matching .ctor. Two parent shapes reach here. A TypeReference is
@@ -5335,7 +5338,10 @@ internal sealed partial class Compilation
                             TypeRefFullName(reader, (TypeReferenceHandle)mr.Parent))))
                     return null;
                 string full = TypeRefFullName(reader, (TypeReferenceHandle)mr.Parent);
-                if (FindClassByFullName(full) is not { } found)
+                // The proxy constructor's assembly is part of its retention contract.
+                var found = _strippingLevel == StrippingLevel.Medium && full == DebuggerProxyRetention.AttributeName
+                    ? ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class : FindClassByFullName(full);
+                if (found is null)
                     return null;
                 cls = found;
                 sig = mr.DecodeMethodSignature(SigProvider, cls.Context);

@@ -540,16 +540,9 @@ internal sealed partial class AssemblyDiet : IDisposable
         try
         {
             bool registration = IsRegistrationAttribute(attribute, provider);
-            bool stateMachine = signatureOnly && IsStateMachineAttribute(attribute);
             foreach (var argument in attribute.ConstructorArguments)
                 if (registration && IsTypeArray(argument)) MarkType(argument.Type);
-                else if (stateMachine && argument.Value is TypeReference machine)
-                {
-                    // Compiler state-machine metadata must not root a deferred body.
-                    MarkType(argument.Type);
-                    MarkSignatureType(machine);
-                }
-                else MarkArgument(argument);
+                else MarkFixedAttributeArgument(attribute, argument, signatureOnly);
             var type = Resolve(attribute.AttributeType);
             foreach (var argument in attribute.Fields)
             {
@@ -574,6 +567,30 @@ internal sealed partial class AssemblyDiet : IDisposable
         "System.Runtime.CompilerServices.AsyncStateMachineAttribute"
         or "System.Runtime.CompilerServices.IteratorStateMachineAttribute"
         or "System.Runtime.CompilerServices.AsyncIteratorStateMachineAttribute";
+
+    private bool IsMetadataOnlyFixedType(CustomAttribute attribute, bool signatureOnly)
+    {
+        // A signature-only method does not activate its state-machine body.
+        if (signatureOnly && IsStateMachineAttribute(attribute)) return true;
+        if (_request.StrippingLevel != StrippingLevel.Medium
+            || attribute.AttributeType.FullName != DebuggerProxyRetention.AttributeName
+            || attribute.Constructor.Parameters.Count != 1
+            || ResolveMember(attribute.Constructor) is not MethodDefinition constructor
+            || !constructor.IsConstructor || constructor.IsStatic || constructor.Parameters.Count != 1) return false;
+        return DebuggerProxyRetention.IsProxyTypeConstructor(constructor.DeclaringType.FullName,
+            constructor.Module.Assembly.Name.Name == "System.Private.CoreLib", constructor.Parameters[0].ParameterType.FullName);
+    }
+
+    private void MarkFixedAttributeArgument(CustomAttribute attribute, CustomAttributeArgument argument,
+        bool signatureOnly = false)
+    {
+        if (argument.Value is TypeReference value && IsMetadataOnlyFixedType(attribute, signatureOnly))
+        {
+            MarkType(argument.Type);
+            MarkSignatureType(value);
+        }
+        else MarkArgument(argument);
+    }
 
     private void ApplyExecutableAttributeDelta(MethodDefinition method)
     {

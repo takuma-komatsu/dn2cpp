@@ -377,7 +377,7 @@ internal sealed partial class AssemblyDiet
         if (ResolveMember(attribute.Constructor) is MethodDefinition constructor) NoteReflectionInvokeBoxes(constructor);
         try
         {
-            foreach (var argument in EffectiveAttributeArguments(attribute)) MarkArgument(argument);
+            foreach (var argument in EffectiveAttributeArguments(attribute)) MarkFixedAttributeArgument(attribute, argument);
             foreach (var argument in attribute.Fields)
             {
                 MarkArgument(argument.Argument);
