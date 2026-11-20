@@ -303,6 +303,54 @@ static partial class StrippingLevelValidation
         var annotation = new CustomAttribute(attributeCtor);
         annotation.ConstructorArguments.Add(new CustomAttributeArgument(lm.ImportReference(typeType), targets["AttributeArgumentTarget"]));
         used.CustomAttributes.Add(annotation);
+
+        var debuggerAttribute = new TypeDefinition("System.Diagnostics", "DebuggerTypeProxyAttribute",
+            TypeAttributes.Public | TypeAttributes.Sealed, attr);
+        cm.Types.Add(debuggerAttribute);
+        var debuggerCtor = Method(debuggerAttribute, ".ctor", voidType, constructor: true);
+        debuggerCtor.IsPublic = true;
+        debuggerCtor.Parameters.Add(new ParameterDefinition(typeType));
+        var setTarget = new MethodDefinition("set_Target",
+            MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.HideBySig, voidType);
+        debuggerAttribute.Methods.Add(setTarget);
+        setTarget.Parameters.Add(new ParameterDefinition(typeType));
+        setTarget.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        debuggerAttribute.Properties.Add(new PropertyDefinition("Target", PropertyAttributes.None, typeType) { SetMethod = setTarget });
+
+        var debugProxy = Type("DebugProxy");
+        var namedTarget = Type("DebugNamedTarget");
+        var directProxy = Type("DebugDirectProxy");
+        var preservedProxy = Type("DebugPreservedProxy");
+        var homonymProxy = Type("HomonymProxy");
+        foreach (var view in new[] { debugProxy, namedTarget, directProxy, preservedProxy, homonymProxy })
+            Method(view, "Marker", voidType);
+        var openProxy = Type("DebugOpenProxy`1");
+        openProxy.GenericParameters.Add(new GenericParameter("T", openProxy));
+        Method(openProxy, "OpenMarker", voidType);
+        var homonym = new TypeDefinition(debuggerAttribute.Namespace, debuggerAttribute.Name,
+            TypeAttributes.Public | TypeAttributes.Sealed, lm.ImportReference(attr));
+        lm.Types.Add(homonym);
+        var homonymCtor = Method(homonym, ".ctor", voidType, constructor: true);
+        homonymCtor.Parameters.Add(new ParameterDefinition(lm.ImportReference(typeType)));
+        CustomAttribute ProxyRow(MethodReference constructor, TypeReference view)
+        {
+            var row = new CustomAttribute(lm.ImportReference(constructor));
+            row.ConstructorArguments.Add(new CustomAttributeArgument(lm.ImportReference(typeType), view));
+            used.CustomAttributes.Add(row);
+            return row;
+        }
+        // Only the real attribute's fixed argument is an identity-only edge.
+        ProxyRow(debuggerCtor, debugProxy).Properties.Add(new CustomAttributeNamedArgument("Target",
+            new CustomAttributeArgument(lm.ImportReference(typeType), namedTarget)));
+        ProxyRow(debuggerCtor, openProxy);
+        var wrongScope = Type("DebugMismatchedProxy`1");
+        wrongScope.GenericParameters.Add(new GenericParameter("T", wrongScope));
+        var missingViews = new AssemblyNameReference("MissingProxyViews", new Version(1, 0, 0, 0));
+        ProxyRow(debuggerCtor, new TypeReference(wrongScope.Namespace, wrongScope.Name, lm, missingViews));
+        ProxyRow(debuggerCtor, new TypeReference(openProxy.Namespace, openProxy.Name, lm, missingViews));
+        ProxyRow(debuggerCtor, directProxy);
+        ProxyRow(debuggerCtor, preservedProxy);
+        ProxyRow(homonymCtor, homonymProxy);
         var unused = Type("Unreferenced");
         Method(unused, "MustStayAbsent", lm.ImportReference(voidType));
         var metadata = Type("MetadataOnly");
@@ -349,6 +397,7 @@ static partial class StrippingLevelValidation
             main.Body.Instructions.Insert(3, Instruction.Create(OpCodes.Pop));
             AddInitializerTrace(cm, lm, am, obj, value, used, main);
         }
+        main.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Call, am.ImportReference(directProxy.Methods.Single())));
         am.EntryPoint = main;
         // Module initializers fill the startup pass; main runs the entry type's guard.
         Method(lm.Types.Single(t => t.Name == "<Module>"), ".cctor", voidType);
@@ -360,7 +409,8 @@ static partial class StrippingLevelValidation
         app.Write(Path.Combine(directory, "MediumApp.dll"), writer);
         File.WriteAllText(Path.Combine(directory, "link.xml"),
             "<linker><assembly fullname=\"MediumLib\"><type fullname=\"MediumFixture.PreservedOnly\" preserve=\"nothing\">"
-            + "<field name=\"Selected\" /></type></assembly></linker>\n");
+            + "<field name=\"Selected\" /></type><type fullname=\"MediumFixture.DebugPreservedProxy\" preserve=\"nothing\">"
+            + "<method name=\"Marker\" /></type></assembly></linker>\n");
     }
 
     static MethodDefinition Method(TypeDefinition type, string name, TypeReference result, bool constructor = false)
@@ -656,6 +706,15 @@ static partial class StrippingLevelValidation
         Require(Body("Outer/Inner", "Marker") == medium, "nested type body retention changed");
         Require(!Body("Outer", "MustStayAbsent"), "nested type widened its enclosing owner's bodies");
         Require(Body("Open`1", "Uncalled") == medium, "open generic definition lost its original body");
+        Require(!Body("DebugProxy", "Marker") && !Body("DebugOpenProxy`1", "OpenMarker"),
+            "a debugger view attribute kept proxy bodies");
+        Require(Body("DebugDirectProxy", "Marker") && Body("DebugPreservedProxy", "Marker"),
+            "a debugger view lost independent call or preservation authority");
+        Require(Body("DebugNamedTarget", "Marker") == medium && Body("HomonymProxy", "Marker") == medium,
+            "the debugger view exception widened to a named argument or a user attribute");
+        if (medium)
+            Require(mod.GetType("MediumFixture.DebugProxy") is not null && mod.GetType("MediumFixture.DebugOpenProxy`1") is not null,
+                "a debugger view lost its concrete or open generic type definition");
         foreach (string name in new[] { "get_Value", "set_Value", "add_Changed", "remove_Changed", "Follow", "Signature", "Generic" })
             Require(Body("Used", name) == medium, "wrong selected body: " + name);
         Require(Body("Used", "Retains") == medium, "initializer trace owners lost their signature retention");
@@ -704,6 +763,12 @@ static partial class StrippingLevelValidation
         Require(Body("MediumFixture.RefLikeTarget", "Marker") == medium, "core lost byref-like type token");
         Require(Body("Inner", "Marker") == medium, "core lost nested type token");
         Require(!Body("MediumFixture.Outer", "MustStayAbsent"), "core widened enclosing owner's bodies");
+        Require(!Body("MediumFixture.DebugProxy", "Marker") && !reachable.Any(m => (string)Read(m, "Name") == "OpenMarker"),
+            "core granted debugger-only views executable bodies");
+        Require(Body("MediumFixture.DebugDirectProxy", "Marker") && Body("MediumFixture.DebugPreservedProxy", "Marker"),
+            "core lost an independently called or preserved debugger view");
+        Require(Body("MediumFixture.DebugNamedTarget", "Marker") == medium && Body("MediumFixture.HomonymProxy", "Marker") == medium,
+            "core suppressed a named argument or homonymous attribute dependency");
         foreach (string name in new[] { "get_Value", "set_Value", "add_Changed", "remove_Changed", "Follow", "Signature" })
             Require(Body("MediumFixture.Used", name) == medium, "core body policy mismatch: " + name);
         Require(!reachable.Any(m => Owner(m) is "MediumFixture.Unreferenced" or "MediumFixture.MetadataOnly"),

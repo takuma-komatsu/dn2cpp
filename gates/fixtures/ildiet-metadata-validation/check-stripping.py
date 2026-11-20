@@ -131,8 +131,40 @@ for mode in modes:
                 "wrong emitted type-wide retention of an initializer trace owner: " + owner
         assert not re.search(r"\b(?:Unreferenced|MetadataOnly)_MustStayAbsent_\w+\([^;]*?\)\s*\{", text), \
             "metadata discovery emitted an unrelated body"
+        for member, expected in (("DebugProxy_Marker", False), ("DebugOpenProxy_1_OpenMarker", False),
+                                 ("DebugDirectProxy_Marker", True), ("DebugPreservedProxy_Marker", True),
+                                 ("DebugNamedTarget_Marker", level == "medium"), ("HomonymProxy_Marker", level == "medium")):
+            assert bool(re.search(r"\b" + member + r"_\w+\([^;]*?\)\s*\{", text)) == expected, \
+                "wrong emitted debugger proxy body: " + member
         if level != "medium":
             continue
+        assert "gendef_MediumFixture_DebugMismatchedProxy_1" not in text, \
+            "an unresolved proxy type was bound to a loaded open definition from another assembly"
+        # Match the factory referenced by Used's attribute row, not a coincidental
+        # handle elsewhere or a constructor on the same-named user attribute.
+        used_rows = re.search(r"\bmd_native_attrtab_MediumFixture_Used\[\] = \{([^;]*)\};", text)
+        assert used_rows, "missing attribute table for the retained carrier"
+        factories = dict(re.findall(r"\bDn2CppObject\* (attrcreate_\w+)\(\)\s*\{([^{}]*)\}", text))
+        owners = {}
+        for handle in ("ti_MediumFixture_DebugProxy", "gendef_MediumFixture_DebugOpenProxy_1", "ti_MediumFixture_HomonymProxy"):
+            assert "const Dn2CppTypeInfo " + handle + " = {" in text, "missing debugger view identity: " + handle
+            matches = []
+            for owner, factory in re.findall(r"\{ &(ti_\w*System_Diagnostics_DebuggerTypeProxyAttribute), &(attrcreate_\w+),",
+                                             used_rows.group(1)):
+                body = factories[factory]
+                if not re.search(r"\bDebuggerTypeProxyAttribute__ctor_\w+\(o, [^;\n]*dn2cpp_get_type_from_handle\(&"
+                                 + handle + r"\)", body):
+                    continue
+                matches.append((owner, body))
+            # Identical factories are pooled even when two attribute rows name them.
+            assert len(matches) == 1, "wrong number of debugger attribute rows for " + handle + ": " + str(len(matches))
+            owners[handle], body = matches[0]
+            if handle == "ti_MediumFixture_DebugProxy":
+                assert re.search(r"\bDebuggerTypeProxyAttribute_set_Target_\w+\(o, [^;\n]*"
+                                 r"dn2cpp_get_type_from_handle\(&ti_MediumFixture_DebugNamedTarget\)", body), \
+                    "the genuine debugger row lost its named Target setter"
+        assert owners["ti_MediumFixture_DebugProxy"] == owners["gendef_MediumFixture_DebugOpenProxy_1"] \
+            != owners["ti_MediumFixture_HomonymProxy"], "debugger attribute factories mixed their declaring assemblies"
         for member in ("Used__ctor", "Used_get_Value", "Used_set_Value", "Used_add_Changed",
                        "Used_remove_Changed", "MediumWitness_FrameworkPrivate", "MediumWitness__ctor",
                        "MediumWitness_get_FrameworkValue", "MediumWitness_set_FrameworkValue",
@@ -250,3 +282,4 @@ for name in ("pinvoke-libs.txt", "pinvoke-symbols.txt"):
     listed = (output / name).read_text().lower() if (output / name).exists() else ""
     assert "globalization" not in listed and "qcall" not in listed and "closehandle" not in listed, (name, listed)
 print("stripping-medium-imports=buffer-move-shape-refused,unavailable-imports-unbound")
+print("stripping-debugger-proxies=identity-only,open-definition,named-target,independent-roots,assembly-identity;modes=" + ",".join(modes))

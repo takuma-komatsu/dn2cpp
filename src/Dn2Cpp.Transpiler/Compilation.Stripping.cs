@@ -495,6 +495,22 @@ internal sealed partial class Compilation
         }
     }
 
+    internal bool IsMediumProxyConstructor(MethodInfo? ctor) => _strippingLevel == StrippingLevel.Medium
+        && ctor is { Name: ".ctor", IsStatic: false }
+        && ctor.DeclaringClass.FullName == DebuggerProxyRetention.AttributeName
+        && ctor.Signature.ParameterTypes.Length == 1
+        && DebuggerProxyRetention.IsProxyTypeConstructor(ctor.DeclaringClass.FullName,
+            ctor.DeclaringClass.Module.AssemblyName == "System.Private.CoreLib",
+            MetadataTypeName(ctor.Signature.ParameterTypes[0]));
+
+    private void NoteDebuggerProxyIdentity(TypeDesc view)
+    {
+        // An unresolved assembly-qualified name must not claim a loaded homonym.
+        if (TemplateOrClassDef(view) is ({ } module, var handle) && OpenGenericDefinitionKey(view) is { } key)
+            NoteTypeofOpenGenericDef(key, ResolveOpenGenericDefKind(module, handle), GenericParamNames(module, handle));
+        NoteTypeIdentityClosure(view, keepSeed: false);
+    }
+
     private void NoteMediumAttributes(Module module, CustomAttributeHandleCollection handles, bool signatureOnly = false)
     {
         foreach (var handle in handles)
@@ -522,8 +538,15 @@ internal sealed partial class Compilation
                     + ", target 0x" + SRME.GetToken(attribute.Parent).ToString("X8") + "): "
                     + exception.Message, exception);
             }
+            bool proxy = name == DebuggerProxyRetention.AttributeName
+                && IsMediumProxyConstructor(ResolveAttributeConstructor(module, attribute.Constructor));
             foreach (var argument in value.FixedArguments)
-                if (stateMachine && argument.Value is TypeDesc machine)
+                if (proxy && argument.Value is TypeDesc view)
+                {
+                    NoteMediumType(argument.Type);
+                    NoteDebuggerProxyIdentity(view);
+                }
+                else if (stateMachine && argument.Value is TypeDesc machine)
                 {
                     NoteMediumType(argument.Type);
                     NoteTypeIdentityClosure(machine, keepSeed: false);

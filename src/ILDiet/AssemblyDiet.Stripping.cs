@@ -227,14 +227,11 @@ internal sealed partial class AssemblyDiet
             NoteMediumType(attribute.AttributeType);
             try
             {
-                // Reuse the ordinary signature-only attribute boundary: a native
-                // ThreadPool method must not revive its managed state machine.
-                bool stateMachine = signatureOnly && IsStateMachineAttribute(attribute);
                 foreach (var argument in attribute.ConstructorArguments)
-                    if (stateMachine && argument.Value is TypeReference machine)
+                    if (argument.Value is TypeReference value && IsMetadataOnlyFixedType(attribute, signatureOnly))
                     {
                         NoteMediumType(argument.Type);
-                        MarkSignatureType(machine);
+                        MarkSignatureType(value);
                     }
                     else NoteMediumAttributeArgument(argument);
                 foreach (var argument in attribute.Fields) NoteMediumAttributeArgument(argument.Argument);

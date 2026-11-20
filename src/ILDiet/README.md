@@ -31,9 +31,17 @@ Medium use comes from executable method owners and signatures, body type and
 member operands, local and catch types, explicit preservation, and runtime type
 roots. Its closure follows base types, interfaces, field/property/event types,
 method signatures, generic arguments and constraints, attribute types and
-encoded type-valued attribute arguments. A nested type's declaring identity
-does not retain its enclosing owner's bodies. Metadata-only roots, lookups and
-model decoding do not activate type-wide retention without another static use.
+encoded type-valued attribute arguments. The fixed `Type` argument of CoreLib's
+`DebuggerTypeProxyAttribute(Type)` retains the debugger view's identity, not
+its executable members. Ordinary code and explicit preservation can still keep
+those members; named arguments such as `Target` keep their usual behavior.
+A statically used type or member can name an open generic view even when no
+closed view is used. Assembly attributes and metadata-only owners do not
+establish this open generic identity in the transpiler on their own.
+
+A nested type's declaring identity does not retain its enclosing owner's bodies.
+Metadata-only roots, lookups and model decoding do not activate type-wide
+retention without another static use.
 Generic demands follow known definition-parameter bindings; ILDiet does not
 construct unknown specializations. Medium retention schedules no initializer at
 startup: a retained initializer runs at its first use, as under High.
