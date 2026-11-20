@@ -113,6 +113,11 @@ ordinary managed behavior.
 In invariant globalization, public Rune casing follows the existing scalar casing
 path. Type-wide retention keeps the private non-invariant casing helper's metadata,
 not its executable body; an independent request to run it still fails explicitly.
+The CoreLib `UTF32Encoding.GetString(byte[], int, int)` override likewise keeps
+its metadata under type-wide retention alone. Running it requires the receiver's
+byte order and fallback behavior, not the default little-endian replacement
+decoder. Independent demands for the override still fail explicitly. The existing
+base-typed `Encoding.UTF32.GetString(byte*, int)` path is unchanged.
 
 Closed generic types carry their known arguments through this closure. Open
 definitions are traversed symbolically; they do not imply every possible type or
