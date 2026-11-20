@@ -118,6 +118,10 @@ keep their metadata under type-wide retention alone. Independent demands for
 these bodies still fail explicitly. UTF-7 lookup and the code-page 65000 opt-in
 policy are unchanged, as is the existing base-typed
 `Encoding.UTF32.GetString(byte*, int)` path.
+The internal CoreLib `CSTRMarshaler.ConvertFixedToManaged(IntPtr, int)` also
+keeps metadata under type-wide retention alone. `ByValTStr` remains modeled
+for unmanaged layout only; this does not add a native conversion path or make
+independent execution of the helper supported.
 
 Closed generic types carry their known arguments through this closure. Open
 definitions are traversed symbolically; they do not imply every possible type or
