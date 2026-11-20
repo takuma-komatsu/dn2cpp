@@ -161,6 +161,56 @@ static partial class StrippingLevelValidation
             convertNamesake.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Ldstr, "CSTR namesake"));
             entry.Emit(OpCodes.Ldtoken, am.ImportReference(cstr));
             entry.Emit(OpCodes.Pop);
+
+            var marshal = Type("System.Runtime.InteropServices", "Marshal", obj);
+            marshal.Attributes |= TypeAttributes.Abstract | TypeAttributes.Sealed;
+            var asAny = Type("System.StubHelpers", "AsAnyMarshaler", obj);
+            var touchAsAny = Cut(asAny, "Touch", am.TypeSystem.Void);
+            var callback = Type("System", "Func`3", obj);
+            for (int i = 0; i < 3; i++) callback.GenericParameters.Add(new GenericParameter("T" + i, callback));
+            var slow = Method(marshal, "ReadValueSlow", am.TypeSystem.Void);
+            var t = new GenericParameter("T", slow);
+            slow.GenericParameters.Add(t);
+            slow.ReturnType = t;
+            slow.Parameters.Add(new ParameterDefinition(am.TypeSystem.Object));
+            slow.Parameters.Add(new ParameterDefinition(am.TypeSystem.Int32));
+            var signature = new GenericInstanceType(callback);
+            signature.GenericArguments.Add(am.TypeSystem.IntPtr);
+            signature.GenericArguments.Add(am.TypeSystem.Int32);
+            signature.GenericArguments.Add(t);
+            slow.Parameters.Add(new ParameterDefinition(signature));
+            var result = new VariableDefinition(t);
+            slow.Body.Variables.Add(result);
+            slow.Body.Instructions.Clear();
+            var slowBody = slow.Body.GetILProcessor();
+            slowBody.Emit(OpCodes.Call, touchAsAny);
+            slowBody.Emit(OpCodes.Ldloca, result);
+            slowBody.Emit(OpCodes.Initobj, t);
+            slowBody.Emit(OpCodes.Ldloc, result);
+            slowBody.Emit(OpCodes.Ret);
+
+            MethodDefinition ReadByte(TypeReference first)
+            {
+                var readByte = Method(marshal, "ReadByte", am.TypeSystem.Byte);
+                readByte.Attributes = MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig;
+                readByte.Parameters.Add(new ParameterDefinition(first));
+                readByte.Parameters.Add(new ParameterDefinition(am.TypeSystem.Int32));
+                return readByte;
+            }
+            var legacy = ReadByte(am.TypeSystem.Object);
+            var slowByte = new GenericInstanceMethod(slow);
+            slowByte.GenericArguments.Add(am.TypeSystem.Byte);
+            legacy.Body.Instructions.Clear();
+            var legacyBody = legacy.Body.GetILProcessor();
+            legacyBody.Emit(OpCodes.Ldarg_0);
+            legacyBody.Emit(OpCodes.Ldarg_1);
+            legacyBody.Emit(OpCodes.Ldnull);
+            legacyBody.Emit(OpCodes.Call, slowByte);
+            legacyBody.Emit(OpCodes.Ret);
+            var typed = ReadByte(am.TypeSystem.IntPtr);
+            typed.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Ldc_I4_7));
+            entry.Emit(OpCodes.Ldtoken, am.ImportReference(marshal));
+            entry.Emit(OpCodes.Pop);
         }
         if (mode == "called")
         {

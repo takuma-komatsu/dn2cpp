@@ -122,6 +122,13 @@ The internal CoreLib `CSTRMarshaler.ConvertFixedToManaged(IntPtr, int)` also
 keeps metadata under type-wide retention alone. `ByValTStr` remains modeled
 for unmanaged layout only; this does not add a native conversion path or make
 independent execution of the helper supported.
+The obsolete `Marshal.Read*` and `Marshal.Write*` overloads taking `object`
+keep their metadata without retaining executable AsAny marshalling through a
+type sweep. Open-body traversal of their private generic helpers does not root
+the marshaller either. Taking an obsolete overload's address is unsupported;
+it does not name a missing native symbol. Direct calls and named reflection
+follow their ordinary paths. The `IntPtr` overloads and typed `StringBuilder`
+P/Invoke still use their existing native support.
 
 Closed generic types carry their known arguments through this closure. Open
 definitions are traversed symbolically; they do not imply every possible type or

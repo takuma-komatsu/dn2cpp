@@ -2174,6 +2174,10 @@ internal sealed partial class MethodCompiler
     /// CUT. Silent when neither answers: the real IL is transpiled as usual.</summary>
     private void NoteFtnTargetBody(MethodInfo target)
     {
+        // Marshal's external call cut supplies no callable symbol for an object accessor.
+        if (Compilation.IsLegacyAsAnyMarshalAccessor(target))
+            throw new NotSupportedException($"taking the address of {target.DeclaringClass.FullName}::{target.Name}"
+                + $"{SigArgs(target.Signature)} requires unsupported AsAny marshalling");
         _c.NoteInvariantCompareInfoDispatchDemand(target);
         if (CoreIntrinsics.IsIntrinsicType(target.DeclaringClass.FullName))
         {

@@ -100,6 +100,26 @@ def validate_intercept_retention(probe, cli, original, directory, modes=("raw", 
                             "CSTRMarshaler's conversion lost its parameter types"
                         assert re.search(r"\(void\*\)&" + cstr_bodies[0] + r", \(void\*\)&inv_", cstr[1]), \
                             "CSTRMarshaler's namesake lost its reflection invoker"
+
+                    read_bodies = re.findall(r"\b(Marshal_ReadByte_\w+)\([^;()]*\)\s*\{", text)
+                    assert len(read_bodies) == (level == "medium"), \
+                        "Marshal's object accessor became callable or the IntPtr accessor was dropped"
+                    assert not re.search(r"\bAsAnyMarshaler_Touch_\w+", text), \
+                        "A symbolic Marshal access helper rooted AsAny execution"
+                    if level == "medium":
+                        marshal = re.search(
+                            r"\bmd_native_methtab_System_Runtime_InteropServices_Marshal\[\] = \{([^;]*)\};", text)
+                        assert marshal, "Retained Marshal has no method metadata table"
+                        legacy = re.search(
+                            r"\{\s*md_name_\d+, &ti_System_Runtime_InteropServices_Marshal, &dn2cpp_byte_type, "
+                            r"(parmpool_\d+), 2LL, [^,]+, -1LL, 0, 0,", marshal[1])
+                        assert legacy, "Marshal's object accessor lost its signature row or became invocable"
+                        parameters = re.search(r"\bmd_native_" + legacy[1] + r"\[\] = \{([^;]*)\};", text)
+                        assert parameters and re.findall(r"\{\s*(&\w+),", parameters[1]) == [
+                            "&dn2cpp_object_type", "&dn2cpp_int32_type"], \
+                            "Marshal's object accessor lost its parameter types"
+                        assert re.search(r"\(void\*\)&" + read_bodies[0] + r", \(void\*\)&inv_", marshal[1]), \
+                            "Marshal's IntPtr accessor lost its reflection invoker"
                 records.append({"kind": kind, "level": level, "mode": mode,
                                 "command": list(map(str, arguments)), "exit": result.returncode})
     (directory / "intercept-results.json").write_text(json.dumps(records, indent=2) + "\n")
