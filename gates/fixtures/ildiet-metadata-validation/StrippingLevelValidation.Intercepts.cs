@@ -213,6 +213,14 @@ static partial class StrippingLevelValidation
 
             var marshal = Type("System.Runtime.InteropServices", "Marshal", obj);
             marshal.Attributes |= TypeAttributes.Abstract | TypeAttributes.Sealed;
+            const MethodAttributes pinPredicate = MethodAttributes.Assembly | MethodAttributes.Static | MethodAttributes.HideBySig;
+            var pinnable = Cut(marshal, "IsPinnable", cm.TypeSystem.Boolean, cm.TypeSystem.Object);
+            pinnable.Attributes = pinPredicate;
+            var pinNamesake = Method(marshal, pinnable.Name, cm.TypeSystem.Boolean);
+            pinNamesake.Attributes = pinPredicate;
+            pinNamesake.Parameters.Add(new ParameterDefinition(am.TypeSystem.IntPtr));
+            pinNamesake.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Ldc_I4_1));
+
             var asAny = Type("System.StubHelpers", "AsAnyMarshaler", obj);
             var touchAsAny = Cut(asAny, "Touch", am.TypeSystem.Void);
             var callback = Type("System", "Func`3", obj);

@@ -111,6 +111,9 @@ def validate_intercept_retention(probe, cli, original, directory, modes=("raw", 
                         "Marshal's object accessor became callable or the IntPtr accessor was dropped"
                     assert not re.search(r"\bAsAnyMarshaler_Touch_\w+", text), \
                         "A symbolic Marshal access helper rooted AsAny execution"
+                    pin_bodies = re.findall(r"\b(Marshal_IsPinnable_\w+)\([^;()]*\)\s*\{", text)
+                    assert len(pin_bodies) == (level == "medium"), \
+                        "Marshal's object pinning predicate became callable or its namesake was dropped"
                     if level == "medium":
                         marshal = re.search(
                             r"\bmd_native_methtab_System_Runtime_InteropServices_Marshal\[\] = \{([^;]*)\};", text)
@@ -125,6 +128,15 @@ def validate_intercept_retention(probe, cli, original, directory, modes=("raw", 
                             "Marshal's object accessor lost its parameter types"
                         assert re.search(r"\(void\*\)&" + read_bodies[0] + r", \(void\*\)&inv_", marshal[1]), \
                             "Marshal's IntPtr accessor lost its reflection invoker"
+                        pin_row = re.search(
+                            r"\{\s*md_name_\d+, &ti_System_Runtime_InteropServices_Marshal, &dn2cpp_bool_type, "
+                            r"(parmpool_\d+), 1LL, [^,]+, -1LL, 0, 0,", marshal[1])
+                        assert pin_row, "Marshal's object pinning predicate lost its metadata-only signature row"
+                        parameters = re.search(r"\bmd_native_" + pin_row[1] + r"\[\] = \{([^;]*)\};", text)
+                        assert parameters and re.findall(r"\{\s*(&\w+),", parameters[1]) == ["&dn2cpp_object_type"], \
+                            "Marshal's object pinning predicate lost its parameter type"
+                        assert re.search(r"\(void\*\)&" + pin_bodies[0] + r", \(void\*\)&inv_", marshal[1]), \
+                            "Marshal's pinning predicate namesake lost its reflection invoker"
                 records.append({"kind": kind, "level": level, "mode": mode,
                                 "command": list(map(str, arguments)), "exit": result.returncode})
     (directory / "intercept-results.json").write_text(json.dumps(records, indent=2) + "\n")

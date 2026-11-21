@@ -129,6 +129,11 @@ the marshaller either. Taking an obsolete overload's address is unsupported;
 it does not name a missing native symbol. Direct calls and named reflection
 follow their ordinary paths. The `IntPtr` overloads and typed `StringBuilder`
 P/Invoke still use their existing native support.
+The internal CoreLib `Marshal.IsPinnable(object)` retains its metadata, not a
+callable body, under the Medium sweep. Independent execution still requires
+the unsupported CoreCLR object-layout predicate. Native `GCHandle` allocation
+and retargeting keep their existing non-moving-heap behavior, without adding
+CoreCLR payload validation.
 
 The native image has no CoreCLR binder tracing provider. A verified trace-only
 branch in the CoreLib load-context event or satellite helpers can be elided
