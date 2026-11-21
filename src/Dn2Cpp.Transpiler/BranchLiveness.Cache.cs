@@ -36,7 +36,7 @@ internal sealed partial class BranchLiveness
     {
         if (m.LivenessCache is { } cached)
             return ReferenceEquals(cached, s_notApplicable) ? null : cached;
-        var result = Compute(insns, body, foldedConst, typeIdentityCall, typeEqualityVerdict);
+        var result = Compute(m, insns, body, foldedConst, typeIdentityCall, typeEqualityVerdict);
         m.LivenessCache = result ?? s_notApplicable;
         return result;
     }

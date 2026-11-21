@@ -130,6 +130,13 @@ it does not name a missing native symbol. Direct calls and named reflection
 follow their ordinary paths. The `IntPtr` overloads and typed `StringBuilder`
 P/Invoke still use their existing native support.
 
+The native image has no CoreCLR binder tracing provider. A verified trace-only
+branch in the CoreLib load-context event or satellite helpers can be elided
+without replacing the surrounding resolver, handler, or probe. The trace
+wrappers retain their metadata under the Medium type sweep. Standalone
+tracing calls and unrecognized trace bodies are not given a fallback result;
+the `Assembly.LoadFrom` resolver's lock and exception handling are untouched.
+
 Closed generic types carry their known arguments through this closure. Open
 definitions are traversed symbolically; they do not imply every possible type or
 method specialization. A recursively expanding closed-generic demand fails

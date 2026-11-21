@@ -72,8 +72,57 @@ static partial class StrippingLevelValidation
             entry.Emit(OpCodes.Call, am.ImportReference(setter));
         }
         entry.Emit(OpCodes.Call, am.ImportReference(touch));
+        var binder = Type("System.Runtime.Loader", "AssemblyLoadContext", obj);
+        var assemblyName = Type("System.Reflection", "AssemblyName", obj);
+        var runtimeAssembly = Type("System.Reflection", "RuntimeAssembly", obj);
+        var guard = new MethodDefinition("IsTracingEnabled",
+            MethodAttributes.Assembly | MethodAttributes.Static | MethodAttributes.HideBySig, cm.TypeSystem.Boolean)
+        { ImplAttributes = MethodImplAttributes.InternalCall };
+        binder.Methods.Add(guard);
+        var trace = Cut(binder, "TraceSatelliteSubdirectoryPathProbed",
+            cm.TypeSystem.Boolean, cm.TypeSystem.String, cm.TypeSystem.Int32);
+        trace.Attributes |= MethodAttributes.HideBySig;
+        trace.Attributes = (trace.Attributes & ~MethodAttributes.MemberAccessMask) | MethodAttributes.Assembly;
+        var flow = new FieldDefinition("Flow", FieldAttributes.Private | FieldAttributes.Static, cm.TypeSystem.Int32);
+        binder.Fields.Add(flow);
+        var probe = Method(binder, "ResolveSatelliteAssembly", runtimeAssembly);
+        probe.Attributes = MethodAttributes.Private | MethodAttributes.HideBySig;
+        probe.HasThis = true;
+        probe.Parameters.Add(new ParameterDefinition(assemblyName));
+        probe.Body.Instructions.Clear();
+        var probed = probe.Body.GetILProcessor();
+        var resume = Instruction.Create(OpCodes.Ldsfld, flow);
+        probed.Emit(OpCodes.Ldc_I4_1);
+        probed.Emit(OpCodes.Stsfld, flow);
+        probed.Emit(OpCodes.Call, guard);
+        probed.Emit(OpCodes.Brfalse_S, resume);
+        probed.Emit(OpCodes.Ldnull);
+        probed.Emit(OpCodes.Ldc_I4_0);
+        probed.Emit(OpCodes.Call, trace);
+        probed.Emit(OpCodes.Pop);
+        probed.Append(resume);
+        probed.Emit(OpCodes.Ldc_I4_S, (sbyte)10);
+        probed.Emit(OpCodes.Mul);
+        probed.Emit(OpCodes.Ldc_I4_2);
+        probed.Emit(OpCodes.Add);
+        probed.Emit(OpCodes.Stsfld, flow);
+        probed.Emit(OpCodes.Ldnull);
+        probed.Emit(OpCodes.Ret);
+        var binderCtor = Method(binder, ".ctor", cm.TypeSystem.Void, constructor: true);
+        var binderProbe = Method(binder, "ProbeOrder", cm.TypeSystem.Int32);
+        binderProbe.Attributes = MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig;
+        binderProbe.Body.Instructions.Clear();
+        var drive = binderProbe.Body.GetILProcessor();
+        drive.Emit(OpCodes.Newobj, binderCtor);
+        drive.Emit(OpCodes.Ldnull);
+        drive.Emit(OpCodes.Call, probe);
+        drive.Emit(OpCodes.Pop);
+        drive.Emit(OpCodes.Ldsfld, flow);
+        drive.Emit(OpCodes.Ret);
         if (mode == "retained")
         {
+            entry.Emit(OpCodes.Ldtoken, am.ImportReference(binder));
+            entry.Emit(OpCodes.Pop);
             var eventSource = Type("System.Diagnostics.Tracing", "EventSource", obj);
             var provider = Type("System.Threading.Tasks", "TplEventSource", eventSource);
             var guid = Type("System", "Guid", cm.GetType("System.ValueType"));
@@ -247,6 +296,8 @@ static partial class StrippingLevelValidation
                 entry.Emit(OpCodes.Or);
                 entry.Emit(OpCodes.Stloc, failed);
             }
+            entry.Emit(OpCodes.Call, am.ImportReference(binderProbe));
+            Check(12); // both sides of the disabled trace arm ran, in order
             foreach (bool address in new[] { false, true })
             {
                 int expected = address ? 83 : 41;
