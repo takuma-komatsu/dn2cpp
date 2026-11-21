@@ -134,6 +134,10 @@ callable body, under the Medium sweep. Independent execution still requires
 the unsupported CoreCLR object-layout predicate. Native `GCHandle` allocation
 and retargeting keep their existing non-moving-heap behavior, without adding
 CoreCLR payload validation.
+The private, bodyless `MarshalNative_GetExceptionForHR` QCall import retains
+its signature under the Medium sweep without a callable wrapper. The managed
+two-argument HRESULT worker still uses its numeric exception mapping; the
+Guid overloads and independent demands for the QCall keep their existing paths.
 
 The native image has no CoreCLR binder tracing provider. A verified trace-only
 branch in the CoreLib load-context event or satellite helpers can be elided

@@ -359,6 +359,7 @@ internal sealed partial class Compilation
                 || IsUnsupportedFixedCStrConversion(method)
                 || IsLegacyAsAnyMarshalAccessor(method)
                 || IsCoreLibMarshalIsPinnable(method)
+                || IsCoreLibMarshalHResultQCall(method)
                 || CoreLibBinderTrace.IsTelemetryWrapper(method))
                 continue;
             // Retention needs a callable symbol, but cannot revive IL replaced by
@@ -484,6 +485,50 @@ internal sealed partial class Compilation
                 == (TypeAttributes.Public | staticClass)
             && reader.StringComparer.Equals(owner.Namespace, "System.Runtime.InteropServices")
             && reader.StringComparer.Equals(owner.Name, "Marshal");
+    }
+
+    // Only the managed two-argument HRESULT worker has a numeric lowering. Its
+    // CoreCLR out-handle import needs no callable body from the Medium sweep.
+    private static bool IsCoreLibMarshalHResultQCall(MethodInfo method)
+    {
+        const MethodAttributes expected = MethodAttributes.Private | MethodAttributes.Static
+            | MethodAttributes.HideBySig | MethodAttributes.PinvokeImpl;
+        const MethodImportAttributes binding = MethodImportAttributes.ExactSpelling
+            | MethodImportAttributes.CallingConventionWinApi;
+        var owner = method.DeclaringClass;
+        if (method.Name != "GetExceptionForHRInternal" || owner.FullName != "System.Runtime.InteropServices.Marshal"
+            || method.Module != owner.Module || method.Handle.IsNil || method.IsSynthetic
+            || method.Attributes != expected || method.ImplAttributes != MethodImplAttributes.PreserveSig
+            || method.Rva != 0 || method.Context.TypeArgs.Length != 0 || method.Context.MethodArgs.Length != 0
+            || method.PInvoke is not { ModuleName: "QCall", RawEntryPoint: "MarshalNative_GetExceptionForHR",
+                ImportAttributes: binding }
+            || !IsCoreLibMarshalDefinition(method.Module, owner.Handle))
+            return false;
+
+        var reader = method.Module.Reader;
+        var definition = reader.GetMethodDefinition(method.Handle);
+        var import = definition.GetImport();
+        if (definition.GetDeclaringType() != owner.Handle || definition.GetGenericParameters().Count != 0
+            || !reader.StringComparer.Equals(definition.Name, "GetExceptionForHRInternal")
+            || definition.Attributes != expected || definition.ImplAttributes != MethodImplAttributes.PreserveSig
+            || definition.RelativeVirtualAddress != 0 || import.Attributes != binding || import.Module.IsNil
+            || !reader.StringComparer.Equals(reader.GetModuleReference(import.Module).Name, "QCall")
+            || !reader.StringComparer.Equals(import.Name, "MarshalNative_GetExceptionForHR"))
+            return false;
+
+        var raw = reader.GetBlobReader(definition.Signature);
+        if (raw.RemainingBytes < 7 || raw.ReadByte() != 0 || raw.ReadByte() != 3
+            || raw.ReadByte() != (byte)SignatureTypeCode.Void || raw.ReadByte() != (byte)SignatureTypeCode.Int32
+            || raw.ReadByte() != (byte)SignatureTypeCode.IntPtr || raw.ReadByte() != 0x11
+            || !raw.TryReadCompressedInteger(out int token) || raw.RemainingBytes != 0
+            || (token & 3) != 0 || (token >> 2) == 0 || (token >> 2) > reader.TypeDefinitions.Count)
+            return false;
+
+        var handleType = reader.GetTypeDefinition(SRME.TypeDefinitionHandle(token >> 2));
+        return handleType.GetDeclaringType().IsNil && handleType.GetGenericParameters().Count == 0
+            && reader.StringComparer.Equals(handleType.Namespace, "System.Runtime.CompilerServices")
+            && reader.StringComparer.Equals(handleType.Name, "ObjectHandleOnStack")
+            && IsByRefLikeType(reader, handleType);
     }
 
     // GCHandle's native pinning does not call the CoreCLR object-layout predicate.

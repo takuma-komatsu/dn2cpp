@@ -213,6 +213,25 @@ static partial class StrippingLevelValidation
 
             var marshal = Type("System.Runtime.InteropServices", "Marshal", obj);
             marshal.Attributes |= TypeAttributes.Abstract | TypeAttributes.Sealed;
+            var qcallHandle = Type("System.Runtime.CompilerServices", "ObjectHandleOnStack", valueType);
+            qcallHandle.Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.SequentialLayout;
+            qcallHandle.CustomAttributes.Add(new CustomAttribute(cm.GetType(
+                "System.Runtime.CompilerServices.IsByRefLikeAttribute").Methods.Single(m => m.IsConstructor)));
+            var qcallModule = new ModuleReference("QCall");
+            cm.ModuleReferences.Add(qcallModule);
+            var hresultQCall = new MethodDefinition("GetExceptionForHRInternal",
+                MethodAttributes.Private | MethodAttributes.Static | MethodAttributes.HideBySig | MethodAttributes.PInvokeImpl,
+                cm.TypeSystem.Void)
+            {
+                ImplAttributes = MethodImplAttributes.PreserveSig,
+                PInvokeInfo = new PInvokeInfo(PInvokeAttributes.NoMangle | PInvokeAttributes.CallConvWinapi,
+                    "MarshalNative_GetExceptionForHR", qcallModule),
+            };
+            marshal.Methods.Add(hresultQCall);
+            hresultQCall.Parameters.Add(new ParameterDefinition(am.TypeSystem.Int32));
+            hresultQCall.Parameters.Add(new ParameterDefinition(am.TypeSystem.IntPtr));
+            hresultQCall.Parameters.Add(new ParameterDefinition(qcallHandle));
+
             const MethodAttributes pinPredicate = MethodAttributes.Assembly | MethodAttributes.Static | MethodAttributes.HideBySig;
             var pinnable = Cut(marshal, "IsPinnable", cm.TypeSystem.Boolean, cm.TypeSystem.Object);
             pinnable.Attributes = pinPredicate;
