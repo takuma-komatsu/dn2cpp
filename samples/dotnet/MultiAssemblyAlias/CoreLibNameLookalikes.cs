@@ -5,7 +5,8 @@ namespace AssemblyScopeCollision
     {
         public static string Read() => System.Threading.ManagedThreadId.Current + "/"
             + System.Runtime.CompilerServices.AsyncHelpers.Tag() + "/" + System.Runtime.CompilerServices.AsyncHelpers.Tag<int>()
-            + "/" + System.Runtime.CompilerServices.RuntimeHelpers.IsRuntimeAsync();
+            + "/" + System.Runtime.CompilerServices.RuntimeHelpers.IsRuntimeAsync()
+            + "/" + System.Runtime.Intrinsics.Arm.Sha3.IsSupported;
     }
 }
 
@@ -31,5 +32,13 @@ namespace System.Runtime.CompilerServices
     internal static class RuntimeHelpers
     {
         public static bool IsRuntimeAsync() => true;
+    }
+}
+
+namespace System.Runtime.Intrinsics.Arm
+{
+    internal static class Sha3
+    {
+        public static bool IsSupported => true;
     }
 }

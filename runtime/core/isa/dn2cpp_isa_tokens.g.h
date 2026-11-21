@@ -164,6 +164,10 @@
 #define DN2CPP_ISA_X86_Gfni_V512 0
 #define DN2CPP_ISA_X86_Gfni_X64 0
 #endif
+// No feature bit: never lowered, so IsSupported is false on every target.
+#define DN2CPP_ISA_X86_AvxVnni_V512 0
+#define DN2CPP_ISA_X86_Avx512Bmm 0
+#define DN2CPP_ISA_X86_Avx512Bmm_X64 0
 
 // System.Runtime.Intrinsics.Arm
 #if DN2CPP_TARGET_ARM64
@@ -201,12 +205,19 @@
 #define DN2CPP_ISA_Arm_Rdm 0
 #define DN2CPP_ISA_Arm_Rdm_Arm64 0
 #endif
-// Scalable vectors are never lowered: experimental in .NET 10 and without a fixed
-// register width, so IsSupported is false on every target.
+// No feature bit: never lowered, so IsSupported is false on every target.
 #define DN2CPP_ISA_Arm_Sve 0
 #define DN2CPP_ISA_Arm_Sve_Arm64 0
 #define DN2CPP_ISA_Arm_Sve2 0
 #define DN2CPP_ISA_Arm_Sve2_Arm64 0
+#define DN2CPP_ISA_Arm_Sha3 0
+#define DN2CPP_ISA_Arm_Sha3_Arm64 0
+#define DN2CPP_ISA_Arm_Sm4 0
+#define DN2CPP_ISA_Arm_Sm4_Arm64 0
+#define DN2CPP_ISA_Arm_SveSha3 0
+#define DN2CPP_ISA_Arm_SveSha3_Arm64 0
+#define DN2CPP_ISA_Arm_SveSm4 0
+#define DN2CPP_ISA_Arm_SveSm4_Arm64 0
 
 // System.Runtime.Intrinsics.Wasm
 #if DN2CPP_TARGET_WASM32

@@ -270,7 +270,7 @@ none of these is not broken — every family answers false and the BCL's softwar
 fallback runs — but it has left the hardware paths on the table.
 
 Detection is a **run-time** fact, never a build-time one. AVX10.2 retains that
-raw fact but follows .NET 10's default-off policy: only
+raw fact but follows .NET's default-off policy: only
 `DN2CPP_ENABLE_AVX10V2=1` permits its detected bits, and the compiler must also
 provide the generated helper intrinsics. This positive policy precedes
 `DN2CPP_CPU_FEATURES`, so the mask remains narrowing-only and cannot opt in.

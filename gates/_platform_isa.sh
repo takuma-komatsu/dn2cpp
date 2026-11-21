@@ -230,7 +230,7 @@ platform_isa_set_eq() {
 _platform_isa_configure_arch() {
     case "$1" in
         x86)
-            # AVX is the root of .NET 10's AVX-level, AVX-512 and AVX10 sets.
+            # AVX is the root of .NET's AVX-level, AVX-512 and AVX10 sets.
             # X86Base is the kept witness and Bmi1 the removed witness.
             PLATFORM_ISA_P_MASK="-Avx"
             PLATFORM_ISA_P_KNOBS="DOTNET_EnableAVX=0"
@@ -241,7 +241,7 @@ _platform_isa_configure_arch() {
             # AdvSimd is baseline on arm64; the JIT exposes knobs only for the
             # optional families. ArmBase stays and Crc32 is removed.
             PLATFORM_ISA_P_MASK="ArmBase,AdvSimd"
-            PLATFORM_ISA_P_KNOBS="DOTNET_EnableArm64Aes=0 DOTNET_EnableArm64Crc32=0 DOTNET_EnableArm64Dp=0 DOTNET_EnableArm64Rdm=0 DOTNET_EnableArm64Sha1=0 DOTNET_EnableArm64Sha256=0 DOTNET_EnableArm64Sve=0 DOTNET_EnableArm64Sve2=0"
+            PLATFORM_ISA_P_KNOBS="DOTNET_EnableArm64Aes=0 DOTNET_EnableArm64Crc32=0 DOTNET_EnableArm64Dp=0 DOTNET_EnableArm64Rdm=0 DOTNET_EnableArm64Sha1=0 DOTNET_EnableArm64Sha256=0 DOTNET_EnableArm64Sve=0 DOTNET_EnableArm64Sve2=0 DOTNET_EnableArm64Sha3=0 DOTNET_EnableArm64Sm4=0 DOTNET_EnableArm64SveSha3=0 DOTNET_EnableArm64SveSm4=0"
             PLATFORM_ISA_P_TRUE="Arm.ArmBase"
             PLATFORM_ISA_P_FALSE="Arm.Crc32"
             ;;
@@ -356,8 +356,10 @@ _platform_isa_native_plan_self_check() {
 #
 # Runs, each ours-vs-oracle on stdout and exit code:
 #   F  foreign host only: every row of ARCH, no mask. Witness: no `=True`.
-#   S  native host, every shard with exhaustive exercises enabled. Witness: the
-#      base family is true once it is Lowered.
+#   S  native host, the Lowered rows of every shard with exhaustive exercises
+#      enabled. Witness: the base family is true once it is Lowered. A row that
+#      is not Lowered is false here and true in .NET on a CPU that has it, so
+#      only F and M compare those rows.
 #   M  always: every row, DN2CPP_CPU_FEATURES=none vs DOTNET_EnableHWIntrinsic=0.
 #      Witnesses: no `=True`, and exactly one `effective=(none)` diag line.
 #   P  native host, the two partial-mask witnesses in their one shard. The true
@@ -527,12 +529,16 @@ _platform_isa_run_arch() {
     : "${PLATFORM_ISA_P_TRUE:?the gate must set PLATFORM_ISA_P_TRUE}"
     : "${PLATFORM_ISA_P_FALSE:?the gate must set PLATFORM_ISA_P_FALSE}"
 
-    local rows name lowered_flag all=() lowered=()
+    local rows name lowered_flag all=() lowered=() not_lowered=()
     rows=$(platform_isa_table_rows "$arch") || exit 1
     [ -n "$rows" ] || { echo "error: $PLATFORM_ISA_TABLE lists no $isa family" >&2; exit 1; }
     while IFS=$'\t' read -r name lowered_flag; do
         all+=("$name")
-        [ "$lowered_flag" = true ] && lowered+=("$name")
+        if [ "$lowered_flag" = true ]; then
+            lowered+=("$name")
+        else
+            not_lowered+=("$name")
+        fi
     done <<<"$rows"
     local all_csv lowered_csv invalid_rows invalid_count
     all_csv=$(platform_isa_join , "${all[@]}")
@@ -645,6 +651,9 @@ _platform_isa_run_arch() {
             fi
             if [ "$label" = O ] || [ "$label" = P ]; then
                 run_args=("$argv")
+            elif [ "$label" = S ]; then
+                run_args=("$(_pi_shard_rows "$i" "$argv")")
+                [ -n "${run_args[0]}" ] || continue
             else
                 run_args=("$(platform_isa_shard_selection "$shard" "$isa")")
             fi
@@ -699,6 +708,18 @@ _platform_isa_run_arch() {
         _PI_OURS_FILE="$ours_out.lf"
         platform_isa_output validate "$_PI_OURS_FILE" || return 1
         _PI_OURS=$(cat "$_PI_OURS_FILE")
+    }
+
+    # _pi_shard_rows INDEX CSV — the CSV rows shard INDEX carries, in CSV order.
+    _pi_shard_rows() {
+        local plan="${shard_outs[$1]}/partial-plan-$arch.lf" name kept=()
+        local IFS=,
+        for name in $2; do
+            if grep -Fxq "row=$name" "$plan"; then
+                kept+=("$name")
+            fi
+        done
+        platform_isa_join , ${kept[@]+"${kept[@]}"}
     }
 
     # _pi_run_native LABEL ARGV ENV — dn2cpp-only boundary mode. Managed JITs
@@ -837,6 +858,18 @@ _platform_isa_run_arch() {
         printf '%s\n' "$violations" >&2
         gate_run_diag_once
         exit 1
+    fi
+
+    # Run N is the unmasked native run: a family dn2cpp never lowers must still
+    # report unsupported there, however capable the CPU is.
+    if [ "$native_host" -eq 1 ]; then
+        block=$(platform_isa_contract_block "$_PI_OURS_FILE") || exit 1
+        for name in ${not_lowered[@]+"${not_lowered[@]}"}; do
+            n=$(grep -Fxc "$name=False" <<<"$block" || true)
+            _pi_require_count N 1 "$n" "'$name=False' rows (the family is not Lowered)"
+            n=$(grep -Fxc "$name=True" <<<"$block" || true)
+            _pi_require_count N 0 "$n" "'$name=True' rows (the family is not Lowered)"
+        done
     fi
 
     _pi_run_native NM "$all_csv" "DN2CPP_CPU_FEATURES=none"

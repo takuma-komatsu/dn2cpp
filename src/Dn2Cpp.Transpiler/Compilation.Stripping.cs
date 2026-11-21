@@ -768,7 +768,8 @@ internal sealed partial class Compilation
             || definition.GetDeclaringType() is { IsNil: false } parent
                 && CoreIntrinsicTypeMaps.IsIntrinsicNested(RawSignatureProvider.TypeDefinitionName(reader, parent),
                     reader.GetString(definition.Name))
-            || PlatformIsaQualifiedName(reader, definition) is { } isa
+            || CoreIntrinsics.IsCoreLibModule(module)
+                && PlatformIsaQualifiedName(reader, definition) is { } isa
                 && CoreIntrinsics.PlatformIsaFamily(isa) is not null)
             return false;
         foreach (var intercept in CoreIntrinsics.BoundedIntercepts)

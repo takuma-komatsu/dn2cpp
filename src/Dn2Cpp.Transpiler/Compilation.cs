@@ -2271,8 +2271,10 @@ internal sealed partial class Compilation
                 // A CoreLib platform-ISA facade (Sse2, Lzcnt.X64, AdvSimd.Arm64, PackedSimd,
                 // …) is identified by its CLR qualified name, which for a nested facade the
                 // bare FullName cannot carry. A declaring-chain walk over TypeDefinition rows
-                // only — no member decode — so the stamp is strict-completion safe.
-                cls.PlatformIsa = PlatformIsaQualifiedName(reader, td) is { } isaName
+                // only — no member decode — so the stamp is strict-completion safe. Only
+                // CoreLib declares facades; a namesake elsewhere is an ordinary type.
+                cls.PlatformIsa = CoreIntrinsics.IsCoreLibModule(module)
+                    && PlatformIsaQualifiedName(reader, td) is { } isaName
                     ? CoreIntrinsics.PlatformIsaFamily(isaName)
                     : null;
                 // An intrinsic type whose C++ mapping is a by-value struct (no trailing

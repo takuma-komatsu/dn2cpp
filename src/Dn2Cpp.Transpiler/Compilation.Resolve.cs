@@ -2839,7 +2839,7 @@ internal sealed partial class Compilation
                 if (name == "get_SystemSupportsLeapSeconds"
                     && CoreIntrinsics.IsDateTimeLeapSecondSupportDefinition(module.Reader, h))
                     return false;
-                return name == "get_IsSupported" ? PlatformIsaGetterFold(module, handle) : null;
+                return name == "get_IsSupported" ? PlatformIsaGetterFold(module, module, handle) : null;
             }
             case HandleKind.MemberReference:
             {
@@ -2849,7 +2849,9 @@ internal sealed partial class Compilation
                     && MemberRefParentTypeName(module, h) is { } declType
                     && CoreIntrinsics.ConstFoldedGetter(declType, name, DeclaringDefinitionOf(module, h)?.Module) is { } folded)
                     return folded;
-                return name == "get_IsSupported" ? PlatformIsaGetterFold(module, handle) : null;
+                return name == "get_IsSupported"
+                    ? PlatformIsaGetterFold(DeclaringDefinitionOf(module, h)?.Module, module, handle)
+                    : null;
             }
             default:
                 return null;
@@ -2862,9 +2864,11 @@ internal sealed partial class Compilation
     /// <c>Vector128&lt;T&gt;.IsSupported</c> requires closed element authority and is not
     /// folded by this raw-metadata probe). Keyed on the
     /// QUALIFIED parent name because a nested facade's bare name (<c>X64</c>) names
-    /// nothing; raw metadata reads only, no resolution.</summary>
-    private static bool? PlatformIsaGetterFold(Module module, EntityHandle callTarget) =>
-        CallTargetQualifiedTypeName(module, callTarget) is { } q
+    /// nothing. <paramref name="owner"/> is the module declaring the parent; a non-CoreLib
+    /// owner is an ordinary type, an unresolved (null) one keeps the name test.</summary>
+    private static bool? PlatformIsaGetterFold(Module? owner, Module module, EntityHandle callTarget) =>
+        (owner is null || CoreIntrinsics.IsCoreLibModule(owner))
+        && CallTargetQualifiedTypeName(module, callTarget) is { } q
         && CoreIntrinsics.PlatformIsaFamily(q) is { } f
             ? CoreIntrinsics.IsaGetterFold(f)
             : null;
