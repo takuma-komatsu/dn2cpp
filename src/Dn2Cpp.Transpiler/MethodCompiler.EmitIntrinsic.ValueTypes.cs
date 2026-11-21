@@ -1885,6 +1885,14 @@ internal sealed partial class MethodCompiler
             { var a = Pop(); Push(StackKind.I8, "int64_t", $"dn2cpp_datetimeoffset_to_unix_millis({DTOVal(a)})"); return true; }
             case "ToOffset" when ps.Length == 1 && IsTimeSpan(ps[0]):
             { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTimeOffset", $"dn2cpp_datetimeoffset_to_offset({DTOVal(a)}, {TSVal(b)})"); return true; }
+            // CoreLib keeps the stored UTC instant and replaces the offset with zero.
+            case "ToUniversalTime" when sig.Header.RawValue == 0x20 && ps.Length == 0
+                                         && IsDateTimeOffset(sig.ReturnType):
+            {
+                var a = Pop();
+                Push(StackKind.Struct, "Dn2CppDateTimeOffset", $"dn2cpp_datetimeoffset_to_offset({DTOVal(a)}, dn2cpp_timespan_from_ticks(0))");
+                return true;
+            }
             case "CompareTo" when ps.Length == 1 && IsDateTimeOffset(ps[0]):
             { var b = Pop(); var a = Pop(); Push(StackKind.I4, "int32_t", $"dn2cpp_datetimeoffset_cmp({DTOVal(a)}, {DTOVal(b)})"); return true; }
             case "Equals" when ps.Length == 1 && IsDateTimeOffset(ps[0]):

@@ -80,6 +80,7 @@ namespace DateTimeOps
             if (args.Length > 0 && args[0] == "before-dtfi-timespan-patterns")
                 return;
             DateTimeFormatInfoSubset.Program.RunTimeSpanPatterns();
+            DateTimeOffsetSubset.Program.RunUtcNormalization();
         }
     }
 }
