@@ -1,3 +1,4 @@
+#pragma warning disable CA2261 // Task<T>.ConfigureAwait(SuppressThrowing) is the case under test
 using System;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -25,6 +26,15 @@ internal static class Program
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static ConfiguredTaskAwaitable DirectConfigure(Task task, bool capture) => task.ConfigureAwait(capture);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ConfiguredTaskAwaitable DirectConfigureUndefined(Task task) => task.ConfigureAwait((ConfigureAwaitOptions)64);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ConfiguredTaskAwaitable<int> DirectConfigureUndefinedOfT(Task<int> task) => task.ConfigureAwait((ConfigureAwaitOptions)64);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ConfiguredTaskAwaitable<int> DirectConfigureSuppressOfT(Task<int> task) => task.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void DirectStart(Task task, TaskScheduler scheduler) => task.Start(scheduler);
@@ -108,5 +118,22 @@ internal static class Program
         Observe("virtual-start-null-null", () => { task!.Start(null!); return "returned"; });
         Observe("virtual-sync-null-null", () => { task!.RunSynchronously(null!); return "returned"; });
         Console.WriteLine("task direct scheduling end");
+        Console.WriteLine("== task configure options ==");
+        Task<int>? typed = null;
+        Task completed = Task.CompletedTask;
+        Task<int> completedTyped = Task.FromResult(1);
+        Observe("direct-configure-undefined-null", () => { DirectConfigureUndefined(task!); return "constructed"; });
+        Observe("virtual-configure-undefined-null", () => { task!.ConfigureAwait((ConfigureAwaitOptions)64); return "constructed"; });
+        Observe("direct-configure-undefined-present", () => { DirectConfigureUndefined(completed); return "constructed"; });
+        Observe("virtual-configure-undefined-present", () => { completed.ConfigureAwait((ConfigureAwaitOptions)64); return "constructed"; });
+        Observe("direct-configure-undefined-typed-null", () => { DirectConfigureUndefinedOfT(typed!); return "constructed"; });
+        Observe("virtual-configure-undefined-typed-null", () => { typed!.ConfigureAwait((ConfigureAwaitOptions)64); return "constructed"; });
+        Observe("direct-configure-undefined-typed-present", () => { DirectConfigureUndefinedOfT(completedTyped); return "constructed"; });
+        Observe("virtual-configure-undefined-typed-present", () => { completedTyped.ConfigureAwait((ConfigureAwaitOptions)64); return "constructed"; });
+        Observe("direct-configure-suppress-typed-null", () => { DirectConfigureSuppressOfT(typed!); return "constructed"; });
+        Observe("virtual-configure-suppress-typed-null", () => { typed!.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing); return "constructed"; });
+        Observe("direct-configure-suppress-typed-present", () => { DirectConfigureSuppressOfT(completedTyped); return "constructed"; });
+        Observe("virtual-configure-suppress-typed-present", () => { completedTyped.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing); return "constructed"; });
+        Console.WriteLine("task configure options end");
     }
 }

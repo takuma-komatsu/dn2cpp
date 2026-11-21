@@ -1819,7 +1819,7 @@ internal sealed partial class CppEmitter
             .ThenBy(v => v.Offender.CppName, StringComparer.Ordinal)
             .ToList();
         var sb = new StringBuilder();
-        const int more = 8;
+        const int more = 12;
         foreach (var v in ordered.Take(more))
         {
             sb.AppendLine($"[HotPath(NoAlloc)] closure of {v.Root.DeclaringClass.FullName}::{v.Root.Name} "

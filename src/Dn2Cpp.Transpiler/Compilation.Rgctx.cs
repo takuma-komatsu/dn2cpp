@@ -645,6 +645,10 @@ internal sealed partial class Compilation
         "dn2cpp_semaphore_new(", // scanned semaphore owns its managed waiter queue
         "dn2cpp_semaphore_create_async_waiter(", // allocates a promise
         "dn2cpp_semaphore_release(", // waiter callback dispatch can allocate managed join results
+        "dn2cpp_async_task_alloc(",  // a runtime-async body's own task
+        "dn2cpp_asyncbuilder_task(",  // the builder's lazily allocated task
+        "dn2cpp_async_await_on_completed(", // registration allocates the continuation node
+        "dn2cpp_sched_post(",        // queues a continuation node
         // String constructors and producers.
         "dn2cpp_string_from",       // every string-from-* constructor (chars/wcs/mbs/utf8/…)
         "dn2cpp_string_repeat_char",

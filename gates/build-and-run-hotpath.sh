@@ -448,7 +448,8 @@ assert_noalloc_reject "$mixed_app" "directly-emitted allocation helpers" \
     "AdvanceInvocation" "dn2cpp_delegate_try_get_at(" \
     "DayName" "dn2cpp_dtfi_invariant_" \
     "EnumValueArray" "dn2cpp_type_get_enum_values(" \
-    "EnumMemberName" "dn2cpp_type_get_enum_name("
+    "EnumMemberName" "dn2cpp_type_get_enum_name(" \
+    "AsyncAnswer" "dn2cpp_async_task_alloc("
 
 assert_noalloc_reject "$reflection_noalloc_app" "ordinary reflection allocation and dispatch helpers" \
     "HotPath(NoAlloc)" \

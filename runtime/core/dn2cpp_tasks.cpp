@@ -613,6 +613,18 @@ static Dn2CppObject* dn2cpp_make_task_canceled_exception(Dn2CppCancelSource* sou
 
 static Dn2CppArrayRef* dn2cpp_task_fault_snapshot(Dn2CppTask* t);
 
+void dn2cpp_task_mark_exceptions_handled(Dn2CppTask* t)
+{
+    if (t == nullptr)
+        return;
+    auto* holder = t->status == DN2CPP_TASK_FAULTED
+        ? dn2cpp_task_holder_for_observation(t) : t->exceptionHolder.load(std::memory_order_acquire);
+    if (holder == nullptr)
+        return;
+    Dn2CppMonitorGuard guard(holder);
+    g_task_holder_observe(holder);
+}
+
 void dn2cpp_task_throw_if_faulted(Dn2CppTask* t)
 {
     // Captured cancellation exceptions retain their identity and trace. A
@@ -1223,6 +1235,22 @@ void dn2cpp_task_set_result(Dn2CppTask* t, uint64_t result)
 void dn2cpp_async_task_set_result(Dn2CppTask* t, uint64_t result, bool cacheResult)
 {
     dn2cpp_task_complete(t, DN2CPP_TASK_SUCCEEDED, result, t->exception, cacheResult);
+}
+
+bool dn2cpp_async_task_try_set_result(Dn2CppTask* t, uint64_t result, bool cacheResult)
+{
+    Dn2CppCont* conts;
+    {
+        std::lock_guard<std::mutex> lock(g_task_mtx);
+        // A reserved completion belongs to a fault being recorded.
+        if (t->status != DN2CPP_TASK_PENDING || t->exceptionHolderState == DN2CPP_TASK_HOLDER_RESERVED)
+            return false;
+        if (t->finishProvenance.load(std::memory_order_relaxed) & DN2CPP_TASK_EXPLICIT_FINISH)
+            return true;
+        conts = dn2cpp_task_publish_locked(t, DN2CPP_TASK_SUCCEEDED, result, t->exception, cacheResult, nullptr);
+    }
+    dn2cpp_fire_conts(conts);
+    return true;
 }
 
 void dn2cpp_task_set_exception(Dn2CppTask* t, Dn2CppObject* exception)
@@ -2139,16 +2167,27 @@ static void dn2cpp_task_set_canceled(Dn2CppTask* t, Dn2CppCancelSource* source)
     dn2cpp_task_complete(t, DN2CPP_TASK_CANCELED, t->result, nullptr, false, source);
 }
 
-void dn2cpp_task_set_exception_or_canceled(Dn2CppTask* t, Dn2CppObject* exception)
+static bool dn2cpp_task_finish_exception_or_canceled(Dn2CppTask* t, Dn2CppObject* exception)
 {
     int32_t status = exception != nullptr
         && dn2cpp_isinst(exception,
             s_canceled_exc_type.load(std::memory_order_acquire)) != nullptr
         ? DN2CPP_TASK_CANCELED : DN2CPP_TASK_FAULTED;
     if (status == DN2CPP_TASK_CANCELED)
-        dn2cpp_task_finish_canceled_promise(t, t->result, dn2cpp_canceled_exception_source(exception), exception);
-    else
-        dn2cpp_task_finish_recorded(t, status, t->result, exception);
+        return dn2cpp_task_finish_recorded(t, status, t->result, exception,
+            dn2cpp_canceled_exception_source(exception), nullptr, false, nullptr,
+            Dn2CppTaskFinishKind::PromiseCancellation);
+    return dn2cpp_task_finish_recorded(t, status, t->result, exception);
+}
+
+void dn2cpp_task_set_exception_or_canceled(Dn2CppTask* t, Dn2CppObject* exception)
+{
+    (void)dn2cpp_task_finish_exception_or_canceled(t, exception);
+}
+
+bool dn2cpp_async_task_try_set_exception_or_canceled(Dn2CppTask* t, Dn2CppObject* exception)
+{
+    return dn2cpp_task_finish_exception_or_canceled(t, exception);
 }
 
 // Task.FromCanceled(<T>) / ValueTask.FromCanceled(<T>): a pre-completed CANCELED
@@ -2318,11 +2357,20 @@ int32_t dn2cpp_tcs_try_set_canceled(Dn2CppTask* t, Dn2CppCancelSource* source)
 }
 
 // The non-Try setters throw when the task has already settled, like real .NET.
-[[noreturn]] static void dn2cpp_tcs_throw_settled()
+[[noreturn]] void dn2cpp_tcs_throw_settled()
 {
     const char* msg = "An attempt was made to transition a task to a final state when it had already completed.";
     dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_invalid_operation_exception_type,
         dn2cpp_string_from_utf8(msg, static_cast<int32_t>(std::strlen(msg))), nullptr));
+}
+
+void dn2cpp_async_resume_running(Dn2CppTask* t)
+{
+    if (t == nullptr)
+        dn2cpp_tcs_throw_settled();
+    if (!dn2cpp_task_try_set_exception(t, dn2cpp_exception_new(&dn2cpp_null_reference_exception_type,
+            dn2cpp_default_message(&dn2cpp_null_reference_exception_type), nullptr)))
+        dn2cpp_tcs_throw_settled();
 }
 
 void dn2cpp_tcs_set_result(Dn2CppTask* t, uint64_t result)

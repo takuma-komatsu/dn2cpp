@@ -26,13 +26,17 @@ namespace Dn2Cpp;
 // for none), or <c>-1</c> for an address-taken local, whose tag a write through its
 // address would leave stale. <c>DelegateAddressReady</c> marks an address already
 // in the delegate-call ABI.
+// <c>AwaitOptions</c> is the <c>ConfigureAwaitOptions</c> a configured awaitable was
+// built with (<c>AwaitOptionsNotLiteral</c> when the argument was not a literal, null when the awaitable did not
+// come straight from <c>ConfigureAwait</c>); only a runtime-async
+// <c>AsyncHelpers.Await</c> directly consuming the awaitable reads it.
 /// <summary>One evaluation-stack slot. <c>Expr</c> is the C++ text that reads it —
 /// almost always a single-assignment temp, since <see cref="MethodCompiler.Push"/>
 /// materializes one for every push, so the ORIGIN of a value is not recoverable
 /// from its text and any consumer that needs the origin must carry it here.
 /// <c>ArgSlot</c> is that for <c>ldarga</c>: the IL argument number whose address
 /// this entry holds.</summary>
-internal sealed record StackEntry(string Expr, StackKind Kind, string CppType, TypeDesc? TypeToken = null, TypeDesc? StaticType = null, int? BlobLen = null, string? StrLiteral = null, bool NonNull = false, bool SlotAddr = false, bool KnownNull = false, int? ArgSlot = null, MethodInfo? DelegateMethod = null, bool DelegateVirtual = false, string? DelegateTag = null, bool DelegateAddressReady = false);
+internal sealed record StackEntry(string Expr, StackKind Kind, string CppType, TypeDesc? TypeToken = null, TypeDesc? StaticType = null, int? BlobLen = null, string? StrLiteral = null, bool NonNull = false, bool SlotAddr = false, bool KnownNull = false, int? ArgSlot = null, MethodInfo? DelegateMethod = null, bool DelegateVirtual = false, string? DelegateTag = null, bool DelegateAddressReady = false, long? AwaitOptions = null);
 
 /// <summary>
 /// Translates one IL method body into a C++ function. The evaluation stack is
@@ -628,10 +632,14 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// <c>[UnmanagedCallersOnly]</c> root is called from native code only, so
     /// there is no managed call site to inline into. A <c>[HotPath]</c> body is
     /// excluded too: promotion would compile it under every including TU's plain
-    /// flags instead of the hot TU's (see <see cref="MethodInfo.IsHotPath"/>).</summary>
+    /// flags instead of the hot TU's (see <see cref="MethodInfo.IsHotPath"/>). A
+    /// runtime-async body stays out of line as well: its lowering is a group of
+    /// definitions (resumable function, frame, resume trampoline), not the single
+    /// inline function the shared header can carry.</summary>
     public static bool EmitsInline(MethodInfo m)
         => (m.IsAggressiveInlining && m.IsSmallIlBody || m.IsTinyIlBody)
-            && !m.IsNoInlining && !m.IsObfuscationTarget && !m.IsUnmanagedCallersOnly && !m.IsHotPath;
+            && !m.IsNoInlining && !m.IsObfuscationTarget && !m.IsUnmanagedCallersOnly && !m.IsHotPath
+            && !m.IsRuntimeAsync;
 
     // Address-taken methods use the runtime receiver ABI when no managed layout exists.
     internal static string ReceiverCppType(ClassInfo cls) => cls.FullName == "System.String"
@@ -753,6 +761,8 @@ internal sealed partial class MethodCompiler : IEvalStack
         if (SharedTrial && _method.IsHotPath)
             throw new SharedBodyTaintException("hotpath",
                 $"{_method.DeclaringClass.FullName}.{_method.Name}: [HotPath] bodies compile per instantiation");
+        if (_method.IsRuntimeAsync)
+            ValidateRuntimeAsyncBody();
         var bodyBlock = _module.PE.GetMethodBody(_method.Rva);
         List<Instruction> insns;
         try
@@ -768,6 +778,8 @@ internal sealed partial class MethodCompiler : IEvalStack
 
         BuildExceptionRegions(bodyBlock);
         BuildArgsAndLocals(bodyBlock);
+        if (_method.IsRuntimeAsync)
+            BeginRuntimeAsyncBody(insns);
         // Calls assign to CLI argument storage even when the native ABI promotes enums.
         foreach (var argument in _args)
             if (IsNarrowEnumSlot(argument.Type))
@@ -988,8 +1000,12 @@ internal sealed partial class MethodCompiler : IEvalStack
 
             // 6. Open try blocks starting here (outermost first).
             if (_tryOpensAt.TryGetValue(insn.Offset, out var openingTries))
-                foreach (var (_, _) in openingTries)
+                foreach (var (tryStart, tryEnd) in openingTries)
+                {
+                    int openAt = _body.Length;
                     _body.AppendLine("    try {");
+                    _async?.Tries.Add(new RuntimeAsyncTry(tryStart, tryEnd, openAt, _body.Length));
+                }
 
             if (_unreachable)
                 continue;
@@ -1006,6 +1022,8 @@ internal sealed partial class MethodCompiler : IEvalStack
             TranslateWithPendingReferenceBarriers(insn);
         }
 
+        if (_async is not null)
+            EndRuntimeAsyncBody();
         return FinishBody();
     }
 
@@ -1098,6 +1116,8 @@ internal sealed partial class MethodCompiler : IEvalStack
 
     private string RenderBody(string signature, string? synchronizedTypeInfo, string? rgctxAnchor, string? entryGuard)
     {
+        if (_async is not null)
+            return RenderRuntimeAsyncBody(signature, rgctxAnchor, entryGuard);
         var sb = new StringBuilder();
         sb.AppendLine($"// {_method.DeclaringClass.FullName}::{_method.Name}");
         // External linkage (no `static`): the body may live in a different translation unit
@@ -1130,26 +1150,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             string returnType = _method.Signature.ReturnType.IsVoid ? "void" : CppTypes.Of(_method.Signature.ReturnType);
             sb.AppendLine($"    return dn2cpp_synchronized((Dn2CppObject*){syncObject}, [&]() -> {returnType} {{");
         }
-        // Shared canonical body that read the runtime generic context without
-        // taking the hidden parameter: derive it from the receiver's dynamic
-        // type at this class's declaring level. Emitted only when a slot was
-        // actually used (the lazy prologue), and only in the emission pass
-        // (planning text is discarded, and its flags are not final yet). Only a
-        // null-bound reflection delegate enters the body without a receiver, so
-        // only an image that can bind one tests for it.
-        if (rgctxAnchor is not null)
-        {
-            string receiverContext = $"dn2cpp_rgctx(((const Dn2CppObject*)a0)->type, &{rgctxAnchor})";
-            string nullContext = $"dn2cpp_null_receiver_rgctx(&{rgctxAnchor})";
-            if (_c.EligibleRuntimeTemplateLevels.Contains(_method.DeclaringClass))
-            {
-                receiverContext = $"dn2cpp_rgctx_template(((const Dn2CppObject*)a0)->type, &{_method.DeclaringClass.CppTypeInfoName})";
-                nullContext = $"dn2cpp_null_receiver_rgctx(&{rgctxAnchor}, &{_method.DeclaringClass.CppTypeInfoName})";
-            }
-            sb.AppendLine("    const void* const* __rgctx = " + (_c.NullReceiverRgctx
-                ? $"a0 != nullptr ? {receiverContext} : {nullContext};"
-                : receiverContext + ";"));
-        }
+        AppendRgctxAnchor(sb, rgctxAnchor);
         // [HotPath(NoAlias)] span parameters: the element pointer hoisted once,
         // qualified. Only the entries an indexer route actually addressed are
         // declared (see SetupNoAliasSpanLocals), so a body that never indexes a
@@ -1157,19 +1158,51 @@ internal sealed partial class MethodCompiler : IEvalStack
         foreach (var (argSlot, argName, localName, elemSt) in _noAliasSpans)
             if (_noAliasSpansUsed.Contains(argSlot))
                 sb.AppendLine($"    {elemSt}* __restrict {localName} = ({elemSt}*){argName}.f__reference;");
-        foreach (var l in _locals)
-            sb.AppendLine($"    {l.CppType} {l.Name} = {CppTypes.ZeroInit(l.CppType)};");
-        if (_ftnOrigins.Count > 0)
-            for (int li = 0; li < _locals.Count; li++)
-                if (CanHoldMethodAddress(_locals[li].Kind) && !_addressTakenLocals.Contains(li))
-                    sb.AppendLine($"    int32_t {_locals[li].Name}_delegate_tag = 0;");
-        foreach (var d in _decls)
-            sb.AppendLine($"    [[maybe_unused]] {d.Type} {d.Name};");
+        AppendLocalDeclarations(sb);
         sb.Append(_body);
         if (synchronized)
             sb.AppendLine("    });");
         sb.AppendLine("}");
         return sb.ToString();
+    }
+
+    // Shared canonical body that read the runtime generic context without
+    // taking the hidden parameter: derive it from the receiver's dynamic
+    // type at this class's declaring level. Emitted only when a slot was
+    // actually used (the lazy prologue), and only in the emission pass
+    // (planning text is discarded, and its flags are not final yet). Only a
+    // null-bound reflection delegate enters the body without a receiver, so
+    // only an image that can bind one tests for it.
+    private void AppendRgctxAnchor(StringBuilder sb, string? rgctxAnchor)
+    {
+        if (rgctxAnchor is null)
+            return;
+        string receiverContext = $"dn2cpp_rgctx(((const Dn2CppObject*)a0)->type, &{rgctxAnchor})";
+        string nullContext = $"dn2cpp_null_receiver_rgctx(&{rgctxAnchor})";
+        if (_c.EligibleRuntimeTemplateLevels.Contains(_method.DeclaringClass))
+        {
+            receiverContext = $"dn2cpp_rgctx_template(((const Dn2CppObject*)a0)->type, &{_method.DeclaringClass.CppTypeInfoName})";
+            nullContext = $"dn2cpp_null_receiver_rgctx(&{rgctxAnchor}, &{_method.DeclaringClass.CppTypeInfoName})";
+        }
+        sb.AppendLine("    const void* const* __rgctx = " + (_c.NullReceiverRgctx
+            ? $"a0 != nullptr ? {receiverContext} : {nullContext};"
+            : receiverContext + ";"));
+    }
+
+    /// <summary>Whether local <paramref name="index"/> carries a
+    /// <c>locN_delegate_tag</c> companion.</summary>
+    private bool HasDelegateTagLocal(int index) =>
+        _ftnOrigins.Count > 0 && CanHoldMethodAddress(_locals[index].Kind) && !_addressTakenLocals.Contains(index);
+
+    private void AppendLocalDeclarations(StringBuilder sb)
+    {
+        foreach (var l in _locals)
+            sb.AppendLine($"    {l.CppType} {l.Name} = {CppTypes.ZeroInit(l.CppType)};");
+        for (int li = 0; li < _locals.Count; li++)
+            if (HasDelegateTagLocal(li))
+                sb.AppendLine($"    int32_t {_locals[li].Name}_delegate_tag = 0;");
+        foreach (var d in _decls)
+            sb.AppendLine($"    [[maybe_unused]] {d.Type} {d.Name};");
     }
 
     /// <summary>The frame name the shadow-stack prologue bakes into this body's
@@ -2972,7 +3005,11 @@ internal sealed partial class MethodCompiler : IEvalStack
             case ILOpCode.Blt_un: case ILOpCode.Blt_un_s: CondBranch(insn, "<", true); break;
 
             case ILOpCode.Ret:
-                if (_method.Signature.ReturnType.IsVoid)
+                if (_async is not null)
+                {
+                    EmitRuntimeAsyncReturn();
+                }
+                else if (_method.Signature.ReturnType.IsVoid)
                 {
                     Emit("return;");
                 }

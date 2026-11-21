@@ -778,8 +778,7 @@ internal sealed partial class MethodCompiler
                 // The resumption differs by awaiter: a Task-backed await registers
                 // MoveNext as a continuation on the awaited task; Task.Yield posts
                 // it straight onto the run queue to resume on the next turn.
-                // Every arm plants MoveNext's address as the continuation — the custom
-                // one through CustomAwaiterResume, which notes it itself — so this
+                // Every arm plants MoveNext's address as the continuation, so this
                 // suspension needs MoveNext's body no less than a direct call would.
                 // The resumption enters that body, whose own entry guard runs the
                 // initializer a value type's method triggers.
@@ -803,8 +802,10 @@ internal sealed partial class MethodCompiler
                     // ICriticalNotifyCompletion.UnsafeOnCompleted) so it fires the
                     // continuation when it completes. A *synchronous* user awaitable
                     // (IsCompleted always true) never reaches this branch.
-                    _ => CustomAwaiterResume(methodArgs[0], awaiterRef, mn,
-                             preferUnsafe: name == "AwaitUnsafeOnCompleted", reraise),
+                    _ => CustomAwaiterResume(methodArgs[0], awaiterRef.Expr, "__sm", mn.Emittable.CppName,
+                             preferUnsafe: name == "AwaitUnsafeOnCompleted", reraise)
+                         ?? "dn2cpp_fail(\"async: suspending on a custom non-Task awaitable whose awaiter has no "
+                          + "INotifyCompletion.OnCompleted(Action) is not supported\");",
                 };
                 string smCpp = sm.CppStructName;
                 // Box the SM to the heap the first time it suspends (boxed doubles
@@ -842,56 +843,81 @@ internal sealed partial class MethodCompiler
             ? $"({sm.CppStructName}*)({smRef.Expr})"
             : $"*({sm.CppStructName}**)({smRef.Expr})";
 
-    /// <summary>The resume statement for a custom suspending awaiter: allocate
-    /// a System.Action whose target is the boxed state machine (<c>__sm</c>) and whose
-    /// method is the SM's MoveNext, then call the awaiter's continuation-registering
+    /// <summary>The resume statement for a custom suspending awaiter: allocate a
+    /// System.Action whose target is <paramref name="target"/> and whose method is
+    /// <paramref name="resumeSymbol"/>, then call the awaiter's continuation-registering
     /// method (UnsafeOnCompleted/OnCompleted). The awaiter later invokes that Action,
-    /// re-entering MoveNext. When the awaiter exposes no OnCompleted(Action), trap at
-    /// runtime with a clear message (an awaiter that suspends must implement
-    /// INotifyCompletion). Reachability of the call edge + the Action delegate type is
-    /// in <c>Compilation.ReachCustomAwaiterContinuation</c>. With <paramref name="reraise"/>
-    /// a throw from the registration goes to <c>dn2cpp_async_await_rejected</c>, as a BCL
-    /// builder's does.</summary>
-    private string CustomAwaiterResume(TypeDesc awaiterType, StackEntry awaiterRef, MethodInfo moveNext,
-        bool preferUnsafe, bool reraise)
+    /// re-entering the suspended body: a state machine's MoveNext over its boxed
+    /// instance, or a runtime-async body's resume trampoline over its frame.
+    /// <paramref name="awaiterAddr"/> is the address of the awaiter value. Null when the
+    /// awaiter exposes no OnCompleted(Action). Reachability of the call edge + the Action
+    /// delegate type is in <c>Compilation.ReachCustomAwaiterContinuation</c>. With
+    /// <paramref name="reraise"/> a throw from the registration goes to
+    /// <c>dn2cpp_async_await_rejected</c>, as a BCL builder's does. A
+    /// <paramref name="completionTask"/> that has settled passes a null Action.</summary>
+    private string? CustomAwaiterResume(TypeDesc awaiterType, string awaiterAddr, string target, string resumeSymbol,
+        bool preferUnsafe, bool reraise, string? completionTask = null, Action<string>? prepare = null)
     {
-        if (_c.CustomAwaiterOnCompleted(awaiterType, preferUnsafe) is not { } onCompleted
+        if (_c.CustomAwaiterOnCompleted(awaiterType, preferUnsafe, out bool viaSlot) is not { } onCompleted
             || onCompleted.Signature.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { IsDelegate: true } action } actionParam]
             || awaiterType.Class is not { } awaiterCls)
-            return "dn2cpp_fail(\"async: suspending on a custom non-Task awaitable whose awaiter has no "
-                 + "INotifyCompletion.OnCompleted(Action) is not supported\");";
-        // The continuation delegate is stamped with the Action type's own
-        // type-info and wraps the state machine's MoveNext address.
+            return null;
+        // The continuation delegate is stamped with the Action type's own type-info.
         TaintIfCanonical(action, "async");
-        if (SharedTrial && Compilation.IsCanonicalMethod(moveNext))
-            ThrowSharedTaint("async", moveNext.DeclaringClass.FullName);
-        _c.NoteNamedBodySymbol(_method, moveNext.Emittable);
         string act = action.CppStructName;
-        string build = $"{act}* __act = ({act}*)dn2cpp_alloc(sizeof({act})); "
+        string create = $"__act = ({act}*)dn2cpp_alloc(sizeof({act})); "
              + $"((Dn2CppObject*)__act)->type = &{action.CppTypeInfoName}; "
-             + $"__act->f_target = (Dn2CppObject*)__sm; "
-             + $"__act->f_method = (void*)&{moveNext.Emittable.CppName}; "
+             + $"__act->f_target = (Dn2CppObject*)({target}); "
+             + $"__act->f_method = (void*)&{resumeSymbol}; "
              + $"__act->f_prev = nullptr; "
              + "dn2cpp_gc_write_barrier((void*)__act); ";
-        // An interface-typed awaiter (a GetAwaiter whose declared return type is
-        // an awaiter interface) only declares the registration method — on
-        // itself or an inherited INotifyCompletion — so dispatch it through
-        // the receiver's interface table.
-        if (onCompleted.DeclaringClass.IsInterface)
+        // One delegate serves every suspension of a runtime-async activation; the frame
+        // that is its target holds it, so it is made while the caller still holds the
+        // frame and the registration reads only the local __acur.
+        string build;
+        if (prepare is not null)
+        {
+            prepare($"{act}* __act = ({act}*){target}->__act; "
+                + $"if (__act == nullptr || ((Dn2CppObject*)__act)->type != &{action.CppTypeInfoName}) {{ "
+                + create
+                + $"{target}->__act = (Dn2CppObject*)__act; dn2cpp_gc_write_barrier((void*){target}); }} "
+                + "__acur = (Dn2CppObject*)__act;");
+            build = $"{act}* __act = ({act}*)__acur; ";
+        }
+        else
+        {
+            build = $"{act}* " + create;
+        }
+        // A settled method task has no continuation to hand out, as CoreLib's
+        // GetContinuationAction answers null.
+        if (completionTask is not null)
+            build += $"if (!dn2cpp_async_task_pending({completionTask})) __act = nullptr; ";
+        // Dispatch through the receiver's interface table: the completion interface's
+        // slot, as the CLR's constrained interface call reaches it.
+        if (viaSlot)
         {
             var itf = onCompleted.DeclaringClass;
             _c.NoteReferencedType(itf);
             return GuardRegistration(build
-                 + $"Dn2CppObject* __aw = *(Dn2CppObject**)({awaiterRef.Expr}); "
-                 + $"const void** __awslots = dn2cpp_resolve_interface(__aw->type, &{itf.CppTypeInfoName}); "
+                 + $"Dn2CppObject* __awr = (Dn2CppObject*)dn2cpp_null_check(*(Dn2CppObject**)({awaiterAddr})); "
+                 + $"const void** __awslots = dn2cpp_resolve_interface(__awr->type, &{itf.CppTypeInfoName}); "
                  + $"(({FnPtrType(onCompleted)})(__awslots[{onCompleted.VtableSlot}]))"
-                 + $"(({itf.CppStructName}*)__aw, ({CppTypes.Of(actionParam)})__act);", reraise);
+                 + $"(({itf.CppStructName}*)__awr, ({CppTypes.Of(actionParam)})__act);", reraise);
         }
-        // ref TAwaiter is a pointer to the awaiter; a struct awaiter is its `this`
-        // directly, a reference-type awaiter needs the stored reference dereferenced.
-        string recv = awaiterCls.IsValueType
-            ? $"({awaiterCls.CppStructName}*)({awaiterRef.Expr})"
-            : $"*({awaiterCls.CppStructName}**)({awaiterRef.Expr})";
+        // Only a struct awaiter is called directly, and its address is its `this`. A
+        // default interface body takes an object receiver, so the struct is boxed for it.
+        string recv;
+        if (onCompleted.DeclaringClass.IsInterface)
+        {
+            string ti = TypeInfoExpr(awaiterType)
+                ?? throw new NotSupportedException(
+                    $"{_method.DeclaringClass.FullName}.{_method.Name}: awaiter {awaiterCls.FullName} has no emitted type-info");
+            recv = $"({onCompleted.DeclaringClass.CppStructName}*)dn2cpp_box({ti}, (void*)({awaiterAddr}), sizeof({awaiterCls.CppStructName}))";
+        }
+        else
+        {
+            recv = $"({awaiterCls.CppStructName}*)({awaiterAddr})";
+        }
         return GuardRegistration(build
              + $"{DirectCallSym(onCompleted)}({ArgsWithRgctx($"{recv}, ({CppTypes.Of(actionParam)})__act", onCompleted)});",
             reraise);

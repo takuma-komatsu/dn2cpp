@@ -6676,7 +6676,8 @@ internal sealed partial class Compilation
                             NoteNonGenericArraySearch(m, insn.Offset);
                         // A custom (non-Task) awaiter that genuinely suspends —
                         // AwaitOnCompleted/AwaitUnsafeOnCompleted resolves only to
-                        // MoveNext above; also reach the awaiter's OnCompleted and the
+                        // MoveNext above and AsyncHelpers.AwaitAwaiter/UnsafeAwaitAwaiter
+                        // to nothing; also reach the awaiter's OnCompleted and the
                         // synthesized System.Action delegate type.
                         if (handle.Kind == HandleKind.MethodSpecification)
                             ReachCustomAwaiterContinuation(module, (MethodSpecificationHandle)handle, m.Context);

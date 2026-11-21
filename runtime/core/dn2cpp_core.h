@@ -2295,6 +2295,7 @@ inline constexpr const char* DN2CPP_SR_TASK_SYNC_CONTINUATION = "Task_RunSynchro
 inline constexpr const char* DN2CPP_SR_TASK_SYNC_PROMISE = "Task_RunSynchronously_Promise";
 inline constexpr const char* DN2CPP_SR_TASK_SYNC_COMPLETED = "Task_RunSynchronously_TaskCompleted";
 inline constexpr const char* DN2CPP_SR_TASK_SYNC_ALREADY = "Task_RunSynchronously_AlreadyStarted";
+inline constexpr const char* DN2CPP_SR_TASKT_CONFIGURE_AWAIT = "TaskT_ConfigureAwait_InvalidOptions";
 inline constexpr const char* DN2CPP_SR_THREAD_NOT_STARTED = "ThreadState_NotStarted";
 inline constexpr const char* DN2CPP_SR_THREAD_ALREADY_STARTED = "ThreadState_AlreadyStarted";
 inline constexpr const char* DN2CPP_SR_THREAD_WRONG_THREAD_START = "InvalidOperation_ThreadWrongThreadStart";
@@ -7933,6 +7934,8 @@ Dn2CppTaskCompletionSource* dn2cpp_tcs_alloc(const Dn2CppTypeInfo* type,
 // TaskAwaiter.GetResult: re-raise the stored exception if the task faulted,
 // otherwise a no-op. (Task<T>.GetResult adds the typed result load inline.)
 void dn2cpp_task_throw_if_faulted(Dn2CppTask* t);
+// A suppressing await observes the task's recorded faults without throwing them.
+void dn2cpp_task_mark_exceptions_handled(Dn2CppTask* t);
 // Task.ThrowAsync(Exception, SynchronizationContext): re-raise an async void fault as an
 // unhandled exception on the worker pool (crashing the process, as .NET does). The
 // SynchronizationContext is not honored.
@@ -7965,6 +7968,23 @@ void dn2cpp_task_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state);
 // call keeps the synchronous throw.
 void dn2cpp_async_await_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state);
 void dn2cpp_async_await_rejected(Dn2CppObject* exc);
+// The InvalidOperationException of a second transition of a settled task: a non-Try
+// completion source setter, or a runtime-async continuation invoked after its
+// activation completed.
+[[noreturn]] void dn2cpp_tcs_throw_settled();
+// A runtime-async activation completes its method's task once. These return false
+// when the task had already settled, which the caller reports by throwing
+// dn2cpp_tcs_throw_settled after its cleanup.
+bool dn2cpp_async_task_try_set_result(Dn2CppTask* t, uint64_t result, bool cacheResult);
+bool dn2cpp_async_task_try_set_exception_or_canceled(Dn2CppTask* t, Dn2CppObject* exception);
+inline bool dn2cpp_async_task_pending(Dn2CppTask* t)
+{
+    return t->status.load(std::memory_order_acquire) == DN2CPP_TASK_PENDING;
+}
+// A runtime-async continuation invoked while its activation runs faults the method's
+// task with a NullReferenceException and leaves the activation alone. A null task is a
+// completed activation and throws like dn2cpp_tcs_throw_settled.
+void dn2cpp_async_resume_running(Dn2CppTask* t);
 // Invoke a no-arg System.Action delegate (and its multicast chain) generically, via
 // the uniform delegate layout.
 void dn2cpp_action_invoke(Dn2CppObject* action);

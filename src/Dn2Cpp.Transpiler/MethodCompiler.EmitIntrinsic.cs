@@ -233,6 +233,12 @@ internal sealed partial class MethodCompiler
         // through to the loud miss rather than to a body — there is none.
         (["System.Resources.ResourceManager"],
             static (mc, dt, n, sig) => mc.TryEmitResourcesIntrinsic(dt, n, sig)),
+        // System.Runtime.CompilerServices.AsyncHelpers: the async-Main entry wrapper and
+        // the non-generic runtime-async suspension points (the generic ones route through
+        // TranslateGenericIntrinsic). An intrinsic type, so an unmapped member falls
+        // through to the loud miss.
+        ([RuntimeAsyncHelpersType],
+            static (mc, dt, n, sig) => mc.TryEmitRuntimeAsyncIntrinsic(dt, n, sig)),
     ];
 
     /// <summary>The arms that are NOT keyed on a declaring type — each owns a member set

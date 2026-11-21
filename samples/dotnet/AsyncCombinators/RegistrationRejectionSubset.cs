@@ -115,6 +115,22 @@ internal static class Program
         }
     }
 
+    // A null reference-type awaiter fails at its registration, like a throwing one.
+    [RuntimeAsyncMethodGeneration(true)]
+    private static async Task<int> AwaitNullAwaiter(ICriticalNotifyCompletion? awaiter)
+    {
+        AsyncHelpers.UnsafeAwaitAwaiter(awaiter!);
+        return 1;
+    }
+
+    // A default task awaiter holds no task to register on.
+    [RuntimeAsyncMethodGeneration(true)]
+    private static async Task<int> AwaitDefaultTaskAwaiter()
+    {
+        AsyncHelpers.UnsafeAwaitAwaiter(default(TaskAwaiter));
+        return 1;
+    }
+
     private static async void AwaitSourceVoid()
     {
         try
@@ -139,6 +155,14 @@ internal static class Program
                 break;
             case "custom-awaiter":
                 task = AwaitCustom();
+                break;
+            case "null-awaiter":
+                Console.WriteLine("null awaiter");
+                task = AwaitNullAwaiter(null);
+                break;
+            case "default-task-awaiter":
+                Console.WriteLine("default task awaiter");
+                task = AwaitDefaultTaskAwaiter();
                 break;
             case "async-void":
                 AwaitSourceVoid();

@@ -87,6 +87,12 @@ internal sealed partial class MethodCompiler
         var methodArgs = Reader.GetMethodSpecification(msh)
             .DecodeSignature(Comp.SigProvider, Method.Context).ToArray();
 
+        if (declType == RuntimeAsyncHelpersType)
+        {
+            EmitRuntimeAsyncGenericIntrinsic(name, msh, methodArgs);
+            return;
+        }
+
         // EventSource.Write<T> — the self-describing write. A no-op, exactly like the
         // non-generic write surface next door (MethodCompiler.TryEmitEventSourceIntrinsic):
         // .NET's own Write<T> opens with `if (!IsEnabled()) return;`, and no listener can

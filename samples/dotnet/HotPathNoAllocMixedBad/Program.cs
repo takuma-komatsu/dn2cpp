@@ -11,8 +11,20 @@ namespace Dn2Cpp.Runtime
     }
 }
 
+namespace System.Runtime.CompilerServices
+{
+    // Roslyn matches this attribute by name; the reference assemblies do not carry it.
+    [AttributeUsage(AttributeTargets.Method)]
+    internal sealed class RuntimeAsyncMethodGenerationAttribute : Attribute
+    {
+        public RuntimeAsyncMethodGenerationAttribute(bool runtimeAsync) { }
+    }
+}
+
 namespace HotPathNoAllocMixedBad
 {
+    using System.Runtime.CompilerServices;
+    using System.Threading.Tasks;
     using Dn2Cpp.Runtime;
 
     internal enum Shade { Light = 1, Dark = 2 }
@@ -81,6 +93,14 @@ namespace HotPathNoAllocMixedBad
             return type.GetEnumName(value);
         }
 
+        // A runtime-async body allocates its task even without a suspension.
+        [HotPath(NoAlloc = true)]
+        [RuntimeAsyncMethodGeneration(true)]
+        private static async Task<int> AsyncAnswer()
+        {
+            return 42;
+        }
+
         private static void Empty() { }
 
         private static void Main()
@@ -95,6 +115,7 @@ namespace HotPathNoAllocMixedBad
             Console.WriteLine(DayName(System.Globalization.DateTimeFormatInfo.InvariantInfo, DayOfWeek.Monday));
             Console.WriteLine(EnumValueArray().Length);
             Console.WriteLine(EnumMemberName(typeof(Shade), Shade.Dark));
+            Console.WriteLine(AsyncAnswer().Result);
         }
     }
 }

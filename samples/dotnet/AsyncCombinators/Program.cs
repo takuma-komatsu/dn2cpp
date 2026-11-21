@@ -113,6 +113,9 @@ namespace AsyncCombinators
             if (args.Length == 1 && args[0] == "before-scheduler-ids")
                 return;
             ColdTaskScheduleSubset.Program.RunSchedulerIds();
+            if (args.Length == 1 && args[0] == "before-runtime-async")
+                return;
+            RuntimeAsyncSubset.Program.Run();
             // Ends the process: a builder suspension's rejected registration is re-raised
             // as an unhandled ThreadPool exception.
             if (args.Length == 2 && args[0] == "suspension-rejection")

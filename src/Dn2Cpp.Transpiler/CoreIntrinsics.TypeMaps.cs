@@ -426,6 +426,13 @@ internal static class CoreIntrinsicTypeMaps
         // transpiling AwaitUnsafeOnCompleted finds no Dn2CppAsyncBuilder field in the state
         // machine and gaps.
         "System.Runtime.CompilerServices.AsyncVoidMethodBuilder",
+        // The runtime-async helper surface: the suspension points of a
+        // MethodImplAttributes.Async body and the async-Main entry wrapper. Its real
+        // bodies are CoreCLR's continuation machinery (runtime-allocated Continuation
+        // objects, context capture, the TPL continuation plumbing behind them), none
+        // of which exists here; its calls are answered over the native task model
+        // instead (MethodCompiler.RuntimeAsync.cs).
+        "System.Runtime.CompilerServices.AsyncHelpers",
         // Task.get_Factory is an opaque nullptr sentinel; TaskScheduler.Default/Current
         // share a runtime singleton so explicit null schedulers remain distinguishable.
         // factory.StartNew dispatches to the same worker pool as Task.Run (the

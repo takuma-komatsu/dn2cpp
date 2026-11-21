@@ -900,6 +900,52 @@ internal sealed partial class Compilation
         return _byFullName.TryGetValue(fullName, out var hit) ? hit : null;
     }
 
+    private readonly Dictionary<string, ClassInfo> _byStructName = new();
+    private int _byStructNameCursor;
+
+    /// <summary>Whether a by-value C++ type is a ref struct or <c>TypedReference</c>. Answers
+    /// from the type definition's attributes, never from member decoding or shape
+    /// completion, so it is exact for any class already in <see cref="Classes"/> and does
+    /// not depend on when the class's shape completes. A shared-layout class spells its
+    /// canonical owner's struct, which is another class of the same definition. An
+    /// intrinsic by-value type counts when every class that maps to its name is a ref
+    /// struct; a pointer-typed intrinsic name is shared with ordinary reference types and
+    /// never counts.</summary>
+    internal bool IsByRefLikeCppType(string cppType)
+    {
+        if (cppType == "Dn2CppTypedReference")
+            return true;
+        for (; _byStructNameCursor < Classes.Count; _byStructNameCursor++)
+        {
+            var c = Classes[_byStructNameCursor];
+            if (c.IntrinsicCppName is { } intrinsic)
+            {
+                if (!intrinsic.EndsWith('*'))
+                {
+                    bool all = !_byRefLikeIntrinsic.TryGetValue(intrinsic, out var seen) || seen;
+                    _byRefLikeIntrinsic[intrinsic] = all && IsByRefLikeDefinition(c);
+                }
+                continue;
+            }
+            string name = c.OwnCppStructName;
+            if (!_byStructName.TryGetValue(name, out var cur) || ClassInfo.CompareByOrder(c, cur) < 0)
+                _byStructName[name] = c;
+        }
+        if (_byRefLikeIntrinsic.TryGetValue(cppType, out var intrinsicRefLike))
+            return intrinsicRefLike;
+        return _byStructName.TryGetValue(cppType, out var cls) && IsByRefLikeDefinition(cls);
+    }
+
+    private readonly Dictionary<string, bool> _byRefLikeIntrinsic = new();
+
+    private static bool IsByRefLikeDefinition(ClassInfo cls)
+    {
+        if (cls.Handle.IsNil)
+            return false;
+        var reader = cls.Module.Reader;
+        return cls.IsByRefLike || IsByRefLikeType(reader, reader.GetTypeDefinition(cls.Handle));
+    }
+
     /// <summary>The lazily-built custom-attribute value decoder.</summary>
     public CustomAttributeTypeProvider AttrProvider => _attrProvider ??= new CustomAttributeTypeProvider(this);
     private CustomAttributeTypeProvider? _attrProvider;

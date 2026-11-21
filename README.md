@@ -744,6 +744,38 @@ Full ECMA-335 IL coverage. What that means concretely:
 - **Static abstract interface members** — dispatched through `constrained.`,
   including a generic static abstract method on a generic interface and an
   implementation the interface carries itself.
+- **Runtime-async methods** (`MethodImplAttributes.Async`) — the BCL's
+  bodies and user methods that opt in lower to resumable native functions
+  behind the method's unchanged signature, completing through the same
+  native tasks as state-machine `async`. Refused with
+  `NotSupportedException`: a suspension inside a `catch`, `finally`, fault
+  or filter handler; an address or method pointer on the evaluation stack
+  across a suspension; `ConfigureAwaitOptions` that is not a literal, or a
+  configured task awaitable that does not directly follow its
+  `ConfigureAwait` call; a suspending value-type instance method that uses
+  its receiver other than to copy `*this` on entry; a value-type custom
+  awaiter whose registration method has no body; `Synchronized` or
+  `[HotPath(NoAlias = true)]` on such a method; a return type other than
+  `Task`, `Task<T>`, `ValueTask` or `ValueTask<T>`; and obfuscating or
+  hot-update patching such a method.
+  Byref and byref-like arguments and locals, and byref-like values on the
+  evaluation stack, do not survive a suspension: they read as default after
+  a resumption.
+  One ordering differs from the CLR: when an awaiter's `OnCompleted` invokes
+  the continuation synchronously and the suspending method is itself
+  awaited by another runtime-async method, the continuations run in a
+  different order, because dn2cpp registers at the suspension site and the
+  CLR registers after the awaiting callers have unwound. The awaiting
+  caller resumes only after `OnCompleted` returns, so an `OnCompleted` that
+  waits for that caller's remaining work never returns. The continuation
+  a custom awaiter receives differs too: its `Target` is the suspension
+  frame, an `object` that is not a `Task`, and its `Method` is null, where
+  the CLR passes a delegate bound to a `Task` and its dispatch method. Each
+  activation has its own continuation delegate, where the CLR shares one
+  across a method and the runtime-async callers awaiting it directly: a
+  delegate retained from a completed callee throws
+  `InvalidOperationException` instead of resuming that caller. See
+  `gates/build-and-run-async-combinators.sh`.
 - **`MethodImplOptions` honored** — `Synchronized` (RAII monitor guard,
   static sharing the monitor with `lock(typeof(X))`),
   `AggressiveInlining`, `NoInlining`.

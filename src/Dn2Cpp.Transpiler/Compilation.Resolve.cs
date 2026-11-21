@@ -3242,80 +3242,110 @@ internal sealed partial class Compilation
     }
 
     /// <summary>The continuation-registering method of a <em>custom</em> (non-Task)
-    /// awaiter that genuinely suspends — <c>UnsafeOnCompleted</c>
-    /// (ICriticalNotifyCompletion) for the unsafe-await path, else <c>OnCompleted</c>
-    /// (INotifyCompletion): a 1-arg instance method taking a <c>System.Action</c>.
-    /// The async lowering registers a synthesized Action-over-MoveNext continuation
-    /// through it (<see cref="ReachCustomAwaiterContinuation"/> + the emit). Null for
-    /// an intrinsic Task/Yield/ValueTask awaiter (those take the dedicated resume
-    /// paths) or when the awaiter exposes no such method.</summary>
-    public MethodInfo? CustomAwaiterOnCompleted(TypeDesc awaiterType, bool preferUnsafe)
+    /// awaiter that genuinely suspends, as the CLR's constrained call of the completion
+    /// interface's own method reaches it: <c>ICriticalNotifyCompletion.UnsafeOnCompleted</c>
+    /// for the unsafe-await path, else <c>INotifyCompletion.OnCompleted</c>. The interface
+    /// is the one the awaiter implements (or is) that the CoreLib declares; an application
+    /// type of the same name never stands in for it. A reference-type awaiter, of any
+    /// shape, yields that interface's own declaration and <paramref name="viaSlot"/> is
+    /// set: the emit dispatches the slot through the receiver's interface table, which
+    /// no same-named class or interface member can replace. A value-type awaiter yields
+    /// the implementing body (an explicit .override first, then the name/signature match;
+    /// a struct has no base class that could hide it), called directly; that body may be
+    /// an interface's default implementation, which takes a boxed receiver. The async
+    /// lowering registers a synthesized Action continuation through it
+    /// (<see cref="ReachCustomAwaiterContinuation"/> + the emit). Null for an intrinsic
+    /// Task/Yield/ValueTask awaiter (those take the dedicated resume paths), an awaiter
+    /// without the completion interface, or a struct whose implementation has no body.</summary>
+    public MethodInfo? CustomAwaiterOnCompleted(TypeDesc awaiterType, bool preferUnsafe, out bool viaSlot)
     {
+        viaSlot = false;
         if (awaiterType is not { Kind: TypeKind.Class, Class: { } awaiter }
             || awaiter.IntrinsicCppName is not null) // Task/Yield/ValueTask awaiter
             return null;
         if (awaiter.GenericArity > 0)
             EnsureCompleted(awaiter);
-        // A class/struct awaiter registers through its own body. An *interface*
-        // awaiter (a GetAwaiter whose declared return type is an awaiter
-        // interface deriving from INotifyCompletion) exposes only the abstract
-        // declaration — on itself or an inherited interface — and the emit
-        // dispatches it through the interface table, so the body requirement is
-        // dropped and the interface closure is walked.
-        MethodInfo? FindOn(ClassInfo cls, string n, bool needBody) => cls.Methods.FirstOrDefault(m =>
-            !m.IsStatic && m.Name == n && (!needBody || m.Rva != 0)
-            && m.Signature.ParameterTypes is [{ Kind: TypeKind.Class, Class.IsDelegate: true }]);
-        MethodInfo? Find(string n)
+        MethodInfo? Declared(string interfaceName, string n)
         {
-            if (!awaiter.IsInterface)
-                return FindOn(awaiter, n, needBody: true);
-            var seen = new HashSet<ClassInfo>();
-            var queue = new Queue<ClassInfo>();
-            queue.Enqueue(awaiter);
-            while (queue.Count > 0)
+            ClassInfo? chosen = null;
+            void Consider(ClassInfo i)
             {
-                var itf = queue.Dequeue();
-                if (!seen.Add(itf))
-                    continue;
-                if (itf.GenericArity > 0)
-                    EnsureCompleted(itf);
-                if (FindOn(itf, n, needBody: false) is { } decl)
-                    return decl;
-                foreach (var inherited in itf.Interfaces)
-                    queue.Enqueue(inherited);
+                if (i.IsInterface && i.FullName == interfaceName
+                    && (chosen is null || CoreIntrinsics.IsCoreLibModule(i.Module) && !CoreIntrinsics.IsCoreLibModule(chosen.Module)))
+                    chosen = i;
             }
-            return null;
+            Consider(awaiter);
+            foreach (var i in GetInterfaceClosure(awaiter).Ordered)
+                Consider(i);
+            if (chosen is null || Modules.Any(CoreIntrinsics.IsCoreLibModule) && !CoreIntrinsics.IsCoreLibModule(chosen.Module))
+                return null;
+            return chosen.Methods.FirstOrDefault(m => !m.IsStatic && m.Name == n
+                && m.Signature.ParameterTypes is [{ Kind: TypeKind.Class, Class.IsDelegate: true }]);
+        }
+        MethodInfo? Find(string n, out bool slot)
+        {
+            slot = false;
+            var declaration = n == "UnsafeOnCompleted"
+                ? Declared("System.Runtime.CompilerServices.ICriticalNotifyCompletion", n)
+                : Declared("System.Runtime.CompilerServices.INotifyCompletion", n);
+            if (declaration is null)
+                return null;
+            if (!awaiter.IsValueType)
+            {
+                slot = true;
+                return declaration;
+            }
+            return ConstrainedImplOf(awaiter, declaration) is { IsStatic: false, Rva: not 0 } impl ? impl : null;
         }
         string primary = preferUnsafe ? "UnsafeOnCompleted" : "OnCompleted";
         string secondary = preferUnsafe ? "OnCompleted" : "UnsafeOnCompleted";
-        return Find(primary) ?? Find(secondary);
+        var found = Find(primary, out viaSlot);
+        return found ?? Find(secondary, out viaSlot);
     }
 
     /// <summary>For an <c>AwaitOnCompleted</c>/<c>AwaitUnsafeOnCompleted</c> over a
     /// custom (non-Task) awaiter, the emit synthesizes a <c>System.Action</c> wrapping
     /// the boxed state machine's MoveNext and calls the awaiter's
-    /// OnCompleted/UnsafeOnCompleted. Neither edge is visible to
-    /// <see cref="ResolveCallTarget"/> (the spec resolves only to MoveNext, and the
-    /// Action is heap-built by the emit, never by IL <c>newobj</c>), so reach them
-    /// here: the awaiter's continuation method, and System.Action as an allocated
-    /// delegate type so its struct/type-info/invoker are emitted.</summary>
+    /// OnCompleted/UnsafeOnCompleted; for a runtime-async body's
+    /// <c>AsyncHelpers.AwaitAwaiter</c>/<c>UnsafeAwaitAwaiter</c> the Action wraps the
+    /// body's resume trampoline. Neither edge is visible to
+    /// <see cref="ResolveCallTarget"/> (a builder spec resolves only to MoveNext, a
+    /// helper spec to nothing, and the Action is heap-built by the emit, never by IL
+    /// <c>newobj</c>), so reach them here: the awaiter's continuation method, and
+    /// System.Action as an allocated delegate type so its struct/type-info/invoker are
+    /// emitted.</summary>
     private void ReachCustomAwaiterContinuation(Module module, MethodSpecificationHandle msh, GenericContext ctx)
     {
         var ms = module.Reader.GetMethodSpecification(msh);
-        if (!IsAsyncBuilderSpec(module, ms, ctx))
-            return;
         string? nm = MethodSpecMethodName(module, ms);
-        if (nm is not ("AwaitOnCompleted" or "AwaitUnsafeOnCompleted"))
+        bool preferUnsafe;
+        if (nm is "AwaitOnCompleted" or "AwaitUnsafeOnCompleted")
+        {
+            if (!IsAsyncBuilderSpec(module, ms, ctx))
+                return;
+            preferUnsafe = nm == "AwaitUnsafeOnCompleted";
+        }
+        else if (nm is "AwaitAwaiter" or "UnsafeAwaitAwaiter")
+        {
+            if (MethodSpecParentTypeName(module, ms) != MethodCompiler.RuntimeAsyncHelpersType)
+                return;
+            preferUnsafe = nm == "UnsafeAwaitAwaiter";
+        }
+        else
+        {
             return;
+        }
         var margs = ms.DecodeSignature(SigProvider, ctx).ToArray();
         if (margs.Length == 0
-            || CustomAwaiterOnCompleted(margs[0], preferUnsafe: nm == "AwaitUnsafeOnCompleted") is not { } onCompleted)
+            || CustomAwaiterOnCompleted(margs[0], preferUnsafe, out bool viaSlot) is not { } onCompleted)
             return;
-        // An interface-declared registration method (interface-typed awaiter) is
-        // dispatched through the interface table: mark the slot used so every
-        // allocated implementing type wires + reaches its body.
-        if (onCompleted.DeclaringClass.IsInterface)
+        // A slot dispatch marks the interface slot used so every allocated implementing
+        // type wires + reaches its body. A direct call reaches the body, and a default
+        // interface body also needs the boxed awaiter's type.
+        if (viaSlot)
             ReachUsedVirtual(onCompleted);
+        else if (onCompleted.DeclaringClass.IsInterface && margs[0].Class is { } boxed)
+            ReachConstrainedBody(boxed, onCompleted);
         else
             Reach(onCompleted);
         if (onCompleted.Signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { IsDelegate: true } action }])
@@ -3325,6 +3355,9 @@ internal sealed partial class Compilation
             if (action.Methods.FirstOrDefault(mm => mm.Name == "Invoke") is { } inv)
                 Reach(inv);
             ReachAllocatedType(action);
+            // A slot dispatch reaches a body only through an allocated implementer; with
+            // none, no reachable signature names the delegate the emit lays out.
+            NoteForceEmit(action);
         }
     }
 
