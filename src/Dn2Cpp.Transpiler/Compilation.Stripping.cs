@@ -357,7 +357,8 @@ internal sealed partial class Compilation
             if (CoreIntrinsics.IsRuneNonInvariantCasingBody(method)
                 || IsUnsupportedEncodingRangeGetString(method)
                 || IsUnsupportedFixedCStrConversion(method)
-                || IsLegacyAsAnyMarshalAccessor(method))
+                || IsLegacyAsAnyMarshalAccessor(method)
+                || CoreLibBinderTrace.IsTelemetryWrapper(method))
                 continue;
             // Retention needs a callable symbol, but cannot revive IL replaced by
             // a member-specific cut. Reuse the same body as an address-taken call.

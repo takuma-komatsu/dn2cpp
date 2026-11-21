@@ -29,6 +29,11 @@ def validate_intercept_retention(probe, cli, original, directory, modes=("raw", 
                 result = run(arguments)
                 text = "\n".join(p.read_text() for p in [output / "generated.h", *output.glob("generated*.cpp")])
                 assert "RawBodyOnly" not in text, "Retention scanned the replaced body"
+                assert not re.search(r"\bAssemblyLoadContext_(?:IsTracingEnabled|TraceSatelliteSubdirectoryPathProbed)_\w+", text), \
+                    "Binder's unobservable trace entered the callable image"
+                probe_body = re.search(r"\bAssemblyLoadContext_ResolveSatelliteAssembly_\w+\([^;()]*\)\s*\{", text)
+                assert bool(probe_body) == (level == "medium" or kind == "called"), \
+                    "The trace branch suppressed the resolver body"
                 for member in ("BlockCopy", "ByteLength", "GetByte", "SetByte"):
                     body = re.search(r"\bBuffer_" + member + r"_\w+\([^;]*?\)\s*\{", text)
                     assert bool(body) == (level == "medium" or kind == "called"), (kind, level, member)

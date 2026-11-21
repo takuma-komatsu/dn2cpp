@@ -19,8 +19,9 @@ internal enum TypeIdentityCall
 /// icall aborts the transpile, or a typeof-chain dispatcher instantiates its generic local
 /// function against the cross product of every compared type. This pass computes, per body,
 /// the live IL offsets by walking edges from the entry point and taking only the live side of
-/// a folded branch. Two shapes fold:
+/// a folded branch. The recognized shapes are:
 ///  - `call folded-getter; brtrue/brfalse` (<see cref="CoreIntrinsics.ConstFoldedGetter"/>);
+///  - a verified CoreCLR binder telemetry-only arm, on a runtime without binder tracing;
 ///  - `ldtoken A; call GetTypeFromHandle; ldtoken B; call GetTypeFromHandle;
 ///    call Type.op_[In]Equality; brtrue/brfalse` — Roslyn's shape for
 ///    `if (typeof(A) ==/!= typeof(B))` — when both tokens resolve to closed types
@@ -49,10 +50,9 @@ internal sealed partial class BranchLiveness
 {
     private readonly HashSet<int> _liveOffsets;
     private readonly Dictionary<int, bool> _verdicts;
-    // Offsets of the five pre-branch instructions of every folded
-    // type-identity window (skipped by emission), and the branch offsets whose
-    // verdict came from such a window (they pop nothing — the comparison that
-    // would have fed them was elided).
+    // Offsets of the pre-branch instructions of each folded window
+    // (skipped by emission), and branches whose condition was elided
+    // (they pop nothing).
     private readonly HashSet<int>? _elided;
     private readonly HashSet<int>? _windowBranches;
 
@@ -72,12 +72,12 @@ internal sealed partial class BranchLiveness
     public bool? VerdictAt(int offset) => _verdicts.TryGetValue(offset, out bool taken) ? taken : null;
 
     /// <summary>Whether the (live) instruction at this offset belongs to a folded
-    /// type-identity window: the emitter skips it entirely — nothing is pushed,
+    /// window: the emitter skips it entirely — nothing is pushed,
     /// no type-info is referenced.</summary>
     public bool ElidedAt(int offset) => _elided is not null && _elided.Contains(offset);
 
-    /// <summary>Whether the folded branch at this offset closes a type-identity
-    /// window: its comparison operand was never pushed, so the emitter must not
+    /// <summary>Whether the folded branch at this offset closes a
+    /// window: its condition operand was never pushed, so the emitter must not
     /// pop one (a folded GETTER's constant push is real and does come off).</summary>
     public bool FoldedWindowBranch(int offset) => _windowBranches is not null && _windowBranches.Contains(offset);
 
@@ -89,7 +89,7 @@ internal sealed partial class BranchLiveness
     /// whether two ldtoken type tokens name the same closed type (null: no fold —
     /// open/placeholder/unresolved, or a hot-update base build).</summary>
     public static BranchLiveness? Compute(
-        List<Instruction> insns, MethodBodyBlock body, Func<int, bool?> foldedConst,
+        MethodInfo method, List<Instruction> insns, MethodBodyBlock body, Func<int, bool?> foldedConst,
         Func<int, TypeIdentityCall> typeIdentityCall, Func<int, int, bool?> typeEqualityVerdict)
     {
         // 1. Verdicts: every folded pattern whose result directly feeds the next
@@ -97,6 +97,7 @@ internal sealed partial class BranchLiveness
         // brfalse when false.
         Dictionary<int, bool>? verdicts = null;
         List<(int Start, int Branch)>? windows = null; // instruction INDICES
+        var binder = CoreLibBinderTrace.ClassifyGuardCaller(method, body);
         for (int i = 0; i + 1 < insns.Count; i++)
         {
             if (insns[i].OpCode is not (ILOpCode.Call or ILOpCode.Callvirt))
@@ -105,6 +106,13 @@ internal sealed partial class BranchLiveness
             bool isTrue = br is ILOpCode.Brtrue or ILOpCode.Brtrue_s;
             if (!isTrue && br is not (ILOpCode.Brfalse or ILOpCode.Brfalse_s))
                 continue;
+            if (binder != CoreLibBinderTrace.Kind.None && !isTrue
+                && CoreLibBinderTrace.IsTelemetryWindow(method, binder, insns, i))
+            {
+                (verdicts ??= new())[insns[i + 1].Offset] = true;
+                (windows ??= new()).Add((i, i + 1)); // no argument or bool remains on the stack
+                continue;
+            }
             if (foldedConst(insns[i].Token) is bool c)
             {
                 (verdicts ??= new())[insns[i + 1].Offset] = isTrue == c;
