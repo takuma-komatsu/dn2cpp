@@ -375,10 +375,10 @@ internal sealed partial class Compilation
                 && (method.PInvoke is not { } import || NativeImplFor(import) is null)
                 && CoreIntrinsics.TryFindCutRow(method, out var row))
             {
-                // Type-wide retention is not an invocation of an unsupported tracing member.
-                // Its signature and reflection row stay; no callable symbol is requested here.
+                // A sweep is not a call to an internal diagnostic or an unsupported provider member.
                 if (row.EmitArm == InterceptEmitArm.EventSourceNoOp
-                    && !CoreIntrinsics.CanReplayFrameworkEventSourceNoOp(method))
+                    && (IsInternalCoreLibEventSourceProvider(cls)
+                        || !CoreIntrinsics.CanReplayFrameworkEventSourceNoOp(method)))
                     continue;
                 NoteInterceptFtnTarget(method);
             }
@@ -392,6 +392,26 @@ internal sealed partial class Compilation
             NoteReflectionBoxed(field.Type);
         if (constructs && !cls.IsValueType && !cls.IsAbstract && !cls.IsInterface && !cls.IsDelegate)
             ReachAllocatedType(cls);
+    }
+
+    private bool IsInternalCoreLibEventSourceProvider(ClassInfo cls)
+    {
+        var module = cls.Module;
+        if (module.Index == 0 || module.AssemblyName != "System.Private.CoreLib" || cls.Handle.IsNil
+            || cls.BaseClass is not { FullName: "System.Diagnostics.Tracing.EventSource", Handle.IsNil: false } baseType
+            || baseType.Module != module
+            || FindClassByFullName("System.Object") is not { Handle.IsNil: false } objectType || objectType.Module != module)
+            return false;
+        var type = module.Reader.GetTypeDefinition(cls.Handle);
+        const TypeAttributes shape = TypeAttributes.VisibilityMask | TypeAttributes.Sealed;
+        if ((type.Attributes & shape) != (TypeAttributes.NotPublic | TypeAttributes.Sealed)
+            || !type.GetDeclaringType().IsNil || type.BaseType != (EntityHandle)baseType.Handle)
+            return false;
+        var eventSource = module.Reader.GetTypeDefinition(baseType.Handle);
+        var root = module.Reader.GetTypeDefinition(objectType.Handle);
+        return eventSource.GetDeclaringType().IsNil && eventSource.GetGenericParameters().Count == 0
+            && eventSource.BaseType == (EntityHandle)objectType.Handle
+            && root.GetDeclaringType().IsNil && root.BaseType.IsNil;
     }
 
     // The concrete UTF-7 and UTF-32 range overrides have no lowering for their

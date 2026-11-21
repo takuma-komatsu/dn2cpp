@@ -115,11 +115,12 @@ Method signatures on native ThreadPool and the existing no-op framework EventSou
 providers retain metadata identities without introducing executable type-wide demands
 for unused return types or discarded tracing payloads. Independently constructed or
 explicitly preserved payload types keep their normal executable retention.
-Retained framework-provider methods use callable wrappers of the existing no-listener
-lowering when it can supply a result. A member that it refuses retains metadata only
-unless an independent executable edge demands it, which still fails explicitly.
-Retention never restores managed tracing bodies. User-defined providers keep their
-ordinary managed behavior.
+The Medium sweep keeps sealed internal providers that directly derive from the
+selected CoreLib's EventSource metadata-only. Other framework-provider methods use
+callable wrappers of the existing no-listener lowering when it can supply a result.
+Independent executable demands still use the existing lowering and refuse unsupported
+members explicitly. Retention never restores managed tracing bodies. User-defined
+providers keep their ordinary managed behavior.
 In invariant globalization, public Rune casing follows the existing scalar casing
 path. Type-wide retention keeps the private non-invariant casing helper's metadata,
 not its executable body; an independent request to run it still fails explicitly.
