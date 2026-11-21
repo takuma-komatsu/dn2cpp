@@ -7,31 +7,31 @@ output = Path(sys.argv[1])
 text = "\n".join(path.read_text() for path in [output / "generated.h", *sorted(output.glob("generated*.cpp"))])
 if "Routes_Call" in text or "Routes_Calli" in text:
     raise AssertionError("retained-only image contains a direct/address fixture root")
-for field in ("f__invocationCount", "f__invocationList"):
+for field in ("f__helperObject", "f__extraData"):
     if field in text:
         raise AssertionError("retained-only image contains a CoreCLR-layout field walk: " + field)
+# Method symbols carry only the simple declaring-type name, so a Delegate.Wrapper
+# body is recognised by the fully qualified struct type of its parameters.
+if re.search(r"\b\w+_m\d+\([^;{)]*\bt_System_Delegate_Wrapper\b", text):
+    raise AssertionError("retained-only image contains an invocation-list storage body")
 
+multicast = {"_ctor": (2, "dn2cpp_delegate_initialize_named")}
 members = {
-    "Equals": (1, "dn2cpp_delegate_base_equal"),
-    "GetHashCode": (1, "dn2cpp_delegate_base_hash"),
-    "_ctor": (2, "dn2cpp_delegate_initialize_named"),
-}
-multicast = {
-    **members,
+    **multicast,
     "Equals": (1, "dn2cpp_delegate_equal"),
     "GetHashCode": (1, "dn2cpp_delegate_hash"),
-    "NewMulticastDelegate": (2, "dn2cpp_delegate_from_invocation_prefix"),
+    "NewMulticastDelegate": (1, "dn2cpp_throw_platform_not_supported"),
     "CombineImpl": (1, "dn2cpp_delegate_combine"),
     "RemoveImpl": (1, "dn2cpp_delegate_remove_impl"),
-    "GetTarget": (1, "dn2cpp_delegate_get_target"),
+    "get_Target": (1, "dn2cpp_delegate_get_target"),
     "GetMethodImpl": (1, "dn2cpp_delegate_get_method"),
     "GetInvocationList": (1, "dn2cpp_delegate_invocation_list"),
     "get_HasSingleTarget": (1, "->prev == nullptr"),
     "TryGetAt": (1, "dn2cpp_delegate_try_get_at"),
 }
-for name in ("CtorClosed", "CtorClosedStatic", "CtorRTClosed", "CtorOpened", "CtorVirtualDispatch",
-             "CtorCollectibleClosedStatic", "CtorCollectibleOpened", "CtorCollectibleVirtualDispatch"):
-    multicast[name] = (1, "dn2cpp_throw_platform_not_supported")
+for name in ("CtorClosed", "CtorClosedStatic", "CtorRTClosed", "CtorOpen", "CtorVirtualDispatch",
+             "CtorCollectibleClosedStatic", "CtorCollectibleOpen", "CtorCollectibleVirtualDispatch"):
+    members[name] = (1, "dn2cpp_throw_platform_not_supported")
 
 for owner, expected in (("Delegate", members), ("MulticastDelegate", multicast)):
     for member, (count, helper) in expected.items():

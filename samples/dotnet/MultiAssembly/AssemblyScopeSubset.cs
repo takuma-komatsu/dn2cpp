@@ -1,3 +1,4 @@
+#pragma warning disable CS0436 // the look-alike CoreLib names below are the point
 extern alias metadataAlias;
 
 using System;
@@ -26,6 +27,22 @@ namespace AssemblyScopeCollision
         public Generic(T value) { Value = value; Count++; }
         public T Read() => Value;
         public static string Label() => "application";
+    }
+}
+
+namespace System.Threading
+{
+    internal static class ManagedThreadId
+    {
+        public static int Current => 1234;
+    }
+}
+
+namespace System.Runtime.CompilerServices
+{
+    internal static class AsyncHelpers
+    {
+        public static string Tag() => "application-async";
     }
 }
 
@@ -148,6 +165,15 @@ namespace MultiAssembly
             Console.WriteLine("generic-definition-attribute="
                 + (((NamesTypeAttribute)definitionAttributes[0]).Type == libDefinition));
             Console.WriteLine("assembly-name-registry-end");
+        }
+
+        public static void RunCoreLibNames()
+        {
+            Console.WriteLine("corelib-names=" + System.Threading.ManagedThreadId.Current + "/"
+                + System.Runtime.CompilerServices.AsyncHelpers.Tag() + "/"
+                + metadataAlias::System.Runtime.CompilerServices.AsyncHelpers.Tag() + "/"
+                + metadataAlias::System.Runtime.CompilerServices.AsyncHelpers.Tag<int>() + "/"
+                + Lib.CoreLibNameLookalikes.Read());
         }
     }
 }

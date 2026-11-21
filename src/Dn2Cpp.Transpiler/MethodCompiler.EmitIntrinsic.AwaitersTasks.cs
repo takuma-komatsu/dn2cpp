@@ -127,9 +127,33 @@ internal sealed partial class MethodCompiler
             // identity copy and the await-suspend path matches the Task case.
             case ("System.Threading.Tasks.Task", "ConfigureAwait"):
             {
-                Pop(); // bool continueOnCapturedContext (unmodeled)
+                var configuration = Pop(); // bool continueOnCapturedContext is unmodeled
                 var t = Pop();
+                // The bool overload selects only the continuation's context: no options.
+                long tag = sig.ParameterTypes[0] is { Kind: TypeKind.Class, Class.FullName: "System.Threading.Tasks.ConfigureAwaitOptions" }
+                    ? ConstIntOf(configuration) ?? AwaitOptionsNotLiteral
+                    : 0;
+                if (tag != AwaitOptionsNotLiteral)
+                {
+                    int options = (int)tag;
+                    // The method validates before it touches `this`: a callvirt null
+                    // check precedes it, a non-virtual call does not. The Task<T> form
+                    // also rejects SuppressThrowing.
+                    bool taskOfT = sig.ReturnType is { Kind: TypeKind.Class, Class.GenericArity: > 0 };
+                    if ((options & ~7) != 0 || (taskOfT && (options & AwaitSuppressThrowing) != 0))
+                    {
+                        if (_callIsVirtual && !t.NonNull)
+                            Emit($"(void)dn2cpp_null_check((Dn2CppObject*)({t.Expr}));");
+                        // Task<T> tests SuppressThrowing before the undefined bits.
+                        string key = taskOfT && (options & AwaitSuppressThrowing) != 0
+                            ? "DN2CPP_SR_TASKT_CONFIGURE_AWAIT"
+                            : "DN2CPP_SR_ARGUMENT_OUT_OF_RANGE";
+                        Emit($"dn2cpp_throw_argument_out_of_range_param({key}, \"options\");");
+                        tag = 0;
+                    }
+                }
                 Push(StackKind.Struct, "Dn2CppTaskAwaiter", $"Dn2CppTaskAwaiter{{ (Dn2CppTask*)({t.Expr}) }}");
+                Top = Top with { AwaitOptions = tag };
                 return true;
             }
             case ("System.Runtime.CompilerServices.ConfiguredTaskAwaitable", "GetAwaiter"):

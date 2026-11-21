@@ -52,7 +52,11 @@ cd -P "$(dirname "${BASH_SOURCE[1]}")/.."
 _DN2CPP_GATE_ROOT="$PWD"
 
 CONFIG=${CONFIG:-Release}
-TFM=${TFM:-net10.0}
+# The one supported BCL major: the sample TFM, the pinned CoreLib and the
+# cross-target runtime-pack glob all derive from it.
+# Assigned unconditionally: an inherited value must not select another framework.
+DN2CPP_BCL_MAJOR=11
+TFM=net${DN2CPP_BCL_MAJOR}.0
 
 # ── Platform detection (cross-platform build-script seam) ─────────────────────
 # detect_os — host OS family. Gates derive shared-library naming, the loader
@@ -203,9 +207,9 @@ locate_corelib() {
     printf '%s\n' "$corelib"
 }
 
-# locate_corelib_cross_posix [net10] — locate_corelib, but a CoreLib whose native
+# locate_corelib_cross_posix [pinned] — locate_corelib, but a CoreLib whose native
 # interop surface matches a POSIX CROSS-TARGET (Android/NDK and Web/Emscripten
-# both want it). `net10` also pins the version; the two axes are independent, and
+# both want it). `pinned` also pins the version; the two axes are independent, and
 # taking only the version one is how a Windows-flavour CoreLib reached an NDK
 # link. POSIX host: the two coincide, so delegate. Windows host: the local CoreLib
 # P/Invokes kernel32/ntdll (the NDK link dies on `-lkernel32`, naming no cause)
@@ -217,15 +221,20 @@ locate_corelib_cross_posix() {
         return 0
     fi
     if [ "$DN2CPP_OS" != windows ]; then
-        if [ "${1:-}" = net10 ]; then resolve_net10_corelib; else locate_corelib; fi
+        if [ "${1:-}" = pinned ]; then resolve_pinned_corelib; else locate_corelib; fi
         return $?
     fi
     # The runtime pack's version directory carries the version, so the pin is a
-    # glob on it — same "highest that matches" rule as resolve_net10_corelib.
-    local best pat='*'
-    [ "${1:-}" = net10 ] && pat='10.0.*'
+    # glob on it — same "highest stable that matches" rule as
+    # resolve_pinned_corelib. A prerelease pack's version directory carries a
+    # '-', which the digits-and-dots filter rejects; unpinned keeps every pack.
+    local best pat='*' stable=''
+    if [ "${1:-}" = pinned ]; then
+        pat="$DN2CPP_BCL_MAJOR.0.*"
+        stable='/microsoft.netcore.app.runtime.linux-x64/[0-9.]*/runtimes/'
+    fi
     best="$(ls -d "$HOME"/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/$pat/runtimes/linux-x64/lib/*/System.Private.CoreLib.dll 2>/dev/null \
-        | sort -V | tail -1)"
+        | LC_ALL=C grep -e "$stable" | sort -V | tail -1)"
     if [ -z "$best" ] || [ ! -f "$best" ]; then
         echo "error: no ${1:+$1 }linux-x64 CoreLib found for a POSIX cross-build on Windows." >&2
         echo "       The local (Windows) CoreLib's FileStream/Console internals P/Invoke" >&2
@@ -241,16 +250,20 @@ locate_corelib_cross_posix() {
     printf '%s\n' "$best"
 }
 
-# resolve_net10_corelib — CoreLib of the highest installed Microsoft.NETCore.App
-# 10.0.* shared runtime; fails if none. The JSON gates pin net10.0 rather than
-# calling locate_corelib because a highest-version pick can land on an 11.0
-# preview whose CoreLib shape trips ResolveMemberRefField ("Sequence contains no
-# matching element") — version skew, not a real gap.
-resolve_net10_corelib() {
+# resolve_pinned_corelib — CoreLib of the highest installed STABLE
+# Microsoft.NETCore.App $DN2CPP_BCL_MAJOR.0.* shared runtime; fails if none. The
+# oracle and the transpiled BCL must both be the supported major's stable
+# runtime: a newer major or a prerelease installed side by side has a different
+# CoreLib shape, so it must never be picked the way locate_corelib would.
+resolve_pinned_corelib() {
     local name version path best_ver="" best_path=""
     while read -r name version path; do
         [ "$name" = "Microsoft.NETCore.App" ] || continue
-        case "$version" in 10.0.*) ;; *) continue ;; esac
+        case "$version" in
+            *-*) continue ;;
+            "$DN2CPP_BCL_MAJOR".0.*) ;;
+            *) continue ;;
+        esac
         # Windows dotnet emits CRLF; `read -r` keeps '\r' on the last field,
         # defeating the ']' strip below.
         path="${path%$'\r'}"
@@ -262,10 +275,27 @@ resolve_net10_corelib() {
         fi
     done < <(dotnet --list-runtimes)
     if [ -z "$best_path" ] || [ ! -f "$best_path" ]; then
-        echo "error: no net10.0 (Microsoft.NETCore.App 10.0.*) shared runtime found" >&2
+        echo "error: no stable Microsoft.NETCore.App $DN2CPP_BCL_MAJOR.0.* shared runtime found" >&2
         return 1
     fi
     printf '%s\n' "$best_path"
+}
+
+# gate_shared_framework_assembly APPBIN NAME — path of NAME in the pinned shared
+# framework, for a `shared-framework` row of a package pin list. The SDK prunes a
+# package whose assembly the framework owns and real .NET loads the framework's
+# copy, so that copy is the one to transpile. A copy restored to APPBIN means a
+# package outranks the framework there, and the row needs its content hash.
+gate_shared_framework_assembly() {
+    local appbin="$1" name="$2" corelib dll
+    if [ -e "$appbin/$name" ]; then
+        echo "FAIL: $name restored to $appbin; pin its content hash, not shared-framework" >&2
+        return 1
+    fi
+    corelib="$(resolve_pinned_corelib)" || return 1
+    dll="$(dirname "$corelib")/$name"
+    [ -f "$dll" ] || { echo "FAIL: the pinned shared framework has no $name" >&2; return 1; }
+    printf '%s\n' "$dll"
 }
 
 # prepare_cli — build once and export the CLI path before entering subshells.
@@ -2375,7 +2405,7 @@ _gate_helpers_hash() {
 }
 
 # _gate_dotnet_hash — hash of the installed shared-runtime set: `dotnet $app`
-# resolves by roll-forward, so a new 10.0.x patch changes the oracle without
+# resolves by roll-forward, so a new runtime patch changes the oracle without
 # touching any other key input. Exported as DN2CPP_DOTNET_RUNTIMES_HASH.
 _gate_dotnet_hash() {
     if [ -n "${DN2CPP_DOTNET_RUNTIMES_HASH:-}" ]; then
@@ -3080,7 +3110,7 @@ wasm_corelib_diff_gate() {
     # TARGET, not the host (docs/PORTING.md H6). `local` keeps the override off a
     # native wrapper called later in the same shell.
     local _CG_CORELIB_IN
-    _CG_CORELIB_IN=$(locate_corelib_cross_posix net10)
+    _CG_CORELIB_IN=$(locate_corelib_cross_posix pinned)
 
     _corelib_gate_core "$project" "$out" "$@"
     if gate_cache_check "$out" "wasm_corelib_diff_gate|$project|$*|$_CG_CORELIB|host:$DN2CPP_OS" \
@@ -3146,8 +3176,8 @@ ios_sim_corelib_diff_gate() {
     gate_cache_commit
 }
 
-# net10_bcl_diff_gate [OPTION...] PROJECT BCL_ASSEMBLY_NAME... — corelib_diff_gate
-# pinned to net10.0 (resolve_net10_corelib) + the named real BCL assemblies and
+# bcl_diff_gate [OPTION...] PROJECT BCL_ASSEMBLY_NAME... — corelib_diff_gate on
+# the pinned CoreLib (resolve_pinned_corelib) + the named real BCL assemblies and
 # --auto-ref. Options may appear anywhere among the positionals; with none passed,
 # argv/OUT/CONTEXT are byte-identical to the pre-option form.
 #   --cli-arg TOKEN     append TOKEN to the CLI argv before --auto-ref (repeatable)
@@ -3157,7 +3187,7 @@ ios_sim_corelib_diff_gate() {
 #   --post-assert FN    after the diff, call FN with (OUT, PROJECT); miss only
 # All but --out-suffix fold into the CONTEXT (the last two change only what happens
 # after the transpile the key hashes); --out-suffix already moves the key FILE.
-net10_bcl_diff_gate() {
+bcl_diff_gate() {
     local cli_args=() post_assert="" out_suffix="" keep_symbols=0 positional=()
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -3178,9 +3208,9 @@ net10_bcl_diff_gate() {
     # Publish the OUT actually written; no _corelib_gate_core here.
     _CG_OUT="$out"
 
-    echo "== 1/4 Locating the real net10.0 CoreLib + $* =="
+    echo "== 1/4 Locating the real pinned CoreLib + $* =="
     local corelib bcl name real_asm refs=()
-    corelib=$(resolve_net10_corelib)
+    corelib=$(resolve_pinned_corelib)
     bcl=$(dirname "$corelib")
     echo "corlib:   $corelib"
     for name in "$@"; do
@@ -3203,7 +3233,7 @@ net10_bcl_diff_gate() {
     [ ${#cli_args[@]} -gt 0 ] && ctx_extra="$ctx_extra|cliargs:${cli_args[*]}"
     [ "$keep_symbols" = 1 ] && ctx_extra="$ctx_extra|keepsyms"
     [ -n "$post_assert" ] && ctx_extra="$ctx_extra|postassert:$post_assert"
-    if gate_cache_check "$out" "net10_bcl_diff_gate|$project|$*|$corelib$ctx_extra" \
+    if gate_cache_check "$out" "bcl_diff_gate|$project|$*|$corelib$ctx_extra" \
             "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json"; then
         gate_cache_hit_msg
         return 0
@@ -3229,9 +3259,9 @@ net10_bcl_diff_gate() {
     gate_cache_commit
 }
 
-# net10_json_diff_gate PROJECT — net10_bcl_diff_gate for real System.Text.Json.
-net10_json_diff_gate() {
-    net10_bcl_diff_gate "$1" System.Text.Json
+# json_diff_gate PROJECT — bcl_diff_gate for real System.Text.Json.
+json_diff_gate() {
+    bcl_diff_gate "$1" System.Text.Json
 }
 
 # corelib_freeze_gate PROJECT EXPECTED_FILE [EXTRA_BCL_NAME...] — subset gate

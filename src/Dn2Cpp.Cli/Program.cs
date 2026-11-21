@@ -481,8 +481,8 @@ for (int i = 0; i < args.Length; i++)
 if (printRuntimeDir)
 {
     // Walk up from the executable directory to the nearest runtime/CMakeLists.txt.
-    // Installed tool: found immediately (tools/net10.0/any/runtime). Repo checkout
-    // (bin/<cfg>/net10.0) or the self-hosted binary under artifacts/: found at the
+    // Installed tool: found immediately (tools/<tfm>/any/runtime). Repo checkout
+    // (bin/<cfg>/<tfm>) or the self-hosted binary under artifacts/: found at the
     // repository root. The result is the -S argument for the native cmake build.
     string? probe = AppContext.BaseDirectory;
     while (!string.IsNullOrEmpty(probe))

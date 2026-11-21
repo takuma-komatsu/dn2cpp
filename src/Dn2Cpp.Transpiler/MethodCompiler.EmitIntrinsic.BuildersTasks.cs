@@ -353,7 +353,7 @@ internal sealed partial class MethodCompiler
                 return true;
             }
             // AppendFormat([IFormatProvider,] format, params ReadOnlySpan<object>) —
-            // the net10 params-span overloads (4+ loose args); same composition over
+            // the params-span overloads (4+ loose args); same composition over
             // the span's data pointer + length.
             case ("System.Text.StringBuilder", "AppendFormat") when IsSpanFormatOverload(sig):
             {
@@ -1412,7 +1412,7 @@ internal sealed partial class MethodCompiler
     /// location's storage width and what the IL stack holds); Boolean is a 1-byte
     /// unsigned slot inside structs/arrays, so it swaps at U1. None = no atomic
     /// mapping (structs, ...) — the emitter carves it out loudly.</summary>
-    private enum InterlockedWidth { None, Ref, U1, S1, U2, S2, I4, I8, R4, R8 }
+    private enum InterlockedWidth { None, Ref, U1, S1, U2, S2, I4, I8, Native, NativeU, R4, R8 }
 
     private static InterlockedWidth InterlockedWidthOfPrimitive(PrimitiveTypeCode p) => p switch
     {
@@ -1421,8 +1421,9 @@ internal sealed partial class MethodCompiler
         PrimitiveTypeCode.Int16 => InterlockedWidth.S2,
         PrimitiveTypeCode.UInt16 or PrimitiveTypeCode.Char => InterlockedWidth.U2,
         PrimitiveTypeCode.Int32 or PrimitiveTypeCode.UInt32 => InterlockedWidth.I4,
-        PrimitiveTypeCode.Int64 or PrimitiveTypeCode.UInt64
-            or PrimitiveTypeCode.IntPtr or PrimitiveTypeCode.UIntPtr => InterlockedWidth.I8,
+        PrimitiveTypeCode.Int64 or PrimitiveTypeCode.UInt64 => InterlockedWidth.I8,
+        PrimitiveTypeCode.IntPtr => InterlockedWidth.Native,
+        PrimitiveTypeCode.UIntPtr => InterlockedWidth.NativeU,
         PrimitiveTypeCode.Single => InterlockedWidth.R4,
         PrimitiveTypeCode.Double => InterlockedWidth.R8,
         _ => InterlockedWidth.None,
@@ -1472,26 +1473,70 @@ internal sealed partial class MethodCompiler
             Push(StackKind.Ref, cpp, $"({cpp}){call}");
             return;
         }
-        // (helper suffix, its C++ operand type, result re-widening cast(s), push shape)
-        var (suffix, argT, wrap, kind, ct) = InterlockedWidthOf(t) switch
-        {
-            InterlockedWidth.U1 => ("i1", "int8_t", "(int32_t)(uint8_t)", StackKind.I4, "int32_t"),
-            InterlockedWidth.S1 => ("i1", "int8_t", "(int32_t)", StackKind.I4, "int32_t"),
-            InterlockedWidth.S2 => ("i2", "int16_t", "(int32_t)", StackKind.I4, "int32_t"),
-            InterlockedWidth.U2 => ("i2", "int16_t", "(int32_t)(uint16_t)", StackKind.I4, "int32_t"),
-            InterlockedWidth.I4 => ("i4", "int32_t", "", StackKind.I4, "int32_t"),
-            InterlockedWidth.I8 => ("i8", "int64_t", "", StackKind.I8, "int64_t"),
-            InterlockedWidth.R4 => ("r4", "float", "(double)", StackKind.R8, "double"),
-            InterlockedWidth.R8 => ("r8", "double", "", StackKind.R8, "double"),
-            _ => throw new NotSupportedException(
+        var op = InterlockedOperand(InterlockedWidthOf(t))
+            ?? throw new NotSupportedException(
                 $"{Method.DeclaringClass.FullName}.{Method.Name}: Interlocked.{opName}<{t}> " +
-                "has no atomic width mapping (reference / integer / enum / float / double T only)"),
-        };
-        string fn = comparand is null ? $"dn2cpp_interlocked_exchange_{suffix}" : $"dn2cpp_interlocked_cmpxchg_{suffix}";
-        string args = $"({argT}*)({loc.Expr}), ({argT})({value.Expr})";
+                "has no atomic width mapping (reference / integer / enum / float / double T only)");
+        if (InterlockedWidthOf(t) is InterlockedWidth.Native or InterlockedWidth.NativeU)
+            EmitNonNullLocation(loc);
+        string fn = comparand is null ? $"dn2cpp_interlocked_exchange_{op.Suffix}" : $"dn2cpp_interlocked_cmpxchg_{op.Suffix}";
+        string args = $"({op.ArgT}*)({loc.Expr}), ({op.ArgT})({value.Expr})";
         if (comparand is { } c)
-            args += $", ({argT})({c.Expr})";
-        Push(kind, ct, $"{wrap}{fn}({args})");
+            args += $", ({op.ArgT})({c.Expr})";
+        PushInterlockedResult(t, loc, op.Kind, op.Ct, $"{op.Wrap}{fn}({args})");
+    }
+
+    /// <summary>The runtime helper suffix, its C++ operand type, the result's
+    /// re-widening cast and its push shape for a numeric Interlocked location;
+    /// null for a width no numeric atomic serves.</summary>
+    private static (string Suffix, string ArgT, string Wrap, StackKind Kind, string Ct)? InterlockedOperand(
+        InterlockedWidth width) => width switch
+    {
+        InterlockedWidth.U1 => ("i1", "int8_t", "(int32_t)(uint8_t)", StackKind.I4, "int32_t"),
+        InterlockedWidth.S1 => ("i1", "int8_t", "(int32_t)", StackKind.I4, "int32_t"),
+        InterlockedWidth.S2 => ("i2", "int16_t", "(int32_t)", StackKind.I4, "int32_t"),
+        InterlockedWidth.U2 => ("i2", "int16_t", "(int32_t)(uint16_t)", StackKind.I4, "int32_t"),
+        InterlockedWidth.I4 => ("i4", "int32_t", "", StackKind.I4, "int32_t"),
+        InterlockedWidth.I8 => ("i8", "int64_t", "", StackKind.I8, "int64_t"),
+        // Pointer-width: the _ip helpers pick the 4- or 8-byte atomic in C++.
+        InterlockedWidth.Native => ("ip", "intptr_t", "(int64_t)", StackKind.I8, "int64_t"),
+        InterlockedWidth.NativeU => ("ip", "intptr_t", "(int64_t)(uintptr_t)", StackKind.I8, "int64_t"),
+        InterlockedWidth.R4 => ("r4", "float", "(double)", StackKind.R8, "double"),
+        InterlockedWidth.R8 => ("r8", "double", "", StackKind.R8, "double"),
+        _ => null,
+    };
+
+    /// <summary>Emit the generic <c>Interlocked.And&lt;T&gt;</c>/<c>Or&lt;T&gt;</c> over
+    /// a T location: one fetch-and/fetch-or atomic at the location's DECLARED width
+    /// (the sub-word rule of <see cref="EmitInterlockedSwap"/>), pushing the original
+    /// value. T is an integer primitive — bool, char and the native integers
+    /// included — or an enum over one; for any other T the BCL body throws
+    /// NotSupportedException when called, so the throw stays a run-time one.</summary>
+    private void EmitInterlockedBitwise(TypeDesc t, StackEntry loc, StackEntry value, string opName)
+    {
+        var width = InterlockedWidthOf(t);
+        if (width is InterlockedWidth.R4 or InterlockedWidth.R8 || InterlockedOperand(width) is not { } op)
+        {
+            Emit("dn2cpp_throw_not_supported_msg(\"The specified type must be an integer primitive type or an enum type.\");");
+            string dead = CppTypes.Of(t);
+            Push(CppTypes.KindOf(t), dead, NewTemp(dead)); // unreachable stack shape
+            return;
+        }
+        EmitNonNullLocation(loc);
+        string fn = $"dn2cpp_interlocked_{(opName == "And" ? "and" : "or")}_{op.Suffix}";
+        PushInterlockedResult(t, loc, op.Kind, op.Ct,
+            $"{op.Wrap}{fn}(({op.ArgT}*)({loc.Expr}), ({op.ArgT})({value.Expr}))");
+    }
+
+    /// <summary>A null byref location (<c>Unsafe.NullRef</c>) raises the
+    /// NullReferenceException the CLR's managed read of the location raises, instead of
+    /// reaching the atomic with a null pointer.</summary>
+    private void EmitNonNullLocation(StackEntry loc) =>
+        Emit($"if (({loc.Expr}) == nullptr) dn2cpp_throw_null_reference();");
+
+    private void PushInterlockedResult(TypeDesc t, StackEntry loc, StackKind kind, string ct, string call)
+    {
+        Push(kind, ct, call);
         // Push spills eagerly, so the atomic has executed here. When the ref is an
         // ldloca/ldarga pointer into an int32-promoted local/arg slot (SlotAddr),
         // the declared-width write left the slot's upper bytes stale (e.g. an sbyte

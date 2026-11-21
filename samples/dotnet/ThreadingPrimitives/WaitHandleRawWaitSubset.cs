@@ -4,7 +4,8 @@ using System.Threading;
 namespace WaitHandleRawWaitSubset
 {
     // Public waits on events agree with .NET. SynchronizationContext.Wait reaches the
-    // CoreCLR WaitHandle QCall, which natively refuses at the call rather than binding.
+    // CoreCLR raw wait over IntPtr handles, which natively refuses at the call rather
+    // than binding. The refusal names the QCall or the Core wrapper, whichever CoreLib has.
     internal static class Program
     {
         public static void Run()
@@ -45,7 +46,7 @@ namespace WaitHandleRawWaitSubset
             catch (PlatformNotSupportedException error)
             {
                 Console.WriteLine("raw-wait-public-wait=PlatformNotSupportedException:"
-                    + error.Message.Contains("QCall!WaitHandle_WaitMultipleIgnoringSyncContext") + ":"
+                    + error.Message.Contains("WaitMultipleIgnoringSyncContext") + ":"
                     + error.Message.Contains("requires the CoreCLR runtime"));
             }
         }

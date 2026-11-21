@@ -361,10 +361,12 @@ filter reports an unrecognized site and adds no executable targets. Metadata
 and identity retained through ordinary inventory, copied-IL closure or explicit
 preservation remain available. A data read reaches no constructor or setter,
 even when another route reached the attribute's constructor.
-Named delegate binding and `Delegate.Method` share selection for known
-receivers, including objects and runtime templates. They search the full base
-chain at every visibility, bounded only by name, case and delegate `Invoke`
-arity; attribute reads use the selected member identity.
+Named delegate binding and a method group's `Delegate.Method` share selection
+for known receivers, including objects and runtime templates. They search the
+full base chain at every visibility, bounded only by name, case and delegate
+`Invoke` arity; attribute reads use the selected member identity. A delegate
+bound to a `MethodInfo` reports that row, normalized to its declaring type,
+whatever override its receiver runs.
 Invocation, field and property access, event subscription, delegate binding,
 construction and attribute instantiation reach the selected bodies, boxes and
 type initializers; a constant field's access reaches no initializer, and a
@@ -1636,7 +1638,7 @@ capability contract, not a set of independent constants:
 - **AVX10.2 needs a positive policy decision.** Raw CPUID detection retains the
   hardware fact, but `Avx10v2` and the V512 `AvxVnniInt8` / `AvxVnniInt16`
   surface enter the effective set only under `DN2CPP_ENABLE_AVX10V2=1`, matching
-  .NET 10's default-off policy. The compiler-capability guard is an independent
+  .NET's default-off policy. The compiler-capability guard is an independent
   requirement, so the opt-in cannot expose helpers the compiler cannot build.
 - **The mask intersects policy.** `DN2CPP_CPU_FEATURES` narrows the post-policy
   detected set (the effective set is the implication closure of policy ∩ allowed)
@@ -1791,6 +1793,81 @@ their completed status in FIFO order under the semaphore lock, then dispatches
 continuations outside that lock. Synchronous waiters retain their reserved permits.
 This bridge does not expose the other managed SemaphoreSlim fields or expand the
 public timeout/cancellation overload contracts.
+
+#### Runtime-async bodies
+
+A method flagged `MethodImplAttributes.Async` carries synchronous IL whose `ret`
+holds the unwrapped result and whose awaits are calls into
+`System.Runtime.CompilerServices.AsyncHelpers`. `AsyncHelpers` is an intrinsic
+type: `MethodCompiler.RuntimeAsync.cs` lowers every call into it, and none of
+its CoreCLR continuation machinery is transpiled.
+
+- **The method keeps its signature and ABI.** A body with no suspension site is
+  one function. A body with sites keeps the signature as a wrapper forwarding
+  to the resumable function `M__async`, emitted beside its frame
+  `M__AsyncFrame` and the trampoline `M__resume`. Call sites, vtable slots and
+  delegates bind the wrapper. The group is several definitions, so such a body
+  is never emitted inline.
+- **Completion goes through the native task.** The body allocates its task at
+  entry and settles it instead of returning: `ret` sets the result, and a
+  managed exception escaping the body settles the task faulted or canceled
+  instead of reaching the caller. These are the transitions the state-machine
+  builders make.
+- **The frame exists only after a suspension.** The first suspension of an
+  activation allocates the frame on the GC heap and saves the arguments, IL
+  locals and residual evaluation stack; later suspensions reuse it. Byref and
+  byref-like arguments and locals, and byref-like values on the evaluation
+  stack (`TypedReference` included), may point into the stack the activation
+  is leaving, so they are not saved and read as default after a resumption; an
+  await that completes synchronously leaves them intact. An address or method
+  pointer still on the evaluation stack at a suspension is refused with
+  `NotSupportedException`. A
+  completed activation clears the frame down to its header, state and task, so a retained
+  continuation keeps nothing alive; invoking it again throws the
+  `InvalidOperationException` of a second completion of the method's task. The
+  frame's state is the site index while suspended, `-2` while a resumption runs
+  and `-1` once spent. The state is the frame's lock: a resumption claims it
+  atomically before reading anything else, and a suspension publishes it last.
+  Invoking the continuation while its activation runs leaves the body alone and
+  faults the method's task with a `NullReferenceException`, as CoreLib's
+  dispatch does when it finds no continuation; the activation that then
+  completes finds its task settled and ends with the same
+  `InvalidOperationException`, and a registration made after that passes a
+  null `Action`.
+- **An activation restores the thread's `SynchronizationContext` when it
+  returns,** as CoreLib's continuation dispatch does, for the initial call and
+  for every resumption.
+- **A resumption re-enters `M__async` with the frame** and dispatches on the
+  saved state. C++ cannot jump into a `try` block, so a site inside try bodies
+  is reached through them: the jump lands on a label before the outermost
+  enclosing `try {`, and each enclosing block opens with a switch forwarding
+  the state one level in. A suspension leaves its try blocks by `goto`, which
+  runs no handler. No site lies in a handler, so the exception-region
+  bookkeeping is idle at every site.
+- **The caller's value is settled before the resumption is registered.** The
+  resumption may run on another thread as soon as it is registered, so the
+  suspending activation reads nothing but its return value afterwards.
+- **Registration happens at the suspension site.** The CLR registers after the
+  awaiting runtime-async callers have unwound. The order differs when an
+  awaiter's `OnCompleted` invokes the continuation synchronously and the
+  suspending method is itself awaited by another runtime-async method: the
+  awaiting caller resumes only after `OnCompleted` returns, so an
+  `OnCompleted` that waits for that caller's remaining work never returns.
+- **A custom awaiter's continuation is a delegate over the frame.** One
+  delegate serves every suspension of an activation. The CLR's one `Action`
+  also serves the runtime-async callers awaiting the method directly, so a
+  delegate retained from a completed callee resumes its caller there and
+  throws the spent activation's `InvalidOperationException` here. Its `Target`
+  is the suspension frame, typed `System.Object`, and its `Method` is null.
+  The CLR's continuation is bound to a `Task`-derived object and reports that
+  object's dispatch method.
+- **A shared generic body is not lowered.** The frame layout and the
+  trampoline are spelled per closed body, so a runtime-async generic method
+  compiles per instantiation.
+
+Shapes outside this contract throw `NotSupportedException` naming the method;
+README's *Language & IL* lists them.
+`gates/build-and-run-async-combinators.sh` asserts opted-in user bodies.
 
 #### Adopting a third-party async task type
 
@@ -2114,14 +2191,15 @@ Retained delegate value members, multicast factories, operations and accessors
 use callable bodies over the uniform invocation chain. Exact CoreLib declarations
 and raw references share the same boundary with ILDiet; retention never scans
 the replaced CoreCLR field or invoke-stub implementation. Named constructors use
-the ordinary named binder and keep its invocation rows. Nonvirtual `Delegate`
-value bodies remain distinct from `MulticastDelegate` overrides; virtual calls,
-virtual addresses and reflection select the override without a native vtable.
+the ordinary named binder and keep its invocation rows. `Delegate` declares the
+value, operation and accessor bodies and `MulticastDelegate` only the named
+constructors; direct calls, virtual calls, virtual addresses and reflection
+enter the same body without a native vtable.
 Reinitialization refuses
-a multicast receiver or a binding already snapshotted into another chain. Private
-multicast factories accept only a flattened prefix of the receiver's exact type,
-with enough entries to represent a multicast value; unsupported private states
-and CoreCLR VM constructor stubs throw without interpreting CLR-owned pointers.
+a multicast receiver or a binding already snapshotted into another chain. The
+private multicast factory takes CoreCLR invocation-list storage, whose element
+type has no transpiled body; the factory and the CoreCLR VM constructor stubs
+throw without interpreting CLR-owned storage or pointers.
 
 Enum instance body replacement is declaration- and signature-specific; a static
 helper with the same name does not acquire a boxed-receiver ABI. Closed integer

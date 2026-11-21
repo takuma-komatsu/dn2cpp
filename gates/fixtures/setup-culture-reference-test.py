@@ -18,8 +18,8 @@ spec.loader.exec_module(setup)
 
 class ReferenceSetupTests(unittest.TestCase):
     profile = 'culture'
-    sdk = '10.0.402'
-    runtime = '10.0.13'
+    sdk = '11.0.100'
+    runtime = '11.0.0'
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='reference test space ')
@@ -57,6 +57,7 @@ class ReferenceSetupTests(unittest.TestCase):
                 self.assertIn(setup.INSTALLER_COMMIT, download.args[0])
                 self.assertEqual(run.kwargs['env']['DOTNET_ROOT_X64'], str(install))
                 self.assertEqual(run.kwargs['env']['DOTNET_MULTILEVEL_LOOKUP'], '0')
+                self.assertEqual(run.kwargs['env'].get('DOTNET_INSTALL_SKIP_TAR'), '1' if platform == 'win32' else None)
                 self.assertTrue(run.kwargs['check'])
                 self.assertIn(str(install).encode(), (self.directory / 'path').read_bytes())
         self.assertEqual(len(set(installs)), 3)
@@ -86,29 +87,23 @@ class ReferenceSetupTests(unittest.TestCase):
         self.assertFalse((self.directory / 'env').exists())
 
     def test_wrong_or_additional_runtime_rejected(self):
-        for runtimes in (b'Microsoft.NETCore.App 10.0.12 [root]\n',
-                         f"Microsoft.NETCore.App {'10.0.14' if self.profile == 'culture' else '10.0.13'} [root]\n".encode(),
-                         f'Microsoft.NETCore.App {self.runtime} [root]\nMicrosoft.NETCore.App 10.0.12 [root]\n'.encode(),
-                         b'Microsoft.NETCore.App 10.0.14-preview.1 [root]\n'):
+        for runtimes in (b'Microsoft.NETCore.App 11.0.1 [root]\n',
+                         f'Microsoft.NETCore.App {self.runtime} [root]\nMicrosoft.NETCore.App 10.0.14 [root]\n'.encode(),
+                         b'Microsoft.NETCore.App 11.0.0-preview.1 [root]\n'):
             with self.subTest(runtimes=runtimes), self.assertRaisesRegex(RuntimeError, 'Unexpected isolated'):
                 self.invoke(runtimes=runtimes)
         self.assertFalse((self.directory / 'env').exists())
+        self.assertFalse((self.directory / 'path').exists())
 
     def test_wrong_sdk_rejected(self):
         with self.assertRaisesRegex(RuntimeError, 'Unexpected isolated'):
-            self.invoke(sdk=b'10.0.401\n')
+            self.invoke(sdk=b'11.0.101\n')
 
 
 class CiSetupTests(ReferenceSetupTests):
     profile = 'ci'
-    sdk = '10.0.403'
-    runtime = '10.0.14'
-
-    def test_unpatched_culture_runtime_rejected(self):
-        with self.assertRaisesRegex(RuntimeError, 'Unexpected isolated'):
-            self.invoke(runtimes=b'Microsoft.NETCore.App 10.0.13 [root]\n')
-        self.assertFalse((self.directory / 'env').exists())
-        self.assertFalse((self.directory / 'path').exists())
+    sdk = '11.0.100'
+    runtime = '11.0.0'
 
     def test_workflows_share_exact_ci_setup_without_optional_icu_preflight(self):
         setup_command = 'python gates/setup-culture-reference.py --profile ci'

@@ -20,7 +20,7 @@
 # combined variant asserts all of DnZlib's checks too (no CompressionNative_*,
 # no native deflate/inflate).
 #
-# Pinned to net10.0 (resolve_net10_corelib) for the same reason the
+# Pinned CoreLib (resolve_pinned_corelib) for the same reason the
 # compression-core/dnzlib gates are. Distinct OUT dirs (artifacts/*dnbrotli*)
 # so this parallelizes with those gates.
 source "$(dirname "$0")/_common.sh"
@@ -36,9 +36,9 @@ dnbrotli_diff_gate() {
     out="artifacts/$(printf '%s' "$project" | tr '[:upper:]' '[:lower:]')dnbrotli"
     [ "$with_dnzlib" = 1 ] && out="${out}dnzlib"
 
-    echo "== 1/5 Locating the real net10.0 CoreLib + System.IO.Compression[.Brotli] =="
+    echo "== 1/5 Locating the real pinned CoreLib + System.IO.Compression[.Brotli] =="
     local corelib bcl name real_asm refs=()
-    corelib=$(resolve_net10_corelib)
+    corelib=$(resolve_pinned_corelib)
     bcl=$(dirname "$corelib")
     echo "corlib:   $corelib"
     for name in System.IO.Compression System.IO.Compression.Brotli; do

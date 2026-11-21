@@ -33,6 +33,7 @@ internal static class X86Sections
         nestedProbes.Add("X86.AvxVnniInt16.V512", ProbeAvxVnniInt16V512);
 #endif
 #if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX
+        nestedProbes.Add("X86.AvxVnni.V512", ProbeAvxVnniV512);
         Action avxExercise = exercises["X86.Avx"];
         exercises["X86.Avx"] = () =>
         {
@@ -66,6 +67,7 @@ internal static class X86Sections
     internal static void ProbeAvx2() { _ = Avx2.Abs(Vector256<int>.Zero); }
     internal static void ProbeFma() { _ = Fma.MultiplyAdd(Vector128<float>.Zero, Vector128<float>.Zero, Vector128<float>.Zero); }
     internal static void ProbeAvxVnni() { _ = AvxVnni.MultiplyWideningAndAdd(Vector128<int>.Zero, Vector128<byte>.Zero, Vector128<sbyte>.Zero); }
+    internal static void ProbeAvxVnniV512() { _ = AvxVnni.V512.MultiplyWideningAndAdd(Vector512<int>.Zero, Vector512<byte>.Zero, Vector512<sbyte>.Zero); }
     internal static void ProbeAvx512F() { _ = Avx512F.Add(Vector512<int>.Zero, Vector512<int>.Zero); }
     internal static void ProbeAvx512BW() { _ = Avx512BW.Abs(Vector512<short>.Zero); }
     internal static void ProbeAvx512CD() { _ = Avx512CD.DetectConflicts(Vector512<int>.Zero); }
@@ -80,6 +82,7 @@ internal static class X86Sections
     internal static void ProbeAvxVnniInt16() { _ = AvxVnniInt16.MultiplyWideningAndAdd(Vector128<int>.Zero, Vector128<short>.Zero, Vector128<ushort>.Zero); }
     internal static void ProbeAvxVnniInt16V512() { _ = AvxVnniInt16.V512.MultiplyWideningAndAdd(Vector512<int>.Zero, Vector512<short>.Zero, Vector512<ushort>.Zero); }
     internal static void ProbeGfni() { _ = Gfni.GaloisFieldMultiply(Vector128<byte>.Zero, Vector128<byte>.Zero); }
+    internal static void ProbeAvx512Bmm() { _ = Avx512Bmm.ReverseBits(Vector128<byte>.Zero); }
 
     // CPUID answers are machine facts, so only shape facts every x86-64 CPU
     // shares are printed. DivRem divides (upper:lower) by divisor; a zero

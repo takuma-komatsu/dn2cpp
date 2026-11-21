@@ -144,7 +144,7 @@ internal sealed class GodotBackend : IEmitBackend
         foreach (var cls in classes.ToList())
         {
             if (!cls.IsPublic || cls.GenericArity != 0 || cls.Namespace == "Godot" || !isAppModuleClass(cls)
-                || CoreIntrinsics.IsIntrinsicType(cls.FullName) || cls.IntrinsicCppName is not null)
+                || CoreIntrinsics.IsIntrinsicType(cls) || cls.IntrinsicCppName is not null)
                 continue;
             var engineCallbacks = GodotExportParent(cls) is not null
                 ? EngineVirtualOverridesOf(cls, all, globalEnums)

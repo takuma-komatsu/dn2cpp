@@ -11,8 +11,8 @@
 # excludes. Unlike build-and-run-json-godot.sh (which deserializes a tiny inline
 # fragment via a copied DTO graph) this drives the real generator on the real dump.
 #
-# Like the JSON gates this pins net10.0 (resolve_net10_corelib): the 11.0 preview
-# CoreLib shape skews the STJ transpile (see resolve_net10_corelib in _common.sh).
+# Like the JSON gates this pins the CoreLib (resolve_pinned_corelib): another
+# major's CoreLib shape skews the STJ transpile (see _common.sh).
 #
 # Requires the gitignored extension_api.json at the repo root (the same engine API
 # dump the Godot sample gates consume to generate their shims). When it is absent
@@ -28,8 +28,8 @@ fi
 
 OUT="artifacts/godot-bindgen"
 
-echo "== 1/6 Locating the real net10.0 CoreLib + System.Text.Json + System.Linq =="
-corelib=$(resolve_net10_corelib)
+echo "== 1/6 Locating the real pinned CoreLib + System.Text.Json + System.Linq =="
+corelib=$(resolve_pinned_corelib)
 bcl=$(dirname "$corelib")
 REAL_JSON="$bcl/System.Text.Json.dll"
 REAL_LINQ="$bcl/System.Linq.dll"

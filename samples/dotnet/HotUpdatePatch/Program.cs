@@ -423,6 +423,7 @@ internal static class Program
         Counter addend = new Counter(100);
         IntTransform aotAdd = addend.Add;
         Console.WriteLine(aotAdd(5));
+        Console.WriteLine(Counter.SameAddBinding(addend, aotAdd));
         IntTransform[] fns = new IntTransform[2];
         fns[0] = triple;
         fns[1] = scale;
@@ -632,6 +633,15 @@ internal static class Program
         Counter.PatchShelf = new FrostShelf();
         Counter.PatchPlaque = new FrostPlaque();
         Counter.PatchSlate = new FrostSlate();
+
+        // Out-of-range and NaN floating-point conversions saturate; the operand
+        // is only known at run time.
+        double huge = d * 1e300;
+        Console.WriteLine((long)huge);
+        Console.WriteLine((int)huge);
+        Console.WriteLine((long)(uint)(-huge));
+        Console.WriteLine((long)(ulong)huge);
+        Console.WriteLine((long)(huge - huge));
 
         // An exception no patch handler consumes escapes the interpreter into
         // the base program's own try/catch (see HotUpdateBase.Program.Main).

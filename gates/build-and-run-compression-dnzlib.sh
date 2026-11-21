@@ -17,7 +17,7 @@
 # surgical, not a wholesale unlinking of the native lib. That control needs
 # --no-default-ref DnBrotli to survive — see the comment at the transpile.
 #
-# Pinned to net10.0 (resolve_net10_corelib) for the same reason the
+# Pinned CoreLib (resolve_pinned_corelib) for the same reason the
 # compression-core/zip gates are. Distinct OUT dirs (artifacts/*dnzlib) so this
 # parallelizes with those gates.
 source "$(dirname "$0")/_common.sh"
@@ -32,9 +32,9 @@ dnzlib_diff_gate() {
     local out
     out="artifacts/$(printf '%s' "$project" | tr '[:upper:]' '[:lower:]')dnzlib"
 
-    echo "== 1/5 Locating the real net10.0 CoreLib + $* =="
+    echo "== 1/5 Locating the real pinned CoreLib + $* =="
     local corelib bcl name real_asm refs=()
-    corelib=$(resolve_net10_corelib)
+    corelib=$(resolve_pinned_corelib)
     bcl=$(dirname "$corelib")
     echo "corlib:   $corelib"
     for name in "$@"; do

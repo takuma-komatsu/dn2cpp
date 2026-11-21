@@ -492,7 +492,8 @@ internal sealed class MethodInfo
     /// (RAII monitor guard around the body), <c>NoInlining</c>
     /// (<c>[[gnu::noinline]]</c>), <c>AggressiveInlining</c> (the body is
     /// emitted <c>inline</c> into the shared header so cross-TU call sites can
-    /// inline it). Ignored: <c>InternalCall</c> (already modeled as
+    /// inline it), <c>Async</c> (the body follows the runtime-async contract —
+    /// see <see cref="IsRuntimeAsync"/>). Ignored: <c>InternalCall</c> (already modeled as
     /// <see cref="Rva"/> == 0 → intrinsic mapping or the unmapped-extern error),
     /// <c>ForwardRef</c>, <c>PreserveSig</c>, <c>NoOptimization</c>,
     /// <c>AggressiveOptimization</c>.</summary>
@@ -724,6 +725,12 @@ internal sealed class MethodInfo
     public bool IsAbstract => (Attributes & MethodAttributes.Abstract) != 0;
 
     public bool IsSynchronized => (ImplAttributes & MethodImplAttributes.Synchronized) != 0;
+
+    /// <summary><c>MethodImplAttributes.Async</c>: the signature returns a Task or ValueTask
+    /// type, but the IL returns the unwrapped result (nothing for the non-generic forms) and
+    /// suspends through <c>System.Runtime.CompilerServices.AsyncHelpers</c> calls. Such a body
+    /// cannot compile as ordinary IL: its <c>ret</c> does not carry the declared return type.</summary>
+    public bool IsRuntimeAsync => (ImplAttributes & MethodImplAttributes.Async) != 0;
     public bool HasObfuscateAttribute => HasMethodAttribute("Dn2Cpp.Runtime.ObfuscateAttribute");
 
     public bool ObfuscationHasIlBody;
@@ -1111,6 +1118,11 @@ internal sealed class ClassInfo
     public Dictionary<MethodDefinitionHandle, MethodInfo> MethodByTemplate { get { PullMembers(); return _methodByTemplate; } } // specs: template method -> instance
     public Dictionary<MethodInfo, MethodInfo> ExplicitInterfaceImpls { get { PullMembers(); return _explicitItfImpls; } } // explicit interface declaration -> body
 
+    /// <summary>Generic interface methods this interface replaces with a static explicit body.
+    /// <see cref="ExplicitInterfaceImpls"/> cannot key them, so each is kept as its closed
+    /// declaring interface and definition token.</summary>
+    public List<(ClassInfo Declaring, int Token)> StaticGenericImplDeclarations { get { PullMembers(); return _staticGenericImplDecls; } }
+
     /// <summary>Lazy name→methods index over <see cref="Methods"/>, shared by the linear
     /// same-name scans (Compilation.ResolveItfImplOrNull's signature-match loop,
     /// ResolveMemberRefMethod's overload scan). Reading it pulls members through the
@@ -1183,6 +1195,7 @@ internal sealed class ClassInfo
     private List<MethodInfo> _slotOwners = new();
     private Dictionary<MethodDefinitionHandle, MethodInfo> _methodByTemplate = new();
     private Dictionary<MethodInfo, MethodInfo> _explicitItfImpls = new();
+    private List<(ClassInfo Declaring, int Token)> _staticGenericImplDecls = new();
 
     /// <summary>The class's static constructor — the <c>.cctor</c> row with a real body —
     /// or null. Reads <see cref="Methods"/>, so on a specialization the first ask decodes
@@ -1390,7 +1403,10 @@ internal sealed class ClassInfo
     /// Specializations nothing names have no owner to verify and never reach
     /// this.</para></summary>
     public string CppStructName => ShareStructLayout && VerifiedSharedOwner is { } o
-        ? o.CppStructName : _ownStructName ??= "t_" + CppName;
+        ? o.CppStructName : OwnCppStructName;
+
+    /// <summary>The struct name this class carries when it is not grouped under an owner.</summary>
+    internal string OwnCppStructName => _ownStructName ??= "t_" + CppName;
 
     // The pointer spelling CppTypes.Of emits for every reference-type slot — read once per
     // local/argument/field rendering, so the `+ "*"` concat was one of the emitter's

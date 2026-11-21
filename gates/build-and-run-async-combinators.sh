@@ -72,6 +72,10 @@
 # Directly queueing a cold task dispatches its body off the calling thread.
 # Stored Task faults remain pending until the body finishes and keep their order and identity.
 # Task and cancellation aggregate construction leaves virtual inner Messages unread.
+# RuntimeAsyncSubset.cs asserts runtime-async method bodies (MethodImplAttributes.Async,
+# opted in per method): AsyncHelpers.Await over Task and ValueTask, AwaitAwaiter and
+# UnsafeAwaitAwaiter over custom awaiters and Task.Yield, a value-type instance method,
+# a generic method, and suspensions inside try/catch/finally.
 source "$(dirname "$0")/_common.sh"
 gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for task call fixtures"
 call_app="gates/fixtures/task-call-validation/bin/$CONFIG/$TFM/TaskCallValidation.dll"
@@ -88,6 +92,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-scheduler-in
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-scheduler-queue"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-task-add-exception"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-task-finish|prefix:before-scheduler-ids"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-runtime-async"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|shared-binary:native-delay-deadlines|shared-binary:fresh-cancellation-filters"
 
 # The exception text is platform-owned; its record prefix is the boundary.
@@ -158,7 +163,25 @@ gate_extra_asserts() {
     printf '%s\n' 'default/current/reflected: True/True/True/True' \
         'read order and independent task counter: True/True/True/True' \
         'shared first read: True/True/True' > "$out/scheduler-ids.expected"
-    gate_output suffix "$native" "$out/scheduler-ids.expected" --after '== scheduler ids ==' --policy crlf || return 1
+    before="$out/before-runtime-async.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-runtime-async
+    gate_output suffix "$before" "$out/scheduler-ids.expected" --after '== scheduler ids ==' --policy crlf || return 1
+    gate_output prefix "$native" "$before" --before '== runtime async ==' --policy crlf || return 1
+    for line in '== runtime async ==' 'tasks: 21/40 settled: True/2' 'struct: 5/1' \
+        'awaiter result: 4critical/finally' \
+        'awaiter throw: 5/negative/finally OnCompleted;UnsafeOnCompleted;UnsafeOnCompleted;' \
+        'continuation identity: True False' 'continuation settled: 2' \
+        'completed frame: False null' 'context restored: null null null' \
+        'continuation re-entered: nested returned runs 1 tail 1 outer InvalidOperationException/An attempt was made to transition a task to a final state when it had already completed. Faulted/NullReferenceException' \
+        'continuation re-entered then suspended: nested returned runs 1 tail 0 outer returned Faulted/NullReferenceException calls 1 registered False' \
+        'runtime async end'; do
+        gate_output byte-witness "$native" "$line" --policy crlf || return 1
+    done
+    # The block's methods are lowered as resumable bodies, not as state machines.
+    if ! grep -qE 'struct Program_AwaitAwaiters_m[0-9]+__AsyncFrame' "$out"/generated*.cpp; then
+        echo 'FAIL: RuntimeAsyncSubset.Program.AwaitAwaiters is not a runtime-async body' >&2
+        return 1
+    fi
     before="$out/before-semaphore-waiters.stdout"
     gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-semaphore-waiters
     gate_output prefix "$native" "$before" --before '== semaphore waiter helpers ==' --policy crlf
@@ -346,7 +369,8 @@ gate_extra_asserts() {
     done
     local mode child child_code dotnet_child dotnet_code rejection
     for mode in value-task-source:'source OnCompleted #6' \
-        custom-awaiter:'awaiter UnsafeOnCompleted' async-void:'source OnCompleted #6'; do
+        custom-awaiter:'awaiter UnsafeOnCompleted' async-void:'source OnCompleted #6' \
+        null-awaiter:'null awaiter' default-task-awaiter:'default task awaiter'; do
         child="$out/suspension-${mode%%:*}.stdout"
         dotnet_child="$out/suspension-oracle-${mode%%:*}.stdout"
         gate_capture "${child%.stdout}" run_bounded "./$out/AsyncCombinators$EXE_EXT" \
@@ -367,12 +391,13 @@ gate_extra_asserts() {
         gate_output suffix "$child" "$out/suspension.expected" \
             --after "== builder suspension rejection: ${mode%%:*} ==" --policy crlf
         case "${mode%%:*}" in
-            custom-awaiter) rejection='awaiter rejected the continuation' ;;
-            *) rejection='source rejected the continuation' ;;
+            custom-awaiter) rejection='System.InvalidOperationException: awaiter rejected the continuation' ;;
+            null-awaiter|default-task-awaiter) rejection='System.NullReferenceException: Object reference not set to an instance of an object.' ;;
+            *) rejection='System.InvalidOperationException: source rejected the continuation' ;;
         esac
         gate_output abort-parity "${child%.stdout}" "${dotnet_child%.stdout}" \
             --host "$DN2CPP_OS" --witness "${mode#*:}" \
-            --diagnostic "Unhandled exception. System.InvalidOperationException: $rejection" || return 1
+            --diagnostic "Unhandled exception. $rejection" || return 1
         echo "OK suspension rejection ${mode%%:*}: aborted with $child_code after '${mode#*:}'"
     done
     before="$out/before-cancellation-receivers.stdout"

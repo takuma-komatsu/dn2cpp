@@ -12,7 +12,7 @@ namespace SubWordOverloadSubset
     // did not model had nowhere to fall back to: it was a hard transpile failure.
     //
     // Unlike Path/File, the remedy is NOT to let these fall through — the fall-through IS
-    // the cascade the cut exists to avoid. It is to model the whole surface. .NET 10 gives
+    // the cascade the cut exists to avoid. It is to model the whole surface. CoreLib gives
     // all eight integer widths the identical 23-member shape (4 ToString, 8 Parse, 9
     // TryParse, 2 TryFormat); these were the two families missing.
     //
@@ -66,7 +66,7 @@ namespace SubWordOverloadSubset
                    && ((ushort)65535).ToString("X", Inv) == ((ushort)65535).ToString("X")));
 
             // ---- Parse/TryParse(ReadOnlySpan<byte>): the IUtf8SpanParsable forms -------
-            // A `"..."u8` literal is a ReadOnlySpan<byte> of UTF-8, and .NET 10 binds it to
+            // A `"..."u8` literal is a ReadOnlySpan<byte> of UTF-8, and CoreLib binds it to
             // a real overload on every one of these types. It is the same operation over a
             // different encoding of the same text, so the UTF-8 lane and the string lane
             // must not be able to disagree — the runtime widens the bytes and runs the ONE

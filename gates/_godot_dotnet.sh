@@ -130,7 +130,7 @@ EOF
 #
 # godot_dotnet_transpile OUT — the key-producing half: generate the sample's
 # nuget.config, build the sample with the real Godot.NET.Sdk, and transpile it
-# with --dotnet-module against the real GodotSharp + the net10 CoreLib into OUT.
+# with --dotnet-module against the real GodotSharp + the pinned CoreLib into OUT.
 # The caller must have verified godot_dotnet_root_ok first, and must call
 # gate_cache_check next: this half produces the whole of the key's material
 # (the app assembly and the generated surface), so it cannot move behind the
@@ -152,11 +152,11 @@ godot_dotnet_transpile() {
     local app="$GODOT_DOTNET_SAMPLE_DIR/.godot/mono/temp/bin/ExportRelease/DotnetSample.dll"
     [ -f "$app" ] || { echo "error: not built: $app" >&2; return 1; }
 
-    echo "-- Transpiling (--dotnet-module, real GodotSharp + net10 CoreLib)"
+    echo "-- Transpiling (--dotnet-module, real GodotSharp + pinned CoreLib)"
     build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
-    # Pin net10.0 (the JSON/measure gates' rule): the highest installed runtime
-    # can be an 11.0 preview whose CoreLib shape skews the transpile spuriously.
-    local corelib; corelib=$(resolve_net10_corelib)
+    # Pinned CoreLib (the JSON/measure gates' rule): a newer major or a
+    # prerelease runtime installed side by side skews the transpile spuriously.
+    local corelib; corelib=$(resolve_pinned_corelib)
     rm -rf "$out"
     mkdir -p "$out"
     invoke_cli "$app" --dotnet-module -r "$corelib" -r "$GODOT_DOTNET_GODOTSHARP" \

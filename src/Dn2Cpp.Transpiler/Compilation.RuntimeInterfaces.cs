@@ -31,7 +31,7 @@ internal sealed partial class Compilation
         foreach (var receiver in Classes.ToList())
         {
             bool runtimeReceiver = CoreIntrinsics.RuntimeTypeInfoSymbol(receiver) is not null
-                || CoreIntrinsics.IsIntrinsicType(receiver.FullName);
+                || CoreIntrinsics.IsIntrinsicType(receiver);
             if (receiver.IsInterface || receiver.IsEnum || receiver.FullName == "System.String" || ContainsGenericVar(receiver)
                 || !runtimeReceiver && (!_allocatedRefTypes.Contains(receiver) || !InheritsFromException(receiver)))
                 continue;
@@ -80,7 +80,7 @@ internal sealed partial class Compilation
     {
         for (var level = receiver; level is not null; level = level.BaseClass)
         {
-            if (!CoreIntrinsics.IsIntrinsicType(level.FullName)
+            if (!CoreIntrinsics.IsIntrinsicType(level)
                 || level.EnsureMembers().MethodsNamed(declaration.Name) is not { } methods)
                 continue;
             foreach (var method in methods)

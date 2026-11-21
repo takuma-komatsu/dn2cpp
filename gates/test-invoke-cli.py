@@ -65,7 +65,7 @@ prepare_cli
         env.pop("DN2CPP_CLI_DLL", None)
         env.pop("FAKE_EXEC_STATUS", None)
         # Keep extracted UTF-8 shell source out of locale-encoded argv.
-        command = "set -euo pipefail\nexport CONFIG=Debug TFM=net10.0\n" + helpers + script
+        command = "set -euo pipefail\nexport CONFIG=Debug TFM=net11.0\n" + helpers + script
         (directory / "script.sh").write_bytes(command.encode("utf-8"))
         result = subprocess.run([BASH, "script.sh"],
                                 cwd=directory, env=env, capture_output=True, text=True, encoding="utf-8")

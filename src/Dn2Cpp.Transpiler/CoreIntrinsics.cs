@@ -37,6 +37,29 @@ internal static partial class CoreIntrinsics
     public static bool IsIntrinsicType(string fullTypeName) =>
         CoreIntrinsicTypeMaps.IsIntrinsicType(fullTypeName);
 
+    /// <summary>The intrinsic-type test for a loaded class. A CoreLib-owned name
+    /// (<see cref="CoreIntrinsicTypeMaps.IsCoreLibOwnedIntrinsicType"/>) names the CoreLib
+    /// declaration only: a class of that name defined by an application or library
+    /// compiles from its own IL.</summary>
+    public static bool IsIntrinsicType(ClassInfo cls) =>
+        CoreIntrinsicTypeMaps.IsIntrinsicType(cls.FullName)
+        && (!CoreIntrinsicTypeMaps.IsCoreLibOwnedIntrinsicType(cls.FullName) || IsCoreLibModule(cls.Module));
+
+    /// <summary>Whether a module is the CoreLib (or its reference-assembly identity)
+    /// that owns the BCL's internal names.</summary>
+    public static bool IsCoreLibModule(Module module) =>
+        CoreIntrinsicTypeMaps.IsCoreLibAssemblyName(module.AssemblyName);
+
+    /// <summary>CoreLib's <c>ManagedThreadId</c> getters, lowered to the runtime thread's
+    /// managed id. Their real bodies read a [ThreadStatic] that only CoreCLR's native
+    /// thread setup writes, so the transpiled read would answer 0 on every thread.
+    /// <c>Environment.CurrentManagedThreadId</c> forwards here and keeps its real IL.
+    /// Owned by CoreLib: a same-named type elsewhere keeps its own getters.</summary>
+    public static bool IsManagedThreadIdAccessor(MethodInfo mi) =>
+        mi.IsStatic && mi.Name is "get_Current" or "get_CurrentManagedThreadIdUnchecked"
+        && mi.DeclaringClass.FullName == "System.Threading.ManagedThreadId"
+        && IsCoreLibModule(mi.DeclaringClass.Module);
+
     public static bool IsRealBodyGeneric(string declType, string name) =>
         CoreIntrinsicTypeMaps.IsRealBodyGeneric(declType, name);
 
@@ -284,6 +307,11 @@ internal static partial class CoreIntrinsics
         // Bound at the LibraryImport WRAPPER, never at its `<LogInternal>g____PInvoke|N_0`
         // stub — that ordinal is a Roslyn artifact and moves with a CoreLib update.
         [("System.Diagnostics.Debugger", "LogInternal")] = BoundedVerdict.Silent,
+        // AppContext.GetData asks the host for a runtime property the data store does
+        // not hold. A transpiled image has no host, so "not found" is the true answer
+        // and GetData returns null, as it does when a host declines the name. Bound at
+        // the LibraryImport wrapper for the same reason as LogInternal.
+        [("System.AppContext", "TryGetHostPropertyValue")] = BoundedVerdict.Silent,
         // ComWrappers' COM-vftbl builders — three bodyless QCall externs reached only
         // through ComWrappers..cctor, which TypeDescriptor.GetConverter drags in. With no
         // COM RCW ever created, TryGetComInstance answers false (a true answer: no COM
@@ -429,6 +457,14 @@ internal static partial class CoreIntrinsics
     /// other member direct-calls the real transpiled body (which reach reaches).</summary>
     public static bool IsInlineLoweredPrimitiveMember(string? fullTypeName, string name) =>
         CoreIntrinsicTypeMaps.IsInlineLoweredPrimitiveMember(fullTypeName, name);
+
+    /// <summary>The static-virtual members an intrinsic-mapped type implements with a
+    /// result that differs from the interface's default body, so a constrained call must
+    /// bind the type's own lowering: Double and Single round the angle conversions' product
+    /// once, where <c>ITrigonometricFunctions</c>' default multiplies and then divides.</summary>
+    public static bool IntrinsicImplDiffersFromDefault(string fullTypeName, string name) =>
+        fullTypeName is "System.Double" or "System.Single"
+        && name is "DegreesToRadians" or "RadiansToDegrees";
 
     /// <summary>A non-floating primitive value type's <c>Equals(object)</c> overload.
     /// Shape-keyed so the typed <c>Equals(T)</c> sibling keeps its ordinary route.</summary>
@@ -580,7 +616,7 @@ internal static partial class CoreIntrinsics
     /// OVERLOAD SHAPE, and asked by BOTH the emit route and the reachability cut so the
     /// two cannot disagree.
     ///
-    /// <para>.NET 10 declares exactly one overload of each, so nothing falls in the gap
+    /// <para>CoreLib declares exactly one overload of each, so nothing falls in the gap
     /// today; asking one predicate from both askers is what keeps an overload added
     /// upstream from being cut with no lowering behind it — an undefined symbol at C++ link
     /// time, long after the transpile reported success.</para>
@@ -1195,6 +1231,16 @@ internal static partial class CoreIntrinsics
     /// for the descriptor row that pairs this core set with its emit arm.</summary>
     public static bool IsBoundedMethod(string declType, string name) =>
         s_boundedMethods.ContainsKey((declType, name));
+
+    /// <summary>The bounded-table test for a declaration in <paramref name="module"/>. An
+    /// entry in <see cref="CoreLibOwnedBoundedMethods"/> names the CoreLib import only: a
+    /// same-named type defined elsewhere compiles from its own IL.</summary>
+    public static bool IsBoundedMethod(string declType, string name, Module module) =>
+        IsBoundedMethod(declType, name)
+        && (!CoreLibOwnedBoundedMethods.Contains((declType, name)) || IsCoreLibModule(module));
+
+    private static readonly HashSet<(string Type, string Method)> CoreLibOwnedBoundedMethods =
+        [("System.AppContext", "TryGetHostPropertyValue")];
 
     /// <summary>The core set's per-row verdict — what the two substitute mouths (the
     /// call-site neutralization and the <c>ldftn</c> stub) do when the bounded callee turns

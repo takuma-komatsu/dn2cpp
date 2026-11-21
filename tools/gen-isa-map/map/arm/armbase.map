@@ -1,6 +1,11 @@
 # System.Runtime.Intrinsics.Arm.ArmBase — the AArch64 baseline, no target attribute.
+# A native-integer overload is the X-register form: every Arm target is 64-bit.
 LeadingZeroCount(i32) = dn2cpp_isa_clz32((uint32_t)$0)
 LeadingZeroCount(u32) = dn2cpp_isa_clz32($0)
+LeadingZeroCount(nint) = dn2cpp_isa_clz64((uint64_t)$0)
+LeadingZeroCount(nuint) = dn2cpp_isa_clz64((uint64_t)$0)
 ReverseElementBits(i32) = (int32_t)dn2cpp_isa_rbit32((uint32_t)$0)
 ReverseElementBits(u32) = dn2cpp_isa_rbit32($0)
+ReverseElementBits(nint) = (intptr_t)dn2cpp_isa_rbit64((uint64_t)$0)
+ReverseElementBits(nuint) = (uintptr_t)dn2cpp_isa_rbit64((uint64_t)$0)
 Yield() = dn2cpp_isa_arm_yield()

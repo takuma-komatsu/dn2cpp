@@ -75,12 +75,11 @@ that diffs native output against real .NET.
 
 **What dn2cpp reads is IL, so the C# language version is your SDK's
 business, not dn2cpp's.** What it transpiles *alongside* your assembly is
-always the real **.NET 10** `System.Private.CoreLib` and its
+always the real **.NET 11** `System.Private.CoreLib` and its
 shared-framework closure — `--auto-ref` resolves that from the running
 framework. Your project's own target framework is its own affair: the
 Godot .NET samples under `samples/godot-dotnet/` are `net8.0` (what
-`Godot.NET.Sdk` picks) and transpile against the net10 closure just the
-same.
+`Godot.NET.Sdk` picks) and transpile against that closure just the same.
 
 **What works out of the box.** The real CoreLib collections and strings,
 LINQ, `System.Text.Json` through source-gen, `Regex` (both engines),
@@ -403,7 +402,7 @@ The full list, with the reasoning, is under *Permanent non-goals* below.
 
 ### Prerequisites
 
-- .NET SDK **net10.0** (`dotnet --list-sdks` should list a `10.0.x`)
+- .NET SDK **net11.0** (`dotnet --list-sdks` should list a `11.0.x`)
 - `clang++` (C++17) — or real MSVC `cl.exe` on Windows
 - `cmake` ≥ **3.20** + `ninja`
 - Godot **4.7** on `PATH` (or `GODOT=/path/to/godot`) — only for the
@@ -744,6 +743,38 @@ Full ECMA-335 IL coverage. What that means concretely:
 - **Static abstract interface members** — dispatched through `constrained.`,
   including a generic static abstract method on a generic interface and an
   implementation the interface carries itself.
+- **Runtime-async methods** (`MethodImplAttributes.Async`) — the BCL's
+  bodies and user methods that opt in lower to resumable native functions
+  behind the method's unchanged signature, completing through the same
+  native tasks as state-machine `async`. Refused with
+  `NotSupportedException`: a suspension inside a `catch`, `finally`, fault
+  or filter handler; an address or method pointer on the evaluation stack
+  across a suspension; `ConfigureAwaitOptions` that is not a literal, or a
+  configured task awaitable that does not directly follow its
+  `ConfigureAwait` call; a suspending value-type instance method that uses
+  its receiver other than to copy `*this` on entry; a value-type custom
+  awaiter whose registration method has no body; `Synchronized` or
+  `[HotPath(NoAlias = true)]` on such a method; a return type other than
+  `Task`, `Task<T>`, `ValueTask` or `ValueTask<T>`; and obfuscating or
+  hot-update patching such a method.
+  Byref and byref-like arguments and locals, and byref-like values on the
+  evaluation stack, do not survive a suspension: they read as default after
+  a resumption.
+  One ordering differs from the CLR: when an awaiter's `OnCompleted` invokes
+  the continuation synchronously and the suspending method is itself
+  awaited by another runtime-async method, the continuations run in a
+  different order, because dn2cpp registers at the suspension site and the
+  CLR registers after the awaiting callers have unwound. The awaiting
+  caller resumes only after `OnCompleted` returns, so an `OnCompleted` that
+  waits for that caller's remaining work never returns. The continuation
+  a custom awaiter receives differs too: its `Target` is the suspension
+  frame, an `object` that is not a `Task`, and its `Method` is null, where
+  the CLR passes a delegate bound to a `Task` and its dispatch method. Each
+  activation has its own continuation delegate, where the CLR shares one
+  across a method and the runtime-async callers awaiting it directly: a
+  delegate retained from a completed callee throws
+  `InvalidOperationException` instead of resuming that caller. See
+  `gates/build-and-run-async-combinators.sh`.
 - **`MethodImplOptions` honored** — `Synchronized` (RAII monitor guard,
   static sharing the monitor with `lock(typeof(X))`),
   `AggressiveInlining`, `NoInlining`.
@@ -767,7 +798,7 @@ tree-shaken to reachable methods, with real BCL IL bodies transpiled;
 | `decimal` | Intrinsic 96-bit value type — exact base-10 arithmetic (round-half-away), comparisons, conversions, `ToString`, the statics (`Round`/`Truncate`/`Floor`/`Ceiling`/`Parse`, …), LINQ `Sum`/`Average`, boxed virtuals |
 | Culture & formatting | Culture-aware numeric/currency/percent/exponent formatting and `Parse`/`TryParse`, float shortest-round-trip, custom numeric formats; `CurrentCulture` and undefined-language fallback use host locale PAL seams and frozen per-target numeric profiles, with no ICU dependency |
 | Regex | Real `System.Text.RegularExpressions.dll`, both engines (backtracking interpreter and `NonBacktracking` symbolic DFA) |
-| Compression | Full `System.IO.Compression` public surface — `DeflateStream`/`GZipStream`/`ZLibStream`, `BrotliStream`/`BrotliEncoder`/`BrotliDecoder`, `ZipArchive`/`ZipArchiveEntry`, `ZipFile`, and the net10 Zip async APIs |
+| Compression | Full `System.IO.Compression` public surface — `DeflateStream`/`GZipStream`/`ZLibStream`, `BrotliStream`/`BrotliEncoder`/`BrotliDecoder`, `ZipArchive`/`ZipArchiveEntry`, `ZipFile`, and the Zip async APIs. WinZip AES entries (`ZipEncryptionMethod.Aes128`/`Aes192`/`Aes256`) are the exception: they list normally, but creating one or opening one with its password throws `PlatformNotSupportedException` (opening one without a password throws `InvalidDataException`, as on .NET 11) |
 | HTTP / HTTPS | `new HttpClient()` runs natively over vendored libcurl on vendored Mbed TLS, on by default; `https://` verifies against an embedded Mozilla CA bundle and nothing disables verification. HTTP/2 rides the same transport, and the real `Grpc.Net.Client` runs on top of it (unary and all three streaming shapes) |
 | File I/O | Real `System.IO.File`/`FileStream` through the CoreLib's `libSystem.Native` P/Invoke layer against a self-implemented `SystemNative_*` PAL, directory enumeration included |
 | Low-level interop | `Unsafe.*` (incl. `Unbox<T>`), `NativeMemory`, the `Marshal` heap/struct/string family, `Marshal.GetFunctionPointerForDelegate`/`GetDelegateForFunctionPointer`, `MemoryMarshal` span shaping, custom `MemoryManager<T>`-backed `Memory<T>` |
@@ -1318,12 +1349,14 @@ capabilities only once its whole instruction surface lowers, a promotion
 table `src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs`. Every other
 family answers false, so the BCL software fallback runs, and calling one of
 its instructions throws `PlatformNotSupportedException` exactly as .NET does
-when `IsSupported` is false. Every family with feature bits lowers: the whole `X86.*` surface through
-the AVX-512 and AVX10 families, the whole `Arm.*` surface, and
-`Wasm.PackedSimd`; `Arm.Sve` and `Arm.Sve2`, experimental in .NET 10 and
-without a fixed register width, have no feature bits and answer false by
-design. On x86 the AVX, AVX-512 and AVX10 instruction bodies have run on no
-supporting host yet (see the open issues). Like .NET 10, dn2cpp keeps `Avx10v2`
+when `IsSupported` is false. Every family with feature bits lowers: the `X86.*`
+families through AVX-512 and AVX10, `Arm.ArmBase`, `Crc32`, `AdvSimd`, `Aes`,
+`Sha1`, `Sha256`, `Dp` and `Rdm`, and `Wasm.PackedSimd`. A family without
+feature bits answers false on every CPU: `Arm.Sve`, `Arm.Sve2`, `Arm.SveSha3`
+and `Arm.SveSm4` have no fixed register width, and `Arm.Sha3`, `Arm.Sm4`,
+`X86.Avx512Bmm` and `X86.AvxVnni.V512` have no lowering. On x86 the AVX,
+AVX-512 and AVX10 instruction bodies have run on no
+supporting host yet (see the open issues). Like .NET, dn2cpp keeps `Avx10v2`
 and the V512 `AvxVnniInt8` / `AvxVnniInt16` surface disabled until the positive
 run-time opt-in `DN2CPP_ENABLE_AVX10V2=1`. AVX10.2 also uses a compiler-intrinsic
 capability: a compiler without the checked spellings reports those families

@@ -48,7 +48,14 @@ internal static partial class CoreIntrinsics
     /// transpiled binary has no VM to log into. BranchLiveness prunes
     /// DebugProvider.WriteToDebugger's then-arm (Debugger.Log, whose leaf is the
     /// bodyless QCall LogInternal) and leaves Interop.Sys.SysLog the live sink,
-    /// where NativeAOT's Trace/Debug output goes on Unix.</summary>
+    /// where NativeAOT's Trace/Debug output goes on Unix.
+    ///
+    /// RuntimeHelpers.IsRuntimeAsync: constant-false, which is also what its IL
+    /// body returns. CoreLib's Task-returning wrappers ask it to choose between a
+    /// runtime-async helper and the classic path that records the pending task
+    /// (StreamWriter.FlushAsync). A transpiled method is only ever entered through
+    /// its Task-returning signature, so the classic arm is the live one and
+    /// BranchLiveness prunes the other.</summary>
     private static readonly Dictionary<(string Type, string Method), bool> s_constFoldedGetters = new()
     {
         [("System.Globalization.GlobalizationMode", "get_Invariant")] = true,
@@ -58,7 +65,13 @@ internal static partial class CoreIntrinsics
         [("System.Runtime.CompilerServices.RuntimeHelpers", "TryEnsureSufficientExecutionStack")] = true,
         [("System.Threading.StackHelper", "TryEnsureSufficientExecutionStack")] = true,
         [("System.Diagnostics.Debugger", "IsLogging")] = false,
+        [("System.Runtime.CompilerServices.RuntimeHelpers", "IsRuntimeAsync")] = false,
     };
+
+    /// <summary>Rows of <see cref="s_constFoldedGetters"/> that name the CoreLib
+    /// declaration only: a same-named type defined elsewhere keeps its own body.</summary>
+    private static readonly HashSet<(string Type, string Method)> s_coreLibOwnedConstFoldedGetters =
+        [("System.Runtime.CompilerServices.RuntimeHelpers", "IsRuntimeAsync")];
 
     /// <summary>Method names appearing in <see cref="s_constFoldedGetters"/> —
     /// the cheap first-pass filter for per-call-token oracle lookups.</summary>
@@ -69,6 +82,14 @@ internal static partial class CoreIntrinsics
     /// const-folded. See <see cref="s_constFoldedGetters"/>.</summary>
     public static bool? ConstFoldedGetter(string declType, string name) =>
         s_constFoldedGetters.TryGetValue((declType, name), out bool v) ? v : null;
+
+    /// <summary><see cref="ConstFoldedGetter(string, string)"/> for a declaration in
+    /// <paramref name="owner"/>: a CoreLib-owned row answers for the CoreLib's declaration
+    /// or an owner that did not resolve (null), never for another assembly's.</summary>
+    public static bool? ConstFoldedGetter(string declType, string name, Module? owner) =>
+        s_coreLibOwnedConstFoldedGetters.Contains((declType, name)) && owner is not null && !IsCoreLibModule(owner)
+            ? null
+            : ConstFoldedGetter(declType, name);
 
     /// <summary>The exact private Rune helper whose callers all select a different
     /// path under invariant globalization. Medium may still describe its signature,

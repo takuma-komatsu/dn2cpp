@@ -1,7 +1,7 @@
 // dn2cpp_unicode_category.cpp — char.GetUnicodeCategory over the BMP.
 //
 // A two-level compressed table generated from the real .NET
-// CharUnicodeInfo.GetUnicodeCategory (net10.0 / Unicode 16 data): 256-code-point
+// CharUnicodeInfo.GetUnicodeCategory (CoreLib's own Unicode data): 256-code-point
 // pages deduplicated behind a 256-entry page index. Exact for every BMP code
 // point — GetUnicodeCategory(char) is BMP-only by construction, so this fully
 // matches .NET (no astral-plane arm needed). The reaching consumer is Regex's
@@ -11,6 +11,7 @@
 // Regenerate with a scratch program dumping
 // System.Globalization.CharUnicodeInfo.GetUnicodeCategory for U+0000..U+FFFF
 // into the two-level shape below (git history of this file has the generator).
+// The check is a sweep of every BMP code unit against the reference runtime.
 #include "dn2cpp_core.h"
 
 #include <cstdint>

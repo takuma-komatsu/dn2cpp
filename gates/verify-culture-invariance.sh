@@ -72,6 +72,7 @@ set -u
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 source "$REPO/gates/_culture_gate_scope.sh" || exit 2
 CONFIG="${CONFIG:-Release}"
+TFM=net11.0
 LOCALES="${DN2CPP_CULTURE_LOCALES:-en_US.UTF-8 de_DE.UTF-8 fr_FR.UTF-8 ja_JP.UTF-8}"
 # Lowering the cap is the fail-OPEN direction — a subject that times out is
 # skipped, and coverage drops silently — so leave headroom over the slowest
@@ -100,7 +101,7 @@ skip() { printf 'skip\n' >"$VF"; say    "$(printf '  \033[33mskip\033[0m      %s
 #
 #   1. the helper family. Every function whose name ends in `_gate` takes its
 #      project as an argument: corelib_diff_gate, corelib_diff_split_gate,
-#      corelib_freeze_gate, corelib_subset_gate, net10_bcl_diff_gate, the
+#      corelib_freeze_gate, corelib_subset_gate, bcl_diff_gate, the
 #      wasm/ios axis variants, and the two the compression gates define locally
 #      (dnzlib_diff_gate, dnbrotli_diff_gate). Matching the SUFFIX rather than a
 #      list of names is what makes the next helper covered on the day it is
@@ -136,7 +137,7 @@ CULTURE_SUBJECT_BY_DESIGN="DefaultCulture"
 
 projects_under_gates() {
     {
-        # Join backslash-continued lines first: net10_bcl_diff_gate's project name
+        # Join backslash-continued lines first: bcl_diff_gate's project name
         # is routinely on a continuation line, and a line-oriented grep would
         # silently drop exactly those gates.
         cat "$REPO"/gates/build-and-run-*.sh \
@@ -197,11 +198,11 @@ run_bounded_locale() {  # LOCALE DLL OUTFILE CWD
 probe_locales() {
     local pd="$WORK/_probe"
     mkdir -p "$pd"
-    cat >"$pd/_probe.csproj" <<'CSPROJ'
+    cat >"$pd/_probe.csproj" <<CSPROJ
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>$TFM</TargetFramework>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
   </PropertyGroup>
@@ -310,7 +311,7 @@ check_subject() {
         # Its two referenced projects emit the same assembly name. Keep their
         # outputs separate so the app can copy the next version after building.
         if ! culture_build "$csproj" -c "$CONFIG" >"$o/build.log" 2>&1 ||
-           ! cp -R "$REPO/samples/dotnet/$p/bin/$CONFIG/net10.0/." "$o/bin/" >>"$o/build.log" 2>&1; then
+           ! cp -R "$REPO/samples/dotnet/$p/bin/$CONFIG/$TFM/." "$o/bin/" >>"$o/build.log" 2>&1; then
             bad "$p (build failed)"
             LC_ALL=C sed 's/^/2    /' "$o/build.log" >>"$VF"
             return
@@ -397,7 +398,7 @@ check_subject() {
 
 mkdir -p "$WORK/_verdict"
 export -f culture_build check_subject run_bounded_locale good bad skip say sayerr
-export REPO WORK CONFIG LOCALES RUN_SECS
+export REPO WORK CONFIG TFM LOCALES RUN_SECS
 printf '%s\n' $SUBJECTS | xargs -P "$JOBS" -I{} bash -c 'check_subject "$@"' _ {}
 
 # Replay in $SUBJECTS order, never completion order: a transcript that moves with

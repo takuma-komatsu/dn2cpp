@@ -147,6 +147,12 @@ public class Counter
         return _count;
     }
 
+    public static string SameAddBinding(Counter c, IntTransform bound)
+    {
+        IntTransform compiled = c.Add;
+        return bound.Equals(compiled) + "/" + (bound.GetHashCode() == compiled.GetHashCode());
+    }
+
     public virtual string Describe()
     {
         return Label + ":" + _count;
@@ -1313,8 +1319,9 @@ internal static class Program
         return method.DeclaringType!.Name + "." + method.Name + "[" + method.GetGenericArguments()[0].Name + "]";
     }
 
-    // A patch receiver runs its nearest AOT ancestor's generic virtual override,
-    // so a delegate over it reports that override and equals a binding of it.
+    // A patch receiver runs its nearest AOT ancestor's generic virtual override.
+    // A method group over it reports that override; a reflection binding reports
+    // the row it was given and equals a binding of the override.
     private static void PatchReceiverReflection(Shelf frost)
     {
         Console.WriteLine("== generic virtual reflection over a patch receiver ==");
@@ -1336,9 +1343,9 @@ internal static class Program
         return method is null ? "null" : method.DeclaringType + "." + method.Name;
     }
 
-    // A patch type runs its nearest AOT ancestor's Object virtuals, so a delegate
-    // over a patch receiver bound to one by reflection reports that ancestor's
-    // override, the row a by-name lookup on the patch type finds.
+    // A patch type runs its nearest AOT ancestor's Object virtuals. A delegate
+    // over a patch receiver bound to one by reflection reports the Object row it
+    // was given; a by-name lookup on the patch type finds the ancestor's override.
     private static void PatchReceiverObjectVirtuals(object plaque)
     {
         Console.WriteLine("== object virtuals over a patch receiver ==");

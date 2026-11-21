@@ -46,6 +46,12 @@ package_refs=()
 package_dlls=()
 while read -r want name; do
     [ -n "$want" ] || continue
+    if [ "$want" = shared-framework ]; then
+        dll="$(gate_shared_framework_assembly "$app_dir" "$name")"
+        package_refs+=(-r "$dll")
+        package_dlls+=("$dll")
+        continue
+    fi
     dll="$app_dir/$name"
     [ -f "$dll" ] || { echo "FAIL: pinned MagicOnion assembly missing: $name" >&2; exit 1; }
     got=$(file_hash "$dll")
@@ -61,7 +67,7 @@ done < "$DLLS_EXPECTED"
 echo "OK: ${#package_dlls[@]} MagicOnion package assemblies pinned"
 
 echo "== 3/7 Transpiling the generated MagicOnion client =="
-corelib=$(resolve_net10_corelib)
+corelib=$(resolve_pinned_corelib)
 prepare_cli
 refs=(-r "$corelib" -r "$YAHA_MANAGED" -r "$YAHA_PIPELINES" "${package_refs[@]}")
 rm -rf "$OUT"

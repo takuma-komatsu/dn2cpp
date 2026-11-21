@@ -14,7 +14,7 @@ gate_extra_asserts() {
     gate_output compare "$out/value-prefix.stdout" "$out/value-before.stdout" --policy crlf
     gate_output witness "$out/native.stdout" '-- vector existing value semantics --' \
         'typed NaN=True:True:True:True:True' 'comparison NaN=False:False' \
-        'degrees overflow=True:True:True:True:True' '-- vector existing value semantics end --' \
+        'degrees overflow=False:False:False:False:False' '-- vector existing value semantics end --' \
         --count 1 --policy crlf
     vector_floating_prefix "$out"
 }

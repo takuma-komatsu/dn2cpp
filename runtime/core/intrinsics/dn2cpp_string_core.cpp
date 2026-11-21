@@ -235,7 +235,7 @@ Dn2CppString* dn2cpp_string_concat_spanchars4(const char16_t* p0, int32_t n0, co
     return dn2cpp_concat_spanchars(ptrs, lens, 4);
 }
 
-// net10 added a five-span String.Concat overload; Path.JoinInternal's
+// CoreLib's internal five-span String.Concat overload: Path.JoinInternal's
 // three-part join (first + "/" + second + "/" + third) binds to it.
 Dn2CppString* dn2cpp_string_concat_spanchars5(const char16_t* p0, int32_t n0, const char16_t* p1, int32_t n1, const char16_t* p2, int32_t n2, const char16_t* p3, int32_t n3, const char16_t* p4, int32_t n4)
 {

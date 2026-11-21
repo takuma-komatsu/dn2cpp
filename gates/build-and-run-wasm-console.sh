@@ -181,20 +181,23 @@ for thunk in \
     dn2cpp_pinvoke_SystemNative_SetErrNo \
     dn2cpp_pinvoke_SystemNative_Open \
     dn2cpp_pinvoke_SystemNative_Close \
+    dn2cpp_pinvoke_SystemNative_FcntlGetIsNonBlocking \
     dn2cpp_pinvoke_SystemNative_Read \
     dn2cpp_pinvoke_SystemNative_PRead \
     dn2cpp_pinvoke_SystemNative_PWrite \
+    dn2cpp_pinvoke_SystemNative_ReadFromNonblocking \
+    dn2cpp_pinvoke_SystemNative_WriteToNonblocking \
     dn2cpp_pinvoke_SystemNative_LSeek \
     dn2cpp_pinvoke_SystemNative_FSync \
     dn2cpp_pinvoke_SystemNative_FStat \
     dn2cpp_pinvoke_SystemNative_Stat \
     dn2cpp_pinvoke_SystemNative_Unlink \
     dn2cpp_pinvoke_SystemNative_FLock \
+    dn2cpp_pinvoke_SystemNative_FileSystemSupportsLocking \
     dn2cpp_pinvoke_SystemNative_FTruncate \
     dn2cpp_pinvoke_SystemNative_FAllocate \
     dn2cpp_pinvoke_SystemNative_PosixFAdvise \
     dn2cpp_pinvoke_SystemNative_GetCwd \
-    dn2cpp_pinvoke_SystemNative_GetFileSystemType \
     dn2cpp_pinvoke_SystemNative_ConvertErrorPalToPlatform \
     dn2cpp_pinvoke_SystemNative_ConvertErrorPlatformToPal \
     dn2cpp_pinvoke_SystemNative_StrErrorR \
@@ -214,7 +217,7 @@ echo "PAL reach OK: PalSurface still lowers the C heap, the stderr write and the
 if [ "$DN2CPP_WASM_CONSOLE_FULL" = 1 ]; then
     wasm_console_section_checks
 else
-    _wasm_console_corelib=$(locate_corelib_cross_posix net10)
+    _wasm_console_corelib=$(locate_corelib_cross_posix pinned)
     _CG_CORELIB_IN="$_wasm_console_corelib" \
         _corelib_gate_core WasmConsole artifacts/wasmconsole-wasm System.Linq System.Net.Primitives
     if _corelib_gate_check "$_CG_OUT" "wasm-console-sections|host:$DN2CPP_OS|$_CG_CORELIB$(_gate_ctx_extras)"; then
@@ -250,10 +253,10 @@ gate_expected_partial "FinalizerSuppressQueuedSubset's post-enqueue window never
 # regression that removed the fallback arm surfaces here as a wasm-ld failure
 # rather than as a diff.
 #
-# net10.0-pinned like build-and-run-http-get.sh: the sample builds net10.0 and a
-# newer preview CoreLib carries a different System.Net.Http surface.
+# Pinned like build-and-run-http-get.sh: the sample builds the supported TFM
+# and another major's CoreLib carries a different System.Net.Http surface.
 echo "== Web-lane HTTP carve-out: HttpClient links, then degrades =="
-_wh_corelib=$(resolve_net10_corelib)
+_wh_corelib=$(resolve_pinned_corelib)
 _wh_bcl=$(dirname "$_wh_corelib")
 _wh_nethttp="$_wh_bcl/System.Net.Http.dll"
 [ -f "$_wh_nethttp" ] || { echo "error: System.Net.Http.dll not found: $_wh_nethttp" >&2; exit 1; }

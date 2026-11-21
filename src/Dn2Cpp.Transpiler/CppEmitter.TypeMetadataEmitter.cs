@@ -2054,6 +2054,7 @@ internal sealed partial class CppEmitter
             EmitDelegateIdentities();
             EmitDelegateCloneBinding();
             EmitGvmRowDispatch();
+            EmitStaticVirtualReimpls();
             EmitVirtualMethodTargets();
             EmitAmbiguousBindings();
 
@@ -2718,6 +2719,44 @@ internal sealed partial class CppEmitter
                 _sb.AppendLine(entry);
             _sb.AppendLine("};");
             _sb.AppendLine($"extern const int32_t dn2cpp_gvm_row_dispatch_count = {rows.Count};");
+            _sb.AppendLine();
+        }
+
+        /// <summary>The static virtual members a derived interface's static explicit body
+        /// replaces, as {re-implementing interface, declaring interface, member token}
+        /// (<c>dn2cpp_static_virtual_reimpls</c>). The declaring interface is the closed
+        /// type the body names, so two closings of one generic interface stay apart, and the
+        /// token is the declaration's definition token, the key a bound row carries. Sorted
+        /// by names and token; read only where a delegate binds a static virtual row.</summary>
+        private void EmitStaticVirtualReimpls()
+        {
+            var rows = new List<(ClassInfo Reimpl, ClassInfo Declaring, int Token)>();
+            if (RowsEnteredLateBound)
+                foreach (var cls in _e.TopoOrder())
+                {
+                    if (!cls.IsInterface || _e.IsCanonicalWorld(cls) || !_e.TypeInfoSymbolDefined(cls.CppTypeInfoName))
+                        continue;
+                    foreach (var kv in cls.ExplicitInterfaceImpls)
+                        if (kv.Value.IsStatic && !kv.Key.Handle.IsNil
+                            && _e.TypeInfoSymbolDefined(kv.Key.DeclaringClass.CppTypeInfoName))
+                            rows.Add((cls, kv.Key.DeclaringClass,
+                                System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(kv.Key.Handle)));
+                    foreach (var (declaring, token) in cls.StaticGenericImplDeclarations)
+                        if (_e.TypeInfoSymbolDefined(declaring.CppTypeInfoName))
+                            rows.Add((cls, declaring, token));
+                }
+            _sb.AppendLine("// ---- static virtual re-implementations ----");
+            _sb.AppendLine("extern const Dn2CppStaticVirtualReimpl dn2cpp_static_virtual_reimpls[] = {");
+            foreach (var (reimpl, declaring, token) in rows
+                         .OrderBy(r => r.Reimpl.CppName, System.StringComparer.Ordinal)
+                         .ThenBy(r => r.Declaring.CppName, System.StringComparer.Ordinal)
+                         .ThenBy(r => r.Token))
+                _sb.AppendLine($"    {{ {_e.TypeInfoRef(reimpl, "static virtual re-implementation owner")}, "
+                    + $"{_e.TypeInfoRef(declaring, "static virtual re-implemented interface")}, {token} }},");
+            if (rows.Count == 0)
+                _sb.AppendLine("    { nullptr, nullptr, 0 },");
+            _sb.AppendLine("};");
+            _sb.AppendLine($"extern const int32_t dn2cpp_static_virtual_reimpl_count = {rows.Count};");
             _sb.AppendLine();
         }
 
@@ -3894,10 +3933,7 @@ internal sealed partial class CppEmitter
                     // are declared (see InvokerThunkBlocker) — but the invariant "an
                     // invoker thunk is emitted only when its C++ compiles; otherwise
                     // the row's invoker traps" is asked at every mouth, not assumed.
-                    invoker = "(void*)&" + RowInvoker(cls, m, () => CoreIntrinsics.BrDelegateCallable.Matches(m)
-                        && m.DeclaringClass.FullName == "System.Delegate" && m.Name is "Equals" or "GetHashCode"
-                        ? m.Name == "Equals" ? "dn2cpp_delegate_base_equals_invoker" : "dn2cpp_delegate_base_hash_invoker"
-                        : _e.EmitInvokerThunk(_sb, m, _invokerThunks, contextArg));
+                    invoker = "(void*)&" + RowInvoker(cls, m, () => _e.EmitInvokerThunk(_sb, m, _invokerThunks, contextArg));
                 }
                 // A bodyless interface or abstract class row needs a signature-only
                 // invoker only when a late-bound consumer resolves the receiver's slot

@@ -76,7 +76,7 @@ fi
     unset -f gate_capture_diff_files gate_extra_asserts
     DN2CPP_SAMPLE_PROJECT_DIR=gates/fixtures/typed-reference-erasure
     if [ "${WASM:-0}" = 1 ]; then
-        _CG_CORELIB_IN=$(locate_corelib_cross_posix net10)
+        _CG_CORELIB_IN=$(locate_corelib_cross_posix pinned)
         out=artifacts/typedreferenceerasure-wasm
         _corelib_gate_core TypedReferenceErasure "$out" System.Collections.Concurrent "$@"
         compile_console_wasm "$out" TypedReferenceErasure
@@ -93,7 +93,7 @@ fi
     base="artifacts/typedreferencesignature${DN2CPP_OUT_SUFFIX:-}"
     if [ "${WASM:-0}" = 1 ]; then
         base="$base-wasm"
-        _CG_CORELIB_IN=$(locate_corelib_cross_posix net10)
+        _CG_CORELIB_IN=$(locate_corelib_cross_posix pinned)
     fi
     _corelib_gate_core TypedReferenceSignature "$base" "$@"
     gate_capture_ok "$base/oracle" run_bounded dotnet "$_CG_APP"

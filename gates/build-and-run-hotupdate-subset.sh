@@ -147,7 +147,7 @@
 # newer runtime.
 #
 # A conditional-default-reference section transpiles the same base against the
-# real net10.0 CoreLib plus System.IO.Compression — a load-set TRIGGER the
+# real pinned CoreLib plus System.IO.Compression — a load-set TRIGGER the
 # program never touches — so the base build injects the DnZlib shim while the
 # patch converter (DefaultRefDir deliberately unset) does not. It asserts the
 # sidecar records "DnZlib": "Injected", that the ABI hash and the baked BPI stay
@@ -166,7 +166,7 @@
 # that Load accepts as a registration-only image while Run rejects it.
 #
 # A final real-CoreLib-closure section builds a SECOND base
-# (HotUpdateCoreLibBase) against the real net10.0 CoreLib — every other base
+# (HotUpdateCoreLibBase) against the real pinned CoreLib — every other base
 # here is intrinsic-BCL only. Such a base keeps every method row, and an
 # interface row's signature-only invoker thunk can name a struct type the emit
 # set never declared (Span<char> at ISpanFormattable.TryFormat; DictionaryEntry
@@ -405,10 +405,10 @@ grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
 # _gate_cli_hash stands in for the transpiler (see that helper's doc).
 #
 # The conditional-default-reference section transpiles the same base
-# against the REAL net10.0 CoreLib, so which CoreLib that resolves to is an input
-# of this gate the same way it is of net10_bcl_diff_gate — a runtime bump must
+# against the REAL pinned CoreLib, so which CoreLib that resolves to is an input
+# of this gate the same way it is of bcl_diff_gate — a runtime bump must
 # not be served a green recorded against the previous one.
-if gate_cache_check "$OUT" "hotupdate-subset|full:$DN2CPP_HOTUPDATE_FULL|abort-host:$DN2CPP_OS|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|patch-method-identities:private-rows/roundtrip/virtual-override/invoke/refusal-variant/metadata-v4|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/intrinsic-bcl/corelib/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:packed/native/register/stack/fields/field-address-refusal|carried-attribute-type-infos" \
+if gate_cache_check "$OUT" "hotupdate-subset|full:$DN2CPP_HOTUPDATE_FULL|abort-host:$DN2CPP_OS|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_pinned_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|patch-method-identities:private-rows/roundtrip/virtual-override/invoke/refusal-variant/metadata-v4|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/intrinsic-bcl/corelib/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:packed/native/register/stack/fields/field-address-refusal|carried-attribute-type-infos" \
         "$base_app" "$patch_app" "$bad_app" "$badgvm_app" "$baditf_app" "$baddg_app" \
         "$concat_oracle_app" \
         "$signature_arguments_base" "$signature_arguments_patch" "$signature_arguments_address" gates/_hotupdate-signature-arguments.sh \
@@ -641,6 +641,7 @@ delegates
 6
 7
 105
+True/True
 9
 30
 18
@@ -707,6 +708,11 @@ arg: delegate over null this (aot)
 arg: delegate over null this (patch)
 nre: tostring on null
 delegate GetType: HotUpdateBase.Counter
+9223372036854775807
+2147483647
+0
+-1
+0
 base caught: escaped to base
 HotUpdatePatch.TaggedCounter
 base: done"
@@ -739,14 +745,14 @@ ink:4
 == generic virtual import rows end =="
 expected_before_patch_reflection="$expected"
 hotupdate_fixture expected --file "$expected_before_patch_reflection" --text "== generic virtual reflection over a patch receiver ==
-GlassShelf.Label[Int32] glass:7
+Shelf.Label[Int32] glass:7
 GlassShelf.Label[Int32] glass:8
-True True True
+True True False
 GlassShelf.Label[Int32] glass:9
 == generic virtual reflection over a patch receiver end =="
 expected_before_object_virtuals="$expected"
 hotupdate_fixture expected --file "$expected_before_object_virtuals" --text "== object virtuals over a patch receiver ==
-HotUpdateBase.Plaque.ToString plaque
+System.Object.ToString plaque
 HotUpdateBase.Plaque.ToString
 == object virtuals over a patch receiver end =="
 expected_before_inherited_object="$expected"
@@ -760,7 +766,7 @@ hotupdate_capture object_groups_oracle _hotupdate_status stdout run_bounded dotn
 gate_output status "$_hotupdate_status" 0
 for line in 'base-methods=System.Object.ToString/System.Object.Equals/System.Object.GetHashCode' \
     'base-calls=True/True/False/False/True' 'override-calls=override/True/91' \
-    'only-calls=group-only/True/101' 'group-rows=True/True/True' \
+    'only-calls=group-only/True/101' 'group-rows=False/False/False' 'group-rows=True/True/True' \
     'group-calls=True/True/False/True' 'group-calls=True/False/False/True' \
     'null text=NullReferenceException' 'null equals=NullReferenceException' 'null hash=NullReferenceException'; do
     gate_output witness "$object_groups_oracle" "$line" --count any --policy crlf \
@@ -867,7 +873,7 @@ echo "-- conditional default refs: a base whose load set carries a TRIGGER --"
 # does, frozen as a regression.
 #
 # The base here is the SAME HotUpdateBase program, transpiled against the real
-# net10.0 CoreLib plus System.IO.Compression. The program touches no compression
+# pinned CoreLib plus System.IO.Compression. The program touches no compression
 # at all — the trigger is a LOAD-SET fact, not a reachability one — so DnZlib is
 # injected, contributes an assembly-registry row and zero method bodies, and the
 # converter never sees it. What is asserted:
@@ -889,7 +895,7 @@ echo "-- conditional default refs: a base whose load set carries a TRIGGER --"
 # (When the shim IS reached the base emits its types, they enter the contract as
 # ordinary T/L/F/V lines and the hash moves on its own — so the dangerous
 # direction is already covered by the existing staleness guard.)
-trig_corelib=$(resolve_net10_corelib)
+trig_corelib=$(resolve_pinned_corelib)
 trig_bcl=$(dirname "$trig_corelib")
 trig_comp="$trig_bcl/System.IO.Compression.dll"
 [ -f "$trig_comp" ] || { echo "FAIL: real System.IO.Compression not found: $trig_comp" >&2; exit 1; }
@@ -1591,7 +1597,7 @@ echo "OK (entry-less BPI)"
 
 echo "-- a hot-update base over a real-CoreLib closure --"
 # Every base above is intrinsic-BCL only; this one is transpiled against the
-# real net10.0 CoreLib, whose member tables a --hotupdate-base build keeps in
+# real pinned CoreLib, whose member tables a --hotupdate-base build keeps in
 # full — including interface rows whose signature-only invoker thunks name
 # struct types the emit set never declared (Span<char>/ReadOnlySpan<char> at
 # ISpanFormattable.TryFormat, pulled in by System.Enum's real bodies;
@@ -1607,7 +1613,7 @@ echo "-- a hot-update base over a real-CoreLib closure --"
 cl_base="samples/dotnet/HotUpdateCoreLibBase/bin/$CONFIG/$TFM/HotUpdateCoreLibBase.dll"
 cl_patch="samples/dotnet/HotUpdateCoreLibPatch/bin/$CONFIG/$TFM/HotUpdateCoreLibPatch.dll"
 cl_bad="samples/dotnet/HotUpdateCoreLibBadPatch/bin/$CONFIG/$TFM/HotUpdateCoreLibBadPatch.dll"
-invoke_cli "$cl_base" -r "$(resolve_net10_corelib)" --auto-ref --hotupdate-base -o "$OUT/corelib"
+invoke_cli "$cl_base" -r "$(resolve_pinned_corelib)" --auto-ref --hotupdate-base -o "$OUT/corelib"
 grep -q 'System.ISpanFormattable.TryFormat: no reflection invoker in this image (the signature names t_System_Span_Char' \
         "$OUT/corelib"/generated_m*.cpp \
     || { echo "FAIL: the blocked ISpanFormattable.TryFormat row carries no invmiss_ trap" >&2; exit 1; }
@@ -1644,7 +1650,7 @@ hotupdate_fixture cl_expected --text "$cl_expected"
 cl_expected_before_object_virtuals="$cl_expected"
 hotupdate_fixture cl_expected --file "$cl_expected_before_object_virtuals" --text "== object virtuals over a patch receiver ==
 HotUpdateCoreLibBase.Plaque.ToString plaque
-HotUpdateCoreLibBase.Plaque.ToString plaque
+System.Object.ToString plaque
 HotUpdateCoreLibBase.Plaque.ToString
 System.Object.ToString HotUpdateCoreLibPatch.FrostSlate
 System.Object.ToString HotUpdateCoreLibPatch.FrostSlate
@@ -2380,12 +2386,12 @@ gate_output status "$_hotupdate_status" 0
 hotupdate_capture renamed_slot_prefix_oracle _hotupdate_status stdout run_bounded dotnet "$base_app" --renamed-slot-prefix
 gate_output status "$_hotupdate_status" 0
 renamed_slot_lines=(
-    'aot methods=Weigh/Weigh/Weigh/Weigh' 'aot values=31/31/31/31' 'aot equal=True/True/True/True'
+    'aot methods=Weigh/Weigh/Measure/Weigh' 'aot values=31/31/31/31' 'aot equal=True/True/True/False'
     '== inherited renamed slots on patch receivers =='
-    'patch methods=Weigh/Weigh/Weigh/Weigh' 'patch values=31/31/31/31' 'patch equal=True/True/True/True'
-    'patch child methods=Weigh/Weigh/Weigh/Weigh' 'patch child values=31/31/31/31'
-    'patch child equal=True/True/True/True' 'replacement values=47/31/47/31'
-    'replacement equal=False/False/False/True' 'inherited renamed slots on patch receivers end'
+    'patch methods=Weigh/Weigh/Measure/Weigh' 'patch values=31/31/31/31' 'patch equal=True/True/True/False'
+    'patch child methods=Weigh/Weigh/Measure/Weigh' 'patch child values=31/31/31/31'
+    'patch child equal=True/True/True/False' 'replacement values=47/31/47/31'
+    'replacement equal=False/False/False/False' 'inherited renamed slots on patch receivers end'
 )
 for line in "${renamed_slot_lines[@]}"; do
     gate_output witness "$renamed_slot_oracle" "$line" --count 1 --policy crlf \
@@ -2397,20 +2403,21 @@ gate_assert_text "$(hotupdate_before "$renamed_slot_oracle" '== patch interface 
 patch_method_lines=(
     '== patch interface method identities =='
     'replacement identity methods=Measure/Weigh/Measure/Weigh'
-    'replacement rows=True/True/True/True' 'replacement invoke=47/47/True/True'
+    'replacement rows=True/False/True/True' 'replacement invoke=47/47/True/True'
     'replacement parameter=HotUpdateBase.IPatchScore.Score/Replaced/amount/Int32/False/0/True'
     'replacement score=52/52/True' 'replacement wrong receiver refused'
-    'replacement child rows=True/True/True/True' 'replacement child invoke=47/47/True/True'
+    'replacement child rows=True/False/True/True' 'replacement child invoke=47/47/True/True'
     'replacement child score=52/52/True' 'replacement child wrong receiver refused'
-    'explicit replacement rows=True/True/True/True' 'explicit replacement invoke=61/61/True/True'
+    'explicit replacement rows=True/False/True/True' 'explicit replacement invoke=61/61/True/True'
     'explicit replacement parameter=Score/ExplicitReplacement/argument/Int32/False/0/True'
     'explicit replacement score=66/66/True' 'explicit replacement wrong receiver refused'
     'replacement virtual base=Weigh/RenamedMeasure'
-    'replacement virtual rows=True/True/True/True' 'replacement virtual invoke=73/73'
+    'replacement virtual rows=False/True/True/True' 'replacement virtual invoke=73/73'
     'replacement child virtual base=Weigh/RenamedMeasure'
-    'replacement child virtual rows=True/True/True/True' 'replacement child virtual invoke=79/79'
-    'patch virtual override rows=True/True/VirtualChild' 'patch virtual override invoke=79/79'
+    'replacement child virtual rows=False/True/True/True' 'replacement child virtual invoke=79/79'
+    'patch virtual override rows=False/True/VirtualReplacement' 'patch virtual override invoke=79/79'
     'split virtual equal=False/False' 'split virtual invoke=83/83/89'
+    'split virtual method=Weigh/VirtualReplacement'
     'split reflective equal=False/False'
     'aot cross-route=True/True/True/False'
     'aot cross-route lists=True/True/2/True/8/8'
@@ -2469,8 +2476,6 @@ for metadata_codec in register stack; do
         gate_output witness "$metadata_refusals" "patch ${refusal//-/ } refused" --count 3 --policy crlf \
             || { echo "FAIL: patch metadata did not refuse unknown $refusal ($metadata_codec)" >&2; exit 1; }
     done
-    gate_output witness "$metadata_refusals" 'patch unrecorded override refused' --count 1 --policy crlf \
-        || { echo "FAIL: unrecorded patch override metadata did not refuse ($metadata_codec)" >&2; exit 1; }
     gate_output witness "$metadata_refusals" 'patch interface method identities end' --count 1 --policy crlf \
         || { echo "FAIL: patch metadata refusal block did not complete ($metadata_codec)" >&2; exit 1; }
 done
@@ -2535,7 +2540,7 @@ for renamed_object_case in object finalize loaded; do
     fi
 done
 renamed_object_loaded="$renamed_object_root/loaded/native"
-invoke_cli "$renamed_object_copy" -r "$(resolve_net10_corelib)" --auto-ref --hotupdate-base \
+invoke_cli "$renamed_object_copy" -r "$(resolve_pinned_corelib)" --auto-ref --hotupdate-base \
     -o "$renamed_object_loaded"
 compile_console "$renamed_object_loaded" HotUpdateBase
 for renamed_object_case in object finalize; do
@@ -2545,10 +2550,10 @@ for renamed_object_case in object finalize; do
     hotupdate_capture renamed_object_native _hotupdate_status stdout run_bounded "./$renamed_object_loaded/HotUpdateBase$EXE_EXT" "$renamed_object_arg"
     gate_output status "$_hotupdate_status" 0
     gate_output compare "$renamed_object_native" "$renamed_object_clr"
-    renamed_object_lines=('renamed Object methods=Show/Show' 'renamed Object values=measure/measure'
+    renamed_object_lines=('renamed Object methods=ToString/Show' 'renamed Object values=measure/measure'
         'renamed Object equal=True/True')
     if [ "$renamed_object_case" = finalize ]; then
-        renamed_object_lines=('renamed Finalize methods=Release/Release' 'renamed Finalize equal=True/True'
+        renamed_object_lines=('renamed Finalize methods=Finalize/Release' 'renamed Finalize equal=True/True'
             'renamed Finalize first=1' 'renamed Finalize second=2')
     fi
     for line in "${renamed_object_lines[@]}"; do

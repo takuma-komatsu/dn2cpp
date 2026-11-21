@@ -8,6 +8,7 @@ import sys
 from xml.sax.saxutils import escape
 
 fork, output = map(pathlib.Path, sys.argv[1:])
+tfm = os.environ.get('TFM', 'net11.0')
 source_dir = fork / 'modules/mono/editor/GodotTools/GodotTools/Export'
 plugin = (source_dir / 'ExportPlugin.cs').read_text(encoding='utf-8')
 exporter = (source_dir / 'Dn2CppExporter.cs').read_text(encoding='utf-8')
@@ -39,7 +40,7 @@ output.mkdir(parents=True, exist_ok=True)
 helper = escape(str((source_dir / 'Dn2CppOptimizationOptions.cs').resolve()), {'"': '&quot;'})
 (output / 'ExportOptions.csproj').write_text(f'''<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType><TargetFramework>{tfm}</TargetFramework>
     <NuGetAudit>false</NuGetAudit><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup><Compile Include="{helper}" Link="Dn2CppOptimizationOptions.cs" /></ItemGroup>

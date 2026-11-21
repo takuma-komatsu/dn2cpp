@@ -10,12 +10,15 @@ User imports bind lazily on their first call. The declaring assembly's registere
 `DllImportResolver` runs first; a zero handle falls through to the platform loader,
 then the requested export is looked up. Concurrent unresolved callers may each run the
 resolver; the ABI-typed call site atomically publishes and caches a result for later
-calls. Direct IL calls to one imported MethodDef share a cache; its address-taken
-forwarder has the separate cache CoreCLR gives the delegate/function-pointer stub.
+calls. Direct IL calls to an imported MethodDef and its address-taken forwarder
+(delegate or function pointer) share one cache, so a resolver already run by a
+direct call does not run again for the delegate, nor the reverse.
 `--direct-pinvoke <module[!entrypoint]>` keeps a
 selected import on the static-link path, and `--direct-pinvoke '*'` selects all
 imports for static-only targets. Framework imports retain their intrinsic/refusal
 boundary unless the runtime provides their module or a direct selector admits them.
+The wildcard never admits CoreLib's private `QCall` module, which no target can
+link; only a selector naming the module or its entry point does.
 Matching is ordinal and exact. Only direct imports are written to `pinvoke-libs.txt`
 and `pinvoke-symbols.txt`.
 
@@ -57,7 +60,7 @@ section and says the wrong thing about it.
 | Byref blittables | `ref`/`out`/`in` of a blittable type | address of the pinned managed storage (no copy) | Write-backs are automatically visible; no post-call decode. `ref bool`/`ref char` stay a carve-out (their marshalled width differs from the managed storage). | `PInvokeByRefBlittableSubset`; the blittable-`ref struct` shape in `PInvokeVariantByRefSubset` |
 | String arrays | `string[]` | `char**` / `char16_t**` (per-slot NUL-terminated buffers; null element → null pointer) | Default direction `[In]`. | `PInvokeStringArraySubset` |
 | String-array write-back | `string[]` marked `[In,Out]`/`[Out]` | same pointer array, slots re-read after the call | Only a slot the native REPLACED (pointer differs from the pre-call snapshot) is freed — native heap ownership, matching .NET's CoTaskMemFree-on-Unix rule. | `PInvokeStringArraySubset` |
-| Blittable struct arrays | `Point[]`-style arrays of blittable structs | fresh native buffer, `length * sizeof` packed copy | BY COPY with direction semantics (probe-confirmed): copy in unless `[Out]`-only, copy back only when `[Out]`/`[In,Out]` — unlike primitive arrays, which pin. | `PInvokeStructArraySubset` |
+| Blittable struct arrays | `Point[]`-style arrays of blittable structs | pointer to element 0 (pinned, no copy) | Pinned like a primitive array: the native reads and writes the managed elements under every direction, `[Out]`-only included. | `PInvokeStructArraySubset` |
 | Explicit-layout (union) structs | `[StructLayout(LayoutKind.Explicit)]` with overlapping `[FieldOffset]` arms | the byte-identical C union | Blittable whenever every arm is (overlapping scalars, unmanaged pointers, value structs), so it crosses by value, by return and byref with no marshaller — the sections write one arm and read a *different* one across the boundary, so the exact diff pins the punning. An explicit-layout field without `[FieldOffset]` is a loud carve-out (`CppEmitter`). | `PInvokeExplicitUnionSubset`; nested inside a `ref struct` in `PInvokeVariantByRefSubset` |
 | Non-blittable marshalable structs | a value struct with `string` / `bool` / nested-blittable fields | a per-struct native layout `tn_<Name>` (`CppTypes.MarshalStructName`) filled field by field | By value (`[In]`) or byref (`[In]`/`[In,Out]`/`[Out]`): a string field encodes to/from a NUL-terminated buffer under the struct's CharSet, a bool to/from the 4-byte BOOL. A byref string field's write-back frees a buffer only when the native REPLACED the `[In]` (GC) one. **Return position is a carve-out.** A field `[MarshalAs]` the marshaller does not implement (`ByValTStr`, a bool width override, a string encoding override, a width-MISMATCHED descriptor on a blittable-typed field) refuses at transpile naming the field (`CppTypes.StructFieldDescriptorSupported`, asked by `IsBlittableStruct` too). Only the exact no-ops (`Bool` on a bool, `Struct` on a struct, a width descriptor naming the field's own width) pass. | `PInvokeMarshalStructSubset` |
 | Inline fixed-length array fields | `[MarshalAs(UnmanagedType.ByValArray, SizeConst = N)]` on a *struct field* | `<elem> f[N]` embedded inline in the native struct | Blittable scalar/enum elements only. Copy-in fills the inline slots (a null array zeroes them, a longer array truncates, a shorter one throws `ArgumentException`); copy-back allocates a fresh N-element managed array. Descriptor decoded by `Compilation.ReadByValArraySize`. | `PInvokeByValArraySubset` |

@@ -8,7 +8,7 @@ namespace FinalizerActivatorSubset
     // the generic Activator.CreateInstance<T>() (what a constrained `new T()`
     // compiles to) and the reflective Activator.CreateInstance(Type) must both
     // register the instance with the finalizer queue, exactly like a direct
-    // `new T()` (verified against real .NET, net10.0). The finalizers only
+    // `new T()` (verified against real .NET). The finalizers only
     // bump a counter — printed once at the end — so the assertion is
     // independent of finalization-queue ordering.
     internal sealed class ViaGeneric

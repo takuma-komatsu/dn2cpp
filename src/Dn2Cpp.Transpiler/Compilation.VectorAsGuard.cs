@@ -120,17 +120,35 @@ internal sealed partial class Compilation
 
     private void ValidateVectorAsSupportedWhitelist(MethodInfo getter)
     {
+        // Vector<T> owns no element whitelist; it forwards to Scalar<T>'s.
+        if (CoreIntrinsics.IsVectorExplicitOwner(getter.DeclaringClass))
+        {
+            var forward = GenericVectorGuardInstructions(getter);
+            if (forward.Count != 2 || !getter.Module.PE.GetMethodBody(getter.Rva).LocalSignature.IsNil
+                || forward[0].OpCode != ILOpCode.Call || forward[1].OpCode != ILOpCode.Ret
+                || getter.Context.TypeArgs is not [var lane])
+                throw GuardedVectorAsUnsupported();
+            getter = ResolveVectorScalarGetter(getter.Module, forward[0].Token, "get_IsSupported", 0x13, getter.Context, lane);
+        }
+        else if (!getter.Module.Reader.StringComparer.Equals(
+                getter.Module.Reader.GetTypeDefinition(getter.DeclaringClass.Handle).Name, "Vector64`1")
+            || !CoreIntrinsics.IsFixedVectorManagedValueClass(getter.DeclaringClass))
+            throw GuardedVectorAsUnsupported();
+        ValidateVectorElementWhitelist(getter,
+            new[] { "Byte", "Double", "Int16", "Int32", "Int64", "IntPtr", "SByte", "Single", "UInt16", "UInt32", "UInt64", "UIntPtr" });
+    }
+
+    // The getter is true exactly for the listed primitives, so it is false for
+    // the admitted managed value element.
+    private void ValidateVectorElementWhitelist(MethodInfo getter, string[] names)
+    {
         var module = getter.Module;
         var reader = module.Reader;
         var il = GenericVectorGuardInstructions(getter);
-        string[] names = CoreIntrinsics.IsVectorExplicitOwner(getter.DeclaringClass)
-            ? new[] { "Byte", "Double", "Int16", "Int32", "Int64", "IntPtr", "UIntPtr", "SByte", "Single", "UInt16", "UInt32", "UInt64" }
-            : reader.StringComparer.Equals(reader.GetTypeDefinition(getter.DeclaringClass.Handle).Name, "Vector64`1")
-                && CoreIntrinsics.IsFixedVectorManagedValueClass(getter.DeclaringClass)
-                ? new[] { "Byte", "Double", "Int16", "Int32", "Int64", "IntPtr", "SByte", "Single", "UInt16", "UInt32", "UInt64", "UIntPtr" }
-                : throw GuardedVectorAsUnsupported();
-        if (il.Count != 74 || !module.PE.GetMethodBody(getter.Rva).LocalSignature.IsNil
-            || il[71].OpCode != ILOpCode.Ret || il[72].OpCode != ILOpCode.Ldc_i4_1 || il[73].OpCode != ILOpCode.Ret)
+        int end = names.Length * 6;
+        if (il.Count != end + 2 || !module.PE.GetMethodBody(getter.Rva).LocalSignature.IsNil
+            || il[end - 1].OpCode != ILOpCode.Ret || il[end].OpCode != ILOpCode.Ldc_i4_1 || il[end + 1].OpCode != ILOpCode.Ret
+            || getter.Context.TypeArgs is not [{ Kind: TypeKind.Class, IsCanonPlaceholder: false, Class: { } element }])
             throw GuardedVectorAsUnsupported();
         for (int index = 0; index < names.Length; index++)
         {
@@ -138,8 +156,8 @@ internal sealed partial class Compilation
             if (il[start].OpCode != ILOpCode.Ldtoken || il[start + 1].OpCode != ILOpCode.Call
                 || il[start + 2].OpCode != ILOpCode.Ldtoken || il[start + 3].OpCode != ILOpCode.Call
                 || il[start + 4].OpCode != ILOpCode.Call || il[start + 1].Token != il[start + 3].Token
-                || index < 11 && (il[start + 5].OpCode is not (ILOpCode.Brtrue or ILOpCode.Brtrue_s)
-                    || il[start + 5].Operand != il[72].Offset))
+                || index < names.Length - 1 && (il[start + 5].OpCode is not (ILOpCode.Brtrue or ILOpCode.Brtrue_s)
+                    || il[start + 5].Operand != il[end].Offset))
                 throw GuardedVectorAsUnsupported();
             var variable = SRME.EntityHandle(il[start].Token);
             if (variable.Kind != HandleKind.TypeSpecification) throw GuardedVectorAsUnsupported();
@@ -151,11 +169,65 @@ internal sealed partial class Compilation
             var definition = reader.GetTypeDefinition((TypeDefinitionHandle)type);
             if (!definition.GetDeclaringType().IsNil || definition.GetGenericParameters().Count != 0
                 || !reader.StringComparer.Equals(definition.Namespace, "System")
-                || !reader.StringComparer.Equals(definition.Name, names[index]))
+                || !reader.StringComparer.Equals(definition.Name, names[index])
+                || element.Module == module && element.Handle == (TypeDefinitionHandle)type)
                 throw GuardedVectorAsUnsupported();
             ValidateVectorAsTypeOperation(module, il[start + 1].Token, false);
             ValidateVectorAsTypeOperation(module, il[start + 4].Token, true);
         }
+    }
+
+    // Resolves a call to Scalar<T>'s named boolean getter over the caller's own
+    // element variable (0x13 class, 0x1e method) and authenticates its declaration.
+    private MethodInfo ResolveVectorScalarGetter(Module module, int callToken, string name, int variable,
+        GenericContext context, TypeDesc element)
+    {
+        var reader = module.Reader;
+        var handle = SRME.EntityHandle(callToken);
+        if (handle.Kind != HandleKind.MemberReference) throw GuardedVectorAsUnsupported();
+        var reference = reader.GetMemberReference((MemberReferenceHandle)handle);
+        if (reference.Parent.Kind != HandleKind.TypeSpecification
+            || !reader.StringComparer.Equals(reference.Name, name)
+            || !GenericVectorBooleanGetterSignature(reader.GetBlobReader(reference.Signature)))
+            throw GuardedVectorAsUnsupported();
+        var parent = reader.GetBlobReader(reader.GetTypeSpecification((TypeSpecificationHandle)reference.Parent).Signature);
+        if (parent.RemainingBytes < 6 || parent.ReadByte() != 0x15 || parent.ReadByte() != 0x12
+            || !parent.TryReadCompressedInteger(out int token) || token >> 2 == 0 || (token & 3) != 0
+            || parent.RemainingBytes != 3 || parent.ReadByte() != 1 || parent.ReadByte() != variable || parent.ReadByte() != 0)
+            throw GuardedVectorAsUnsupported();
+        var scalarHandle = SRME.TypeDefinitionHandle(token >> 2);
+        var scalar = reader.GetTypeDefinition(scalarHandle);
+        if (!scalar.GetDeclaringType().IsNil || scalar.GetGenericParameters().Count != 1
+            || !reader.StringComparer.Equals(scalar.Namespace, "System.Runtime.Intrinsics")
+            || !reader.StringComparer.Equals(scalar.Name, "Scalar`1"))
+            throw GuardedVectorAsUnsupported();
+        foreach (var parameterHandle in scalar.GetGenericParameters())
+        {
+            var parameter = reader.GetGenericParameter(parameterHandle);
+            if (parameter.Parent != scalarHandle || parameter.Index != 0
+                || parameter.Attributes != GenericParameterAttributes.None || parameter.GetConstraints().Count != 0)
+                throw GuardedVectorAsUnsupported();
+        }
+        MethodDefinitionHandle expected = default;
+        foreach (var candidate in scalar.GetMethods())
+        {
+            var definition = reader.GetMethodDefinition(candidate);
+            if (!reader.StringComparer.Equals(definition.Name, name)) continue;
+            if (!expected.IsNil || definition.GetGenericParameters().Count != 0
+                || definition.Attributes != (MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig | MethodAttributes.SpecialName)
+                || definition.ImplAttributes != MethodImplAttributes.AggressiveInlining || definition.RelativeVirtualAddress == 0
+                || !GenericVectorBooleanGetterSignature(reader.GetBlobReader(definition.Signature)))
+                throw GuardedVectorAsUnsupported();
+            expected = candidate;
+        }
+        if (expected.IsNil) throw GuardedVectorAsUnsupported();
+        var target = ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, context);
+        ValidateMagnitudeResolvedDefinition(target, module, expected);
+        if (target.DeclaringClass.Handle != scalarHandle || target.Context.MethodArgs.Length != 0
+            || target.Context.TypeArgs is not [var actual] || !SameTypeArg(actual, element))
+            throw GuardedVectorAsUnsupported();
+        VectorAsNoInitializer(target.DeclaringClass);
+        return target;
     }
 
     private void ValidateVectorAsTypeOperation(Module module, int token, bool equality)

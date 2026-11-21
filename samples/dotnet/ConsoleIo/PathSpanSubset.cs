@@ -10,7 +10,7 @@ using System.IO;
 // operations as the intercepted string forms, and diff exact vs real .NET.
 //
 // Deliberately no GetFullPath(string, string) here: it reaches Interop.Sys.GetCwd, which
-// needs the net10-pinned CoreLib. That one is asserted in the FileReal bucket.
+// needs the pinned CoreLib. That one is asserted in the FileReal bucket.
 namespace PathSpanSubset;
 
 internal static class Program

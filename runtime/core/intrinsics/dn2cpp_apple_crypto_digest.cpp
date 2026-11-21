@@ -15,11 +15,9 @@
 // of the same assembly instead calls the OpenSsl module (CryptoNative_*),
 // implemented over the very same cores in dn2cpp_openssl_crypto_digest.cpp.
 //
-// ABI source of truth: dotnet/runtime v10.0.x
-// src/native/libs/System.Security.Cryptography.Native.Apple/pal_digest.{h,c}
-// and pal_hmac.{h,c}; the 16 signatures below were additionally verified by
-// decoding the real net10.0 System.Security.Cryptography.dll's Interop
-// declarations. Semantics preserved: success = 1; DigestFinal finalizes and
+// The 16 signatures below mirror the AppleCryptoNative_* Interop declarations in
+// the Apple-RID System.Security.Cryptography.dll (the PAL's pal_digest and
+// pal_hmac). Semantics preserved: success = 1; DigestFinal finalizes and
 // then RE-INITIALIZES the context (managed HashProvider reuses it);
 // DigestCurrent/HmacCurrent are clone-then-final (non-destructive);
 // HmacFinal does NOT re-key (managed LiteHmac.Reset calls HmacInit again);

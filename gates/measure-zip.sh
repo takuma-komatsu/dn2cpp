@@ -3,7 +3,7 @@
 # `build-and-run-*.sh` glob so run-all-gates.sh ignores it). The Zip sibling
 # of gates/measure-compression.sh: it quantifies the unsupported-IL /
 # unmapped-intrinsic surface the *real* System.IO.Compression ZipArchive /
-# ZipArchiveEntry / ZipFile / ZipFileExtensions path (sync + net10 async)
+# ZipArchiveEntry / ZipFile / ZipFileExtensions path (sync + async)
 # drags in, ahead of any Zip production work.
 #
 # It transpiles samples/dotnet/ZipProbe (a throwaway five-section probe:
@@ -12,10 +12,10 @@
 # stopping at the first), emitting NO C++.
 #
 # Crucially it uses --auto-ref so the transitive shared-framework closure
-# resolves automatically, and pins net10.0 via resolve_net10_corelib (NOT
-# locate_corelib — this host has 8.0/10.0/11.0-preview runtimes installed
-# side by side and the System.IO.Compression native ABI differs across them;
-# see the resolve_net10_corelib comment in _common.sh).
+# resolves automatically, and pins the CoreLib via resolve_pinned_corelib (NOT
+# locate_corelib — the System.IO.Compression native ABI differs across the
+# runtimes a host can have installed side by side; see the
+# resolve_pinned_corelib comment in _common.sh).
 #
 # Output: <out>/s0-gaps.tsv (phase|namespace|method|exception|message) + a
 # grouped stdout summary. Read gaps as CLUSTERS, not rows: one unmapped member
@@ -32,8 +32,8 @@ build_proj samples/dotnet/ZipProbe/ZipProbe.csproj
 CLI="src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll"
 [ -f "$CLI" ] || { echo "error: not built: $CLI" >&2; exit 1; }
 
-echo "== 2/4 Locating the real net10.0 CoreLib + Zip assemblies =="
-corelib=$(resolve_net10_corelib)
+echo "== 2/4 Locating the real pinned CoreLib + Zip assemblies =="
+corelib=$(resolve_pinned_corelib)
 bcl=$(dirname "$corelib")
 REAL_COMPRESSION="$bcl/System.IO.Compression.dll"
 REAL_ZIPFILE="$bcl/System.IO.Compression.ZipFile.dll"

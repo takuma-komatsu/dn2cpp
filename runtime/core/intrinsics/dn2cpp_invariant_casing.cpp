@@ -1,8 +1,9 @@
 // dn2cpp_invariant_casing.cpp — char.ToUpperInvariant / ToLowerInvariant over the BMP.
 //
 // Two-level compressed DELTA tables generated from the real .NET
-// char.ToUpperInvariant / char.ToLowerInvariant (net10.0 / Unicode 16 data,
-// the invariant TextInfo's simple one-to-one case mapping): 256-code-point
+// char.ToUpperInvariant / char.ToLowerInvariant (the invariant TextInfo's
+// simple one-to-one case mapping, which the reference runtime reads from ICU
+// rather than from CoreLib's Unicode data): 256-code-point
 // pages of (mapped - c) deltas deduplicated behind a 256-entry page index
 // (identity pages are all-zero, so they collapse to one shared page). Exact
 // for every BMP code unit; supplementary-plane (surrogate-pair) mappings —
@@ -17,7 +18,8 @@
 // (git history of this file has the generator); it verifies idempotence,
 // surrogate-range identity and the table reconstruction, and diffs the
 // upper map against System.Globalization.OrdinalCasing.ToUpper before
-// printing.
+// printing. The check is a sweep of every BMP code unit against the reference
+// runtime.
 
 #include "dn2cpp_core.h"
 

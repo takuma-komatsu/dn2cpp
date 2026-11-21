@@ -54,7 +54,7 @@ expected_simd="$(dirname "$0")/expected/platform-isa-wasm-simd.txt"
 
 # The wasm axis cross-targets Emscripten, so the CoreLib flavour follows the
 # TARGET, not the host (docs/PORTING.md H6).
-_CG_CORELIB_IN=$(locate_corelib_cross_posix net10)
+_CG_CORELIB_IN=$(locate_corelib_cross_posix pinned)
 _corelib_gate_core "$project" "$out"
 
 # Run A's oracle is also Run B-masked's expectation, so it is computed once, here,

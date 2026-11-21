@@ -84,8 +84,8 @@ parameter is passed as its items, `a<k>_1, a<k>_2, …`.
 directory `map/<arch>/<family>/` of `*.map` files read in ordinal name order
 (`map/arm/advsimd/arithmetic.map`, `…/shift.map`), so a large family is written by topic.
 A method with rows in two files is an error, and `target =` may appear in any file of the
-directory as long as every occurrence agrees. A family with no feature bits (Sve, Sve2) may
-not have a map.
+directory as long as every occurrence agrees. A family with no feature bits (Sve, Sha3,
+Avx512Bmm) may not have a map.
 
 ```
 # comment
@@ -175,7 +175,7 @@ Method(i32,i32) @targetonly = ...
   `target =`; the first listed source wins where two define a method, an explicit row in the
   same file wins over every source, and a method no source covers is an error rather than an
   unmapped method, so a surface addition cannot hide behind the derivation. A source must be
-  mapped directly (not derive in turn) and a source row's `@target` is not carried. .NET 10's
+  mapped directly (not derive in turn) and a source row's `@target` is not carried.
   `Avx10v1` is the AVX-512 VL and scalar surfaces under one token, which is what the directive
   is for: copied rows would drift when a source row is fixed, and `--check` could not see it.
 - AVX10 targets retain their version and width separately in the generated attribute.

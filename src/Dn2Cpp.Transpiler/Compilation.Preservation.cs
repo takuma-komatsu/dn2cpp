@@ -389,7 +389,22 @@ internal sealed partial class Compilation
         var sig = method.Signature;
         NotePreservedType(sig.ReturnType);
         foreach (var type in sig.ParameterTypes) NotePreservedType(type);
-        Reach(method);
+        // A member a cut row replaces stays bindable through the row's function
+        // target; rooting it must not revive the body the row cuts.
+        var cls = method.DeclaringClass;
+        if (cls.IntrinsicCppName is null && !CoreIntrinsics.IsIntrinsicType(cls)
+            && cls.PlatformIsa is null && !IsBoundedMethod(method)
+            && !LowersToPInvoke(method)
+            && (method.PInvoke is not { } import || NativeImplFor(import) is null)
+            && CoreIntrinsics.TryFindCutRow(method, out var row))
+        {
+            if (row.EmitArm == InterceptEmitArm.EventSourceNoOp
+                && !CoreIntrinsics.CanReplayFrameworkEventSourceNoOp(method))
+                return;
+            NoteInterceptFtnTarget(method);
+        }
+        else
+            Reach(method);
         // Reflection enters a preserved member with no IL caller to trigger its type's
         // initializer, as a run-time root does.
         ReachRootInitializer(method);

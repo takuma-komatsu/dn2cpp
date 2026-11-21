@@ -5,7 +5,7 @@
 # gen-isa-map asserts this set equals the CoreLib metadata set, so a CoreLib update
 # that adds or removes a family fails there before anything is generated.
 #
-# Checked against: System.Private.CoreLib 10.0.11 (.NET 10.0.11). The public static
+# Checked against: System.Private.CoreLib 11.0.0 (.NET 11.0.0). The public static
 # surface is identical across the x64 and arm64 flavours, so either host may regenerate.
 #
 # Columns:
@@ -19,19 +19,24 @@
 # immediately followed by its nested types in ordinal order of the nested name, and a
 # nested type's own nested types follow it in turn. The generator enforces this.
 #
-# Bit assignments follow the family's IsSupported condition in .NET 10. The bits are finer
-# than the JIT's consolidated instruction sets (SSE4.2 = Sse3/Ssse3/Sse41/Sse42/Popcnt,
-# AVX2 = Avx2/Bmi1/Bmi2/Lzcnt/Fma, AVX512v2 = Avx512Vbmi, AVX512v3 = Avx512Vbmi2, one set
-# for AvxVnniInt8/Int16), but the runtime detector sets each such group only together and
-# the parent table in dn2cpp_cpu_features.h repeats the JIT's implications, so every
-# getter answers as .NET's does; the extra bits only keep the tokens one per type.
-# Avx512F/BW/CD/DQ and their VL nested types share one AVX512 bit: .NET 10 requires all
-# of F+BW+CD+DQ+VL for any of them to report support. Nested X64/Arm64 types carry their
+# Bit assignments follow the family's IsSupported condition in .NET. The bits are finer
+# than the JIT's consolidated instruction sets (Sse3/Ssse3/Sse41/Sse42/Popcnt as one
+# group, AVX2 = Avx2/Bmi1/Bmi2/Lzcnt/Fma, AVX512v2 = Avx512Vbmi, AVX512v3 = Avx512Vbmi2,
+# one set for AvxVnniInt8/Int16), but the runtime detector sets each such group only
+# together and the parent table in dn2cpp_cpu_features.h repeats the JIT's implications,
+# so every getter answers as .NET's does; the extra bits only keep the tokens one per type.
+# Avx512F/BW/CD/DQ and their VL nested types share one AVX512 bit: .NET requires all of
+# F+BW+CD+DQ+VL for any of them to report support. Nested X64/Arm64 types carry their
 # enclosing type's bits because every target is 64-bit. A V256/V512 nested type adds the
 # vector-width prerequisite (AVX, AVX512, or the AVX10 512-bit bit) to its own feature bit.
-# Sve and Sve2 are experimental scalable vectors in .NET 10 and are never lowered.
 #
-# Sources: the IsSupported properties in System.Private.CoreLib and the .NET 10 JIT's
+# A family with no bits answers IsSupported false on every target and its calls throw
+# PlatformNotSupportedException, whatever the CPU has. Sve, Sve2, SveSha3 and SveSm4 are
+# scalable vectors without a fixed register width. Sha3, Sm4, Avx512Bmm and AvxVnni.V512
+# have neither a detector bit nor a map. A nested type may have no bits under an enclosing
+# type that has them (AvxVnni.V512): only a lowered nested type requires its enclosing one.
+#
+# Sources: the IsSupported properties in System.Private.CoreLib and the JIT's
 # instruction-set description (InstructionSetDesc.txt) for the implication groups.
 qualified_name,arch,bits,landing_order_group
 System.Runtime.Intrinsics.X86.X86Base,x86,X86_X86BASE,1
@@ -88,6 +93,7 @@ System.Runtime.Intrinsics.X86.Avx2+X64,x86,X86_AVX2,6
 System.Runtime.Intrinsics.X86.Fma,x86,X86_FMA,6
 System.Runtime.Intrinsics.X86.Fma+X64,x86,X86_FMA,6
 System.Runtime.Intrinsics.X86.AvxVnni,x86,X86_AVXVNNI,6
+System.Runtime.Intrinsics.X86.AvxVnni+V512,x86,,6
 System.Runtime.Intrinsics.X86.AvxVnni+X64,x86,X86_AVXVNNI,6
 System.Runtime.Intrinsics.X86.Avx512F,x86,X86_AVX512,7
 System.Runtime.Intrinsics.X86.Avx512F+VL,x86,X86_AVX512,7
@@ -129,3 +135,13 @@ System.Runtime.Intrinsics.Arm.Sve,arm,,8
 System.Runtime.Intrinsics.Arm.Sve+Arm64,arm,,8
 System.Runtime.Intrinsics.Arm.Sve2,arm,,8
 System.Runtime.Intrinsics.Arm.Sve2+Arm64,arm,,8
+System.Runtime.Intrinsics.Arm.Sha3,arm,,8
+System.Runtime.Intrinsics.Arm.Sha3+Arm64,arm,,8
+System.Runtime.Intrinsics.Arm.Sm4,arm,,8
+System.Runtime.Intrinsics.Arm.Sm4+Arm64,arm,,8
+System.Runtime.Intrinsics.Arm.SveSha3,arm,,8
+System.Runtime.Intrinsics.Arm.SveSha3+Arm64,arm,,8
+System.Runtime.Intrinsics.Arm.SveSm4,arm,,8
+System.Runtime.Intrinsics.Arm.SveSm4+Arm64,arm,,8
+System.Runtime.Intrinsics.X86.Avx512Bmm,x86,,8
+System.Runtime.Intrinsics.X86.Avx512Bmm+X64,x86,,8

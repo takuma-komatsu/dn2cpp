@@ -57,10 +57,18 @@ static inline int32_t dn2cpp_atomic_add_i4(int32_t* loc, int32_t value) // retur
 static inline int64_t dn2cpp_atomic_add_i8(int64_t* loc, int64_t value)
 { return _InterlockedExchangeAdd64(reinterpret_cast<volatile __int64*>(loc), value) + value; }
 
-static inline int32_t dn2cpp_atomic_or_i4(int32_t* loc, int32_t value) // returns the ORIGINAL value
+static inline int8_t dn2cpp_atomic_or_i1(int8_t* loc, int8_t value) // returns the ORIGINAL value
+{ return static_cast<int8_t>(_InterlockedOr8(reinterpret_cast<volatile char*>(loc), static_cast<char>(value))); }
+static inline int16_t dn2cpp_atomic_or_i2(int16_t* loc, int16_t value)
+{ return _InterlockedOr16(reinterpret_cast<volatile short*>(loc), value); }
+static inline int32_t dn2cpp_atomic_or_i4(int32_t* loc, int32_t value)
 { return _InterlockedOr(reinterpret_cast<volatile long*>(loc), value); }
 static inline int64_t dn2cpp_atomic_or_i8(int64_t* loc, int64_t value)
 { return _InterlockedOr64(reinterpret_cast<volatile __int64*>(loc), value); }
+static inline int8_t dn2cpp_atomic_and_i1(int8_t* loc, int8_t value)
+{ return static_cast<int8_t>(_InterlockedAnd8(reinterpret_cast<volatile char*>(loc), static_cast<char>(value))); }
+static inline int16_t dn2cpp_atomic_and_i2(int16_t* loc, int16_t value)
+{ return _InterlockedAnd16(reinterpret_cast<volatile short*>(loc), value); }
 static inline int32_t dn2cpp_atomic_and_i4(int32_t* loc, int32_t value)
 { return _InterlockedAnd(reinterpret_cast<volatile long*>(loc), value); }
 static inline int64_t dn2cpp_atomic_and_i8(int64_t* loc, int64_t value)
@@ -97,8 +105,12 @@ static inline void* dn2cpp_atomic_exchange_ptr(void** loc, void* value) { return
 
 static inline int32_t dn2cpp_atomic_add_i4(int32_t* loc, int32_t value) { return __atomic_add_fetch(loc, value, __ATOMIC_SEQ_CST); }
 static inline int64_t dn2cpp_atomic_add_i8(int64_t* loc, int64_t value) { return __atomic_add_fetch(loc, value, __ATOMIC_SEQ_CST); }
+static inline int8_t dn2cpp_atomic_or_i1(int8_t* loc, int8_t value) { return __atomic_fetch_or(loc, value, __ATOMIC_SEQ_CST); }
+static inline int16_t dn2cpp_atomic_or_i2(int16_t* loc, int16_t value) { return __atomic_fetch_or(loc, value, __ATOMIC_SEQ_CST); }
 static inline int32_t dn2cpp_atomic_or_i4(int32_t* loc, int32_t value) { return __atomic_fetch_or(loc, value, __ATOMIC_SEQ_CST); }
 static inline int64_t dn2cpp_atomic_or_i8(int64_t* loc, int64_t value) { return __atomic_fetch_or(loc, value, __ATOMIC_SEQ_CST); }
+static inline int8_t dn2cpp_atomic_and_i1(int8_t* loc, int8_t value) { return __atomic_fetch_and(loc, value, __ATOMIC_SEQ_CST); }
+static inline int16_t dn2cpp_atomic_and_i2(int16_t* loc, int16_t value) { return __atomic_fetch_and(loc, value, __ATOMIC_SEQ_CST); }
 static inline int32_t dn2cpp_atomic_and_i4(int32_t* loc, int32_t value) { return __atomic_fetch_and(loc, value, __ATOMIC_SEQ_CST); }
 static inline int64_t dn2cpp_atomic_and_i8(int64_t* loc, int64_t value) { return __atomic_fetch_and(loc, value, __ATOMIC_SEQ_CST); }
 
@@ -256,14 +268,34 @@ int64_t dn2cpp_interlocked_add_i8(int64_t* loc, int64_t value)
     return dn2cpp_atomic_add_i8(loc, value);
 }
 
+int8_t dn2cpp_interlocked_or_i1(int8_t* loc, int8_t value)
+{
+    return dn2cpp_atomic_or_i1(loc, value); // returns the original value
+}
+
+int16_t dn2cpp_interlocked_or_i2(int16_t* loc, int16_t value)
+{
+    return dn2cpp_atomic_or_i2(loc, value);
+}
+
 int32_t dn2cpp_interlocked_or_i4(int32_t* loc, int32_t value)
 {
-    return dn2cpp_atomic_or_i4(loc, value); // returns the original value
+    return dn2cpp_atomic_or_i4(loc, value);
 }
 
 int64_t dn2cpp_interlocked_or_i8(int64_t* loc, int64_t value)
 {
     return dn2cpp_atomic_or_i8(loc, value);
+}
+
+int8_t dn2cpp_interlocked_and_i1(int8_t* loc, int8_t value)
+{
+    return dn2cpp_atomic_and_i1(loc, value);
+}
+
+int16_t dn2cpp_interlocked_and_i2(int16_t* loc, int16_t value)
+{
+    return dn2cpp_atomic_and_i2(loc, value);
 }
 
 int32_t dn2cpp_interlocked_and_i4(int32_t* loc, int32_t value)
@@ -409,23 +441,14 @@ static bool dn2cpp_monitor_owned(const Dn2CppMonitor* mon)
     return mon->has_owner && mon->owner == std::this_thread::get_id();
 }
 
-// Monitor's argument checks: Enter, Exit and TryEnter raise a bare
-// ArgumentNullException for a null object, Wait, Pulse, PulseAll and IsEntered one
-// naming it.
-static void dn2cpp_monitor_require(Dn2CppObject* o)
-{
-    if (o == nullptr)
-        dn2cpp_throw_argument_null();
-}
-
+// Every Monitor member raises an ArgumentNullException naming a null object.
 static void dn2cpp_monitor_require_obj(Dn2CppObject* o)
 {
     if (o == nullptr)
         dn2cpp_throw_argument_null_param("obj");
 }
 
-// A timeout below -1 (Timeout.Infinite) is refused as ThrowIfLessThan refuses it;
-// TryEnter(obj, int) names no parameter.
+// A timeout below -1 (Timeout.Infinite) is refused as ThrowIfLessThan refuses it.
 static void dn2cpp_monitor_require_timeout(int32_t ms, const char* paramName)
 {
     if (ms < -1)
@@ -499,7 +522,7 @@ static void dn2cpp_monitor_acquire(Dn2CppMonitor* mon)
 
 void dn2cpp_monitor_enter(Dn2CppObject* o)
 {
-    dn2cpp_monitor_require(o);
+    dn2cpp_monitor_require_obj(o);
     dn2cpp_monitor_acquire(dn2cpp_monitor_for(o));
 }
 
@@ -534,11 +557,12 @@ static void dn2cpp_monitor_release_owned(Dn2CppMonitor* mon)
     }
 }
 
+// An unowned Exit reports Lock's message; Wait and Pulse keep Monitor's own.
 void dn2cpp_monitor_exit(Dn2CppObject* o)
 {
-    dn2cpp_monitor_require(o);
+    dn2cpp_monitor_require_obj(o);
     std::unique_lock<std::mutex> lk;
-    dn2cpp_monitor_release_owned(dn2cpp_monitor_owned_or_throw(o, lk, DN2CPP_SR_SYNCHRONIZATION_LOCK));
+    dn2cpp_monitor_release_owned(dn2cpp_monitor_owned_or_throw(o, lk, DN2CPP_SR_LOCK_EXIT));
 }
 
 void dn2cpp_monitor_guard_exit(Dn2CppObject* o) noexcept
@@ -605,14 +629,15 @@ static int32_t dn2cpp_monitor_acquire_timeout(Dn2CppObject* o, int32_t ms,
 
 int32_t dn2cpp_monitor_try_enter(Dn2CppObject* o)
 {
-    dn2cpp_monitor_require(o);
+    dn2cpp_monitor_require_obj(o);
     return dn2cpp_monitor_acquire_timeout(o, 0);
 }
 
+// The timeout is refused before a null object is.
 int32_t dn2cpp_monitor_try_enter_timeout(Dn2CppObject* o, int32_t ms)
 {
-    dn2cpp_monitor_require(o);
-    dn2cpp_monitor_require_timeout(ms, nullptr);
+    dn2cpp_monitor_require_timeout(ms, "millisecondsTimeout");
+    dn2cpp_monitor_require_obj(o);
     return dn2cpp_monitor_acquire_timeout(o, ms);
 }
 

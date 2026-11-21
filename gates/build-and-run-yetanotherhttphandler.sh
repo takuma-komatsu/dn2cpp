@@ -28,7 +28,7 @@ app_dir=$(dirname "$app")
 cp "$YAHA_NATIVE" "$app_dir/$YAHA_ORACLE_NAME"
 
 echo "== 3/8 Transpiling the HTTP driver with the exact native module token =="
-corelib=$(resolve_net10_corelib)
+corelib=$(resolve_pinned_corelib)
 prepare_cli
 refs=(-r "$corelib" -r "$YAHA_MANAGED" -r "$YAHA_PIPELINES")
 rm -rf "$OUT"

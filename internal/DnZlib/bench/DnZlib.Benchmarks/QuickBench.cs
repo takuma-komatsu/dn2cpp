@@ -52,7 +52,7 @@ public static class QuickBench
 
     private static byte[] SysCompress(byte[] data, int level)
     {
-        // Same numeric level as DnZlib (net10 ZLibCompressionOptions), not the coarse CompressionLevel enum.
+        // Same numeric level as DnZlib (ZLibCompressionOptions), not the coarse CompressionLevel enum.
         using var ms = new MemoryStream();
         using (var z = new System.IO.Compression.ZLibStream(ms, new ZLibCompressionOptions { CompressionLevel = level }, leaveOpen: true))
             z.Write(data, 0, data.Length);

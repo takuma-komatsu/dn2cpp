@@ -10,6 +10,7 @@ namespace InterlockedGeneric;
 internal enum IntEnum { Zero = 0, One = 1, Two = 2 }
 internal enum ByteEnum : byte { A = 10, B = 20 }
 internal enum LongEnum : long { Small = 1, Large = 123456789 }
+internal delegate byte BitOp(ref byte x, byte m);
 
 internal static class Program
 {
@@ -110,5 +111,13 @@ internal static class Program
         Console.WriteLine(Xchg(ref s, "second"));                   // first
         Console.WriteLine(Cas(ref s, "third", "second"));           // second (hit)
         Console.WriteLine(s);                                       // third
+
+        // ---- address-taken And/Or ----
+        BitOp orOp = Interlocked.Or<byte>;
+        byte bx = 1;
+        Console.WriteLine(orOp(ref bx, 2) + "/" + bx);              // 1/3
+        BitOp andOp = Interlocked.And<byte>;
+        bx = 7;
+        Console.WriteLine(andOp(ref bx, 2) + "/" + bx);             // 7/2
     }
 }

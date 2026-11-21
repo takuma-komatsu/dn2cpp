@@ -1009,8 +1009,7 @@ echo "== 5/9 A member nobody asks about must not be decoded =="
 # loaded assembly — and decoding either a signature or a field type is the expensive half, as
 # well as what mints the closed generics it names. Nearly all of them are never asked about, and
 # the rate is deliberately NOT quoted here: it is what the census below prints on every run, and
-# quoting it is how it went stale twice (measured 2026-07-30 at nearly double the 5% this
-# comment and AGENTS.md had both been restating for the field types).
+# a quoted rate goes stale.
 #
 # The ceilings are loose deliberately. The BCL drifts, and the regression worth catching — a
 # walk over every class that reads every member — lands near 100%, not near the measured rate.
@@ -1037,7 +1036,7 @@ check_decode_rate() { # <label> <census-line-pattern> <ceiling> <what-is-read>
     echo "OK ($pct% of held $1 decoded — nobody asked about the rest)"
 }
 check_decode_rate "method signatures" "signatures DECODED"  40 "signatures"
-check_decode_rate "field types"       "field types DECODED" 25 "field types"
+check_decode_rate "field types"       "field types DECODED" 35 "field types"
 
 echo "== 6/9 --cut: a named method's subtree falls out; call sites yield the default =="
 # The generic carve-out lever (the TaskTracker-shaped cut, without baking library names

@@ -1447,12 +1447,6 @@ void dn2cpp_set_threading_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> th
     Dn2CppMetadataHandle<Dn2CppMethodInfo> createAsyncWaiter, Dn2CppMetadataHandle<Dn2CppMethodInfo> removeAsyncWaiter);
 Dn2CppObject* dn2cpp_delegate_object_virtual_invoker(void* fn, Dn2CppObject* receiver,
     Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
-// Signature invokers mark the exact Delegate value rows while honoring fn.
-// Only reflection's virtual dispatch substitutes their Multicast target.
-Dn2CppObject* dn2cpp_delegate_base_equals_invoker(void* fn, Dn2CppObject* receiver,
-    Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
-Dn2CppObject* dn2cpp_delegate_base_hash_invoker(void* fn, Dn2CppObject* receiver,
-    Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
 
 struct Dn2CppDelegateInterfaceInvocation
 {
@@ -1507,7 +1501,7 @@ bool dn2cpp_delegate_selected_key(const Dn2CppDelegateMethodIdentity* identity,
 
 // The interpreter registers exact selected rows without linking its object into
 // programs which never load a patch.
-using Dn2CppPatchVirtualMethodResolver = Dn2CppMetadataHandle<Dn2CppMethodInfo> (*)(const Dn2CppTypeInfo*, int32_t, bool);
+using Dn2CppPatchVirtualMethodResolver = Dn2CppMetadataHandle<Dn2CppMethodInfo> (*)(const Dn2CppTypeInfo*, int32_t);
 void dn2cpp_set_patch_virtual_method_resolver(Dn2CppPatchVirtualMethodResolver resolver);
 
 // A generic virtual method row has no slot: a reflective call and the BPI import
@@ -1534,6 +1528,20 @@ struct Dn2CppGvmRowDispatch
 };
 extern const Dn2CppGvmRowDispatch dn2cpp_gvm_row_dispatch[];
 extern const int32_t dn2cpp_gvm_row_dispatch_count;
+// A static virtual member `token` (its definition token; generic methods included)
+// of the closed interface `declaring` that the interface `reimpl`, which derives from
+// it, replaces with its own static explicit body. A delegate bound over an argument
+// whose type has such an interface cannot run the member's own body, and neither can
+// one bound over a type that lists `declaring` only through variance. A single null
+// row when there are none.
+struct Dn2CppStaticVirtualReimpl
+{
+    const Dn2CppTypeInfo* reimpl;
+    const Dn2CppTypeInfo* declaring;
+    int32_t token;
+};
+extern const Dn2CppStaticVirtualReimpl dn2cpp_static_virtual_reimpls[];
+extern const int32_t dn2cpp_static_virtual_reimpl_count;
 // Whether a callvirt of the row selects the receiver's override through a
 // dispatcher: false when the row's own body is every receiver's, a static,
 // non-virtual or final row or one on a sealed class.
@@ -1572,16 +1580,16 @@ struct Dn2CppDelegate : Dn2CppObject
 #define DN2CPP_DGBIND_CLOSED_INSTANCE 1
 #define DN2CPP_DGBIND_OPEN_INSTANCE   2
 #define DN2CPP_DGBIND_CLOSED_STATIC   3
-// What a call through a binding faults with before the row runs: nothing, a null
-// receiver's NullReferenceException or bad IL, or every call's missing entry point.
+// What a call through a binding faults with before the row runs: nothing, or a
+// null receiver's NullReferenceException or bad IL. A static row's call has no
+// receiver, so a static abstract row's is always bad IL.
 // NULL_CONTEXT runs on a stand-in carrying `declaring`; NULL_CTX_NULL keeps
 // the receiver null and supplies only its rgctx from `declaring`.
 #define DN2CPP_DGBIND_FAULT_NONE           0
 #define DN2CPP_DGBIND_FAULT_NULL_RECEIVER  1
 #define DN2CPP_DGBIND_FAULT_NULL_BODILESS  2
-#define DN2CPP_DGBIND_FAULT_STATIC_VIRTUAL 3
-#define DN2CPP_DGBIND_FAULT_NULL_CONTEXT   4
-#define DN2CPP_DGBIND_FAULT_NULL_CTX_NULL  5
+#define DN2CPP_DGBIND_FAULT_NULL_CONTEXT   3
+#define DN2CPP_DGBIND_FAULT_NULL_CTX_NULL  4
 // The table Dn2CppReflBind::slot indexes.
 #define DN2CPP_DGBIND_SLOT_CLASS     0
 #define DN2CPP_DGBIND_SLOT_INTERFACE 1
@@ -1663,6 +1671,9 @@ bool dn2cpp_reflbind_selected_key(const Dn2CppReflBind* bind,
     const Dn2CppTypeInfo*& owner, int32_t& token, int32_t& genericArgCount,
     const Dn2CppTypeInfo* const*& genericArgs);
 bool dn2cpp_reflbind_same_method(const Dn2CppReflBind* a, const Dn2CppReflBind* b);
+bool dn2cpp_reflbind_row_key(const Dn2CppReflBind* bind,
+    const Dn2CppTypeInfo*& owner, int32_t& token, int32_t& genericArgCount,
+    const Dn2CppTypeInfo* const*& genericArgs);
 // The class vtable slot implementing each slot of interface `itf` on `type`, -1 where
 // none does. Emitted for the receivers --trim-reflection strips of their member rows
 // when the image binds delegates through reflection, so identity can relate a binding
@@ -1716,7 +1727,6 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d);
 Dn2CppObject* dn2cpp_delegate_combine(Dn2CppObject* a, Dn2CppObject* b);
 Dn2CppObject* dn2cpp_delegate_combine_n(Dn2CppObject* const* items, int32_t count);
 Dn2CppObject* dn2cpp_delegate_combine_array(Dn2CppArrayRef* items);
-Dn2CppObject* dn2cpp_delegate_from_invocation_prefix(Dn2CppObject* receiver, Dn2CppArrayRef* items, int32_t count);
 Dn2CppObject* dn2cpp_delegate_remove(Dn2CppObject* source, Dn2CppObject* value);
 Dn2CppObject* dn2cpp_delegate_remove_all(Dn2CppObject* source, Dn2CppObject* value);
 Dn2CppObject* dn2cpp_delegate_remove_impl(Dn2CppObject* source, Dn2CppObject* value);
@@ -1732,21 +1742,21 @@ Dn2CppObject* dn2cpp_delegate_try_get_at(Dn2CppObject* d, int32_t index);
 Dn2CppObject* dn2cpp_delegate_dynamic_invoke(Dn2CppObject* d, Dn2CppArrayRef* args);
 // Virtual delegate value equality/hash: two delegates are equal iff they are the same
 // delegate type and their invocation chains match pairwise on target, code
-// address and method identity (MulticastDelegate override semantics).
+// address and method identity (Delegate.Equals semantics).
 // A null identity matches any, and a virtual binding compares only
 // generic arguments, since different declarations can bind one override. The
-// hash folds only the chain's (target, method) pairs, so equal delegates always
-// agree (stable per process — the exact .NET number, which is type-identity
-// based, is not modeled). Backs Delegate.op_Equality and virtual Equals/
+// hash folds each chain entry's target and the method Delegate.Method reports
+// for it, so delegates reporting one method hash alike. Equal delegates hash
+// apart exactly when they report different methods for one override: a
+// reflection binding through a row its receiver overrides, against the compiled
+// binding of that override or against a reflection binding through the
+// overriding row (the CLR reports each binding's own row — stable per process,
+// the exact .NET number is not modeled). Backs Delegate.op_Equality and virtual Equals/
 // GetHashCode, including the DN2CPP_TF_DELEGATE branches of object hash/equality
 // helpers (e.g. GodotSharp's DelegateUtils callbacks, where the engine keys
 // Callable dedup on managed delegate identity).
 int32_t dn2cpp_delegate_equal(Dn2CppObject* a, Dn2CppObject* b);
 int32_t dn2cpp_delegate_hash(Dn2CppObject* d);
-// Nonvirtual System.Delegate bodies do not inspect a multicast invocation list.
-// Virtual entry, including reflection, uses the MulticastDelegate helpers above.
-int32_t dn2cpp_delegate_base_equal(Dn2CppObject* a, Dn2CppObject* b);
-int32_t dn2cpp_delegate_base_hash(Dn2CppObject* d);
 // Mutex-interned fallback for a type-info whose typeObject was never wired
 // (defensive: statically-emitted and runtime tis all bake/stamp one).
 Dn2CppType* dn2cpp_get_type_from_handle_slow(const Dn2CppTypeInfo* handle);
@@ -2153,13 +2163,14 @@ inline constexpr const char* DN2CPP_SR_OVERFLOW_CURRENCY = "Overflow_Currency";
 inline constexpr const char* DN2CPP_SR_DECIMAL_ROUND = "ArgumentOutOfRange_DecimalRound";
 inline constexpr const char* DN2CPP_SR_DESTINATION_TOO_SHORT = "Argument_DestinationTooShort";
 inline constexpr const char* DN2CPP_SR_HEX_BINARY_STYLES_NOT_SUPPORTED = "Arg_HexBinaryStylesNotSupported";
+inline constexpr const char* DN2CPP_SR_BINARY_STYLE_NOT_SUPPORTED = "Arg_BinaryStyleNotSupported";
+inline constexpr const char* DN2CPP_SR_INVALID_HEX_FLOAT_STYLE = "Arg_InvalidHexFloatStyle";
 inline constexpr const char* DN2CPP_SR_INDEX_COUNT_BUFFER = "ArgumentOutOfRange_IndexCountBuffer";
 inline constexpr const char* DN2CPP_SR_INVALID_ENUM_VALUE = "Argument_InvalidEnumValue";
 inline constexpr const char* DN2CPP_SR_INVALID_HEX_BINARY_STYLE = "Arg_InvalidHexBinaryStyle";
 inline constexpr const char* DN2CPP_SR_INVALID_NUMBER_STYLES = "Argument_InvalidNumberStyles";
 inline constexpr const char* DN2CPP_SR_PARALLEL_INVOKE_ACTION_NULL = "System.Threading.Tasks.Parallel:Parallel_Invoke_ActionNull";
 inline constexpr const char* DN2CPP_SR_ROUNDING_DIGITS = "ArgumentOutOfRange_RoundingDigits";
-inline constexpr const char* DN2CPP_SR_ROUNDING_DIGITS_MATH_F = "ArgumentOutOfRange_RoundingDigits_MathF";
 inline constexpr const char* DN2CPP_SR_STRING_ZERO_LENGTH = "Format_StringZeroLength";
 inline constexpr const char* DN2CPP_SR_WRONG_SIZE_ARRAY_IN_NATIVE_STRUCT = "Argument_WrongSizeArrayInNativeStruct";
 inline constexpr const char* DN2CPP_SR_OVERFLOW = "Arg_OverflowException";
@@ -2246,6 +2257,7 @@ inline constexpr const char* DN2CPP_SR_FORMAT_INVALID_STRING = "Format_InvalidSt
 inline constexpr const char* DN2CPP_SR_FORMAT_INVALID_STRING_WITH_VALUE = "Format_InvalidStringWithValue";
 inline constexpr const char* DN2CPP_SR_BAD_DATETIME = "Format_BadDateTime";
 inline constexpr const char* DN2CPP_SR_BAD_FORMAT_SPECIFIER = "Format_BadFormatSpecifier";
+inline constexpr const char* DN2CPP_SR_ARGUMENT_BAD_FORMAT_SPECIFIER = "Argument_BadFormatSpecifier";
 inline constexpr const char* DN2CPP_SR_DELEGATE_TYPE = "Arg_DlgtTypeMis";
 inline constexpr const char* DN2CPP_SR_BAD_BOOLEAN = "Format_BadBoolean";
 inline constexpr const char* DN2CPP_SR_ENUM_ILLEGAL_VALUE = "Arg_EnumIllegalVal";
@@ -2286,7 +2298,6 @@ inline constexpr const char* DN2CPP_SR_SEMAPHORE_TIMEOUT = "SemaphoreSlim_Wait_T
 inline constexpr const char* DN2CPP_SR_SEMAPHORE_TIMESPAN_TIMEOUT = "SemaphoreSlim_Wait_TimeSpanTimeoutWrong";
 inline constexpr const char* DN2CPP_SR_TASK_DELAY_MS = "Task_Delay_InvalidMillisecondsDelay";
 inline constexpr const char* DN2CPP_SR_TASK_DELAY_SPAN = "Task_InvalidTimerTimeSpan";
-inline constexpr const char* DN2CPP_SR_NEED_NON_NEG_OR_NEGATIVE1 = "ArgumentOutOfRange_NeedNonNegOrNegative1";
 inline constexpr const char* DN2CPP_SR_TASK_START_COMPLETED = "Task_Start_TaskCompleted";
 inline constexpr const char* DN2CPP_SR_TASK_START_PROMISE = "Task_Start_Promise";
 inline constexpr const char* DN2CPP_SR_TASK_START_CONTINUATION = "Task_Start_ContinuationTask";
@@ -2295,6 +2306,7 @@ inline constexpr const char* DN2CPP_SR_TASK_SYNC_CONTINUATION = "Task_RunSynchro
 inline constexpr const char* DN2CPP_SR_TASK_SYNC_PROMISE = "Task_RunSynchronously_Promise";
 inline constexpr const char* DN2CPP_SR_TASK_SYNC_COMPLETED = "Task_RunSynchronously_TaskCompleted";
 inline constexpr const char* DN2CPP_SR_TASK_SYNC_ALREADY = "Task_RunSynchronously_AlreadyStarted";
+inline constexpr const char* DN2CPP_SR_TASKT_CONFIGURE_AWAIT = "TaskT_ConfigureAwait_InvalidOptions";
 inline constexpr const char* DN2CPP_SR_THREAD_NOT_STARTED = "ThreadState_NotStarted";
 inline constexpr const char* DN2CPP_SR_THREAD_ALREADY_STARTED = "ThreadState_AlreadyStarted";
 inline constexpr const char* DN2CPP_SR_THREAD_WRONG_THREAD_START = "InvalidOperation_ThreadWrongThreadStart";
@@ -5055,19 +5067,6 @@ char16_t dn2cpp_pinvoke_char_from_ansi(uint8_t b);
 void* dn2cpp_pinvoke_chararr_to_ansi(Dn2CppArrayN* arr, int32_t copyIn);
 void dn2cpp_pinvoke_chararr_from_ansi(Dn2CppArrayN* arr, void* buf);
 
-// P/Invoke blittable-struct array marshalling. Unlike a primitive
-// blittable array (int[]/double[]/...), which .NET pins and passes by pointer (so
-// write-backs are visible regardless of [In]/[Out]), an array of a blittable value-type
-// struct (Point[]) is marshalled BY COPY with direction semantics (probe-confirmed):
-//   _blitarr_to_native: copy the managed buffer (length * elemSize bytes, the packed
-//     Dn2CppArrayN stride == the native C array layout) into a fresh GC-allocated buffer
-//     when copyIn != 0 ([In]/[In,Out]); zero it when copyIn == 0 ([Out]-only). null
-//     array -> null pointer; non-null even for an empty array.
-//   _blitarr_from_native: copy the native buffer back into the array (only emitted for
-//     [In,Out]/[Out]; the default direction is [In], no write-back).
-void* dn2cpp_pinvoke_blitarr_to_native(Dn2CppArrayN* arr, int32_t copyIn);
-void dn2cpp_pinvoke_blitarr_from_native(Dn2CppArrayN* arr, void* buf);
-
 // P/Invoke [MarshalAs(ByValArray, SizeConst=N)] inline fixed-length array
 // struct field. The native struct embeds the elements INLINE (<elem> f[N]); the managed
 // struct holds a managed array reference. A blittable element's packed managed stride
@@ -5404,7 +5403,7 @@ Dn2CppString* dn2cpp_string_format1_c(Dn2CppObject* provider, Dn2CppString* fmt,
 Dn2CppString* dn2cpp_string_format2_c(Dn2CppObject* provider, Dn2CppString* fmt, Dn2CppObject* a0, Dn2CppObject* a1);
 Dn2CppString* dn2cpp_string_format3_c(Dn2CppObject* provider, Dn2CppString* fmt, Dn2CppObject* a0, Dn2CppObject* a1, Dn2CppObject* a2);
 Dn2CppString* dn2cpp_string_format_arr_c(Dn2CppObject* provider, Dn2CppString* fmt, Dn2CppArrayRef* args);
-// The params ReadOnlySpan<object> overloads (net10; Roslyn prefers them for 4+
+// The params ReadOnlySpan<object> overloads (Roslyn prefers them for 4+
 // loose args): the span lowers to its data pointer + length.
 Dn2CppString* dn2cpp_string_format_spanobjs(Dn2CppString* fmt, Dn2CppObject* const* args, int32_t n);
 Dn2CppString* dn2cpp_string_format_spanobjs_c(Dn2CppObject* provider, Dn2CppString* fmt,
@@ -5482,11 +5481,15 @@ struct Dn2CppNumberParse
 };
 // kind: 0 = Integer, 1 = Float, 2 = Decimal. Returns 1 when the number
 // grammar matched and consumed the entire input (styles must be pre-validated).
+// utf8 != 0 for text widened from UTF-8 input, whose separators and signs match
+// only identical text; UTF-16 input treats U+00A0, U+202F and U+0020 alike.
 int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
                                    const Dn2CppNumberFormatInfo* nfi, int32_t kind,
-                                   Dn2CppNumberParse* num);
-// ValidateParseStyleFloatingPoint (throws ArgumentException / traps currency).
+                                   int32_t utf8, Dn2CppNumberParse* num);
+// ValidateParseStyleFloatingPoint / ValidateParseStyleDecimal (throw
+// ArgumentException).
 void dn2cpp_parse_validate_fp_styles(int32_t styles);
+void dn2cpp_parse_validate_decimal_styles(int32_t styles);
 void dn2cpp_parse_validate_integer_styles(int32_t styles);
 int32_t dn2cpp_integer_tryparse_chars(const char16_t* p, int32_t n, int32_t styles,
                                       const Dn2CppNumberFormatInfo* nfi, int32_t bitWidth,
@@ -5500,8 +5503,8 @@ int64_t dn2cpp_integer_parse_chars(const char16_t* p, int32_t n, int32_t styles,
 int64_t dn2cpp_integer_parse_str(Dn2CppString* s, int32_t styles,
                                  const Dn2CppNumberFormatInfo* nfi, int32_t bitWidth,
                                  int32_t isSigned);
-// isSingle selects strtof (exact float rounding); the result is the float
-// value widened to double.
+// isSingle rounds once to float; the result is the float value widened to
+// double.
 int32_t dn2cpp_fp_tryparse_chars(const char16_t* p, int32_t n, int32_t styles,
                                  const Dn2CppNumberFormatInfo* nfi, int32_t isSingle, double* out);
 int32_t dn2cpp_fp_tryparse_str(Dn2CppString* s, int32_t styles,
@@ -5526,6 +5529,9 @@ int32_t dn2cpp_fp_tryparse_utf8(const char* p, int32_t n, int32_t styles,
                                 const Dn2CppNumberFormatInfo* nfi, int32_t isSingle, double* out);
 double dn2cpp_fp_parse_utf8(const char* p, int32_t n, int32_t styles,
                             const Dn2CppNumberFormatInfo* nfi, int32_t isSingle);
+// Every UTF-8 entry rejects ill-formed input before widening it: the decoder's
+// U+FFFD can itself be a NumberFormatInfo symbol.
+bool dn2cpp_parse_utf8_wellformed(const char* p, int32_t n);
 
 // Convert numeric conversions: double->int rounds ties-to-even (banker's)
 // like the BCL, with an OverflowException range guard; the int64->int32 narrowing
@@ -5577,6 +5583,7 @@ int32_t dn2cpp_convert_get_type_code(Dn2CppObject* value);
 // The caller's emit applies the final width/signedness cast. A null source yields zero.
 int64_t dn2cpp_convert_obj_to_i64(Dn2CppObject* v);
 double dn2cpp_convert_obj_to_f64(Dn2CppObject* v);
+float dn2cpp_convert_obj_to_f32(Dn2CppObject* v);
 int32_t dn2cpp_convert_obj_to_bool(Dn2CppObject* v);
 int32_t dn2cpp_convert_obj_to_char(Dn2CppObject* v);
 // Convert.ToString(object[, provider]): the boxed value's virtual ToString via the
@@ -5664,13 +5671,15 @@ int32_t dn2cpp_convert_from_hex_span_string(Dn2CppString* source,
 // an invalid mode raises a catchable ArgumentException like the BCL.
 double dn2cpp_math_round_mode(double value, int32_t mode);
 
-// Math/MathF.Round(value, digits[, mode]): the BCL's scale/round/unscale.
-// digits outside 0..15 (double) / 0..6 (float) raise ArgumentOutOfRangeException;
-// values at or beyond 1e16 / 1e8f pass through unscaled (so an invalid mode is
-// only detected below the limit, like the BCL). The float variant keeps every
-// operation in single precision.
-double dn2cpp_math_round_digits(double value, int32_t digits, int32_t mode);
-float dn2cpp_math_round_digits_f(float value, int32_t digits, int32_t mode);
+// Math/MathF.Round(value, digits, mode) argument checks in the BCL's order:
+// a negative digits count raises ArgumentOutOfRangeException before an
+// undefined mode raises ArgumentException, whatever the value.
+double dn2cpp_math_round_digits(double value, int32_t digits, int32_t mode, int32_t single);
+
+// Double.DegreesToRadians / RadiansToDegrees: the product with pi/180 (180/pi)
+// rounded once, as the BCL computes it.
+double dn2cpp_math_degrees_to_radians(double degrees);
+double dn2cpp_math_radians_to_degrees(double radians);
 
 // Math/MathF.ILogB: the unbiased base-2 exponent as an int32 with the BCL's
 // exact special values (0 -> int.MinValue, ±infinity/NaN -> int.MaxValue,
@@ -5737,10 +5746,40 @@ int64_t dn2cpp_interlocked_read_i8(int64_t* loc);   // Interlocked.Read: seq_cst
 void dn2cpp_interlocked_membarrier_processwide();   // Interlocked.MemoryBarrierProcessWide
 int32_t dn2cpp_interlocked_add_i4(int32_t* loc, int32_t value);
 int64_t dn2cpp_interlocked_add_i8(int64_t* loc, int64_t value);
-int32_t dn2cpp_interlocked_or_i4(int32_t* loc, int32_t value);   // fetch_or: returns original
+int8_t dn2cpp_interlocked_or_i1(int8_t* loc, int8_t value);      // fetch_or: returns original
+int16_t dn2cpp_interlocked_or_i2(int16_t* loc, int16_t value);
+int32_t dn2cpp_interlocked_or_i4(int32_t* loc, int32_t value);
 int64_t dn2cpp_interlocked_or_i8(int64_t* loc, int64_t value);
-int32_t dn2cpp_interlocked_and_i4(int32_t* loc, int32_t value);  // fetch_and: returns original
+int8_t dn2cpp_interlocked_and_i1(int8_t* loc, int8_t value);     // fetch_and: returns original
+int16_t dn2cpp_interlocked_and_i2(int16_t* loc, int16_t value);
+int32_t dn2cpp_interlocked_and_i4(int32_t* loc, int32_t value);
 int64_t dn2cpp_interlocked_and_i8(int64_t* loc, int64_t value);
+// Native-integer locations are pointer-width (4 bytes on wasm32): the atomic
+// must match the storage width, so the choice is made by the C++ target.
+inline intptr_t dn2cpp_interlocked_exchange_ip(intptr_t* loc, intptr_t value) {
+    if constexpr (sizeof(intptr_t) == 8)
+        return (intptr_t)dn2cpp_interlocked_exchange_i8((int64_t*)loc, (int64_t)value);
+    else
+        return (intptr_t)dn2cpp_interlocked_exchange_i4((int32_t*)loc, (int32_t)value);
+}
+inline intptr_t dn2cpp_interlocked_cmpxchg_ip(intptr_t* loc, intptr_t value, intptr_t comparand) {
+    if constexpr (sizeof(intptr_t) == 8)
+        return (intptr_t)dn2cpp_interlocked_cmpxchg_i8((int64_t*)loc, (int64_t)value, (int64_t)comparand);
+    else
+        return (intptr_t)dn2cpp_interlocked_cmpxchg_i4((int32_t*)loc, (int32_t)value, (int32_t)comparand);
+}
+inline intptr_t dn2cpp_interlocked_and_ip(intptr_t* loc, intptr_t value) {
+    if constexpr (sizeof(intptr_t) == 8)
+        return (intptr_t)dn2cpp_interlocked_and_i8((int64_t*)loc, (int64_t)value);
+    else
+        return (intptr_t)dn2cpp_interlocked_and_i4((int32_t*)loc, (int32_t)value);
+}
+inline intptr_t dn2cpp_interlocked_or_ip(intptr_t* loc, intptr_t value) {
+    if constexpr (sizeof(intptr_t) == 8)
+        return (intptr_t)dn2cpp_interlocked_or_i8((int64_t*)loc, (int64_t)value);
+    else
+        return (intptr_t)dn2cpp_interlocked_or_i4((int32_t*)loc, (int32_t)value);
+}
 
 // ---- Monitor / lock / System.Threading.Lock (real per-object mutex) ----
 // Identity-keyed recursive lock (non-moving GC -> stable object pointers), built on
@@ -7933,6 +7972,8 @@ Dn2CppTaskCompletionSource* dn2cpp_tcs_alloc(const Dn2CppTypeInfo* type,
 // TaskAwaiter.GetResult: re-raise the stored exception if the task faulted,
 // otherwise a no-op. (Task<T>.GetResult adds the typed result load inline.)
 void dn2cpp_task_throw_if_faulted(Dn2CppTask* t);
+// A suppressing await observes the task's recorded faults without throwing them.
+void dn2cpp_task_mark_exceptions_handled(Dn2CppTask* t);
 // Task.ThrowAsync(Exception, SynchronizationContext): re-raise an async void fault as an
 // unhandled exception on the worker pool (crashing the process, as .NET does). The
 // SynchronizationContext is not honored.
@@ -7965,6 +8006,23 @@ void dn2cpp_task_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state);
 // call keeps the synchronous throw.
 void dn2cpp_async_await_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state);
 void dn2cpp_async_await_rejected(Dn2CppObject* exc);
+// The InvalidOperationException of a second transition of a settled task: a non-Try
+// completion source setter, or a runtime-async continuation invoked after its
+// activation completed.
+[[noreturn]] void dn2cpp_tcs_throw_settled();
+// A runtime-async activation completes its method's task once. These return false
+// when the task had already settled, which the caller reports by throwing
+// dn2cpp_tcs_throw_settled after its cleanup.
+bool dn2cpp_async_task_try_set_result(Dn2CppTask* t, uint64_t result, bool cacheResult);
+bool dn2cpp_async_task_try_set_exception_or_canceled(Dn2CppTask* t, Dn2CppObject* exception);
+inline bool dn2cpp_async_task_pending(Dn2CppTask* t)
+{
+    return t->status.load(std::memory_order_acquire) == DN2CPP_TASK_PENDING;
+}
+// A runtime-async continuation invoked while its activation runs faults the method's
+// task with a NullReferenceException and leaves the activation alone. A null task is a
+// completed activation and throws like dn2cpp_tcs_throw_settled.
+void dn2cpp_async_resume_running(Dn2CppTask* t);
 // Invoke a no-arg System.Action delegate (and its multicast chain) generically, via
 // the uniform delegate layout.
 void dn2cpp_action_invoke(Dn2CppObject* action);
@@ -9313,3 +9371,7 @@ void dn2cpp_textwriter_write_bool(Dn2CppTextWriter* w, int32_t v);
 
 // Host companion process launcher; argv excludes the executable.
 int32_t dn2cpp_tool_process_run(Dn2CppString* executable, Dn2CppArrayRef* arguments);
+
+// OpenSSL-flavor hashing: true when the runtime's CryptoNative_Evp* selector for the
+// named algorithm yields no handle (dn2cpp_openssl_crypto_digest.cpp).
+bool dn2cpp_openssl_hash_algorithm_absent(Dn2CppString* algorithm);

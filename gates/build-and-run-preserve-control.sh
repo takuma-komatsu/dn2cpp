@@ -87,8 +87,8 @@ if [ -z "${DN2CPP_SKIP_BUILD:-}" ]; then
 fi
 [ -f "src/Dn2Cpp.Runtime/bin/$CONFIG/net8.0/Dn2Cpp.Runtime.dll" ] \
     || { echo "FAIL: Dn2Cpp.Runtime net8.0 output is missing" >&2; exit 1; }
-[ -f "src/Dn2Cpp.Runtime/bin/$CONFIG/net10.0/Dn2Cpp.Runtime.dll" ] \
-    || { echo "FAIL: Dn2Cpp.Runtime net10.0 output is missing" >&2; exit 1; }
+[ -f "src/Dn2Cpp.Runtime/bin/$CONFIG/$TFM/Dn2Cpp.Runtime.dll" ] \
+    || { echo "FAIL: Dn2Cpp.Runtime $TFM output is missing" >&2; exit 1; }
 grep -q -- '--project-root &quot;$(MSBuildProjectDirectory)&quot;' \
     src/Dn2Cpp.Build/build/Dn2Cpp.Build.targets \
     || { echo "FAIL: Dn2Cpp.Build does not pass the consuming project root" >&2; exit 1; }

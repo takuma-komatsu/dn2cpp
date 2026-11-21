@@ -956,7 +956,11 @@ else()
         # CoreLib's Environment.UserName primitive GetUserNameExW. iphlpapi is
         # not allowed to arrive incidentally through the optional libcurl target:
         # named IPv6 scopes remain supported with DN2CPP_USE_CURL=OFF.
-        target_link_libraries(dn2cpp_runtime PUBLIC ws2_32 iphlpapi secur32)
+        # synchronization exports WaitOnAddress / WakeByAddressSingle, which CoreLib's
+        # LowLevelFutex imports from the api-ms-win-core-synch-l1-2-0 API set. The
+        # set has no import library of its own name, so no pinvoke-libs.txt token
+        # can carry it (Compilation.IsRuntimeProvidedPInvokeEntry).
+        target_link_libraries(dn2cpp_runtime PUBLIC ws2_32 iphlpapi secur32 synchronization)
     endif()
     if(DN2CPP_USE_GC)
         # PUBLIC so the app's generated*.cpp inherit the GC define + gc.h include too.

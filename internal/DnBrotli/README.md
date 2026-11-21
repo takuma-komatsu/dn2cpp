@@ -59,9 +59,9 @@ See [PORTING.md](PORTING.md) for the conventions every engine file follows — t
 for line-level diffability against the C source.
 
 The compression gates require a .NET runtime with the Brotli security fix for
-their reference execution. `CompressionCore.csproj` requires .NET 10.0.14 or a
-newer patch, and the wrappers reject an older selected runtime before running
-the malformed-stream regression. See the
+their reference execution. Every stable runtime of the pinned major carries
+it, and the wrappers reject any other selected runtime before running the
+malformed-stream regression. See the
 [.NET security advisory](https://github.com/dotnet/runtime/security/advisories/GHSA-p3jp-9v83-76w9).
 
 ## Benchmarks

@@ -74,9 +74,10 @@ PY
 
     local negative="$baseline-negative"
     mkdir -p "$negative"
-    gate_python - "$negative" <<'PYGEN'
+    gate_python - "$negative" "$TFM" <<'PYGEN'
 import pathlib, sys
 root = pathlib.Path(sys.argv[1])
+tfm = sys.argv[2]
 cases = {
     'empty': ('public static int Target() => 1;', 'Target()'),
     'intrinsic': ('', 'System.Math.Abs(-1)'),
@@ -89,7 +90,7 @@ cases = {
 for name, (body, call) in cases.items():
     directory = root / name
     directory.mkdir(exist_ok=True)
-    (directory / 'Probe.csproj').write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>disable</ImplicitUsings></PropertyGroup></Project>', encoding='utf-8')
+    (directory / 'Probe.csproj').write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>' + tfm + '</TargetFramework><ImplicitUsings>disable</ImplicitUsings></PropertyGroup></Project>', encoding='utf-8')
     prefix = 'namespace System { static class Math { [Dn2Cpp.Runtime.Obfuscate] public static int Abs(int value) => value < 0 ? -value : value; } }' if name == 'intrinsic' else ''
     if name == 'bodyreplace':
         prefix = 'namespace Grpc.Net.Client { public class GrpcChannel { [Dn2Cpp.Runtime.Obfuscate] public int get_HttpHandlerType() => 1; } }'
@@ -132,12 +133,13 @@ PYGEN
     done
 
     if [ "$DN2CPP_OBFUSCATION_FULL" = 1 ]; then
-    gate_python - "$negative" <<'PYCROSS'
+    gate_python - "$negative" "$TFM" <<'PYCROSS'
 import pathlib, sys
 root = pathlib.Path(sys.argv[1])
+tfm = sys.argv[2]
 lib = root / 'cross-lib'
 lib.mkdir(exist_ok=True)
-(lib / 'RefLibrary.csproj').write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>', encoding='utf-8')
+(lib / 'RefLibrary.csproj').write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>' + tfm + '</TargetFramework></PropertyGroup></Project>', encoding='utf-8')
 (lib / 'Library.cs').write_text("""namespace Dn2Cpp.Runtime { [System.AttributeUsage(System.AttributeTargets.Method)] public sealed class ObfuscateAttribute : System.Attribute {} }
 namespace System { public static class Math { [Dn2Cpp.Runtime.Obfuscate] public static int Abs(int value) => value < 0 ? -value : value; } }
 public interface IValue { [Dn2Cpp.Runtime.Obfuscate] int Target(); }
@@ -146,7 +148,7 @@ public sealed class Value : IValue { public int Target() => 1; }
 for name, call in [('intrinsic', 'obfuscated::System.Math.Abs(-1)'), ('interface', '((obfuscated::IValue)new obfuscated::Value()).Target()')]:
     app = root / ('cross-' + name)
     app.mkdir(exist_ok=True)
-    (app / 'Probe.csproj').write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework></PropertyGroup><ItemGroup><ProjectReference Include="../cross-lib/RefLibrary.csproj" Aliases="obfuscated" /></ItemGroup></Project>', encoding='utf-8')
+    (app / 'Probe.csproj').write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>' + tfm + '</TargetFramework></PropertyGroup><ItemGroup><ProjectReference Include="../cross-lib/RefLibrary.csproj" Aliases="obfuscated" /></ItemGroup></Project>', encoding='utf-8')
     (app / 'Program.cs').write_text('extern alias obfuscated; class Program { static void Main() { System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture; System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.InvariantCulture; System.Console.WriteLine(' + call + '); } }', encoding='utf-8')
 PYCROSS
     for kind in intrinsic interface; do
@@ -179,10 +181,11 @@ PYCROSS
     # refusal of a set with no target, follow those rounds.
     local late="$baseline-late" unplanned="$negative/empty-unplanned"
     mkdir -p "$late"
-    gate_python - "$late" <<'PYLATE'
+    gate_python - "$late" "$TFM" <<'PYLATE'
 import pathlib, sys
 root = pathlib.Path(sys.argv[1])
-(root / 'Probe.csproj').write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>disable</ImplicitUsings></PropertyGroup></Project>', encoding='utf-8')
+tfm = sys.argv[2]
+(root / 'Probe.csproj').write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>' + tfm + '</TargetFramework><ImplicitUsings>disable</ImplicitUsings></PropertyGroup></Project>', encoding='utf-8')
 (root / 'Program.cs').write_text("""namespace Dn2Cpp.Runtime { [System.AttributeUsage(System.AttributeTargets.Method | System.AttributeTargets.Constructor)] sealed class ObfuscateAttribute : System.Attribute {} }
 struct Cell<T> { public int V; [Dn2Cpp.Runtime.Obfuscate] public Cell() { V = 7; } }
 sealed class Holder { public Cell<int> F; public Cell<int> G; }

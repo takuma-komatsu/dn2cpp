@@ -159,20 +159,9 @@ public static class RenamedSlotProbe
         Console.WriteLine("split reflective equal=" + reflected.Equals(rebound) + "/" + rebound.Equals(reflected));
         Console.WriteLine("split virtual equal=" + group.Equals(rebound) + "/" + rebound.Equals(group));
         Console.WriteLine("split virtual invoke=" + method.Invoke(receiver, null) + "/" + rebound() + "/" + group());
-#if PATCH_METADATA_REFUSALS
-        if (MetadataRefusals != 0)
-        {
-            try
-            {
-                var selected = rebound.Method;
-                Console.WriteLine("patch unrecorded override accepted");
-            }
-            catch (PlatformNotSupportedException)
-            {
-                Console.WriteLine("patch unrecorded override refused");
-            }
-        }
-#endif
+        // The binding names the row it was given, so the override it runs needs no
+        // recorded row.
+        Console.WriteLine("split virtual method=" + rebound.Method.Name + "/" + rebound.Method.DeclaringType!.Name);
     }
 
 #if PATCH_METADATA_REFUSALS

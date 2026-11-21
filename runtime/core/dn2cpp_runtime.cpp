@@ -387,7 +387,7 @@ Dn2CppObject* dn2cpp_object_memberwise_clone(Dn2CppObject* obj)
     {
         dn2cpp_gc_memmove_refs(clone, obj, bytes);
     }
-    // .NET finalizes the CLONE as well as the original — measured on CoreCLR 10.0.9, a
+    // .NET finalizes the CLONE as well as the original: a
     // clone of a finalizable class runs its finalizer, so a program that clones N
     // objects sees N+1 finalizations. dn2cpp registers at newobj and at the reflective
     // ctor path; a clone is a third allocation mouth for the same type and has to

@@ -10,6 +10,8 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 
@@ -22,8 +24,8 @@
 // compiles without floating-point contraction: every `(a * b) + c` is two
 // IEEE operations with an intermediate rounding. Clang's default
 // -ffp-contract=on would fuse those chains into fma on arm64 and diverge in
-// the last ulp, so contraction is pinned off for this whole file (none of
-// the other helpers here have mul+add chains, so they are unaffected).
+// the last ulp, so contraction is pinned off for this whole file. The angle
+// conversions rely on the same pin.
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma fp_contract (off)
 #else
@@ -116,56 +118,283 @@ int64_t dn2cpp_math_bigmul_i64(int64_t a, int64_t b, int64_t* low)
 
 #endif
 
-// ---- Math/MathF.Round(value, digits[, mode]) ----
-// Faithful ports of the BCL's scale/round/unscale: validate digits, and only
-// scale when |value| is below the limit (1e16 / 1e8f) — beyond it the value is
-// already integral and passes through, which also means an invalid mode is
-// only detected below the limit, exactly like the BCL. The inner rounding is
-// dn2cpp_math_round_mode's semantics; the float variant runs it over the
-// float overloads so MathF arithmetic never widens to double.
-
-// Math.Round(double value, int digits, MidpointRounding mode): digits 0..15.
-double dn2cpp_math_round_digits(double value, int32_t digits, int32_t mode)
+// ---- Math/MathF.Round(value, digits, mode) ----
+// CoreLib's rule: the exact binary value is rounded at `digits` fractional
+// decimal places by `mode`, and the result is the nearest binary value to that
+// decimal. The scaled value is mantissa * 10^digits / 2^shift, so the integer
+// part and the position of the remainder against 1/2 are shifts and bit tests.
+static void dn2cpp_math_round_digits_validate(int32_t digits, int32_t mode)
 {
-    static const double k_pow10[16] = {
-        1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8,
-        1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15,
-    };
-    if (static_cast<uint32_t>(digits) > 15u)
+    if (digits < 0)
         dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ROUNDING_DIGITS, "digits");
-    if (std::fabs(value) < 1e16)
-    {
-        double power10 = k_pow10[digits];
-        value = dn2cpp_math_round_mode(value * power10, mode) / power10;
-    }
-    return value;
+    if (static_cast<uint32_t>(mode) > 4u) // MidpointRounding.ToPositiveInfinity
+        dn2cpp_throw_invalid_enum_value(mode, "MidpointRounding", "mode");
 }
 
-// MathF.Round(float value, int digits, MidpointRounding mode): digits 0..6,
-// every operation in single precision (the BCL's own algorithm is float
-// throughout, so double-rounding through a wider type could diverge).
-float dn2cpp_math_round_digits_f(float value, int32_t digits, int32_t mode)
+double dn2cpp_math_round_digits(double value, int32_t digits, int32_t mode, int32_t single)
 {
-    static const float k_pow10f[7] = { 1e0f, 1e1f, 1e2f, 1e3f, 1e4f, 1e5f, 1e6f };
-    if (static_cast<uint32_t>(digits) > 6u)
-        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ROUNDING_DIGITS_MATH_F, "digits");
-    if (std::fabs(value) < 1e8f)
+    dn2cpp_math_round_digits_validate(digits, mode);
+    // A float call's argument is a float; the caller's expression may still be wider.
+    if (single)
+        value = static_cast<double>(static_cast<float>(value));
+    if (digits == 0)
+        return dn2cpp_math_round_mode(value, mode);
+    // Non-finite values and values at or above the all-integers boundary are
+    // returned unchanged; the comparison is false for NaN.
+    if (!(std::fabs(value) < (single ? 8388608.0 : 4503599627370496.0)))
+        return value;
+
+    bool negative = std::signbit(value);
+    uint64_t mantissa;
+    int32_t exponent;
+    if (single)
     {
-        float power10 = k_pow10f[digits];
-        float scaled = value * power10;
-        float rounded;
-        switch (mode) // dn2cpp_math_round_mode over the float overloads
-        {
-            case 0: rounded = std::nearbyint(scaled); break; // ToEven
-            case 1: rounded = std::round(scaled); break;     // AwayFromZero
-            case 2: rounded = std::trunc(scaled); break;     // ToZero
-            case 3: rounded = std::floor(scaled); break;     // ToNegativeInfinity
-            case 4: rounded = std::ceil(scaled); break;      // ToPositiveInfinity
-            default: dn2cpp_throw_invalid_enum_value(mode, "MidpointRounding", "mode");
-        }
-        value = rounded / power10;
+        uint32_t bits;
+        float f = static_cast<float>(value);
+        std::memcpy(&bits, &f, sizeof bits);
+        uint32_t biased = (bits >> 23) & 0xFFu;
+        mantissa = bits & 0x7FFFFFu;
+        exponent = biased == 0 ? -149 : static_cast<int32_t>(biased) - 150;
+        if (biased != 0) mantissa |= 1u << 23;
     }
-    return value;
+    else
+    {
+        uint64_t bits;
+        std::memcpy(&bits, &value, sizeof bits);
+        uint32_t biased = static_cast<uint32_t>(bits >> 52) & 0x7FFu;
+        mantissa = bits & 0xFFFFFFFFFFFFFull;
+        exponent = biased == 0 ? -1074 : static_cast<int32_t>(biased) - 1075;
+        if (biased != 0) mantissa |= 1ull << 52;
+    }
+    // A multiple of 10^-digits already: nothing to round.
+    if (static_cast<int64_t>(exponent) + digits >= 0)
+        return value;
+
+    const int32_t shift = -exponent; // digits < shift <= 1074
+    // mantissa * 10^digits < 2^53 * 10^1073 < 2^3620.
+    uint32_t n[120];
+    int32_t count = 0;
+    for (uint64_t m = mantissa; m != 0; m >>= 32)
+        n[count++] = static_cast<uint32_t>(m);
+    for (int32_t left = digits; left > 0;)
+    {
+        static const uint32_t pow10[] = {1u, 10u, 100u, 1000u, 10000u, 100000u, 1000000u, 10000000u, 100000000u, 1000000000u};
+        int32_t chunk = left > 9 ? 9 : left;
+        uint64_t carry = 0;
+        for (int32_t i = 0; i < count; i++)
+        {
+            uint64_t p = static_cast<uint64_t>(n[i]) * pow10[chunk] + carry;
+            n[i] = static_cast<uint32_t>(p);
+            carry = p >> 32;
+        }
+        if (carry != 0) n[count++] = static_cast<uint32_t>(carry);
+        left -= chunk;
+    }
+
+    // The remainder is the bits below `shift`; the midpoint is bit shift-1.
+    const int32_t half = shift - 1;
+    bool halfBit = half / 32 < count && ((n[half / 32] >> (half % 32)) & 1u) != 0;
+    bool lowerBits = false;
+    for (int32_t i = 0; i < half && i / 32 < count && !lowerBits; i += 32)
+    {
+        uint32_t w = n[i / 32];
+        if (half - i < 32) w &= (1u << (half - i)) - 1u;
+        lowerBits = w != 0;
+    }
+    bool hasRemainder = halfBit || lowerBits;
+    int32_t midpoint = halfBit ? (lowerBits ? 1 : 0) : -1;
+
+    uint32_t q[120];
+    int32_t qcount = 0;
+    const int32_t wordShift = shift / 32, bitShift = shift % 32;
+    for (int32_t i = wordShift; i < count; i++)
+    {
+        uint64_t w = n[i];
+        if (i + 1 < count) w |= static_cast<uint64_t>(n[i + 1]) << 32;
+        q[qcount++] = static_cast<uint32_t>(w >> bitShift);
+    }
+    while (qcount > 0 && q[qcount - 1] == 0) qcount--;
+
+    bool odd = qcount > 0 && (q[0] & 1u) != 0;
+    bool roundUp;
+    switch (mode)
+    {
+        case 0: roundUp = midpoint > 0 || (midpoint == 0 && odd); break;
+        case 1: roundUp = midpoint >= 0; break;
+        case 2: roundUp = false; break;
+        case 3: roundUp = negative && hasRemainder; break;
+        default: roundUp = !negative && hasRemainder; break;
+    }
+    if (roundUp)
+    {
+        int32_t i = 0;
+        while (i < qcount && ++q[i] == 0) i++;
+        if (i == qcount) q[qcount++] = 1;
+    }
+    if (qcount == 0)
+        return negative ? -0.0 : 0.0;
+
+    // Decimal digits of the rounded integer, then one correctly rounded
+    // conversion of integer * 10^-digits to the destination format.
+    char rev[1280];
+    int32_t nd = 0;
+    while (qcount > 0)
+    {
+        uint64_t rem = 0;
+        for (int32_t i = qcount - 1; i >= 0; i--)
+        {
+            uint64_t cur = (rem << 32) | q[i];
+            q[i] = static_cast<uint32_t>(cur / 1000000000u);
+            rem = cur % 1000000000u;
+        }
+        while (qcount > 0 && q[qcount - 1] == 0) qcount--;
+        for (int32_t k = 0; k < 9 && (qcount > 0 || rem != 0); k++)
+        {
+            rev[nd++] = static_cast<char>('0' + rem % 10);
+            rem /= 10;
+        }
+    }
+    char buf[1320];
+    int32_t o = 0;
+    if (negative) buf[o++] = '-';
+    while (nd > 0) buf[o++] = rev[--nd];
+    std::snprintf(buf + o, sizeof buf - static_cast<size_t>(o), "e-%d", static_cast<int>(digits));
+    return single ? static_cast<double>(std::strtof(buf, nullptr)) : std::strtod(buf, nullptr);
+}
+
+// ---- Double.DegreesToRadians / RadiansToDegrees ----
+// The product of the value and pi/180 (180/pi), rounded once. Neither constant
+// is representable, so each is a head + mid + tail triple in which every limb
+// is the correctly rounded remainder of the ones above it. This is the BCL's
+// own sequence of IEEE operations (contraction is off for this file); the
+// roundoff of each limb product comes from std::fma, the form CoreLib takes
+// wherever the hardware fuses.
+
+namespace {
+
+constexpr double k_degrees_to_radians_head = 0.017453292519943295;    // 0x1.1DF46A2529D39p-6
+constexpr double k_degrees_to_radians_mid = 2.9486522708701687E-19;   // 0x1.5C1D8BECDD291p-62
+constexpr double k_degrees_to_radians_tail = -1.3427726813345382E-35; // -0x1.1D937FA428858p-116
+constexpr double k_radians_to_degrees_head = 57.29577951308232;       // 0x1.CA5DC1A63C1F8p+5
+constexpr double k_radians_to_degrees_mid = -1.9878495670576283E-15;  // -0x1.1E7AB456405F9p-49
+constexpr double k_radians_to_degrees_tail = -1.6833394980391744E-31; // -0x1.B505196FABB41p-103
+
+// Below these the roundoff of value * mid falls onto the subnormal grid and
+// could no longer decide the rounding, so the input is scaled up first.
+constexpr double k_degrees_to_radians_min = 1.0261342003245941E-289; // 0x1p-960
+constexpr double k_radians_to_degrees_min = 5.010420900022432E-293;  // 0x1p-971
+
+constexpr double k_angle_scale_up = 2.076918743413931E+34;    // 0x1p+114
+constexpr double k_angle_scale_down = 4.81482486096809E-35;   // 0x1p-114
+// Bounds the two-limb sum's error relative to value * head.
+constexpr double k_angle_error_scale = 7.888609052210118E-31; // 0x1p-100
+
+// value * (head + mid + tail) as result + *residual with result correctly
+// rounded; value * head must be finite and non-zero. The last fold rounds
+// twice, so the correction is rounded to odd first: an odd neighbour is never
+// a midpoint, which makes the second rounding agree with a single one.
+double angle_multiply_wide_exact(double value, double head, double mid, double tail, double* residual)
+{
+    double product = value * head;
+    double productError = std::fma(value, head, -product);
+    double middle = value * mid;
+    double middleError = std::fma(value, mid, -middle);
+    double bottom = middleError + (value * tail);
+
+    double sum = productError + middle;
+    double bias = sum - productError;
+    double sumError = (productError - (sum - bias)) + (middle - bias);
+    double lower = sumError + bottom;
+
+    double upper = product + sum;
+    double upperError = sum - (upper - product);
+
+    double correction = upperError + lower;
+    double lost = (upperError - correction) + lower;
+
+    uint64_t correctionBits;
+    std::memcpy(&correctionBits, &correction, sizeof(correctionBits));
+    if (lost != 0 && (correctionBits & 1) == 0)
+    {
+        correction = std::nextafter(correction, lost > 0
+            ? std::numeric_limits<double>::infinity()
+            : -std::numeric_limits<double>::infinity());
+    }
+
+    double result = upper + correction;
+    *residual = (upper - result) + correction;
+    return result;
+}
+
+// Two limbs decide all but the rare input: their sum is known to within
+// `bound`, so when both ends of that interval round alike the exact product
+// rounds the same way.
+double angle_multiply_wide(double value, double head, double mid, double tail)
+{
+    double product = value * head;
+    if (!std::isfinite(product) || product == 0)
+        return product; // an infinite product has no roundoff; a zero one keeps its sign
+
+    double sum = std::fma(value, head, -product) + (value * mid);
+    double bound = std::fabs(product) * k_angle_error_scale;
+    double result = product + (sum - bound);
+    if (result == (product + (sum + bound)))
+        return result;
+
+    double residual;
+    return angle_multiply_wide_exact(value, head, mid, tail, &residual);
+}
+
+// The inputs below the minimum: the product is formed scaled up, and scaling
+// back down rounds a second time, where `residual` breaks the tie that
+// rounding would otherwise resolve to even.
+double angle_scale_and_multiply_wide(double value, double head, double mid, double tail)
+{
+    double scaled = value * k_angle_scale_up;
+    if (scaled == 0)
+        return scaled * head; // multiplying keeps the sign of zero
+
+    double residual;
+    double sum = angle_multiply_wide_exact(scaled, head, mid, tail, &residual);
+    double result = sum * k_angle_scale_down;
+    if (residual == 0)
+        return result;
+
+    double dropped = sum - (result * k_angle_scale_up);
+    if (dropped == 0)
+        return result;
+
+    double next = std::nextafter(result, dropped > 0
+        ? std::numeric_limits<double>::infinity()
+        : -std::numeric_limits<double>::infinity());
+    if ((std::fabs(next - result) * k_angle_scale_up) != (2.0 * std::fabs(dropped)))
+        return result;
+
+    return ((residual > 0) == (dropped > 0)) ? next : result;
+}
+
+} // namespace
+
+double dn2cpp_math_degrees_to_radians(double degrees)
+{
+    if (std::fabs(degrees) < k_degrees_to_radians_min)
+    {
+        return angle_scale_and_multiply_wide(degrees, k_degrees_to_radians_head,
+            k_degrees_to_radians_mid, k_degrees_to_radians_tail);
+    }
+    return angle_multiply_wide(degrees, k_degrees_to_radians_head,
+        k_degrees_to_radians_mid, k_degrees_to_radians_tail);
+}
+
+double dn2cpp_math_radians_to_degrees(double radians)
+{
+    if (std::fabs(radians) < k_radians_to_degrees_min)
+    {
+        return angle_scale_and_multiply_wide(radians, k_radians_to_degrees_head,
+            k_radians_to_degrees_mid, k_radians_to_degrees_tail);
+    }
+    return angle_multiply_wide(radians, k_radians_to_degrees_head,
+        k_radians_to_degrees_mid, k_radians_to_degrees_tail);
 }
 
 // ---- Double/Single.SinPi / CosPi / TanPi / SinCosPi ----

@@ -58,6 +58,9 @@ namespace MathSubset
             if (args.Length > 0 && args[0] == "before-mixed-width-bigmul")
                 return;
             Dn2Cpp.MathMixedBigMulSubset.Run();
+            if (args.Length > 0 && args[0] == "before-round-digits-sweep")
+                return;
+            MathRoundDigits.Program.RunSweep();
         }
     }
 }

@@ -45,7 +45,7 @@
 #
 # Corpora (each skipped with a message when its inputs are absent):
 #
-#   selfhost-emit     the full CLI transpiling itself against the real net10
+#   selfhost-emit     the full CLI transpiling itself against the real pinned
 #                     CoreLib + BCL (--auto-ref) — the largest in-repo input.
 #                     Same recipe as gates/selfhost-emit.sh step 3.
 #   selfhost-measure  the same input in --measure mode (gates/selfhost-measure.sh).
@@ -208,7 +208,7 @@ CLI="$BIN/dn2cpp.dll"
 
 # ── the selfhost reference set (gates/selfhost-emit.sh step 3) ───────────────
 
-corelib=$(resolve_net10_corelib)
+corelib=$(resolve_pinned_corelib)
 bcl=$(dirname "$corelib")
 echo "corelib: $corelib"
 refs=()

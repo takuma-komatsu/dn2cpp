@@ -112,8 +112,8 @@ internal sealed partial class MethodCompiler
     }
 
     // The correctly-rounded Pi in the overload's precision (float.Pi / double.Pi)
-    // — the *Pi angle family and the degree conversions divide/multiply by this
-    // fkind-typed constant so every step stays in the overload's precision.
+    // — the *Pi angle family divides by this fkind-typed constant so every step
+    // stays in the overload's precision.
     private static string FloatPi(bool isFloat) =>
         isFloat ? "3.14159265f" : "3.141592653589793";
 
@@ -431,7 +431,7 @@ internal sealed partial class MethodCompiler
         // The Double/Single-only exp/log derivatives and the *Pi angle family.
         // The BCL computes every one of these as a composition of the base libm
         // functions — ExpM1(x) = Exp(x) - 1, Exp2(x) = Pow(2, x), AsinPi(x) =
-        // Asin(x) / Pi, DegreesToRadians(d) = (d * Pi) / 180 — never via the
+        // Asin(x) / Pi — never via the
         // specialized libm entry points (expm1/exp2/log1p/...), whose different
         // algorithms drift in the last ulp. The same composition here over the
         // same libm bit-matches .NET; every step stays in the overload's
@@ -450,8 +450,6 @@ internal sealed partial class MethodCompiler
             "AsinPi" => "std::asin({0}) / {2}",
             "AcosPi" => "std::acos({0}) / {2}",
             "AtanPi" => "std::atan({0}) / {2}",
-            "DegreesToRadians" => "({0} * {2}) / ({1})180",
-            "RadiansToDegrees" => "({0} * ({1})180) / {2}",
             _ => null,
         };
         if (composed is not null && sig.ParameterTypes.Length == 1)
@@ -459,6 +457,19 @@ internal sealed partial class MethodCompiler
             var ca = Pop();
             Push(StackKind.R8, "double", "(double)(" + string.Format(
                 composed, $"(({fkind})({ca.Expr}))", fkind, FloatPi(isFloat)) + ")");
+            return true;
+        }
+        // DegreesToRadians / RadiansToDegrees. The float forms multiply in double
+        // by the double constant and narrow once; the double forms are the
+        // product rounded once, which the runtime helpers compute. The vector
+        // helpers apply the same two rules per lane.
+        if (name is "DegreesToRadians" or "RadiansToDegrees" && sig.ParameterTypes.Length == 1)
+        {
+            bool toRadians = name == "DegreesToRadians";
+            var av = Pop();
+            Push(StackKind.R8, "double", isFloat
+                ? $"(double)(float)((double)(float)({av.Expr}) * {(toRadians ? "0.017453292519943295" : "57.29577951308232")})"
+                : $"dn2cpp_math_{(toRadians ? "degrees_to_radians" : "radians_to_degrees")}((double)({av.Expr}))");
             return true;
         }
         // SinPi/CosPi/TanPi are NOT compositions: the BCL computes sin/cos/tan
@@ -542,10 +553,9 @@ internal sealed partial class MethodCompiler
             return true;
         }
         // Round(value, int digits) and Round(value, int digits, MidpointRounding):
-        // the BCL's scale/round/unscale lives in the runtime helper (digit table,
-        // the 1e16/1e8f passthrough limit, and the digits/mode validation); the
-        // digitless-mode default is ToEven (0). The _f helper keeps MathF
-        // arithmetic in float end to end.
+        // one runtime helper implements CoreLib's exact-decimal rule for both
+        // widths and raises the digits then mode faults in the BCL's order. The
+        // two-argument form is ToEven (0).
         if (name == "Round"
             && sig.ParameterTypes is [_, { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }, ..]
             && (sig.ParameterTypes.Length == 2
@@ -557,8 +567,7 @@ internal sealed partial class MethodCompiler
             var dg = Pop();
             var rv = Pop();
             Push(StackKind.R8, "double",
-                $"(double)dn2cpp_math_round_digits{(isFloat ? "_f" : "")}"
-                + $"(({fkind})({rv.Expr}), {Cast(dg, "int32_t")}, {modeExpr})");
+                $"(double)({fkind})dn2cpp_math_round_digits((double)({rv.Expr}), {Cast(dg, "int32_t")}, {modeExpr}, {(isFloat ? 1 : 0)})");
             return true;
         }
         // Min/Max take the runtime templates, not std::fmin/fmax: .NET follows
@@ -726,6 +735,23 @@ internal sealed partial class MethodCompiler
             or PrimitiveTypeCode.Int16 } => "u16",
         _ => null,
     };
+
+    /// <summary>Pushes the SearchValues scan <paramref name="name"/> selects —
+    /// <c>[Last]IndexOfAny[Except]</c> or <c>ContainsAny[Except]</c> — of the span
+    /// value <paramref name="span"/> against the set <paramref name="values"/>.
+    /// Shared by the MemoryExtensions forms and the SearchValues&lt;T&gt; instance
+    /// methods CoreLib calls directly, so both scan the same runtime set.</summary>
+    private void PushSearchValuesScan(string name, string suffix, string span, string values)
+    {
+        string ptrCt = suffix == "u8" ? "const uint8_t*" : "const uint16_t*";
+        bool last = name.StartsWith("Last", StringComparison.Ordinal);
+        bool except = name.EndsWith("Except", StringComparison.Ordinal);
+        bool contains = name.StartsWith("ContainsAny", StringComparison.Ordinal);
+        string fn = $"dn2cpp_search_values_{(last ? "last_index_of_any" : "index_of_any")}_{suffix}";
+        string res = NewTemp("int32_t");
+        Emit($"{res} = {fn}(({ptrCt}){span}.f__reference, {span}.f__length, {values}, {(except ? 1 : 0)});");
+        Push(StackKind.I4, "int32_t", contains ? $"({res} >= 0 ? 1 : 0)" : res);
+    }
 
     /// <summary>Decode the closed signature (return + parameter types, method type
     /// args substituted) of a MethodSpec call. Used by the span-shaping MemoryMarshal

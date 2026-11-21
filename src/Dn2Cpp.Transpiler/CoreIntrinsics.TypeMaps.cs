@@ -426,6 +426,13 @@ internal static class CoreIntrinsicTypeMaps
         // transpiling AwaitUnsafeOnCompleted finds no Dn2CppAsyncBuilder field in the state
         // machine and gaps.
         "System.Runtime.CompilerServices.AsyncVoidMethodBuilder",
+        // The runtime-async helper surface: the suspension points of a
+        // MethodImplAttributes.Async body and the async-Main entry wrapper. Its real
+        // bodies are CoreCLR's continuation machinery (runtime-allocated Continuation
+        // objects, context capture, the TPL continuation plumbing behind them), none
+        // of which exists here; its calls are answered over the native task model
+        // instead (MethodCompiler.RuntimeAsync.cs).
+        "System.Runtime.CompilerServices.AsyncHelpers",
         // Task.get_Factory is an opaque nullptr sentinel; TaskScheduler.Default/Current
         // share a runtime singleton so explicit null schedulers remain distinguishable.
         // factory.StartNew dispatches to the same worker pool as Task.Run (the
@@ -651,12 +658,23 @@ internal static class CoreIntrinsicTypeMaps
 
     public static bool IsIntrinsicType(string fullTypeName) => s_intrinsicTypes.Contains(fullTypeName);
 
+    /// <summary>Intrinsic names that denote the CoreLib declaration only: a class of the
+    /// same name defined by an application or library compiles from its own IL.</summary>
+    public static bool IsCoreLibOwnedIntrinsicType(string fullTypeName) =>
+        fullTypeName is "System.Runtime.CompilerServices.AsyncHelpers"
+            or "System.Runtime.CompilerServices.RuntimeHelpers";
+
+    /// <summary>Whether an assembly name is the CoreLib (or its reference-assembly identity)
+    /// that owns the BCL's internal names.</summary>
+    public static bool IsCoreLibAssemblyName(string? assemblyName) =>
+        assemblyName is "System.Private.CoreLib" or "mscorlib" or "System.Runtime" or "netstandard";
+
     /// <summary>The generic members of intrinsic-mapped types whose real CoreLib bodies are
     /// plain managed code. System.Array's: ThrowHelper argument checks, element reads, a
     /// delegate invoke, a List&lt;T&gt; or ReadOnlyCollection&lt;T&gt;, and calls to each
     /// other. System.Delegate's EnumerateInvocationList: the InvocationListEnumerator
-    /// construction, whose MoveNext reaches the chain through
-    /// <c>MulticastDelegate.TryGetAt</c>, a retained native-chain body. Their call
+    /// construction, whose MoveNext reaches the chain through the delegate base's
+    /// <c>TryGetAt</c>, a retained native-chain body. Their call
     /// sites stay intercepted with the rest of the intrinsic type, but the lowering and an
     /// address-taken use both name the real transpiled body, so .NET's argument order and
     /// messages hold by construction.</summary>

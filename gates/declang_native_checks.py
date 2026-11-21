@@ -83,13 +83,14 @@ def verify_compiler_identity_selection(build, actual_version, cmake_version):
 
 
 configuration = os.environ.get("CONFIG", "Release")
-cli = Path(os.environ.get("DN2CPP_CLI_DLL", root / f"src/Dn2Cpp.Cli/bin/{configuration}/net10.0/dn2cpp.dll"))
+tfm = os.environ.get("TFM", "net11.0")
+cli = Path(os.environ.get("DN2CPP_CLI_DLL", root / f"src/Dn2Cpp.Cli/bin/{configuration}/{tfm}/dn2cpp.dll"))
 if not os.environ.get("DN2CPP_SKIP_BUILD"):
     run("dotnet", "build", root / "src/Dn2Cpp.Cli", "-c", configuration,
         "-m:1", "-p:BuildInParallel=false", "--disable-build-servers")
 fixture = work / "fixture"
 fixture.mkdir(exist_ok=True)
-(fixture / "Proof.csproj").write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Optimize>true</Optimize></PropertyGroup></Project>', encoding="utf-8")
+(fixture / "Proof.csproj").write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>' + tfm + '</TargetFramework><Optimize>true</Optimize></PropertyGroup></Project>', encoding="utf-8")
 (fixture / "Program.cs").write_text("""
 using System;
 using System.Globalization;
@@ -156,7 +157,7 @@ class Program {
 """, encoding="utf-8")
 run("dotnet", "build", fixture, "-c", configuration,
     "-m:1", "-p:BuildInParallel=false", "--disable-build-servers")
-assembly = fixture / f"bin/{configuration}/net10.0/Proof.dll"
+assembly = fixture / f"bin/{configuration}/{tfm}/Proof.dll"
 expected = run("dotnet", assembly)
 emitted = work / "emitted"
 run("dotnet", cli,

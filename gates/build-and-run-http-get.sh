@@ -139,8 +139,8 @@
 # native binary — and the only section where the injection is load-bearing rather than
 # skipped as already-loaded.
 #
-# net10.0-pinned (resolve_net10_corelib): the samples build net10.0, and a newer preview
-# CoreLib carries a different System.Net.Http surface.
+# Pinned CoreLib (resolve_pinned_corelib): the samples build the supported TFM,
+# and another major's CoreLib carries a different System.Net.Http surface.
 source "$(dirname "$0")/_common.sh"
 
 case "${DN2CPP_HTTP_FULL:-0}" in
@@ -166,8 +166,8 @@ echo "== 0/17 CA-bundle freshness =="
 # host, on a user's machine, where no gate can see it.
 cacert_staleness_warn
 
-echo "== 1/17 Locating the real net10 CoreLib + System.Net.Http =="
-corelib=$(resolve_net10_corelib)
+echo "== 1/17 Locating the real pinned CoreLib + System.Net.Http =="
+corelib=$(resolve_pinned_corelib)
 bcl=$(dirname "$corelib")
 nethttp="$bcl/System.Net.Http.dll"
 echo "corlib:   $corelib"

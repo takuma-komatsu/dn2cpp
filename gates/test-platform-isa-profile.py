@@ -164,6 +164,8 @@ setup = r'''
         PLATFORM_ISA_BUILT_ARCHES+=("$(platform_isa_shard_arches "$shard")")
         PLATFORM_ISA_BUILT_OUTS+=("out-$shard")
         PLATFORM_ISA_BUILT_APPS+=("$shard.dll")
+        mkdir -p "out-$shard"
+        printf 'row=%s.Lowered\n' "$isa" >"out-$shard/partial-plan-$arch.lf"
     done
 '''
 runs = r'''
@@ -172,7 +174,7 @@ runs = r'''
     _PI_RUN_LABELS=() _PI_RUN_CODES=() _PI_RUN_ORACLE_CODES=()
     _PI_RUN_OUTS=() _PI_RUN_ORACLE_OUTS=() _PI_RUN_LOGS=() _PI_RUN_ORACLE_LOGS=()
     _pi_run F unused "" ""
-    _pi_run S unused "" ""
+    _pi_run S "$isa.Lowered,$isa.NotInImage" "" ""
     _pi_run M unused "DN2CPP_CPU_FEATURES=none" "DOTNET_EnableHWIntrinsic=0"
     _pi_run P "$isa.PartialWitnesses" "" ""
     if [ "$arch" = x86 ]; then _pi_run O X86.Avx10v2 "DN2CPP_ENABLE_AVX10V2=1" ""; fi
@@ -202,7 +204,9 @@ for full in (0, 1):
             check([row[1] for row in calls] == expected, (full, arch, label, calls))
             for _, shard, command in calls:
                 selection = isa if shard == "native" else "all"
-                if label == "P":
+                if label == "S":
+                    selection = isa + ".Lowered"
+                elif label == "P":
                     selection = isa + ".PartialWitnesses"
                 elif label == "O":
                     selection = "X86.Avx10v2"

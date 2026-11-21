@@ -22,8 +22,8 @@ internal static partial class Program
             + Vector128.EqualsAll(Vector128.Create(float.NaN), Vector128.Create(float.NaN))
             + ":" + (Vector128.Create(float.NaN) == Vector128.Create(float.NaN)));
 
-        // Multiplication overflows before division, even though a precomputed
-        // pi/180 factor would leave these finite.
+        // The conversion is one product with pi/180, so the largest finite
+        // inputs stay finite.
         Console.WriteLine("degrees overflow="
             + float.IsPositiveInfinity(Vector64.DegreesToRadians(Vector64.Create(float.MaxValue)).GetElement(0))
             + ":" + float.IsPositiveInfinity(Vector128.DegreesToRadians(Vector128.Create(float.MaxValue)).GetElement(0))

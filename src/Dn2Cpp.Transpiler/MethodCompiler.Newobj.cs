@@ -187,9 +187,6 @@ internal sealed partial class MethodCompiler
         // An Ansi char[] marshalled to an [In,Out]/[Out] native buffer records (array,
         // buffer) so the buffer is decoded back into the array after the call.
         var charArrWritebacks = new List<(string arr, string buf)>();
-        // A blittable struct array marshalled [In,Out]/[Out] records (array, buffer) so
-        // the native buffer is copied back into the array after the call.
-        var structArrWritebacks = new List<(string arr, string buf)>();
         // A string[] marshalled [In,Out]/[Out] records (array, pointer-buffer, pre-call
         // pointer snapshot, unicode) so each slot's (possibly native-replaced) pointer is
         // decoded back into a managed string after the call — and only a replaced slot
@@ -310,36 +307,16 @@ internal sealed partial class MethodCompiler
                 if (hasOut)
                     charArrWritebacks.Add((arr, buf));
             }
-            else if (pts[i].Kind == TypeKind.SZArray && CppTypes.IsBlittableStruct(pts[i].Element!))
-            {
-                // A blittable struct array: unlike a primitive blittable array
-                // (the pin-and-pass branch below),.NET marshals a struct array BY COPY
-                // with direction semantics (probe-confirmed) — copy the managed buffer to a
-                // fresh native buffer in (unless the parameter is [Out]-only, which zeroes
-                // it), pass the buffer, and copy it back into the array only when the
-                // parameter is [Out]/[In,Out]. The default direction is [In] (copy in, no
-                // write-back), so a mutating native is NOT observed unless [Out] is set —
-                // matching real.NET (a primitive array, being pinned, always writes back).
-                // The buffer is length * sizeof(t_<Struct>) bytes (the packed Dn2CppArrayN
-                // stride == the native C array layout). A null array -> a null pointer.
-                (bool hasIn, bool hasOut) = PInvokeParamInOut(callee, i);
-                bool copyIn = !(hasOut && !hasIn); // copy in unless [Out]-only
-                string arr = NewTemp("Dn2CppArrayN*");
-                Emit($"{arr} = {Cast(e, "Dn2CppArrayN*")};");
-                string buf = NewTemp("void*");
-                Emit($"{buf} = dn2cpp_pinvoke_blitarr_to_native({arr}, {(copyIn ? 1 : 0)});");
-                args[i] = buf;
-                if (hasOut)
-                    structArrWritebacks.Add((arr, buf));
-            }
             else if (pts[i].Kind == TypeKind.SZArray)
                 //.NET pins the blittable array (no copy) and passes the element pointer,
-                // so [In] reads and [In,Out] write-backs both hit the managed buffer. A
-                // null array marshals as a null pointer. e.Expr is a single-assignment
-                // temp, so evaluating it twice in the null guard is side-effect-free. A
-                // char[] under CharSet.Unicode reaches here too: its packed
-                // char16_t data IS the 2-byte UTF-16 buffer, so the same data pointer is
-                // passed and write-backs are likewise visible (probe-confirmed vs.NET).
+                // so the native reads and writes the managed buffer whatever [In]/[Out]
+                // the parameter carries. A blittable struct element is no different from
+                // a primitive one: its packed Dn2CppArrayN stride is the native C array
+                // layout. A null array marshals as a null pointer. e.Expr is a
+                // single-assignment temp, so evaluating it twice in the null guard is
+                // side-effect-free. A char[] under CharSet.Unicode reaches here too: its
+                // packed char16_t data IS the 2-byte UTF-16 buffer, so the same data
+                // pointer is passed and write-backs are likewise visible.
                 args[i] = $"({e.Expr} == nullptr ? (void*)nullptr : {ArrayDataBasePtr(e, pts[i].Element!)})";
             else if (CppTypes.IsBlittableStruct(pts[i]))
                 // A blittable value struct is passed by value: its C++ value already has
@@ -471,7 +448,7 @@ internal sealed partial class MethodCompiler
         else
         {
             string fp = NewTemp("void*");
-            string cache = _c.NoteLazyPInvokeCall(callee, ftnWrapper);
+            string cache = _c.NoteLazyPInvokeCall(callee);
             string nativeRet = CppTypes.PInvokeNativeType(
                 ret, isReturn: true, charUnicode, retMa)!;
             string nativeParams = string.Join(", ", pts.Select((p, i) =>
@@ -520,8 +497,6 @@ internal sealed partial class MethodCompiler
             }
             foreach (var (arr, buf) in charArrWritebacks)
                 Emit($"dn2cpp_pinvoke_chararr_from_ansi({arr}, {buf});");
-            foreach (var (arr, buf) in structArrWritebacks)
-                Emit($"dn2cpp_pinvoke_blitarr_from_native({arr}, {buf});");
             foreach (var (arr, buf, inbuf, uni) in strArrWritebacks)
                 Emit($"{(uni ? "dn2cpp_pinvoke_strarr_from_utf16" : "dn2cpp_pinvoke_strarr_from_ansi")}({arr}, {buf}, {inbuf});");
             // Marshal each by-ref non-blittable struct back into its managed location.
@@ -530,8 +505,7 @@ internal sealed partial class MethodCompiler
         }
 
         if (setLastError || sbWritebacks.Count > 0 || byrefStrWritebacks.Count > 0
-            || charArrWritebacks.Count > 0 || structArrWritebacks.Count > 0
-            || strArrWritebacks.Count > 0
+            || charArrWritebacks.Count > 0 || strArrWritebacks.Count > 0
             || structMarshalWritebacks.Count > 0)
         {
             if (ret.IsVoid)
@@ -2075,7 +2049,7 @@ internal sealed partial class MethodCompiler
             // whose extra state the runtime, not the emitted struct, describes
             // (AggregateException.InnerExceptions). The uniform allocator IS its layout,
             // and its ctor body has nothing we model to write.
-            if (CoreIntrinsics.IsIntrinsicType(cls.FullName))
+            if (CoreIntrinsics.IsIntrinsicType(cls))
             {
                 string opaqueTi = CoreIntrinsics.RuntimeExceptionTypeInfo(cls.FullName) ?? "&dn2cpp_exception_type";
                 string e = NewTemp("Dn2CppObject*");
@@ -2249,7 +2223,7 @@ internal sealed partial class MethodCompiler
                     string? adapterExpr = null;
                     if (OpensTaskOperation(method))
                         adapterExpr = SchedulerOperationAdapter(method);
-                    else if (_c.IsBoundedMethod(method.DeclaringClass.FullName, method.Name))
+                    else if (_c.IsBoundedMethod(method))
                         adapterExpr = BoundedFtnStub(method, origin.Key - 1, receiverSlot: fromVirtFtn, delegateClass: cls);
                     else if (_c.IsDynamicCodegenMember(method.DeclaringClass, method.Name))
                         adapterExpr = DynamicCodegenFtnStub(method, origin.Key - 1, receiverSlot: fromVirtFtn, delegateClass: cls);

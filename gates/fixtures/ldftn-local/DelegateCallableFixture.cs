@@ -43,6 +43,12 @@ internal static class DelegateCallableFixture
         }
         var owner = module.GetType("DelegateCallableBodies.Routes");
         var records = new List<(string Stub, string Target, bool Address, bool Virtual)>();
+        // C# cannot name the factory's invocation-list storage; the stubs take
+        // its exact CoreLib type and their callers pass null.
+        var storage = module.ImportReference(core.MainModule.GetType("System.Delegate").Methods
+            .Single(method => method.Name == "NewMulticastDelegate").Parameters[0].ParameterType);
+        foreach (string stub in new[] { "CallFactory", "CalliFactory" })
+            owner.Methods.Single(method => method.Name == stub).Parameters[1].ParameterType = storage;
         foreach (string prefix in new[] { "Call", "Calli", "Callvirt", "VirtCalli" })
         {
             bool address = prefix is "Calli" or "VirtCalli";
@@ -51,29 +57,26 @@ internal static class DelegateCallableFixture
             {
                 ("DelegateEquals", "System.Delegate", "Equals"),
                 ("DelegateHash", "System.Delegate", "GetHashCode"),
-                ("MulticastEquals", "System.MulticastDelegate", "Equals"),
-                ("MulticastHash", "System.MulticastDelegate", "GetHashCode"),
-                ("Factory", "System.MulticastDelegate", "NewMulticastDelegate"),
-                ("FactoryFlag", "System.MulticastDelegate", "NewMulticastDelegate"),
-                ("Combine", "System.MulticastDelegate", "CombineImpl"),
-                ("Remove", "System.MulticastDelegate", "RemoveImpl"),
-                ("Target", "System.MulticastDelegate", "GetTarget"),
-                ("Method", "System.MulticastDelegate", "GetMethodImpl"),
-                ("List", "System.MulticastDelegate", "GetInvocationList"),
-                ("Single", "System.MulticastDelegate", "get_HasSingleTarget"),
-                ("At", "System.MulticastDelegate", "TryGetAt"),
+                ("Factory", "System.Delegate", "NewMulticastDelegate"),
+                ("Combine", "System.Delegate", "CombineImpl"),
+                ("Remove", "System.Delegate", "RemoveImpl"),
+                ("Target", "System.Delegate", "get_Target"),
+                ("Method", "System.Delegate", "GetMethodImpl"),
+                ("List", "System.Delegate", "GetInvocationList"),
+                ("Single", "System.Delegate", "get_HasSingleTarget"),
+                ("At", "System.Delegate", "TryGetAt"),
                 ("DelegateCtorObject", "System.Delegate", ".ctor"),
                 ("DelegateCtorType", "System.Delegate", ".ctor"),
                 ("MulticastCtorObject", "System.MulticastDelegate", ".ctor"),
                 ("MulticastCtorType", "System.MulticastDelegate", ".ctor"),
-                ("CtorClosed", "System.MulticastDelegate", "CtorClosed"),
-                ("CtorClosedStatic", "System.MulticastDelegate", "CtorClosedStatic"),
-                ("CtorRTClosed", "System.MulticastDelegate", "CtorRTClosed"),
-                ("CtorOpened", "System.MulticastDelegate", "CtorOpened"),
-                ("CtorVirtualDispatch", "System.MulticastDelegate", "CtorVirtualDispatch"),
-                ("CtorCollectibleClosedStatic", "System.MulticastDelegate", "CtorCollectibleClosedStatic"),
-                ("CtorCollectibleOpened", "System.MulticastDelegate", "CtorCollectibleOpened"),
-                ("CtorCollectibleVirtualDispatch", "System.MulticastDelegate", "CtorCollectibleVirtualDispatch"),
+                ("CtorClosed", "System.Delegate", "CtorClosed"),
+                ("CtorClosedStatic", "System.Delegate", "CtorClosedStatic"),
+                ("CtorRTClosed", "System.Delegate", "CtorRTClosed"),
+                ("CtorOpen", "System.Delegate", "CtorOpen"),
+                ("CtorVirtualDispatch", "System.Delegate", "CtorVirtualDispatch"),
+                ("CtorCollectibleClosedStatic", "System.Delegate", "CtorCollectibleClosedStatic"),
+                ("CtorCollectibleOpen", "System.Delegate", "CtorCollectibleOpen"),
+                ("CtorCollectibleVirtualDispatch", "System.Delegate", "CtorCollectibleVirtualDispatch"),
             })
             {
                 var signature = owner.Methods.Single(method => method.Name == "Call" + name);
@@ -113,13 +116,16 @@ internal static class DelegateCallableFixture
         orderIl.Emit(OpCodes.Call, module.GetType("DelegateValueSubset.Program").Methods.Single(method => method.Name == "EffectArgument"));
         orderIl.Emit(OpCodes.Callvirt, module.ImportReference(baseEquals));
         orderIl.Emit(OpCodes.Ret);
-        foreach (var (stubName, type) in new[] { ("VirtualBaseAddress", "System.Delegate"), ("VirtualMulticastAddress", "System.MulticastDelegate") })
+        foreach (var (stubName, member) in new[] { ("VirtualBaseAddress", "GetMethodImpl"), ("VirtualFinalAddress", "Equals") })
         {
             var stub = owner.Methods.Single(method => method.Name == stubName);
+            var target = core.MainModule.GetType("System.Delegate").Methods.Single(method => method.Name == member);
+            if (!target.IsVirtual || target.IsFinal != (member == "Equals"))
+                throw new InvalidOperationException("delegate address fixture lost its virtual slot kind: " + stubName);
             stub.Body = new MethodBody(stub);
             var il = stub.Body.GetILProcessor();
             il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldvirtftn, module.ImportReference(core.MainModule.GetType(type).Methods.Single(method => method.Name == "Equals")));
+            il.Emit(OpCodes.Ldvirtftn, module.ImportReference(target));
             il.Emit(OpCodes.Ret);
         }
         foreach (string name in new[] { "VirtualBoundEquals", "VirtualBoundEqualsLocal" })
@@ -184,7 +190,7 @@ internal static class DelegateCallableFixture
             || ((MethodReference)orderCalls[0].Operand).Name != "EffectArgument"
             || ((MethodReference)orderCalls[1].Operand).FullName != baseEquals.FullName)
             throw new InvalidOperationException("delegate callvirt fixture lost argument evaluation before the call");
-        foreach (string name in new[] { "VirtualBaseAddress", "VirtualMulticastAddress" })
+        foreach (string name in new[] { "VirtualBaseAddress", "VirtualFinalAddress" })
         {
             var body = checkedOwner.Methods.Single(method => method.Name == name).Body.Instructions;
             if (body.Count != 3 || body[0].OpCode != OpCodes.Ldarg_0 || body[1].OpCode != OpCodes.Ldvirtftn || body[2].OpCode != OpCodes.Ret)

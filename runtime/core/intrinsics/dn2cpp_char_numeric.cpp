@@ -1,7 +1,7 @@
 // dn2cpp_char_numeric.cpp — char.GetNumericValue over the BMP.
 //
 // A two-level compressed table generated from the real .NET
-// char.GetNumericValue (net10.0 / Unicode 16 data): 256-code-point pages of
+// char.GetNumericValue (CoreLib's own Unicode data): 256-code-point pages of
 // uint8 indices into a deduplicated double pool, behind a 256-entry page
 // index (0xFF = no numeric value = -1.0, so all-0xFF pages collapse to one
 // shared page). Exact for every BMP code unit; supplementary-plane digits
@@ -11,6 +11,7 @@
 // Regenerate with a scratch program dumping char.GetNumericValue for
 // U+0000..U+FFFF into the two-level shape below (git history of this file
 // has the generator); it verifies the table reconstruction before printing.
+// The check is a sweep of every BMP code unit against the reference runtime.
 
 #include "dn2cpp_core.h"
 

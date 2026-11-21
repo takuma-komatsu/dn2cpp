@@ -15,11 +15,9 @@
 // OpenSSL is NOT linked — the binary stays self-contained, matching the
 // design's self-containment principle and the Apple TU's posture.
 //
-// ABI source of truth: dotnet/runtime v10.0.x
-// src/native/libs/System.Security.Cryptography.Native/pal_evp.{h,c},
-// pal_hmac.{h,c}, pal_evp_mac usage, pal_err.c, pal_random.c; every signature
-// below was additionally confirmed by decoding the real net10.0 Linux-RID
-// System.Security.Cryptography.dll's P/Invoke metadata.
+// The signatures below mirror the CryptoNative_* P/Invoke declarations in the
+// Linux-RID System.Security.Cryptography.dll (the PAL's pal_evp, pal_hmac,
+// pal_err and pal_random).
 //
 // Semantics — how the managed Unix hashing stack drives these (Interop.Crypto /
 // LiteHash / EvpHashProvider / EvpHmacProvider):
@@ -45,6 +43,7 @@
 // PAL_HashAlgorithm mirror (dn2cpp_hash_cores.h): Md5=1, Sha1=2, Sha256=3,
 // Sha384=4, Sha512=5.
 
+#include "dn2cpp_core.h"
 #include "dn2cpp_hash_cores.h"
 
 namespace
@@ -86,11 +85,11 @@ void* CryptoNative_EvpSha256(void) { return const_cast<int32_t*>(&kAlgSha256); }
 void* CryptoNative_EvpSha384(void) { return const_cast<int32_t*>(&kAlgSha384); }
 void* CryptoNative_EvpSha512(void) { return const_cast<int32_t*>(&kAlgSha512); }
 
-// SHA-3 / SHAKE: not provided by the portable cores. The real pal_evp.c
-// returns NULL from these exact selectors when the linked OpenSSL predates
-// SHA-3 support, and the managed side (HashProviderDispenser.HashSupported)
-// already treats a null handle as "algorithm not available on this platform" —
-// so a null here is a fully in-contract answer, not an error.
+// SHA-3 / SHAKE: not provided by the portable cores, so these selectors return
+// null. The managed Interop.Crypto.HashAlgorithmSupported answers true for these
+// names without calling a selector; the transpiler emits the body's prologue
+// to ask dn2cpp_openssl_hash_algorithm_absent (end of file), which asks the
+// selectors. A selector that starts returning a handle needs no other change.
 void* CryptoNative_EvpSha3_256(void) { return nullptr; }
 void* CryptoNative_EvpSha3_384(void) { return nullptr; }
 void* CryptoNative_EvpSha3_512(void) { return nullptr; }
@@ -339,3 +338,41 @@ void CryptoNative_ErrErrorStringN(uint64_t e, uint8_t* buf, int32_t len)
 }
 
 } // extern "C"
+
+// True when `algorithm` names a digest whose selector yields no handle, so the
+// managed support probe must not answer true. Unlisted names, including null, are
+// left to the managed probe (which rejects them itself).
+bool dn2cpp_openssl_hash_algorithm_absent(Dn2CppString* algorithm)
+{
+    if (algorithm == nullptr)
+        return false;
+    struct Row
+    {
+        const char* name;
+        void* (*selector)(void);
+    };
+    static const Row rows[] = {
+        {"MD5", CryptoNative_EvpMd5},
+        {"SHA1", CryptoNative_EvpSha1},
+        {"SHA256", CryptoNative_EvpSha256},
+        {"SHA384", CryptoNative_EvpSha384},
+        {"SHA512", CryptoNative_EvpSha512},
+        {"SHA3-256", CryptoNative_EvpSha3_256},
+        {"SHA3-384", CryptoNative_EvpSha3_384},
+        {"SHA3-512", CryptoNative_EvpSha3_512},
+        {"SHAKE128", CryptoNative_EvpShake128},
+        {"SHAKE256", CryptoNative_EvpShake256},
+    };
+    for (const Row& row : rows)
+    {
+        int32_t n = static_cast<int32_t>(std::strlen(row.name));
+        if (algorithm->length != n)
+            continue;
+        bool equal = true;
+        for (int32_t i = 0; i < n && equal; i++)
+            equal = algorithm->chars[i] == static_cast<char16_t>(row.name[i]);
+        if (equal)
+            return row.selector() == nullptr;
+    }
+    return false;
+}
