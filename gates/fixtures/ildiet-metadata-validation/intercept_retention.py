@@ -111,6 +111,8 @@ def validate_intercept_retention(probe, cli, original, directory, modes=("raw", 
                         "Marshal's object accessor became callable or the IntPtr accessor was dropped"
                     assert not re.search(r"\bAsAnyMarshaler_Touch_\w+", text), \
                         "A symbolic Marshal access helper rooted AsAny execution"
+                    assert not re.search(r"\b(?:Marshal_GetExceptionForHRInternal_\w+|MarshalNative_GetExceptionForHR)\b", text), \
+                        "The retained HRESULT QCall entered the native callable image"
                     pin_bodies = re.findall(r"\b(Marshal_IsPinnable_\w+)\([^;()]*\)\s*\{", text)
                     assert len(pin_bodies) == (level == "medium"), \
                         "Marshal's object pinning predicate became callable or its namesake was dropped"
@@ -118,6 +120,15 @@ def validate_intercept_retention(probe, cli, original, directory, modes=("raw", 
                         marshal = re.search(
                             r"\bmd_native_methtab_System_Runtime_InteropServices_Marshal\[\] = \{([^;]*)\};", text)
                         assert marshal, "Retained Marshal has no method metadata table"
+                        qcall_row = re.search(
+                            r"\{\s*md_name_\d+, &ti_System_Runtime_InteropServices_Marshal, &dn2cpp_void_type, "
+                            r"(parmpool_\d+), 3LL, [^,]+, -1LL, 0, 0,", marshal[1])
+                        assert qcall_row, "The HRESULT QCall lost its metadata-only reflection row"
+                        parameters = re.search(r"\bmd_native_" + qcall_row[1] + r"\[\] = \{([^;]*)\};", text)
+                        assert parameters and re.findall(r"\{\s*(&\w+),", parameters[1]) == [
+                            "&dn2cpp_int32_type", "&dn2cpp_intptr_type",
+                            "&ti_System_Runtime_CompilerServices_ObjectHandleOnStack"], \
+                            "The HRESULT QCall lost its parameter types"
                         legacy = re.search(
                             r"\{\s*md_name_\d+, &ti_System_Runtime_InteropServices_Marshal, &dn2cpp_byte_type, "
                             r"(parmpool_\d+), 2LL, [^,]+, -1LL, 0, 0,", marshal[1])
