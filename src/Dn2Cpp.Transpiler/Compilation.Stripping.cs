@@ -358,6 +358,7 @@ internal sealed partial class Compilation
                 || IsUnsupportedEncodingRangeGetString(method)
                 || IsUnsupportedFixedCStrConversion(method)
                 || IsLegacyAsAnyMarshalAccessor(method)
+                || IsCoreLibMarshalIsPinnable(method)
                 || CoreLibBinderTrace.IsTelemetryWrapper(method))
                 continue;
             // Retention needs a callable symbol, but cannot revive IL replaced by
@@ -483,6 +484,31 @@ internal sealed partial class Compilation
                 == (TypeAttributes.Public | staticClass)
             && reader.StringComparer.Equals(owner.Namespace, "System.Runtime.InteropServices")
             && reader.StringComparer.Equals(owner.Name, "Marshal");
+    }
+
+    // GCHandle's native pinning does not call the CoreCLR object-layout predicate.
+    // Only the Medium sweep keeps it as metadata; real execution edges are unchanged.
+    private static bool IsCoreLibMarshalIsPinnable(MethodInfo method)
+    {
+        const MethodAttributes expected = MethodAttributes.Assembly | MethodAttributes.Static | MethodAttributes.HideBySig;
+        var owner = method.DeclaringClass;
+        if (method.Name != "IsPinnable" || owner.FullName != "System.Runtime.InteropServices.Marshal"
+            || method.Module != owner.Module || method.Handle.IsNil || method.IsSynthetic
+            || method.Attributes != expected || method.ImplAttributes != MethodImplAttributes.IL
+            || method.Rva == 0 || method.PInvoke is not null
+            || method.Context.TypeArgs.Length != 0 || method.Context.MethodArgs.Length != 0
+            || !IsCoreLibMarshalDefinition(method.Module, owner.Handle))
+            return false;
+
+        var reader = method.Module.Reader;
+        var definition = reader.GetMethodDefinition(method.Handle);
+        if (definition.GetDeclaringType() != owner.Handle || definition.GetGenericParameters().Count != 0
+            || !reader.StringComparer.Equals(definition.Name, "IsPinnable") || definition.Attributes != expected
+            || definition.ImplAttributes != MethodImplAttributes.IL || definition.RelativeVirtualAddress != method.Rva)
+            return false;
+        var raw = reader.GetBlobReader(definition.Signature);
+        return raw.RemainingBytes == 4 && raw.ReadByte() == 0 && raw.ReadByte() == 1
+            && raw.ReadByte() == (byte)SignatureTypeCode.Boolean && raw.ReadByte() == (byte)SignatureTypeCode.Object;
     }
 
     // The obsolete object overloads use CoreCLR's AsAny marshaller. Retaining Marshal
