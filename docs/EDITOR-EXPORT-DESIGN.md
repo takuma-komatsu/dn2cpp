@@ -545,6 +545,12 @@ empty because the editor loads GodotTools from a stream.
   runtime pack is a **hard error** in `dist/package-toolchain.sh`, not a skip:
   skipping produces a bundle that exports desktop games perfectly and fails the
   first Android or Web export inside a linker.
+  Both reference directories carry `dn2cpp-bcl-v1.tsv` when the selected
+  implementation pack declares its managed assets. This inventory hashes only
+  those DLLs, not native DLLs or unrelated siblings copied with the closure.
+  A custom `DN2CPP_CORELIB_CROSS` without recognized pack metadata still
+  ships its references, but no inventory marks them as BCL. If the override
+  identifies a Windows runtime, packaging refuses it for `ref-posix/`.
 - `prebuilt/<axis>/` — the runtime's static archives plus a **re-anchored**
   `dn2cpp-targets.cmake`, so an export imports the runtime instead of building
   it and the vendored trees.

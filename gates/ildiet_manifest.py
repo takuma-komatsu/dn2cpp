@@ -63,4 +63,7 @@ def contract_digest(request):
             clauses.append(framed_hash(values))
     level = request.get("strippingLevel", "high")
     stripping = [] if level == "high" else ["strippingLevel", level]
-    return framed_hash(["ildiet-contract-v2", request.get("copyAll", "false"), *stripping, *sorted(clauses)])
+    assets = request.get("frameworkAssets")
+    membership = [] if assets is None else ["frameworkAssets", assets]
+    return framed_hash(["ildiet-contract-v2", request.get("copyAll", "false"), *stripping,
+                        *membership, *sorted(clauses)])

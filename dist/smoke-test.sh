@@ -52,6 +52,12 @@ fi
 # repo-relative spelling names nothing.
 BUNDLE="$(cd "$BUNDLE" && pwd)"
 [ -f "$BUNDLE/ref/System.Private.CoreLib.dll" ] || { echo "error: bundle ref/ is missing CoreLib" >&2; exit 1; }
+# Older bundles and unrecognized custom cross frameworks may have no declaration.
+for refs in "$BUNDLE/ref" "$BUNDLE/ref-posix"; do
+    if [ -f "$refs/dn2cpp-bcl-v1.tsv" ]; then
+        gate_python dist/bcl-inventory.py "$refs"
+    fi
+done
 # The bundle ships the managed support shim and the conditionally-referenced managed
 # backends beside the CLI, where the native binary's AppContext.BaseDirectory
 # auto-reference finds them; the transpile below also passes the shim with -r, as the

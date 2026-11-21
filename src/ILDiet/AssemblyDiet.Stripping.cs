@@ -38,7 +38,11 @@ internal sealed partial class AssemblyDiet
             NoteMediumType(specification.ElementType);
             return;
         }
-        if (Resolve(reference) is { } type && _mediumTypes.Add(type))
+        // Preserve signature metadata and structural bindings above, including
+        // non-framework arguments to a framework generic. Only opt out of the
+        // synthetic member sweep on a verified target framework definition.
+        if (Resolve(reference) is { } type && !_byModule[type.Module].IsTargetFramework
+            && _mediumTypes.Add(type))
         {
             var parent = _mediumOwner;
             if (parent is null && _mediumSource is not null && Resolve(_mediumSource.DeclaringType) is { } owner

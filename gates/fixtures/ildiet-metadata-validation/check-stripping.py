@@ -8,7 +8,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from ildiet_manifest import contract_digest, manifest
+from ildiet_manifest import contract_digest, framed_hash, manifest
 
 companion, probe, transpiler, directory = (Path(value).resolve() for value in sys.argv[1:5])
 profile_args = sys.argv[5:]
@@ -56,6 +56,9 @@ for name in ("default", "high", "medium"):
         request.set("strippingLevel", name)
     for filename in ("MediumLib.dll", "System.Private.CoreLib.dll"):
         ET.SubElement(request, "reference", path=str(original / filename))
+    if name == "medium":
+        # The synthetic CoreLib has no target pack provenance.
+        request.set("frameworkAssets", framed_hash(["ildiet-framework-assets-v1", "0", "0", "0"]))
     ET.SubElement(request, "reflectionRoot", type="MediumFixture.MetadataOnly")
     ET.SubElement(request, "linkXml", path=str(original / "link.xml"))
     path = directory / (name + "-request.xml")
@@ -75,6 +78,15 @@ for before in publications["default"].iterdir():
     assert before.read_bytes() == (publications["high"] / before.name).read_bytes(), "explicit High changed default output"
 check_core(original, "high")
 check_core(original, "medium")
+
+wrong_assets = ET.parse(directory / "medium-request.xml").getroot()
+wrong_assets.set("frameworkAssets", framed_hash(["ildiet-framework-assets-v1", "0", "0", "1"]))
+wrong_assets.set("output", str(directory / "wrong-framework-assets"))
+wrong_request = directory / "wrong-framework-assets.xml"
+ET.ElementTree(wrong_assets).write(wrong_request, encoding="utf-8", xml_declaration=True)
+rejected = run(companion, "--request", wrong_request, success=False)
+assert "target framework assembly membership differs from the compiler request" in rejected.stderr
+assert not (directory / "wrong-framework-assets" / "ildiet-result.xml").exists()
 
 for args in (("--stripping-level",), ("--stripping-level", "low"),
              ("--request", directory / "medium-request.xml", "--stripping-level", "high")):

@@ -17,14 +17,21 @@ preservation paths. Assemblies live in the generation named by that manifest;
 there are no flat DLL outputs. A manual transpile must pass those ordered paths,
 `--no-ildiet`, and `--link-xml` with the manifest's preservation path. Replay also
 passes the original `--stripping-level`; the preservation descriptor contains
-explicit rules, not the compiler's stripping policy.
+explicit rules, not the compiler's stripping policy. A manual replay of the flat
+generation does not carry original target pack provenance, so those
+inputs use the conservative Medium rule. Use the integrated CLI with the
+original inputs to replay the verified BCL policy.
 
 `--stripping-level high|medium` selects the same policy as the dn2cpp CLI.
 `high` is the default member-level policy. `medium` keeps every declared member
 of a statically used type, including non-public constructors and accessors, and
-follows those members' static references to a fixed point. The rule applies to
-every assembly, including framework assemblies whose files remain copied.
-Copied files retain the existing intrinsic and cut traversal boundaries.
+follows those members' static references to a fixed point. Verified BCL assemblies
+of the selected installed .NET 10 runtime pack or packaged target refs use
+member-level retention instead.
+The compiler and ILDiet classify original inputs together, not by their names or
+by whether their files are copied. Application, third-party, backend and
+unverified assemblies keep the type-wide rule. Copied files retain the existing
+intrinsic and cut traversal boundaries.
 DLL rewriting and the stripping level are independent options.
 
 Medium use comes from executable method owners and signatures, body type and
@@ -425,9 +432,12 @@ attributes, elements, versions and invalid budgets fail. The result's
 `version="2"` manifest gives the generation, ordered paths, preservation,
 cut-validation state, fallback reason, contract digest and per-assembly mode,
 content hash and registry-rewrite state. The digest identifies the canonical
-backend/reflection contract independently of output paths and budgets. The
-consumer verifies the generation, hashes, copied bytes, identity, load order and
-registry consistency before loading any output.
+backend/reflection contract independently of output paths and budgets. Integrated
+Medium requests also include the compiler's `frameworkAssets` digest over
+original module ordinals. ILDiet checks its own classification against that digest
+before pruning, including when no assembly had verified provenance. The consumer
+verifies the generation, hashes, copied bytes, identity, load order and registry
+consistency before loading any output.
 
 ## Counters
 

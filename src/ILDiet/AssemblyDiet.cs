@@ -115,6 +115,11 @@ internal sealed partial class AssemblyDiet : IDisposable
     {
         var paths = new List<string> { _request.Input };
         paths.AddRange(_request.References);
+        var targetFramework = _request.StrippingLevel == StrippingLevel.Medium
+            ? TargetFrameworkAssets.Classify(paths) : null;
+        if (_request.FrameworkAssets is { } expected
+            && (targetFramework is null || ILDietProtocol.FrameworkAssetsDigest(paths.Count, targetFramework) != expected))
+            throw new NotSupportedException("target framework assembly membership differs from the compiler request");
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (string value in paths)
         {
@@ -146,6 +151,7 @@ internal sealed partial class AssemblyDiet : IDisposable
             {
                 Index = _assemblies.Count, Path = path, Assembly = definition, PE = pe,
                 Copy = copy,
+                IsTargetFramework = targetFramework?.Contains(_assemblies.Count) ?? false,
             };
             _assemblies.Add(item);
             _byModule.Add(definition.MainModule, item);
@@ -697,6 +703,7 @@ internal sealed class DietAssembly
     internal required AssemblyDefinition Assembly;
     internal required PEReader PE;
     internal required bool Copy;
+    internal bool IsTargetFramework;
     internal bool PreserveAll;
     internal bool RegistryRewritten;
 }

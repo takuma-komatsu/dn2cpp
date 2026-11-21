@@ -91,6 +91,7 @@ internal sealed class DietRequest
     internal StrippingLevel StrippingLevel = StrippingLevel.High;
     internal long? WorkBudget;
     internal string Contract = "";
+    internal string? FrameworkAssets;
     internal readonly List<string> ReflectionRoots = new();
     internal readonly List<string> References = new();
     internal readonly List<string> LinkXml = new();
@@ -110,7 +111,8 @@ internal sealed class DietRequest
     internal static DietRequest Read(string path)
     {
         var root = Dn2Cpp.LinkXml.Parse(path);
-        Check(root, "ildiet", "version", "input", "output", "copyAll", "workBudget", "strippingLevel");
+        Check(root, "ildiet", "version", "input", "output", "copyAll", "workBudget", "strippingLevel",
+            "frameworkAssets");
         if (Required(root, "version") != "2")
             throw new NotSupportedException("unsupported ILDiet request version");
         var request = new DietRequest
@@ -120,6 +122,7 @@ internal sealed class DietRequest
             WorkBudget = root.Attr("workBudget") is { } budget ? ParseWorkBudget(budget) : null,
             StrippingLevel = ParseStrippingLevel(root.Attr("strippingLevel") ?? "high"),
             Contract = ILDietProtocol.ContractDigest(root),
+            FrameworkAssets = root.Attr("frameworkAssets"),
             CopyAll = root.Attr("copyAll") switch
             {
                 null or "false" => false,
@@ -127,6 +130,9 @@ internal sealed class DietRequest
                 _ => throw new NotSupportedException("copyAll must be true or false"),
             },
         };
+        if (request.FrameworkAssets is { } assets
+            && (request.StrippingLevel != StrippingLevel.Medium || !StableHash.IsHex(assets)))
+            throw new NotSupportedException("frameworkAssets must be a Medium framework membership digest");
         foreach (var child in root.Children)
         {
             switch (child.Name)

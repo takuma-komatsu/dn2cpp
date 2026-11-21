@@ -178,7 +178,10 @@ See [the retention contract](docs/ARCHITECTURE.md#1-pipeline) for the
 reference boundaries.
 
 Medium applies in ILDiet and C++ generation; `--no-ildiet` only bypasses the DLL
-rewrite and leaves the selected level active. Known closed generic types retain
+rewrite and leaves the selected level active. Verified BCL assemblies from the
+selected .NET 10 runtime pack or packaged target refs use High's member-level
+retention even under Medium. Application, library and backend types, and
+unverified inputs, keep Medium's type-wide policy. Known closed generic types retain
 their members; an open definition does not generate arbitrary specializations.
 Types or generic arguments known only at runtime still need explicit roots or
 preservation. Medium composes with `link.xml`, `[Preserve]`, reflection roots and
