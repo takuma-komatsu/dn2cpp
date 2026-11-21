@@ -68,7 +68,7 @@ self_test() (
             printf "FAIL: CI smoke self-test; fixture preserved at %s\n" "$fixture" >&2
         fi
         exit "$rc"' EXIT
-    mkdir -p "$fixture/gates" "$fixture/bin" "$fixture/runtime/10.0.0"
+    mkdir -p "$fixture/gates" "$fixture/bin" "$fixture/runtime/11.0.0"
     cp "$SCRIPT_DIR/ci-smoke.sh" "$SCRIPT_DIR/gate-output.py" \
         "$SCRIPT_DIR/_python.sh" "$fixture/gates/"
     sed 's/^run_with_watchdog() {/ci_test_run_with_watchdog() {/' \
@@ -88,7 +88,7 @@ run_with_watchdog() {
     ci_test_run_with_watchdog "$secs" "$@"
 }
 WATCHDOG
-    touch "$fixture/runtime/10.0.0/System.Private.CoreLib.dll"
+    touch "$fixture/runtime/11.0.0/System.Private.CoreLib.dll"
     printf '#!/usr/bin/env bash\n[ "$1" = 65001 ]\n' > "$fixture/bin/chcp.com"
     chmod +x "$fixture/bin/chcp.com"
     cat > "$fixture/bin/dotnet" <<'DOTNET'
@@ -114,7 +114,7 @@ case "$1" in
     --list-runtimes)
         printf 'corelib\n' >> "$CI_TEST_ORDER"
         [ "$CI_TEST_CASE" != missing-corelib ] || exit 0
-        printf 'Microsoft.NETCore.App 10.0.0 [%s/runtime]\n' "$PWD"
+        printf 'Microsoft.NETCore.App 11.0.0 [%s/runtime]\n' "$PWD"
         ;;
     */HelloWorld.dll)
         if [ "$CI_TEST_CASE" = sample-crlf ] || [ "$CI_TEST_CASE" = sample-eol-mismatch ]; then

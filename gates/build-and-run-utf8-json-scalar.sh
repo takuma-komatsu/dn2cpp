@@ -10,8 +10,8 @@
 # Output is diffed EXACT vs real .NET — the JSON parse result is deterministic and
 # byte-identical regardless of vectorization. The SCALAR axis uses separate
 # runtime/app build dirs and a -scalar output dir (gates/_common.sh), so it runs
-# alongside the default utf8-json gate without clobbering it. Pins net10.0.
+# alongside the default utf8-json gate without clobbering it. Pins the CoreLib.
 source "$(dirname "$0")/_common.sh"
 
 export SCALAR=1
-net10_json_diff_gate Utf8JsonProbe
+json_diff_gate Utf8JsonProbe

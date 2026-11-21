@@ -8,7 +8,7 @@ export DN2CPP_PYTHON="${1:-${DN2CPP_PYTHON:-}}"
 CONFIG=Fixture
 # This SDK-free adapter fixture explicitly selects the ordinary Linux policy.
 DN2CPP_OS=linux
-TFM=net10.0
+TFM=net11.0
 EXE_EXT=.exe
 _gate_exit_hooks=()
 eval "$(sed -n '/^gate_add_exit_hook() {/,/^}/p; /^_gate_run_exit_hooks() {/,/^}/p' gates/_common.sh)"

@@ -83,7 +83,7 @@ DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $fields_app ${fields_app
 if [ "$DN2CPP_EXCEPTION_MESSAGE_FULL" = 1 ]; then
     build_gate_proj gates/fixtures/runtime-exception-ancestry/RuntimeExceptionAncestry.csproj
     build_gate_proj gates/fixtures/general-argument-fallback/GeneralArgumentFallback.csproj
-    fallback_bcl="$(dirname "$(resolve_net10_corelib)")/System.Collections.Concurrent.dll"
+    fallback_bcl="$(dirname "$(resolve_pinned_corelib)")/System.Collections.Concurrent.dll"
     argument_apps+=("$general_app")
     DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS $ancestry_app ${ancestry_app%.dll}.runtimeconfig.json ${ancestry_app%.dll}.deps.json $fallback_bcl $general_app ${general_app%.dll}.runtimeconfig.json ${general_app%.dll}.deps.json"
 fi

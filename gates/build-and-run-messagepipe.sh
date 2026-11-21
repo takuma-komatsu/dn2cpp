@@ -14,17 +14,16 @@ MESSAGEPIPE_SHA_EXPECTED=gates/expected/messagepipe-dlls.sha256
 MARKERS_EXPECTED=gates/expected/messagepipe-markers.txt
 PRESERVATION="samples/dotnet/$project/link.xml"
 
-echo "== 1/7 Locating the real net10 CoreLib =="
-corelib=$(resolve_net10_corelib)
+echo "== 1/7 Locating the real pinned CoreLib =="
+corelib=$(resolve_pinned_corelib)
 echo "corelib: $corelib"
 
 echo "== 2/7 Building the driver against the real NuGet MessagePipe =="
 nuget_packages="$(nuget_global_packages_root)"
 if { [ ! -d "$nuget_packages/messagepipe/1.8.2" ] \
-        || [ ! -d "$nuget_packages/microsoft.extensions.dependencyinjection/10.0.1" ] \
-        || [ ! -d "$nuget_packages/microsoft.extensions.dependencyinjection.abstractions/10.0.1" ]; } \
+        || [ ! -d "$nuget_packages/microsoft.extensions.dependencyinjection/10.0.1" ]; } \
     && ! curl -fsI --max-time 15 https://api.nuget.org/v3/index.json >/dev/null 2>&1; then
-    gate_skip "MessagePipe 1.8.2 + DependencyInjection(.Abstractions) 10.0.1 are not all in the NuGet cache and nuget.org is unreachable"
+    gate_skip "MessagePipe 1.8.2 + DependencyInjection 10.0.1 are not both in the NuGet cache and nuget.org is unreachable"
 fi
 build_gate_proj "samples/dotnet/$project/$project.csproj"
 app="samples/dotnet/$project/bin/$CONFIG/$TFM/$project.dll"
@@ -33,13 +32,20 @@ appbin="samples/dotnet/$project/bin/$CONFIG/$TFM"
 
 # Content tripwire on every restored assembly the transpile consumes: the transport
 # is the network, WHAT is transpiled is pinned by hash. MessagePipe 1.8.2's highest
-# lib is net6.0; the two DependencyInjection 10.0.1 libs come from lib/net10.0. This
-# loop is also what keeps the -r list below honest — a DLL named here must exist in
-# the sample's bin, so a package rename/regroup fails here first with its own sentence.
+# lib is net6.0; the DependencyInjection 10.0.1 lib comes from lib/net10.0, and its
+# Abstractions belong to the shared framework (gate_shared_framework_assembly). This
+# loop is also what keeps the -r list below honest — a hashed DLL named here must exist in
+# the sample's bin and a shared-framework one must not, so a package rename/regroup fails here first with its own sentence.
 mp_refs=()
 mp_dlls=()
 while read -r want name; do
     [ -n "$want" ] || continue
+    if [ "$want" = shared-framework ]; then
+        dll="$(gate_shared_framework_assembly "$appbin" "$name")"
+        mp_refs+=(-r "$dll")
+        mp_dlls+=("$dll")
+        continue
+    fi
     dll="$appbin/$name"
     [ -f "$dll" ] || { echo "FAIL: pinned assembly did not restore to $dll" >&2; exit 1; }
     got="$(shasum -a 256 "$dll" | awk '{print $1}')"

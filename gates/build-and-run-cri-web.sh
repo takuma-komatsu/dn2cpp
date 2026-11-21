@@ -405,13 +405,13 @@ APPDIR="$PROJ/.godot/mono/temp/bin/ExportRelease"
 cmp -s "$APPDIR/CriWare.CriAtomLE.dll" "$CRI_MANAGED_BROWSER" \
     || { echo "FAIL: the built output's CriWare.CriAtomLE.dll is not the browser flavor" >&2; exit 1; }
 
-# Pin net10.0 (the JSON/measure gates' rule) and reference the fork editor's
+# Pin the CoreLib (the JSON/measure gates' rule) and reference the fork editor's
 # own GodotSharp, exactly as the fork's Dn2CppExporter does — including WHICH
 # framework flavour: the exporter picks it off the export target
 # (Dn2CppToolchain.CoreLibRefFor), so this must too, or the manifest asserted
 # below describes a program the export does not build. On a POSIX host the two
 # spellings resolve to the same file.
-corelib=$(locate_corelib_cross_posix net10)
+corelib=$(locate_corelib_cross_posix pinned)
 GEN="$OUT/gen"
 rm -rf "$GEN"
 invoke_cli "$APPDIR/$PROJECT_NAME.dll" --dotnet-module \

@@ -165,7 +165,7 @@ PYCODE
 # A function keeps Bash 3.2 errexit from terminating a sourced cache-miss probe.
 source "$OUT/cache-call"
 _gate_cli_hash() { printf cli; }
-resolve_net10_corelib() { printf corelib; }
+resolve_pinned_corelib() { printf corelib; }
 field_packed=packed
 field_native=native
 cached_context=''

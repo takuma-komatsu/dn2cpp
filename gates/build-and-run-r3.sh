@@ -15,8 +15,8 @@ measure="artifacts/r3-measure"
 R3_SHA_EXPECTED=gates/expected/r3-dll.sha256
 MARKERS_EXPECTED=gates/expected/r3-markers.txt
 
-echo "== 1/7 Locating the real net10 CoreLib =="
-corelib=$(resolve_net10_corelib)
+echo "== 1/7 Locating the real pinned CoreLib =="
+corelib=$(resolve_pinned_corelib)
 echo "corelib: $corelib"
 
 echo "== 2/7 Building the driver against the real NuGet R3 =="

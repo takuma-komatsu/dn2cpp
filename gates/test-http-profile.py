@@ -44,7 +44,7 @@ for start, end in regions:
 
 stubs = r'''
 set -euo pipefail
-CONFIG=Debug TFM=net10.0 corelib=corelib nethttp=nethttp
+CONFIG=Debug TFM=net11.0 corelib=corelib nethttp=nethttp
 base=http://get ebase=http://beyond tbase=https://tls tlsca=ca.pem tlsdir=tls-evidence
 build_proj() {
     printf 'PROJECT:%s\n' "$1"

@@ -319,12 +319,12 @@ echo "== 1/5 Synthesizing a minimal hello world =="
 # csproj must feed both the dn2cpp and the NativeAOT build. InvariantGlobalization
 # matches src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj and keeps NativeAOT's ICU out of the
 # comparison — dn2cpp has no ICU to begin with.
-cat > "$PROJ/MinimalHello.csproj" <<'EOF'
+cat > "$PROJ/MinimalHello.csproj" <<EOF
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>$TFM</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <Optimize>true</Optimize>

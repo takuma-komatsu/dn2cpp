@@ -1,7 +1,7 @@
 <Project>
   <!-- A subprocess payload, never a CLR dependency or a transpiler input. -->
   <PropertyGroup>
-    <ILDietCompanionDirectory>$(MSBuildThisFileDirectory)ILDiet/bin/$(Configuration)/net10.0</ILDietCompanionDirectory>
+    <ILDietCompanionDirectory>$(MSBuildThisFileDirectory)ILDiet/bin/$(Configuration)/net11.0</ILDietCompanionDirectory>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)ILDiet/ILDiet.csproj"

@@ -44,7 +44,7 @@ gate_extra_asserts() {
         || { echo "FAIL: RE:Dox must emit an empty gap report: $measure/s0-gaps.tsv" >&2; return 1; }
 }
 
-_CG_CORELIB_IN=$(resolve_net10_corelib)
+_CG_CORELIB_IN=$(resolve_pinned_corelib)
 descriptor="samples/dotnet/$project/link.xml"
 DN2CPP_GATE_EXTRA_INPUTS="$pin $markers $descriptor"
 DN2CPP_GATE_EXTRA_CONTEXT="redox|cli:$(_gate_cli_hash)"

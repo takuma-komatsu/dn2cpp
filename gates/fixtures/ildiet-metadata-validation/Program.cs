@@ -518,7 +518,7 @@ static void CreateInitializerFixture(string path, bool late)
     File.Copy(Path.ChangeExtension(System.Reflection.Assembly.GetExecutingAssembly().Location, ".runtimeconfig.json"),
         Path.ChangeExtension(path, ".runtimeconfig.json"), true);
     File.WriteAllText(Path.ChangeExtension(path, ".deps.json"),
-        "{\"runtimeTarget\":{\"name\":\".NETCoreApp,Version=v10.0\"},\"targets\":{\".NETCoreApp,Version=v10.0\":{}},\"libraries\":{}}");
+        "{\"runtimeTarget\":{\"name\":\".NETCoreApp,Version=v11.0\"},\"targets\":{\".NETCoreApp,Version=v11.0\":{}},\"libraries\":{}}");
 
     TypeDefinition AddCell(string name, string dependencyName, bool genericType)
     {

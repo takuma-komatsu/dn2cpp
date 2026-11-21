@@ -15,14 +15,14 @@
 # accounts for a whole namespace's worth of rows, so the grouped summary — not
 # the row count — is what says how much work is left.
 #
-# Pins net10.0 (resolve_net10_corelib) and references the real System.Text.Json,
+# Pins the CoreLib (resolve_pinned_corelib) and references the real System.Text.Json,
 # with --auto-ref, exactly like build-and-run-godot-bindgen.sh: the full CLI's
 # closure statically roots the Godot lane's --generate-bindings subtree, which
 # deserializes extension_api.json through the STJ source-gen JsonTypeInfo<T>
 # graph. Without System.Text.Json in the -r set those JsonTypeInfo<T> /
 # JsonConverter<T> instantiations resolve as *external* generics and abort the
-# measure on the first one; without the net10 pin the 11.0-preview CoreLib shape
-# skews the STJ transpile (resolve_net10_corelib in _common.sh). --auto-ref
+# measure on the first one; without the pin another major's CoreLib shape
+# skews the STJ transpile (resolve_pinned_corelib in _common.sh). --auto-ref
 # eagerly loads the transitive shared-framework closure so every external generic
 # resolves before Build().
 source "$(dirname "$0")/_common.sh"
@@ -38,8 +38,8 @@ BIN="src/Dn2Cpp.Cli/bin/$CONFIG/$TFM"
 CLI="$BIN/dn2cpp.dll"
 [ -f "$CLI" ]  || { echo "error: CLI not built: $CLI"   >&2; exit 1; }
 
-echo "== 2/4 Locating the real net10.0 CoreLib + BCL + System.Text.Json =="
-corelib=$(resolve_net10_corelib)
+echo "== 2/4 Locating the real pinned CoreLib + BCL + System.Text.Json =="
+corelib=$(resolve_pinned_corelib)
 bcl=$(dirname "$corelib")
 echo "corelib: $corelib"
 echo "bcl dir: $bcl"

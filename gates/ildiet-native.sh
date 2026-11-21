@@ -18,7 +18,7 @@ echo "ILDiet native probe artifacts: $OUT"
 build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj 2>&1 | tee "$OUT/managed-build.log"
 BIN="src/Dn2Cpp.Cli/bin/$CONFIG/$TFM"
 DIET="src/ILDiet/bin/$CONFIG/$TFM"
-corelib="$(resolve_net10_corelib)"
+corelib="$(resolve_pinned_corelib)"
 
 # Use original IL. ILDiet supplies no signing key and never re-signs outputs;
 # Cecil's signing branches are unreachable, while deterministic MVID hashing runs.

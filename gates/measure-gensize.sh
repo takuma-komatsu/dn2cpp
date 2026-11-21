@@ -5,7 +5,7 @@
 #
 #   selfhost — the full CLI (dn2cpp.dll = Transpiler + Godot + DotnetModule)
 #              transpiling itself, the same emission gates/selfhost-emit.sh
-#              performs in its step 3 (--auto-ref, real net10 CoreLib + BCL),
+#              performs in its step 3 (--auto-ref, real pinned CoreLib + BCL),
 #              then compiled as a console executable.
 #   godot    — the GodotSample GDExtension input of
 #              gates/build-and-run-godot-sample.sh, transpile + gdextension
@@ -173,10 +173,10 @@ ensure_cmake_runtime > /dev/null
 
 echo
 echo "== 2/3 selfhost: full CLI transpiles itself =="
-# Same reference set and flags as gates/selfhost-emit.sh step 3: net10-pinned
-# CoreLib (11-preview shape skews the transpile), real System.Text.Json for the
+# Same reference set and flags as gates/selfhost-emit.sh step 3: the pinned
+# CoreLib (another major's shape skews the transpile), real System.Text.Json for the
 # --generate-bindings closure, --auto-ref for the sibling Dn2Cpp.Runtime.dll.
-corelib=$(resolve_net10_corelib)
+corelib=$(resolve_pinned_corelib)
 bcl=$(dirname "$corelib")
 echo "corelib: $corelib"
 refs=()

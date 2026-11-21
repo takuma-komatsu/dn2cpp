@@ -2547,7 +2547,7 @@ gate_assert_text "$codec_object_old_file" "$(printf '%s\n' 'metadata codec bound
 
 cache_project=gates/fixtures/delegate-invocation-cache/DelegateInvocationCache.csproj
 run_bounded dotnet build "$cache_project" -c "$CONFIG" --nologo -v:q
-cache_app=gates/fixtures/delegate-invocation-cache/bin/$CONFIG/net10.0/DelegateInvocationCache.dll
+cache_app=gates/fixtures/delegate-invocation-cache/bin/$CONFIG/$TFM/DelegateInvocationCache.dll
 cache_out=artifacts/reflectinvoke-delegate-cache
 DN2CPP_STRICT_COMPLETION=1 invoke_cli "$cache_app" -r "$_CG_CORELIB" -o "$cache_out"
 compile_console "$cache_out" DelegateInvocationCache
@@ -2573,7 +2573,7 @@ done
 
 recursive_project=gates/fixtures/recursive-delegate/RecursiveDelegate.csproj
 run_bounded dotnet build "$recursive_project" -c "$CONFIG" --nologo -v:q
-recursive_app=gates/fixtures/recursive-delegate/bin/$CONFIG/net10.0/RecursiveDelegate.dll
+recursive_app=gates/fixtures/recursive-delegate/bin/$CONFIG/$TFM/RecursiveDelegate.dll
 gate_capture_ok "artifacts/reflectinvoke-recursive-oracle/recursive-expected" reflection_oracle "$recursive_app"
 recursive_expected_file="artifacts/reflectinvoke-recursive-oracle/recursive-expected.stdout"
 
@@ -3937,11 +3937,11 @@ interface_remedy_metadata_only() {
     local fixture=artifacts/stripped-interface-remedy-wrapper
     local out=artifacts/stripped-interface-remedies-metadata
     mkdir -p "$fixture"
-    cat > "$fixture/InterfaceRemedyMetadataOnly.csproj" <<'PROJECT'
+    cat > "$fixture/InterfaceRemedyMetadataOnly.csproj" <<PROJECT
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>$TFM</TargetFramework>
     <ImplicitUsings>disable</ImplicitUsings>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
@@ -4038,11 +4038,11 @@ class_remedy_library() {
     local fixture=artifacts/stripped-class-remedy-wrapper
     local mode="$1" out="artifacts/stripped-class-remedies-library-$1"
     mkdir -p "$fixture"
-    cat > "$fixture/ClassRemedyLibrary.csproj" <<'PROJECT'
+    cat > "$fixture/ClassRemedyLibrary.csproj" <<PROJECT
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>$TFM</TargetFramework>
     <ImplicitUsings>disable</ImplicitUsings>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>

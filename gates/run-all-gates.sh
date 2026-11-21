@@ -160,7 +160,7 @@ trap 'trap - INT TERM HUP; kill 0' INT TERM HUP
 cd "$(dirname "$0")/.."
 
 CONFIG=${CONFIG:-Release}
-TFM=${TFM:-net10.0}
+TFM=net11.0
 GODOT=${GODOT:-godot}
 SKIP_GODOT=${SKIP_GODOT:-0}
 SKIP_XCODE=${SKIP_XCODE:-0}

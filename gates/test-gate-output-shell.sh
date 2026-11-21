@@ -194,10 +194,11 @@ if [ "${1:-}" = --case ]; then
             ;;
         brotli-reference)
             source gates/_compression-reference.sh
-            resolve_net10_corelib() { printf '/runtime/%s/System.Private.CoreLib.dll\n' "$reference_version"; }
-            for reference_version in 10.0.0 10.0.13 10.0.14 10.0.20 9.0.99 11.0.0 10.0.14-preview.1 malformed; do
+            DN2CPP_BCL_MAJOR=11
+            resolve_pinned_corelib() { printf '/runtime/%s/System.Private.CoreLib.dll\n' "$reference_version"; }
+            for reference_version in 11.0.0 11.0.14 10.0.14 12.0.0 11.0.0-preview.1 malformed; do
                 expected=1
-                case "$reference_version" in 10.0.14|10.0.20) expected=0 ;; esac
+                case "$reference_version" in 11.0.0|11.0.14) expected=0 ;; esac
                 if compression_require_brotli_reference > "$fixture/reference.stdout" 2> "$fixture/reference.stderr"; then
                     actual=0
                 else
@@ -208,7 +209,7 @@ if [ "${1:-}" = --case ]; then
                     exit 1
                 }
             done
-            resolve_net10_corelib() { return 1; }
+            resolve_pinned_corelib() { return 1; }
             if compression_require_brotli_reference; then
                 echo 'FAIL: accepted an unresolved Brotli reference' >&2
                 exit 1

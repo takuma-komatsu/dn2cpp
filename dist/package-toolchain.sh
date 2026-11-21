@@ -42,7 +42,7 @@
 #                     (third_party/bdwgc-upstream omitted — only the
 #                      DN2CPP_GC_BACKEND=upstream arm names it, and the bundle
 #                      builds the default; see the guard below)
-#   ref/              the pinned net10 shared-framework managed DLLs — the WHOLE
+#   ref/              the pinned shared-framework managed DLLs — the WHOLE
 #                     closure, because --auto-ref resolves the BCL from the dir
 #                     that holds System.Private.CoreLib.dll (AssemblyLoadSet).
 #                     Shipping CoreLib alone would leave
@@ -105,7 +105,7 @@
 #     --out DIR           layout/tarball parent (default: artifacts/toolchain)
 #     -h | --help
 #
-# Sourcing _common.sh cd's to the repo root and provides resolve_net10_corelib +
+# Sourcing _common.sh cd's to the repo root and provides resolve_pinned_corelib +
 # DN2CPP_OS. The SDK builds the self-host binary, publishes the host ILDiet
 # companion and supplies the reference framework used while assembling the bundle.
 source "$(dirname "$0")/../gates/_common.sh"
@@ -219,11 +219,11 @@ for be in $MANAGED_BACKENDS; do
     echo "-- managed backend: $be_dll"
 done
 
-# 2. The pinned net10 shared-framework directory (CoreLib + its BCL siblings).
-corelib="$(resolve_net10_corelib)"
+# 2. The pinned shared-framework directory (CoreLib + its BCL siblings).
+corelib="$(resolve_pinned_corelib)"
 fwdir="$(dirname "$corelib")"
 fwver="$(basename "$fwdir")"
-echo "-- net10 shared framework: $fwdir ($fwver)"
+echo "-- pinned shared framework: $fwdir ($fwver)"
 
 # 3. Assemble the layout. Cleared AROUND the two staged trees — emsdk/ (1.4 GB)
 # and buildtools/ — each of which is re-staged only when its own stamp moves (3b,
@@ -397,7 +397,7 @@ cp "$fwdir"/*.dll "$LAYOUT/ref/"
 # message says how to fetch one.
 CROSS_CORELIB_REL=""
 if [ "$DN2CPP_OS" = windows ]; then
-    cross_corelib="$(locate_corelib_cross_posix net10)" || exit 1
+    cross_corelib="$(locate_corelib_cross_posix pinned)" || exit 1
     cross_fwdir="$(dirname "$cross_corelib")"
     echo "-- posix cross framework: $cross_fwdir"
     mkdir -p "$LAYOUT/ref-posix"

@@ -37,7 +37,7 @@ PY
 python - "$DN2CPP_PREMERGE_LOGROOT" > "$PREMERGE_TOOLS/cross-runtime-input.txt" <<'PY'
 import json, pathlib, runpy, sys, urllib.request
 runtime = runpy.run_path('gates/setup-culture-reference.py')['PROFILES']['ci'][1]
-url = 'https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json'
+url = 'https://builds.dotnet.microsoft.com/dotnet/release-metadata/11.0/releases.json'
 with urllib.request.urlopen(url, timeout=60) as response:
     data = response.read()
 (pathlib.Path(sys.argv[1]) / 'dotnet-release-metadata.json').write_bytes(data)
@@ -47,7 +47,7 @@ print(runtime, archive['url'], archive['hash'], sep='\t')
 PY
 IFS=$'\t' read -r cross_version cross_url cross_hash < "$PREMERGE_TOOLS/cross-runtime-input.txt"
 cross_hash="${cross_hash%$'\r'}"
-[[ "$cross_version" =~ ^10\.0\.[0-9]+$ && "$cross_hash" =~ ^[0-9a-fA-F]{128}$ ]]
+[[ "$cross_version" =~ ^11\.0\.[0-9]+$ && "$cross_hash" =~ ^[0-9a-fA-F]{128}$ ]]
 premerge_download "$cross_url" "$PREMERGE_TOOLS/downloads/cross-runtime.tar.gz" sha512 "$cross_hash"
 mkdir -p "$PREMERGE_TOOLS/cross-runtime"
 tar -xzf "$(cygpath -u "$PREMERGE_TOOLS/downloads/cross-runtime.tar.gz")" \

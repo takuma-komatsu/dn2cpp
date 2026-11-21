@@ -7,7 +7,7 @@
 # server — see that probe's Program.cs header.
 #
 # It transpiles the probe in `--measure` mode (enumerates every reachable gap
-# instead of stopping at the first, emits no C++) against the real net10.0
+# instead of stopping at the first, emits no C++) against the real pinned
 # CoreLib plus every NuGet-restored, non-framework dll actually present in the
 # probe's own Release bin dir (Grpc.Net.Client, Grpc.Net.Common, Grpc.Core.Api,
 # Google.Protobuf, and whatever Microsoft.Extensions.* shims those pull in) —

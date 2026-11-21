@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Consolidated crypto-hash gate: the real net10 System.Security.Cryptography.dll
+# Consolidated crypto-hash gate: the real pinned System.Security.Cryptography.dll
 # transpiled and run over dn2cpp's portable AppleCryptoNative_* PAL
 # (runtime/core/intrinsics/dn2cpp_apple_crypto_digest.cpp) — one-shot HashData
 # for MD5/SHA1/SHA256/SHA384/SHA512 (with NIST/RFC known-answer asserts),
@@ -19,4 +19,4 @@
 # because it is a hashing test — do not prune it by theme.
 source "$(dirname "$0")/_common.sh"
 
-net10_bcl_diff_gate CryptoHashCore System.Security.Cryptography
+bcl_diff_gate CryptoHashCore System.Security.Cryptography
