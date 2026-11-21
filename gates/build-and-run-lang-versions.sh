@@ -18,10 +18,10 @@
 # constrained call on a class or struct. Appending is what keeps the output-order
 # change at the end of the diff; the version each covers is named beside its call.
 #
-# A project has ONE LangVersion, so every section is compiled by the C# 14
+# A project has ONE LangVersion, so every section is compiled by the newest
 # compiler. What this asserts is that the FEATURE's IL shape transpiles — not that
 # a historical compiler's IL shape does. The former is what a transpiler owes; the
-# latter is unreachable without shipping fourteen compilers.
+# latter is unreachable without shipping every historical compiler.
 #
 # Two language features are NOT here because they diverge from real .NET on
 # purpose, and a diff gate cannot hold a deliberate divergence:

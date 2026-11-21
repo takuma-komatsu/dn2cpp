@@ -5,7 +5,7 @@ namespace FinalizerExceptionTypeSubset
 {
     // A user exception type may declare a finalizer like any other class, and
     // it runs no matter how the instance was born — thrown and caught, or just
-    // constructed and dropped (verified against real .NET, net10.0). dn2cpp
+    // constructed and dropped (verified against real .NET). dn2cpp
     // intercepts every exception construction into a uniform message-carrying
     // allocator, so this pins down that the intercepted path still registers
     // the instance with the finalizer queue.

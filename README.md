@@ -75,12 +75,11 @@ that diffs native output against real .NET.
 
 **What dn2cpp reads is IL, so the C# language version is your SDK's
 business, not dn2cpp's.** What it transpiles *alongside* your assembly is
-always the real **.NET 10** `System.Private.CoreLib` and its
+always the real **.NET 11** `System.Private.CoreLib` and its
 shared-framework closure — `--auto-ref` resolves that from the running
 framework. Your project's own target framework is its own affair: the
 Godot .NET samples under `samples/godot-dotnet/` are `net8.0` (what
-`Godot.NET.Sdk` picks) and transpile against the net10 closure just the
-same.
+`Godot.NET.Sdk` picks) and transpile against that closure just the same.
 
 **What works out of the box.** The real CoreLib collections and strings,
 LINQ, `System.Text.Json` through source-gen, `Regex` (both engines),
@@ -403,7 +402,7 @@ The full list, with the reasoning, is under *Permanent non-goals* below.
 
 ### Prerequisites
 
-- .NET SDK **net10.0** (`dotnet --list-sdks` should list a `10.0.x`)
+- .NET SDK **net11.0** (`dotnet --list-sdks` should list a `11.0.x`)
 - `clang++` (C++17) — or real MSVC `cl.exe` on Windows
 - `cmake` ≥ **3.20** + `ninja`
 - Godot **4.7** on `PATH` (or `GODOT=/path/to/godot`) — only for the
@@ -799,7 +798,7 @@ tree-shaken to reachable methods, with real BCL IL bodies transpiled;
 | `decimal` | Intrinsic 96-bit value type — exact base-10 arithmetic (round-half-away), comparisons, conversions, `ToString`, the statics (`Round`/`Truncate`/`Floor`/`Ceiling`/`Parse`, …), LINQ `Sum`/`Average`, boxed virtuals |
 | Culture & formatting | Culture-aware numeric/currency/percent/exponent formatting and `Parse`/`TryParse`, float shortest-round-trip, custom numeric formats; `CurrentCulture` and undefined-language fallback use host locale PAL seams and frozen per-target numeric profiles, with no ICU dependency |
 | Regex | Real `System.Text.RegularExpressions.dll`, both engines (backtracking interpreter and `NonBacktracking` symbolic DFA) |
-| Compression | Full `System.IO.Compression` public surface — `DeflateStream`/`GZipStream`/`ZLibStream`, `BrotliStream`/`BrotliEncoder`/`BrotliDecoder`, `ZipArchive`/`ZipArchiveEntry`, `ZipFile`, and the net10 Zip async APIs. WinZip AES entries (`ZipEncryptionMethod.Aes128`/`Aes192`/`Aes256`) are the exception: they list normally, but creating one or opening one with its password throws `PlatformNotSupportedException` (opening one without a password throws `InvalidDataException`, as on .NET 11) |
+| Compression | Full `System.IO.Compression` public surface — `DeflateStream`/`GZipStream`/`ZLibStream`, `BrotliStream`/`BrotliEncoder`/`BrotliDecoder`, `ZipArchive`/`ZipArchiveEntry`, `ZipFile`, and the Zip async APIs. WinZip AES entries (`ZipEncryptionMethod.Aes128`/`Aes192`/`Aes256`) are the exception: they list normally, but creating one or opening one with its password throws `PlatformNotSupportedException` (opening one without a password throws `InvalidDataException`, as on .NET 11) |
 | HTTP / HTTPS | `new HttpClient()` runs natively over vendored libcurl on vendored Mbed TLS, on by default; `https://` verifies against an embedded Mozilla CA bundle and nothing disables verification. HTTP/2 rides the same transport, and the real `Grpc.Net.Client` runs on top of it (unary and all three streaming shapes) |
 | File I/O | Real `System.IO.File`/`FileStream` through the CoreLib's `libSystem.Native` P/Invoke layer against a self-implemented `SystemNative_*` PAL, directory enumeration included |
 | Low-level interop | `Unsafe.*` (incl. `Unbox<T>`), `NativeMemory`, the `Marshal` heap/struct/string family, `Marshal.GetFunctionPointerForDelegate`/`GetDelegateForFunctionPointer`, `MemoryMarshal` span shaping, custom `MemoryManager<T>`-backed `Memory<T>` |

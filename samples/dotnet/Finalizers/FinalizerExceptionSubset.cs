@@ -4,7 +4,7 @@ using System.Runtime.CompilerServices;
 namespace FinalizerExceptionSubset
 {
     // An uncaught finalizer exception crashes the process in real
-    // .NET (verified against net10.0: an unhandled exception thrown from a
+    // .NET (an unhandled exception thrown from a
     // finalizer body aborts the process, and no further queued finalizer
     // runs) rather than being silently swallowed. This section is
     // deliberately last in Program.cs's __GateEntry sequence -- the process

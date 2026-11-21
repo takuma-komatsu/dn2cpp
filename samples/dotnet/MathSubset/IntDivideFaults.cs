@@ -101,9 +101,8 @@ static class Program
 
         // ── floating point is NOT guarded ────────────────────────────────────
         // Reported as PREDICATES rather than as the formatted value on purpose:
-        // dn2cpp's invariant culture spells positive infinity "Infinity" where
-        // real .NET 10 spells it "∞", and printing the value here would fail this
-        // exact diff on a symbol table that has nothing to do with division.
+        // the formatted value would couple this diff to number formatting, which
+        // has nothing to do with division.
         P("double / 0 isPosInf", () => double.IsPositiveInfinity(10.0 / (double)Zero()).ToString());
         P("double % 0 isNaN", () => double.IsNaN(10.0 % (double)Zero()).ToString());
         P("float / 0 isPosInf", () => float.IsPositiveInfinity(10.0f / (float)Zero()).ToString());

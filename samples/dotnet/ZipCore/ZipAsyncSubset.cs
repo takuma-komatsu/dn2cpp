@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace ZipAsyncSubset
 {
-    // The net10 async face of the in-memory ZipArchive surface, over a
+    // The async face of the in-memory ZipArchive surface, over a
     // MemoryStream: CreateAsync in both modes, OpenAsync, both WriteAsync and both
     // ReadAsync overloads, CopyToAsync, and the DisposeAsync paths.
     //

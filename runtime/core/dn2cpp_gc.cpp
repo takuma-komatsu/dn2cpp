@@ -1426,8 +1426,8 @@ std::atomic<uint64_t> g_finalizer_head{0}; // count enqueued (slot each producer
 std::atomic<uint64_t> g_finalizer_tail{0}; // count drained by the finalizer thread
 // True only on the dedicated finalizer thread. WaitForPendingFinalizers called
 // from a Finalize() body would otherwise wait on its own not-yet-published tail
-// forever; real .NET returns immediately on the finalizer thread (verified on
-// net10.0: a finalizer calling GC.WaitForPendingFinalizers completes normally).
+// forever; real .NET returns immediately on the finalizer thread (a finalizer
+// calling GC.WaitForPendingFinalizers completes normally).
 thread_local bool t_on_finalizer_thread = false;
 // Serializes manual-mode drains across OS threads. The tail counter has a
 // single writer per drain pass, but manual mode lets *any* managed thread
@@ -1927,8 +1927,8 @@ bool dn2cpp_suppress_set_take_locked(Dn2CppObject* obj, bool* restore)
 
 // Run one dequeued object's Finalize() body. Shared by the dedicated finalizer
 // thread and the manual (main-thread) drain so both consumers behave identically.
-// An uncaught finalizer exception crashes the process in real .NET (verified
-// against net10.0: an InvalidOperationException thrown from a finalizer body
+// An uncaught finalizer exception crashes the process in real .NET (an
+// InvalidOperationException thrown from a finalizer body
 // aborts with no further finalizers run) — match that instead of swallowing it,
 // so any other queued finalizer is correctly left un-run rather than papered over.
 //
@@ -2516,7 +2516,7 @@ void dn2cpp_gc_wait_for_pending_finalizers()
         return;
     }
     // On the finalizer thread itself (i.e. called from a Finalize() body):
-    // return immediately, matching real .NET (verified on net10.0). The
+    // return immediately, matching real .NET. The
     // in-flight item's tail is only published after its body returns, so
     // waiting here would deadlock the finalizer thread against itself and
     // stall all finalization for the rest of the process.
@@ -2871,7 +2871,7 @@ namespace
 Dn2CppGCHandleCell* g_gchandle_cell_pool = nullptr;
 std::mutex& g_gchandle_pool_mtx = dn2cpp_never_destroyed<std::mutex>();
 
-// Real .NET's exact wording (measured on net10.0), thrown for every operation on a
+// Real .NET's exact wording, thrown for every operation on a
 // zeroed/never-allocated handle and for FromIntPtr(0).
 [[noreturn]] void dn2cpp_gchandle_throw_not_initialized()
 {
