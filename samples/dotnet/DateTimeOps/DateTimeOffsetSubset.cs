@@ -7,7 +7,7 @@ using System.Collections.Generic;
 // InternalCall (clock, calendar) / culture, so it is lowered to runtime helpers. Covers
 // the deterministic surface — construction, the clock/UTC properties, Unix-time
 // conversions, instant-based equality / comparison / hashing, DateTime<->DateTimeOffset
-// conversion, ToOffset, the default invariant ToString(), ToString(format) (with
+// conversion, ToOffset, ToUniversalTime, the default invariant ToString(), ToString(format) (with
 // z/zz/zzz/K offset specifiers), Parse / TryParse / ParseExact, and arithmetic
 // (Add* / +/- TimeSpan) — all exact-diffable vs real .NET. Now / UtcNow are
 // non-deterministic (only invariants are asserted). Named / historical time zones stay
@@ -147,5 +147,28 @@ static class Program
         Console.WriteLine("UtcNow.Offset == Zero: " + (utcNow.Offset == TimeSpan.Zero));
         Console.WriteLine("Now/UtcNow same instant: " + (Math.Abs((now - utcNow).TotalSeconds) < 5));
         Console.WriteLine("Now.Year sane: " + (now.Year >= 2020 && now.Year < 2100));
+    }
+
+    internal static void RunUtcNormalization()
+    {
+        Console.WriteLine("-- DateTimeOffset.ToUniversalTime --");
+        ShowUtcNormalization("positive", new DateTimeOffset(2025, 9, 14, 17, 3, 13, TimeSpan.FromMinutes(345)).AddTicks(11));
+        ShowUtcNormalization("negative", new DateTimeOffset(1969, 12, 31, 17, 3, 13, TimeSpan.FromMinutes(-210)).AddTicks(29));
+        // Exercise the exact UTC extrema starting with a nonzero offset as well.
+        ShowUtcNormalization("minimum", DateTimeOffset.MinValue.ToOffset(TimeSpan.FromHours(14)));
+        ShowUtcNormalization("maximum", DateTimeOffset.MaxValue.ToOffset(TimeSpan.FromHours(-14)));
+    }
+
+    private static void ShowUtcNormalization(string label, DateTimeOffset source)
+    {
+        DateTimeOffset utc = source.ToUniversalTime();
+        DateTimeOffset repeated = utc.ToUniversalTime();
+        Func<DateTimeOffset> convert = source.ToUniversalTime;
+        DateTimeOffset throughDelegate = convert();
+        // DateTimeOffset equality alone ignores the offset, so compare the representation too.
+        Console.WriteLine(label + ": " + utc.UtcTicks + "/" + utc.Ticks + "/" + utc.Offset.Ticks
+            + " " + (utc.UtcTicks == source.UtcTicks)
+            + "/" + (repeated.Ticks == utc.Ticks && repeated.Offset == utc.Offset)
+            + "/" + (throughDelegate.Ticks == utc.Ticks && throughDelegate.Offset == utc.Offset));
     }
 }
