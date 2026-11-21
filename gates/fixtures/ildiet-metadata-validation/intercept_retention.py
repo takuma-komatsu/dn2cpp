@@ -45,6 +45,8 @@ def validate_intercept_retention(probe, cli, original, directory, modes=("raw", 
                         "Type-wide retention emitted a refused provider callable"
                     scope = re.search(r"\bTplEventSource_ScopeId_\w+\([^;]*?\)\s*\{", text)
                     assert bool(scope) == (level == "medium"), "Wrong callable policy for a safe provider return"
+                    assert not re.search(r"\bArrayPoolEventSource_ScopeId_\w+", text), \
+                        "Medium synthesized a callable internal provider member"
                     casing = re.findall(r"\b(Rune_ChangeCaseCultureAware_\w+)\(([^;()]*)\)\s*\{", text)
                     assert len(casing) == (level == "medium") and all(not args for _, args in casing), \
                         "Rune's non-invariant helper became callable or its namesake was dropped"
@@ -57,6 +59,12 @@ def validate_intercept_retention(probe, cli, original, directory, modes=("raw", 
                             "Refused provider helper lost its signature row or became invocable"
                         assert re.search(r"\(void\*\)&TplEventSource_ScopeId_\w+, \(void\*\)&inv_", table[1]), \
                             "Safe provider wrapper lost its reflection invoker"
+                        internal = re.search(
+                            r"\bmd_native_methtab_System_Buffers_ArrayPoolEventSource\[\] = \{([^;]*)\};", text)
+                        assert internal and re.search(
+                            r"\{\s*md_name_\d+, &ti_System_Buffers_ArrayPoolEventSource, &dn2cpp_int32_type, "
+                            r"0, 0LL, [^,]+, -1LL, 0, 0,", internal[1]), \
+                            "Internal provider lost its metadata-only signature"
                         rune = re.search(r"\bmd_native_methtab_System_Text_Rune\[\] = \{([^;]*)\};", text)
                         assert rune, "Retained Rune has no method metadata table"
                         helper = re.search(r"\{\s*md_name_\d+, &ti_System_Text_Rune, &ti_System_Text_Rune, "

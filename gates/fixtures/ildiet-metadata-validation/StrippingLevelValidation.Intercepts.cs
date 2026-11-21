@@ -141,6 +141,12 @@ static partial class StrippingLevelValidation
             entry.Emit(OpCodes.Ldtoken, am.ImportReference(provider));
             entry.Emit(OpCodes.Pop);
 
+            var internalProvider = Type("System.Buffers", "ArrayPoolEventSource", eventSource);
+            internalProvider.Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed;
+            Cut(internalProvider, "ScopeId", am.TypeSystem.Int32);
+            entry.Emit(OpCodes.Ldtoken, am.ImportReference(internalProvider));
+            entry.Emit(OpCodes.Pop);
+
             var textInfo = Type("System.Globalization", "TextInfo", obj);
             var valueType = cm.GetType("System.ValueType");
             Type("System", "UInt32", valueType);
