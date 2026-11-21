@@ -360,6 +360,7 @@ internal sealed partial class Compilation
                 || IsLegacyAsAnyMarshalAccessor(method)
                 || IsCoreLibMarshalIsPinnable(method)
                 || IsCoreLibMarshalHResultQCall(method)
+                || IsUnsupportedMarshalTypeIdentifier(method)
                 || CoreLibBinderTrace.IsTelemetryWrapper(method))
                 continue;
             // Retention needs a callable symbol, but cannot revive IL replaced by
@@ -485,6 +486,47 @@ internal sealed partial class Compilation
                 == (TypeAttributes.Public | staticClass)
             && reader.StringComparer.Equals(owner.Namespace, "System.Runtime.InteropServices")
             && reader.StringComparer.Equals(owner.Name, "Marshal");
+    }
+
+    // These methods need Type.GUID and Type.IsImport respectively. Keeping their
+    // declarations during the sweep does not make those bodies callable.
+    private static bool IsUnsupportedMarshalTypeIdentifier(MethodInfo method)
+    {
+        const MethodAttributes expected = MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig;
+        bool guid = method.Name == "GenerateGuidForType";
+        if (!guid && method.Name != "GenerateProgIdForType")
+            return false;
+        var owner = method.DeclaringClass;
+        if (owner.FullName != "System.Runtime.InteropServices.Marshal" || method.Module != owner.Module
+            || method.Handle.IsNil || method.IsSynthetic || method.Attributes != expected
+            || method.ImplAttributes != MethodImplAttributes.IL || method.Rva == 0 || method.PInvoke is not null
+            || method.Context.TypeArgs.Length != 0 || method.Context.MethodArgs.Length != 0
+            || !IsCoreLibMarshalDefinition(method.Module, owner.Handle))
+            return false;
+
+        var reader = method.Module.Reader;
+        var definition = reader.GetMethodDefinition(method.Handle);
+        if (definition.GetDeclaringType() != owner.Handle || definition.GetGenericParameters().Count != 0
+            || !reader.StringComparer.Equals(definition.Name, method.Name) || definition.Attributes != expected
+            || definition.ImplAttributes != MethodImplAttributes.IL || definition.RelativeVirtualAddress != method.Rva)
+            return false;
+
+        var raw = reader.GetBlobReader(definition.Signature);
+        return raw.RemainingBytes >= 5 && raw.ReadByte() == 0 && raw.ReadByte() == 1
+            && (guid ? TakeSystemDefinition(ref raw, reader, 0x11, "Guid")
+                     : raw.ReadByte() == (byte)SignatureTypeCode.String)
+            && TakeSystemDefinition(ref raw, reader, 0x12, "Type") && raw.RemainingBytes == 0;
+
+        static bool TakeSystemDefinition(ref BlobReader raw, MetadataReader reader, byte kind, string name)
+        {
+            if (raw.RemainingBytes < 2 || raw.ReadByte() != kind || !raw.TryReadCompressedInteger(out int token)
+                || (token & 3) != 0 || (token >> 2) == 0 || (token >> 2) > reader.TypeDefinitions.Count)
+                return false;
+            var type = reader.GetTypeDefinition(SRME.TypeDefinitionHandle(token >> 2));
+            return type.GetDeclaringType().IsNil && type.GetGenericParameters().Count == 0
+                && reader.StringComparer.Equals(type.Namespace, "System")
+                && reader.StringComparer.Equals(type.Name, name);
+        }
     }
 
     // Only the managed two-argument HRESULT worker has a numeric lowering. Its

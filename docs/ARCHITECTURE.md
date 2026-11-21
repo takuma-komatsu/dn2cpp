@@ -138,6 +138,11 @@ The private, bodyless `MarshalNative_GetExceptionForHR` QCall import retains
 its signature under the Medium sweep without a callable wrapper. The managed
 two-argument HRESULT worker still uses its numeric exception mapping; the
 Guid overloads and independent demands for the QCall keep their existing paths.
+The exact CoreLib `Marshal.GenerateGuidForType(Type)` and
+`Marshal.GenerateProgIdForType(Type)` declarations remain in metadata under
+the Medium sweep without pulling in the unsupported `Type.GUID` and
+`Type.IsImport` body paths. Independent executable demands still follow the
+normal managed paths; neither identifier is synthesized.
 
 The native image has no CoreCLR binder tracing provider. A verified trace-only
 branch in the CoreLib load-context event or satellite helpers can be elided

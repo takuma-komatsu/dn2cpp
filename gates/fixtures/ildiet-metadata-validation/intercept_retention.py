@@ -113,6 +113,10 @@ def validate_intercept_retention(probe, cli, original, directory, modes=("raw", 
                         "A symbolic Marshal access helper rooted AsAny execution"
                     assert not re.search(r"\b(?:Marshal_GetExceptionForHRInternal_\w+|MarshalNative_GetExceptionForHR)\b", text), \
                         "The retained HRESULT QCall entered the native callable image"
+                    identifiers = {name: re.findall(rf"\b(Marshal_{name}_\w+)\([^;()]*\)\s*\{{", text)
+                                   for name in ("GenerateGuidForType", "GenerateProgIdForType")}
+                    assert all(len(bodies) == (level == "medium") for bodies in identifiers.values()), \
+                        "A Marshal type identifier became callable or a namesake was dropped"
                     pin_bodies = re.findall(r"\b(Marshal_IsPinnable_\w+)\([^;()]*\)\s*\{", text)
                     assert len(pin_bodies) == (level == "medium"), \
                         "Marshal's object pinning predicate became callable or its namesake was dropped"
@@ -120,6 +124,17 @@ def validate_intercept_retention(probe, cli, original, directory, modes=("raw", 
                         marshal = re.search(
                             r"\bmd_native_methtab_System_Runtime_InteropServices_Marshal\[\] = \{([^;]*)\};", text)
                         assert marshal, "Retained Marshal has no method metadata table"
+                        for name, result_type in (("GenerateGuidForType", "ti_System_Guid"),
+                                             ("GenerateProgIdForType", "dn2cpp_string_type")):
+                            row = re.search(
+                                rf"\{{\s*md_name_\d+, &ti_System_Runtime_InteropServices_Marshal, &{result_type}, "
+                                r"(parmpool_\d+), 1LL, [^,]+, -1LL, 0, 0,", marshal[1])
+                            assert row, f"Marshal.{name} lost its metadata-only signature"
+                            parameters = re.search(r"\bmd_native_" + row[1] + r"\[\] = \{([^;]*)\};", text)
+                            assert parameters and re.findall(r"\{\s*(&\w+),", parameters[1]) == ["&dn2cpp_public_type_type"], \
+                                f"Marshal.{name} lost its Type parameter"
+                            assert re.search(r"\(void\*\)&" + identifiers[name][0] + r", \(void\*\)&inv_", marshal[1]), \
+                                f"Marshal.{name} namesake lost its reflection invoker"
                         qcall_row = re.search(
                             r"\{\s*md_name_\d+, &ti_System_Runtime_InteropServices_Marshal, &dn2cpp_void_type, "
                             r"(parmpool_\d+), 3LL, [^,]+, -1LL, 0, 0,", marshal[1])

@@ -213,6 +213,30 @@ static partial class StrippingLevelValidation
 
             var marshal = Type("System.Runtime.InteropServices", "Marshal", obj);
             marshal.Attributes |= TypeAttributes.Abstract | TypeAttributes.Sealed;
+            const MethodAttributes identifier = MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig;
+            var reflectedType = cm.GetType("System.Type");
+            void Identifier(string name, TypeReference result)
+            {
+                var method = Method(marshal, name, result);
+                method.Attributes = identifier;
+                method.Parameters.Add(new ParameterDefinition(reflectedType));
+                method.Body.Instructions.Clear();
+                var il = method.Body.GetILProcessor();
+                il.Emit(OpCodes.Call, fail);
+                il.Emit(OpCodes.Ldnull);
+                il.Emit(OpCodes.Throw);
+            }
+            Identifier("GenerateGuidForType", guid);
+            Identifier("GenerateProgIdForType", am.TypeSystem.String);
+            var guidNamesake = Method(marshal, "GenerateGuidForType", am.TypeSystem.Int32);
+            guidNamesake.Attributes = identifier;
+            guidNamesake.Parameters.Add(new ParameterDefinition(reflectedType));
+            guidNamesake.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Ldc_I4_7));
+            var progIdNamesake = Method(marshal, "GenerateProgIdForType", am.TypeSystem.String);
+            progIdNamesake.Attributes = identifier;
+            progIdNamesake.Parameters.Add(new ParameterDefinition(am.TypeSystem.Int32));
+            progIdNamesake.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Ldstr, "ProgID namesake"));
+
             var qcallHandle = Type("System.Runtime.CompilerServices", "ObjectHandleOnStack", valueType);
             qcallHandle.Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.SequentialLayout;
             qcallHandle.CustomAttributes.Add(new CustomAttribute(cm.GetType(
