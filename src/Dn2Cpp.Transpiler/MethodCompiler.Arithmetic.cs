@@ -2161,7 +2161,7 @@ internal sealed partial class MethodCompiler
         // module the cut exists to remove: AGENTS.md's `cut ⟹ route` in its
         // NATIVE-symbol dimension, which AssertCalledBodiesEmitted cannot see (it
         // diffs managed symbols, and a P/Invoke has no emitted body).
-        if (!_c.IsBoundedMethod(m.DeclaringClass.FullName, m.Name)
+        if (!_c.IsBoundedMethod(m)
             && m.Emittable is { Rva: 0, PInvoke: not null } impl && _c.LowersToPInvoke(impl))
             _c.NotePInvokeFtnTarget(impl);
     }
@@ -2179,7 +2179,7 @@ internal sealed partial class MethodCompiler
             throw new NotSupportedException($"taking the address of {target.DeclaringClass.FullName}::{target.Name}"
                 + $"{SigArgs(target.Signature)} requires unsupported AsAny marshalling");
         _c.NoteInvariantCompareInfoDispatchDemand(target);
-        if (CoreIntrinsics.IsIntrinsicType(target.DeclaringClass.FullName))
+        if (CoreIntrinsics.IsIntrinsicType(target.DeclaringClass))
         {
             // The real-body members' canonical counterpart is never reached (see the
             // matching guard in TranslateGenericIntrinsic).

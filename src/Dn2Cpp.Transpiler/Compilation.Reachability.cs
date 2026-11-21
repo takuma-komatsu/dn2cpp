@@ -143,8 +143,6 @@ internal sealed partial class Compilation
             {
                 _predTrace.TryAdd(m, _currentScan);
                 m.EnsureSignature();
-                var virtualTarget = DelegateCallableVirtualTarget(m);
-                if (virtualTarget != m) Reach(virtualTarget);
                 if (m.Name == ".ctor")
                 {
                     NoteReflectionDelegateBind(m.Module, named: true);
@@ -316,7 +314,7 @@ internal sealed partial class Compilation
         // hashing → a P/Invoke). Cut it here so that closure never enters the
         // tree (generalizes the intrinsic-edge cut to the alloc path). The
         // explicitly-transpiled exemptions (String's interface impls) pass through.
-        if (CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName)
+        if (CoreIntrinsics.IsIntrinsicType(m.DeclaringClass)
             && !_intrinsicTypeTranspiled.Contains(m))
             return;
         // An intrinsic-mapped type whose bare full name isn't in s_intrinsicTypes —
@@ -341,7 +339,7 @@ internal sealed partial class Compilation
         // their call sites emit a trap instead of a call. Through the instance merge,
         // which asks the core row (CoreIntrinsics.BdCoreBounded) and unions the
         // backend's and the CLI's sets — see Compilation.IsBoundedMethod.
-        if (IsBoundedMethod(m.DeclaringClass.FullName, m.Name))
+        if (IsBoundedMethod(m))
         {
             // Except the two base-Stream async funnels, whose call site is REWRITTEN to a
             // synchronous dispatch through the sync Read/Write slot rather than neutralized
@@ -937,7 +935,7 @@ internal sealed partial class Compilation
     /// <see cref="EffectiveFinalize"/> stops at System.Object by hand for the same
     /// reason.</summary>
     private static MethodInfo? NonIntrinsic(MethodInfo? m) =>
-        m is not null && CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName) ? null : m;
+        m is not null && CoreIntrinsics.IsIntrinsicType(m.DeclaringClass) ? null : m;
 
     /// <summary>Whether an intrinsic type declares its own parameterless
     /// <c>ToString</c> override. Unlike <see cref="EffectiveToString"/>, this does not
@@ -1414,7 +1412,7 @@ internal sealed partial class Compilation
         // compares it inline (IntrinsicValueTypeFn / IntrinsicPointerValueType), and
         // reaching its Equals would name a body the emitter never defines (both
         // intrinsic tests, per AGENTS.md).
-        if (CoreIntrinsics.IsIntrinsicType(sc.FullName) || sc.IntrinsicCppName is not null)
+        if (CoreIntrinsics.IsIntrinsicType(sc) || sc.IntrinsicCppName is not null)
             return;
         if (includeHash && EffectiveGetHashCode(sc) is { } gh)
             ReachEntered(gh);
@@ -1515,7 +1513,7 @@ internal sealed partial class Compilation
     private static bool SynthesizableShape(ClassInfo c) =>
         c.IsValueType && !c.IsEnum && !c.IsByRefLike
         && c.InlineArrayLength == 0
-        && !CoreIntrinsics.IsIntrinsicType(c.FullName) && c.IntrinsicCppName is null
+        && !CoreIntrinsics.IsIntrinsicType(c) && c.IntrinsicCppName is null
         && !ContainsCanonPlaceholder(c)
         && (!c.IsExplicitLayout || HasIntegralExplicitFields(c));
 
@@ -1742,7 +1740,7 @@ internal sealed partial class Compilation
     {
         if (name is not ("Equals" or "GetHashCode")
             || c is not { IsValueType: true, IsEnum: false }
-            || CoreIntrinsics.IsIntrinsicType(c.FullName) || c.IntrinsicCppName is not null)
+            || CoreIntrinsics.IsIntrinsicType(c) || c.IntrinsicCppName is not null)
             return;
         bool hash = name == "GetHashCode";
         if (BaseValueBody(c, hash) is { } b && AddReachable(b))
@@ -1847,7 +1845,7 @@ internal sealed partial class Compilation
             // Planning placeholders describe bodies, never the exact type of a box.
             if (ContainsCanonPlaceholder(c) || ContainsGenericVar(c))
                 continue;
-            if (!CoreIntrinsics.IsIntrinsicType(c.FullName) && c.IntrinsicCppName is null
+            if (!CoreIntrinsics.IsIntrinsicType(c) && c.IntrinsicCppName is null
                 && !CoreIntrinsics.RuntimeOwnsTypeInfo(c)
                 && (IsUserModule(c.Module) || !HoldsUncomparableIntrinsic(c)))
             {
@@ -1881,7 +1879,7 @@ internal sealed partial class Compilation
         }
         foreach (var c in candidates.ToList())
         {
-            if (CoreIntrinsics.IsIntrinsicType(c.FullName) || c.IntrinsicCppName is not null
+            if (CoreIntrinsics.IsIntrinsicType(c) || c.IntrinsicCppName is not null
                 || CoreIntrinsics.RuntimeOwnsTypeInfo(c))
                 continue;
             if (ContainsCanonPlaceholder(c) || ContainsGenericVar(c)
@@ -1913,7 +1911,7 @@ internal sealed partial class Compilation
         {
             if (t is not { Kind: TypeKind.Class, Class: { IsValueType: true } arg })
                 continue;
-            if ((CoreIntrinsics.IsIntrinsicType(arg.FullName) || arg.IntrinsicCppName is not null)
+            if ((CoreIntrinsics.IsIntrinsicType(arg) || arg.IntrinsicCppName is not null)
                 && MethodCompiler.IntrinsicValueTypeFn(t) is null
                 && !MethodCompiler.IsCancellationTokenValue(t)
                 && MethodCompiler.IntrinsicPointerValueType(t) is null)
@@ -2240,7 +2238,7 @@ internal sealed partial class Compilation
     private void NoteRuntimeRaisedHeirs(ClassInfo owner)
     {
         if (!_runtimeRaisedHeirOwners.Add(owner) || owner.IsInterface || owner.IsValueType
-            || CoreIntrinsics.IsIntrinsicType(owner.FullName) || !DerivesFromException(owner))
+            || CoreIntrinsics.IsIntrinsicType(owner) || !DerivesFromException(owner))
             return;
         _pendingRuntimeRaisedOwners.Enqueue(owner);
     }
@@ -3500,7 +3498,7 @@ internal sealed partial class Compilation
     /// the second).</summary>
     internal static MethodInfo? TranspiledTypedCompareTo(ClassInfo c) =>
         EffectiveTypedCompareTo(c) is { } m
-        && !CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName)
+        && !CoreIntrinsics.IsIntrinsicType(m.DeclaringClass)
         && m.DeclaringClass.IntrinsicCppName is null
             ? m
             : null;

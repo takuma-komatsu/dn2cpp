@@ -427,7 +427,7 @@ internal sealed partial class Compilation
                     // pattern-matched: `is { }` on a non-nullable string would read as a
                     // null case that exists.
                     string msName = MethodSpecMethodName(module, ms);
-                    if (CoreIntrinsics.IsIntrinsicType(pn)
+                    if (MethodSpecParentIsIntrinsicType(module, ms, pn)
                         // MemoryExtensions.Contains/IndexOf/SequenceEqual are emitted inline
                         // as a scalar loop; their real SIMD bodies pull in
                         // Unsafe.BitCast / IsBitwiseEquatable, so they must NOT be a
@@ -796,7 +796,8 @@ internal sealed partial class Compilation
                 // branch): RuntimeFeature's public dynamic-code probes arrive this
                 // way from Regex/STJ under --auto-ref. The call site folds to a
                 // constant, so the getter body is never needed.
-                if (CoreIntrinsics.MrConstFoldedGetter.Matches(mrParent, mrName, Sig))
+                if (CoreIntrinsics.MrConstFoldedGetter.Matches(mrParent, mrName, Sig)
+                    && CoreIntrinsics.ConstFoldedGetter(mrParent!, mrName, DeclaringDefinitionOf(module, handle)?.Module) is not null)
                     return null;
                 // System.IO.TextWriter.Write/WriteLine on the Console.Error stderr writer
                 // are lowered inline to the dn2cpp_textwriter_* helpers, but only when the
@@ -1077,7 +1078,7 @@ internal sealed partial class Compilation
         // member's default interface body / the generic-math table, which lower these
         // members from the interface side. Implicitly-named members (op_Addition, …)
         // still resolve through the SigKey scan below and hit the per-type tables.
-        bool sccIntrinsic = CoreIntrinsics.IsIntrinsicType(scc.FullName) || scc.IntrinsicCppName is not null;
+        bool sccIntrinsic = CoreIntrinsics.IsIntrinsicType(scc) || scc.IntrinsicCppName is not null;
 
         // Likewise, a member carrying a default interface body stays on that default
         // for an intrinsic-mapped TSelf even when the type shadows it with a plainly-
@@ -2761,7 +2762,7 @@ internal sealed partial class Compilation
             catch (NotSupportedException e) when (!IsMustEscape(e)
                 && !IsRuntimeTypeQueryReference(full, reader.GetString(mr.Name))) { }
         }
-        if (full is not null && CoreIntrinsics.IsIntrinsicType(full))
+        if (full is not null && CallTargetParentIsIntrinsicType(module, handle, full))
             return null;
         ClassInfo? parentCls = mr.Parent.Kind == HandleKind.TypeDefinition
             ? module.ClassMap.GetValueOrDefault((TypeDefinitionHandle)mr.Parent)
@@ -2829,7 +2830,7 @@ internal sealed partial class Compilation
                 string name = module.Reader.GetString(module.Reader.GetMethodDefinition(h).Name);
                 if (CoreIntrinsics.IsConstFoldedGetterName(name)
                     && MethodDefParentTypeName(module, h) is { } declType
-                    && CoreIntrinsics.ConstFoldedGetter(declType, name) is { } folded)
+                    && CoreIntrinsics.ConstFoldedGetter(declType, name, module) is { } folded)
                     return folded;
                 // Only an exact CoreLib definition grants this capability verdict;
                 // a namesake MemberRef cannot prune code before its declaration binds.
@@ -2844,7 +2845,7 @@ internal sealed partial class Compilation
                 string name = module.Reader.GetString(module.Reader.GetMemberReference(h).Name);
                 if (CoreIntrinsics.IsConstFoldedGetterName(name)
                     && MemberRefParentTypeName(module, h) is { } declType
-                    && CoreIntrinsics.ConstFoldedGetter(declType, name) is { } folded)
+                    && CoreIntrinsics.ConstFoldedGetter(declType, name, DeclaringDefinitionOf(module, h)?.Module) is { } folded)
                     return folded;
                 return name == "get_IsSupported" ? PlatformIsaGetterFold(module, handle) : null;
             }
@@ -3331,7 +3332,8 @@ internal sealed partial class Compilation
         }
         else if (nm is "AwaitAwaiter" or "UnsafeAwaitAwaiter")
         {
-            if (MethodSpecParentTypeName(module, ms) != MethodCompiler.RuntimeAsyncHelpersType)
+            if (MethodSpecParentTypeName(module, ms) != MethodCompiler.RuntimeAsyncHelpersType
+                || !MethodSpecParentIsIntrinsicType(module, ms, MethodCompiler.RuntimeAsyncHelpersType))
                 return;
             preferUnsafe = nm == "UnsafeAwaitAwaiter";
         }
@@ -3742,6 +3744,22 @@ internal sealed partial class Compilation
         HandleKind.MethodDefinition => MethodDefParentTypeName(module, (MethodDefinitionHandle)ms.Method),
         _ => null,
     };
+
+    /// <summary>The intrinsic-type test for the parent of a MethodSpec, where
+    /// <paramref name="parentName"/> is <see cref="MethodSpecParentTypeName"/>. A
+    /// CoreLib-owned name denotes the CoreLib declaration only; a parent that does not
+    /// resolve to a loaded definition (a TypeRef without its CoreLib) keeps the name test.</summary>
+    internal bool MethodSpecParentIsIntrinsicType(Module module, MethodSpecification ms, string parentName) =>
+        CallTargetParentIsIntrinsicType(module, ms.Method, parentName);
+
+    /// <summary>The intrinsic-type test for the parent of a MethodDef or MemberRef call
+    /// target (<paramref name="parentName"/> is its parent's full name), with the same
+    /// CoreLib-ownership rule as <see cref="MethodSpecParentIsIntrinsicType"/>.</summary>
+    internal bool CallTargetParentIsIntrinsicType(Module module, EntityHandle method, string parentName) =>
+        CoreIntrinsics.IsIntrinsicType(parentName)
+        && (!CoreIntrinsicTypeMaps.IsCoreLibOwnedIntrinsicType(parentName)
+            || DeclaringDefinitionOf(module, method) is not { Module: var owner }
+            || CoreIntrinsics.IsCoreLibModule(owner));
 
     public MethodInfo? ResolveMethodHandle(Module module, EntityHandle handle, GenericContext ctx, ClassInfo? currentClass = null)
     {

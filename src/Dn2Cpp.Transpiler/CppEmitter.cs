@@ -303,7 +303,7 @@ internal sealed partial class CppEmitter
     /// <summary>Whether a class is emitted opaquely (an intrinsic reference type
     /// like Object/Exception, or a dead-branch reference-only type) — empty
     /// layout rooted at Dn2CppObject, no fields/interfaces/vtable walked.</summary>
-    private bool IsOpaque(ClassInfo c) => _opaque.Contains(c) || CoreIntrinsics.IsIntrinsicType(c.FullName);
+    private bool IsOpaque(ClassInfo c) => _opaque.Contains(c) || CoreIntrinsics.IsIntrinsicType(c);
 
     /// <summary>The emitter-minted half of <see cref="IsOpaque"/>: a shell emitted for a
     /// type reached by a type token alone (or pulled in as one such shell's base /
@@ -312,11 +312,11 @@ internal sealed partial class CppEmitter
     /// not touch an intrinsic's hand-written metadata — the relation-only interface rows
     /// of <c>TypeMetadataEmitter.RenderItfTables</c> are the case that forced the
     /// split.</summary>
-    private bool IsOpaqueShell(ClassInfo c) => _opaque.Contains(c) && !CoreIntrinsics.IsIntrinsicType(c.FullName);
+    private bool IsOpaqueShell(ClassInfo c) => _opaque.Contains(c) && !CoreIntrinsics.IsIntrinsicType(c);
 
     /// <summary>The other half: a class whose C++ shape and metadata the runtime owns
     /// (String, Int32, Object, …). Emitted tables must never claim to describe one.</summary>
-    private bool IsIntrinsicShaped(ClassInfo c) => CoreIntrinsics.IsIntrinsicType(c.FullName);
+    private bool IsIntrinsicShaped(ClassInfo c) => CoreIntrinsics.IsIntrinsicType(c);
 
     /// <summary>A canonical-owner-world class (shared generics): its struct
     /// layout and any retained shared bodies emit, but its per-instantiation
@@ -639,7 +639,7 @@ internal sealed partial class CppEmitter
                 // fields are never touched. Walking them would drag the BCL's
                 // private exception/serialization plumbing (Exception._data ->
                 // Dictionary -> randomized hashing, …) into the layout closure.
-                if (CoreIntrinsics.IsIntrinsicType(c.FullName))
+                if (CoreIntrinsics.IsIntrinsicType(c))
                     continue;
                 foreach (var itf in c.Interfaces)
                     Add(itf);
@@ -1378,7 +1378,7 @@ internal sealed partial class CppEmitter
         // Bad input, not a transpiler bug: somebody cut a method the backend has to name.
         // NotSupportedException, so the driver renders it as one `error:` line (exit 2)
         // instead of a raw stack — the exception contract in AGENTS.md.
-        if (_c.IsBoundedMethod(m.DeclaringClass.FullName, m.Name))
+        if (_c.IsBoundedMethod(m))
             throw new NotSupportedException(
                 $"{site} must name {what}, but that method is CUT — this emission defines "
                 + "no body for it, so the generated C++ would name an undeclared symbol. "
@@ -2141,7 +2141,7 @@ internal sealed partial class CppEmitter
         || _c.PInvokeFtnTargets.Contains(m) || _c.IntrinsicFtnTargets.Contains(m)
         || _c.InterceptFtnTargets.Contains(m) || CoreIntrinsics.MdComparerCompare.Matches(m)
         || _c.IsUnorderableComparerCompareBody(m)
-        || CoreIntrinsics.IsIntrinsicType(cls.FullName)
+        || CoreIntrinsics.IsIntrinsicType(cls)
             && !CoreIntrinsics.IsWaitHandleTimeoutConversion(m)
             && !CoreIntrinsics.IsDateTimeCultureManagedBody(m)
             && !(CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(m))
@@ -2772,7 +2772,7 @@ internal sealed partial class CppEmitter
                             // degrades to a trap-on-call body instead of failing the build —
                             // the slot is only reached because SOME type dispatches the decl,
                             // and a string may never flow there.
-                            if (CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName)
+                            if (CoreIntrinsics.IsIntrinsicType(m.DeclaringClass)
                                 && !CoreIntrinsics.IsWaitHandleTimeoutConversion(m)
                                 && !CoreIntrinsics.IsDateTimeCultureManagedBody(m)
                                 && !(CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(m))

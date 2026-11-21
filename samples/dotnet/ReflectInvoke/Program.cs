@@ -77,6 +77,12 @@ namespace ReflectInvoke
                 return;
             }
 
+            if (args.Length > 0 && args[0] == "static-virtual-reimplementation-outcomes")
+            {
+                ReflectDelegateIdentitySubset.ObjectVirtualEqualityProgram.RunStaticVirtualReimplementation();
+                return;
+            }
+
             if (args.Length > 0 && args[0] == "generic-method-boundary-outcomes")
             {
                 ReflectGenericMethodSubset.Program.RunDefinitionBoundaries();

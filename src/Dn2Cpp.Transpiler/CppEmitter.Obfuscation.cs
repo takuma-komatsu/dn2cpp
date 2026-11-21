@@ -21,7 +21,7 @@ internal sealed partial class CppEmitter
                 || CoreIntrinsics.TryFindCutRow(method, out _)
                 || _c.IntrinsicFtnTargets.Contains(method) || _c.InterceptFtnTargets.Contains(method)
                 || _backend.ShouldSkipMethodBody(method.DeclaringClass, method)
-                || CoreIntrinsics.IsIntrinsicType(method.DeclaringClass.FullName)
+                || CoreIntrinsics.IsIntrinsicType(method.DeclaringClass)
             ? "the implementation is replaced by an intrinsic or backend"
             : method.Rva == 0 ? "the method has no IL implementation body" : null;
         if (reason is not null)
@@ -31,10 +31,10 @@ internal sealed partial class CppEmitter
     private bool HasReplacedObfuscationBody(MethodInfo method)
     {
         string owner = method.DeclaringClass.FullName;
-        if (_c.IsBoundedMethod(owner, method.Name))
+        if (_c.IsBoundedMethod(method))
             return true;
         foreach (var row in CoreIntrinsics.BoundedIntercepts)
-            if (row.Matches(owner, method.Name))
+            if (row.EmitArm != InterceptEmitArm.BoundedNeutralize && row.Matches(owner, method.Name))
                 return true;
         return false;
     }

@@ -521,7 +521,7 @@ internal sealed partial class Compilation
                     _reflectionListedDefinitions.Add((method.DeclaringClass, method.Handle));
             }
             if (e.Kind is REntityKind.Method or REntityKind.Field or REntityKind.Property or REntityKind.Event
-                && e.Owner is { IntrinsicCppName: null } owner && !CoreIntrinsics.IsIntrinsicType(owner.FullName)
+                && e.Owner is { IntrinsicCppName: null } owner && !CoreIntrinsics.IsIntrinsicType(owner)
                 && !ContainsCanonPlaceholder(owner) && !ContainsGenericVar(owner))
                 NoteForceEmit(owner);
         }

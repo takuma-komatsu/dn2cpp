@@ -365,8 +365,8 @@ internal sealed partial class Compilation
                 continue;
             // Retention needs a callable symbol, but cannot revive IL replaced by
             // a member-specific cut. Reuse the same body as an address-taken call.
-            if (cls.IntrinsicCppName is null && !CoreIntrinsics.IsIntrinsicType(cls.FullName)
-                && cls.PlatformIsa is null && !IsBoundedMethod(cls.FullName, method.Name)
+            if (cls.IntrinsicCppName is null && !CoreIntrinsics.IsIntrinsicType(cls)
+                && cls.PlatformIsa is null && !IsBoundedMethod(method)
                 && !LowersToPInvoke(method)
                 && (method.PInvoke is not { } import || NativeImplFor(import) is null)
                 && CoreIntrinsics.TryFindCutRow(method, out var row))
@@ -763,7 +763,7 @@ internal sealed partial class Compilation
         var definition = reader.GetTypeDefinition(owner);
         string fullName = string.Join("+", RawSignatureProvider.TypeDefinitionName(reader, owner)
             .Split('+').Select(StripArity));
-        if (IsBoundedMethod(fullName, name)
+        if (IsBoundedMethod(fullName, name, module)
             || AdoptedAsyncCpp(module, owner) is not null
             || definition.GetDeclaringType() is { IsNil: false } parent
                 && CoreIntrinsicTypeMaps.IsIntrinsicNested(RawSignatureProvider.TypeDefinitionName(reader, parent),

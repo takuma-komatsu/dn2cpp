@@ -76,6 +76,38 @@ internal sealed partial class MethodCompiler
             Push(StackKind.I4, "int32_t", CompareExpr(t, x, y));
             return true;
         }
+
+        // Interlocked.CompareExchange<T>/Exchange<T>/And<T>/Or<T>, direct or
+        // address-taken. A reference T (the field-like `event` accessors) routes to the pointer
+        // swap helpers; .NET 9+ also exposes the generic form over primitives —
+        // CoreLib itself binds e.g. Interlocked.Exchange<int> in DeflateStream's
+        // AsyncOperationStarting. The shared emitter (EmitInterlockedSwap)
+        // dispatches on T's DECLARED atomic width — sub-word T (bool/byte/short/
+        // char) swaps 1/2 bytes, enums swap at their underlying primitive's
+        // width, float/double via a bitwise integer atomic — identical to the
+        // non-generic overloads' lowering.
+        if (declType == "System.Threading.Interlocked" && name == "CompareExchange")
+        {
+            var comparand = Pop();
+            var value = Pop();
+            var loc = Pop();
+            EmitInterlockedSwap(methodArgs[0], loc, value, comparand, name);
+            return true;
+        }
+        if (declType == "System.Threading.Interlocked" && name == "Exchange")
+        {
+            var value = Pop();
+            var loc = Pop();
+            EmitInterlockedSwap(methodArgs[0], loc, value, comparand: null, name);
+            return true;
+        }
+        if (declType == "System.Threading.Interlocked" && name is "And" or "Or")
+        {
+            var value = Pop();
+            var loc = Pop();
+            EmitInterlockedBitwise(methodArgs[0], loc, value, name);
+            return true;
+        }
         return false;
     }
 
@@ -124,7 +156,8 @@ internal sealed partial class MethodCompiler
             if (name == "MultiplyAddEstimate")
                 throw new NotSupportedException("Vector MultiplyAddEstimate requires its exact generic managed guard route");
             var vsig = MethodSpecSig(msh, methodArgs);
-            if (TryVectorPrimary(vsig, out var vcpp, out var vw, out var velem))
+            bool unsupported = NamesUnsupportedVector(vsig);
+            if (!unsupported && TryVectorPrimary(vsig, out var vcpp, out var vw, out var velem))
             {
                 if (TryEmitVectorOp(vcpp, vw, velem, name, vsig, methodArgs))
                     return;
@@ -133,14 +166,16 @@ internal sealed partial class MethodCompiler
             }
             if (declType == "System.Numerics.Vector" && name == "As")
                 throw new NotSupportedException("Vector.As requires its exact managed guard or numeric reinterpret route");
-            // No software-vector operand/result: the element is non-primitive (e.g.
-            // Vector<Int128>). The software-vector runtime is primitive-only, and such a
-            // helper is only ever called on the SIMD branch the portable getter gates off
-            // (Vector.IsHardwareAccelerated emits DN2CPP_SIMD_HW_ACCEL, 0 by default, so
-            // the scalar path runs; the platform-ISA facades never take such an element).
-            // The declaring helper class is intrinsic, so its real body is never emitted —
-            // drop the args and yield a default. The stub compiles but never executes.
+            // No software-vector lowering applies. The software-vector runtime is
+            // primitive-only, so a helper naming a vector over any other element (e.g.
+            // Vector128<Int128>) throws NotSupportedException exactly as real .NET does,
+            // whether or not another operand is a software vector. Such a call is
+            // normally compiled only on the arm a false Vector*<T>.IsSupported leaves
+            // unexecuted. The declaring helper class is intrinsic, so its real body is
+            // never emitted — drop the args and leave a default for the stack shape.
             var nv = Comp.ResolveMethodSpec(Module, msh, Method.Context);
+            if (unsupported)
+                Emit("dn2cpp_throw_sr0(&dn2cpp_not_supported_exception_type, DN2CPP_SR_TYPE_NOT_SUPPORTED);");
             PopArgs(nv, hasThis: !nv.IsStatic);
             if (!nv.Signature.ReturnType.IsVoid)
             {
@@ -923,16 +958,9 @@ internal sealed partial class MethodCompiler
                 string suffix = SearchValuesSuffix(methodArgs[0])
                     ?? throw new NotSupportedException(
                         $"MemoryExtensions.{name}<{methodArgs[0]}>: SearchValues is modeled for byte/char elements only");
-                string ptrCt = suffix == "u8" ? "const uint8_t*" : "const uint16_t*";
-                bool last = name.StartsWith("Last", StringComparison.Ordinal);
-                bool except = name.EndsWith("Except", StringComparison.Ordinal);
-                bool contains = name.StartsWith("ContainsAny", StringComparison.Ordinal);
                 string svp = Cast(Pop(), "Dn2CppSearchValues*");
                 string sp = SpanValue(Pop(), CppTypes.Of(svSig[0]));
-                string fn = $"dn2cpp_search_values_{(last ? "last_index_of_any" : "index_of_any")}_{suffix}";
-                string res = NewTemp("int32_t");
-                Emit($"{res} = {fn}(({ptrCt}){sp}.f__reference, {sp}.f__length, {svp}, {(except ? 1 : 0)});");
-                Push(StackKind.I4, "int32_t", contains ? $"({res} >= 0 ? 1 : 0)" : res);
+                PushSearchValuesScan(name, suffix, sp, svp);
                 return;
             }
             // Not the SearchValues shape — fall through to the general span block.
@@ -2234,31 +2262,6 @@ internal sealed partial class MethodCompiler
                 Emit($"{fn}{suffix}({srcCast}, (Dn2CppObject*)({feBodyArg.Expr}), {maxDop});");
                 Push(StackKind.Struct, "Dn2CppParallelLoopResult", "Dn2CppParallelLoopResult{ 1, 0, -1 }");
             }
-            return;
-        }
-
-        // Interlocked.CompareExchange<T>/Exchange<T> — the MethodSpec forms. A
-        // reference T (the field-like `event` accessors) routes to the pointer
-        // swap helpers; .NET 9+ also exposes the generic form over primitives —
-        // CoreLib itself binds e.g. Interlocked.Exchange<int> in DeflateStream's
-        // AsyncOperationStarting. The shared emitter (EmitInterlockedSwap)
-        // dispatches on T's DECLARED atomic width — sub-word T (bool/byte/short/
-        // char) swaps 1/2 bytes, enums swap at their underlying primitive's
-        // width, float/double via a bitwise integer atomic — identical to the
-        // non-generic overloads' lowering.
-        if (declType == "System.Threading.Interlocked" && name == "CompareExchange")
-        {
-            var comparand = Pop();
-            var value = Pop();
-            var loc = Pop();
-            EmitInterlockedSwap(methodArgs[0], loc, value, comparand, name);
-            return;
-        }
-        if (declType == "System.Threading.Interlocked" && name == "Exchange")
-        {
-            var value = Pop();
-            var loc = Pop();
-            EmitInterlockedSwap(methodArgs[0], loc, value, comparand: null, name);
             return;
         }
 

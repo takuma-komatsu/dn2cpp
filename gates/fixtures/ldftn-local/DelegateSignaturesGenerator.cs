@@ -28,6 +28,7 @@ internal static partial class DelegateSignaturesFixture
             }
             return handle;
         }
+        var nested = new Dictionary<string, TypeReferenceHandle>(StringComparer.Ordinal);
         byte[] Class(EntityHandle type)
         {
             var blob = new BlobBuilder();
@@ -57,6 +58,20 @@ internal static partial class DelegateSignaturesFixture
                 var type = core.GetTypeDefinition((TypeDefinitionHandle)handle);
                 blob.WriteCompressedInteger(CodedIndex.TypeDefOrRef(Import(core.GetString(type.Namespace), core.GetString(type.Name))));
             }
+            else if (code == 0x11)
+            {
+                // The factory's invocation-list element is the catalog's only nested type.
+                var type = core.GetTypeDefinition((TypeDefinitionHandle)original.ReadTypeHandle());
+                var parent = core.GetTypeDefinition(type.GetDeclaringType());
+                string name = core.GetString(type.Name);
+                if (!nested.TryGetValue(name, out var handle))
+                {
+                    handle = metadata.AddTypeReference(Import(core.GetString(parent.Namespace), core.GetString(parent.Name)),
+                        default, metadata.GetOrAddString(name));
+                    nested.Add(name, handle);
+                }
+                blob.WriteCompressedInteger(CodedIndex.TypeDefOrRef(handle));
+            }
             else if (code == 0x1d) ImportType(ref original, blob);
             else if (code is not (1 or 2 or 8 or 0x0e or 0x18 or 0x1c))
                 throw new InvalidOperationException("unexpected control signature type " + code);
@@ -85,17 +100,15 @@ internal static partial class DelegateSignaturesFixture
         }
         else
         {
-            string owner = mode is "modifier-call" or "trailing-call" ? "Delegate" : "MulticastDelegate";
             string name = mode switch
             {
                 "return-call" => "NewMulticastDelegate",
-                "parameter-address" => "CtorOpened",
+                "parameter-address" => "CtorOpen",
                 "modifier-call" => "Equals",
                 "header-address" or "trailing-call" or "fake-owner-address" or "owner-typespec-call" or "owner-modifier-address" => "GetHashCode",
                 _ => throw new ArgumentException("unknown delegate signature case " + mode),
             };
-            var target = candidates.Single(item => item.Owner == "System." + owner && item.Name == name
-                && (name != "NewMulticastDelegate" || core.GetBlobBytes(core.GetMethodDefinition(item.Handle).Signature)[1] == 2));
+            var target = candidates.Single(item => item.Owner == "System.Delegate" && item.Name == name);
             Emit(target, mode.EndsWith("-address", StringComparison.Ordinal));
         }
         code.OpCode(ILOpCode.Ret);
@@ -126,7 +139,8 @@ internal static partial class DelegateSignaturesFixture
                 switch (mode)
                 {
                     case "return-call":
-                        signature = new byte[] { 0x20, 2 }.Concat(Class(Import("System", "Delegate"))).Concat(new byte[] { 0x1d, 0x1c, 8 }).ToArray();
+                        signature = new byte[] { 0x20, 3 }.Concat(Class(Import("System", "MulticastDelegate")))
+                            .Concat(signature.Skip(2 + Class(Import("System", "Delegate")).Length)).ToArray();
                         break;
                     case "parameter-address": signature[^1] = 0x19; break;
                     case "modifier-call":
@@ -141,7 +155,7 @@ internal static partial class DelegateSignaturesFixture
                     case "fake-owner-address":
                         var fakeAssembly = metadata.AddAssemblyReference(metadata.GetOrAddString("FakeDelegateOwner"),
                             new Version(1, 0, 0, 0), default, default, 0, default);
-                        owner = metadata.AddTypeReference(fakeAssembly, metadata.GetOrAddString("System"), metadata.GetOrAddString("MulticastDelegate"));
+                        owner = metadata.AddTypeReference(fakeAssembly, metadata.GetOrAddString("System"), metadata.GetOrAddString("Delegate"));
                         break;
                     case "owner-typespec-call": owner = metadata.AddTypeSpecification(metadata.GetOrAddBlob(Class(owner))); break;
                     case "owner-modifier-address":
@@ -194,7 +208,7 @@ internal static partial class DelegateSignaturesFixture
             fake.AddAssembly(fake.GetOrAddString("FakeDelegateOwner"), new Version(1, 0, 0, 0), default, default, 0, AssemblyHashAlgorithm.None);
             var coreScope = fake.AddAssemblyReference(fake.GetOrAddString("System.Private.CoreLib"), coreAssembly.Version, default,
                 fake.GetOrAddBlob(core.GetBlobBytes(coreAssembly.PublicKey)), AssemblyFlags.PublicKey, default);
-            var parent = fake.AddTypeReference(coreScope, fake.GetOrAddString("System"), fake.GetOrAddString("Delegate"));
+            var parent = fake.AddTypeReference(coreScope, fake.GetOrAddString("System"), fake.GetOrAddString("Object"));
             var fakeCode = new InstructionEncoder(new BlobBuilder());
             fakeCode.LoadConstantI4(0);
             fakeCode.OpCode(ILOpCode.Ret);
@@ -205,7 +219,7 @@ internal static partial class DelegateSignaturesFixture
             fake.AddTypeDefinition(TypeAttributes.NotPublic, default, fake.GetOrAddString("<Module>"),
                 default, MetadataTokens.FieldDefinitionHandle(1), method);
             fake.AddTypeDefinition(TypeAttributes.Public | TypeAttributes.Abstract, fake.GetOrAddString("System"),
-                fake.GetOrAddString("MulticastDelegate"), parent, MetadataTokens.FieldDefinitionHandle(1), method);
+                fake.GetOrAddString("Delegate"), parent, MetadataTokens.FieldDefinitionHandle(1), method);
             var fakePe = new ManagedPEBuilder(new PEHeaderBuilder(imageCharacteristics: Characteristics.ExecutableImage | Characteristics.Dll),
                 new MetadataRootBuilder(fake), fakeBodies, flags: CorFlags.ILOnly);
             var fakeImage = new BlobBuilder();

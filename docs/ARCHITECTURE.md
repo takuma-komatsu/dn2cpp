@@ -361,10 +361,12 @@ filter reports an unrecognized site and adds no executable targets. Metadata
 and identity retained through ordinary inventory, copied-IL closure or explicit
 preservation remain available. A data read reaches no constructor or setter,
 even when another route reached the attribute's constructor.
-Named delegate binding and `Delegate.Method` share selection for known
-receivers, including objects and runtime templates. They search the full base
-chain at every visibility, bounded only by name, case and delegate `Invoke`
-arity; attribute reads use the selected member identity.
+Named delegate binding and a method group's `Delegate.Method` share selection
+for known receivers, including objects and runtime templates. They search the
+full base chain at every visibility, bounded only by name, case and delegate
+`Invoke` arity; attribute reads use the selected member identity. A delegate
+bound to a `MethodInfo` reports that row, normalized to its declaring type,
+whatever override its receiver runs.
 Invocation, field and property access, event subscription, delegate binding,
 construction and attribute instantiation reach the selected bodies, boxes and
 type initializers; a constant field's access reaches no initializer, and a
@@ -2189,14 +2191,15 @@ Retained delegate value members, multicast factories, operations and accessors
 use callable bodies over the uniform invocation chain. Exact CoreLib declarations
 and raw references share the same boundary with ILDiet; retention never scans
 the replaced CoreCLR field or invoke-stub implementation. Named constructors use
-the ordinary named binder and keep its invocation rows. Nonvirtual `Delegate`
-value bodies remain distinct from `MulticastDelegate` overrides; virtual calls,
-virtual addresses and reflection select the override without a native vtable.
+the ordinary named binder and keep its invocation rows. `Delegate` declares the
+value, operation and accessor bodies and `MulticastDelegate` only the named
+constructors; direct calls, virtual calls, virtual addresses and reflection
+enter the same body without a native vtable.
 Reinitialization refuses
-a multicast receiver or a binding already snapshotted into another chain. Private
-multicast factories accept only a flattened prefix of the receiver's exact type,
-with enough entries to represent a multicast value; unsupported private states
-and CoreCLR VM constructor stubs throw without interpreting CLR-owned pointers.
+a multicast receiver or a binding already snapshotted into another chain. The
+private multicast factory takes CoreCLR invocation-list storage, whose element
+type has no transpiled body; the factory and the CoreCLR VM constructor stubs
+throw without interpreting CLR-owned storage or pointers.
 
 Enum instance body replacement is declaration- and signature-specific; a static
 helper with the same name does not acquire a boxed-receiver ABI. Closed integer

@@ -34,6 +34,7 @@ internal static partial class Program
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
         bool oracle = args.Length == 1 && args[0] == "--oracle32";
+        Action atomics;
         if (oracle)
         {
             // The CLR host's native integer width cannot be the wasm32 oracle.
@@ -44,6 +45,11 @@ internal static partial class Program
             Bind<uint>(uint.Parse, uint.TryParse, uint.Parse, uint.TryParse, uint.Parse, uint.TryParse);
             Run<uint>("unsigned", false, 0, uint.MaxValue, 0x80000000, 0,
                 int.MaxValue, 0x12345678, 0xFEDCBA98);
+            atomics = () =>
+            {
+                Atomics<int>("signed", 0x12345678, unchecked((int)0xFEDCBA98));
+                Atomics<uint>("unsigned", 0x12345678, 0xFEDCBA98);
+            };
         }
         else
         {
@@ -56,8 +62,14 @@ internal static partial class Program
             Bind<nuint>(nuint.Parse, nuint.TryParse, nuint.Parse, nuint.TryParse, nuint.Parse, nuint.TryParse);
             Run<nuint>("unsigned", false, 0, uint.MaxValue, 0x80000000U, 0,
                 int.MaxValue, 0x12345678, 0xFEDCBA98U);
+            atomics = () =>
+            {
+                Atomics<nint>("signed", 0x12345678, unchecked((int)0xFEDCBA98));
+                Atomics<nuint>("unsigned", 0x12345678, 0xFEDCBA98U);
+            };
         }
         Console.WriteLine("generic native32 end");
+        atomics();
         return;
     }
 }

@@ -2049,7 +2049,7 @@ internal sealed partial class MethodCompiler
             // whose extra state the runtime, not the emitted struct, describes
             // (AggregateException.InnerExceptions). The uniform allocator IS its layout,
             // and its ctor body has nothing we model to write.
-            if (CoreIntrinsics.IsIntrinsicType(cls.FullName))
+            if (CoreIntrinsics.IsIntrinsicType(cls))
             {
                 string opaqueTi = CoreIntrinsics.RuntimeExceptionTypeInfo(cls.FullName) ?? "&dn2cpp_exception_type";
                 string e = NewTemp("Dn2CppObject*");
@@ -2223,7 +2223,7 @@ internal sealed partial class MethodCompiler
                     string? adapterExpr = null;
                     if (OpensTaskOperation(method))
                         adapterExpr = SchedulerOperationAdapter(method);
-                    else if (_c.IsBoundedMethod(method.DeclaringClass.FullName, method.Name))
+                    else if (_c.IsBoundedMethod(method))
                         adapterExpr = BoundedFtnStub(method, origin.Key - 1, receiverSlot: fromVirtFtn, delegateClass: cls);
                     else if (_c.IsDynamicCodegenMember(method.DeclaringClass, method.Name))
                         adapterExpr = DynamicCodegenFtnStub(method, origin.Key - 1, receiverSlot: fromVirtFtn, delegateClass: cls);

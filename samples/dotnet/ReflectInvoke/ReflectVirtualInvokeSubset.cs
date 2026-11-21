@@ -295,9 +295,9 @@ struct NamedTally : ICounter
     public string Label() => "named:" + N;
 }
 
-// Invoke runs a static virtual member's default body and faults a static abstract
-// one as bad IL; a delegate binds either only open and finds no entry point when
-// called.
+// Invoke and a delegate run a static virtual member's default body and fault a
+// static abstract one as bad IL; a delegate over a first argument whose type does
+// not implement the interface finds no entry point.
 interface IFactory
 {
     static virtual string Virt() => "virt";

@@ -516,6 +516,15 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", "0");
             return;
         }
+        // Main is 1; spawned threads and pool workers get fresh ids. Iterators stamp this
+        // into the state machine so GetEnumerator hands back `this` only on the creating
+        // thread and clones on any other.
+        if (callee.DeclaringClass.FullName == "System.Threading.ManagedThreadId"
+            && callee.IsStatic && callee.Signature.ParameterTypes.Length == 0)
+        {
+            Push(StackKind.I4, "int32_t", "dn2cpp_thread_managed_id(dn2cpp_thread_current())");
+            return;
+        }
         if (TryEmitDateTimeFormatInfoBoundary(callee))
             return;
         if (CoreIntrinsics.IsDateTimeLeapSecondSupport(callee))
@@ -1859,7 +1868,7 @@ internal sealed partial class MethodCompiler
     /// from both reachability and emission by <see cref="BranchLiveness"/>.</summary>
     private bool TryEmitConstFoldedGetter(MethodInfo callee)
     {
-        if (CoreIntrinsics.ConstFoldedGetter(callee.DeclaringClass.FullName, callee.Name) is bool value)
+        if (CoreIntrinsics.ConstFoldedGetter(callee.DeclaringClass.FullName, callee.Name, callee.DeclaringClass.Module) is bool value)
         {
             Push(StackKind.I4, "int32_t", value ? "1" : "0");
             return true;

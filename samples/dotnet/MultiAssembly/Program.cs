@@ -261,6 +261,7 @@ namespace MultiAssembly
             if (args.Length != 0 && args[0] == "before-closed-types")
                 return 0;
             AssemblyScopeSubset.RunClosedGenerics();
+            AssemblyScopeSubset.RunCoreLibNames();
 
             return 0;
         }

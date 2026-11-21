@@ -287,6 +287,23 @@ code folding cannot merge distinct methods. Class slots, interface table order
 and generic virtual branches choose the same declaration as ordinary dispatch;
 runtime template owners normalize to the receiver's closed level. These equality
 cases do not widen `Delegate.Method` metadata access or stripped-row refusals.
+A reflection binding reports as `Delegate.Method` the row it was given, read
+without any table of its receiver. It equals a compiled binding that runs the
+same body or names the same row. A hash code follows the reported method: a
+binding through a row its receiver overrides equals the override's method group
+while hashing apart from it, and hashes with a `base` method group of that row.
+A static virtual interface row closed over a first argument runs the row's own
+body only where the argument's type lists the declaring interface itself and no
+interface of that type derived from it re-implements the member. .NET runs the
+re-implementation, which no run-time table retains, so the transpiler emits one
+{re-implementing interface, closed declaring interface, member definition token}
+row per static explicit body, generic methods included, and the bind throws
+`NotSupportedException` when such a row names the bound row. A type that satisfies
+a variant interface only through variance is dispatched by .NET to the
+implementation of the interface it does list, possibly another instantiation's
+body, so that bind is refused as well. Siblings the interface leaves alone still
+bind. A hot-update patch interface records no rows and is refused whenever it
+derives from the declaring interface.
 Existing String, Enum and intrinsic interface maps also supply selected keys.
 Array interface keys use the real Array implementation for non-generic slots and
 the existing closed wrapper's owner and method as a private SZArrayHelper identity

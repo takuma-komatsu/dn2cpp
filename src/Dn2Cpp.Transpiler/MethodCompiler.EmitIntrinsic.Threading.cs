@@ -324,8 +324,8 @@ internal sealed partial class MethodCompiler
             // real timed acquire returning true if a token was taken / false on timeout;
             // Wait() and Wait(CancellationToken) block until a token is available. The
             // CancellationToken is not honored (dropped). The timeout checks are
-            // SemaphoreSlim's own: Wait(int) checks nothing, Wait(int, CancellationToken)
-            // refuses below -1, and a TimeSpan has no upper bound.
+            // SemaphoreSlim's own: an int timeout is refused below -1, and a TimeSpan
+            // has no upper bound.
             case ("System.Threading.SemaphoreSlim", "Wait"):
             {
                 var ps = sig.ParameterTypes;
@@ -337,7 +337,7 @@ internal sealed partial class MethodCompiler
                     var to = Pop(); // timeout (int ms or TimeSpan)
                     var o = Pop();
                     string ms = TimeoutMs(to, ps[0], "dn2cpp_semaphore_timeout_ms_from_ticks");
-                    if (ps.Length == 2 && !IsTimeSpan(ps[0]))
+                    if (!IsTimeSpan(ps[0]))
                         ms = $"dn2cpp_semaphore_timeout_ms({ms})";
                     Push(StackKind.I4, "int32_t",
                         $"dn2cpp_semaphore_wait_timeout((Dn2CppObject*)({o.Expr}), {ms})");
@@ -458,6 +458,18 @@ internal sealed partial class MethodCompiler
             {
                 var arr = Pop(); // WaitHandle[]
                 Push(StackKind.I4, "int32_t", $"dn2cpp_event_wait_any((Dn2CppArrayRef*)({arr.Expr}))");
+                return true;
+            }
+            // The raw wait over IntPtr handles has no native counterpart: its handles are
+            // CoreCLR wait-subsystem objects, not this runtime's events. Refuse at the call.
+            case ("System.Threading.WaitHandle", "WaitMultipleIgnoringSyncContextCore"):
+            {
+                for (int i = 0; i < sig.ParameterTypes.Length; i++)
+                    Pop();
+                Emit("dn2cpp_throw_platform_not_supported(\"System.Threading.WaitHandle.WaitMultipleIgnoringSyncContextCore"
+                    + " requires the CoreCLR runtime, which a dn2cpp-transpiled binary does not provide."
+                    + " Use the WaitHandle wait methods instead.\");");
+                Push(StackKind.I4, "int32_t", "0");
                 return true;
             }
             // A managed subclass such as ProcessWaitHandle allocates its own object and

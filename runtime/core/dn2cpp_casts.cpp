@@ -1736,30 +1736,6 @@ Dn2CppObject* dn2cpp_delegate_combine_n(Dn2CppObject* const* items, int32_t coun
     return d;
 }
 
-// Public Combine/Remove call this private factory only for flattened prefixes of
-// at least two entries. Empty/single-entry private multicast states have different
-// CLR equality semantics and cannot be represented by the uniform native chain.
-Dn2CppObject* dn2cpp_delegate_from_invocation_prefix(Dn2CppObject* receiver, Dn2CppArrayRef* items, int32_t count)
-{
-    if (receiver == nullptr)
-        dn2cpp_throw_null_reference();
-    if (count < 2)
-        dn2cpp_throw_platform_not_supported("Empty or single-entry private multicast state is not represented by dn2cpp.");
-    if (items == nullptr || count > items->length)
-        dn2cpp_throw_platform_not_supported("Multicast construction requires an in-bounds invocation prefix.");
-    for (int32_t i = 0; i < count; ++i)
-    {
-        Dn2CppObject* item = items->data[i];
-        if (item == nullptr || item->type != receiver->type
-            || (item->type->flags & DN2CPP_TF_DELEGATE) == 0
-            || reinterpret_cast<Dn2CppDelegate*>(item)->prev != nullptr)
-            dn2cpp_throw_platform_not_supported("Multicast construction requires flattened entries of the receiver's exact delegate type.");
-    }
-    // At least two non-null single entries ensure a fresh result. Capacity beyond
-    // count is ignored, and the mutable source array is never retained.
-    return dn2cpp_delegate_combine_n(items->data, count);
-}
-
 Dn2CppObject* dn2cpp_delegate_combine_array(Dn2CppArrayRef* items)
 {
     return items != nullptr ? dn2cpp_delegate_combine_n(items->data, items->length) : nullptr;
@@ -1846,23 +1822,34 @@ DN2CPP_NOINLINE static bool dn2cpp_delegate_plain_bind_equal(
     if ((bind->mode == DN2CPP_DGBIND_CLOSED_INSTANCE && plain->target != bind->target)
         || (bind->mode == DN2CPP_DGBIND_OPEN_STATIC && plain->target != nullptr))
         return false;
-    const Dn2CppTypeInfo* reflectedOwner;
-    int32_t reflectedToken, genericArgCount;
-    const Dn2CppTypeInfo* const* genericArgs;
-    if (!dn2cpp_reflbind_selected_key(bind, reflectedOwner, reflectedToken, genericArgCount, genericArgs))
-        return false;
     const Dn2CppTypeInfo* plainOwner;
     int32_t plainToken, plainArgCount;
     const Dn2CppTypeInfo* const* plainArgs;
     if (!dn2cpp_delegate_selected_key(plain->identity,
             plain->target != nullptr ? plain->target->type : nullptr,
-            plainOwner, plainToken, &plainArgCount, &plainArgs)
-        || plainOwner != reflectedOwner || plainToken != reflectedToken || plainArgCount != genericArgCount)
+            plainOwner, plainToken, &plainArgCount, &plainArgs))
         return false;
-    for (int32_t i = 0; i < genericArgCount; i++)
-        if (plainArgs[i] != genericArgs[i])
+    const auto names = [&](const Dn2CppTypeInfo* owner, int32_t token, int32_t argCount,
+                           const Dn2CppTypeInfo* const* args)
+    {
+        if (plainOwner != owner || plainToken != token || plainArgCount != argCount)
             return false;
-    return true;
+        for (int32_t i = 0; i < argCount; i++)
+            if (plainArgs[i] != args[i])
+                return false;
+        return true;
+    };
+    const Dn2CppTypeInfo* owner;
+    int32_t token, genericArgCount;
+    const Dn2CppTypeInfo* const* genericArgs;
+    if (dn2cpp_reflbind_selected_key(bind, owner, token, genericArgCount, genericArgs)
+        && names(owner, token, genericArgCount, genericArgs))
+        return true;
+    // .NET also equates bindings that name one method: a non-virtual binding of a
+    // row and a reflection binding of that row over a receiver overriding it.
+    return bind->mode == DN2CPP_DGBIND_CLOSED_INSTANCE && bind->virtualRow != 0
+        && dn2cpp_reflbind_row_key(bind, owner, token, genericArgCount, genericArgs)
+        && names(owner, token, genericArgCount, genericArgs);
 }
 
 // One invocation-list entry against another, as Delegate.Equals compares them.
@@ -1882,7 +1869,7 @@ static inline bool dn2cpp_delegate_entry_equal(const Dn2CppDelegate* a, const Dn
     return a->method == b->method && dn2cpp_delegate_identity_equal(a, b);
 }
 
-// Pairwise chain comparison (MulticastDelegate compares invocation lists
+// Pairwise chain comparison (Delegate.Equals compares invocation lists
 // element-wise; a length mismatch is unequal). Out of line, so the plain-target
 // loop in dn2cpp_delegate_equal that hands bindings here makes no call.
 DN2CPP_NOINLINE static int32_t dn2cpp_delegate_lists_equal(const Dn2CppDelegate* da,
@@ -1980,47 +1967,39 @@ int32_t dn2cpp_delegate_hash(Dn2CppObject* d)
 {
     if (d == nullptr)
         return 0;
-    // Callable adapters do not identify a method. Hash logical targets and list
-    // shape so compiled and reflective bindings which compare equal agree.
+    // Callable adapters do not identify a method. Each entry hashes its target and
+    // the method Delegate.Method reports for it: the body a compiled binding runs,
+    // the row a reflection binding was given. Delegates reporting one method on one
+    // target hash alike, whichever way they were bound; one that reports a row its
+    // receiver overrides hashes apart from the compiled binding of the override.
     uint64_t h = (1469598103934665603ull ^ reinterpret_cast<uintptr_t>(d->type)) * 1099511628211ull;
+    const auto mixMethod = [&h](const Dn2CppTypeInfo* owner, int32_t token, int32_t argc,
+                                const Dn2CppTypeInfo* const* args)
+    {
+        h = (h ^ reinterpret_cast<uintptr_t>(owner)) * 1099511628211ull;
+        h = (h ^ static_cast<uint32_t>(token)) * 1099511628211ull;
+        for (int32_t i = 0; i < argc; i++)
+            h = (h ^ reinterpret_cast<uintptr_t>(args[i])) * 1099511628211ull;
+    };
     for (auto* n = reinterpret_cast<Dn2CppDelegate*>(d); n != nullptr;
          n = reinterpret_cast<Dn2CppDelegate*>(n->prev))
     {
         Dn2CppObject* target = n->target;
+        const Dn2CppTypeInfo* owner;
+        int32_t token, argc = 0;
+        const Dn2CppTypeInfo* const* args = nullptr;
         if (target != nullptr && target->type == &dn2cpp_reflbind_type)
-            target = reinterpret_cast<Dn2CppReflBind*>(target)->target;
+        {
+            const auto* bind = reinterpret_cast<Dn2CppReflBind*>(target);
+            target = bind->target;
+            if (dn2cpp_reflbind_row_key(bind, owner, token, argc, args))
+                mixMethod(owner, token, argc, args);
+        }
+        else if (n->identity != nullptr
+            && dn2cpp_delegate_selected_key(n->identity, target != nullptr ? target->type : nullptr,
+                owner, token, &argc, &args))
+            mixMethod(owner, token, argc, args);
         h = (h ^ reinterpret_cast<uintptr_t>(target)) * 1099511628211ull;
     }
-    return static_cast<int32_t>((h ^ (h >> 32)) & 0x7fffffff);
-}
-
-int32_t dn2cpp_delegate_base_equal(Dn2CppObject* a, Dn2CppObject* b)
-{
-    if (b == nullptr)
-        return 0;
-    if (a == nullptr)
-        dn2cpp_throw_null_reference();
-    if (a->type != b->type)
-        return 0;
-    const bool aMulticast = reinterpret_cast<Dn2CppDelegate*>(a)->prev != nullptr;
-    const bool bMulticast = reinterpret_cast<Dn2CppDelegate*>(b)->prev != nullptr;
-    // CoreCLR's ordinary multicast objects share their type's Invoke entry in
-    // _methodPtrAux. Delegate.Equals compares that entry, not the list itself.
-    if (aMulticast || bMulticast)
-        return aMulticast && bMulticast;
-    return dn2cpp_delegate_equal(a, b);
-}
-
-int32_t dn2cpp_delegate_base_hash(Dn2CppObject* d)
-{
-    if (d == nullptr)
-        dn2cpp_throw_null_reference();
-    if (reinterpret_cast<Dn2CppDelegate*>(d)->prev == nullptr)
-        return dn2cpp_delegate_hash(d);
-    // A multicast base hash is type-only, like an ordinary static binding's
-    // base hash. Keep the existing per-process hash encoding (not CLR numbers)
-    // while preserving that relationship and single base/override agreement.
-    uint64_t h = (1469598103934665603ull ^ reinterpret_cast<uintptr_t>(d->type)) * 1099511628211ull;
-    h *= 1099511628211ull;
     return static_cast<int32_t>((h ^ (h >> 32)) & 0x7fffffff);
 }

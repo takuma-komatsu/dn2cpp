@@ -104,10 +104,10 @@ internal static class Program
         return method is null ? "null" : method.DeclaringType + "." + method.Name;
     }
 
-    // A patch type runs its nearest AOT ancestor's Object virtuals, so a delegate
-    // over a patch receiver bound to one, by ldvirtftn or by reflection, reports
-    // that ancestor's override or Object's row, the row a by-name lookup on the
-    // patch type finds.
+    // A patch type runs its nearest AOT ancestor's Object virtuals. A method group
+    // over a patch receiver reports that ancestor's override or Object's row, the
+    // row a by-name lookup on the patch type finds; a reflection binding reports
+    // the Object row it was given.
     private static void PatchReceiverObjectVirtuals(object belowOverride, object belowObject)
     {
         Console.WriteLine("== object virtuals over a patch receiver ==");

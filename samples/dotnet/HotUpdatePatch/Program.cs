@@ -423,6 +423,7 @@ internal static class Program
         Counter addend = new Counter(100);
         IntTransform aotAdd = addend.Add;
         Console.WriteLine(aotAdd(5));
+        Console.WriteLine(Counter.SameAddBinding(addend, aotAdd));
         IntTransform[] fns = new IntTransform[2];
         fns[0] = triple;
         fns[1] = scale;

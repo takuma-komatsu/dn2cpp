@@ -206,7 +206,7 @@ else
         '  object inherited override -> LibLabel.ToString/label' \
         '  object inherited body -> Object.ToString/TrimReflectLib.LibBare' \
         '  object hash override -> LibLabel.GetHashCode/7' \
-        '  object reflected binding -> LibLabel.ToString/label'
+        '  object reflected binding -> Object.ToString/label'
     assert_unrecorded_receiver_lines "$native" \
         '  instantiation interface binding -> LibGenericKind`1/generic-kind' \
         '  unrecorded generic virtual -> LibGvmShape/gvm-base'
@@ -256,7 +256,7 @@ else
         '  object inherited override -> LibLabel.ToString/label' \
         '  object inherited body -> Object.ToString/TrimReflectLib.LibBare' \
         '  object hash override -> LibLabel.GetHashCode/7' \
-        '  object reflected binding -> LibLabel.ToString/label'
+        '  object reflected binding -> Object.ToString/label'
     assert_unrecorded_receiver_lines "$native" \
         '  instantiation interface binding -> LibGenericKind`1/generic-kind' \
         '  unrecorded generic virtual -> LibGvmShape/gvm-base'
@@ -300,7 +300,7 @@ else
         '  object inherited override -> LibLabel.ToString/label' \
         '  object inherited body -> Object.ToString/TrimReflectLib.LibBare' \
         '  object hash override -> LibLabel.GetHashCode/7' \
-        '  object reflected binding -> LibLabel.ToString/label'
+        '  object reflected binding -> Object.ToString/label'
     assert_unrecorded_receiver_lines "$native" \
         '  instantiation interface binding -> LibGenericKind`1/generic-kind' \
         '  unrecorded generic virtual -> LibGvmShape/gvm-base'

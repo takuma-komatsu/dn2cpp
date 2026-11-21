@@ -23,7 +23,11 @@ internal sealed partial class AssemblyDiet
         string bare = type.Namespace.Length == 0 ? simple : type.Namespace + "." + simple;
         // A generic vector's non-primitive element keeps real IL. Original-definition
         // analysis must allow that body without splitting closed argument contexts.
+        // The transpiler's owner rule: a CoreLib-owned name binds to the CoreLib
+        // declaration, so a copied library's look-alike is ordinary code.
         bool intrinsic = CoreIntrinsicTypeMaps.IsIntrinsicType(Name(type))
+            && (!CoreIntrinsicTypeMaps.IsCoreLibOwnedIntrinsicType(Name(type))
+                || CoreIntrinsicTypeMaps.IsCoreLibAssemblyName(type.Module.Assembly?.Name.Name))
             || CoreIntrinsicTypeMaps.IntrinsicGenericCppType(bare, primitiveElement: !type.HasGenericParameters) is not null
             || type.DeclaringType is { } parent && CoreIntrinsicTypeMaps.IsIntrinsicNested(Name(parent), type.Name);
         _copiedIntrinsicTypes.Add(type, intrinsic);
@@ -287,9 +291,16 @@ internal sealed partial class AssemblyDiet
     private static bool IsCopiedWaitHandleRawWaitWrapper(MethodDefinition method, string owner)
     {
         int count = method.Parameters.Count;
-        bool privateMethod = method.Name == "WaitMultipleIgnoringSyncContextCore" || count == 4;
+        bool core = method.Name == "WaitMultipleIgnoringSyncContextCore";
+        bool privateMethod = core || count == 4;
+        // Core is copied only while it forwards to the import, as the transpiler cuts it otherwise.
+        bool forwards = !core;
+        if (core)
+            foreach (var sibling in method.DeclaringType.Methods)
+                if (sibling.Name == "<WaitMultipleIgnoringSyncContext>g____PInvoke|2_0")
+                    forwards = true;
         return CoreIntrinsicTypeMaps.IsWaitHandleRawWaitWrapperMethod(method.Module.Assembly?.Name.Name, owner, method.Name,
-            method.DeclaringType.FullName == owner && method.DeclaringType.DeclaringType is null
+            forwards && method.DeclaringType.FullName == owner && method.DeclaringType.DeclaringType is null
                 && method.DeclaringType.IsAbstract && !method.DeclaringType.IsSealed
                 && !method.DeclaringType.IsValueType && !method.DeclaringType.IsInterface && !method.DeclaringType.HasGenericParameters
                 && method.Attributes == ((privateMethod ? MethodAttributes.Private : MethodAttributes.Assembly)
@@ -503,6 +514,7 @@ internal sealed partial class AssemblyDiet
         if (IsCopiedCoreClrTypeMaterialization(method, owner) || IsCopiedNullableReboxing(method, owner))
             traverse = false;
         else if (IsCopiedDelegateCallableBody(method, owner)
+            || IsCopiedDelegateInvocationStorage(method, owner)
             || IsCopiedPrimitiveBigMul(method, owner)
             || IsCopiedNativeIntegerParse(method, owner)
             || BinaryIntegerEndianContract.IsNativeOwner(owner) && IsCopiedBinaryIntegerEndianBody(method, owner))

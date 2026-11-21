@@ -21,6 +21,7 @@
 
 #include "dn2cpp_core.h"
 
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -974,6 +975,46 @@ bool dg_aot_signature_ok(const Dn2CppInterpDgFtn* c, const Dn2CppTypeInfo* dti)
     return true;
 }
 
+// The identity a compiled `newobj` of the same non-virtual method stamps, so a
+// delegate bound here equals, hashes with and reports the method of its compiled
+// twin. One immortal record per method row; an intrinsic-table binding has no row
+// and stays without one, as it does in compiled code.
+struct DgIdentityNode
+{
+    const void* row;
+    DgIdentityNode* next;
+    Dn2CppDelegateMethodIdentity identity;
+};
+std::atomic<DgIdentityNode*> g_dg_identity_buckets[64];
+
+const Dn2CppDelegateMethodIdentity* dg_aot_identity(const Dn2CppInterpDgFtn* c)
+{
+    if (c->aotMethod == nullptr)
+        return nullptr;
+    const void* key = c->aotMethod.identity();
+    auto& bucket = g_dg_identity_buckets[(reinterpret_cast<uintptr_t>(key) >> 4) % 64];
+    DgIdentityNode* head = bucket.load(std::memory_order_acquire);
+    for (DgIdentityNode* n = head; n != nullptr; n = n->next)
+        if (n->row == key)
+            return &n->identity;
+    const Dn2CppMethodInfo row = *c->aotMethod;
+    auto* node = new DgIdentityNode{ key, nullptr,
+        { row.declaringType, row.metadataToken, row.genericParamCount, row.genericArgs,
+          false, 0, nullptr, 0, nullptr, row.vtableSlot } };
+    for (;;)
+    {
+        node->next = head;
+        if (bucket.compare_exchange_weak(head, node, std::memory_order_acq_rel))
+            return &node->identity;
+        for (DgIdentityNode* n = head; n != nullptr && n != node->next; n = n->next)
+            if (n->row == key)
+            {
+                delete node;
+                return &n->identity;
+            }
+    }
+}
+
 // One constant for the two `newobj` arms, as kImportRecvFail is for the eight.
 const char* const kDgSigFail
     = "interp: the delegate target's signature is not the delegate's Invoke signature";
@@ -1779,7 +1820,7 @@ void build_patch_itf_map(const Dn2CppInterpImage* img, Dn2CppTypeInfo* ti,
 }
 
 void materialize_patch_methods(Dn2CppInterpImage* img);
-Dn2CppMetadataHandle<Dn2CppMethodInfo> patch_virtual_method(const Dn2CppTypeInfo* receiver, int32_t slot, bool requireMetadata);
+Dn2CppMetadataHandle<Dn2CppMethodInfo> patch_virtual_method(const Dn2CppTypeInfo* receiver, int32_t slot);
 
 // ---- register code format: load-time verification ----
 
@@ -3875,6 +3916,7 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                                     dn2cpp_gc_store_ref(
                                         &dg->target, static_cast<Dn2CppObject*>(targetSlot.ref));
                                     dg->method = c->aotFn;
+                                    dg->identity = dg_aot_identity(c);
                                 }
                                 Slot v{};
                                 v.ref = dg;
@@ -5107,6 +5149,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                     dn2cpp_gc_store_ref(
                                         &dg->target, static_cast<Dn2CppObject*>(targetSlot.ref));
                                     dg->method = c->aotFn;
+                                    dg->identity = dg_aot_identity(c);
                                 }
                                 regs[r0].ref = dg;
                                 break;
@@ -5794,7 +5837,7 @@ Dn2CppObject* invoke_patch_method(void* function, Dn2CppObject* receiver,
     return marshal_slot_to_object(marshal_from_ref(img, metadata.returnRef), result);
 }
 
-Dn2CppMetadataHandle<Dn2CppMethodInfo> patch_virtual_method(const Dn2CppTypeInfo* receiver, int32_t slot, bool requireMetadata)
+Dn2CppMetadataHandle<Dn2CppMethodInfo> patch_virtual_method(const Dn2CppTypeInfo* receiver, int32_t slot)
 {
     if (receiver == nullptr || (receiver->flags & DN2CPP_TF_PATCH) == 0 || slot < 0)
         return {};
@@ -5808,11 +5851,7 @@ Dn2CppMetadataHandle<Dn2CppMethodInfo> patch_virtual_method(const Dn2CppTypeInfo
     if (selected >= image->methodCount)
         interp_fail("BPI: patch virtual metadata method index out of bounds");
     if (image->patchMethods[selected].declaringType == nullptr)
-    {
-        if (requireMetadata)
-            dn2cpp_throw_platform_not_supported("Delegate.Method: selected patch method metadata is not recorded in the image");
         return {};
-    }
     return &image->patchMethods[selected];
 }
 

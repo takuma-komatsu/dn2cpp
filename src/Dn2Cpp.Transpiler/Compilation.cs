@@ -653,6 +653,16 @@ internal sealed partial class Compilation
     /// descriptor row <see cref="CoreIntrinsics.BdCoreBounded"/>, which is where the cut
     /// kind and the emit arm are recorded; the other two sets are per-instance and cannot
     /// be static rows, so the union stays here.</para></summary>
+    internal bool IsBoundedMethod(MethodInfo m) =>
+        CoreIntrinsics.IsBoundedMethod(m.DeclaringClass.FullName, m.Name, m.DeclaringClass.Module)
+            || _backendBoundedMethods.Contains((m.DeclaringClass.FullName, m.Name))
+            || _cliCutMethods.Contains((m.DeclaringClass.FullName, m.Name));
+
+    internal bool IsBoundedMethod(string declType, string name, Module module) =>
+        CoreIntrinsics.IsBoundedMethod(declType, name, module)
+            || _backendBoundedMethods.Contains((declType, name))
+            || _cliCutMethods.Contains((declType, name));
+
     internal bool IsBoundedMethod(string declType, string name) =>
         CoreIntrinsics.BdCoreBounded.Matches(declType, name)
             || _backendBoundedMethods.Contains((declType, name))
@@ -4000,11 +4010,18 @@ internal sealed partial class Compilation
     }
 
     internal MethodInfo ReachIntrinsicStaticMethod(string ownerName, string name,
+        Func<MethodInfo, bool> matches) =>
+        ReachIntrinsicMethod(ownerName, name, m => m.IsStatic && matches(m));
+
+    /// <summary>Reaches the real body of the member of an intrinsic-mapped type that
+    /// <paramref name="matches"/> selects among its <paramref name="name"/> overloads,
+    /// for the intercepted call site to call.</summary>
+    internal MethodInfo ReachIntrinsicMethod(string ownerName, string name,
         Func<MethodInfo, bool> matches)
     {
         var owner = FindClassByFullName(ownerName)
             ?? throw new NotSupportedException($"{ownerName} is not loaded");
-        var method = owner.EnsureMembers().Methods.FirstOrDefault(m => m.IsStatic && m.Rva != 0
+        var method = owner.EnsureMembers().Methods.FirstOrDefault(m => m.Rva != 0
             && m.Name == name && matches(m))
             ?? throw new NotSupportedException($"{ownerName}.{name} has no matching managed body");
         ReachIntrinsicTypeMethod(method);
@@ -4339,8 +4356,8 @@ internal sealed partial class Compilation
             // enumeration must not answer six where .NET says eleven. Their
             // dispatch keeps the loud abort — the rows carry nullptr slots.
             if (v.Kind == TypeKind.Class
-                && (CoreIntrinsics.IsIntrinsicType(v.Class!.FullName)
-                    || v.Class.IntrinsicCppName is not null))
+                && (CoreIntrinsics.IsIntrinsicType(v.Class!)
+                    || v.Class!.IntrinsicCppName is not null))
             {
                 added |= WireArrayGenericItfRows(v);
                 continue;
@@ -4658,7 +4675,7 @@ internal sealed partial class Compilation
     // A value type's row is sealed; an intrinsic type carries no rows.
     private static bool CarriesReflectedSlots(ClassInfo cls) =>
         !cls.IsValueType && !cls.IsDelegate && cls.IntrinsicCppName is null
-        && !CoreIntrinsics.IsIntrinsicType(cls.FullName);
+        && !CoreIntrinsics.IsIntrinsicType(cls);
 
     /// <summary>Marks the slot of a row reflection can enter when no used declaration
     /// covers it yet, and notes the row's boxes either way. MethodBase.Invoke,
@@ -6998,6 +7015,38 @@ internal sealed partial class Compilation
             ReachEntered(shim);
     }
 
+    /// <summary>The closed declaring interface and definition token of a generic method an
+    /// interface's MethodImpl row declares, or null when the declaring type is not a loaded
+    /// definition. The definition is the one a call through the same reference binds; its
+    /// token is the key a reflected row carries.</summary>
+    private (ClassInfo Declaring, int Token)? GenericDeclarationOf(Module module, EntityHandle declaration, GenericContext ctx)
+    {
+        var reader = module.Reader;
+        if (declaration.Kind == HandleKind.MethodDefinition)
+        {
+            var md = reader.GetMethodDefinition((MethodDefinitionHandle)declaration);
+            return module.ClassMap.TryGetValue(md.GetDeclaringType(), out var plain)
+                ? (plain, SRME.GetToken(declaration)) : null;
+        }
+        var mr = reader.GetMemberReference((MemberReferenceHandle)declaration);
+        var owner = mr.Parent.Kind switch
+        {
+            HandleKind.TypeSpecification => reader.GetTypeSpecification((TypeSpecificationHandle)mr.Parent)
+                .DecodeSignature(SigProvider, ctx).Class,
+            HandleKind.TypeReference => ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class,
+            HandleKind.TypeDefinition => module.ClassMap.GetValueOrDefault((TypeDefinitionHandle)mr.Parent),
+            _ => null,
+        };
+        if (owner is null)
+            return null;
+        // Open on both sides, so the key separates overloads of one arity.
+        var want = mr.DecodeMethodSignature(SigProvider, GenericContext.Empty);
+        return FindGenericMethodTemplate(owner.Module, owner.Handle, reader.GetString(mr.Name),
+                want.GenericParameterCount, want.ParameterTypes.Length,
+                ParameterIdentityKey(want.ParameterTypes), isStatic: true) is { } template
+            ? (owner, SRME.GetToken(template)) : null;
+    }
+
     private void PopulateMethodImpls(ClassInfo cls, TypeDefinition td, Module module, GenericContext ctx)
     {
         var reader = module.Reader;
@@ -7054,7 +7103,16 @@ internal sealed partial class Compilation
                     _ => false,
                 };
                 if (declIsGenericMethod)
+                {
+                    // Only the declaration is kept: a delegate bound over a static
+                    // virtual generic method must know a derived interface replaces it.
+                    if (cls.IsInterface && mi.MethodBody.Kind == HandleKind.MethodDefinition
+                        && (reader.GetMethodDefinition((MethodDefinitionHandle)mi.MethodBody).Attributes
+                            & MethodAttributes.Static) != 0
+                        && GenericDeclarationOf(module, mi.MethodDeclaration, ctx) is { } genericDecl)
+                        cls.StaticGenericImplDeclarations.Add(genericDecl);
                     continue;
+                }
                 var bodyMethod = ResolveMethodHandle(module, mi.MethodBody, ctx, cls);
                 var declMethod = ResolveMethodHandle(module, mi.MethodDeclaration, ctx);
                 if (bodyMethod != null && declMethod != null)

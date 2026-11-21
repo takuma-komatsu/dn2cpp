@@ -17,8 +17,8 @@ delegate_callable_prepare_app() {
         --delegate-callable-bodies "$_CG_APP" "$_CG_CORELIB" || return 1
     gate_output byte-witness "$out/fixture.stdout" \
         'CallDelegateEquals=call:System.Boolean System.Delegate::Equals(System.Object)' \
-        'CalliFactory=ldftn+calli:System.MulticastDelegate System.MulticastDelegate::NewMulticastDelegate(System.Object[],System.Int32)' \
-        'CalliCtorCollectibleVirtualDispatch=ldftn+calli:System.Void System.MulticastDelegate::CtorCollectibleVirtualDispatch(System.Object,System.IntPtr,System.IntPtr,System.IntPtr)' \
+        'CalliFactory=ldftn+calli:System.Delegate System.Delegate::NewMulticastDelegate(System.Delegate/Wrapper[],System.Int32,System.Boolean)' \
+        'CalliCtorCollectibleVirtualDispatch=ldftn+calli:System.Void System.Delegate::CtorCollectibleVirtualDispatch(System.Object,System.IntPtr,System.IntPtr,System.IntPtr)' \
         'CallvirtDelegateEquals=callvirt:System.Boolean System.Delegate::Equals(System.Object)' \
         'VirtCalliDelegateEquals=ldvirtftn+calli:System.Boolean System.Delegate::Equals(System.Object)' \
         'delegate virtual null and argument-order fixtures verified' \

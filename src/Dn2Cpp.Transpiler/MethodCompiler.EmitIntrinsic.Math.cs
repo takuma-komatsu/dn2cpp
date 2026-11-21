@@ -727,6 +727,23 @@ internal sealed partial class MethodCompiler
         _ => null,
     };
 
+    /// <summary>Pushes the SearchValues scan <paramref name="name"/> selects —
+    /// <c>[Last]IndexOfAny[Except]</c> or <c>ContainsAny[Except]</c> — of the span
+    /// value <paramref name="span"/> against the set <paramref name="values"/>.
+    /// Shared by the MemoryExtensions forms and the SearchValues&lt;T&gt; instance
+    /// methods CoreLib calls directly, so both scan the same runtime set.</summary>
+    private void PushSearchValuesScan(string name, string suffix, string span, string values)
+    {
+        string ptrCt = suffix == "u8" ? "const uint8_t*" : "const uint16_t*";
+        bool last = name.StartsWith("Last", StringComparison.Ordinal);
+        bool except = name.EndsWith("Except", StringComparison.Ordinal);
+        bool contains = name.StartsWith("ContainsAny", StringComparison.Ordinal);
+        string fn = $"dn2cpp_search_values_{(last ? "last_index_of_any" : "index_of_any")}_{suffix}";
+        string res = NewTemp("int32_t");
+        Emit($"{res} = {fn}(({ptrCt}){span}.f__reference, {span}.f__length, {values}, {(except ? 1 : 0)});");
+        Push(StackKind.I4, "int32_t", contains ? $"({res} >= 0 ? 1 : 0)" : res);
+    }
+
     /// <summary>Decode the closed signature (return + parameter types, method type
     /// args substituted) of a MethodSpec call. Used by the span-shaping MemoryMarshal
     /// intrinsics to recover the result Span/ReadOnlySpan type and the input

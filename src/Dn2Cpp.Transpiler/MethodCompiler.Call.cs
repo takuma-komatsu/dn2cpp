@@ -959,7 +959,7 @@ internal sealed partial class MethodCompiler
                     // (Compilation.ResolveCallTarget's MethodSpecification arm), referenced
                     // here at THIS chain's own position — the descriptor registry is a shared
                     // truth source, not a shared walk order (see NameKeyedIntercept).
-                    if (CoreIntrinsics.IsIntrinsicType(pn)
+                    if (_c.MethodSpecParentIsIntrinsicType(_module, ms, pn)
                         // GetArrayDataReference (above) plus the span-shaping helpers
                         //: their real bodies use JIT intrinsics we don't model
                         // (IsReferenceOrContainsReferences / Unsafe.As / nuint math), so
@@ -2070,7 +2070,7 @@ internal sealed partial class MethodCompiler
         // string-comparer factories' null means "use the default comparer", and
         // JsonSerializerOptions.TrackOptionsInstance's registration into an unread
         // ConditionalWeakTable is unobservable.
-        if (_c.IsBoundedMethod(callee.DeclaringClass.FullName, callee.Name))
+        if (_c.IsBoundedMethod(callee))
         {
             // If the callee is a bodyless [DllImport], the bound is not neutralizing a
             // modelled BCL path — it is standing in for a native module this build does
@@ -2374,7 +2374,7 @@ internal sealed partial class MethodCompiler
                 // NOT loud here: it falls through to the later stages in order — the
                 // member's own default interface body (Rva != 0), the bodyless
                 // intrinsics, then the precise no-intrinsic-mapping diagnostic.
-                if (CoreIntrinsics.IsIntrinsicType(simpl.DeclaringClass.FullName)
+                if (CoreIntrinsics.IsIntrinsicType(simpl.DeclaringClass)
                     || simpl.DeclaringClass.IntrinsicCppName is not null
                     || CoreIntrinsics.IsInlineLoweredPrimitiveMember(simpl.DeclaringClass.FullName, simpl.Name))
                 {
@@ -2690,13 +2690,9 @@ internal sealed partial class MethodCompiler
         }
         else if (isCallvirt && callee.IsVirtual && CoreIntrinsics.BrDelegateCallable.Matches(callee))
         {
-            // Delegate type-info has no vtable. The validated wrapper is the
-            // virtual implementation, except for Delegate's nonvirtual value
-            // bodies, whose slot selects MulticastDelegate's override instead.
-            var target = _c.DelegateCallableVirtualTarget(callee);
-            if (target != callee)
-                args[0] = $"({ReceiverCppType(target.DeclaringClass)})({args[0]})";
-            call = DirectCall(target, args);
+            // Delegate type-info has no vtable, and no delegate type overrides
+            // these slots: the validated wrapper is the virtual implementation.
+            call = DirectCall(callee, args);
         }
         else if (isCallvirt && callee.IsVirtual
             && CoreIntrinsics.BrEnumInstanceFormat.Matches(callee))
@@ -2766,22 +2762,13 @@ internal sealed partial class MethodCompiler
         EmitByRefSlotFixups();
     }
 
-    /// <summary>Maps the few body-less (InternalCall) BCL methods that turn up
-    /// in compiler-generated state machines to their runtime meaning, so
-    /// reachability need not transpile a runtime-internal body.
-    /// Returns false (and emits nothing) for anything unmapped.</summary>
+    /// <summary>Maps the few body-less (InternalCall) BCL methods to their
+    /// runtime meaning, so reachability need not transpile a runtime-internal
+    /// body. Returns false (and emits nothing) for anything unmapped.</summary>
     private bool TryEmitBodylessIntrinsic(MethodInfo callee)
     {
         switch (callee.DeclaringClass.FullName, callee.Name)
         {
-            // The calling thread's real managed id (main = 1, spawned threads
-            // and pool workers get fresh ids). Iterators stamp this into the
-            // state machine so GetEnumerator can hand back `this` on the same
-            // thread — a cross-thread enumerate now correctly falls back to a
-            // clone, matching .NET.
-            case ("System.Environment", "get_CurrentManagedThreadId"):
-                Push(StackKind.I4, "int32_t", "dn2cpp_thread_managed_id(dn2cpp_thread_current())");
-                return true;
             // Environment.ProcessorCount's GetProcessorCount InternalCall (reached from
             // Environment..cctor, itself triggered by ConcurrentDictionary's default
             // concurrency level). The hardware concurrency, clamped to >= 1.

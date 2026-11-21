@@ -68,6 +68,11 @@ internal static partial class CoreIntrinsics
         [("System.Runtime.CompilerServices.RuntimeHelpers", "IsRuntimeAsync")] = false,
     };
 
+    /// <summary>Rows of <see cref="s_constFoldedGetters"/> that name the CoreLib
+    /// declaration only: a same-named type defined elsewhere keeps its own body.</summary>
+    private static readonly HashSet<(string Type, string Method)> s_coreLibOwnedConstFoldedGetters =
+        [("System.Runtime.CompilerServices.RuntimeHelpers", "IsRuntimeAsync")];
+
     /// <summary>Method names appearing in <see cref="s_constFoldedGetters"/> —
     /// the cheap first-pass filter for per-call-token oracle lookups.</summary>
     private static readonly HashSet<string> s_constFoldedGetterNames =
@@ -77,6 +82,14 @@ internal static partial class CoreIntrinsics
     /// const-folded. See <see cref="s_constFoldedGetters"/>.</summary>
     public static bool? ConstFoldedGetter(string declType, string name) =>
         s_constFoldedGetters.TryGetValue((declType, name), out bool v) ? v : null;
+
+    /// <summary><see cref="ConstFoldedGetter(string, string)"/> for a declaration in
+    /// <paramref name="owner"/>: a CoreLib-owned row answers for the CoreLib's declaration
+    /// or an owner that did not resolve (null), never for another assembly's.</summary>
+    public static bool? ConstFoldedGetter(string declType, string name, Module? owner) =>
+        s_coreLibOwnedConstFoldedGetters.Contains((declType, name)) && owner is not null && !IsCoreLibModule(owner)
+            ? null
+            : ConstFoldedGetter(declType, name);
 
     /// <summary>The exact private Rune helper whose callers all select a different
     /// path under invariant globalization. Medium may still describe its signature,

@@ -8,16 +8,30 @@ namespace Dn2Cpp;
 internal static class DelegateCallableBodyContract
 {
     internal static bool IsName(string owner, string name) =>
-        CoreIntrinsicTypeMaps.IsDelegateBaseType(owner) && (name is ".ctor" or "Equals" or "GetHashCode"
-            || owner == "System.MulticastDelegate" && (name is "NewMulticastDelegate" or "CombineImpl" or "RemoveImpl"
-                or "GetTarget" or "GetMethodImpl" or "GetInvocationList" or "get_HasSingleTarget" or "TryGetAt"
-                || VmConstructorArity(name) != 0));
+        CoreIntrinsicTypeMaps.IsDelegateBaseType(owner) && (name == ".ctor"
+            || owner == "System.Delegate" && (name is "Equals" or "GetHashCode" or "NewMulticastDelegate"
+                or "CombineImpl" or "RemoveImpl" or "get_Target" or "GetMethodImpl" or "GetInvocationList"
+                or "get_HasSingleTarget" or "TryGetAt" || VmConstructorArity(name) != 0));
+
+    // The invocation-list element is CoreCLR storage: no body of it is transpiled.
+    internal static bool IsInvocationStorage(string owner) => owner == "System.Delegate+Wrapper";
+
+    internal static bool IsInvocationStorage(MetadataReader reader, TypeDefinitionHandle handle)
+    {
+        var type = reader.GetTypeDefinition(handle);
+        if (type.GetDeclaringType().IsNil || type.GetGenericParameters().Count != 0
+            || (type.Attributes & TypeAttributes.VisibilityMask) != TypeAttributes.NestedAssembly
+            || !reader.StringComparer.Equals(type.Name, "Wrapper")) return false;
+        var parent = reader.GetTypeDefinition(type.GetDeclaringType());
+        return parent.GetDeclaringType().IsNil && reader.StringComparer.Equals(parent.Namespace, "System")
+            && reader.StringComparer.Equals(parent.Name, "Delegate");
+    }
 
     internal static int VmConstructorArity(string name) => name switch
     {
         "CtorClosed" or "CtorClosedStatic" or "CtorRTClosed" => 2,
-        "CtorOpened" or "CtorVirtualDispatch" or "CtorCollectibleClosedStatic" => 3,
-        "CtorCollectibleOpened" or "CtorCollectibleVirtualDispatch" => 4,
+        "CtorOpen" or "CtorVirtualDispatch" or "CtorCollectibleClosedStatic" => 3,
+        "CtorCollectibleOpen" or "CtorCollectibleVirtualDispatch" => 4,
         _ => 0,
     };
 
@@ -44,12 +58,20 @@ internal static class DelegateCallableBodyContract
             && reader.StringComparer.Equals(type.Namespace, space) && reader.StringComparer.Equals(type.Name, name);
     }
 
+    private static bool Storage(ref BlobReader blob, MetadataReader reader, bool definition)
+    {
+        if (!Byte(ref blob, 0x1D) || !Byte(ref blob, 0x11) || !blob.TryReadCompressedInteger(out int token)
+            || (token >> 2) == 0 || (token & 3) >= 2) return false;
+        if (!definition) return true; // decoded reference identity is checked by the transpiler
+        return (token & 3) == 0 && (token >> 2) <= reader.TypeDefinitions.Count
+            && IsInvocationStorage(reader, SRME.TypeDefinitionHandle(token >> 2));
+    }
+
     internal static bool Signature(MetadataReader reader, string owner, string name, BlobReader blob,
         bool definition, out MethodAttributes attributes)
     {
         attributes = MethodAttributes.HideBySig;
         if (!IsName(owner, name) || !Byte(ref blob, 0x20) || !blob.TryReadCompressedInteger(out int count)) return false;
-        bool multicast = owner == "System.MulticastDelegate";
         bool matched;
         switch (name)
         {
@@ -59,45 +81,42 @@ internal static class DelegateCallableBodyContract
                     && NamedTarget(ref blob, reader, definition) && Byte(ref blob, 0x0E);
                 break;
             case "Equals":
-                attributes |= MethodAttributes.Public | MethodAttributes.Virtual;
-                if (multicast) attributes |= MethodAttributes.Final;
+                attributes |= MethodAttributes.Public | MethodAttributes.Final | MethodAttributes.Virtual;
                 matched = count == 1 && Byte(ref blob, 2) && Byte(ref blob, 0x1C);
                 break;
             case "GetHashCode":
-                attributes |= MethodAttributes.Public | MethodAttributes.Virtual;
-                if (multicast) attributes |= MethodAttributes.Final;
+                attributes |= MethodAttributes.Public | MethodAttributes.Final | MethodAttributes.Virtual;
                 matched = count == 0 && Byte(ref blob, 8);
                 break;
             case "NewMulticastDelegate":
-                attributes |= count == 3 ? MethodAttributes.Private : MethodAttributes.Assembly;
-                matched = count is 2 or 3 && Class(ref blob, reader, "System", "MulticastDelegate", definition)
-                    && Byte(ref blob, 0x1D) && Byte(ref blob, 0x1C) && Byte(ref blob, 8)
-                    && (count == 2 || Byte(ref blob, 2));
+                attributes |= MethodAttributes.Private;
+                matched = count == 3 && Class(ref blob, reader, "System", "Delegate", definition)
+                    && Storage(ref blob, reader, definition) && Byte(ref blob, 8) && Byte(ref blob, 2);
                 break;
             case "CombineImpl" or "RemoveImpl":
-                attributes |= MethodAttributes.Family | MethodAttributes.Final | MethodAttributes.Virtual;
+                attributes |= MethodAttributes.Family;
                 matched = count == 1 && Class(ref blob, reader, "System", "Delegate", definition)
                     && Class(ref blob, reader, "System", "Delegate", definition);
                 break;
-            case "GetTarget":
-                attributes |= MethodAttributes.Assembly | MethodAttributes.Virtual | MethodAttributes.CheckAccessOnOverride;
+            case "get_Target":
+                attributes |= MethodAttributes.Public | MethodAttributes.SpecialName;
                 matched = count == 0 && Byte(ref blob, 0x1C);
                 break;
             case "GetMethodImpl":
-                attributes |= MethodAttributes.Family | MethodAttributes.Virtual;
+                attributes |= MethodAttributes.Family | MethodAttributes.Virtual | MethodAttributes.NewSlot;
                 matched = count == 0 && Class(ref blob, reader, "System.Reflection", "MethodInfo", definition);
                 break;
             case "GetInvocationList":
-                attributes |= MethodAttributes.Public | MethodAttributes.Final | MethodAttributes.Virtual;
+                attributes |= MethodAttributes.Public;
                 matched = count == 0 && Byte(ref blob, 0x1D) && Class(ref blob, reader, "System", "Delegate", definition);
                 break;
             case "get_HasSingleTarget":
-                attributes |= MethodAttributes.Assembly | MethodAttributes.SpecialName;
+                attributes |= MethodAttributes.Public | MethodAttributes.SpecialName;
                 matched = count == 0 && Byte(ref blob, 2);
                 break;
             case "TryGetAt":
-                attributes |= MethodAttributes.Assembly;
-                matched = count == 1 && Byte(ref blob, 0x1C) && Byte(ref blob, 8);
+                attributes |= MethodAttributes.Private;
+                matched = count == 1 && Class(ref blob, reader, "System", "Delegate", definition) && Byte(ref blob, 8);
                 break;
             default:
                 attributes |= MethodAttributes.Private;

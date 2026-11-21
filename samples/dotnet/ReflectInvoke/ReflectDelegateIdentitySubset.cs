@@ -866,10 +866,11 @@ namespace ReflectDelegateIdentitySubset
             var textRow = typeof(object).GetMethod("ToString", Type.EmptyTypes);
             var hashRow = typeof(object).GetMethod("GetHashCode", Type.EmptyTypes);
             var equalsRow = typeof(object).GetMethod("Equals", new[] { typeof(object) });
+            // A reflection binding names the Object row it was given.
             Console.WriteLine("runtime-object-reflected-" + receiver.GetType().Name + "="
-                + RuntimeBinding(textRow.CreateDelegate(typeof(Func<string>), receiver), owner, "ToString", root, receiver, null, text()) + "|"
-                + RuntimeBinding(hashRow.CreateDelegate(typeof(Func<int>), receiver), owner, "GetHashCode", root, receiver, null, hash()) + "|"
-                + RuntimeBinding(equalsRow.CreateDelegate(typeof(Func<object, bool>), receiver), owner, "Equals", root, receiver, new[] { receiver }, true));
+                + RuntimeBinding(textRow.CreateDelegate(typeof(Func<string>), receiver), root, "ToString", root, receiver, null, text()) + "|"
+                + RuntimeBinding(hashRow.CreateDelegate(typeof(Func<int>), receiver), root, "GetHashCode", root, receiver, null, hash()) + "|"
+                + RuntimeBinding(equalsRow.CreateDelegate(typeof(Func<object, bool>), receiver), root, "Equals", root, receiver, new[] { receiver }, true));
         }
 
         static string ArrayHelperBinding(Delegate binding, object receiver)
@@ -883,6 +884,14 @@ namespace ReflectDelegateIdentitySubset
             string create;
             try { method.CreateDelegate(binding.GetType(), receiver); create = "accepted"; }
             catch (ArgumentException) { create = "target"; }
+            // A reflection binding names the interface row it was given, which is not
+            // generic and takes the array as its receiver.
+            if (!method.IsGenericMethod)
+                return "row/" + (method.DeclaringType == typeof(System.Collections.Generic.IEnumerable<int>))
+                    + "/" + (method.ReflectedType == method.DeclaringType)
+                    + "/" + method.IsVirtual + "/" + (invoke == "accepted") + "/" + (create == "accepted")
+                    + "/" + (int)method.Attributes + "/" + (int)method.GetMethodImplementationFlags()
+                    + "/" + method.MetadataToken + "/" + method;
             var definition = method.GetGenericMethodDefinition();
             return (method.DeclaringType.FullName == "System.SZArrayHelper")
                 + "/" + (method.ReflectedType == method.DeclaringType)
@@ -942,13 +951,13 @@ namespace ReflectDelegateIdentitySubset
             var compareBound = typeof(IComparable).GetMethod("CompareTo").CreateDelegate(typeof(Func<object, int>), comparable);
             Console.WriteLine("runtime-interface-number="
                 + RuntimeBinding(compare, "System.Int32", "CompareTo", "System.Int32", comparable, new object[] { 7 }, 0) + "|"
-                + RuntimeBinding(compareBound, "System.Int32", "CompareTo", "System.Int32", comparable, new object[] { 7 }, 0));
+                + RuntimeBinding(compareBound, "System.IComparable", "CompareTo", "System.IComparable", comparable, new object[] { 7 }, 0));
             IComparable stringComparable = "text";
             Func<object, int> stringCompare = stringComparable.CompareTo;
             var stringBound = typeof(IComparable).GetMethod("CompareTo").CreateDelegate(typeof(Func<object, int>), stringComparable);
             Console.WriteLine("runtime-interface-string="
                 + RuntimeBinding(stringCompare, "System.String", "CompareTo", "System.String", stringComparable, new object[] { "text" }, 0) + "|"
-                + RuntimeBinding(stringBound, "System.String", "CompareTo", "System.String", stringComparable, new object[] { "text" }, 0));
+                + RuntimeBinding(stringBound, "System.IComparable", "CompareTo", "System.IComparable", stringComparable, new object[] { "text" }, 0));
             int[] array = { 3, 4 };
             Func<System.Collections.Generic.IEnumerator<int>> enumerate = ((System.Collections.Generic.IEnumerable<int>)array).GetEnumerator;
             var enumerateBound = typeof(System.Collections.Generic.IEnumerable<int>).GetMethod("GetEnumerator")
@@ -977,13 +986,14 @@ namespace ReflectDelegateIdentitySubset
                 + RuntimeBinding(numberPick, typeof(ClosedPicks).FullName, "ReflectDelegateIdentitySubset.Program.IClosedPick<System.Int32>.Pick", typeof(ClosedPicks).FullName, picks, null, 31));
             Console.WriteLine("runtime-interface-closed-values=" + numberPick() + "/" + textPick()
                 + "/" + numberBound.DynamicInvoke() + "/" + textBound.DynamicInvoke()
-                + "/" + (numberPick.Method == numberBound.Method) + "/" + (textPick.Method == textBound.Method)
+                + "/" + (numberBound.Method == typeof(IClosedPick<int>).GetMethod("Pick"))
+                + "/" + (textBound.Method == typeof(IClosedPick<string>).GetMethod("Pick"))
                 + "/" + (numberPick.Method != textPick.Method));
             IBaseDefault boxed = (IBaseDefault)Activator.CreateInstance(typeof(StructDerivedDefault));
             Func<string> defaultPick = boxed.Pick;
             var defaultBound = typeof(IBaseDefault).GetMethod("Pick").CreateDelegate(typeof(Func<string>), boxed);
             Console.WriteLine("runtime-interface-value-default=" + (defaultPick.Method.DeclaringType == typeof(IDerivedDefault))
-                + "/" + (defaultBound.Method.DeclaringType == typeof(IDerivedDefault))
+                + "/" + (defaultBound.Method.DeclaringType == typeof(IBaseDefault))
                 + "/" + defaultPick() + "/" + defaultBound.DynamicInvoke()
                 + "/" + defaultPick.Method.Invoke(boxed, null));
             Console.WriteLine("runtime delegate method identities end");
@@ -1021,7 +1031,8 @@ namespace ReflectDelegateIdentitySubset
             Console.WriteLine("object-virtual-equality-methods=" + directBase.Method.DeclaringType.Name
                 + "/" + compiled.Method.DeclaringType.Name + "/" + reflected.Method.DeclaringType.Name);
             Console.WriteLine("object-virtual-equality-values=" + directBase() + "/" + compiled() + "/" + reflected());
-            Console.WriteLine("object-virtual-equality-base=" + directBase.Equals(reflected) + "/" + reflected.Equals(directBase));
+            Console.WriteLine("object-virtual-equality-base=" + directBase.Equals(reflected) + "/" + reflected.Equals(directBase)
+                + "/" + (directBase.GetHashCode() == reflected.GetHashCode()));
             Console.WriteLine("object-virtual-equality-override=" + compiled.Equals(reflected) + "/" + reflected.Equals(compiled)
                 + "/" + (compiled.GetHashCode() == reflected.GetHashCode()));
             var root = new object();
@@ -1056,6 +1067,95 @@ namespace ReflectDelegateIdentitySubset
             Console.WriteLine("object-inherited-AggregateException-remove=" + ReferenceEquals(remaining[0], compiled)
                 + "/" + ((Func<string>)remaining[0])());
             Console.WriteLine("inherited Object virtual delegate equality end");
+        }
+
+        interface IStaticBase { static virtual int F(object o) => 1; static virtual int G(object o) => 2; }
+        interface IStaticReimpl : IStaticBase { static int IStaticBase.F(object o) => 42; }
+        interface IStaticPlain : IStaticBase { }
+        class StaticOnly : IStaticBase { }
+        class StaticPlain : IStaticPlain { }
+        class StaticReimpl : IStaticReimpl { }
+        interface IStaticDeep : IStaticReimpl { static int IStaticBase.F(object o) => 44; }
+        class StaticDeep : IStaticDeep { }
+        interface IStaticGen<T> { static virtual int F(object o) => 1; static virtual int G(object o) => 2; }
+        interface IStaticGenReimpl : IStaticGen<int> { static int IStaticGen<int>.G(object o) => 42; }
+        class StaticGenBoth : IStaticGenReimpl, IStaticGen<string> { }
+        interface IStaticMethod { static virtual int M<U>(object o) => 1; }
+        interface IStaticMethodReimpl : IStaticMethod { static int IStaticMethod.M<U>(object o) => 42; }
+        class StaticMethodDerived : IStaticMethodReimpl { }
+        class StaticMethodPlain : IStaticMethod { }
+        interface IStaticVar<out T> { static virtual int F(object o) => typeof(T) == typeof(string) ? 3 : 1; }
+        interface IStaticVarReimpl : IStaticVar<string> { static int IStaticVar<string>.F(object o) => 42; }
+        class StaticVarDerived : IStaticVarReimpl { }
+        class StaticVarDirect : IStaticVar<string> { }
+
+        // Reaches the bodies the reflected rows bind, which name-based rooting does not
+        // keep for a closed generic interface.
+        static int StaticGenInt<T>() where T : IStaticGen<int> => T.F(null) + T.G(null);
+        static int StaticGenString<T>() where T : IStaticGen<string> => T.F(null) + T.G(null);
+
+        static int StaticMethodDirect<T>() where T : IStaticMethod => T.M<int>(null);
+        static int StaticVarDirectCall<T, A>() where T : IStaticVar<A> => T.F(null);
+
+        static string StaticBindRow(Func<System.Reflection.MethodInfo> row, object receiver)
+        {
+            try
+            {
+                return row().CreateDelegate<Func<int>>(receiver)().ToString();
+            }
+            catch (NotSupportedException)
+            {
+                return "refused";
+            }
+        }
+
+        static string StaticBind(object receiver, bool sibling = false)
+        {
+            try
+            {
+                var method = sibling ? typeof(IStaticBase).GetMethod("G") : typeof(IStaticBase).GetMethod("F");
+                return method.CreateDelegate<Func<int>>(receiver)().ToString();
+            }
+            catch (NotSupportedException)
+            {
+                return "refused";
+            }
+            catch (Exception exception)
+            {
+                return exception.GetType().Name;
+            }
+        }
+
+        // The CLR binds a derived interface's re-implementation; dn2cpp binds the
+        // member's own body unless an interface of the argument re-implements that member.
+        public static void RunStaticVirtualReimplementation()
+        {
+            Console.WriteLine("== static virtual re-implementation ==");
+            Console.WriteLine("static-virtual-reimplementation-own=" + StaticBind(new StaticOnly())
+                + "/" + StaticBind(new StaticPlain()));
+            Console.WriteLine("static-virtual-reimplementation-derived=" + StaticBind(new StaticReimpl()));
+            Console.WriteLine("static-virtual-reimplementation-sibling=" + StaticBind(new StaticReimpl(), true));
+            Console.WriteLine("static-virtual-reimplementation-deep=" + StaticBind(new StaticDeep()) + "/"
+                + StaticBindRow(() => typeof(IStaticBase).GetMethod("G"), new StaticDeep()));
+            var both = new StaticGenBoth();
+            Console.WriteLine("static-virtual-reimplementation-direct="
+                + (StaticGenInt<StaticGenBoth>() + StaticGenString<StaticGenBoth>()));
+            Console.WriteLine("static-virtual-reimplementation-generic="
+                + StaticBindRow(() => typeof(IStaticGen<int>).GetMethod("G"), both) + "/"
+                + StaticBindRow(() => typeof(IStaticGen<int>).GetMethod("F"), both) + "/"
+                + StaticBindRow(() => typeof(IStaticGen<string>).GetMethod("G"), both) + "/"
+                + StaticBindRow(() => typeof(IStaticGen<string>).GetMethod("F"), both));
+            Console.WriteLine("static-virtual-reimplementation-direct-variant="
+                + StaticMethodDirect<StaticMethodDerived>() + "/" + StaticMethodDirect<StaticMethodPlain>() + "/"
+                + StaticVarDirectCall<StaticVarDerived, string>() + "/" + StaticVarDirectCall<StaticVarDirect, string>());
+            Console.WriteLine("static-virtual-reimplementation-method="
+                + StaticBindRow(() => typeof(IStaticMethod).GetMethod("M").MakeGenericMethod(typeof(int)), new StaticMethodDerived())
+                + "/" + StaticBindRow(() => typeof(IStaticMethod).GetMethod("M").MakeGenericMethod(typeof(int)), new StaticMethodPlain()));
+            Console.WriteLine("static-virtual-reimplementation-variance="
+                + StaticBindRow(() => typeof(IStaticVar<object>).GetMethod("F"), new StaticVarDerived()) + "/"
+                + StaticBindRow(() => typeof(IStaticVar<object>).GetMethod("F"), new StaticVarDirect()) + "/"
+                + StaticBindRow(() => typeof(IStaticVar<string>).GetMethod("F"), new StaticVarDirect()));
+            Console.WriteLine("static virtual re-implementation end");
         }
 
         static void CheckInherited(string name, object receiver, Func<string> directBase, Func<string> compiled)

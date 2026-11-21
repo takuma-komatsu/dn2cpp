@@ -1398,6 +1398,12 @@ void* dn2cpp_native_library_load(Dn2CppString* path, int32_t throwOnError)
         dn2cpp_throw_argument_null_param("libraryPath");
     std::string name = dn2cpp_native_utf8(path);
     void* handle = dn2cpp_native_load_exact(name);
+#ifndef _WIN32
+    // CoreLib hands a path to dlopen unchecked, so the host loader decides an empty
+    // one: glibc answers with the main program.
+    if (name.empty())
+        handle = ::dlopen("", RTLD_LAZY | RTLD_LOCAL);
+#endif
     if (handle == nullptr && throwOnError != 0)
         dn2cpp_throw_dll_not_found(name.c_str());
     return handle;

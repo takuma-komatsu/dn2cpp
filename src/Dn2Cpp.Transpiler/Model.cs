@@ -1118,6 +1118,11 @@ internal sealed class ClassInfo
     public Dictionary<MethodDefinitionHandle, MethodInfo> MethodByTemplate { get { PullMembers(); return _methodByTemplate; } } // specs: template method -> instance
     public Dictionary<MethodInfo, MethodInfo> ExplicitInterfaceImpls { get { PullMembers(); return _explicitItfImpls; } } // explicit interface declaration -> body
 
+    /// <summary>Generic interface methods this interface replaces with a static explicit body.
+    /// <see cref="ExplicitInterfaceImpls"/> cannot key them, so each is kept as its closed
+    /// declaring interface and definition token.</summary>
+    public List<(ClassInfo Declaring, int Token)> StaticGenericImplDeclarations { get { PullMembers(); return _staticGenericImplDecls; } }
+
     /// <summary>Lazy name→methods index over <see cref="Methods"/>, shared by the linear
     /// same-name scans (Compilation.ResolveItfImplOrNull's signature-match loop,
     /// ResolveMemberRefMethod's overload scan). Reading it pulls members through the
@@ -1190,6 +1195,7 @@ internal sealed class ClassInfo
     private List<MethodInfo> _slotOwners = new();
     private Dictionary<MethodDefinitionHandle, MethodInfo> _methodByTemplate = new();
     private Dictionary<MethodInfo, MethodInfo> _explicitItfImpls = new();
+    private List<(ClassInfo Declaring, int Token)> _staticGenericImplDecls = new();
 
     /// <summary>The class's static constructor — the <c>.cctor</c> row with a real body —
     /// or null. Reads <see cref="Methods"/>, so on a specialization the first ask decodes

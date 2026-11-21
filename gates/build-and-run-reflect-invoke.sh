@@ -641,7 +641,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|app-library-initializer-pr
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|identity-overload-prefix-argv:before-identity-overload-selection|identity-overload-boundary-prefix-argv:delegate-signature-before-identity-boundary"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-origin-prefix-argv:before-delegate-origin-boundaries|delegate-origin-modes:argument,field,array,checked-conv,arithmetic,box,call,local,stack-join,byref-argument"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|runtime-type-relations-prefix-argv:before-runtime-type-relations"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|generic-method-definitions-prefix-argv:before-generic-method-definitions|generic-method-boundary-argv:generic-method-boundary-outcomes"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|generic-method-definitions-prefix-argv:before-generic-method-definitions|generic-method-boundary-argv:generic-method-boundary-outcomes|static-virtual-reimplementation-argv:static-virtual-reimplementation-outcomes"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|formal-method-parameters-prefix-argv:before-formal-method-parameters|formal-type-boundary-argv:formal-type-boundary-outcomes"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|mixed-generic-definitions-prefix-argv:before-mixed-generic-definitions|generic-signature-boundary-argv:generic-signature-boundary-outcomes"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|formal-reflected-owners-prefix-argv:before-formal-reflected-owners"
@@ -753,7 +753,7 @@ gate_opaque_object_virtual_asserts() {
             '== opaque exception inherited Object virtuals ==' \
             'opaque-object-virtual-AggregateException=Object.GetHashCode>Object.GetHashCode/True/True/True|Object.Equals>Object.Equals/True/True/True|Object.GetHashCode>Object.GetHashCode/True/True/True|Object.Equals>Object.Equals/True/True/True' \
             'opaque-object-virtual-InheritingAggregateException=Object.GetHashCode>Object.GetHashCode/True/True/True|Object.Equals>Object.Equals/True/True/True|Object.GetHashCode>Object.GetHashCode/True/True/True|Object.Equals>Object.Equals/True/True/True' \
-            'opaque-object-virtual-HashEqualsAggregateException=HashEqualsAggregateException.GetHashCode>Object.GetHashCode/False/False/True|HashEqualsAggregateException.Equals>Object.Equals/False/False/True|HashEqualsAggregateException.GetHashCode>Object.GetHashCode/False/False/True|HashEqualsAggregateException.Equals>Object.Equals/False/False/True' \
+            'opaque-object-virtual-HashEqualsAggregateException=HashEqualsAggregateException.GetHashCode>Object.GetHashCode/False/False/True|HashEqualsAggregateException.Equals>Object.Equals/False/False/True|Object.GetHashCode>Object.GetHashCode/True/True/True|Object.Equals>Object.Equals/True/True/True' \
             'opaque exception inherited Object virtuals end'
         gate_output witness "$out/virtual-delegate-full.$axis.raw.stdout" 'opaque-object-virtual-text=True' --count 3 --policy crlf \
             || { echo "FAIL: opaque exception ToString bound to a wrong method: $axis" >&2; return 1; }
@@ -814,11 +814,11 @@ gate_object_virtual_equality_asserts() {
         fi
         reflection_assert_lines "$out/virtual-delegate-full.$axis.raw.stdout" 1 \
             '== Object virtual delegate equality ==' \
-                'object-virtual-equality-methods=Object/ObjectVirtualEqualityCase/ObjectVirtualEqualityCase' \
+                'object-virtual-equality-methods=Object/ObjectVirtualEqualityCase/Object' \
                 'object-virtual-equality-values=ReflectDelegateIdentitySubset.ObjectVirtualEqualityProgram+ObjectVirtualEqualityCase/override/override' \
-                'object-virtual-equality-base=False/False' 'object-virtual-equality-override=True/True/True' \
+                'object-virtual-equality-base=True/True/True' 'object-virtual-equality-override=True/True/False' \
                 'object-virtual-equality-root=True/True/True' \
-                'object-virtual-equality-remove=True/override/True/ReflectDelegateIdentitySubset.ObjectVirtualEqualityProgram+ObjectVirtualEqualityCase' \
+                'object-virtual-equality-remove=False/ReflectDelegateIdentitySubset.ObjectVirtualEqualityProgram+ObjectVirtualEqualityCase/False/override' \
                 'Object virtual delegate equality end'
     done
     if reflection_full_profile; then
@@ -841,13 +841,13 @@ gate_inherited_object_virtual_equality_asserts() {
         fi
         reflection_assert_lines "$out/virtual-delegate-full.$axis.raw.stdout" 1 \
             '== inherited Object virtual delegate equality ==' \
-                'object-inherited-Exception-methods=Exception/ExceptionVirtualEqualityCase/ExceptionVirtualEqualityCase' \
+                'object-inherited-Exception-methods=Exception/ExceptionVirtualEqualityCase/Object' \
                 'object-inherited-Exception-values=True/exception-override/exception-override' \
-                'object-inherited-Exception-equality=False/False/True/True/True' \
+                'object-inherited-Exception-equality=False/False/True/True/False' \
                 'object-inherited-Exception-remove=True/True/True/True' \
-                'object-inherited-AggregateException-methods=AggregateVirtualEqualityCase/AggregateVirtualEqualityCase' \
+                'object-inherited-AggregateException-methods=AggregateVirtualEqualityCase/Object' \
                 'object-inherited-AggregateException-values=aggregate-override/aggregate-override' \
-                'object-inherited-AggregateException-equality=True/True/True' \
+                'object-inherited-AggregateException-equality=True/True/False' \
                 'object-inherited-AggregateException-remove=True/aggregate-override' \
                 'inherited Object virtual delegate equality end'
         if reflection_full_profile; then
@@ -859,6 +859,28 @@ gate_inherited_object_virtual_equality_asserts() {
     if reflection_full_profile; then
         gate_output compare "$out/inherited-object-virtual-equality-prefix.native.raw.stdout" "$out/inherited-object-virtual-equality-prefix.dotnet.raw.stdout"
     fi
+}
+
+# The CLR binds a derived interface's re-implementation of a static virtual member;
+# the native bind refuses the re-implemented member and still binds the member's
+# own body for a sibling no interface of the argument re-implements.
+gate_static_virtual_reimplementation_asserts() {
+    local out="$1" axis expected deep generic method variance
+    gate_capture_ok "$out/static-virtual-reimplementation.dotnet" reflection_oracle "$_CG_APP" static-virtual-reimplementation-outcomes
+    gate_capture_ok "$out/static-virtual-reimplementation.native" run_bounded "$out/ReflectInvoke$EXE_EXT" static-virtual-reimplementation-outcomes
+    for axis in dotnet native; do
+        expected=42 deep=44/2 generic=42/1/2/1 method=42/1 variance=42/3/3
+        [ "$axis" = native ] && { expected=refused; deep=refused/2; generic=refused/1/2/1 method=refused/1 variance=refused/refused/3; }
+        reflection_assert_lines "$out/static-virtual-reimplementation.$axis.stdout" any \
+            '== static virtual re-implementation ==' 'static-virtual-reimplementation-own=1/1' \
+            "static-virtual-reimplementation-derived=$expected" 'static-virtual-reimplementation-sibling=2' \
+            "static-virtual-reimplementation-deep=$deep" static-virtual-reimplementation-direct=46 \
+            "static-virtual-reimplementation-generic=$generic" \
+            static-virtual-reimplementation-direct-variant=42/1/42/3 \
+            "static-virtual-reimplementation-method=$method" \
+            "static-virtual-reimplementation-variance=$variance" \
+            'static virtual re-implementation end'
+    done
 }
 
 gate_extra_asserts() {
@@ -883,6 +905,7 @@ gate_extra_asserts() {
     gate_runtime_delegate_method_asserts "$1"
     gate_object_virtual_equality_asserts "$1"
     gate_inherited_object_virtual_equality_asserts "$1"
+    gate_static_virtual_reimplementation_asserts "$1"
     local out="$1" native line registry boundary axis route query expected parameter native_file boundary_file
     gate_python gates/fixtures/check-reflection-layout.py "$out" "$reflection_layout_axis"
     # The runtime publishes a constructor's invoke plan only for a record inside a
@@ -1062,8 +1085,8 @@ gate_extra_asserts() {
     fi
     reflection_assert_lines "$native_file" any \
         '== reflection-bound delegates over a renamed override ==' \
-        'renamed-slot-calls=3/3/3/4' 'renamed-slot-identity=True/True/True/False/Rescale/Rescale' \
-        'renamed-slot-dedup=1/True/True' 'renamed-slot-chain=True/True' \
+        'renamed-slot-calls=3/3/3/4' 'renamed-slot-identity=True/True/False/False/Scale/Rescale' \
+        'renamed-slot-dedup=2/True/False' 'renamed-slot-chain=True/False' \
         'reflection-bound delegates over a renamed override end'
     if reflection_full_profile; then
         DN2CPP_BEFORE_SETTLED_OBJECT_VIRTUAL=1 gate_capture_ok "$out/before-settled-object-virtual" run_bounded "$out/ReflectInvoke$EXE_EXT"
@@ -1085,16 +1108,16 @@ gate_extra_asserts() {
     reflection_assert_lines "$native_file" any \
         '== renamed slot fillers ==' \
         'renamed-filler-calls=42/43/reuse/RenamedFillerDerived.Weigh' \
-        'renamed-filler-interface=True/True/True/1/42/42/RenamedFillerImpl.Weigh/RenamedFillerImpl.Weigh' \
-        'renamed-filler-interface-inherited=True/True/True/1/43/43/RenamedFillerDerived.Weigh/RenamedFillerDerived.Weigh' \
-        'renamed-filler-object-derived=True/True/True/1/derived/derived/ObjectMethodImplDerived.Render/ObjectMethodImplDerived.Render|True/True/True/1/907/907/ObjectMethodImplDerived.Hash/ObjectMethodImplDerived.Hash' \
-        'renamed-filler-object-hider=True/True/True/1/alias/alias/ObjectMethodImpl.Render/ObjectMethodImpl.Render|True/True/True/1/701/701/ObjectMethodImpl.Hash/ObjectMethodImpl.Hash' \
+        'renamed-filler-interface=True/True/False/2/42/42/IRenamedFiller.Measure/RenamedFillerImpl.Weigh' \
+        'renamed-filler-interface-inherited=True/True/False/2/43/43/IRenamedFiller.Measure/RenamedFillerImpl.Weigh' \
+        'renamed-filler-object-derived=True/True/False/2/derived/derived/Object.ToString/ObjectMethodImpl.Render|True/True/False/2/907/907/Object.GetHashCode/ObjectMethodImpl.Hash' \
+        'renamed-filler-object-hider=True/True/False/2/alias/alias/Object.ToString/ObjectMethodImpl.Render|True/True/False/2/701/701/Object.GetHashCode/ObjectMethodImpl.Hash' \
         'renamed-filler-object-load-generic=ObjectMethodImplGeneric`1.Render/ObjectMethodImplGeneric`1.Hash/generic/1103' \
-        'renamed-filler-reuse=True/True/True/1/reuse/reuse/RenamedObjectReuse.Show/RenamedObjectReuse.Show' \
-        'renamed-filler-minted=True/True/True/1/44/44/RenamedFillerBox`1.Weigh/RenamedFillerBox`1.Weigh|True/True/True/1/42/42/RenamedFillerImpl.Weigh/RenamedFillerImpl.Weigh|True/True/True/1/45/45/RenamedFillerOverrideBox`1.Weigh/RenamedFillerOverrideBox`1.Weigh' \
-        'renamed-filler-minted-object=True/True/True/1/box/box/ObjectMethodImplBox`1.Render/ObjectMethodImplBox`1.Render|True/True/True/1/1201/1201/ObjectMethodImplBox`1.Hash/ObjectMethodImplBox`1.Hash|True/True/True/1/alias/alias/ObjectMethodImpl.Render/ObjectMethodImpl.Render' \
+        'renamed-filler-reuse=True/True/False/2/reuse/reuse/Object.ToString/RenamedObjectReuse.Show' \
+        'renamed-filler-minted=True/True/False/2/44/44/IRenamedFiller.Measure/RenamedFillerBox`1.Weigh|True/True/False/2/42/42/IRenamedFiller.Measure/RenamedFillerImpl.Weigh|True/True/False/2/45/45/IRenamedFiller.Measure/RenamedFillerImpl.Weigh' \
+        'renamed-filler-minted-object=True/True/False/2/box/box/Object.ToString/ObjectMethodImpl.Render|True/True/False/2/1201/1201/Object.GetHashCode/ObjectMethodImpl.Hash|True/True/False/2/alias/alias/Object.ToString/ObjectMethodImpl.Render' \
         'renamed-filler-minted-load=ObjectMethodImplBox`1.Render/ObjectMethodImpl.Render/RenamedFillerBox`1.Weigh/RenamedFillerImpl.Weigh' \
-        'renamed-filler-variant=True/True/True/1/source/source/RenamedSource.Fetch/RenamedSource.Fetch|True/True/True/1/source/source/RenamedSource.Fetch/RenamedSource.Fetch' \
+        'renamed-filler-variant=True/True/False/2/source/source/IRenamedSource`1.Take/RenamedSource.Fetch|True/True/False/2/source/source/IRenamedSource`1.Take/IRenamedSource`1.Take' \
         'renamed-filler-variant-load=source/RenamedSource.Fetch' \
         'renamed slot fillers end'
     if reflection_full_profile; then
@@ -2832,8 +2855,8 @@ unretained constructor selection end"
         'SizeOf attributes=0096:True:0100' \
         'static abstract invoke: TargetInvocationException/BadImageFormatException' \
         'static abstract unwrapped: BadImageFormatException/<null>' \
-        'static interface bound Abs: EntryPointNotFoundException/<null>' \
-        'static interface bound Virt: EntryPointNotFoundException/<null>' \
+        'static interface bound Abs: BadImageFormatException/<null>' \
+        'static interface bound Virt: virt' \
         'wide slots=1/0' 'wide get member=1' 'wide get method=SlotWide' \
         'wide properties=270/0' 'wide constructor=A39' \
         '== constructor binder faults ==' 'constructor matched=17' \

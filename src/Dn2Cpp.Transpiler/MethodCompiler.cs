@@ -1701,7 +1701,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             }, "CoreCLR type materialization boundary");
         string dispatch = _c.RuntimeInterfaceLowerings.TryGetValue(_method, out var runtimeDispatch)
             ? runtimeDispatch
-            : CoreIntrinsics.IsIntrinsicType(_method.DeclaringClass.FullName)
+            : CoreIntrinsics.IsIntrinsicType(_method.DeclaringClass)
             ? _method.DeclaringClass.FullName
             : IntrinsicDispatchName(_method.DeclaringClass);
         string name = _method.Name;
@@ -1849,7 +1849,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // self-host divergence).
                 bool catchAll = catchType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }
                     || (catchType is { Kind: TypeKind.Class }
-                        && CoreIntrinsics.IsIntrinsicType(catchType.Class!.FullName))
+                        && CoreIntrinsics.IsIntrinsicType(catchType.Class!))
                     || catchType is { Kind: TypeKind.Class, Class.FullName: "System.Exception" }
                     || catchType is { Kind: TypeKind.External, ExternalName: "System.Exception" or "System.Object" };
                 ti = catchAll ? null : TypeInfoExpr(catchType);
@@ -4146,7 +4146,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 if (Compilation.RuntimeNumericProviderConsumer(m))
                     _c.ReachFormatProviderGetFormat();
                 NoteFtnTarget(m, virtFtn: false);
-                bool ftnBounded = _c.IsBoundedMethod(m.DeclaringClass.FullName, m.Name);
+                bool ftnBounded = _c.IsBoundedMethod(m);
                 string expr;
                 if (ftnBounded)
                 {
@@ -4275,7 +4275,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // as (Dn2CppObject*, <Invoke params>) -> <Invoke return> — on wasm a
                 // `call_indirect` type-immediate trap naming nothing).
                 //
-                bool vftnBounded = _c.IsBoundedMethod(m.DeclaringClass.FullName, m.Name);
+                bool vftnBounded = _c.IsBoundedMethod(m);
                 bool bindsLowering = false;
                 bool delegateAddressReady = true;
                 if (vftnBounded)
@@ -4301,10 +4301,9 @@ internal sealed partial class MethodCompiler : IEvalStack
                 }
                 else if (m.IsVirtual && CoreIntrinsics.BrDelegateCallable.Matches(m))
                 {
-                    var target = _c.DelegateCallableVirtualTarget(m).Emittable;
+                    var target = m.Emittable;
                     // Keep virtual provenance for delegate construction, also
-                    // when this address flows through a local. Its selected
-                    // Method identity is the override, not the base body.
+                    // when this address flows through a local.
                     NoteFtnTargetBody(target);
                     _c.NoteNamedBodySymbol(_method, target);
                     expr = (m.Attributes & System.Reflection.MethodAttributes.Final) != 0
@@ -4462,7 +4461,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                         + $" : (void*)&{m.Emittable.CppName})";
                 }
                 else if (m.IsVirtual && !m.DeclaringClass.IsInterface
-                         && CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName)
+                         && CoreIntrinsics.IsIntrinsicType(m.DeclaringClass)
                          && CoreIntrinsics.RuntimeOwnsTypeInfo(m.DeclaringClass))
                 {
                     // A runtime-owned receiver (a reflection handle) has no transpiled

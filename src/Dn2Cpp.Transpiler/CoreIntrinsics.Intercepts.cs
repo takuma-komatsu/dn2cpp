@@ -628,6 +628,7 @@ internal static partial class CoreIntrinsics
     public static readonly MethodDefIntercept MdRuntimePrimitive = new(
         InterceptCutKind.Cut, InterceptEmitArm.RuntimePrimitive,
         extra: static mi => LoweredRuntimePrimitive(mi.DeclaringClass.FullName, mi.Name)
+            || IsManagedThreadIdAccessor(mi)
             || IsInvariantCompareInfoGetter(mi)
             || IsDateTimeFormatInfoBoundary(mi)
             || IsTaskLifecycleNative(mi)
@@ -2982,7 +2983,7 @@ internal static partial class CoreIntrinsics
     /// the call site pushes the constant, so the edge must not exist.</summary>
     public static readonly MethodDefIntercept MdConstFoldedGetter = new(
         InterceptCutKind.Cut, InterceptEmitArm.ConstFoldedGetter,
-        extra: static mi => ConstFoldedGetter(mi.DeclaringClass.FullName, mi.Name) is not null);
+        extra: static mi => ConstFoldedGetter(mi.DeclaringClass.FullName, mi.Name, mi.DeclaringClass.Module) is not null);
 
     /// <summary>Const-folded string-returning calls
     /// (<see cref="ConstFoldedStringCall"/>): the call site pushes the constant, so the
@@ -3135,7 +3136,7 @@ internal static partial class CoreIntrinsics
     /// intra-assembly call into one is not a reachability edge.</summary>
     public static readonly MethodDefIntercept MdIntrinsicType = new(
         InterceptCutKind.Cut, InterceptEmitArm.IntrinsicDispatch,
-        extra: static mi => IsIntrinsicType(mi.DeclaringClass.FullName)
+        extra: static mi => IsIntrinsicType(mi.DeclaringClass)
             && !IsCoreClrTypeCollectibilityImport(mi) && !IsWaitHandleRawWaitImport(mi));
 
     /// <summary>Every static member of a CoreLib platform-ISA facade

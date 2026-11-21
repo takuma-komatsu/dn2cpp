@@ -19,12 +19,10 @@ internal static class Program
 
     private static object TargetOf(Delegate value)
     {
-        if (Driver.Route == 1) return Routes.CallTarget((MulticastDelegate)value);
-        if (Driver.Route == 2) return Routes.CalliTarget((MulticastDelegate)value);
-        if (Driver.Route == 3) return Routes.CallvirtTarget((MulticastDelegate)value);
-        if (Driver.Route == 4) return Routes.VirtCalliTarget((MulticastDelegate)value);
-        MethodInfo method = typeof(MulticastDelegate).GetMethod("GetTarget",
-            BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly,
+        if (Driver.Route == 1 || Driver.Route == 3) return Routes.CallTarget((MulticastDelegate)value);
+        if (Driver.Route == 2 || Driver.Route == 4) return Routes.CalliTarget((MulticastDelegate)value);
+        MethodInfo method = typeof(Delegate).GetMethod("get_Target",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly,
             null, Type.EmptyTypes, null);
         return method.Invoke(value, null);
     }
@@ -34,18 +32,16 @@ internal static class Program
         if (Driver.Route == 2) return Routes.CalliMethod((MulticastDelegate)value);
         if (Driver.Route == 3) return Routes.CallvirtMethod((MulticastDelegate)value);
         if (Driver.Route == 4) return Routes.VirtCalliMethod((MulticastDelegate)value);
-        MethodInfo method = typeof(MulticastDelegate).GetMethod("GetMethodImpl",
+        MethodInfo method = typeof(Delegate).GetMethod("GetMethodImpl",
             BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly,
             null, Type.EmptyTypes, null);
         return (MethodInfo)method.Invoke(value, null);
     }
     private static Delegate[] ListOf(Delegate value)
     {
-        if (Driver.Route == 1) return Routes.CallList((MulticastDelegate)value);
-        if (Driver.Route == 2) return Routes.CalliList((MulticastDelegate)value);
-        if (Driver.Route == 3) return Routes.CallvirtList((MulticastDelegate)value);
-        if (Driver.Route == 4) return Routes.VirtCalliList((MulticastDelegate)value);
-        MethodInfo method = typeof(MulticastDelegate).GetMethod("GetInvocationList",
+        if (Driver.Route == 1 || Driver.Route == 3) return Routes.CallList((MulticastDelegate)value);
+        if (Driver.Route == 2 || Driver.Route == 4) return Routes.CalliList((MulticastDelegate)value);
+        MethodInfo method = typeof(Delegate).GetMethod("GetInvocationList",
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly,
             null, Type.EmptyTypes, null);
         return (Delegate[])method.Invoke(value, null);
@@ -54,8 +50,8 @@ internal static class Program
     {
         if (Driver.Route == 1 || Driver.Route == 3) return Routes.CallSingle((MulticastDelegate)value);
         if (Driver.Route == 2 || Driver.Route == 4) return Routes.CalliSingle((MulticastDelegate)value);
-        MethodInfo method = typeof(MulticastDelegate).GetMethod("get_HasSingleTarget",
-            BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly,
+        MethodInfo method = typeof(Delegate).GetMethod("get_HasSingleTarget",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly,
             null, Type.EmptyTypes, null);
         return (bool)method.Invoke(value, null);
     }
@@ -63,7 +59,7 @@ internal static class Program
     {
         if (Driver.Route == 1 || Driver.Route == 3) return Routes.CallAt((MulticastDelegate)value, index);
         if (Driver.Route == 2 || Driver.Route == 4) return Routes.CalliAt((MulticastDelegate)value, index);
-        MethodInfo method = typeof(MulticastDelegate).GetMethod("TryGetAt",
+        MethodInfo method = typeof(Delegate).GetMethod("TryGetAt",
             BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly,
             null, new[] { typeof(int) }, null);
         return method.Invoke(value, new object[] { index });

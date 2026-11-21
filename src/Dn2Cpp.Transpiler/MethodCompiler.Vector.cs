@@ -165,6 +165,28 @@ internal sealed partial class MethodCompiler
         return false;
     }
 
+    /// <summary>Whether a closed helper signature names, by value or behind a reference,
+    /// a Vector64/128/256/512&lt;T&gt; or Vector&lt;T&gt; that has no software-vector
+    /// representation. A canonical element is undecided and never counts.</summary>
+    private bool NamesUnsupportedVector(MethodSignature<TypeDesc> sig)
+    {
+        if (IsUnsupportedVector(sig.ReturnType)) return true;
+        foreach (var p in sig.ParameterTypes)
+            if (IsUnsupportedVector(p)) return true;
+        return false;
+    }
+
+    private bool IsUnsupportedVector(TypeDesc t)
+    {
+        while (t is { Kind: TypeKind.ByRef or TypeKind.Pointer, Element: { } target }) t = target;
+        return t is { Kind: TypeKind.Class, IsCanonPlaceholder: false, Class: { IntrinsicCppName: null } vector }
+            && vector.Context.TypeArgs is [{ IsCanonPlaceholder: false }] && !vector.Handle.IsNil
+            && vector.Module is { AssemblyName: "System.Private.CoreLib" }
+            && Comp.GenericDefFullName(vector) is "System.Runtime.Intrinsics.Vector64"
+                or "System.Runtime.Intrinsics.Vector128" or "System.Runtime.Intrinsics.Vector256"
+                or "System.Runtime.Intrinsics.Vector512" or "System.Numerics.Vector";
+    }
+
     /// <summary>A conversion operand of the System.Numerics reinterpret family: a concrete
     /// Vector2/3/4/Quaternion/Plane struct (8/12/16 bytes, <paramref name="concrete"/> true)
     /// or Vector128&lt;float&gt; (16 bytes, false — the software-vector pivot). Returns false
@@ -452,14 +474,22 @@ internal sealed partial class MethodCompiler
             }
 
             // --- element / lane access ---
-            case "GetElement" or "get_Item":
-            { var idx = Pop(); var v = Pop(); PushScalar($"{Vec("get_element")}({Val(v, vecCpp)}, {Cast(idx, "int32_t")})"); return true; }
-            case "WithElement":
+            // A lane index outside the vector throws once every operand is evaluated.
+            case "GetElement" or "get_Item" or "WithElement":
             {
-                var val = Pop();
+                bool with = name == "WithElement";
+                var val = with ? Pop() : default;
                 var idx = Pop();
                 var v = Pop();
-                PushVec($"{Vec("with_element")}({Val(v, vecCpp)}, {Cast(idx, "int32_t")}, {Cast(val, et)})");
+                string source = NewTemp(vecCpp);
+                Emit($"{source} = {Val(v, vecCpp)};");
+                string lane = NewTemp("int32_t");
+                Emit($"{lane} = {Cast(idx, "int32_t")};");
+                string scalar = with ? NewTemp(et) : "";
+                if (with) Emit($"{scalar} = {Cast(val!, et)};");
+                Emit($"if ((uint32_t){lane} >= (uint32_t){lanes}) dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ARGUMENT_OUT_OF_RANGE, \"index\");");
+                if (with) PushVec($"{Vec("with_element")}({source}, {lane}, {scalar})");
+                else PushScalar($"{Vec("get_element")}({source}, {lane})");
                 return true;
             }
             case "ToScalar":
@@ -640,6 +670,13 @@ internal sealed partial class MethodCompiler
             { var v = Pop(); PushScalar($"{Vec("index_of_all_bits")}({Val(v, vecCpp)})"); return true; }
             case "LastIndexOfWhereAllBitsSet":
             { var v = Pop(); PushScalar($"{Vec("last_index_of_all_bits")}({Val(v, vecCpp)})"); return true; }
+            // CoreLib's own reductions of a comparison mask, behind Count/IndexOf/LastIndexOf.
+            case "CountMatches":
+            { var v = Pop(); PushScalar($"{Vec("count_matches")}({Val(v, vecCpp)})"); return true; }
+            case "IndexOfFirstMatch":
+            { var v = Pop(); PushScalar($"{Vec("index_of_first_match")}({Val(v, vecCpp)})"); return true; }
+            case "IndexOfLastMatch":
+            { var v = Pop(); PushScalar($"{Vec("index_of_last_match")}({Val(v, vecCpp)})"); return true; }
             case "AllWhereAllBitsSet":
             { var v = Pop(); PushBool($"{Vec("all_all_bits")}({Val(v, vecCpp)})"); return true; }
             case "AnyWhereAllBitsSet":
