@@ -202,6 +202,16 @@ static int64_t dn2cpp_box_read_i64(Dn2CppObject* v)
     dn2cpp_throw_sr0(&dn2cpp_invalid_cast_exception_type, DN2CPP_SR_INVALID_CAST);
 }
 
+static double dn2cpp_box_read_f64(Dn2CppObject* v);
+
+// A boxed decimal converts to float in one rounding; every other payload narrows its double.
+static float dn2cpp_box_read_f32(Dn2CppObject* v)
+{
+    if (v->type == &dn2cpp_decimal_type)
+        return dn2cpp_decimal_to_float(*static_cast<const Dn2CppDecimal*>(dn2cpp_box_payload(v)));
+    return static_cast<float>(dn2cpp_box_read_f64(v));
+}
+
 // Read a boxed primitive (or numeric string) as double — Convert.ChangeType's floating /
 // boolean path.
 static double dn2cpp_box_read_f64(Dn2CppObject* v)
@@ -344,10 +354,10 @@ static Dn2CppObject* dn2cpp_change_type_to(Dn2CppObject* value, const Dn2CppType
     }
     if (tt == &dn2cpp_single_type)
     {
-        float f = static_cast<float>(value->type == &dn2cpp_string_type
-            ? dn2cpp_fp_parse_str(reinterpret_cast<Dn2CppString*>(value), 231 /* Float | AllowThousands */,
-                dn2cpp_format_provider_nfi(provider), 1)
-            : dn2cpp_box_read_f64(value));
+        float f = value->type == &dn2cpp_string_type
+            ? static_cast<float>(dn2cpp_fp_parse_str(reinterpret_cast<Dn2CppString*>(value), 231 /* Float | AllowThousands */,
+                dn2cpp_format_provider_nfi(provider), 1))
+            : dn2cpp_box_read_f32(value);
         return dn2cpp_box(tt, &f, sizeof(f));
     }
     if (tt == &dn2cpp_int64_type)
@@ -507,6 +517,11 @@ int64_t dn2cpp_convert_obj_to_i64(Dn2CppObject* v)
 double dn2cpp_convert_obj_to_f64(Dn2CppObject* v)
 {
     return v != nullptr ? dn2cpp_box_read_f64(v) : 0.0;
+}
+
+float dn2cpp_convert_obj_to_f32(Dn2CppObject* v)
+{
+    return v != nullptr ? dn2cpp_box_read_f32(v) : 0.0f;
 }
 
 int32_t dn2cpp_convert_obj_to_bool(Dn2CppObject* v)
@@ -922,25 +937,46 @@ int32_t dn2cpp_convert_try_to_base64(const uint8_t* data, int32_t n, char16_t* d
 }
 
 // Decode core, streaming 4-unit quanta (whitespace skipped anywhere; '=' only
-// in the final quantum's last two slots; a completed padded quantum must end the
-// data). Each complete quantum's bytes are written atomically, so on a
-// too-short destination the earlier quanta are already in the buffer but
-// *written reports 0 — exactly the BCL's Try* semantics. The throwing forms
-// explicitly request a sizing pass; a null public destination keeps its capacity
-// and throws only when a complete quantum would be written.
+// in the final quantum's last two slots, over zero unused bits; a completed
+// padded quantum must end the data). Each complete quantum's bytes are written
+// atomically, so on a too-short destination the earlier quanta are already in
+// the buffer but *written reports 0 — exactly the BCL's Try* semantics. The
+// throwing forms explicitly request a sizing pass; a null public destination
+// keeps its capacity and throws only when a complete quantum would be written.
+// *written is assigned on return and, for a non-null destination, before each
+// whitespace run is skipped; the caller's value is observable when that write
+// faults or when the count aliases the text.
 static int32_t dn2cpp_base64_decode_core(const char16_t* p, int32_t n, uint8_t* dest,
                                          int32_t destLen, int32_t* written, bool measureOnly)
 {
-    *written = 0;
     int32_t w = 0;
     uint32_t acc = 0;
     int32_t dataInQ = 0, padsInQ = 0;
     bool done = false; // a padded quantum completed; only whitespace may follow
+    bool reread = false; // the first whitespace run has restarted its quantum
     for (int32_t i = 0; i < n; i++)
     {
         char16_t c = p[i];
         if (dn2cpp_base64_is_ws(c))
+        {
+            // The CLR reports the bytes decoded so far before it skips a
+            // whitespace run, which is observable when the count aliases the text.
+            // Its whitespace-free first pass ends at the first run, and the
+            // whitespace-aware pass re-reads the unfinished quantum from its start.
+            if (dest != nullptr && !measureOnly && (i == 0 || !dn2cpp_base64_is_ws(p[i - 1])))
+            {
+                *written = w;
+                if (!reread)
+                {
+                    reread = true;
+                    i -= dataInQ + padsInQ + 1;
+                    acc = 0;
+                    dataInQ = 0;
+                    padsInQ = 0;
+                }
+            }
             continue;
+        }
         if (done)
             goto fail;
         if (c == u'=')
@@ -962,12 +998,23 @@ static int32_t dn2cpp_base64_decode_core(const char16_t* p, int32_t n, uint8_t* 
         {
             int32_t bytes = 3 - padsInQ;
             uint32_t v = acc << (6 * padsInQ);
+            if ((v & ((1u << (8 * padsInQ)) - 1u)) != 0)
+                goto fail;
             if (!measureOnly)
             {
                 if (w + bytes > destLen)
                     goto fail;
                 if (dest == nullptr)
+                {
+                    // .NET's decoder first runs over the raw text and reports
+                    // nothing until it returns; a quantum it cannot take there
+                    // (whitespace inside the first four units, or padding with a
+                    // further block behind it) zeroes the count before the
+                    // whitespace-aware pass reaches the same write.
+                    if (i != 3 || (padsInQ > 0 && n >= 8))
+                        *written = 0;
                     dn2cpp_throw_null_reference();
+                }
                 dest[w] = static_cast<uint8_t>(v >> 16);
                 if (bytes > 1)
                     dest[w + 1] = static_cast<uint8_t>(v >> 8);
@@ -992,13 +1039,16 @@ fail:
 }
 
 // Validate + size + decode into a fresh packed byte[]; FormatException on
-// invalid input (the throwing FromBase64* forms).
+// invalid input (the throwing FromBase64* forms). Text that decodes to no bytes
+// yields the shared empty array.
 static Dn2CppArrayN* dn2cpp_base64_decode_alloc(const char16_t* p, int32_t n,
                                                 const Dn2CppTypeInfo* ti)
 {
     int32_t outLen;
     if (!dn2cpp_base64_decode_core(p, n, nullptr, 0, &outLen, true))
         dn2cpp_throw_sr0(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_BASE64_CHAR);
+    if (outLen == 0)
+        return dn2cpp_array_empty_n_atomic(ti, static_cast<int32_t>(sizeof(uint8_t)));
     Dn2CppArrayN* out = dn2cpp_newarr_n_t(outLen, static_cast<int32_t>(sizeof(uint8_t)), ti);
     dn2cpp_base64_decode_core(p, n, reinterpret_cast<uint8_t*>(out->data), outLen, &outLen, false);
     return out;

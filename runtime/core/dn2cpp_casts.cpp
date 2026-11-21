@@ -485,7 +485,7 @@ static uint64_t dn2cpp_bbi_conv_u8(Dn2CppObject* box, Dn2CppObject*)
 }
 static float dn2cpp_bbi_conv_r4(Dn2CppObject* box, Dn2CppObject*)
 {
-    return static_cast<float>(dn2cpp_convert_obj_to_f64(box));
+    return dn2cpp_convert_obj_to_f32(box);
 }
 static double dn2cpp_bbi_conv_r8(Dn2CppObject* box, Dn2CppObject*)
 {

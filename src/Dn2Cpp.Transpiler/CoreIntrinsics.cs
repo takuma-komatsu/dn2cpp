@@ -458,6 +458,14 @@ internal static partial class CoreIntrinsics
     public static bool IsInlineLoweredPrimitiveMember(string? fullTypeName, string name) =>
         CoreIntrinsicTypeMaps.IsInlineLoweredPrimitiveMember(fullTypeName, name);
 
+    /// <summary>The static-virtual members an intrinsic-mapped type implements with a
+    /// result that differs from the interface's default body, so a constrained call must
+    /// bind the type's own lowering: Double and Single round the angle conversions' product
+    /// once, where <c>ITrigonometricFunctions</c>' default multiplies and then divides.</summary>
+    public static bool IntrinsicImplDiffersFromDefault(string fullTypeName, string name) =>
+        fullTypeName is "System.Double" or "System.Single"
+        && name is "DegreesToRadians" or "RadiansToDegrees";
+
     /// <summary>A non-floating primitive value type's <c>Equals(object)</c> overload.
     /// Shape-keyed so the typed <c>Equals(T)</c> sibling keeps its ordinary route.</summary>
     public static bool LoweredPrimitiveEqualsObject(string? fullTypeName, string name,

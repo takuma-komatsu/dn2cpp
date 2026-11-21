@@ -693,6 +693,10 @@ namespace Sample
             Console.WriteLine((int)emoji[0]);
             Console.WriteLine((int)emoji[1]);
 
+            // Round with digits needs no CoreLib reference.
+            Console.WriteLine(Math.Round(2.125, 2, MidpointRounding.AwayFromZero) == 2.13);
+            Console.WriteLine(MathF.Round(2.34567f, 3) == 2.346f);
+
             return 0;
         }
     }

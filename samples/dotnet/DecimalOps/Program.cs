@@ -38,6 +38,8 @@ namespace DecimalOps
             Dn2Cpp.DecimalBinarySubset.Run();
             if (args.Length > 0 && args[0] == "before-decimal-divmod") return;
             Dn2Cpp.DecimalDivModSubset.Run();
+            if (args.Length > 0 && args[0] == "before-decimal-float") return;
+            Dn2Cpp.DecimalFloatSubset.Run();
         }
     }
 }

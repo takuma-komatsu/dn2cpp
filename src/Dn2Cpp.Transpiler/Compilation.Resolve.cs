@@ -1084,8 +1084,10 @@ internal sealed partial class Compilation
         // for an intrinsic-mapped TSelf even when the type shadows it with a plainly-
         // named specialization (Decimal.CreateChecked<TOther>): the shadow's IL body
         // is cut like every intrinsic-type body, while the default forwards to
-        // abstract members the tables do lower — identical results.
-        if (sccIntrinsic && callee.Rva != 0)
+        // abstract members the tables do lower — identical results. A shadow whose
+        // result differs from the default resolves below to its per-type lowering.
+        if (sccIntrinsic && callee.Rva != 0
+            && !CoreIntrinsics.IntrinsicImplDiffersFromDefault(scc.FullName, callee.Name))
             return null;
 
         // Non-generic static-abstract member: name+params+return resolves it directly.

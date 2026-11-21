@@ -187,6 +187,10 @@ gate_extra_asserts() {
     gate_output select "$native" "$out/assert-mixed-width-bigmul-prefix.stdout" --before '== mixed-width BigMul ==' --policy crlf
     gate_output compare "$out/assert-mixed-width-bigmul-prefix.stdout" "$out/assert-before-mixed-width-bigmul.stdout"
     gate_output byte-witness "$native" 'mixed-width BigMul end' --count 1 --policy crlf
+    gate_capture_ok "$out/assert-before-round-digits-sweep" run_bounded dotnet "$_CG_APP" before-round-digits-sweep
+    gate_output select "$native" "$out/assert-round-digits-sweep-prefix.stdout" --before '== round digits sweep ==' --policy crlf
+    gate_output compare "$out/assert-round-digits-sweep-prefix.stdout" "$out/assert-before-round-digits-sweep.stdout"
+    gate_output byte-witness "$native" 'round digits sweep end' --count 1 --policy crlf
     primitive_bigmul_retention "$out"
     numeric_signature_regressions bigmul
 }

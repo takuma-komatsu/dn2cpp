@@ -272,22 +272,15 @@ internal sealed partial class MethodCompiler
     private void Convert(string cppType, StackKind kind, string castOp)
     {
         var a = Pop();
-        // .NET defines the unchecked float->integer conversions as saturating:
-        // truncate toward zero, out-of-range pins to the target's bounds, NaN
-        // -> 0; the sub-word forms (conv.i1/u1/i2/u2) first saturate to int32
-        // and then truncate to the small width ((short)70000f == 4464,
-        // (int)float.PositiveInfinity == int.MaxValue — verified against real
-        // .NET 10). A plain C++ cast is undefined behavior on out-of-range/NaN
-        // input (clang really does fold it to garbage), so a float source
-        // routes through the runtime's saturating helper — the same one the
-        // ConvertToIntegerNative intrinsic uses. Integer sources and the
-        // float-target forms (conv.r4/r8/r.un) keep the plain cast.
+        // An unchecked float->integer conversion saturates at the target's own
+        // range, sub-word targets included: it truncates toward zero, pins an
+        // out-of-range value to the nearest bound and maps NaN to 0. A plain
+        // C++ cast is undefined behavior on such input, so a float source
+        // routes through the runtime's saturating helper. Integer sources and
+        // the float-target forms (conv.r4/r8/r.un) keep the plain cast.
         if (a.Kind == StackKind.R8 && FloatConvIntegerTarget(castOp) is { } target)
         {
-            string expr = target is "int8_t" or "uint8_t" or "int16_t" or "uint16_t"
-                ? $"({cppType})({target})dn2cpp_convert_to_integer_native<int32_t>({a.Expr})"
-                : $"({cppType})dn2cpp_convert_to_integer_native<{target}>({a.Expr})";
-            Push(kind, cppType, expr);
+            Push(kind, cppType, $"({cppType})dn2cpp_convert_to_integer_native<{target}>({a.Expr})");
             return;
         }
         // A pointer / managed-reference source narrowed to a sub-64-bit integer (conv.i4/u4/
@@ -303,8 +296,7 @@ internal sealed partial class MethodCompiler
     /// <summary>The integer type a <c>conv.*</c> cast operator narrows to, when the
     /// saturating float->integer semantics apply — null for the float-target forms
     /// and for "(int64_t)", which only the checked conv.ovf.i8/conv.ovf.i lowering
-    /// passes here (overflow behavior there is a separate pre-existing carve-out,
-    /// not silently changed to saturation).</summary>
+    /// passes here, after its float sources took the trapping path.</summary>
     private static string? FloatConvIntegerTarget(string castOp) => castOp switch
     {
         "(int8_t)" => "int8_t",
@@ -2020,9 +2012,24 @@ internal sealed partial class MethodCompiler
     /// Bounds are compared in 64-bit to represent every target range exactly.</summary>
     private void CheckedConv(string stackType, StackKind kind, string targetType, string lo, string hi)
     {
+        if (TryCheckedFloatConv(stackType, kind, targetType))
+            return;
         var a = Pop();
         Push(kind, stackType,
             $"({stackType})dn2cpp_conv_ovf<{targetType}>((int64_t)({a.Expr}), (int64_t)({lo}), (int64_t)({hi}))");
+    }
+
+    /// <summary>conv.ovf.* over a float source: NaN and a truncation toward zero
+    /// outside the target range trap, where widening the source to int64 first
+    /// would be undefined. Leaves the stack alone and returns false for any other
+    /// source.</summary>
+    private bool TryCheckedFloatConv(string stackType, StackKind kind, string targetType)
+    {
+        if (_stack[^1].Kind != StackKind.R8)
+            return false;
+        var a = Pop();
+        Push(kind, stackType, $"({stackType})dn2cpp_create_checked<{targetType}, double>({a.Expr})");
+        return true;
     }
 
     /// <summary>ldind.*: dereference a managed pointer, widening to the stack type.</summary>

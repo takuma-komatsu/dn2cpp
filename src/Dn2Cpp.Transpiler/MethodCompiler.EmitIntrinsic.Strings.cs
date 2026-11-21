@@ -1903,20 +1903,20 @@ internal sealed partial class MethodCompiler
         string stylesExpr = hasStyles
             ? $"(int32_t)({Pop().Expr})"
             : isFloat ? "231" /* Float | AllowThousands */ : "7" /* Integer */;
+        string validateStyles = isFloat ? "dn2cpp_parse_validate_fp_styles" : "dn2cpp_parse_validate_integer_styles";
         string args, suffix;
         if (isString)
         {
             string text = Cast(Pop(), "Dn2CppString*");
-            if (nativeInteger)
+            if (nativeInteger || hasProvider)
             {
                 string value = NewTemp("Dn2CppString*");
                 Emit($"{value} = {text};");
                 text = value;
                 // Parse checks a null string before styles; TryParse checks styles
-                // first, but does not query the provider for a null string.
+                // first and then queries the provider, for a null string too.
                 if (!isTry) Emit($"if ({value} == nullptr) dn2cpp_throw_argument_null_param(\"s\");");
-                if (hasStyles) Emit($"dn2cpp_parse_validate_integer_styles({stylesExpr});");
-                if (isTry) nfiExpr = $"({value} == nullptr ? nullptr : {nfiExpr})";
+                if (hasStyles) Emit($"{validateStyles}({stylesExpr});");
             }
             args = $"{text}, {stylesExpr}, {nfiExpr}";
             suffix = "str";
@@ -1931,12 +1931,13 @@ internal sealed partial class MethodCompiler
             suffix = isUtf8 ? "utf8" : "chars";
         }
 
+        // All managed arguments are materialized. CoreLib validates explicit
+        // span styles before GetFormat, decoding, or writing the out slot.
+        if (hasStyles && !isString)
+            Emit($"{validateStyles}({stylesExpr});");
+
         if (intShape is { } iw)
         {
-            // All managed arguments are materialized. CoreLib validates explicit
-            // span styles before GetFormat, decoding, or writing the out slot.
-            if (hasStyles && !isString)
-                Emit($"dn2cpp_parse_validate_integer_styles({stylesExpr});");
             string bits = nativeInteger ? "(int32_t)(sizeof(intptr_t) * 8)" : iw.Bits.ToString();
             var prim = Compilation.WellKnownPrimitive(declType)!;
             string storeCt = CppTypes.StorageOf(prim);

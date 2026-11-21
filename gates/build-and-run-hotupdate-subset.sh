@@ -708,6 +708,11 @@ arg: delegate over null this (aot)
 arg: delegate over null this (patch)
 nre: tostring on null
 delegate GetType: HotUpdateBase.Counter
+9223372036854775807
+2147483647
+0
+-1
+0
 base caught: escaped to base
 HotUpdatePatch.TaggedCounter
 base: done"

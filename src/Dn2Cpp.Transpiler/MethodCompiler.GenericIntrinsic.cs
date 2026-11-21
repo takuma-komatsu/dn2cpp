@@ -462,6 +462,26 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        // INumberBase<intTarget>.CreateTruncating<Int128|UInt128>(value): the low
+        // 64 bits narrowed to the target. Both source structs are transpiled
+        // with _lower as their first word, read by raw offset like the
+        // widening direction below.
+        if (name == "CreateTruncating"
+            && Compilation.WellKnownPrimitive(declType) is { Kind: TypeKind.Primitive } narrowTarget
+            && IsIntegerPrimitive(narrowTarget.Primitive)
+            && methodArgs[0] is { Kind: TypeKind.Class, Class.FullName: "System.Int128" or "System.UInt128" } wideSrc)
+        {
+            string wideCt = CppTypes.Of(wideSrc);
+            string tgtCpp = CppTypes.StorageOf(narrowTarget);
+            var kind = CppTypes.KindOf(narrowTarget);
+            string stackCpp = CppTypes.DefaultForKind(kind);
+            var value = Pop();
+            string wide = NewTemp(wideCt);
+            Emit($"{wide} = {Cast(value, wideCt)};");
+            Push(kind, stackCpp, $"(({stackCpp})(({tgtCpp})((uint64_t*)&{wide})[0]))");
+            return;
+        }
+
         // generic-math conversion FROM a floating-point source TO an integer target:
         // INumberBase<intTarget>.CreateTruncating/CreateChecked/CreateSaturating<float|
         // double>(value). Distinct from the all-integer block above: .NET's float->integer
@@ -2298,8 +2318,11 @@ internal sealed partial class MethodCompiler
             var value = Pop();
             var intT = methodArgs[0];
             string cpp = CppTypes.Of(intT);
+            string storage = CppTypes.StorageOf(intT);
             string tmp = NewTemp(cpp);
-            Emit($"{tmp} = dn2cpp_convert_to_integer_native<{cpp}>({value.Expr});");
+            // A sub-word TInteger converts at the stack width and keeps its low bits.
+            string narrow = storage == cpp ? "" : $"({cpp})({storage})";
+            Emit($"{tmp} = {narrow}dn2cpp_convert_to_integer_native<{cpp}>({value.Expr});");
             Push(CppTypes.KindOf(intT), cpp, tmp);
             return;
         }

@@ -102,9 +102,9 @@ gate_extra_asserts() {
         'try null string:4:4 type=NullReferenceException' \
         'empty base64 array=True' \
         'empty from hex=True' \
-        'empty from base64 string=False' \
+        'empty from base64 string=True' \
         'empty from base64 chars=True' \
-        'white from base64 chars=False' \
+        'white from base64 chars=True' \
         'conversion after GC:0 type=FormatException' \
         'conversion after GC:3 type=OverflowException' \
         'Conversion validation fields end'; do
@@ -226,6 +226,21 @@ gate_extra_asserts() {
         'invalid style=ArgumentException:style' \
         'integer UTF8 validation end' \
         --count 1 --policy crlf
+    gate_capture_ok "$out/assert-before-float-hex-format" run_bounded dotnet "$_CG_APP" before-float-hex-format || return 1
+    gate_output select "$native" "$out/assert-prefix-float-hex-format.stdout" --before '== float hex and format ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-float-hex-format.stdout" "$out/assert-before-float-hex-format.stdout" || return 1
+    gate_output byte-witness "$native" 'float hex and format end' --count 1 --policy crlf \
+        || { echo 'FAIL: float hex and format section did not run' >&2; return 1; }
+    gate_capture_ok "$out/assert-before-float-utf8" run_bounded dotnet "$_CG_APP" before-float-utf8 || return 1
+    gate_output select "$native" "$out/assert-prefix-float-utf8.stdout" --before '== float UTF8 ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-float-utf8.stdout" "$out/assert-before-float-utf8.stdout" || return 1
+    gate_output byte-witness "$native" '== float UTF8 ==' --count 1 --policy crlf \
+        || { echo 'FAIL: float UTF8 section did not run' >&2; return 1; }
+    gate_capture_ok "$out/assert-before-parse-tails" run_bounded dotnet "$_CG_APP" before-parse-tails || return 1
+    gate_output select "$native" "$out/assert-prefix-parse-tails.stdout" --before '== currency separators and Base64 tails ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-parse-tails.stdout" "$out/assert-before-parse-tails.stdout" || return 1
+    gate_output byte-witness "$native" 'currency separators and Base64 tails end' --count 1 --policy crlf \
+        || { echo 'FAIL: currency and Base64 tail section did not run' >&2; return 1; }
 
     numeric_signature_regressions checked
 }

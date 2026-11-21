@@ -71,6 +71,15 @@ namespace ConvertParse
                 return;
             Int128CheckedSubset.Program.__GateEntry();
             UInt128CheckedSubset.Program.__GateEntry();
+            if (args.Length > 0 && args[0] == "before-float-hex-format")
+                return;
+            NumericTailSubset.RunFloatFormat();
+            if (args.Length > 0 && args[0] == "before-float-utf8")
+                return;
+            IntegerUtf8ValidationSubset.RunFloat();
+            if (args.Length > 0 && args[0] == "before-parse-tails")
+                return;
+            NumericTailSubset.RunParseRows();
         }
     }
 }

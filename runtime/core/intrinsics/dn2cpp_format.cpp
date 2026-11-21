@@ -93,6 +93,15 @@ void dn2cpp_isb_append_aligned(Dn2CppISB* h, Dn2CppString* s, int32_t alignment)
         dn2cpp_isb_append_spaces(h, pad); // left-align
 }
 
+// Appends one precision digit. A precision above 999999999 is rejected before
+// the multiply, so no digit string overflows; leading zeros stay free.
+static int dn2cpp_fmt_precision_digit(int p, char16_t c)
+{
+    if (p > 99999999)
+        dn2cpp_throw_sr0(&dn2cpp_format_exception_type, DN2CPP_SR_ARGUMENT_BAD_FORMAT_SPECIFIER);
+    return p * 10 + static_cast<int>(c - u'0');
+}
+
 // Parse a standard numeric format string (e.g. "X4", "N2") into its specifier
 // letter and optional precision. NUL terminates the specifier; if it follows
 // the letter directly, CLR uses precision zero rather than the usual default.
@@ -116,7 +125,11 @@ static void dn2cpp_parse_fmt(Dn2CppString* fmt, char* letter, int* prec)
         }
         if (c >= u'0' && c <= u'9')
         {
-            p = p * 10 + static_cast<int>(c - u'0');
+            // The shared specifier parser caps the precision for every specifier.
+            if ((*letter | 0x20) >= 'a' && (*letter | 0x20) <= 'z')
+                p = dn2cpp_fmt_precision_digit(p, c);
+            else if (p <= 99999999)
+                p = p * 10 + static_cast<int>(c - u'0');
             has = true;
         }
         else
@@ -206,12 +219,15 @@ static bool dn2cpp_is_standard_fmt(Dn2CppString* fmt)
     bool alpha = (c0 >= u'A' && c0 <= u'Z') || (c0 >= u'a' && c0 <= u'z');
     if (!alpha)
         return false;
+    int precision = 0;
     for (int32_t i = 1; i < fmt->length; i++)
     {
         if (fmt->chars[i] == u'\0')
             return true;
         if (fmt->chars[i] < u'0' || fmt->chars[i] > u'9')
             return false;
+        // The precision digits are validated before any trailing character.
+        precision = dn2cpp_fmt_precision_digit(precision, fmt->chars[i]);
     }
     return true;
 }
@@ -427,7 +443,11 @@ static Dn2CppString* dn2cpp_format_section(const char16_t* fmt, int length, Dn2C
         if (group && digPos > 1 && index >= 0 && index < groupedDigits && sepAfter[index])
             put(nfi->numberGroup);
     };
-    if (negative && section == 0 && mag.scale != 0) put(nfi->negativeSign);
+    // A negative value formats with the first section only when it rounded to
+    // zero or has no section of its own. A dedicated negative section owns the
+    // sign, so the fallback must not add one ("+0.00;-0.00" gives "+0.00").
+    const bool signFirstSection = negative && section == 0 && dn2cpp_custom_section(fmt, length, 1) == 0;
+    if (signFirstSection && mag.scale != 0) put(nfi->negativeSign);
     int curIndex = 0;
     bool decimalWritten = false;
     for (int i = section; i < length && fmt[i] != u';'; i++)
@@ -509,7 +529,7 @@ static Dn2CppString* dn2cpp_format_section(const char16_t* fmt, int length, Dn2C
         }
         out.push_back(c);
     }
-    if (negative && section == 0 && mag.scale == 0 && !out.empty() && nfi->negativeSign != nullptr)
+    if (signFirstSection && mag.scale == 0 && !out.empty() && nfi->negativeSign != nullptr)
         out.insert(0, nfi->negativeSign->chars, static_cast<size_t>(nfi->negativeSign->length));
     if (out.size() > INT32_MAX) dn2cpp_throw_out_of_memory();
     return dn2cpp_string_from_chars(out.data(), static_cast<int32_t>(out.size()));
@@ -1198,17 +1218,111 @@ static Dn2CppString* dn2cpp_format_g(double v, int prec, bool upper, const Dn2Cp
     return dn2cpp_localize_ascii(out, o, nfi);
 }
 
+// "X"/"x" on a finite binary float whose IEEE bits are `bits`:
+// [neg]0X<1>[.<hex>]P<sign><decimal exponent>, a subnormal normalized to a
+// leading 1 and zero written with a leading 0. No precision prints the stored
+// fraction without trailing zero digits; a precision rounds the fraction to
+// nearest-even, carrying into the exponent, and pads past the stored digits.
+// Precision 0 rounds into the leading digit instead, which may become 2.
+static Dn2CppString* dn2cpp_format_fp_hex(uint64_t bits, int mantBits, int expBits, char letter, int prec,
+                                          const Dn2CppNumberFormatInfo* nfi)
+{
+    const bool upper = letter == 'X';
+    const bool negative = ((bits >> (mantBits + expBits)) & 1u) != 0;
+    const uint64_t mask = (1ULL << mantBits) - 1;
+    const int bias = (1 << (expBits - 1)) - 1;
+    uint64_t frac = bits & mask;
+    int exponent = static_cast<int>((bits >> mantBits) & ((1u << expBits) - 1));
+    int lead = 1;
+    if (exponent != 0)
+        exponent -= bias;
+    else if (frac == 0)
+        lead = 0;
+    else
+    {
+        exponent = 1 - bias;
+        for (; (frac >> mantBits) == 0; frac <<= 1)
+            exponent--;
+        frac &= mask;
+    }
+
+    const int fullDigits = (mantBits + 3) / 4;
+    int digits = fullDigits;
+    uint64_t top = frac << (64 - mantBits);
+    if (prec == 0)
+    {
+        if (frac >= (1ULL << (mantBits - 1)))
+            lead++;
+        digits = 0;
+    }
+    else if (prec > 0 && prec < fullDigits)
+    {
+        const int discard = mantBits - prec * 4;
+        const uint64_t half = 1ULL << (discard - 1);
+        const uint64_t rest = frac & ((1ULL << discard) - 1);
+        uint64_t kept = frac >> discard;
+        if (rest > half || (rest == half && (kept & 1u) != 0))
+        {
+            kept++;
+            if ((kept >> (prec * 4)) != 0)
+            {
+                kept = 0;
+                exponent++;
+            }
+        }
+        top = kept << (64 - prec * 4);
+        digits = prec;
+    }
+    else if (prec < 0)
+    {
+        for (uint64_t low = frac << (fullDigits * 4 - mantBits); digits > 0 && (low & 0xFu) == 0; low >>= 4)
+            digits--;
+    }
+    const int zeros = prec > digits ? prec - digits : 0;
+
+    char expText[16];
+    const int expLen = std::snprintf(expText, sizeof(expText), "%d", exponent < 0 ? -exponent : exponent);
+    Dn2CppString* expSign = exponent < 0 ? nfi->negativeSign : nfi->positiveSign;
+    int length = 4 + digits + zeros + expLen + (expSign != nullptr ? expSign->length : 0);
+    if (negative && nfi->negativeSign != nullptr)
+        length += nfi->negativeSign->length;
+    if (digits + zeros > 0 && nfi->numberDecimal != nullptr)
+        length += nfi->numberDecimal->length;
+
+    char16_t* out;
+    Dn2CppString* result = dn2cpp_string_alloc(&out, length);
+    int o = 0;
+    if (negative)
+        dn2cpp_put(out, o, nfi->negativeSign);
+    out[o++] = u'0';
+    out[o++] = static_cast<char16_t>(letter);
+    out[o++] = static_cast<char16_t>(u'0' + lead);
+    if (digits + zeros > 0)
+        dn2cpp_put(out, o, nfi->numberDecimal);
+    const char* hex = upper ? "0123456789ABCDEF" : "0123456789abcdef";
+    for (int k = 0; k < digits; k++, top <<= 4)
+        out[o++] = static_cast<char16_t>(hex[top >> 60]);
+    for (int k = 0; k < zeros; k++)
+        out[o++] = u'0';
+    out[o++] = upper ? u'P' : u'p';
+    dn2cpp_put(out, o, expSign);
+    for (int k = 0; k < expLen; k++)
+        out[o++] = static_cast<char16_t>(expText[k]);
+    return result;
+}
+
 Dn2CppString* dn2cpp_format_r8_c(double v, Dn2CppString* fmt, const Dn2CppNumberFormatInfo* nfi)
 {
     nfi = dn2cpp_nfi_or_current(nfi);
+    // NaN/±Infinity render as the culture symbols for every format, before the
+    // format string is validated.
+    if (std::isnan(v)) return nfi->nan;
+    if (std::isinf(v)) return v < 0 ? nfi->negInf : nfi->posInf;
     if (!dn2cpp_is_standard_fmt(fmt))
         return dn2cpp_format_custom_real(v, 15, fmt, nfi);
     char letter;
     int prec;
     dn2cpp_parse_fmt(fmt, &letter, &prec);
-    // NaN/±Infinity render as the culture symbols for every standard numeric spec.
-    if (std::isnan(v)) return nfi->nan;
-    if (std::isinf(v)) return v < 0 ? nfi->negInf : nfi->posInf;
     char buf[80];
     int len;
     bool neg = std::signbit(v);
@@ -1245,6 +1359,13 @@ Dn2CppString* dn2cpp_format_r8_c(double v, Dn2CppString* fmt, const Dn2CppNumber
         case 'g':
         case 'G':
             return dn2cpp_format_g(v, prec, letter == 'G', nfi);
+        case 'x':
+        case 'X':
+        {
+            uint64_t bits;
+            std::memcpy(&bits, &v, sizeof(bits));
+            return dn2cpp_format_fp_hex(bits, 52, 11, letter, prec, nfi);
+        }
         case 'r':
         case 'R':
             // Round-trip: the shortest round-trippable form; .NET accepts and
@@ -1289,11 +1410,13 @@ Dn2CppString* dn2cpp_format_r8(double v, Dn2CppString* fmt)
 
 // Formatting a float. The "G"/"R" shortest forms (no explicit precision) must
 // round-trip at *float* precision (so 1f/3f is "0.33333334", not the double's digits),
-// and custom formats start from 7 significant digits; every other standard spec
-// rounds identically whether computed from the float or its exact double widening,
-// so they delegate to the double path.
+// custom formats start from 7 significant digits, and "X" prints the float's own
+// fraction width; every other standard spec rounds identically whether computed from
+// the float or its exact double widening, so they delegate to the double path.
 Dn2CppString* dn2cpp_format_r4_c(float v, Dn2CppString* fmt, const Dn2CppNumberFormatInfo* n)
 {
+    if (!std::isfinite(v))
+        return dn2cpp_format_r8_c(static_cast<double>(v), fmt, n);
     if (!dn2cpp_is_standard_fmt(fmt))
         return dn2cpp_format_custom_real(v, 7, fmt, n);
     char letter; int prec;
@@ -1308,6 +1431,12 @@ Dn2CppString* dn2cpp_format_r4_c(float v, Dn2CppString* fmt, const Dn2CppNumberF
     {
         return (letter == 'r' || letter == 'g') ? dn2cpp_float_to_string_lower_c(v, n)
                                                : dn2cpp_float_to_string_c(v, n);
+    }
+    if ((letter == 'X' || letter == 'x') && std::isfinite(v))
+    {
+        uint32_t bits;
+        std::memcpy(&bits, &v, sizeof(bits));
+        return dn2cpp_format_fp_hex(bits, 23, 8, letter, prec, dn2cpp_nfi_or_current(n));
     }
     return dn2cpp_format_r8_c(static_cast<double>(v), fmt, n);
 }
