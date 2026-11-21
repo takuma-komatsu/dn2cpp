@@ -11,6 +11,7 @@
 #                       File.Open*/Create*, the Path/File overloads that are NOT
 #                       lowered, SafeFileHandle through the SafeHandle base surface,
 #                       and a read into a collector-write-protected buffer
+#                       and the POSIX scatter read (SystemNative_ReadV) on a pipe
 #   FileStreamSubset    the FileStream ctors DIRECTLY (incl. FileStreamOptions and
 #                       its PreallocationSize), every FileMode, SetLength,
 #                       Flush(flushToDisk), sync CopyTo, the span overloads, FileShare
@@ -164,7 +165,7 @@ invoke_cli "$app" -r "$corelib" \
 # three every wrapper passes.
 cache_ctx="file_real_gate|$project|$corelib"
 cache_ctx="$cache_ctx|refs:System.Diagnostics.Process+System.ComponentModel.Primitives|--auto-ref"
-cache_ctx="$cache_ctx|runs:default+DN2CPP_GC_INCREMENTAL=1+measure-verbose"
+cache_ctx="$cache_ctx|runs:default+DN2CPP_GC_INCREMENTAL=1+measure-verbose+scatter-stdin"
 cache_ctx="$cache_ctx|cut:BoundedImportSubset.CutNative::Probe+CutVirtual::Answer+ICutItf::Answer"
 cache_ctx="$cache_ctx|asserts:diff+exitcode+pal-syms+libproc-syms+bounded-imports+verdicts+ldftn-mouth+ldvirtftn-mouth"
 if gate_cache_check "$out" "$cache_ctx" \
@@ -250,7 +251,7 @@ else
     # block reaches it through HasExited (ProcessWaitState's liveness probe). It
     # is declared in System.Diagnostics.Process.dll, so this line is also the
     # check that step 3's -r survived.
-    for sym in SystemNative_GetPid SystemNative_GetEUid SystemNative_GetPwUidR SystemNative_Kill; do
+    for sym in SystemNative_GetPid SystemNative_GetEUid SystemNative_GetPwUidR SystemNative_Kill SystemNative_GetPlatformSIGSTOP; do
         grep -qE "^_?$sym\$" "$undefined_syms" || {
             echo "FAIL: no app object references $sym — PalIdentitySubset stopped reaching the P/Invoke" >&2
             exit 1; }
@@ -301,10 +302,7 @@ else
 # DEFINED: the PAL object defines the whole identity surface from ITS OWN object,
 # rather than from anything the link happened to find — the failure mode being a
 # scratch archive that answers every SystemNative_* with a plausible constant.
-# The runtime contract is held by the static_asserts and the signal-translation
-# table at the call site — notably PAL SIGSTOP=19 vs Darwin's 17, where a
-# pass-through would resume a process the caller asked to stop, and SIGKILL being
-# 9 on both platforms is exactly what makes a pass-through look correct.
+# The runtime contract is held by the static_asserts at the definitions.
     pal_objdir="$(dirname "$(ensure_cmake_runtime)")"
     pal_defined="$out/pal-defined-syms.txt"
     dump_object_symbols_defined "$pal_objdir" dn2cpp_system_native > "$pal_defined"
@@ -573,6 +571,23 @@ echo "== 7/7 Re-running under the INCREMENTAL collector =="
 DN2CPP_GC_INCREMENTAL=1 gate_capture "$out/incremental" run_bounded "./$out/$project" "$inc_dir"
 gate_output compare "$out/incremental.stdout" "$out/oracle.stdout"
 gate_output status "$(cat "$out/incremental.status")" "$(cat "$out/oracle.status")"
+
+# POSIX scatter read: the unseekable stdin pipe makes CoreLib call SystemNative_ReadV.
+# The expected line is the CLR's output. Both collector modes run: where incremental
+# mode reports protection (DN2CPP_GC_BACKEND=upstream) the second takes the bounce.
+if [ "$DN2CPP_OS" != windows ]; then
+    scatter_line='scatter=6:97,98,99,100,101,102'
+    for scatter_gc in 0 1; do
+        # The pipe is made inside the bounded command: the watchdog backgrounds it,
+        # which would otherwise replace standard input with /dev/null.
+        DN2CPP_GC_INCREMENTAL=$scatter_gc run_bounded sh -c 'printf abcdef | "$0" scatter-stdin' \
+            "./$out/$project" > "$out/scatter.stdout"
+        if [ "$(cat "$out/scatter.stdout")" != "$scatter_line" ]; then
+            echo "FAIL: scatter read (DN2CPP_GC_INCREMENTAL=$scatter_gc): got '$(cat "$out/scatter.stdout")', want '$scatter_line'" >&2
+            exit 1
+        fi
+    done
+fi
 
 # Record only here: every assert of both run modes and of the symbol set has
 # passed above, so the green this commits covers the whole six-step pipeline.

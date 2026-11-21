@@ -149,6 +149,10 @@ internal enum InterceptEmitArm
     EnvIntrinsic,
     /// <summary>The companion tool launcher, lowered to the native spawn/wait helper.</summary>
     ToolProcess,
+    /// <summary>The WinZip AES factories — discard the arguments and emit
+    /// <c>dn2cpp_throw_platform_not_supported</c>
+    /// (<c>Compilation.AbsentWinZipAesThrowMessage</c>).</summary>
+    AbsentWinZipAesThrow,
     /// <summary>Selectively inline-lowered primitive members from
     /// <see cref="CoreIntrinsics.IsInlineLoweredPrimitiveMember"/> and
     /// <see cref="CoreIntrinsics.LoweredPrimitiveEqualsObject"/> —
@@ -3020,6 +3024,36 @@ internal static partial class CoreIntrinsics
         typeGate: "Dn2Cpp.ToolProcess", nameGate: "Run",
         extra: static mi => LoweredToolProcess(mi.Signature));
 
+    /// <summary>WinZipAesStream's static factories: ZipArchiveEntry's only edges into
+    /// AES and PBKDF2. The runtime implements none of the cipher / key-derivation
+    /// imports behind them, so an admitted body ends in an undefined symbol at C++ link
+    /// time; the cut refuses where the BCL's own browser guard does. GetSaltSize stays
+    /// real IL — central directory parsing calls it for an AES entry nobody opens.</summary>
+    public static readonly MethodDefIntercept MdAbsentWinZipAes = new(
+        InterceptCutKind.Cut, InterceptEmitArm.AbsentWinZipAesThrow,
+        typeGate: "System.IO.Compression.WinZipAesStream",
+        extra: static mi => mi.IsStatic && mi.Name is "CreateKey" or "Create" or "CreateAsync"
+            && mi.DeclaringClass.Module.AssemblyName == "System.IO.Compression");
+
+    /// <summary>The OpenSSL flavour's <c>Interop.Crypto.HashAlgorithmSupported(string)</c>.
+    /// Its body answers true for every name it lists without calling the native
+    /// selector, so a name the runtime's selector refuses (SHA-3, SHAKE) would report
+    /// supported and fail at first use. Not an intercept row: the real body is kept and
+    /// its own prologue asks the runtime first (<c>dn2cpp_openssl_hash_algorithm_absent</c>),
+    /// so a call, a method pointer and a reflected invoke give one answer; the body still
+    /// rejects unknown names. Absent from the Apple and Windows flavours. A nested
+    /// type's FullName is its bare name, so the enclosing Interop is read off the C++
+    /// name prefix.</summary>
+    public static bool IsOpenSslHashAvailability(MethodInfo mi) =>
+        mi.Name == "HashAlgorithmSupported" && mi.DeclaringClass.FullName == "Crypto"
+        && mi.IsStatic
+        && mi.DeclaringClass.Module.AssemblyName == "System.Security.Cryptography"
+        && mi.DeclaringClass.CppNamePrefix.EndsWith("Interop.", StringComparison.Ordinal)
+        && mi.Signature.GenericParameterCount == 0
+        && mi.Signature.ReturnType.Primitive == PrimitiveTypeCode.Boolean
+        && mi.Signature.ParameterTypes.Length == 1
+        && mi.Signature.ParameterTypes[0].IsString;
+
     private static bool LoweredToolProcess(MethodSignature<TypeDesc> sig) =>
         !sig.Header.IsInstance && sig.GenericParameterCount == 0
         && sig.ReturnType.Primitive == PrimitiveTypeCode.Int32
@@ -3173,6 +3207,7 @@ internal static partial class CoreIntrinsics
         MdDeserializationGuard,
         MdEnvMember,
         MdToolProcess,
+        MdAbsentWinZipAes,
         MdInlinePrimitive,
         MdPrimitiveEqualsObject,
         MdComparerCompare,

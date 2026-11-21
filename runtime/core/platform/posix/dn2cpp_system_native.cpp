@@ -11,17 +11,23 @@
 // The ABI (names, signatures, struct layouts, PAL constant values) mirrors the
 // managed declarations in System.Private.CoreLib's Interop.Sys — the caller is
 // the transpiled managed marshalling stub, so the managed side of the contract
-// is authoritative. Values verified against net10.0 via reflection:
-//   - FileStatus: sequential {i32,i32,u32,u32, 13×i64…, u32} (120 bytes padded)
+// is authoritative. Values transcribed from the shipped .NET 11.0.0 metadata:
+//   - FileStatus: sequential {i32,i32,u32,u32, i64…, u32,u32}, no tail padding
 //   - OpenFlags: PAL-stable bits (O_CREAT=0x20, …) converted to host O_* here
 //   - Error: PAL codes 0x1XXXX (E2BIG=0x10001, …); unknown → ENONSTANDARD
 //   - Passwd: sequential {ptr,ptr,u32,u32,ptr,ptr,ptr} (48 bytes on LP64)
-//   - Signals: PAL-stable values (SIGKILL=9, SIGSTOP=19) converted to host here
-//   - SysConfName: PAL values (_SC_CLK_TCK=1, _SC_PAGESIZE=2) likewise converted
+//   - Kill's signal: a host signal number, passed through untranslated
+//   - SysConfName: PAL values (_SC_CLK_TCK=1, _SC_PAGESIZE=2) converted to host
 //   - AccessMode: PAL values (F_OK=0, X_OK=1, W_OK=2, R_OK=4) equal the host's
 //     on every platform built here — asserted at the site, passed through raw
 // Only the members a reachable closure needs are implemented; a new gap shows
 // up as a link error naming the missing SystemNative_* symbol (loud, not silent).
+//
+// The native authority for the pal_*.c / pal_*.m bodies the sections below
+// reproduce is the source .NET 11.0.0 shipped from — dotnet/dotnet commit
+// 297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f, under
+// src/runtime/src/native/libs/System.Native/ — not the dotnet/runtime tag of
+// that version, whose pal_io.c and pal_process.c differ from what shipped.
 //
 // macOS / Linux / BSD. Not part of the wasm build — because the file-I/O surface this
 // file implements has no meaning against MEMFS, NOT because that target makes no
@@ -32,7 +38,9 @@
 
 #include "dn2cpp_core.h" // dn2cpp_gc_kernel_write_unsafe (the incremental-GC bounce)
 
+#include <algorithm>
 #include <cerrno>
+#include <climits> // IOV_MAX, INT_MAX
 #include <csignal>
 #include <cstddef>
 #include <cstdint>
@@ -43,12 +51,14 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <net/if.h>
+#include <poll.h>
 #include <pthread.h> // the LowLevelMonitor section (CoreLib's own mutex+condvar)
 #include <pwd.h>
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <sys/uio.h> // readv / writev
 #include <sys/utsname.h>
 #include <syslog.h>
 #include <unistd.h>
@@ -71,6 +81,11 @@ extern "C" void objc_autoreleasePoolPop(void* pool);
 #include <sys/sendfile.h>
 #include <sys/statfs.h>
 #include <sys/time.h>
+#endif
+
+#if defined(__linux__)
+#include <linux/futex.h> // FUTEX_WAIT_PRIVATE / FUTEX_WAKE_PRIVATE
+#include <sys/syscall.h> // SYS_futex
 #endif
 
 // ================ kernel writes into a managed buffer ======================
@@ -413,6 +428,28 @@ void SystemNative_Free(void* ptr)
     std::free(ptr);
 }
 
+// The aligned heap NativeMemory.AlignedAlloc's real body reaches from in-CoreLib
+// callers (LowLevelThreadBlocker's cache-line-aligned state). The intercepted
+// cross-assembly calls take dn2cpp_native_aligned_alloc instead, so both must stay
+// on one heap with one release path: a block from either entry may be handed to the
+// other's free. The managed caller has already made `alignment` a power of two no
+// smaller than a pointer and `size` a multiple of it, and turns null into
+// OutOfMemoryException.
+void* SystemNative_AlignedAlloc(uintptr_t alignment, uintptr_t size)
+{
+#if defined(__ANDROID__)
+    void* result = nullptr; // aligned_alloc needs API 28
+    return ::posix_memalign(&result, alignment, size) == 0 ? result : nullptr;
+#else
+    return std::aligned_alloc(alignment, size);
+#endif
+}
+
+void SystemNative_AlignedFree(void* ptr)
+{
+    dn2cpp_native_aligned_free(ptr);
+}
+
 // ============================ file descriptors =============================
 
 intptr_t SystemNative_MksTemps(char* pathTemplate, int32_t suffixLength)
@@ -422,15 +459,26 @@ intptr_t SystemNative_MksTemps(char* pathTemplate, int32_t suffixLength)
     return descriptor;
 }
 
-// PAL OpenFlags (managed Interop.Sys.OpenFlags) → host O_* bits.
+// PAL OpenFlags (managed Interop.Sys.OpenFlags) → host O_* bits, as pal_io.c's
+// ConvertOpenFlags does: an access mode or a bit outside the managed enum is
+// EINVAL rather than dropped. O_NOCTTY is the PAL's own addition — a terminal
+// device opened by path must not become the process's controlling terminal.
 intptr_t SystemNative_Open(const char* path, int32_t flags, int32_t mode)
 {
     int f;
-    switch (flags & 0x3)
+    switch (flags & 0xF)
     {
         case 0: f = O_RDONLY; break;
         case 1: f = O_WRONLY; break;
-        default: f = O_RDWR; break;
+        case 2: f = O_RDWR; break;
+        default:
+            errno = EINVAL;
+            return -1;
+    }
+    if (flags & ~(0xF | 0x10 | 0x20 | 0x40 | 0x80 | 0x100 | 0x200 | 0x1000))
+    {
+        errno = EINVAL;
+        return -1;
     }
     if (flags & 0x10) f |= O_CLOEXEC;
     if (flags & 0x20) f |= O_CREAT;
@@ -438,6 +486,8 @@ intptr_t SystemNative_Open(const char* path, int32_t flags, int32_t mode)
     if (flags & 0x80) f |= O_TRUNC;
     if (flags & 0x100) f |= O_SYNC;
     if (flags & 0x200) f |= O_NOFOLLOW;
+    if (flags & 0x1000) f |= O_DIRECTORY;
+    f |= O_NOCTTY;
     int fd;
     while ((fd = ::open(path, f, (mode_t)mode)) < 0 && errno == EINTR)
     {
@@ -450,6 +500,23 @@ int32_t SystemNative_Close(intptr_t fd)
     // No EINTR retry: POSIX leaves the fd state unspecified after EINTR and
     // retrying can close a recycled descriptor (the real PAL doesn't retry either).
     return ::close((int)fd);
+}
+
+// pal_io.c SystemNative_FcntlGetIsNonBlocking: how SafeFileHandle.IsAsync learns the
+// mode of a descriptor it did not open itself. A null out-pointer answers the PAL's
+// EFAULT code directly, like the real PAL.
+int32_t SystemNative_FcntlGetIsNonBlocking(intptr_t fd, int32_t* isNonBlocking)
+{
+    if (isNonBlocking == nullptr)
+        return SystemNative_ConvertErrorPlatformToPal(EFAULT);
+    int flags = ::fcntl((int)fd, F_GETFL);
+    if (flags == -1)
+    {
+        *isNonBlocking = 0;
+        return -1;
+    }
+    *isNonBlocking = (flags & O_NONBLOCK) != 0 ? 1 : 0;
+    return 0;
 }
 
 int32_t SystemNative_Read(intptr_t fd, void* buffer, int32_t bufferSize)
@@ -472,6 +539,54 @@ int32_t SystemNative_Write(intptr_t fd, const void* buffer, int32_t bufferSize)
     {
     }
     return (int32_t)n;
+}
+
+// A transfer on an O_NONBLOCK descriptor answered EAGAIN: wait until the descriptor
+// is ready for `events`. Returns 1 to retry the transfer, 0 when the peer hung up or
+// failed with `events` not pending, and -1 with errno set when the wait itself failed.
+static int dn2cpp_pal_wait_ready(int fd, short events)
+{
+    struct pollfd p = {fd, events, 0};
+    int r;
+    while ((r = ::poll(&p, 1, -1)) < 0 && errno == EINTR)
+    {
+    }
+    if (r < 0)
+        return -1;
+    return (p.revents & (POLLHUP | POLLERR)) != 0 && (p.revents & events) == 0 ? 0 : 1;
+}
+
+// pal_io.c SystemNative_ReadFromNonblocking / SystemNative_WriteToNonblocking:
+// RandomAccess's transfers for a SafeFileHandle over a non-blocking pipe or socket.
+// The managed caller is synchronous, so a descriptor that is not ready is waited on
+// rather than reported. A hang-up with nothing left to read is end of stream; one
+// with the write still pending is EPIPE.
+int32_t SystemNative_ReadFromNonblocking(intptr_t fd, void* buffer, int32_t bufferSize)
+{
+    for (;;)
+    {
+        int32_t n = SystemNative_Read(fd, buffer, bufferSize);
+        if (n != -1 || (errno != EAGAIN && errno != EWOULDBLOCK))
+            return n;
+        int ready = dn2cpp_pal_wait_ready((int)fd, POLLIN);
+        if (ready <= 0)
+            return ready;
+    }
+}
+
+int32_t SystemNative_WriteToNonblocking(intptr_t fd, const void* buffer, int32_t bufferSize)
+{
+    for (;;)
+    {
+        int32_t n = SystemNative_Write(fd, buffer, bufferSize);
+        if (n != -1 || (errno != EAGAIN && errno != EWOULDBLOCK))
+            return n;
+        int ready = dn2cpp_pal_wait_ready((int)fd, POLLOUT);
+        if (ready == 0)
+            errno = EPIPE;
+        if (ready <= 0)
+            return -1;
+    }
 }
 
 // pal_io.c SystemNative_SysLog: the sink DebugProvider.WriteToDebugger falls to
@@ -518,7 +633,7 @@ int32_t SystemNative_PWrite(intptr_t fd, const void* buffer, int32_t bufferSize,
 // Interop.Sys.IOVector { Base, Count } (which itself mirrors struct iovec).
 // Reached from RandomAccess.ReadScatterAtOffset / WriteGatherAtOffset on the
 // file-backed async Stream path (ThreadPoolValueTaskSource.Execute). Mirrors
-// dotnet/runtime pal_io.c v10.0.1's no-preadv/pwritev emulation arm (a
+// pal_io.c's no-preadv/pwritev emulation arm (a
 // per-segment pread/pwrite loop, stopping at the first short transfer) —
 // portable to every POSIX host regardless of preadv availability.
 struct Dn2CppIOVector
@@ -573,6 +688,135 @@ int64_t SystemNative_PWriteV(intptr_t fd, void* vectors, int32_t vectorCount, in
     return total;
 }
 
+static_assert(sizeof(Dn2CppIOVector) == sizeof(struct iovec)
+                  && offsetof(Dn2CppIOVector, base) == offsetof(struct iovec, iov_base)
+                  && offsetof(Dn2CppIOVector, count) == offsetof(struct iovec, iov_len),
+              "Interop.Sys.IOVector is passed to readv/writev as struct iovec");
+
+// readv/writev take at most IOV_MAX segments, and Darwin rejects a combined length
+// above INT_MAX. Transferring only the leading segments is a short transfer, which
+// the managed callers already handle.
+static int dn2cpp_pal_allowed_vector_count(const Dn2CppIOVector* vs, int32_t vectorCount)
+{
+#if defined(IOV_MAX)
+    const int iovMax = IOV_MAX;
+#else
+    const int iovMax = 16; // the POSIX minimum
+#endif
+    int allowed = vectorCount < iovMax ? (int)vectorCount : iovMax;
+#if defined(__APPLE__)
+    size_t total = 0;
+    for (int i = 0; i < allowed; i++)
+    {
+        total += vs[i].count;
+        if (total > INT_MAX)
+            return i;
+    }
+#else
+    (void)vs;
+#endif
+    return allowed;
+}
+
+// One readv over the leading `count` segments. When the collector may have
+// write-protected any of them (see bounced_read), the transfer stays ONE read for the
+// combined length into scratch, scattered to the segments in order, so a datagram or
+// pipe hands back the same bytes readv would. Only when scratch for the total cannot
+// be had does it fall back to a read into the first non-empty segment, a short
+// transfer the managed callers already handle.
+static ssize_t dn2cpp_pal_readv(int fd, Dn2CppIOVector* vs, int count)
+{
+    int first = -1;
+    bool bounce = false;
+    size_t total = 0;
+    bool overflow = false;
+    for (int i = 0; i < count; i++)
+    {
+        if (vs[i].count == 0)
+            continue;
+        if (first < 0)
+            first = i;
+        bounce = bounce || dn2cpp_gc_kernel_write_unsafe(vs[i].base) != 0;
+        if (total > SIZE_MAX - (size_t)vs[i].count)
+            overflow = true;
+        else
+            total += (size_t)vs[i].count;
+    }
+    if (bounce)
+    {
+        uint8_t* scratch = overflow ? nullptr : bounce_scratch(total);
+        if (scratch == nullptr)
+        {
+            return bounced_read(vs[first].base, (size_t)vs[first].count, [fd](void* dst, size_t cnt) {
+                ssize_t r;
+                while ((r = ::read(fd, dst, cnt)) < 0 && errno == EINTR)
+                {
+                }
+                return r;
+            });
+        }
+        ssize_t r;
+        while ((r = ::read(fd, scratch, total)) < 0 && errno == EINTR)
+        {
+        }
+        size_t off = 0;
+        for (int i = 0; r > 0 && i < count && off < (size_t)r; i++)
+        {
+            size_t take = std::min((size_t)r - off, (size_t)vs[i].count);
+            if (take != 0)
+                std::memcpy(vs[i].base, scratch + off, take);
+            off += take;
+        }
+        return r;
+    }
+    ssize_t n;
+    while ((n = ::readv(fd, reinterpret_cast<struct iovec*>(vs), count)) < 0 && errno == EINTR)
+    {
+    }
+    return n;
+}
+
+// pal_io.c SystemNative_ReadV / SystemNative_WriteV: the scatter/gather transfers at
+// the descriptor's own position, which RandomAccess takes for a handle that cannot
+// seek. Each is ONE syscall, so a pipe hands back what it has instead of waiting to
+// fill every segment, and a non-blocking descriptor is waited on like the
+// single-buffer transfers above.
+int64_t SystemNative_ReadV(intptr_t fd, void* vectors, int32_t vectorCount)
+{
+    auto* vs = static_cast<Dn2CppIOVector*>(vectors);
+    int allowed = dn2cpp_pal_allowed_vector_count(vs, vectorCount);
+    for (;;)
+    {
+        ssize_t n = dn2cpp_pal_readv((int)fd, vs, allowed);
+        if (n != -1 || (errno != EAGAIN && errno != EWOULDBLOCK))
+            return (int64_t)n;
+        int ready = dn2cpp_pal_wait_ready((int)fd, POLLIN);
+        if (ready <= 0)
+            return ready;
+    }
+}
+
+int64_t SystemNative_WriteV(intptr_t fd, void* vectors, int32_t vectorCount)
+{
+    auto* vs = static_cast<Dn2CppIOVector*>(vectors);
+    int allowed = dn2cpp_pal_allowed_vector_count(vs, vectorCount);
+    for (;;)
+    {
+        ssize_t n;
+        while ((n = ::writev((int)fd, reinterpret_cast<struct iovec*>(vs), allowed)) < 0
+               && errno == EINTR)
+        {
+        }
+        if (n != -1 || (errno != EAGAIN && errno != EWOULDBLOCK))
+            return (int64_t)n;
+        int ready = dn2cpp_pal_wait_ready((int)fd, POLLOUT);
+        if (ready == 0)
+            errno = EPIPE;
+        if (ready <= 0)
+            return -1;
+    }
+}
+
 // PAL SeekWhence values equal the host SEEK_SET/SEEK_CUR/SEEK_END (0/1/2).
 int64_t SystemNative_LSeek(intptr_t fd, int64_t offset, int32_t whence)
 {
@@ -605,6 +849,39 @@ int32_t SystemNative_FLock(intptr_t fd, int32_t operation)
     {
     }
     return r;
+}
+
+// pal_io.c SystemNative_FileSystemSupportsLocking, for SafeFileHandle.CanLockTheFile.
+// A shared lock under write access silently drops writes on nfs/cifs/smb, so the BCL
+// skips flock there; an exclusive lock or a read-only open is always taken. A failed
+// query answers "unsupported", like the real PAL.
+uint32_t SystemNative_FileSystemSupportsLocking(intptr_t fd, int32_t lockOperation, int32_t accessWrite)
+{
+    if (lockOperation == LOCK_EX || accessWrite == 0)
+        return 1;
+    struct statfs fs;
+    int r;
+    while ((r = ::fstatfs((int)fd, &fs)) < 0 && errno == EINTR)
+    {
+    }
+    if (r != 0)
+        return 0;
+#if defined(__APPLE__)
+    const char* type = fs.f_fstypename;
+    return std::strcmp(type, "nfs") != 0 && std::strcmp(type, "cifs") != 0
+        && std::strcmp(type, "smb") != 0 && std::strcmp(type, "smb2") != 0;
+#else
+    switch ((uint32_t)fs.f_type)
+    {
+        case 0x6969:     // NFS_SUPER_MAGIC
+        case 0xFF534D42: // CIFS_SUPER_MAGIC
+        case 0x517B:     // SMB_SUPER_MAGIC
+        case 0xFE534D42: // SMB2_SUPER_MAGIC
+            return 0;
+        default:
+            return 1;
+    }
+#endif
 }
 
 // Advisory readahead hint; macOS has no posix_fadvise, and the managed caller
@@ -672,9 +949,9 @@ int32_t SystemNative_FAllocate(intptr_t fd, int64_t offset, int64_t length)
 
 // ============================ stat =========================================
 
-// Managed Interop.Sys.FileStatus, sequential layout (net10.0, verified by
-// reflection: 120 bytes with trailing pad). Mode is the RAW st_mode — the
-// managed FileTypes constants (S_IFMT/S_IFREG/…) match the POSIX octal values.
+// Managed Interop.Sys.FileStatus, sequential layout, transcribed from the
+// shipped .NET 11.0.0 metadata. Mode is the RAW st_mode — the managed FileTypes
+// constants (S_IFMT/S_IFREG/…) match the POSIX octal values.
 struct Dn2CppPalFileStatus
 {
     int32_t Flags; // 1 = HasBirthTime
@@ -693,11 +970,16 @@ struct Dn2CppPalFileStatus
     int64_t Dev;
     int64_t RDev;
     int64_t Ino;
-    uint32_t UserFlags; // 0x8000 = hidden (macOS UF_HIDDEN)
+    uint32_t UserFlags; // raw st_flags; 0 where the platform has none
+    uint32_t HardLinkCount;
 };
+static_assert(offsetof(Dn2CppPalFileStatus, UserFlags) == 112, "Interop.Sys.FileStatus.UserFlags");
+static_assert(offsetof(Dn2CppPalFileStatus, HardLinkCount) == 116, "Interop.Sys.FileStatus.HardLinkCount");
+static_assert(sizeof(Dn2CppPalFileStatus) == 120, "Interop.Sys.FileStatus size");
 
 static void dn2cpp_pal_fill_status(const struct stat& st, Dn2CppPalFileStatus* out)
 {
+    out->HardLinkCount = (uint32_t)st.st_nlink;
     out->Mode = (int32_t)st.st_mode;
     out->Uid = st.st_uid;
     out->Gid = st.st_gid;
@@ -715,7 +997,10 @@ static void dn2cpp_pal_fill_status(const struct stat& st, Dn2CppPalFileStatus* o
     out->BirthTime = st.st_birthtimespec.tv_sec;
     out->BirthTimeNsec = st.st_birthtimespec.tv_nsec;
     out->Flags = 1; // HasBirthTime
-    out->UserFlags = ((st.st_flags & UF_HIDDEN) == UF_HIDDEN) ? 0x8000u : 0u;
+    // The whole word, not just the hidden bit: FileStatus.SetAttributes hands
+    // UserFlags back to LChflags / FChflags with only UF_HIDDEN changed, so a
+    // narrowed value would clear every other BSD flag on the file.
+    out->UserFlags = (uint32_t)st.st_flags;
 #else
     out->ATime = st.st_atim.tv_sec;
     out->ATimeNsec = st.st_atim.tv_nsec;
@@ -827,7 +1112,7 @@ char* SystemNative_GetCwd(char* buffer, int32_t bufferSize)
 
 // pal_io.c SystemNative_Access: access(2), 0 if the requested access is
 // permitted, -1 with errno set otherwise. The managed AccessMode
-// (Interop.Access.cs — verified against the shipping 10.0.9 metadata: F_OK=0,
+// (Interop.Access.cs — in the shipped .NET 11.0.0 metadata: F_OK=0,
 // X_OK=1, W_OK=2, R_OK=4) equals the POSIX values on every platform this file
 // builds for, so the mode passes through raw; pal_io.c asserts that identity
 // rather than translating, reproduced below. SetLastError=true on the managed
@@ -847,12 +1132,11 @@ int32_t SystemNative_Access(const char* path, int32_t mode)
 }
 
 // ============================ directories ==================================
-// Function-for-function reproduction of dotnet/runtime pal_io.c / pal_time.c
-// (tag v10.0.1, src/native/libs/System.Native/) — the same style as
-// dn2cpp_zlib_native.cpp reproducing pal_zlib.c.
+// Function-for-function reproduction of pal_io.c / pal_time.c — the same
+// style as dn2cpp_zlib_native.cpp reproducing pal_zlib.c.
 
-// Managed Interop.Sys.DirectoryEntry (pal_io.h `DirectoryEntry`). Verified by
-// reflection against net10.0 System.Private.CoreLib: LayoutKind.Sequential,
+// Managed Interop.Sys.DirectoryEntry (pal_io.h `DirectoryEntry`), as the
+// shipped .NET 11.0.0 System.Private.CoreLib declares it: LayoutKind.Sequential,
 // Marshal.SizeOf = 16 —
 //   Byte*    Name       @ offset 0   (pointer into the DIR stream's dirent)
 //   Int32    NameLength @ offset 8   (-1 = managed side walks to the NUL)
@@ -961,8 +1245,8 @@ int32_t SystemNative_FChMod(intptr_t fd, int32_t mode)
     return result;
 }
 
-// Managed Interop.Sys.TimeSpec (pal_time.h `TimeSpec`). Verified by reflection
-// against net10.0 System.Private.CoreLib: LayoutKind.Sequential, 16 bytes —
+// Managed Interop.Sys.TimeSpec (pal_time.h `TimeSpec`), as the shipped .NET
+// 11.0.0 System.Private.CoreLib declares it: LayoutKind.Sequential, 16 bytes —
 //   Int64 TvSec  @ offset 0
 //   Int64 TvNsec @ offset 8
 // The UTimensat/FUTimens callers pass `TimeSpec[2]` = { atime, mtime }.
@@ -1171,7 +1455,7 @@ extern "C" int32_t dn2cpp_fsetattrlist(
 #endif
 }
 
-// ============================ file copy / fs type ==========================
+// ============================ file copy ====================================
 
 // Copies data + metadata (mode, times) from one open fd to another, like the
 // real PAL: fcopyfile on macOS; a read/write loop + fchmod/futimens elsewhere.
@@ -1210,40 +1494,6 @@ int32_t SystemNative_CopyFile(intptr_t sourceFd, intptr_t destinationFd, int64_t
     struct timespec times[2] = { st.st_atim, st.st_mtim };
     (void)::futimens(outFd, times); // best-effort, like the PAL
     return 0;
-#endif
-}
-
-// The mounted filesystem's type for SafeFileHandle.CanLockTheFile (flock is a
-// no-op lie on nfs/smb/cifs, so the BCL skips it there). Linux statfs exposes
-// the magic directly; macOS exposes a name, mapped to the same managed
-// UnixFileSystemTypes values. 0 = unknown (the managed side then assumes
-// lockable, matching the real PAL's failure path).
-uint32_t SystemNative_GetFileSystemType(intptr_t fd)
-{
-    struct statfs fs;
-    int r;
-    while ((r = ::fstatfs((int)fd, &fs)) < 0 && errno == EINTR)
-    {
-    }
-    if (r != 0)
-        return 0;
-#if defined(__APPLE__)
-    struct NameToType
-    {
-        const char* name;
-        uint32_t value;
-    };
-    static const NameToType map[] = {
-        {"apfs", 0x1A},        {"hfs", 0x4244},     {"autofs", 0x187},
-        {"msdos", 0x4D44},     {"devfs", 0x1373},   {"nfs", 0x6969},
-        {"smbfs", 0x517B},     {"cifs", 0xFF534D42}, {"tmpfs", 0x1021994},
-    };
-    for (const auto& e : map)
-        if (std::strcmp(fs.f_fstypename, e.name) == 0)
-            return e.value;
-    return 0;
-#else
-    return (uint32_t)fs.f_type;
 #endif
 }
 
@@ -1334,12 +1584,12 @@ int32_t SystemNative_GetCryptographicallySecureRandomBytes(uint8_t* buffer, int3
 }
 
 // ================= special-folder search paths (Darwin) ====================
-// Function-for-function reproduction of dotnet/runtime pal_searchpath.m (tag
-// v10.0.9, src/native/libs/System.Native/) — Apple-only like its source: only
+// Function-for-function reproduction of pal_searchpath.m — Apple-only like its
+// source: only
 // the OSX flavor of CoreLib declares the import (Interop.SearchPath.cs), so a
 // Linux/BSD closure never names the symbol and this section compiles away.
 //
-// Managed contract (verified against the shipping 10.0.9 metadata):
+// Managed contract (the shipped .NET 11.0.0 metadata):
 // `[LibraryImport] string? SearchPath(NSSearchPathDirectory folderId)`, whose
 // raw extern is `byte* SystemNative_SearchPath(int32_t)` with
 // SetLastError=false — no errno convention at all. The returned pointer must
@@ -1399,15 +1649,12 @@ const char* SystemNative_SearchPath(int32_t folderId)
 #endif
 
 // ===================== process / user identity =============================
-// Function-for-function reproduction of dotnet/runtime pal_process.c /
-// pal_uid.c (tag v10.0.9, src/native/libs/System.Native/), same style as the
-// directory section above.
+// Function-for-function reproduction of pal_process.c / pal_uid.c, same style
+// as the directory section above.
 //
 // Two of these four are declared in System.Private.CoreLib (GetPid, GetPwUidR);
 // the other two live in System.Diagnostics.Process.dll (GetSid, Kill), so they
-// are absent from a CoreLib-only reachability closure. The authority is the
-// SHIPPING net10.0 metadata (10.0.9), not dotnet/runtime's main branch — the
-// Kill contract has already changed there (see the note at SystemNative_Kill).
+// are absent from a CoreLib-only reachability closure.
 //
 // This is not the file's only pal_uid.c surface: GetEUid / GetEGid / GetGroups
 // sit up in the enumeration path above, where FileStatus's access checks reach
@@ -1436,30 +1683,14 @@ int32_t SystemNative_GetSid(int32_t pid)
     return (int32_t)::getsid((pid_t)pid);
 }
 
-// Managed Interop.Sys.Signals (Interop.Kill.cs, mirrored by pal_process.h's
-// `Signals` enum) — PAL-stable values that are NOT host signal numbers:
-//   PAL_NONE = 0, PAL_SIGKILL = 9, PAL_SIGSTOP = 19
-// Verified against the shipping 10.0.9 System.Diagnostics.Process metadata.
-#define DN2CPP_PAL_SIGNONE 0
-#define DN2CPP_PAL_SIGKILL 9
-#define DN2CPP_PAL_SIGSTOP 19
-
-// pal_process.h SystemNative_Kill: 0 on success, -1 with errno on failure.
+// pal_process.c SystemNative_Kill: kill(2) as is — 0 on success, -1 with errno.
 //
-// The translation below is load-bearing, and on Darwin it is the whole point:
-// SIGSTOP is 17 there and 19 is SIGCONT, so passing the managed value through
-// would RESUME the process the caller asked to stop — a silent wrong action, not
-// an error. SIGKILL happens to be 9 on both Darwin and Linux, which is exactly
-// what would make a pass-through look correct in a test.
-//
-// An unmodeled value is EINVAL, never a pass-through, mirroring the PAL's
-// `default:` arm (an `assert_msg` that compiles away in release, then EINVAL). A
-// raw host signal number arriving here means the caller is speaking the OTHER
-// contract: .NET 11 retires this enum — Kill takes a real signal number and a new
-// SystemNative_GetPlatformSIGSTOP supplies the host value — so forwarding it
-// would misfire silently against a future CoreLib instead of failing. That
-// CoreLib is recognizable: it exports SystemNative_GetPlatformSIGSTOP, so it
-// would arrive here as a link error against this file, which is the loud outcome.
+// `signal` is a HOST signal number. The managed side never passes a portable
+// constant: it sends the literal 0 for a liveness probe and otherwise asks the
+// PAL for the host's number first (SystemNative_GetPlatformSignalNumber for a
+// PosixSignal, SystemNative_GetPlatformSIGSTOP for the stop signal). A
+// translation table here would misfire — Darwin's SIGSTOP is 17 and its 19 is
+// SIGCONT.
 //
 // SetLastError=true on the managed declaration is implemented in managed IL by
 // the LibraryImport generator, not by the ImplMap: the wrapper brackets the call
@@ -1469,21 +1700,49 @@ int32_t SystemNative_GetSid(int32_t pid)
 // .NET runs in.
 int32_t SystemNative_Kill(int32_t pid, int32_t signal)
 {
-    int hostSignal;
-    switch (signal)
-    {
-        case DN2CPP_PAL_SIGNONE: hostSignal = 0; break;
-        case DN2CPP_PAL_SIGKILL: hostSignal = SIGKILL; break;
-        case DN2CPP_PAL_SIGSTOP: hostSignal = SIGSTOP; break;
-        default:
-            errno = EINVAL;
-            return -1;
-    }
-    return ::kill((pid_t)pid, hostSignal);
+    return ::kill((pid_t)pid, signal);
 }
 
-// Managed Interop.Sys.Passwd (Interop.GetPwUid.cs). Verified by reflection
-// against net10.0 System.Private.CoreLib: LayoutKind.Sequential, no ClassLayout
+// pal_signal.c SystemNative_GetPlatformSignalNumber: the host number of a
+// managed System.Runtime.InteropServices.PosixSignal. The named members are
+// negative so that a positive value can carry a raw host signal number, which
+// passes through when it is in range; 0 is "no such signal". Reach path:
+// Process.Kill -> SafeProcessHandle.SignalCore(PosixSignal.SIGKILL), whose
+// result is the `signal` SystemNative_Kill then receives.
+int32_t SystemNative_GetPlatformSignalNumber(int32_t signal)
+{
+    switch (signal)
+    {
+        case -1: return SIGHUP;
+        case -2: return SIGINT;
+        case -3: return SIGQUIT;
+        case -4: return SIGTERM;
+        case -5: return SIGCHLD;
+        case -6: return SIGCONT;
+        case -7: return SIGWINCH;
+        case -8: return SIGTTIN;
+        case -9: return SIGTTOU;
+        case -10: return SIGTSTP;
+        case -11: return SIGKILL;
+        default: break;
+    }
+#ifdef SIGRTMAX
+    const int signalMax = SIGRTMAX;
+#else
+    const int signalMax = NSIG;
+#endif
+    return signal > 0 && signal <= signalMax ? signal : 0;
+}
+
+// pal_signal.c SystemNative_GetPlatformSIGSTOP: the host's SIGSTOP, which
+// Process.Kill(entireProcessTree: true) sends through SystemNative_Kill.
+int32_t SystemNative_GetPlatformSIGSTOP(void)
+{
+    return SIGSTOP;
+}
+
+// Managed Interop.Sys.Passwd (Interop.GetPwUid.cs), as the shipped .NET
+// 11.0.0 System.Private.CoreLib declares it: LayoutKind.Sequential, no ClassLayout
 // row at all (no explicit Pack, no explicit Size), Marshal.SizeOf = 48 on LP64 —
 //   byte*  Name          @ 0
 //   byte*  Password      @ 8
@@ -1587,8 +1846,8 @@ int32_t SystemNative_GetPwUidR(uint32_t uid, Dn2CppPalPasswd* pwd, char* buf, in
 
 // ================ sysconf / boot time / OS release =========================
 // pal_io.c SystemNative_SysConf, pal_time.c SystemNative_GetBootTimeTicks and
-// pal_runtimeinformation.c SystemNative_GetUnixRelease (tag v10.0.9), same style
-// as the sections above.
+// pal_runtimeinformation.c SystemNative_GetUnixRelease, same style as the
+// sections above.
 //
 // All three are reached only by a transpile of the LINUX flavor of the BCL:
 // Process.TicksToTimeSpan and Process.BootTime are Process.Linux.cs, and
@@ -1672,8 +1931,8 @@ char* SystemNative_GetUnixRelease(void)
 }
 
 // ===================== low-level monitor ===================================
-// Function-for-function reproduction of dotnet/runtime pal_threading.c (tag
-// v10.0.9, src/native/libs/System.Native/), same style as the sections above.
+// Function-for-function reproduction of pal_threading.c, same style as the
+// sections above.
 //
 // This is the primitive CoreLib's OWN LowLevelLock / LowLevelMonitor are built
 // on — a mutex + condition variable pair whose lifetime the managed side
@@ -1686,18 +1945,18 @@ char* SystemNative_GetUnixRelease(void)
 // LowLevelLock) and PortableThreadPool.WaitThread, i.e. Process.Dispose ->
 // Process.Close -> StopWatchingForExit -> RegisteredWaitHandle.Unregister.
 //
-// The managed declarations (Interop.LowLevelMonitor.cs, verified against the
-// shipping 10.0.9 metadata) are SetLastError=false and every one returns void
+// The managed declarations (Interop.LowLevelMonitor.cs, in the shipped .NET
+// 11.0.0 metadata) are SetLastError=false and every one returns void
 // except Create, which returns the opaque nint the other five take back. So
 // there is no errno contract and no failure the managed side can observe: a
 // pthread_* error is fatal here rather than silently ignored, because a lock
 // that quietly failed to lock is the one outcome the caller cannot detect.
 //
 // pal_threading.c also defines SystemNative_LowLevelMonitor_TimedWait. It is
-// deliberately NOT reproduced: the shipping net10.0 CoreLib declares no P/Invoke
-// for it (checked by reflection over the Interop.Sys members), so the symbol has
-// no managed mouth and an implementation would be code no reachability closure
-// can reach. If a future CoreLib adds one, it arrives here as a link error
+// deliberately NOT reproduced: its managed callers are WaitSubsystem and
+// LowLevelLifoSemaphore, the wait-handle and thread-pool machinery the dn2cpp
+// runtime supplies itself, so an implementation would be code no reachability
+// closure can reach. A closure that does reach it arrives here as a link error
 // naming the symbol — which is this file's standard loud outcome for a new gap.
 struct Dn2CppPalLowLevelMonitor
 {
@@ -1773,5 +2032,32 @@ void SystemNative_LowLevelMonitor_Signal_Release(void* monitor)
     if (error != 0)
         std::abort();
 }
+
+#if defined(__linux__)
+// ===================== low-level futex =====================================
+// pal_threading.c's Linux arm (dotnet/runtime src/native/libs/System.Native/).
+// The Linux flavour of CoreLib builds LowLevelThreadBlocker — the wait half of
+// LowLevelLock — on these instead of the LowLevelMonitor above, so the reach
+// path is the same one (RegisteredWaitHandle's static lock behind
+// Process.Dispose). Only that flavour imports them; the Apple one never does.
+//
+// SystemNative_LowLevelFutex_WaitOnAddressTimeout is NOT reproduced, for the
+// reason LowLevelMonitor_TimedWait is not: its only managed caller is
+// LowLevelLifoSemaphore, thread-pool machinery the dn2cpp runtime supplies
+// itself.
+//
+// A wait is advisory: the managed caller re-reads *address after every return
+// and loops, so EAGAIN (the value already changed), EINTR and a stolen wake all
+// read as an ordinary wake and none is an error here.
+void SystemNative_LowLevelFutex_WaitOnAddress(int32_t* address, int32_t comparand)
+{
+    ::syscall(SYS_futex, address, FUTEX_WAIT_PRIVATE, comparand, nullptr, nullptr, 0);
+}
+
+void SystemNative_LowLevelFutex_WakeByAddressSingle(int32_t* address)
+{
+    ::syscall(SYS_futex, address, FUTEX_WAKE_PRIVATE, 1, nullptr, nullptr, 0);
+}
+#endif // __linux__
 
 } // extern "C"

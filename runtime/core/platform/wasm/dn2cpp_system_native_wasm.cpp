@@ -69,7 +69,6 @@
 #include <fcntl.h>  // open, O_*, posix_fadvise
 #include <sys/file.h>   // flock
 #include <sys/stat.h>   // stat / fstat
-#include <sys/statfs.h> // fstatfs — GetFileSystemType
 #include <unistd.h> // getentropy, write
 
 extern "C" {
@@ -418,16 +417,25 @@ const char* SystemNative_StrErrorR(int32_t platformErrno, char* buffer, int32_t 
 // ======================= file I/O against MEMFS ============================
 
 // PAL OpenFlags (managed Interop.Sys.OpenFlags) → host O_* bits. The PAL side of
-// this mapping is platform-stable and the host side is musl's; the POSIX twin's
-// body verbatim.
+// this mapping is platform-stable and the host side is musl's. The POSIX twin's
+// body minus its O_NOCTTY: there is no controlling terminal here, and the PAL
+// leaves the flag out on this target because WASMFS rejects it.
 intptr_t SystemNative_Open(const char* path, int32_t flags, int32_t mode)
 {
     int f;
-    switch (flags & 0x3)
+    switch (flags & 0xF)
     {
         case 0: f = O_RDONLY; break;
         case 1: f = O_WRONLY; break;
-        default: f = O_RDWR; break;
+        case 2: f = O_RDWR; break;
+        default:
+            errno = EINVAL;
+            return -1;
+    }
+    if (flags & ~(0xF | 0x10 | 0x20 | 0x40 | 0x80 | 0x100 | 0x200 | 0x1000))
+    {
+        errno = EINVAL;
+        return -1;
     }
     if (flags & 0x10) f |= O_CLOEXEC;
     if (flags & 0x20) f |= O_CREAT;
@@ -435,6 +443,7 @@ intptr_t SystemNative_Open(const char* path, int32_t flags, int32_t mode)
     if (flags & 0x80) f |= O_TRUNC;
     if (flags & 0x100) f |= O_SYNC;
     if (flags & 0x200) f |= O_NOFOLLOW;
+    if (flags & 0x1000) f |= O_DIRECTORY;
     int fd;
     while ((fd = ::open(path, f, (mode_t)mode)) < 0 && errno == EINTR)
     {
@@ -447,6 +456,22 @@ int32_t SystemNative_Close(intptr_t fd)
     // No EINTR retry: POSIX leaves the fd state unspecified after EINTR and
     // retrying can close a recycled descriptor (the real PAL doesn't retry either).
     return ::close((int)fd);
+}
+
+// How SafeFileHandle.IsAsync learns the mode of a descriptor it did not open itself.
+// A null out-pointer answers the PAL's EFAULT code directly, like the real PAL.
+int32_t SystemNative_FcntlGetIsNonBlocking(intptr_t fd, int32_t* isNonBlocking)
+{
+    if (isNonBlocking == nullptr)
+        return SystemNative_ConvertErrorPlatformToPal(EFAULT);
+    int flags = ::fcntl((int)fd, F_GETFL);
+    if (flags == -1)
+    {
+        *isNonBlocking = 0;
+        return -1;
+    }
+    *isNonBlocking = (flags & O_NONBLOCK) != 0 ? 1 : 0;
+    return 0;
 }
 
 intptr_t SystemNative_MksTemps(char* pathTemplate, int32_t suffixLength)
@@ -489,6 +514,19 @@ int32_t SystemNative_PWrite(intptr_t fd, const void* buffer, int32_t bufferSize,
     return (int32_t)n;
 }
 
+// RandomAccess's transfers for a descriptor in O_NONBLOCK mode. The POSIX twin waits
+// in poll(2) when the descriptor is not ready. The page's one thread cannot wait for
+// readiness nothing else can produce, so EAGAIN is reported to the managed caller.
+int32_t SystemNative_ReadFromNonblocking(intptr_t fd, void* buffer, int32_t bufferSize)
+{
+    return SystemNative_Read(fd, buffer, bufferSize);
+}
+
+int32_t SystemNative_WriteToNonblocking(intptr_t fd, const void* buffer, int32_t bufferSize)
+{
+    return SystemNative_Write(fd, buffer, bufferSize);
+}
+
 // PAL SeekWhence values equal the host SEEK_SET/SEEK_CUR/SEEK_END (0/1/2).
 int64_t SystemNative_LSeek(intptr_t fd, int64_t offset, int32_t whence)
 {
@@ -526,6 +564,14 @@ int32_t SystemNative_FLock(intptr_t fd, int32_t operation)
     return r;
 }
 
+// SafeFileHandle.CanLockTheFile's query. The PAL reports no locking support on
+// TARGET_WASM / TARGET_WASI, so the managed side never takes an advisory lock.
+uint32_t SystemNative_FileSystemSupportsLocking(intptr_t fd, int32_t lockOperation, int32_t accessWrite)
+{
+    (void)fd; (void)lockOperation; (void)accessWrite;
+    return 0;
+}
+
 // Advisory readahead hint; the managed caller only debug-asserts success. Returns
 // the error number directly (posix_fadvise convention).
 int32_t SystemNative_PosixFAdvise(intptr_t fd, int64_t offset, int64_t length, int32_t advice)
@@ -554,9 +600,9 @@ int32_t SystemNative_FAllocate(intptr_t fd, int64_t offset, int64_t length)
     return 0;
 }
 
-// Managed Interop.Sys.FileStatus, sequential layout (net10.0): 120 bytes with
-// trailing pad. Mode is the RAW st_mode — the managed FileTypes constants
-// (S_IFMT/S_IFREG/…) match the POSIX octal values.
+// Managed Interop.Sys.FileStatus, sequential layout, transcribed from the
+// shipped .NET 11.0.0 metadata. Mode is the RAW st_mode — the managed FileTypes
+// constants (S_IFMT/S_IFREG/…) match the POSIX octal values.
 struct Dn2CppPalFileStatus
 {
     int32_t Flags; // 1 = HasBirthTime
@@ -575,11 +621,16 @@ struct Dn2CppPalFileStatus
     int64_t Dev;
     int64_t RDev;
     int64_t Ino;
-    uint32_t UserFlags; // 0x8000 = hidden; MEMFS has no such attribute
+    uint32_t UserFlags; // BSD st_flags; MEMFS has none
+    uint32_t HardLinkCount;
 };
+static_assert(offsetof(Dn2CppPalFileStatus, UserFlags) == 112, "Interop.Sys.FileStatus.UserFlags");
+static_assert(offsetof(Dn2CppPalFileStatus, HardLinkCount) == 116, "Interop.Sys.FileStatus.HardLinkCount");
+static_assert(sizeof(Dn2CppPalFileStatus) == 120, "Interop.Sys.FileStatus size");
 
 static void dn2cpp_pal_fill_status(const struct stat& st, Dn2CppPalFileStatus* out)
 {
+    out->HardLinkCount = (uint32_t)st.st_nlink;
     out->Mode = (int32_t)st.st_mode;
     out->Uid = st.st_uid;
     out->Gid = st.st_gid;
@@ -635,21 +686,6 @@ int32_t SystemNative_Unlink(const char* path)
 char* SystemNative_GetCwd(char* buffer, int32_t bufferSize)
 {
     return ::getcwd(buffer, (size_t)bufferSize);
-}
-
-// The managed caller compares this against the NFS/CIFS magics to decide whether
-// file locking is trustworthy. MEMFS reports 0, which is none of them — the
-// ordinary local-filesystem behaviour, which is what MEMFS is.
-uint32_t SystemNative_GetFileSystemType(intptr_t fd)
-{
-    struct statfs fs;
-    int r;
-    while ((r = ::fstatfs((int)fd, &fs)) < 0 && errno == EINTR)
-    {
-    }
-    if (r != 0)
-        return 0;
-    return (uint32_t)fs.f_type;
 }
 
 } // extern "C"

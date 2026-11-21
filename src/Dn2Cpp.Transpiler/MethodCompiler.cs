@@ -785,6 +785,8 @@ internal sealed partial class MethodCompiler : IEvalStack
             if (IsNarrowEnumSlot(argument.Type))
                 Emit($"{argument.Name} = {CoerceToSlot(new StackEntry(argument.Name, argument.Kind, argument.CppType), argument.Type, argument.CppType)};");
         SetupNoAliasSpanLocals(insns);
+        if (CoreIntrinsics.IsOpenSslHashAvailability(_method))
+            Emit($"if (dn2cpp_openssl_hash_algorithm_absent({_args[0].Name})) return 0;");
 
         // The reachability scanner computed the identical pass with the same
         // Compilation-backed callbacks (Compilation.ScanBodyForGenerics), so

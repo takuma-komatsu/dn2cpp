@@ -59,6 +59,24 @@ internal sealed partial class MethodCompiler
             case InterceptEmitArm.ToolProcess:
                 EmitToolProcess();
                 return true;
+            case InterceptEmitArm.AbsentWinZipAesThrow:
+            {
+                // The value pushed after the [[noreturn]] throw only keeps the eval stack
+                // typed, and nothing else may name its layout once the bodies are cut.
+                var returnType = callee.Signature.ReturnType;
+                NoteReferenceClass(returnType);
+                NoteLocalValueLayout(returnType);
+                for (int i = callee.Signature.ParameterTypes.Length - 1; i >= 0; i--)
+                    Pop();
+                Emit("dn2cpp_throw_platform_not_supported(\""
+                    + Compilation.AbsentWinZipAesThrowMessage + "\");");
+                if (!returnType.IsVoid)
+                {
+                    string ct = CppTypes.Of(returnType);
+                    Push(CppTypes.KindOf(returnType), ct, CppTypes.ZeroInitExpr(ct));
+                }
+                return true;
+            }
             case InterceptEmitArm.EnvIntrinsic:
                 EmitIntrinsic("System.Environment", callee.Name, callee.Signature);
                 return true;
@@ -691,6 +709,9 @@ internal sealed partial class MethodCompiler
                 if (TryEmitMethodDefIntercept(CoreIntrinsics.MdToolProcess, callee))
                     return;
                 if (TryEmitMethodDefIntercept(CoreIntrinsics.MdEnvMember, callee))
+                    return;
+                // Compilation.ResolveCallTarget cuts these bodies through the same row.
+                if (TryEmitMethodDefIntercept(CoreIntrinsics.MdAbsentWinZipAes, callee))
                     return;
                 // Byte/SByte/Int16/UInt16 ToString/Parse/TryParse/TryFormat reached
                 // intra-corelib (MethodDef) — AssemblyNameParser.TryParseVersion calls

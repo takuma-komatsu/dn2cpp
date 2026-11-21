@@ -5056,19 +5056,6 @@ char16_t dn2cpp_pinvoke_char_from_ansi(uint8_t b);
 void* dn2cpp_pinvoke_chararr_to_ansi(Dn2CppArrayN* arr, int32_t copyIn);
 void dn2cpp_pinvoke_chararr_from_ansi(Dn2CppArrayN* arr, void* buf);
 
-// P/Invoke blittable-struct array marshalling. Unlike a primitive
-// blittable array (int[]/double[]/...), which .NET pins and passes by pointer (so
-// write-backs are visible regardless of [In]/[Out]), an array of a blittable value-type
-// struct (Point[]) is marshalled BY COPY with direction semantics (probe-confirmed):
-//   _blitarr_to_native: copy the managed buffer (length * elemSize bytes, the packed
-//     Dn2CppArrayN stride == the native C array layout) into a fresh GC-allocated buffer
-//     when copyIn != 0 ([In]/[In,Out]); zero it when copyIn == 0 ([Out]-only). null
-//     array -> null pointer; non-null even for an empty array.
-//   _blitarr_from_native: copy the native buffer back into the array (only emitted for
-//     [In,Out]/[Out]; the default direction is [In], no write-back).
-void* dn2cpp_pinvoke_blitarr_to_native(Dn2CppArrayN* arr, int32_t copyIn);
-void dn2cpp_pinvoke_blitarr_from_native(Dn2CppArrayN* arr, void* buf);
-
 // P/Invoke [MarshalAs(ByValArray, SizeConst=N)] inline fixed-length array
 // struct field. The native struct embeds the elements INLINE (<elem> f[N]); the managed
 // struct holds a managed array reference. A blittable element's packed managed stride
@@ -9333,3 +9320,7 @@ void dn2cpp_textwriter_write_bool(Dn2CppTextWriter* w, int32_t v);
 
 // Host companion process launcher; argv excludes the executable.
 int32_t dn2cpp_tool_process_run(Dn2CppString* executable, Dn2CppArrayRef* arguments);
+
+// OpenSSL-flavor hashing: true when the runtime's CryptoNative_Evp* selector for the
+// named algorithm yields no handle (dn2cpp_openssl_crypto_digest.cpp).
+bool dn2cpp_openssl_hash_algorithm_absent(Dn2CppString* algorithm);

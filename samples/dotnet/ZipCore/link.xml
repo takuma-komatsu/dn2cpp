@@ -1,0 +1,7 @@
+<linker>
+  <assembly fullname="System.IO.Compression">
+    <type fullname="System.IO.Compression.WinZipAesStream">
+      <method name="CreateKey" />
+    </type>
+  </assembly>
+</linker>

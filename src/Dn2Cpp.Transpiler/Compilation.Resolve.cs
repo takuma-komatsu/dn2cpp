@@ -328,6 +328,10 @@ internal sealed partial class Compilation
                     return null;
                 if (CoreIntrinsics.MdEnvMember.Matches(mi))
                     return null;
+                // Admitting these bodies reaches AES and PBKDF2 imports nothing defines;
+                // MethodCompiler.TranslateCall throws at the site through the same row.
+                if (CoreIntrinsics.MdAbsentWinZipAes.Matches(mi))
+                    return null;
                 // SerializationInfo.ThrowIfDeserializationInProgress is a no-op (no
                 // BinaryFormatter deserialization ever runs in a dn2cpp binary; see the
                 // MethodDefinition intercept in MethodCompiler.TranslateCall). Its real

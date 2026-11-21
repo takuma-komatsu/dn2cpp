@@ -19,6 +19,21 @@ namespace FileReal
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+            // Reads standard input through RandomAccess.Read's scatter overload: a pipe is
+            // unseekable, so CoreLib reaches SystemNative_ReadV rather than PReadV.
+            if (args[0] == "scatter-stdin")
+            {
+                using var stdin = new Microsoft.Win32.SafeHandles.SafeFileHandle((IntPtr)0, ownsHandle: false);
+                byte[] a = new byte[3], b = new byte[3];
+                GC.Collect();
+                long n = System.IO.RandomAccess.Read(stdin, new Memory<byte>[] { a, b }, 0);
+                string bytes = "";
+                foreach (byte[] seg in new[] { a, b })
+                    foreach (byte v in seg) bytes += (bytes.Length == 0 ? "" : ",") + v;
+                Console.WriteLine("scatter=" + n + ":" + bytes);
+                return 0;
+            }
+
             string dir = args[0];
             FileCoreSubset.Program.__GateEntry(dir);
             FileStreamSubset.Program.__GateEntry(dir);

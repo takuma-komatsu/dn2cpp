@@ -146,7 +146,7 @@ grep -oE '^[A-Za-z_][A-Za-z_0-9 ]*[ *]+SystemNative_[A-Za-z_0-9]+' \
 nearly all of it.) The file's own `// ==== … ====` banners group them:
 errno/host name, memory, file descriptors, `stat`, paths and links, directory
 enumeration and mode/times/ownership, the Darwin `setattrlist` bridge,
-copy/fs-type/clocks/CSPRNG, the Darwin special-folder search paths, process and
+copy/clocks/CSPRNG, the Darwin special-folder search paths, process and
 user identity, and the low-level monitor.
 
 **This surface is a POSIX-family obligation, not a universal one.**
@@ -155,8 +155,12 @@ user identity, and the low-level monitor.
   layer P/Invokes `kernel32`, `ntdll`, `ole32`, `ws2_32`, `iphlpapi`, `advapi32`
   directly in already-blittable shapes, so those calls direct-link once the
   modules are admitted to `Compilation.IsRuntimeProvidedPInvokeModule`. The port
-  is a line in the transpiler and a `target_link_libraries` row.
-- **wasm defines 30.** They live in
+  is a line in the transpiler and a `target_link_libraries` row. A module that
+  must not be bound whole — the C runtime, whose aligned heap has to be the one
+  the runtime frees with, or an API set with no import library of its own name —
+  is admitted per entry point in `Compilation.IsRuntimeProvidedPInvokeEntry`,
+  for CoreLib's own imports only.
+- **wasm defines 33.** They live in
   `runtime/core/platform/wasm/dn2cpp_system_native_wasm.cpp`, in groups.
   The **non-file** entries are there each for their own reason:
   `SystemNative_GetCryptographicallySecureRandomBytes`, whose caller is not a
@@ -186,7 +190,10 @@ user identity, and the low-level monitor.
   the call as a hint: `SystemNative_PosixFAdvise` is advisory, and
   `SystemNative_FAllocate` does nothing and reports success because MEMFS has no
   size-preserving preallocation primitive — and a preallocation that changed the
-  file's LENGTH would make it read back as zeros nobody wrote.
+  file's LENGTH would make it read back as zeros nobody wrote. The non-blocking
+  transfers `SystemNative_ReadFromNonblocking` and `SystemNative_WriteToNonblocking`
+  report `EAGAIN` instead of waiting in `poll(2)` as their POSIX twins do: the
+  page's one thread cannot wait for readiness that nothing else can produce.
 
   What is still absent is absent for the ordinary reason — nothing here calls it.
   Lowering a P/Invoke is target-neutral, so excluding the POSIX file excludes the
