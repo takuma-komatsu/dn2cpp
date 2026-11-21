@@ -61,6 +61,7 @@ internal sealed class Module
     public required MetadataReader Reader;
     public required string AssemblyName;
     public required string Path;
+    public bool IsTargetFramework;
     /// <summary>The compilation this module belongs to; a <see cref="ClassInfo"/> reaches it
     /// through here to decode its own members on demand. A field rather than a static for the
     /// same reason <see cref="TemplateDescs"/> is: the transpiler builds more than one
@@ -599,7 +600,9 @@ internal sealed partial class Compilation
             _defaultRefStatus.Add(status.Key, status.Value);
         foreach (string path in options.ResolvedLoadSet is not null
                      ? assemblyPaths : loadSet.Paths)
-            LoadModule(path);
+            // ILDiet validates the original assembly identities and order before
+            // substitution; the flat generation directory grants no provenance.
+            LoadModule(path, loadSet.TargetFrameworkIndexes.Contains(Modules.Count));
         // Runs after EVERY load path above (explicit -r, the auto-ref closure, the
         // injected default refs): a --no-manifest-resources naming an injected shim
         // or a closure-loaded BCL assembly is legitimate, so the name set to
@@ -844,7 +847,7 @@ internal sealed partial class Compilation
     /// became large-object garbage at exactly the moment the heap is otherwise empty.
     /// <c>AsImmutableArray</c> hands over the array the read just produced, which
     /// nothing else references.</para></summary>
-    private Module LoadModule(string path)
+    private Module LoadModule(string path, bool isTargetFramework)
     {
         var pe = new PEReader(ImmutableCollectionsMarshal.AsImmutableArray(File.ReadAllBytes(path)));
         var reader = pe.GetMetadataReader();
@@ -855,6 +858,7 @@ internal sealed partial class Compilation
             Reader = reader,
             AssemblyName = reader.GetString(reader.GetAssemblyDefinition().Name),
             Path = path,
+            IsTargetFramework = isTargetFramework,
             Owner = this,
         };
         Modules.Add(module);

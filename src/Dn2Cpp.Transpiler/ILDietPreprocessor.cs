@@ -7,9 +7,10 @@ namespace Dn2Cpp;
 
 internal static class ILDietPreprocessor
 {
-    internal static List<string> Run(IReadOnlyList<string> paths, TranspileOptions options,
+    internal static List<string> Run(AssemblyLoadSet loadSet, TranspileOptions options,
         IEmitBackend backend, out string preservation, out bool cutsValidated, out ILDietResultState state)
     {
+        IReadOnlyList<string> paths = loadSet.Paths;
         foreach (string argument in options.ILDietArguments)
             if (argument is "--request" or "--result")
                 throw new NotSupportedException("--ildiet-arg cannot override reserved ILDiet option: " + argument);
@@ -29,7 +30,8 @@ internal static class ILDietPreprocessor
             .Append("\" output=\"").Append(Escape(output))
             .Append("\" copyAll=\"").Append(options.HotupdateBase ? "true" : "false").Append('"');
         if (options.StrippingLevel == StrippingLevel.Medium)
-            text.Append(" strippingLevel=\"medium\"");
+            text.Append(" strippingLevel=\"medium\" frameworkAssets=\"")
+                .Append(ILDietProtocol.FrameworkAssetsDigest(paths.Count, loadSet.TargetFrameworkIndexes)).Append('"');
         text.Append(">\n");
         for (int i = 1; i < paths.Count; i++)
             Element(text, "reference", "path", Path.GetFullPath(paths[i]));

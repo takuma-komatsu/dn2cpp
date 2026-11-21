@@ -8,6 +8,7 @@ namespace Dn2Cpp;
 internal sealed class AssemblyLoadSet
 {
     internal readonly List<string> Paths = new();
+    internal HashSet<int> TargetFrameworkIndexes { get; private set; } = new();
     internal readonly Dictionary<string, Compilation.DefaultRefOutcome> DefaultRefStatus =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -51,6 +52,8 @@ internal sealed class AssemblyLoadSet
             if (injected && options.AutoRef)
                 result.LoadReferenceClosure(paths);
         }
+        if (options.StrippingLevel == StrippingLevel.Medium)
+            result.TargetFrameworkIndexes = TargetFrameworkAssets.Classify(result.Paths);
         return result;
     }
 

@@ -1366,6 +1366,16 @@ if [ -f gates/expected/godot-dotnet-abi.sha256 ]; then
     abi_uc="$(awk '/unmanaged_callbacks/{print $1}' gates/expected/godot-dotnet-abi.sha256)"
     abi_mc="$(awk '/ManagedCallbacks.cs/{print $1}' gates/expected/godot-dotnet-abi.sha256)"
 fi
+# Membership comes from the selected runtime pack, not the *.dll copies above:
+# a Windows shared framework also ships native DLLs. Bind the declaration to
+# the final staged bytes before hashing the bundle.
+gate_python dist/bcl-inventory.py "$LAYOUT/ref" --source-corelib "$corelib"
+if [ -n "$CROSS_CORELIB_REL" ]; then
+    cross_kind=cross
+    [ -z "${DN2CPP_CORELIB_CROSS:-}" ] || cross_kind=override
+    gate_python dist/bcl-inventory.py "$LAYOUT/ref-posix" --source-corelib "$cross_corelib" --kind "$cross_kind"
+fi
+
 # Deterministic content hash over every bundled file except the manifest and the
 # staged SDK. emsdk/ is out because it is 1.4 GB of upstream bytes already fixed
 # by their archive's sha256, and because a build writes into its cache — hashing
@@ -1498,6 +1508,11 @@ printf '%s\n' "$size_summary"
 # 6. Install into an editor GodotSharp/Dn2Cpp dir (when requested).
 if [ -n "$INSTALL_INTO" ]; then
     mkdir -p "$INSTALL_INTO"
+    # This is an overlay install. A former inventory must not describe a
+    # custom cross framework (or an absent flavour) that has none of its own.
+    for rel in ref/dn2cpp-bcl-v1.tsv ref-posix/dn2cpp-bcl-v1.tsv; do
+        [ -f "$LAYOUT/$rel" ] || rm -f "$INSTALL_INTO/$rel"
+    done
     cp -R "$LAYOUT/." "$INSTALL_INTO/"
     echo "-- installed into $INSTALL_INTO"
 fi

@@ -64,9 +64,19 @@ a previous selection. Non-MSVC compilers retain their existing options.
 `UseILDiet`. `High` preserves the existing member-level reachability. `Medium`
 adds a queue of intentionally used types in both the definition graph and the
 transpiler; decoding a type or enumerating the loaded class model never adds a
-queue entry on its own. There is no assembly classification for this policy.
-BCL and GodotSharp follow the same rules as application and external-library
-types, even when their DLL bytes are copied unchanged by ILDiet.
+queue entry on its own. Verified BCL assemblies of the selected target pack use
+High's member-level retention in Medium. Installed .NET 10 packs use their
+runtime catalogue and managed identity/version. A packaged ref directory carries
+`dn2cpp-bcl-v1.tsv`, binding member basenames to SHA-256 hashes; classification
+starts with the selected CoreLib and checks each original loaded member. A
+framework-like name or a copied ILDiet reference is not authority. Integrated
+ILDiet verifies the original membership before pruning; the compiler retains it
+across the validated projection. Application, third-party, backend and unverified
+inputs keep Medium's type-wide policy, including a flattened manual replay without
+original pack provenance.
+Normal calls, runtime and virtual dispatch, and explicit preservation still
+apply; for example, a framework generic still carries its application argument
+types into the ordinary Medium policy.
 
 Medium starts at executable method owners and executable/runtime type roots. It
 follows reachable body operands (including calls, construction and type tokens),

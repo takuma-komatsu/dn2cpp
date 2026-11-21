@@ -114,6 +114,7 @@ internal sealed partial class Compilation
         }
         if (type.Kind == TypeKind.Template)
         {
+            if (type.TemplateModule!.IsTargetFramework) return;
             _mediumAttributeDefinitions.Add((type.TemplateModule!.Index, type.TemplateHandle));
             if (_mediumDefinitions.Add((type.TemplateModule!.Index, type.TemplateHandle)))
                 _mediumPending.Enqueue(type);
@@ -123,6 +124,9 @@ internal sealed partial class Compilation
             return;
         foreach (var argument in cls.Context.TypeArgs)
             NoteMediumType(argument);
+        // Only the owning definition is excluded from the synthetic sweep. Its
+        // real calls and any non-framework structural arguments still carry use.
+        if (cls.Module.IsTargetFramework) return;
         if (ContainsCanonPlaceholder(cls))
             return;
         if (ContainsGenericVar(cls))

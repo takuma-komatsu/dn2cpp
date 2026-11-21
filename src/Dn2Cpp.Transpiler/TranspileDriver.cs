@@ -216,7 +216,7 @@ public static class TranspileDriver
             };
             if (options.UseILDiet && options.IsaSurfaceDump is null)
             {
-                paths = ILDietPreprocessor.Run(paths, options, backend,
+                paths = ILDietPreprocessor.Run(loadSet, options, backend,
                     out string preservation, out bool cutsValidated, out var dietState);
                 options = options with
                 {
