@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The gate that answers "does dn2cpp support C# <N>?". One section per C# major
-# version (Cs01..Cs14), each exercising the features that version introduced, in
+# version (Cs01..Cs15), each exercising the features that version introduced, in
 # a single deterministic program transpiled once against the tree-shaken real
 # CoreLib and diffed byte-for-byte — stdout and exit status — against real .NET.
 #
@@ -17,11 +17,21 @@
 # interface members run their own bodies through an interface, a delegate and a
 # constrained call on a class or struct. Appending is what keeps the output-order
 # change at the end of the diff; the version each covers is named beside its call.
+# Cs15 is appended after them for the same reason. A run stopped before the
+# sealed interface section (DN2CPP_BEFORE_ORDINARY_SEALED_INTERFACE=1) or before
+# Cs15 (DN2CPP_BEFORE_CS15=1) must print exactly the full run's output ahead of
+# that section's header, which must occur once, and each of Cs15's feature
+# groups must print its last line.
 #
 # A project has ONE LangVersion, so every section is compiled by the newest
 # compiler. What this asserts is that the FEATURE's IL shape transpiles — not that
 # a historical compiler's IL shape does. The former is what a transpiler owes; the
 # latter is unreachable without shipping every historical compiler.
+#
+# Cs15's `union` and `closed` declarations compile against CoreLib 11's own
+# IUnion, UnionAttribute and IsClosedTypeAttribute. The bucket cannot carry its own
+# copies: dn2cpp refuses an input type named like a public CoreLib type unless it
+# is an attribute the compiler embeds.
 #
 # Two language features are NOT here because they diverge from real .NET on
 # purpose, and a diff gate cannot hold a deliberate divergence:
@@ -33,7 +43,7 @@
 # *building*, which does transpile; Cs04 covers the rest of C# 4.
 source "$(dirname "$0")/_common.sh"
 
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-sealed-prefix:${DN2CPP_BEFORE_ORDINARY_SEALED_INTERFACE:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-sealed-prefix:${DN2CPP_BEFORE_ORDINARY_SEALED_INTERFACE:-}|cs15-prefix:${DN2CPP_BEFORE_CS15:-}"
 
 gate_extra_asserts() {
     local out="$1" output before prefix label
@@ -49,6 +59,15 @@ gate_extra_asserts() {
         'constrained default: shout:' 'generic interface: show:' 'sealed interface members end'; do
         grep -Fq "$label" "$output" \
             || { echo "FAIL: sealed interface own-body witness missing: $label" >&2; exit 1; }
+    done
+    DN2CPP_BEFORE_CS15=1 gate_capture_ok "$out/before-cs15" run_bounded dotnet "$_CG_APP"
+    gate_output select "$out/native.stdout" "$out/prefix-cs15.stdout" --before '== C# 15.0 ==' --policy crlf
+    gate_output compare "$out/prefix-cs15.stdout" "$out/before-cs15.stdout"
+    for label in 'with(capacity) IList<int>: Count=2 [1,2]' 'union reference case: message fail' \
+        'closed class switch: 12 25' 'extension indexer (IEnumerable<int>): 3' \
+        'labeled break out of switch in loop: steps=3' 'static interface field: 100'; do
+        grep -Fq "$label" "$output" \
+            || { echo "FAIL: C# 15 feature witness missing: $label" >&2; exit 1; }
     done
 }
 
