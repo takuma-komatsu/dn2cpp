@@ -427,6 +427,7 @@ static class Program
             return;
         NullReceivers.Program.__GateEntry();
         ReadPhaseWhileCallbackWaits();
+        ReadPostPhaseExceptions();
     }
 
     static void ReadPhaseWhileCallbackWaits()
@@ -448,5 +449,45 @@ static class Program
         barrier.Dispose();
         entered.Dispose();
         Console.WriteLine("barrier callback wait: phase=" + phase + " result=" + result);
+    }
+
+    static void ReadPostPhaseExceptions()
+    {
+        var failure = new ApplicationException("post-failure");
+        using var barrier = new Barrier(2, current =>
+        {
+            if (current.CurrentPhaseNumber == 0)
+                throw failure;
+        });
+
+        BarrierPostPhaseException SignalForFailure()
+        {
+            try { barrier.SignalAndWait(); }
+            catch (BarrierPostPhaseException ex) { return ex; }
+            throw new InvalidOperationException("The failed phase returned normally.");
+        }
+
+        BarrierPostPhaseException? workerFailure = null;
+        var worker = new Thread(() =>
+        {
+            workerFailure = SignalForFailure();
+            barrier.SignalAndWait();
+        });
+        worker.Start();
+        var callerFailure = SignalForFailure();
+        barrier.SignalAndWait();
+        worker.Join();
+        var exceptionType = callerFailure.GetType();
+        int typeEntries = 0;
+        foreach (Type type in typeof(Barrier).Assembly.GetTypes())
+        {
+            if (ReferenceEquals(type, exceptionType))
+                typeEntries++;
+        }
+        Console.WriteLine("barrier post failure: inner=" + ReferenceEquals(callerFailure.InnerException, failure)
+            + "/" + ReferenceEquals(workerFailure!.InnerException, failure)
+            + " distinct=" + !ReferenceEquals(callerFailure, workerFailure)
+            + " phase=" + barrier.CurrentPhaseNumber
+            + " assembly=" + exceptionType.Assembly.GetName().Name + " entries=" + typeEntries);
     }
 }

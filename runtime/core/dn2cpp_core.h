@@ -2144,6 +2144,7 @@ inline constexpr const char* DN2CPP_SR_RANKS_AND_BOUNDS = "Arg_RanksAndBounds";
 inline constexpr const char* DN2CPP_SR_TYPE_NOT_SUPPORTED = "Arg_TypeNotSupported";
 inline constexpr const char* DN2CPP_SR_ARGUMENT_NULL_ARRAY = "ArgumentNull_Array";
 inline constexpr const char* DN2CPP_SR_ARGUMENT_NULL_STRING = "ArgumentNull_String";
+inline constexpr const char* DN2CPP_SR_BARRIER_POST_PHASE = "System.Threading:BarrierPostPhaseException";
 inline constexpr const char* DN2CPP_SR_BLOCKING_ADD_CONCURRENT_COMPLETE = "System.Collections.Concurrent:BlockingCollection_Add_ConcurrentCompleteAdd";
 inline constexpr const char* DN2CPP_SR_BLOCKING_CANT_TAKE_WHEN_DONE = "System.Collections.Concurrent:BlockingCollection_CantTakeWhenDone";
 inline constexpr const char* DN2CPP_SR_BLOCKING_COMPLETED = "System.Collections.Concurrent:BlockingCollection_Completed";
@@ -3309,6 +3310,7 @@ extern Dn2CppTypeInfo dn2cpp_null_reference_exception_type;
 // test `1/0` is whatever the hardware does (SIGFPE on x86-64, a SILENT 0 on arm64,
 // a wasm trap): none of those is catchable and none names anything.
 extern Dn2CppTypeInfo dn2cpp_divide_by_zero_exception_type;
+extern Dn2CppTypeInfo dn2cpp_barrier_post_phase_exception_type;
 // System.Threading.LockRecursionException: raised by ReaderWriterLockSlim's
 // per-thread ownership checks — a same-thread re-entry the recursion policy
 // forbids throws instead of deadlocking against itself, as in .NET.
@@ -6210,6 +6212,7 @@ int32_t dn2cpp_countdown_current(Dn2CppObject* c);          // CurrentCount
 int32_t dn2cpp_countdown_initial(Dn2CppObject* c);          // InitialCount
 int32_t dn2cpp_countdown_is_set(Dn2CppObject* c);           // IsSet (count == 0)
 Dn2CppObject* dn2cpp_barrier_new(int32_t participantCount, Dn2CppObject* postPhaseAction);
+Dn2CppObject* dn2cpp_barrier_post_phase_exception(Dn2CppString* message, Dn2CppObject* inner);
 int32_t dn2cpp_barrier_signal_and_wait(Dn2CppObject* b);    // SignalAndWait() (returns 1)
 int32_t dn2cpp_barrier_signal_and_wait_timeout(Dn2CppObject* b, int32_t ms); // 1=passed, 0=timeout
 int64_t dn2cpp_barrier_add(Dn2CppObject* b, int32_t n);     // AddParticipant(s): returns phase

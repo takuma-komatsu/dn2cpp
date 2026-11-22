@@ -6183,8 +6183,8 @@ internal sealed partial class CppEmitter
         // loader every runtime-raised exception name: a BPI catch clause is a type import
         // resolved through this table, an unresolved one binds to null WITHOUT failing the
         // load, and eh_catch_matches aborts the process the first time it is tested.
-        foreach (var (n, h) in CoreIntrinsics.RuntimeTypeInfoRows())
-            Add(n, h, "System.Private.CoreLib");
+        foreach (var (name, handle) in CoreIntrinsics.RuntimeTypeInfoRows())
+            Add(name, handle, CoreIntrinsics.RuntimeTypeInfoAssemblyName(name));
         // A runtime-template level's ti_ exists but is NOT a CLR type — the
         // synthesized clones register their closed names on the dynamic
         // side-chain at MakeGenericType time.
