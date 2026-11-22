@@ -593,7 +593,7 @@ internal static partial class CoreIntrinsics
     /// OVERLOAD SHAPE, and asked by BOTH the emit route and the reachability cut so the
     /// two cannot disagree.
     ///
-    /// <para>.NET 10 declares exactly one overload of each, so nothing falls in the gap
+    /// <para>CoreLib declares exactly one overload of each, so nothing falls in the gap
     /// today; asking one predicate from both askers is what keeps an overload added
     /// upstream from being cut with no lowering behind it — an undefined symbol at C++ link
     /// time, long after the transpile reported success.</para>

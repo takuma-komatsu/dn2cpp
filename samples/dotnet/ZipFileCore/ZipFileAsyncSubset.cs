@@ -8,7 +8,7 @@ using ZipFileCore;
 
 namespace ZipFileAsyncSubset
 {
-    // The net10 async face of ZipFile plus the pre-canceled-token early-outs. Its
+    // The async face of ZipFile plus the pre-canceled-token early-outs. Its
     // real subject is the file-backed async underlay: BufferedFileStreamStrategy's
     // WaitAsync semaphore and the pool-scheduled reads beneath Stream.ReadAsync.
     // Determinism follows ZipScratch's rules. The cancel catches print a fixed

@@ -11,7 +11,7 @@ it) next to the managed publish output.
 dotnet tool install -g dn2cpp        # the transpiler + bundled C++ runtime
 dotnet add package Dn2Cpp.Build      # this hook
 dotnet publish -c Release
-./bin/Release/net10.0/publish/MyApp  # the native binary
+./bin/Release/net11.0/publish/MyApp  # the native binary
 ```
 
 Prerequisites: the `dn2cpp` dotnet tool, plus MSVC on Windows or `clang++`

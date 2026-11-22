@@ -148,7 +148,7 @@ internal sealed partial class MethodCompiler
     private static bool IsFormatProvider(TypeDesc t) =>
         t is { Kind: TypeKind.Class, Class.FullName: "System.IFormatProvider" };
 
-    /// <summary>ReadOnlySpan&lt;object&gt; — the params-span argument of the net10
+    /// <summary>ReadOnlySpan&lt;object&gt; — the params-span argument of the
     /// composite-format / join / concat overloads (Roslyn prefers them over the
     /// params-array forms; e.g. 4+ loose Format args land here).</summary>
     private bool IsObjectSpan(TypeDesc t) =>
@@ -156,7 +156,7 @@ internal sealed partial class MethodCompiler
         && Comp.GenericDefFullName(c) == "System.ReadOnlySpan"
         && c.Context.TypeArgs is [{ IsObject: true }];
 
-    /// <summary>ReadOnlySpan&lt;string&gt; — the params-span argument of the net10
+    /// <summary>ReadOnlySpan&lt;string&gt; — the params-span argument of the
     /// string-element Join/Concat/AppendJoin overloads.</summary>
     private bool IsStringSpan(TypeDesc t) =>
         t is { Kind: TypeKind.Class, Class: { } c }
@@ -335,7 +335,7 @@ internal sealed partial class MethodCompiler
     /// holds, read straight out of the backing field of its public <c>Format</c> property —
     /// the same private-field read <see cref="TryListBacking"/> does for List&lt;T&gt;'s
     /// <c>_items</c>/<c>_size</c>. The field is asked for by BOTH spellings a
-    /// string-valued member can have (the auto-property backing field .NET 10 declares, and
+    /// string-valued member can have (the auto-property backing field CoreLib declares, and
     /// a plain <c>_format</c> field should the property ever be hand-written), and a miss
     /// throws rather than degrading: the format string IS the lowering.
     ///

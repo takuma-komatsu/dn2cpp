@@ -171,7 +171,7 @@ namespace TypeCategorySubset
             // snapshot — and not in the ReflectInvoke diff bucket that carries the
             // rest of this surface (TypePredicateFoldSubset).
             //
-            // Measured on .NET 10: `typeof(void).IsPrimitive` written at the call
+            // Measured on real .NET: `typeof(void).IsPrimitive` written at the call
             // site is TRUE, because RyuJIT expands the property over a `typeof`
             // operand and its CorInfoType classification counts CORINFO_TYPE_VOID
             // as primitive; every non-folded read of the SAME RuntimeType instance

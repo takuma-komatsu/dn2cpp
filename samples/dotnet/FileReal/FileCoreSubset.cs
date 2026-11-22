@@ -104,7 +104,7 @@ internal static class Program
         // GetFullPath(path, basePath) resolves against an explicit base instead of the cwd.
         // The base is a FIXED absolute literal, so the printed result is machine-independent
         // (a relative basePath throws in .NET). It reaches Interop.Sys.GetCwd, which is why
-        // it is asserted here, in the net10-pinned bucket, and not in ConsoleIo.
+        // it is asserted here, in the pinned-CoreLib bucket, and not in ConsoleIo.
         //
         // The base literal is OS-CONDITIONAL, and that is load-bearing. A rooted-but-not-
         // drive-qualified base ("/base/dir") is rejected by Windows' PathInternal

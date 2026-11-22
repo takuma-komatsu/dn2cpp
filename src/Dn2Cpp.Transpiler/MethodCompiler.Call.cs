@@ -1329,7 +1329,7 @@ internal sealed partial class MethodCompiler
                 // cascade. Which is why these do NOT fall through the way Path/File do: the
                 // fall-through here IS the cascade the cut exists to avoid, so the remedy for
                 // an unmodeled overload is to model it, and the emit table covers the whole
-                // .NET 10 surface (all 4 ToString, all 8 Parse, all 9 TryParse, both
+                // CoreLib surface (all 4 ToString, all 8 Parse, all 9 TryParse, both
                 // TryFormat). An overload beyond it is a LOUD transpile failure naming the
                 // shape, never a silent divergence.
                 //
@@ -1401,7 +1401,7 @@ internal sealed partial class MethodCompiler
                 // asymmetry that does not announce itself: an
                 // overload the shape declines falls through to a real body the cut
                 // already deleted — an undefined symbol at C++ LINK time, not a transpile
-                // error. .NET 10 declares one overload of each, so nothing falls in the gap
+                // error. CoreLib declares one overload of each, so nothing falls in the gap
                 // today; asking one predicate removes the possibility rather than the instance.
                 if (TryEmitMemberRefIntercept(CoreIntrinsics.MrSpanCaseFold, mr, mrParent, mrName, Sig))
                     return;

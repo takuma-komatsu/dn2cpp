@@ -27,7 +27,7 @@
 # has nothing queued to run — still prints what real .NET prints.
 #
 # The mirror ordering — re-register FIRST, then suppress, both while queued —
-# must come out the other way (measured against net10.0): the queued entry is
+# must come out the other way (measured against real .NET): the queued entry is
 # dropped, yet the re-registration survives to the NEXT unreachability, so the
 # count is asserted zero while still rooted and one after un-rooting. That
 # un-rooted half also arms the consumer-side hygiene: the drop leaves an object

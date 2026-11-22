@@ -104,7 +104,7 @@ namespace ArrayCopyCompatSubset
             Try("nint->nuint", () => { Array s = new nint[] { 3 }; Array d = new nuint[1]; Array.Copy(s, d, 1); Show("nint->nuint", d); });
             Try("nint->long", () => { Array s = new nint[] { 3 }; Array d = new long[1]; Array.Copy(s, d, 1); });
             // The verdict precedes the move: a zero-length copy of an incompatible
-            // pair still refuses (measured on net10).
+            // pair still refuses (measured on real .NET).
             Try("zero-len long->int", () => { Array s = new long[] { 1 }; Array d = new int[1]; Array.Copy(s, d, 0); });
             // ... but sits AFTER the rank and range screens (measured order).
             Try("neglen long->int", () => { Array s = new long[2]; Array d = new int[2]; Array.Copy(s, 0, d, 0, -1); });

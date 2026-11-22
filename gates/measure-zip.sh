@@ -3,7 +3,7 @@
 # `build-and-run-*.sh` glob so run-all-gates.sh ignores it). The Zip sibling
 # of gates/measure-compression.sh: it quantifies the unsupported-IL /
 # unmapped-intrinsic surface the *real* System.IO.Compression ZipArchive /
-# ZipArchiveEntry / ZipFile / ZipFileExtensions path (sync + net10 async)
+# ZipArchiveEntry / ZipFile / ZipFileExtensions path (sync + async)
 # drags in, ahead of any Zip production work.
 #
 # It transpiles samples/dotnet/ZipProbe (a throwaway five-section probe:

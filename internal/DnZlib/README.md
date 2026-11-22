@@ -1,7 +1,7 @@
 # DnZlib
 
 A complete, from-scratch **Pure C#** reimplementation of [zlib](https://github.com/madler/zlib)
-(RFC 1950/1951/1952) targeting `net10.0`, with an `unsafe`/pointer-based, SIMD-accelerated
+(RFC 1950/1951/1952) targeting `net11.0`, with an `unsafe`/pointer-based, SIMD-accelerated
 internal implementation. No P/Invoke, no native dependencies — including its lowest-level API,
 which mirrors zlib's C ABI shape (`z_stream`, `deflate`, `inflate`, ...) entirely in managed
 code rather than binding to a real `libz`.
@@ -81,7 +81,7 @@ bench/DnZlib.Benchmarks/  BenchmarkDotNet (+ `-- quick` stopwatch mode)
 
 ## Build & test
 
-Requires the .NET 10 SDK (pinned via `global.json`).
+Requires the .NET SDK pinned in `global.json`.
 
 ```sh
 dotnet build -c Release
@@ -92,7 +92,7 @@ dotnet run   -c Release --project bench/DnZlib.Benchmarks -- quick
 ## Benchmarks
 
 The BenchmarkDotNet suites compare DnZlib against `System.IO.Compression` (native zlib-ng) at the
-**same numeric level** — via net10's `ZLibCompressionOptions`, since the `CompressionLevel` enum
+**same numeric level** — via `ZLibCompressionOptions`, since the `CompressionLevel` enum
 only exposes three points and `Optimal` is level 6, which silently compares different levels.
 Corpora are ~1 MiB (`text` = a closed 12-word synthetic vocabulary, a near-worst case for a
 chain-based match finder; `binary` = a deterministic pseudo-binary pattern; `source` = this

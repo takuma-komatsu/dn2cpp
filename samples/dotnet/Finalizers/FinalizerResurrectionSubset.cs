@@ -5,7 +5,7 @@ namespace FinalizerResurrectionSubset
 {
     // A finalizer that re-attaches `this` to a
     // reachable root ("resurrects" the instance) keeps it alive past the
-    // collection that queued it. Verified against real .NET (net10.0): once
+    // collection that queued it. Verified against real .NET: once
     // resurrected, the instance's finalizer does not fire a second time when
     // it later becomes unreachable again -- an explicit
     // GC.ReRegisterForFinalize is required for that, matching Boehm's

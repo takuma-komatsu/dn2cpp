@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 
-// The real System.Enum..cctor under dn2cpp. .NET 10 fills Enum.s_underlyingTypes with 26
+// The real System.Enum..cctor under dn2cpp. CoreLib fills Enum.s_underlyingTypes with
 // `(RuntimeType)typeof(bool)`-shaped entries — each a `castclass System.RuntimeType` on the
 // Type object GetTypeFromHandle returns. Every dn2cpp Type object carries the shared
 // &dn2cpp_type_type header, so without the identity routing in MethodCompiler.Tokens.cs
