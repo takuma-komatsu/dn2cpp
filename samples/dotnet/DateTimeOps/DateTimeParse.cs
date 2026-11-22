@@ -152,4 +152,45 @@ static class Program
         return (parsed.Date == before || parsed.Date == DateTime.UtcNow.Add(offset).Date)
             && parsed.Offset == offset && parsed.TimeOfDay == clock;
     }
+
+    internal static void RunExactOffsets(bool showClocks)
+    {
+        Console.WriteLine("== DateTime exact offsets ==");
+        const string text = "2025-06-01T12:34:56";
+        const string format = "yyyy-MM-dd'T'HH:mm:ss";
+        var local = DateTime.ParseExact(text + "+02:00", format + "zzz", ci, DateTimeStyles.None);
+        var utc = DateTime.ParseExact(text + "+02:00", format + "zzz", ci, DateTimeStyles.AdjustToUniversal);
+        var expected = new DateTime(2025, 6, 1, 10, 34, 56, DateTimeKind.Utc);
+        if (showClocks)
+        {
+            Console.WriteLine("exact zzz local=" + local.ToString("HH:mm:ss", ci) + " " + local.Kind);
+            Console.WriteLine("exact zzz universal=" + utc.ToString("HH:mm:ss", ci) + " " + utc.Kind);
+        }
+        else
+        {
+            Console.WriteLine("exact zzz local=" + (local.Kind == DateTimeKind.Local
+                && local.Ticks == expected.ToLocalTime().Ticks && local.ToUniversalTime() == expected));
+            Console.WriteLine("exact zzz universal=" + (utc.Kind == DateTimeKind.Utc && utc == expected));
+        }
+
+        const DateTimeStyles roundtrip = DateTimeStyles.RoundtripKind;
+        var z = DateTime.ParseExact(text + "Z", format + "K", ci, roundtrip);
+        bool hasOffset = DateTime.TryParseExact((text + "+00:00").AsSpan(), (format + "K").AsSpan(), ci, roundtrip, out var offset);
+        var wall = DateTime.ParseExact(text, format + "K", ci, roundtrip);
+        var zero = new DateTime(2025, 6, 1, 12, 34, 56, DateTimeKind.Utc);
+        Console.WriteLine("exact K roundtrip=" + (z.Kind == DateTimeKind.Utc && z == zero) + "/"
+            + (hasOffset && offset.Kind == DateTimeKind.Local && offset.ToUniversalTime() == zero) + "/"
+            + (wall.Kind == DateTimeKind.Unspecified && wall.Ticks == zero.Ticks));
+
+        const DateTimeStyles adjust = DateTimeStyles.AdjustToUniversal;
+        bool shortHour = DateTime.TryParseExact(text + "+2", format + "z", ci, adjust, out var shortZ)
+            && shortZ.Kind == DateTimeKind.Utc && shortZ == expected;
+        bool twoHours = DateTime.TryParseExact(text + "+02", format + "zz", ci, adjust, out var doubleZ)
+            && doubleZ.Kind == DateTimeKind.Utc && doubleZ == expected;
+        bool invalid = !DateTime.TryParseExact(text + "+2", format + "zz", ci, adjust, out _)
+            && !DateTime.TryParseExact(text + "+02:3", format + "zzz", ci, adjust, out _)
+            && !DateTime.TryParseExact(text + "02:00", format + "K", ci, adjust, out _)
+            && !DateTime.TryParseExact(text + "+14:01", format + "zzz", ci, adjust, out _);
+        Console.WriteLine("exact offset syntax=" + shortHour + "/" + twoHours + "/" + invalid);
+    }
 }

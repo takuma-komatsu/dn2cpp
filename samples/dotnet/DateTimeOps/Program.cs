@@ -13,6 +13,11 @@ namespace DateTimeOps
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+            if (args.Length > 0 && args[0] == "exact-offset-only")
+            {
+                DateTimeParse.Program.RunExactOffsets(showClocks: true);
+                return;
+            }
             if (args.Length > 0 && args[0] == "missing-date-defaults-only")
             {
                 DateTimeParse.Program.RunMissingDateDefaults();
@@ -33,6 +38,7 @@ namespace DateTimeOps
             {
                 DateTimeDaylightSubset.Program.Run();
                 DateTimeOffsetSubset.Program.RunLocalTimeOverlap();
+                DateTimeParse.Program.RunExactOffsets(showClocks: true);
                 return;
             }
             if (args.Length > 0 && args[0] == "binary-only")
@@ -93,6 +99,9 @@ namespace DateTimeOps
             if (args.Length > 0 && args[0] == "before-missing-date-defaults")
                 return;
             DateTimeParse.Program.RunMissingDateDefaults();
+            if (args.Length > 0 && args[0] == "before-exact-offset-parse")
+                return;
+            DateTimeParse.Program.RunExactOffsets(showClocks: false);
         }
     }
 }

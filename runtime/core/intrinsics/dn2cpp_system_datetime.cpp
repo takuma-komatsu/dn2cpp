@@ -1464,8 +1464,10 @@ Dn2CppTimeSpan dn2cpp_timespan_parse_exact(Dn2CppString* s, Dn2CppString* fmt)
     return r;
 }
 
-// The other DateTimeStyles bits remain outside the invariant parser subset.
+// DateTimeStyles used by the invariant parse subset.
 static constexpr int32_t DN2CPP_DT_NO_CURRENT_DATE_DEFAULT = 0x08;
+static constexpr int32_t DN2CPP_DT_ADJUST_TO_UNIVERSAL = 0x10;
+static constexpr int32_t DN2CPP_DT_ROUNDTRIP_KIND = 0x80;
 enum class Dn2CppDateDefaults { Current, MinimumForTimeOnly, LegacyMinimum };
 
 static Dn2CppDateDefaults dn2cpp_date_defaults(int32_t styles)
@@ -1474,13 +1476,40 @@ static Dn2CppDateDefaults dn2cpp_date_defaults(int32_t styles)
         ? Dn2CppDateDefaults::MinimumForTimeOnly : Dn2CppDateDefaults::Current;
 }
 
-// DateTime custom-format parse (inverse of dn2cpp_dt_format_custom). For DateTime
-// (offOut == nullptr) a z/K offset is consumed but not applied (only 'Z' sets Kind=Utc);
-// for DateTimeOffset (offOut != nullptr) a z/K offset is captured into *offOut and
-// *hasOffOut, and a missing/malformed offset there fails the parse.
+struct Dn2CppDateTimeExactZone
+{
+    int32_t minutes = 0;
+    bool present = false;
+    bool utcMarker = false;
+    bool timeOnly = false;
+};
+
+// z reads one or two hour digits, zz reads two, and zzz/K read two
+// minute digits as well (the colon is optional).
+static bool dn2cpp_dt_parse_exact_offset(const char16_t* in, int n, int& i, int width, int32_t& minutes)
+{
+    if (i >= n || (in[i] != u'+' && in[i] != u'-')) return false;
+    bool negative = in[i++] == u'-';
+    int digits;
+    int h = (int)dn2cpp_parse_digits(in, n, i, 2, digits);
+    if (digits < (width == 2 ? 2 : 1)) return false;
+    int m = 0;
+    if (width >= 3)
+    {
+        if (i < n && in[i] == u':') i++;
+        m = (int)dn2cpp_parse_digits(in, n, i, 2, digits);
+        if (digits != 2 || m >= 60) return false;
+    }
+    minutes = (negative ? -1 : 1) * (h * 60 + m);
+    return true;
+}
+
+// DateTime records an explicit zone separately: its normal date defaults do
+// not depend on the parsed offset. DateTimeOffset captures the offset before
+// defaulting the missing fields; DateOnly/TimeOnly keep their existing parser.
 static bool dn2cpp_dt_parse_custom(const char16_t* p, int pn, const char16_t* in, int inLen,
     Dn2CppDateTime* out, Dn2CppDateDefaults defaults, int32_t* offOut, bool* hasOffOut,
-    bool* incompleteWithOffset = nullptr)
+    bool* incompleteWithOffset = nullptr, Dn2CppDateTimeExactZone* dateZone = nullptr)
 {
     int fi = 0, ii = 0, c;
     int y = 1, mo = 1, d = 1, h = 0, mi = 0, ss = 0, frac = 0, kind = 0;
@@ -1532,14 +1561,31 @@ static bool dn2cpp_dt_parse_custom(const char16_t* p, int pn, const char16_t* in
                 }
                 return false;
             }
-            case u'z': case u'K': // tz offset / kind tag
-                if (offOut) // DateTimeOffset: capture the offset ('Z' = UTC; else [+-]HH[:]mm)
+            case u'z': case u'K':
+                if (dateZone)
+                {
+                    const bool optional = ch == u'K';
+                    if (optional) cnt = 1;
+                    char16_t next = ii < inLen ? in[ii] : u'\0';
+                    const bool utcMarker = optional && next == u'Z';
+                    if (optional && !utcMarker && next != u'+' && next != u'-')
+                        break; // Empty K consumes nothing, including any following literal.
+                    int32_t offset = 0;
+                    if (utcMarker) ii++;
+                    else if (!dn2cpp_dt_parse_exact_offset(in, inLen, ii, optional ? 3 : cnt, offset))
+                        return false;
+                    if (dateZone->present && dateZone->minutes != offset) return false;
+                    dateZone->present = true;
+                    dateZone->minutes = offset;
+                    dateZone->utcMarker |= utcMarker;
+                }
+                else if (offOut) // DateTimeOffset: capture the offset ('Z' = UTC; else [+-]HH[:]mm)
                 {
                     if (ii < inLen && in[ii] == u'Z') { *offOut = 0; *hasOffOut = true; ii++; }
                     else if (dn2cpp_parse_offset_token(in, inLen, ii, offOut)) *hasOffOut = true;
                     else return false;
                 }
-                else // DateTime: consume, apply only Z (Utc)
+                else // DateOnly/TimeOnly: preserve the legacy format scanner.
                 {
                     if (ii < inLen && in[ii] == u'Z') { kind = 1; ii++; }
                     else while (ii < inLen && (in[ii] == u'+' || in[ii] == u'-' || in[ii] == u':' || (in[ii] >= u'0' && in[ii] <= u'9'))) ii++;
@@ -1582,13 +1628,15 @@ static bool dn2cpp_dt_parse_custom(const char16_t* p, int pn, const char16_t* in
     }
     if (mo < 1 || mo > 12 || h > 23 || mi > 59 || ss > 59 || y < 1 || y > 9999) return false;
     if (d < 1 || d > dn2cpp_datetime_days_in_month(y, mo)) return false;
+    if (dateZone)
+        dateZone->timeOnly = !hasYear && !hasMonthOrDay;
     *out = dn2cpp_datetime_pack(
         dn2cpp_dt_date_to_ticks(y, mo, d) + dn2cpp_dt_time_to_ticks(h, mi, ss, 0) + frac, kind);
     return true;
 }
 
 static bool dn2cpp_datetime_try_parse_exact_core(Dn2CppString* s, Dn2CppString* fmt,
-    Dn2CppDateTime* out, Dn2CppDateDefaults defaults)
+    Dn2CppDateTime* out, Dn2CppDateDefaults defaults, Dn2CppDateTimeExactZone* dateZone = nullptr)
 {
     *out = Dn2CppDateTime{0};
     if (s == nullptr || s->length == 0 || fmt == nullptr || fmt->length == 0) return false;
@@ -1601,11 +1649,57 @@ static bool dn2cpp_datetime_try_parse_exact_core(Dn2CppString* s, Dn2CppString* 
         pat = patbuf; plen = j;
     }
     else { pat = fmt->chars; plen = fmt->length; }
-    return dn2cpp_dt_parse_custom(pat, plen, s->chars, s->length, out, defaults, nullptr, nullptr);
+    return dn2cpp_dt_parse_custom(pat, plen, s->chars, s->length, out, defaults, nullptr, nullptr,
+        nullptr, dateZone);
+}
+
+static const char* dn2cpp_datetime_parse_exact_result(Dn2CppString* s, Dn2CppString* fmt,
+    Dn2CppDateTime* out, int32_t styles)
+{
+    *out = Dn2CppDateTime{0};
+    Dn2CppDateTime wall;
+    Dn2CppDateTimeExactZone zone;
+    if (!dn2cpp_datetime_try_parse_exact_core(s, fmt, &wall, dn2cpp_date_defaults(styles), &zone))
+        return DN2CPP_SR_BAD_DATETIME;
+    if (!zone.present)
+    {
+        *out = wall;
+        return nullptr;
+    }
+    if (zone.minutes < -840 || zone.minutes > 840)
+        return DN2CPP_SR_FORMAT_OFFSET_OUT_OF_RANGE;
+
+    const int64_t wallTicks = wall.ticks();
+    if (zone.utcMarker && (styles & DN2CPP_DT_ROUNDTRIP_KIND) != 0)
+    {
+        *out = dn2cpp_datetime_pack(wallTicks, 1);
+        return nullptr;
+    }
+
+    int64_t ticks = wallTicks - static_cast<int64_t>(zone.minutes) * DN2CPP_TPM;
+    const bool universal = (styles & DN2CPP_DT_ADJUST_TO_UNIVERSAL) != 0;
+    bool ambiguousDaylight = false;
+    if (!universal)
+    {
+        // On the first day, and when the intermediate UTC date is out of
+        // range, the exact parser uses a wall-clock offset instead of clamping.
+        if (wallTicks < DN2CPP_TPD && zone.timeOnly)
+            ticks += dn2cpp_dt_local_offset_from_utc(dn2cpp_datetime_utc_now().ticks(), nullptr);
+        else if (wallTicks < DN2CPP_TPD || ticks < 0 || ticks > DN2CPP_DT_MAX_TICKS)
+            ticks += wallTicks - dn2cpp_dt_binary_local_ticks(wall);
+        else
+            ticks += dn2cpp_dt_local_offset_from_utc(ticks, &ambiguousDaylight);
+    }
+    if (ticks < 0 && (universal || wallTicks < DN2CPP_TPD))
+        ticks += DN2CPP_TPD;
+    if (ticks < 0 || ticks > DN2CPP_DT_MAX_TICKS)
+        return DN2CPP_SR_FORMAT_DATE_OUT_OF_RANGE;
+    *out = dn2cpp_dt_word(ticks, universal ? 1 : (ambiguousDaylight ? 3 : 2));
+    return nullptr;
 }
 
 bool dn2cpp_datetime_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, Dn2CppDateTime* out, int32_t styles)
-{ return dn2cpp_datetime_try_parse_exact_core(s, fmt, out, dn2cpp_date_defaults(styles)); }
+{ return dn2cpp_datetime_parse_exact_result(s, fmt, out, styles) == nullptr; }
 
 // Numeric HH:mm[:ss[.fffffff]] shared by date-and-time and bare-time input.
 static bool dn2cpp_dt_parse_clock(const char16_t* p, int k, int e, int64_t* ticksOut)
@@ -1705,8 +1799,8 @@ Dn2CppDateTime dn2cpp_datetime_parse_exact(Dn2CppString* s, Dn2CppString* fmt, i
     if (s->length != 0 && fmt->length == 0)
         dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_FORMAT_SPECIFIER, fmt);
     Dn2CppDateTime r;
-    if (!dn2cpp_datetime_try_parse_exact(s, fmt, &r, styles))
-        dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_DATETIME, s);
+    if (const char* failure = dn2cpp_datetime_parse_exact_result(s, fmt, &r, styles))
+        dn2cpp_throw_sr1(&dn2cpp_format_exception_type, failure, s);
     return r;
 }
 
