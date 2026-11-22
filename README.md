@@ -196,7 +196,7 @@ assembly, including types without a static use. Dependencies still follow
 Medium's rules, including member-level retention for verified BCL assemblies.
 Open generic definitions retain their identity without generating arbitrary
 closed specializations. Low does not run retained initializers early and works
-with or without ILDiet. It is a CLI option, not an editor export preset.
+with or without ILDiet.
 
 With `--dotnet-module`, ILDiet can remove unused GodotSharp wrappers under
 every level's reference rules. High and Medium can also remove unused
@@ -243,10 +243,14 @@ suppression, and ILDiet's copy-all paths leave DLL registries and registration
 attributes unchanged.
 
 Godot export presets offer **Stripping Level** at
-`dotnet/dn2cpp/stripping_level`: **High** (default, value `0`) or **Medium**
-(value `1`). The exporter passes the choice independently of **IL Pre-stripping**.
-A `--stripping-level` in project or preset extra arguments must match the preset;
-matching pairs are deduplicated and a conflict reports an error.
+`dotnet/dn2cpp/stripping_level`: **High** (default, value `0`), **Medium**
+(`1`), or **Low** (`2`). The choice is independent of **IL Pre-stripping**.
+Low roots types in the primary game assembly; references still follow Medium's
+rules. Select Low with a toolchain bundle that supports `--stripping-level low`,
+including its matching ILDiet companion. Rebuild and reinstall an older bundle
+before using Low. A `--stripping-level` in project or preset extra arguments
+must match the preset; matching pairs are deduplicated and a conflict reports an
+error.
 
 Godot export presets default `dotnet/dn2cpp/trim_reflection`,
 `dotnet/dn2cpp/trim_godot_classes` and `dotnet/dn2cpp/shared_generics` to `true`
