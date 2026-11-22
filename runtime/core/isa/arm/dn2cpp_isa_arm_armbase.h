@@ -22,6 +22,32 @@ DN2CPP_ISA_INLINE int32_t dn2cpp_isa_arm_armbase_leadingzerocount_i32(int32_t a0
 #endif
 
 #if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE int32_t dn2cpp_isa_arm_armbase_leadingzerocount_nint(intptr_t a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_ArmBase, "System.Runtime.Intrinsics.Arm.ArmBase.LeadingZeroCount");
+    return dn2cpp_isa_clz64((uint64_t)a0);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE int32_t dn2cpp_isa_arm_armbase_leadingzerocount_nint(intptr_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.ArmBase.LeadingZeroCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE int32_t dn2cpp_isa_arm_armbase_leadingzerocount_nuint(uintptr_t a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_ArmBase, "System.Runtime.Intrinsics.Arm.ArmBase.LeadingZeroCount");
+    return dn2cpp_isa_clz64((uint64_t)a0);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE int32_t dn2cpp_isa_arm_armbase_leadingzerocount_nuint(uintptr_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.ArmBase.LeadingZeroCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
 DN2CPP_ISA_INLINE int32_t dn2cpp_isa_arm_armbase_leadingzerocount_u32(uint32_t a0)
 {
     dn2cpp_isa_require(DN2CPP_ISA_Arm_ArmBase, "System.Runtime.Intrinsics.Arm.ArmBase.LeadingZeroCount");
@@ -42,6 +68,32 @@ DN2CPP_ISA_INLINE int32_t dn2cpp_isa_arm_armbase_reverseelementbits_i32(int32_t 
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE int32_t dn2cpp_isa_arm_armbase_reverseelementbits_i32(int32_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.ArmBase.ReverseElementBits");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE intptr_t dn2cpp_isa_arm_armbase_reverseelementbits_nint(intptr_t a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_ArmBase, "System.Runtime.Intrinsics.Arm.ArmBase.ReverseElementBits");
+    return (intptr_t)dn2cpp_isa_rbit64((uint64_t)a0);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE intptr_t dn2cpp_isa_arm_armbase_reverseelementbits_nint(intptr_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.ArmBase.ReverseElementBits");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE uintptr_t dn2cpp_isa_arm_armbase_reverseelementbits_nuint(uintptr_t a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_ArmBase, "System.Runtime.Intrinsics.Arm.ArmBase.ReverseElementBits");
+    return (uintptr_t)dn2cpp_isa_rbit64((uint64_t)a0);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE uintptr_t dn2cpp_isa_arm_armbase_reverseelementbits_nuint(uintptr_t)
 {
     dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.ArmBase.ReverseElementBits");
 }

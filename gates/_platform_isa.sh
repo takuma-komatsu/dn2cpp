@@ -230,7 +230,7 @@ platform_isa_set_eq() {
 _platform_isa_configure_arch() {
     case "$1" in
         x86)
-            # AVX is the root of .NET 10's AVX-level, AVX-512 and AVX10 sets.
+            # AVX is the root of .NET's AVX-level, AVX-512 and AVX10 sets.
             # X86Base is the kept witness and Bmi1 the removed witness.
             PLATFORM_ISA_P_MASK="-Avx"
             PLATFORM_ISA_P_KNOBS="DOTNET_EnableAVX=0"
@@ -241,7 +241,7 @@ _platform_isa_configure_arch() {
             # AdvSimd is baseline on arm64; the JIT exposes knobs only for the
             # optional families. ArmBase stays and Crc32 is removed.
             PLATFORM_ISA_P_MASK="ArmBase,AdvSimd"
-            PLATFORM_ISA_P_KNOBS="DOTNET_EnableArm64Aes=0 DOTNET_EnableArm64Crc32=0 DOTNET_EnableArm64Dp=0 DOTNET_EnableArm64Rdm=0 DOTNET_EnableArm64Sha1=0 DOTNET_EnableArm64Sha256=0 DOTNET_EnableArm64Sve=0 DOTNET_EnableArm64Sve2=0"
+            PLATFORM_ISA_P_KNOBS="DOTNET_EnableArm64Aes=0 DOTNET_EnableArm64Crc32=0 DOTNET_EnableArm64Dp=0 DOTNET_EnableArm64Rdm=0 DOTNET_EnableArm64Sha1=0 DOTNET_EnableArm64Sha256=0 DOTNET_EnableArm64Sve=0 DOTNET_EnableArm64Sve2=0 DOTNET_EnableArm64Sha3=0 DOTNET_EnableArm64Sm4=0 DOTNET_EnableArm64SveSha3=0 DOTNET_EnableArm64SveSm4=0"
             PLATFORM_ISA_P_TRUE="Arm.ArmBase"
             PLATFORM_ISA_P_FALSE="Arm.Crc32"
             ;;
@@ -296,7 +296,8 @@ _platform_isa_arch_context() {
         || { echo "error: generated exercises list no $isa invalid-immediate boundary" >&2; return 1; }
     [ "$arch" = x86 ] && optin_ctx="+O"
     ctx="$arch|selection:$isa|families:$all_csv|lowered:$lowered_csv"
-    ctx="$ctx|runs:F+S+M+P+N+NM$optin_ctx|M=DN2CPP_CPU_FEATURES=none+DOTNET_EnableHWIntrinsic=0"
+    ctx="$ctx|runs:F+S+M+P+U+N+NM$optin_ctx|M=DN2CPP_CPU_FEATURES=none+DOTNET_EnableHWIntrinsic=0"
+    ctx="$ctx|U=default+DOTNET_EnableHWIntrinsic=0"
     ctx="$ctx|P=DN2CPP_CPU_FEATURES=$PLATFORM_ISA_P_MASK+$PLATFORM_ISA_P_KNOBS"
     ctx="$ctx|invalid-immediates:$invalid_csv|N=default+--invalid-immediates|NM=DN2CPP_CPU_FEATURES=none+--invalid-immediates"
     ctx="$ctx|avx10v2-compiler:$avx10v2_compiler|O=DN2CPP_ENABLE_AVX10V2=1"
@@ -356,12 +357,18 @@ _platform_isa_native_plan_self_check() {
 #
 # Runs, each ours-vs-oracle on stdout and exit code:
 #   F  foreign host only: every row of ARCH, no mask. Witness: no `=True`.
-#   S  native host, every shard with exhaustive exercises enabled. Witness: the
-#      base family is true once it is Lowered.
+#   S  native host, the Lowered rows of every shard with exhaustive exercises
+#      enabled. Witness: the base family is true once it is Lowered. A row that
+#      is not Lowered is false here and true in .NET on a CPU that has it, so
+#      only F, M and U compare those rows.
 #   M  always: every row, DN2CPP_CPU_FEATURES=none vs DOTNET_EnableHWIntrinsic=0.
 #      Witnesses: no `=True`, and exactly one `effective=(none)` diag line.
 #   P  native host, the two partial-mask witnesses in their one shard. The true
 #      witness executes its helper; the false witness executes its throwing probe.
+#   U  native host, the rows of every shard that are not Lowered, with their
+#      throwing probes: no mask on our side vs DOTNET_EnableHWIntrinsic=0. The
+#      oracle is masked because unmasked .NET supports such a family on a CPU
+#      that has it. Witness: no `=True`.
 #   O  native x86 host, the AVX10.2 policy rows under the positive opt-in. The
 #      oracle opts in only when the configured compiler has the helper surface;
 #      otherwise both sides stay false and the nested throwing stubs are called.
@@ -527,16 +534,21 @@ _platform_isa_run_arch() {
     : "${PLATFORM_ISA_P_TRUE:?the gate must set PLATFORM_ISA_P_TRUE}"
     : "${PLATFORM_ISA_P_FALSE:?the gate must set PLATFORM_ISA_P_FALSE}"
 
-    local rows name lowered_flag all=() lowered=()
+    local rows name lowered_flag all=() lowered=() not_lowered=()
     rows=$(platform_isa_table_rows "$arch") || exit 1
     [ -n "$rows" ] || { echo "error: $PLATFORM_ISA_TABLE lists no $isa family" >&2; exit 1; }
     while IFS=$'\t' read -r name lowered_flag; do
         all+=("$name")
-        [ "$lowered_flag" = true ] && lowered+=("$name")
+        if [ "$lowered_flag" = true ]; then
+            lowered+=("$name")
+        else
+            not_lowered+=("$name")
+        fi
     done <<<"$rows"
-    local all_csv lowered_csv invalid_rows invalid_count
+    local all_csv lowered_csv not_lowered_csv invalid_rows invalid_count
     all_csv=$(platform_isa_join , "${all[@]}")
     lowered_csv=$(platform_isa_join , ${lowered[@]+"${lowered[@]}"})
+    not_lowered_csv=$(platform_isa_join , ${not_lowered[@]+"${not_lowered[@]}"})
     invalid_rows=$(platform_isa_invalid_immediate_rows "$arch") || exit 1
     invalid_count=$(grep -c . <<<"$invalid_rows" || true)
     [ "$invalid_count" -gt 0 ] \
@@ -645,6 +657,9 @@ _platform_isa_run_arch() {
             fi
             if [ "$label" = O ] || [ "$label" = P ]; then
                 run_args=("$argv")
+            elif [ "$label" = S ] || [ "$label" = U ]; then
+                run_args=("$(_pi_shard_rows "$i" "$argv")")
+                [ -n "${run_args[0]}" ] || continue
             else
                 run_args=("$(platform_isa_shard_selection "$shard" "$isa")")
             fi
@@ -699,6 +714,18 @@ _platform_isa_run_arch() {
         _PI_OURS_FILE="$ours_out.lf"
         platform_isa_output validate "$_PI_OURS_FILE" || return 1
         _PI_OURS=$(cat "$_PI_OURS_FILE")
+    }
+
+    # _pi_shard_rows INDEX CSV — the CSV rows shard INDEX carries, in CSV order.
+    _pi_shard_rows() {
+        local plan="${shard_outs[$1]}/partial-plan-$arch.lf" name kept=()
+        local IFS=,
+        for name in $2; do
+            if grep -Fxq "row=$name" "$plan"; then
+                kept+=("$name")
+            fi
+        done
+        platform_isa_join , ${kept[@]+"${kept[@]}"}
     }
 
     # _pi_run_native LABEL ARGV ENV — dn2cpp-only boundary mode. Managed JITs
@@ -827,6 +854,17 @@ _platform_isa_run_arch() {
         echo "runs S and P select the Lowered $isa families and none is Lowered yet: nothing to run, nothing omitted"
     fi
 
+    # A family that is not Lowered reports unsupported and throws from its probe
+    # in an unmasked process on any CPU, as .NET does with its intrinsics disabled.
+    if [ "$native_host" -eq 1 ] && [ -n "$not_lowered_csv" ]; then
+        _pi_run U "$not_lowered_csv" "" "DOTNET_EnableHWIntrinsic=0"
+        block=$(platform_isa_contract_block "$_PI_OURS_FILE") || exit 1
+        n=$(grep -c '=True$' <<<"$block" || true)
+        _pi_require_count U 0 "$n" "'=True' rows (no selected family is Lowered)"
+    elif [ "$native_host" -eq 1 ]; then
+        echo "run U selects the $isa families that are not Lowered and every one is Lowered: nothing to run, nothing omitted"
+    fi
+
     local violations
     _pi_run_native N "$all_csv" ""
     n=$(grep -c '^== invalid [A-Za-z0-9.]* ==$' <<<"$_PI_OURS" || true)
@@ -837,6 +875,18 @@ _platform_isa_run_arch() {
         printf '%s\n' "$violations" >&2
         gate_run_diag_once
         exit 1
+    fi
+
+    # Run N is the unmasked native run: a family dn2cpp never lowers must still
+    # report unsupported there, however capable the CPU is.
+    if [ "$native_host" -eq 1 ]; then
+        block=$(platform_isa_contract_block "$_PI_OURS_FILE") || exit 1
+        for name in ${not_lowered[@]+"${not_lowered[@]}"}; do
+            n=$(grep -Fxc "$name=False" <<<"$block" || true)
+            _pi_require_count N 1 "$n" "'$name=False' rows (the family is not Lowered)"
+            n=$(grep -Fxc "$name=True" <<<"$block" || true)
+            _pi_require_count N 0 "$n" "'$name=True' rows (the family is not Lowered)"
+        done
     fi
 
     _pi_run_native NM "$all_csv" "DN2CPP_CPU_FEATURES=none"
@@ -858,13 +908,13 @@ _platform_isa_run_arch() {
     fi
 
     if [ "$native_host" -eq 0 ]; then
-        local rosetta="" native_runs="S and P"
+        local rosetta="" native_runs="S, P and U"
         if [ "$arch" = x86 ]; then
-            native_runs="S, O and P"
+            native_runs="S, O, P and U"
             rosetta=" Rosetta is excluded on purpose: its CPUID exposes a feature set no shipping CPU has, and the oracle would be an emulated .NET rather than the host's."
         fi
         # One line: run-all-gates.sh's summary takes the FIRST line of the reason.
-        gate_expected_partial "runs $native_runs (the $isa families' supported, opt-in where applicable, and partially-masked paths) have no reachable state on this ${host_arch:-$(uname -m)} host: no software installable here creates an $isa CPU, so nothing this gate could do makes an $isa family's IsSupported true on either side.$rosetta Structural and permanent, not an absent prerequisite — which is why this is not a gate_skip/gate_partial. The uncovered surface must be covered by this same gate, gates/build-and-run-platform-isa-native.sh, on an $isa host (linux-x64 or a manual run on a provisioned windows-x64 host for x86, macos-arm64 for arm), where $native_runs run end to end; hosted Windows smoke excludes it. Runs F (every $isa row false and every $isa family throwing PlatformNotSupportedException, exactly as real .NET does here) and M (DN2CPP_CPU_FEATURES=none vs DOTNET_EnableHWIntrinsic=0, with one diag line per shard process) did run in this invocation and hold."
+        gate_expected_partial "runs $native_runs (the $isa families' supported, opt-in where applicable, partially-masked, and not-Lowered-on-a-capable-CPU paths) have no reachable state on this ${host_arch:-$(uname -m)} host: no software installable here creates an $isa CPU, so nothing this gate could do makes an $isa family's IsSupported true on either side.$rosetta Structural and permanent, not an absent prerequisite — which is why this is not a gate_skip/gate_partial. The uncovered surface must be covered by this same gate, gates/build-and-run-platform-isa-native.sh, on an $isa host (linux-x64 or a manual run on a provisioned windows-x64 host for x86, macos-arm64 for arm), where $native_runs run end to end; hosted Windows smoke excludes it. Runs F (every $isa row false and every $isa family throwing PlatformNotSupportedException, exactly as real .NET does here) and M (DN2CPP_CPU_FEATURES=none vs DOTNET_EnableHWIntrinsic=0, with one diag line per shard process) did run in this invocation and hold."
     fi
 }
 

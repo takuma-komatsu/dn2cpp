@@ -135,6 +135,7 @@ internal static class Program
         new("X86", "Fma", () => X86.Fma.IsSupported, X86Sections.ProbeFma,
             ("X64", () => X86.Fma.X64.IsSupported)),
         new("X86", "AvxVnni", () => X86.AvxVnni.IsSupported, X86Sections.ProbeAvxVnni,
+            ("V512", () => X86.AvxVnni.V512.IsSupported),
             ("X64", () => X86.AvxVnni.X64.IsSupported)),
 #endif
 #if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX512
@@ -182,6 +183,18 @@ internal static class Program
             ("Arm64", () => Arm.Sve.Arm64.IsSupported)),
         new("Arm", "Sve2", () => Arm.Sve2.IsSupported, ArmSections.ProbeSve2,
             ("Arm64", () => Arm.Sve2.Arm64.IsSupported)),
+        new("Arm", "Sha3", () => Arm.Sha3.IsSupported, ArmSections.ProbeSha3,
+            ("Arm64", () => Arm.Sha3.Arm64.IsSupported)),
+        new("Arm", "Sm4", () => Arm.Sm4.IsSupported, ArmSections.ProbeSm4,
+            ("Arm64", () => Arm.Sm4.Arm64.IsSupported)),
+        new("Arm", "SveSha3", () => Arm.SveSha3.IsSupported, ArmSections.ProbeSveSha3,
+            ("Arm64", () => Arm.SveSha3.Arm64.IsSupported)),
+        new("Arm", "SveSm4", () => Arm.SveSm4.IsSupported, ArmSections.ProbeSveSm4,
+            ("Arm64", () => Arm.SveSm4.Arm64.IsSupported)),
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX10
+        new("X86", "Avx512Bmm", () => X86.Avx512Bmm.IsSupported, X86Sections.ProbeAvx512Bmm,
+            ("X64", () => X86.Avx512Bmm.X64.IsSupported)),
 #endif
     };
 

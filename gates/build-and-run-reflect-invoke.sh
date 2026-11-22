@@ -2682,7 +2682,7 @@ private string public: MissingMethodException/Constructor on type 'ReflectReturn
 public default type: made
 public default empty: made
 public default null: made
-closed generic wrong: MissingMethodException/Constructor on type 'ReflectReturnLib.ConstructorNested`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]' not found.
+closed generic wrong: MissingMethodException/Constructor on type 'ReflectReturnLib.ConstructorNested`1[[System.Int32, System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]' not found.
 private generic type: MissingMethodException/No parameterless constructor defined for type 'ReflectReturnLib.ConstructorPrivateGenericDefault`1[System.Int32]'.
 private generic false: MissingMethodException/No parameterless constructor defined for type 'ReflectReturnLib.ConstructorPrivateGenericDefault`1[System.Int32]'.
 missing generic type: MissingMethodException/Cannot dynamically create an instance of type 'ReflectReturnLib.ConstructorNested`1[System.Int32]'. Reason: No parameterless constructor defined.

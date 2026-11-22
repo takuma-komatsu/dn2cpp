@@ -5,8 +5,9 @@
 // carries the two generated tables the inline body indexes.
 //
 // A two-level compressed DELTA table generated from the real .NET
-// System.Globalization.OrdinalCasing.ToUpper (net10.0 / Unicode 16 data — the
-// exact primitive behind String/MemoryExtensions OrdinalIgnoreCase): 256-code-
+// System.Globalization.OrdinalCasing.ToUpper (the exact primitive behind
+// String/MemoryExtensions OrdinalIgnoreCase; it derives from the invariant case
+// mapping, so from ICU rather than from CoreLib's Unicode data): 256-code-
 // point pages of (upper - c) deltas deduplicated behind a 256-entry page index
 // (identity pages are all-zero, so they collapse to one shared page). Exact for
 // every BMP code unit. Supplementary-plane (surrogate-pair) case folds — Deseret,
@@ -18,7 +19,8 @@
 // System.Globalization.OrdinalCasing.ToUpper(char) for U+0000..U+FFFF into the
 // two-level shape below (git history of this file has the generator); it
 // sanity-checks every char against string.Equals(..., OrdinalIgnoreCase) and
-// fold idempotence before printing.
+// fold idempotence before printing. The check is a sweep of every BMP code unit
+// against the reference runtime.
 
 #include "dn2cpp_core.h"
 
