@@ -21,6 +21,8 @@ namespace AsyncCombinators
             if (args.Length == 1 && args[0] == "native-delay-deadlines")
             {
                 DelayOrderSubset.Program.RunNativeDeadlineProbe();
+                BlockingWaitWrapSubset.Program.PollDelayedTasks(waitForCallbacks: false);
+                BlockingWaitWrapSubset.Program.PollDelayedWhenAll(waitForCallbacks: false);
                 return;
             }
             WhenAllSubset.Program.__GateEntry();

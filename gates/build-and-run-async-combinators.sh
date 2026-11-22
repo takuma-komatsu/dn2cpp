@@ -17,7 +17,8 @@
 # within its timeout. A yielded continuation can wait for the caller's signal.
 # A delay can expire while its creating thread waits for the caller to release it.
 # An earlier timeout on the waiting thread still wins when both timers are overdue.
-# Polling overdue timers preserves the WhenAny winner and observes a ready WhenAll.
+# The live oracle waits for timer callbacks before polling. The native deadline
+# mode leaves timers overdue until the poll, checking its WhenAny winner and WhenAll.
 # Context-free configured awaits, default-scheduler continuations and yields
 # under the base SynchronizationContext can complete during a finite wait.
 # BlockingWaitArgsSubset.cs asserts the argument contracts of the BLOCKING waits

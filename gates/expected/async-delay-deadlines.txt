@@ -3,3 +3,5 @@ BDCA|yx|done
 detached delay completed: True options=0
 claimed delay canceled: True options=64
 native delay deadlines end
+wait after idle: True/True
+overdue WhenAll poll: True

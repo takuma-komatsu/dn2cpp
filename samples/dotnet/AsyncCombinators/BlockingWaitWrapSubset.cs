@@ -96,22 +96,42 @@ namespace BlockingWaitWrapSubset
             Console.WriteLine("wait pending zero: " + pending.Wait(TimeSpan.Zero));
             Console.WriteLine("wait pending finite: " + pending.Wait(TimeSpan.FromMilliseconds(1)));
 
-            Task early = Task.Delay(10);
-            Task late = Task.Delay(30);
-            Thread.Sleep(125);
-            // Once both inputs are settled, WhenAny selects its first argument
-            // regardless of the order in which the CLR ran their callbacks.
-            Task<Task> winner = Task.WhenAny(early, late);
-            bool polled = late.Wait(TimeSpan.Zero);
-            if (!winner.IsCompletedSuccessfully || !ReferenceEquals(winner.Result, early))
-                throw new InvalidOperationException("Polling the later delay reversed the timer order.");
-            Console.WriteLine("wait after idle: " + polled + "/" + early.Wait(TimeSpan.FromMilliseconds(5)));
+            PollDelayedTasks(waitForCallbacks: true);
 
             using var signal = new ManualResetEventSlim();
             Task<bool> yielded = WaitForSignalAfterYield(signal);
             bool completed = yielded.Wait(TimeSpan.FromMilliseconds(10));
             signal.Set();
             Console.WriteLine("wait before signal: " + completed + "/" + yielded.GetAwaiter().GetResult());
+        }
+
+        private static void PrepareTimerPoll(bool waitForCallbacks, params Task[] tasks)
+        {
+            // CLR timer callbacks may still be queued after their deadlines. The native
+            // deadline probe leaves its scheduler idle until the zero-time wait.
+            if (waitForCallbacks)
+                Task.WaitAll(tasks);
+            else
+                Thread.Sleep(125);
+        }
+
+        internal static void PollDelayedTasks(bool waitForCallbacks)
+        {
+            Task early = Task.Delay(10);
+            Task late = Task.Delay(30);
+            PrepareTimerPoll(waitForCallbacks, early, late);
+            Task<Task> winner = Task.WhenAny(early, late);
+            bool polled = late.Wait(TimeSpan.Zero);
+            if (!winner.IsCompletedSuccessfully || !ReferenceEquals(winner.Result, early))
+                throw new InvalidOperationException("Polling the later delay reversed the timer order.");
+            Console.WriteLine("wait after idle: " + polled + "/" + early.Wait(TimeSpan.FromMilliseconds(5)));
+        }
+
+        internal static void PollDelayedWhenAll(bool waitForCallbacks)
+        {
+            Task join = Task.WhenAll(Task.Delay(10), Task.Delay(30));
+            PrepareTimerPoll(waitForCallbacks, join);
+            Console.WriteLine("overdue WhenAll poll: " + join.Wait(TimeSpan.Zero));
         }
 
         private static async Task<bool> WaitForSignalAfterYield(ManualResetEventSlim signal)
@@ -167,9 +187,7 @@ namespace BlockingWaitWrapSubset
             }
             Console.WriteLine("parked owner delay: completed=" + completed + " owner released=" + released);
 
-            Task join = Task.WhenAll(Task.Delay(10), Task.Delay(30));
-            Thread.Sleep(125);
-            Console.WriteLine("overdue WhenAll poll: " + join.Wait(TimeSpan.Zero));
+            PollDelayedWhenAll(waitForCallbacks: true);
             Console.WriteLine("parked owner race: completed=" + laterCompleted + " earlier timeout=" + timedOut);
         }
     }
