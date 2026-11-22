@@ -3893,10 +3893,7 @@ internal sealed partial class CppEmitter
                     // are declared (see InvokerThunkBlocker) — but the invariant "an
                     // invoker thunk is emitted only when its C++ compiles; otherwise
                     // the row's invoker traps" is asked at every mouth, not assumed.
-                    invoker = "(void*)&" + RowInvoker(cls, m, () => CoreIntrinsics.BrDelegateCallable.Matches(m)
-                        && m.DeclaringClass.FullName == "System.Delegate" && m.Name is "Equals" or "GetHashCode"
-                        ? m.Name == "Equals" ? "dn2cpp_delegate_base_equals_invoker" : "dn2cpp_delegate_base_hash_invoker"
-                        : _e.EmitInvokerThunk(_sb, m, _invokerThunks, contextArg));
+                    invoker = "(void*)&" + RowInvoker(cls, m, () => _e.EmitInvokerThunk(_sb, m, _invokerThunks, contextArg));
                 }
                 // A bodyless interface or abstract class row needs a signature-only
                 // invoker only when a late-bound consumer resolves the receiver's slot

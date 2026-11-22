@@ -18,14 +18,28 @@ internal static partial class CoreIntrinsics
         if (!TryReadWaitHandleRawWaitWrapperSignature(method.Name, reader.GetBlobReader(definition.Signature),
                 out var span, out int parameters))
             return false;
+        bool core = method.Name == "WaitMultipleIgnoringSyncContextCore";
         return CoreIntrinsicTypeMaps.IsWaitHandleRawWaitWrapperMethod(method.Module.AssemblyName,
             method.DeclaringClass.FullName, method.Name,
             method.ImplAttributes == MethodImplAttributes.IL
-                && (method.Name == "WaitMultipleIgnoringSyncContextCore" || parameters == 4 ? privateMethod : assembly),
+                && (core || parameters == 4 ? privateMethod : assembly)
+                && (!core || DeclaresWaitHandleRawWaitImport(reader, method.DeclaringClass.Handle)),
             parameters, span.Kind == HandleKind.TypeDefinition
                 && IsWaitHandleRawWaitSpanDefinition(method.Module, (TypeDefinitionHandle)span)
                 && (!method.SignatureReady || IsWaitHandleRawWaitWrapperDecodedSignature(
                     method.Signature, method.Module, method.Name)));
+    }
+
+    // The Core wrapper keeps its body only while that body forwards to the import. A
+    // CoreLib whose Core waits through the managed WaitSubsystem is cut at Core, so the
+    // subsystem's Thread and handle-table state is never reached.
+    private static bool DeclaresWaitHandleRawWaitImport(MetadataReader reader, TypeDefinitionHandle owner)
+    {
+        foreach (var handle in reader.GetTypeDefinition(owner).GetMethods())
+            if (reader.StringComparer.Equals(reader.GetMethodDefinition(handle).Name,
+                    "<WaitMultipleIgnoringSyncContext>g____PInvoke|2_0"))
+                return true;
+        return false;
     }
 
     internal static bool IsWaitHandleRawWaitImport(MethodInfo method)

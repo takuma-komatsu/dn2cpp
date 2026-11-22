@@ -1434,12 +1434,6 @@ void dn2cpp_set_threading_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> th
     Dn2CppMetadataHandle<Dn2CppMethodInfo> createAsyncWaiter, Dn2CppMetadataHandle<Dn2CppMethodInfo> removeAsyncWaiter);
 Dn2CppObject* dn2cpp_delegate_object_virtual_invoker(void* fn, Dn2CppObject* receiver,
     Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
-// Signature invokers mark the exact Delegate value rows while honoring fn.
-// Only reflection's virtual dispatch substitutes their Multicast target.
-Dn2CppObject* dn2cpp_delegate_base_equals_invoker(void* fn, Dn2CppObject* receiver,
-    Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
-Dn2CppObject* dn2cpp_delegate_base_hash_invoker(void* fn, Dn2CppObject* receiver,
-    Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
 
 struct Dn2CppDelegateInterfaceInvocation
 {
@@ -1494,7 +1488,7 @@ bool dn2cpp_delegate_selected_key(const Dn2CppDelegateMethodIdentity* identity,
 
 // The interpreter registers exact selected rows without linking its object into
 // programs which never load a patch.
-using Dn2CppPatchVirtualMethodResolver = Dn2CppMetadataHandle<Dn2CppMethodInfo> (*)(const Dn2CppTypeInfo*, int32_t, bool);
+using Dn2CppPatchVirtualMethodResolver = Dn2CppMetadataHandle<Dn2CppMethodInfo> (*)(const Dn2CppTypeInfo*, int32_t);
 void dn2cpp_set_patch_virtual_method_resolver(Dn2CppPatchVirtualMethodResolver resolver);
 
 // A generic virtual method row has no slot: a reflective call and the BPI import
@@ -1559,16 +1553,16 @@ struct Dn2CppDelegate : Dn2CppObject
 #define DN2CPP_DGBIND_CLOSED_INSTANCE 1
 #define DN2CPP_DGBIND_OPEN_INSTANCE   2
 #define DN2CPP_DGBIND_CLOSED_STATIC   3
-// What a call through a binding faults with before the row runs: nothing, a null
-// receiver's NullReferenceException or bad IL, or every call's missing entry point.
+// What a call through a binding faults with before the row runs: nothing, or a
+// null receiver's NullReferenceException or bad IL. A static row's call has no
+// receiver, so a static abstract row's is always bad IL.
 // NULL_CONTEXT runs on a stand-in carrying `declaring`; NULL_CTX_NULL keeps
 // the receiver null and supplies only its rgctx from `declaring`.
 #define DN2CPP_DGBIND_FAULT_NONE           0
 #define DN2CPP_DGBIND_FAULT_NULL_RECEIVER  1
 #define DN2CPP_DGBIND_FAULT_NULL_BODILESS  2
-#define DN2CPP_DGBIND_FAULT_STATIC_VIRTUAL 3
-#define DN2CPP_DGBIND_FAULT_NULL_CONTEXT   4
-#define DN2CPP_DGBIND_FAULT_NULL_CTX_NULL  5
+#define DN2CPP_DGBIND_FAULT_NULL_CONTEXT   3
+#define DN2CPP_DGBIND_FAULT_NULL_CTX_NULL  4
 // The table Dn2CppReflBind::slot indexes.
 #define DN2CPP_DGBIND_SLOT_CLASS     0
 #define DN2CPP_DGBIND_SLOT_INTERFACE 1
@@ -1650,6 +1644,9 @@ bool dn2cpp_reflbind_selected_key(const Dn2CppReflBind* bind,
     const Dn2CppTypeInfo*& owner, int32_t& token, int32_t& genericArgCount,
     const Dn2CppTypeInfo* const*& genericArgs);
 bool dn2cpp_reflbind_same_method(const Dn2CppReflBind* a, const Dn2CppReflBind* b);
+bool dn2cpp_reflbind_row_key(const Dn2CppReflBind* bind,
+    const Dn2CppTypeInfo*& owner, int32_t& token, int32_t& genericArgCount,
+    const Dn2CppTypeInfo* const*& genericArgs);
 // The class vtable slot implementing each slot of interface `itf` on `type`, -1 where
 // none does. Emitted for the receivers --trim-reflection strips of their member rows
 // when the image binds delegates through reflection, so identity can relate a binding
@@ -1703,7 +1700,6 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d);
 Dn2CppObject* dn2cpp_delegate_combine(Dn2CppObject* a, Dn2CppObject* b);
 Dn2CppObject* dn2cpp_delegate_combine_n(Dn2CppObject* const* items, int32_t count);
 Dn2CppObject* dn2cpp_delegate_combine_array(Dn2CppArrayRef* items);
-Dn2CppObject* dn2cpp_delegate_from_invocation_prefix(Dn2CppObject* receiver, Dn2CppArrayRef* items, int32_t count);
 Dn2CppObject* dn2cpp_delegate_remove(Dn2CppObject* source, Dn2CppObject* value);
 Dn2CppObject* dn2cpp_delegate_remove_all(Dn2CppObject* source, Dn2CppObject* value);
 Dn2CppObject* dn2cpp_delegate_remove_impl(Dn2CppObject* source, Dn2CppObject* value);
@@ -1722,18 +1718,17 @@ Dn2CppObject* dn2cpp_delegate_dynamic_invoke(Dn2CppObject* d, Dn2CppArrayRef* ar
 // address and method identity (MulticastDelegate override semantics).
 // A null identity matches any, and a virtual binding compares only
 // generic arguments, since different declarations can bind one override. The
-// hash folds only the chain's (target, method) pairs, so equal delegates always
-// agree (stable per process — the exact .NET number, which is type-identity
-// based, is not modeled). Backs Delegate.op_Equality and virtual Equals/
-// GetHashCode, including the DN2CPP_TF_DELEGATE branches of object hash/equality
-// helpers (e.g. GodotSharp's DelegateUtils callbacks, where the engine keys
-// Callable dedup on managed delegate identity).
+// hash folds the delegate type and each entry's target and the method
+// Delegate.Method reports for it, so equal delegates agree unless they report
+// different methods; as on .NET, a reflection binding through a row its receiver
+// overrides equals the override's method group but hashes apart from it. The
+// number is stable per process; .NET's exact value is not modeled.
+// Backs Delegate.op_Equality and virtual Equals/GetHashCode, including the
+// DN2CPP_TF_DELEGATE branches of object hash/equality helpers (e.g. GodotSharp's
+// DelegateUtils callbacks, where the engine keys Callable dedup on managed
+// delegate identity).
 int32_t dn2cpp_delegate_equal(Dn2CppObject* a, Dn2CppObject* b);
 int32_t dn2cpp_delegate_hash(Dn2CppObject* d);
-// Nonvirtual System.Delegate bodies do not inspect a multicast invocation list.
-// Virtual entry, including reflection, uses the MulticastDelegate helpers above.
-int32_t dn2cpp_delegate_base_equal(Dn2CppObject* a, Dn2CppObject* b);
-int32_t dn2cpp_delegate_base_hash(Dn2CppObject* d);
 // Mutex-interned fallback for a type-info whose typeObject was never wired
 // (defensive: statically-emitted and runtime tis all bake/stamp one).
 Dn2CppType* dn2cpp_get_type_from_handle_slow(const Dn2CppTypeInfo* handle);
@@ -2274,7 +2269,6 @@ inline constexpr const char* DN2CPP_SR_SEMAPHORE_TIMEOUT = "SemaphoreSlim_Wait_T
 inline constexpr const char* DN2CPP_SR_SEMAPHORE_TIMESPAN_TIMEOUT = "SemaphoreSlim_Wait_TimeSpanTimeoutWrong";
 inline constexpr const char* DN2CPP_SR_TASK_DELAY_MS = "Task_Delay_InvalidMillisecondsDelay";
 inline constexpr const char* DN2CPP_SR_TASK_DELAY_SPAN = "Task_InvalidTimerTimeSpan";
-inline constexpr const char* DN2CPP_SR_NEED_NON_NEG_OR_NEGATIVE1 = "ArgumentOutOfRange_NeedNonNegOrNegative1";
 inline constexpr const char* DN2CPP_SR_TASK_START_COMPLETED = "Task_Start_TaskCompleted";
 inline constexpr const char* DN2CPP_SR_TASK_START_PROMISE = "Task_Start_Promise";
 inline constexpr const char* DN2CPP_SR_TASK_START_CONTINUATION = "Task_Start_ContinuationTask";
@@ -5731,10 +5725,40 @@ int64_t dn2cpp_interlocked_read_i8(int64_t* loc);   // Interlocked.Read: seq_cst
 void dn2cpp_interlocked_membarrier_processwide();   // Interlocked.MemoryBarrierProcessWide
 int32_t dn2cpp_interlocked_add_i4(int32_t* loc, int32_t value);
 int64_t dn2cpp_interlocked_add_i8(int64_t* loc, int64_t value);
-int32_t dn2cpp_interlocked_or_i4(int32_t* loc, int32_t value);   // fetch_or: returns original
+int8_t dn2cpp_interlocked_or_i1(int8_t* loc, int8_t value);      // fetch_or: returns original
+int16_t dn2cpp_interlocked_or_i2(int16_t* loc, int16_t value);
+int32_t dn2cpp_interlocked_or_i4(int32_t* loc, int32_t value);
 int64_t dn2cpp_interlocked_or_i8(int64_t* loc, int64_t value);
-int32_t dn2cpp_interlocked_and_i4(int32_t* loc, int32_t value);  // fetch_and: returns original
+int8_t dn2cpp_interlocked_and_i1(int8_t* loc, int8_t value);     // fetch_and: returns original
+int16_t dn2cpp_interlocked_and_i2(int16_t* loc, int16_t value);
+int32_t dn2cpp_interlocked_and_i4(int32_t* loc, int32_t value);
 int64_t dn2cpp_interlocked_and_i8(int64_t* loc, int64_t value);
+// Native-integer locations are pointer-width (4 bytes on wasm32): the atomic
+// must match the storage width, so the choice is made by the C++ target.
+inline intptr_t dn2cpp_interlocked_exchange_ip(intptr_t* loc, intptr_t value) {
+    if constexpr (sizeof(intptr_t) == 8)
+        return (intptr_t)dn2cpp_interlocked_exchange_i8((int64_t*)loc, (int64_t)value);
+    else
+        return (intptr_t)dn2cpp_interlocked_exchange_i4((int32_t*)loc, (int32_t)value);
+}
+inline intptr_t dn2cpp_interlocked_cmpxchg_ip(intptr_t* loc, intptr_t value, intptr_t comparand) {
+    if constexpr (sizeof(intptr_t) == 8)
+        return (intptr_t)dn2cpp_interlocked_cmpxchg_i8((int64_t*)loc, (int64_t)value, (int64_t)comparand);
+    else
+        return (intptr_t)dn2cpp_interlocked_cmpxchg_i4((int32_t*)loc, (int32_t)value, (int32_t)comparand);
+}
+inline intptr_t dn2cpp_interlocked_and_ip(intptr_t* loc, intptr_t value) {
+    if constexpr (sizeof(intptr_t) == 8)
+        return (intptr_t)dn2cpp_interlocked_and_i8((int64_t*)loc, (int64_t)value);
+    else
+        return (intptr_t)dn2cpp_interlocked_and_i4((int32_t*)loc, (int32_t)value);
+}
+inline intptr_t dn2cpp_interlocked_or_ip(intptr_t* loc, intptr_t value) {
+    if constexpr (sizeof(intptr_t) == 8)
+        return (intptr_t)dn2cpp_interlocked_or_i8((int64_t*)loc, (int64_t)value);
+    else
+        return (intptr_t)dn2cpp_interlocked_or_i4((int32_t*)loc, (int32_t)value);
+}
 
 // ---- Monitor / lock / System.Threading.Lock (real per-object mutex) ----
 // Identity-keyed recursive lock (non-moving GC -> stable object pointers), built on

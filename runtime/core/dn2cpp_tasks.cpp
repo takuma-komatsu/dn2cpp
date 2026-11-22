@@ -4317,12 +4317,13 @@ void dn2cpp_thread_join(Dn2CppThread* t)
 
 // Thread.Join(int)/Join(TimeSpan): wait up to ms for the body to finish. Returns 1 if it
 // terminated (and joins the underlying std::thread), 0 on timeout (the thread is still
-// running — a later Join() reaps it). -1 means an infinite wait; less is refused with
-// Join's own message before the thread's state is.
+// running — a later Join() reaps it). -1 means an infinite wait; less is refused as
+// ThrowIfLessThan refuses it, before the thread's state is.
 int32_t dn2cpp_thread_join_timeout(Dn2CppThread* t, int32_t ms)
 {
     if (ms < -1)
-        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_OR_NEGATIVE1, "millisecondsTimeout");
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_GREATER_OR_EQUAL,
+            "millisecondsTimeout", ms, -1, 4);
     auto* s = dn2cpp_thread_started_sync(t);
     if (ms < 0)
     {

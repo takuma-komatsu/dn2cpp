@@ -8,7 +8,14 @@ internal sealed partial class Compilation
     private MethodInfo ResolveMagnitudeAbsGuard(MethodInfo method)
     {
         var il = GenericVectorGuardInstructions(method);
-        int start = ValidateMagnitudeTypeTests(method, il, 0, new[] { "Byte", "UInt16", "UInt32", "UInt64", "UIntPtr" });
+        // Unsigned lanes return the operand unchanged; every other element takes the software tail.
+        const int start = 4;
+        if (il.Count <= start || il[0].OpCode != ILOpCode.Call || il[1].OpCode != ILOpCode.Brfalse_s
+            || il[1].Operand != il[start].Offset || il[2].OpCode != ILOpCode.Ldarg_0 || il[3].OpCode != ILOpCode.Ret
+            || method.Context.MethodArgs is not [var element])
+            throw VectorMagnitudeGuardUnsupported();
+        var unsigned = ResolveVectorScalarGetter(method.Module, il[0].Token, "get_IsUnsigned", 0x1e, method.Context, element);
+        ValidateVectorElementWhitelist(unsigned, new[] { "Byte", "UInt16", "UInt32", "UInt64", "UIntPtr" });
         return method.DeclaringClass.FullName is "System.Numerics.Vector" or "System.Runtime.Intrinsics.Vector64"
             ? ResolveMagnitudeLoopGuard(method, il, start)
             : ResolveMagnitudeHalfGuard(method, il, start, unary: true);

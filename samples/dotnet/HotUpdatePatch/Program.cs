@@ -625,6 +625,7 @@ internal static class Program
         Counter.ConcatProbe = InterpretedConcatSubset.Run;
         Counter.AggregateProbe = InterpretedAggregateSubset.Run;
         Counter.InitializerProbe = InterpretedInitializerSubset.Run;
+        Counter.BindingIdentityProbe = SameAddBinding;
         Counter.GenericIntImportProbe = GenericIntName;
         Counter.GenericStringImportProbe = GenericStringName;
         Counter.GenericVirtualProbe = GenericVirtualNames;
@@ -636,6 +637,14 @@ internal static class Program
         // An exception no patch handler consumes escapes the interpreter into
         // the base program's own try/catch (see HotUpdateBase.Program.Main).
         throw new InvalidOperationException("escaped to base");
+    }
+
+    // The patch's binding of an AOT method equals and hashes like a compiled one.
+    private static string SameAddBinding()
+    {
+        Counter addend = new Counter(100);
+        IntTransform aotAdd = addend.Add;
+        return Counter.SameAddBinding(addend, aotAdd);
     }
 
     private static string GenericVirtualNames()

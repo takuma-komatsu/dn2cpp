@@ -4224,10 +4224,9 @@ internal sealed partial class MethodCompiler : IEvalStack
                 }
                 else if (m.IsVirtual && CoreIntrinsics.BrDelegateCallable.Matches(m))
                 {
-                    var target = _c.DelegateCallableVirtualTarget(m).Emittable;
+                    var target = m.Emittable;
                     // Keep virtual provenance for delegate construction, also
-                    // when this address flows through a local. Its selected
-                    // Method identity is the override, not the base body.
+                    // when this address flows through a local.
                     NoteFtnTargetBody(target);
                     _c.NoteNamedBodySymbol(_method, target);
                     expr = (m.Attributes & System.Reflection.MethodAttributes.Final) != 0

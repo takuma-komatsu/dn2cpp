@@ -287,9 +287,16 @@ internal sealed partial class AssemblyDiet
     private static bool IsCopiedWaitHandleRawWaitWrapper(MethodDefinition method, string owner)
     {
         int count = method.Parameters.Count;
-        bool privateMethod = method.Name == "WaitMultipleIgnoringSyncContextCore" || count == 4;
+        bool core = method.Name == "WaitMultipleIgnoringSyncContextCore";
+        bool privateMethod = core || count == 4;
+        // Core is copied only while it forwards to the import, as the transpiler cuts it otherwise.
+        bool forwards = !core;
+        if (core)
+            foreach (var sibling in method.DeclaringType.Methods)
+                if (sibling.Name == "<WaitMultipleIgnoringSyncContext>g____PInvoke|2_0")
+                    forwards = true;
         return CoreIntrinsicTypeMaps.IsWaitHandleRawWaitWrapperMethod(method.Module.Assembly?.Name.Name, owner, method.Name,
-            method.DeclaringType.FullName == owner && method.DeclaringType.DeclaringType is null
+            forwards && method.DeclaringType.FullName == owner && method.DeclaringType.DeclaringType is null
                 && method.DeclaringType.IsAbstract && !method.DeclaringType.IsSealed
                 && !method.DeclaringType.IsValueType && !method.DeclaringType.IsInterface && !method.DeclaringType.HasGenericParameters
                 && method.Attributes == ((privateMethod ? MethodAttributes.Private : MethodAttributes.Assembly)
@@ -503,6 +510,7 @@ internal sealed partial class AssemblyDiet
         if (IsCopiedCoreClrTypeMaterialization(method, owner) || IsCopiedNullableReboxing(method, owner))
             traverse = false;
         else if (IsCopiedDelegateCallableBody(method, owner)
+            || DelegateCallableBodyContract.IsInvocationStorage(owner)
             || IsCopiedPrimitiveBigMul(method, owner)
             || IsCopiedNativeIntegerParse(method, owner)
             || BinaryIntegerEndianContract.IsNativeOwner(owner) && IsCopiedBinaryIntegerEndianBody(method, owner))

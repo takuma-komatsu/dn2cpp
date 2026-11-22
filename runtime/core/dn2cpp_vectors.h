@@ -1642,6 +1642,32 @@ static inline uint64_t dn2cpp_vec_extract_msb(const Dn2CppVec<N>& v) {
     return mask;
 }
 
+// Reductions over a comparison mask: a lane matches when its sign bit is set.
+template <class T, int N>
+static inline int32_t dn2cpp_vec_count_matches(const Dn2CppVec<N>& v) {
+    int32_t c = 0;
+    for (uint64_t mask = dn2cpp_vec_extract_msb<T, N>(v); mask != 0; mask &= mask - 1) ++c;
+    return c;
+}
+
+template <class T, int N>
+static inline int32_t dn2cpp_vec_index_of_first_match(const Dn2CppVec<N>& v) {
+    const uint64_t mask = dn2cpp_vec_extract_msb<T, N>(v);
+    const int lanes = N / (int)sizeof(T);
+    for (int i = 0; i < lanes; ++i)
+        if ((mask >> i) & 1) return i;
+    return -1;
+}
+
+template <class T, int N>
+static inline int32_t dn2cpp_vec_index_of_last_match(const Dn2CppVec<N>& v) {
+    const uint64_t mask = dn2cpp_vec_extract_msb<T, N>(v);
+    const int lanes = N / (int)sizeof(T);
+    for (int i = lanes - 1; i >= 0; --i)
+        if ((mask >> i) & 1) return i;
+    return -1;
+}
+
 // ---------------------------------------------------------------------------
 // Reinterpret (As<>, AsByte, AsInt32, ...) -- identity, width unchanged
 // ---------------------------------------------------------------------------

@@ -58,6 +58,16 @@ internal static partial class Program
                 int.MaxValue, 0x12345678, 0xFEDCBA98U);
         }
         Console.WriteLine("generic native32 end");
+        if (oracle)
+        {
+            Atomics<int>("signed", 0x12345678, unchecked((int)0xFEDCBA98));
+            Atomics<uint>("unsigned", 0x12345678, 0xFEDCBA98);
+        }
+        else
+        {
+            Atomics<nint>("signed", 0x12345678, unchecked((int)0xFEDCBA98));
+            Atomics<nuint>("unsigned", 0x12345678, 0xFEDCBA98U);
+        }
         return;
     }
 }

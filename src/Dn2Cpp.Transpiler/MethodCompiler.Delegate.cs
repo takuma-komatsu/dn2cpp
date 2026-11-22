@@ -24,37 +24,32 @@ internal sealed partial class MethodCompiler
                 foreach (var _ in signature.ParameterTypes) Pop();
                 Pop();
                 // Refuse before interpreting CoreCLR PCODE, shuffle or loader state.
-                Emit($"dn2cpp_throw_platform_not_supported(\"System.MulticastDelegate.{name} is a CoreCLR-owned delegate initialization stub. Use normal delegate construction or Delegate.CreateDelegate instead.\");");
+                Emit($"dn2cpp_throw_platform_not_supported(\"System.Delegate.{name} is a CoreCLR-owned delegate initialization stub. Use normal delegate construction or Delegate.CreateDelegate instead.\");");
             }
             else if (name == "Equals")
             {
                 var other = Pop();
                 var self = Pop();
-                string helper = _method.DeclaringClass.FullName == "System.Delegate"
-                    ? "dn2cpp_delegate_base_equal" : "dn2cpp_delegate_equal";
                 // The IL returns false for a null argument before reading this.
                 // Public operator helpers are null-safe, but an instance body
                 // with a non-null argument must fault a null receiver.
                 string argument = Cast(other, "Dn2CppObject*");
                 Push(StackKind.I4, "int32_t", $"({argument} == nullptr ? 0 : "
-                    + $"{helper}(dn2cpp_null_check({Cast(self, "Dn2CppObject*")}), {argument}))");
+                    + $"dn2cpp_delegate_equal(dn2cpp_null_check({Cast(self, "Dn2CppObject*")}), {argument}))");
             }
             else if (name == "GetHashCode")
             {
                 var self = Pop();
-                string helper = _method.DeclaringClass.FullName == "System.Delegate"
-                    ? "dn2cpp_delegate_base_hash" : "dn2cpp_delegate_hash";
-                Push(StackKind.I4, "int32_t", $"{helper}(dn2cpp_null_check({Cast(self, "Dn2CppObject*")}))");
+                Push(StackKind.I4, "int32_t", $"dn2cpp_delegate_hash(dn2cpp_null_check({Cast(self, "Dn2CppObject*")}))");
             }
             else if (name == "NewMulticastDelegate")
             {
-                // The flag selects a CoreCLR invoke stub; native delegates use one layout.
-                if (signature.ParameterTypes.Length == 3) Pop();
-                var count = Pop();
-                var entries = Pop();
-                var self = Pop();
-                Push(StackKind.Ref, "Dn2CppObject*",
-                    $"dn2cpp_delegate_from_invocation_prefix({DelegateReceiver(self)}, {Cast(entries, "Dn2CppArrayRef*")}, {Cast(count, "int32_t")})");
+                foreach (var _ in signature.ParameterTypes) Pop();
+                Pop();
+                // The entries are CoreCLR invocation-list storage, which the
+                // native chain replaces; refuse before reading the array.
+                Emit("dn2cpp_throw_platform_not_supported(\"System.Delegate.NewMulticastDelegate takes CoreCLR-owned invocation-list storage. Use Delegate.Combine instead.\");");
+                Push(StackKind.Ref, "Dn2CppObject*", "nullptr");
             }
             else if (name is "CombineImpl" or "RemoveImpl")
             {
@@ -75,7 +70,7 @@ internal sealed partial class MethodCompiler
             else
             {
                 // Reuse public projections, including Method's row retention.
-                string projection = name switch { "GetTarget" => "get_Target", "GetMethodImpl" => "get_Method", _ => name };
+                string projection = name == "GetMethodImpl" ? "get_Method" : name;
                 Top = Top with { Expr = $"dn2cpp_null_check({Top.Expr})" };
                 if (!TryEmitStringsIntrinsic("System.Delegate", projection, signature)) return false;
             }

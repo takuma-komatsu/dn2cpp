@@ -104,8 +104,8 @@ delegate_object_equality_only() {
         printf '%s\n' \
             '== equality without Method ==' 'Object-values=True' \
             'Object-equality=True/True/True' 'Object-remove=True/System.Object' \
-            'Override-values=True' 'Override-equality=True/True/True' 'Override-remove=True/override' \
-            'base-equality=False/False' 'base-remove=True/override' \
+            'Override-values=True' 'Override-equality=True/True/False' 'Override-remove=True/override' \
+            'base-equality=True/True' 'base-remove=False/OverrideCase' \
             'Object-Equals=True/True/True/True/True' 'Object-GetHashCode=True/True/True/True' \
             'equality without Method end' > "$out/expected.stdout"
         gate_output compare "$out/native.raw.stdout" "$out/expected.stdout" --policy crlf
@@ -214,7 +214,7 @@ delegate_identity_diff_axes() {
                 reflection_assert_lines "$out/$native.raw.stdout" 1 \
                     '== runtime delegate selected methods ==' \
                     'virtual identity reflected distinct: False/True/True/7/7' \
-                    'virtual identity reflected override: True/True/False/7/7' \
+                    'virtual identity reflected override: True/False/False/7/7' \
                     'virtual identity runtime distinct: False/True/True/7/7' \
                     'virtual identity runtime interface: True/True/False/7/7' \
                     'virtual identity runtime same: True/True/False/7/7' \

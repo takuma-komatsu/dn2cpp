@@ -411,6 +411,7 @@ namespace ReflectInvoke
         if (args.Length > 0 && args[0] == "before-return-parameter-attributes")
             return;
         ReturnParameterAttributesSubset.Program.Run();
+        ReflectDelegateIdentitySubset.ObjectVirtualEqualityProgram.RunBaseHash();
         }
     }
 }

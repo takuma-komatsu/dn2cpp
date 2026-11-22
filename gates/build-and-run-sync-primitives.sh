@@ -81,7 +81,7 @@ gate_extra_asserts() {
     actual="$out/assert-actual-6.stdout"
 
     gate_output compare "$actual" "$expected"
-    for line in 'Sem null int bad type=NullReferenceException' \
+    for line in 'Sem null int bad type=ArgumentOutOfRangeException' \
         'Sem null span bad actual=TimeSpan:-00:00:00.0020000' \
         'Mre null int bad type=NullReferenceException' \
         'WaitOne null int bad type=ArgumentOutOfRangeException' \

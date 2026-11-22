@@ -413,6 +413,42 @@ internal sealed partial class MethodCompiler
                         && TryMathIntrinsic(declType, name, sig):
                 return true;
 
+            // CoreLib-internal members of a primitive that Number, BigInteger and the
+            // other floating-point types call: the powers-of-ten table, the IEEE bit
+            // composers and the exponent/significand writers have no runtime
+            // counterpart, so their real bodies run.
+            case ("System.UInt32" or "System.UInt64", "get_PowersOf10")
+                    or ("System.Double", "CreateDouble") or ("System.Single", "CreateSingle")
+                    when !sig.Header.IsInstance:
+            case ("System.Double" or "System.Single", "TryWriteExponentBigEndian"
+                    or "TryWriteExponentLittleEndian" or "TryWriteSignificandBigEndian"
+                    or "TryWriteSignificandLittleEndian")
+                    when sig.Header.IsInstance:
+            {
+                var ps = sig.ParameterTypes;
+                bool instance = sig.Header.IsInstance;
+                var helper = Comp.ReachIntrinsicMethod(declType, name,
+                    m => m.IsStatic != instance && m.Signature.ParameterTypes.Length == ps.Length);
+                var args = new string[ps.Length + (instance ? 1 : 0)];
+                for (int i = ps.Length - 1; i >= 0; i--)
+                    args[i + (instance ? 1 : 0)] = Cast(Pop(), CppTypes.Of(ps[i]));
+                if (instance)
+                {
+                    string selfCt = ReceiverCppType(helper.DeclaringClass);
+                    var self = Pop();
+                    if (self.Kind == StackKind.Ptr)
+                        args[0] = Cast(self, selfCt);
+                    else
+                    {
+                        string copy = NewTemp(selfCt[..^1]);
+                        Emit($"{copy} = {Cast(self, selfCt[..^1])};");
+                        args[0] = $"&{copy}";
+                    }
+                }
+                EmitCallResult(helper, $"{DirectCallSym(helper)}({string.Join(", ", args)})");
+                return true;
+            }
+
             // Primitive ToString: the receiver is a managed pointer (ldloca)
             // or the value itself.
             case ("System.Int32", "ToString") when sig.ParameterTypes.Length == 0:
@@ -1436,6 +1472,22 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t",
                     $"dn2cpp_search_values_index_of_any_str((const char16_t*){span}.f__reference, "
                     + $"{span}.f__length, {Cast(recv, "Dn2CppSearchValues*")})");
+                return true;
+            }
+            // SearchValues<byte|char>'s own span scans, which CoreLib calls on a
+            // cached set without going through MemoryExtensions.
+            case ("System.Buffers.SearchValues", "IndexOfAny" or "IndexOfAnyExcept" or "LastIndexOfAny"
+                    or "LastIndexOfAnyExcept" or "ContainsAny" or "ContainsAnyExcept")
+                when sig.Header.IsInstance
+                    && sig.ParameterTypes is [{ Kind: TypeKind.Class, Class: { } scanSpanCls }]
+                    && Comp.GenericDefFullName(scanSpanCls) == "System.ReadOnlySpan":
+            {
+                var scanElem = scanSpanCls.Context.TypeArgs is [{ } e1] ? e1 : null;
+                string scanSuffix = SearchValuesSuffix(scanElem)
+                    ?? throw new NotSupportedException(
+                        $"SearchValues<{scanElem}>.{name}: only byte/char element types are supported");
+                string scanSpan = SpanValue(Pop(), CppTypes.Of(sig.ParameterTypes[0]));
+                PushSearchValuesScan(name, scanSuffix, scanSpan, Cast(Pop(), "Dn2CppSearchValues*"));
                 return true;
             }
             // NumberFormatInfo property setters (object-initializer / fluent set).

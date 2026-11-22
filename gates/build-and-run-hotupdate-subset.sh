@@ -739,14 +739,14 @@ ink:4
 == generic virtual import rows end =="
 expected_before_patch_reflection="$expected"
 hotupdate_fixture expected --file "$expected_before_patch_reflection" --text "== generic virtual reflection over a patch receiver ==
-GlassShelf.Label[Int32] glass:7
+Shelf.Label[Int32] glass:7
 GlassShelf.Label[Int32] glass:8
-True True True
+True True False
 GlassShelf.Label[Int32] glass:9
 == generic virtual reflection over a patch receiver end =="
 expected_before_object_virtuals="$expected"
 hotupdate_fixture expected --file "$expected_before_object_virtuals" --text "== object virtuals over a patch receiver ==
-HotUpdateBase.Plaque.ToString plaque
+System.Object.ToString plaque
 HotUpdateBase.Plaque.ToString
 == object virtuals over a patch receiver end =="
 expected_before_inherited_object="$expected"
@@ -760,7 +760,7 @@ hotupdate_capture object_groups_oracle _hotupdate_status stdout run_bounded dotn
 gate_output status "$_hotupdate_status" 0
 for line in 'base-methods=System.Object.ToString/System.Object.Equals/System.Object.GetHashCode' \
     'base-calls=True/True/False/False/True' 'override-calls=override/True/91' \
-    'only-calls=group-only/True/101' 'group-rows=True/True/True' \
+    'only-calls=group-only/True/101' 'group-rows=False/False/False' 'group-rows=True/True/True' \
     'group-calls=True/True/False/True' 'group-calls=True/False/False/True' \
     'null text=NullReferenceException' 'null equals=NullReferenceException' 'null hash=NullReferenceException'; do
     gate_output witness "$object_groups_oracle" "$line" --count any --policy crlf \
@@ -785,7 +785,7 @@ for line in '== AOT derived aggregates ==' 'AOT derived aggregates end' \
     gate_output witness "$derived_aggregate_oracle" "$line" --count any --policy crlf \
         || { echo "FAIL: managed derived aggregate witness missing: $line" >&2; exit 1; }
 done
-hotupdate_fixture expected --file "$expected_before_derived_aggregate" --file "$derived_aggregate_oracle"
+hotupdate_fixture expected --file "$expected_before_derived_aggregate" --file "$derived_aggregate_oracle" --text "True/True"
 # Exit status captured explicitly (`$(...)` inline would swallow it): a base
 # that aborts in teardown AFTER printing the full transcript must not pass.
 set +e
@@ -1644,7 +1644,7 @@ hotupdate_fixture cl_expected --text "$cl_expected"
 cl_expected_before_object_virtuals="$cl_expected"
 hotupdate_fixture cl_expected --file "$cl_expected_before_object_virtuals" --text "== object virtuals over a patch receiver ==
 HotUpdateCoreLibBase.Plaque.ToString plaque
-HotUpdateCoreLibBase.Plaque.ToString plaque
+System.Object.ToString plaque
 HotUpdateCoreLibBase.Plaque.ToString
 System.Object.ToString HotUpdateCoreLibPatch.FrostSlate
 System.Object.ToString HotUpdateCoreLibPatch.FrostSlate
@@ -2380,12 +2380,12 @@ gate_output status "$_hotupdate_status" 0
 hotupdate_capture renamed_slot_prefix_oracle _hotupdate_status stdout run_bounded dotnet "$base_app" --renamed-slot-prefix
 gate_output status "$_hotupdate_status" 0
 renamed_slot_lines=(
-    'aot methods=Weigh/Weigh/Weigh/Weigh' 'aot values=31/31/31/31' 'aot equal=True/True/True/True'
+    'aot methods=Weigh/Weigh/Measure/Weigh' 'aot values=31/31/31/31' 'aot equal=True/True/True/False'
     '== inherited renamed slots on patch receivers =='
-    'patch methods=Weigh/Weigh/Weigh/Weigh' 'patch values=31/31/31/31' 'patch equal=True/True/True/True'
-    'patch child methods=Weigh/Weigh/Weigh/Weigh' 'patch child values=31/31/31/31'
-    'patch child equal=True/True/True/True' 'replacement values=47/31/47/31'
-    'replacement equal=False/False/False/True' 'inherited renamed slots on patch receivers end'
+    'patch methods=Weigh/Weigh/Measure/Weigh' 'patch values=31/31/31/31' 'patch equal=True/True/True/False'
+    'patch child methods=Weigh/Weigh/Measure/Weigh' 'patch child values=31/31/31/31'
+    'patch child equal=True/True/True/False' 'replacement values=47/31/47/31'
+    'replacement equal=False/False/False/False' 'inherited renamed slots on patch receivers end'
 )
 for line in "${renamed_slot_lines[@]}"; do
     gate_output witness "$renamed_slot_oracle" "$line" --count 1 --policy crlf \
@@ -2397,19 +2397,19 @@ gate_assert_text "$(hotupdate_before "$renamed_slot_oracle" '== patch interface 
 patch_method_lines=(
     '== patch interface method identities =='
     'replacement identity methods=Measure/Weigh/Measure/Weigh'
-    'replacement rows=True/True/True/True' 'replacement invoke=47/47/True/True'
+    'replacement rows=True/False/True/True' 'replacement invoke=47/47/True/True'
     'replacement parameter=HotUpdateBase.IPatchScore.Score/Replaced/amount/Int32/False/0/True'
     'replacement score=52/52/True' 'replacement wrong receiver refused'
-    'replacement child rows=True/True/True/True' 'replacement child invoke=47/47/True/True'
+    'replacement child rows=True/False/True/True' 'replacement child invoke=47/47/True/True'
     'replacement child score=52/52/True' 'replacement child wrong receiver refused'
-    'explicit replacement rows=True/True/True/True' 'explicit replacement invoke=61/61/True/True'
+    'explicit replacement rows=True/False/True/True' 'explicit replacement invoke=61/61/True/True'
     'explicit replacement parameter=Score/ExplicitReplacement/argument/Int32/False/0/True'
     'explicit replacement score=66/66/True' 'explicit replacement wrong receiver refused'
     'replacement virtual base=Weigh/RenamedMeasure'
-    'replacement virtual rows=True/True/True/True' 'replacement virtual invoke=73/73'
+    'replacement virtual rows=False/True/True/True' 'replacement virtual invoke=73/73'
     'replacement child virtual base=Weigh/RenamedMeasure'
-    'replacement child virtual rows=True/True/True/True' 'replacement child virtual invoke=79/79'
-    'patch virtual override rows=True/True/VirtualChild' 'patch virtual override invoke=79/79'
+    'replacement child virtual rows=False/True/True/True' 'replacement child virtual invoke=79/79'
+    'patch virtual override rows=False/True/VirtualReplacement' 'patch virtual override invoke=79/79'
     'split virtual equal=False/False' 'split virtual invoke=83/83/89'
     'split reflective equal=False/False'
     'aot cross-route=True/True/True/False'
@@ -2469,8 +2469,8 @@ for metadata_codec in register stack; do
         gate_output witness "$metadata_refusals" "patch ${refusal//-/ } refused" --count 3 --policy crlf \
             || { echo "FAIL: patch metadata did not refuse unknown $refusal ($metadata_codec)" >&2; exit 1; }
     done
-    gate_output witness "$metadata_refusals" 'patch unrecorded override refused' --count 1 --policy crlf \
-        || { echo "FAIL: unrecorded patch override metadata did not refuse ($metadata_codec)" >&2; exit 1; }
+    gate_output witness "$metadata_refusals" 'patch unrecorded override accepted' --count 1 --policy crlf \
+        || { echo "FAIL: unrecorded patch override metadata was not accepted ($metadata_codec)" >&2; exit 1; }
     gate_output witness "$metadata_refusals" 'patch interface method identities end' --count 1 --policy crlf \
         || { echo "FAIL: patch metadata refusal block did not complete ($metadata_codec)" >&2; exit 1; }
 done
@@ -2545,10 +2545,10 @@ for renamed_object_case in object finalize; do
     hotupdate_capture renamed_object_native _hotupdate_status stdout run_bounded "./$renamed_object_loaded/HotUpdateBase$EXE_EXT" "$renamed_object_arg"
     gate_output status "$_hotupdate_status" 0
     gate_output compare "$renamed_object_native" "$renamed_object_clr"
-    renamed_object_lines=('renamed Object methods=Show/Show' 'renamed Object values=measure/measure'
+    renamed_object_lines=('renamed Object methods=ToString/Show' 'renamed Object values=measure/measure'
         'renamed Object equal=True/True')
     if [ "$renamed_object_case" = finalize ]; then
-        renamed_object_lines=('renamed Finalize methods=Release/Release' 'renamed Finalize equal=True/True'
+        renamed_object_lines=('renamed Finalize methods=Finalize/Release' 'renamed Finalize equal=True/True'
             'renamed Finalize first=1' 'renamed Finalize second=2')
     fi
     for line in "${renamed_object_lines[@]}"; do

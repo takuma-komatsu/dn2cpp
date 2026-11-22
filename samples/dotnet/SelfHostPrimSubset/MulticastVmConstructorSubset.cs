@@ -13,14 +13,14 @@ internal static class Program
 
     private static MethodInfo[] Methods() => new[]
     {
-        typeof(MulticastDelegate).GetMethod("CtorClosed", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null, new[] { typeof(object), typeof(IntPtr) }, null),
-        typeof(MulticastDelegate).GetMethod("CtorClosedStatic", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null, new[] { typeof(object), typeof(IntPtr) }, null),
-        typeof(MulticastDelegate).GetMethod("CtorRTClosed", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null, new[] { typeof(object), typeof(IntPtr) }, null),
-        typeof(MulticastDelegate).GetMethod("CtorOpened", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null, new[] { typeof(object), typeof(IntPtr), typeof(IntPtr) }, null),
-        typeof(MulticastDelegate).GetMethod("CtorVirtualDispatch", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null, new[] { typeof(object), typeof(IntPtr), typeof(IntPtr) }, null),
-        typeof(MulticastDelegate).GetMethod("CtorCollectibleClosedStatic", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null, new[] { typeof(object), typeof(IntPtr), typeof(IntPtr) }, null),
-        typeof(MulticastDelegate).GetMethod("CtorCollectibleOpened", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null, new[] { typeof(object), typeof(IntPtr), typeof(IntPtr), typeof(IntPtr) }, null),
-        typeof(MulticastDelegate).GetMethod("CtorCollectibleVirtualDispatch", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null, new[] { typeof(object), typeof(IntPtr), typeof(IntPtr), typeof(IntPtr) }, null),
+        typeof(Delegate).GetMethod("CtorClosed", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null, new[] { typeof(object), typeof(IntPtr) }, null),
+        typeof(Delegate).GetMethod("CtorClosedStatic", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null, new[] { typeof(object), typeof(IntPtr) }, null),
+        typeof(Delegate).GetMethod("CtorRTClosed", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null, new[] { typeof(object), typeof(IntPtr) }, null),
+        typeof(Delegate).GetMethod("CtorOpen", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null, new[] { typeof(object), typeof(IntPtr), typeof(IntPtr) }, null),
+        typeof(Delegate).GetMethod("CtorVirtualDispatch", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null, new[] { typeof(object), typeof(IntPtr), typeof(IntPtr) }, null),
+        typeof(Delegate).GetMethod("CtorCollectibleClosedStatic", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null, new[] { typeof(object), typeof(IntPtr), typeof(IntPtr) }, null),
+        typeof(Delegate).GetMethod("CtorCollectibleOpen", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null, new[] { typeof(object), typeof(IntPtr), typeof(IntPtr), typeof(IntPtr) }, null),
+        typeof(Delegate).GetMethod("CtorCollectibleVirtualDispatch", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null, new[] { typeof(object), typeof(IntPtr), typeof(IntPtr), typeof(IntPtr) }, null),
     };
 
     internal static void Run()
