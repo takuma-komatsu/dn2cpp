@@ -29,6 +29,7 @@ AGENTS.md、CONTRIBUTING.md、[README.md](../README.md)、
 
 依頼から問題、範囲、受け入れ条件、検証方法を確認する。対象 Issue があれば
 本文と関連する Issue・PR を読み、不足する情報を対象 Issue に追記する。
+`status:in-progress` が付いていない Issue を選び、着手時にこのラベルを付け、完了時または担当を離れるときに外す。
 Issue がない明確な変更依頼は、その範囲で進めてよい。変更依頼では方針の
 提示だけで止まらず実装へ進む。
 
