@@ -765,6 +765,10 @@ internal sealed partial class MethodCompiler
             return $"dn2cpp_format_r8((double)({val.Expr}), {formatExpr})";
         if (t.Kind == TypeKind.Primitive && IntegralHoleInfo(t.Primitive) is (int byteWidth, bool isSigned))
         {
+            // A canonical integer can stand for an enum; its layout does not
+            // preserve the enum's names or formatting rules.
+            TaintIfCanonical(t, "enum-interpolation");
+
             // Format by the hole's declared CLR type so signedness and hex
             // width match .NET (a `uint` is not a negative `int`; a `short`
             // -1 is "FFFF", not "FFFFFFFF"). A native-int hole (byteWidth

@@ -25,10 +25,12 @@
 # Decimal standard fixed formats round exact digits; explicit G precision rounds
 # significant digits without changing the unqualified exact layout.
 # MemoryExtensions.TryWrite formats an interpolated integer hole into a span.
+# Generic interpolation preserves enum names at each integer width.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|comma-scaling-prefix:before-comma-scaling|custom-matrix-prefix:before-custom-matrix"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|standard-nul-prefix:before-standard-nul"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|standard-decimal-prefix:before-standard-decimal"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|generic-enum-prefix:before-generic-enum"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line long_sign
@@ -153,6 +155,16 @@ gate_extra_asserts() {
         echo "FAIL: long decimal exponent sign witness missing" >&2; exit 1; }
     gate_output byte-witness "$out/assert-native-1.stdout" 'span trywrite int=True 2 42' --count 1 --policy crlf || {
         echo "FAIL: span TryWrite interpolation witness missing" >&2; exit 1; }
+
+    gate_capture_ok "$out/generic-enum-before-oracle" run_bounded dotnet "$_CG_APP" before-generic-enum
+    gate_capture_ok "$out/generic-enum-before-native" run_bounded "./$out/StringInterp" before-generic-enum
+    gate_output select "$out/native.stdout" "$out/generic-enum-prefix.stdout" \
+        --before '== Generic enum interpolation ==' --policy crlf
+    gate_output compare "$out/generic-enum-prefix.stdout" "$out/generic-enum-before-oracle.stdout"
+    gate_output compare "$out/generic-enum-prefix.stdout" "$out/generic-enum-before-native.stdout"
+    gate_output byte-witness "$out/native.stdout" '== Generic enum interpolation ==' \
+        '1 byte=Signed|A|0' '2 bytes=Short|UShort' '4 bytes=Int|UInt|0' \
+        '8 bytes=Long|ULong' --count 1 --policy crlf
 }
 
 corelib_diff_gate StringInterp

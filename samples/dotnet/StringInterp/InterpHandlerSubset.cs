@@ -53,6 +53,26 @@ class Program
         Console.WriteLine("span trywrite int=" + ok + " " + written + " " + span.Slice(0, written).ToString());
     }
 
+    internal static void __SharedEnumInterpolationGate()
+    {
+        Console.WriteLine("== Generic enum interpolation ==");
+        Console.WriteLine($"1 byte={Try(() => I8.Signed)}|{Try(() => U8.A)}|{Try(() => (byte)0)}");
+        Console.WriteLine($"2 bytes={Try(() => I16.Short)}|{Try(() => U16.UShort)}");
+        Console.WriteLine($"4 bytes={Try(() => I32.Int)}|{Try(() => U32.UInt)}|{Try(() => 0u)}");
+        Console.WriteLine($"8 bytes={Try(() => I64.Long)}|{Try(() => U64.ULong)}");
+    }
+
+    private static string Try<T>(Func<T> f) => $"{f()}";
+
+    private enum I8 : sbyte { Signed = sbyte.MinValue }
+    private enum U8 : byte { A }
+    private enum I16 : short { Short = short.MinValue }
+    private enum U16 : ushort { UShort = ushort.MaxValue }
+    private enum I32 : int { Int = int.MinValue }
+    private enum U32 : uint { UInt = uint.MaxValue }
+    private enum I64 : long { Long = long.MinValue }
+    private enum U64 : ulong { ULong = ulong.MaxValue }
+
     // The handler's five NON-GENERIC AppendFormatted overloads: the C# compiler picks
     // one by the hole's static type, and the ReadOnlySpan<char> and object ones are
     // exercised here. This bucket's snapshot is frozen because other sections diverge
