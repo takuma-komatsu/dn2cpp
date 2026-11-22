@@ -355,6 +355,17 @@ static partial class StrippingLevelValidation
         Method(unused, "MustStayAbsent", lm.ImportReference(voidType));
         var metadata = Type("MetadataOnly");
         Method(metadata, "MustStayAbsent", lm.ImportReference(voidType));
+        var lowOnly = new TypeDefinition("MediumFixture", "LowInputOnly", TypeAttributes.NotPublic | TypeAttributes.Class,
+            am.ImportReference(obj));
+        am.Types.Add(lowOnly);
+        var lowMarker = Method(lowOnly, "Marker", am.TypeSystem.Int32);
+        lowMarker.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Ldc_I4, 7423));
+        Method(lowOnly, ".cctor", am.ImportReference(voidType));
+        var lowOpen = new TypeDefinition("MediumFixture", "LowInputOpen`1", TypeAttributes.NotPublic | TypeAttributes.Class,
+            am.ImportReference(obj));
+        am.Types.Add(lowOpen);
+        lowOpen.GenericParameters.Add(new GenericParameter("T", lowOpen));
+        Method(lowOpen, "OpenMarker", am.ImportReference(voidType));
         var program = new TypeDefinition("MediumFixture", "Program", TypeAttributes.Public | TypeAttributes.Class,
             am.ImportReference(obj));
         am.Types.Add(program);

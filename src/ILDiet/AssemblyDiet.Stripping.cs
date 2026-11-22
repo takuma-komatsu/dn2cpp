@@ -13,7 +13,7 @@ internal sealed partial class AssemblyDiet
 
     private void NoteMediumType(TypeReference? reference)
     {
-        if (_request.StrippingLevel != StrippingLevel.Medium || reference is null
+        if (!_request.StrippingLevel.UsesTypeWideRetention() || reference is null
             || !_mediumReferences.Add(reference)) return;
         CheckMutable();
         Spend();
@@ -82,7 +82,7 @@ internal sealed partial class AssemblyDiet
 
     private void NoteMediumMethod(MethodReference method)
     {
-        if (_request.StrippingLevel != StrippingLevel.Medium) return;
+        if (!_request.StrippingLevel.UsesTypeWideRetention()) return;
         var previous = _mediumSource;
         _mediumSource ??= method;
         try
@@ -210,7 +210,7 @@ internal sealed partial class AssemblyDiet
                 chain.Add(origin.Source.FullName);
             current = origin.Parent;
         }
-        return " [Medium type retention: " + string.Join(" <- ", chain) + "]";
+        return " [" + _request.StrippingLevel + " type retention: " + string.Join(" <- ", chain) + "]";
     }
 
     private void NoteMediumParameter(GenericParameter parameter)

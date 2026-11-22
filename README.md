@@ -185,15 +185,23 @@ unverified inputs, keep Medium's type-wide policy. Known closed generic types re
 their members; an open definition does not generate arbitrary specializations.
 Types or generic arguments known only at runtime still need explicit roots or
 preservation. Medium composes with `link.xml`, `[Preserve]`, reflection roots and
-Godot asset roots. `--reflection-root` remains metadata-only at either level;
-an independent static or executable preservation edge is required to retain its
+Godot asset roots. `--reflection-root` itself retains only metadata, not
 bodies. Medium retention schedules no initializer at startup: a retained
 initializer runs at its first use, as under High. Type-wide retention can reach
 unsupported APIs or substantially increase generated code; it does not broaden
 the supported runtime API surface.
 
-With `--dotnet-module`, ILDiet also removes unused GodotSharp wrappers and unused
-user types derived from `GodotObject`, including their unused generated helpers.
+`--stripping-level low` also roots every declared type in the primary input
+assembly, including types without a static use. Dependencies still follow
+Medium's rules, including member-level retention for verified BCL assemblies.
+Open generic definitions retain their identity without generating arbitrary
+closed specializations. Low does not run retained initializers early and works
+with or without ILDiet. It is a CLI option, not an editor export preset.
+
+With `--dotnet-module`, ILDiet can remove unused GodotSharp wrappers under
+every level's reference rules. High and Medium can also remove unused
+`GodotObject`-derived user types and their generated helpers. Low roots those
+declarations in the primary input assembly instead.
 Handwritten nested .NET types retain ILDiet's usual public-member and
 static-constructor roots, even when retaining one also keeps its enclosing script.
 It keeps engine initialization and callback entry points, and keeps the own

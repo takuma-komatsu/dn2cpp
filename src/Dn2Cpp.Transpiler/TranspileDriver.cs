@@ -123,9 +123,9 @@ public static class TranspileDriver
             Console.Error.WriteLine("error: MaxDegreeOfParallelism must be zero or a positive integer");
             return 1;
         }
-        if (options.StrippingLevel != StrippingLevel.High && options.StrippingLevel != StrippingLevel.Medium)
+        if (options.StrippingLevel != StrippingLevel.High && !options.StrippingLevel.UsesTypeWideRetention())
         {
-            Console.Error.WriteLine("error: StrippingLevel must be High or Medium");
+            Console.Error.WriteLine("error: StrippingLevel must be High, Medium or Low");
             return 1;
         }
         if (options.FloatingPointMode != FloatingPointMode.Strict && options.FloatingPointMode != FloatingPointMode.Precise)

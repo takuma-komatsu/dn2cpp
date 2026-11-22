@@ -530,7 +530,7 @@ internal sealed partial class Compilation
     {
         _backend = options.Backend;
         _strippingLevel = options.StrippingLevel;
-        if (_strippingLevel is not (StrippingLevel.High or StrippingLevel.Medium))
+        if (_strippingLevel != StrippingLevel.High && !_strippingLevel.UsesTypeWideRetention())
             throw new NotSupportedException("Unknown stripping level: " + _strippingLevel);
         StopBeforeReachability = options.IsaSurfaceDump is not null;
         // Must be set before Build(): the reachability drain computes the
@@ -5227,6 +5227,7 @@ internal sealed partial class Compilation
         _toScan = new Queue<MethodInfo>();
 
         SeedPreservedMembers();
+        SeedLowInputTypes();
 
         // The roots: the entry point, the members preservation keeps, a hot-update base's
         // export contract, module initializers, native entry points and what the backend

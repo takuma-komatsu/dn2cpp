@@ -288,7 +288,7 @@ internal sealed partial class AssemblyDiet
         {
             var request = new LinkNode { Name = "ildiet" };
             request.Attributes.Add("copyAll", _request.CopyAll ? "true" : "false");
-            request.Attributes.Add("strippingLevel", _request.StrippingLevel == StrippingLevel.Medium ? "medium" : "high");
+            request.Attributes.Add("strippingLevel", _request.StrippingLevel.OptionName());
             foreach (string feature in _request.Features)
             {
                 var child = new LinkNode { Name = "feature" };
