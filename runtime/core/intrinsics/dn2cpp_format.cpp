@@ -161,11 +161,20 @@ static Dn2CppString* dn2cpp_decimal_padded(unsigned long long mag, bool neg, int
 static Dn2CppString* dn2cpp_hex(uint64_t v, int32_t byteWidth, bool upper, int prec)
 {
     uint64_t mask = byteWidth >= 8 ? ~0ULL : ((1ULL << (8 * byteWidth)) - 1);
-    char buf[20];
-    const char* spec = upper ? "%.*llX" : "%.*llx";
-    int len = std::snprintf(buf, sizeof(buf), spec,
-        prec <= 0 ? 1 : prec, static_cast<unsigned long long>(v & mask));
-    return dn2cpp_string_from_ascii(buf, len);
+    v &= mask;
+    int digits = 1;
+    for (uint64_t remaining = v >> 4; remaining != 0; remaining >>= 4)
+        digits++;
+    int len = prec > digits ? prec : digits;
+    char16_t* dst;
+    Dn2CppString* s = dn2cpp_string_alloc(&dst, len);
+    const char16_t* alphabet = upper ? u"0123456789ABCDEF" : u"0123456789abcdef";
+    for (int i = len; i > 0; i--)
+    {
+        dst[i - 1] = alphabet[v & 0xF];
+        v >>= 4;
+    }
+    return s;
 }
 
 // Binary (.NET 8+ "B"/"b") of an integer's two's-complement bit pattern, sized to
