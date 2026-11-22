@@ -1112,12 +1112,9 @@ internal sealed partial class MethodCompiler : IEvalStack
         // forward declaration. Unused external functions don't warn, so no [[maybe_unused]].
         sb.AppendLine(signature);
         sb.AppendLine("{");
-        // An [UnmanagedCallersOnly] method can be invoked from a thread the
-        // collector has never seen (a native host's own thread pool); the prologue
-        // — inert unless the host enables it — registers the thread before any
-        // allocation or stack scan the body can trigger.
+        // Native code can call the method address directly, bypassing any named export.
         if (_method.IsUnmanagedCallersOnly)
-            sb.AppendLine("    dn2cpp_native_callback_prologue();");
+            sb.AppendLine("    auto __entryScope = dn2cpp_enter_native_callback();");
         if (entryGuard is not null)
             sb.AppendLine($"    {entryGuard}();");
         // The shadow frame brackets the body and its synchronized exit.

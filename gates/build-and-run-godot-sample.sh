@@ -134,8 +134,8 @@ grep -q "construct StringName leak" <<<"$SCRIPT_OUT" \
 # Engine worker thread calling managed code: WorkerThreadPool runs the callable
 # on an engine-spawned thread; the entry bridge must GC-register it first. A
 # missing registration crashes the process before this marker prints.
-grep -q "engine worker thread managed call = Hello, worker" <<<"$SCRIPT_OUT" \
-    || { echo "FAIL: engine worker-thread managed call (GC thread registration)" >&2; exit 1; }
+grep -Fq "GDScript: engine worker thread managed call = Hello, worker — from C# transpiled to C++!" <<<"$SCRIPT_OUT" \
+    || { echo "FAIL: the engine worker's task did not deliver the GC-protected greeting" >&2; exit 1; }
 # Signal argument carrying a non-Node engine object (RefCounted-derived
 # registered class): the emit-side conversion must yield an Object Variant.
 grep -q "signal Object argument round-trips as a live object" <<<"$SCRIPT_OUT" \

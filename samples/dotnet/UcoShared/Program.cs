@@ -5,6 +5,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace UcoShared;
 
@@ -31,6 +32,7 @@ internal static unsafe class Exports
 
     private const int WaitAnyRegistryReadinessPasses = 256;
     private static readonly Unary s_identity = Identity;
+    private static readonly Unary s_waitForCallback = WaitForCallbackResultCore;
     private static readonly ManualResetEvent s_waitAnySignaled = new(true);
     private static readonly ManualResetEvent s_waitAnyBlocked = new(false);
     private static int s_waitAnyRegistryPasses;
@@ -81,6 +83,41 @@ internal static unsafe class Exports
     private static int TaskRunSum(int a, int b)
     {
         return System.Threading.Tasks.Task.Run(() => a + b).Result;
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "uco_wait_for_callback_result")]
+    private static int WaitForCallbackResult(int complete) => WaitForCallbackResultCore(complete);
+
+    [UnmanagedCallersOnly(EntryPoint = "uco_get_wait_thunk")]
+    private static IntPtr GetWaitThunk() => Marshal.GetFunctionPointerForDelegate(s_waitForCallback);
+
+    private static int WaitForCallbackResultCore(int complete)
+    {
+        var source = new TaskCompletionSource<int>();
+        using var started = new ManualResetEventSlim();
+        int result = 0;
+        var worker = new Thread(() =>
+        {
+            started.Set();
+            try
+            {
+                result = source.Task.Result;
+            }
+            catch (InvalidOperationException)
+            {
+                result = -1;
+            }
+        });
+        worker.Start();
+        started.Wait();
+        if (complete != 0)
+        {
+            // The callback can still supply the result after this join times out.
+            worker.Join(200);
+            source.SetResult(7);
+        }
+        worker.Join();
+        return result;
     }
 
     // The host deliberately returns without stopping this program-owned worker.

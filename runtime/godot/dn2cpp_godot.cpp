@@ -513,6 +513,7 @@ namespace
                      GDExtensionVariantPtr r_return, GDExtensionCallError* r_error)
     {
         EnsureGcThreadRegistered();
+        Dn2CppTaskEntryScope entry;
         const auto* m = static_cast<const Dn2CppGodotMethod*>(method_userdata);
         if (p_argument_count != m->argCount)
         {
@@ -725,6 +726,7 @@ namespace
                         const GDExtensionConstTypePtr* p_args, GDExtensionTypePtr r_ret)
     {
         EnsureGcThreadRegistered();
+        Dn2CppTaskEntryScope entry;
         const auto* m = static_cast<const Dn2CppGodotMethod*>(method_userdata);
         Dn2CppValue args[8] = {};
         for (int i = 0; i < m->argCount; i++)
@@ -903,6 +905,7 @@ namespace
     GDExtensionObjectPtr NodeCreateInstance(void* class_userdata, GDExtensionBool /*notify_postinitialize*/)
     {
         EnsureGcThreadRegistered();
+        Dn2CppTaskEntryScope entry;
         const auto* nc = static_cast<const Dn2CppGodotNodeClass*>(class_userdata);
         // ClassDB-driven construction (GDScript's .new(), scene/resource
         // deserialization, the editor, ...) is always pinned regardless of
@@ -964,6 +967,7 @@ namespace
                                  void* p_userdata, const GDExtensionConstTypePtr* p_args, GDExtensionTypePtr r_ret)
     {
         EnsureGcThreadRegistered();
+        Dn2CppTaskEntryScope entry;
         const auto* v = static_cast<const Dn2CppGodotVirtual*>(p_userdata);
         auto* self = static_cast<Dn2CppObject*>(p_instance);
         try
@@ -1060,6 +1064,7 @@ namespace
         const Dn2CppGodotNodeClass* nc = NodeClassForType(self->type);
         if (nc == nullptr || nc->notification == nullptr)
             return;
+        Dn2CppTaskEntryScope entry;
         try
         {
             nc->notification(self, p_what);
@@ -1307,6 +1312,7 @@ namespace
         // build that never loads a patch — the hook variable lives in the core
         // runtime, not the interpreter TU).
         dn2cpp_interp_set_alloc_hook(&InterpPatchAlloc);
+        Dn2CppTaskEntryScope entry;
         dn2cpp_godot_init_managed();
 
         // Size the registry once from the counts the emitter stamped into the
@@ -1397,6 +1403,7 @@ namespace
     void MainLoopFrame()
     {
         EnsureGcThreadRegistered();
+        Dn2CppTaskEntryScope entry;
         // Frame-pump the main thread's cooperative scheduler: nothing on the
         // engine's main thread ever reaches the blocking drain, so without
         // this a continuation posted cross-thread (await Task.Run) or a
@@ -1432,6 +1439,7 @@ namespace
         // freed by the first round's finalizers cascade into the second.
         // Deinit runs on the engine's main thread, matching the manual
         // finalizer-drain affinity chosen at init.
+        Dn2CppTaskEntryScope entry;
         for (int round = 0; round < 2; round++)
         {
             dn2cpp_godot_sweep_anchored_refcounted();
@@ -2287,6 +2295,7 @@ namespace
     {
         (void)r_return;
         EnsureGcThreadRegistered();
+        Dn2CppTaskEntryScope entry;
         int32_t n = argc > 0 ? static_cast<int32_t>(argc) : 0;
         Dn2CppArrayN* arr = dn2cpp_newarr_n(n, (int32_t)sizeof(Dn2CppGodotVariant));
         auto* dst = reinterpret_cast<Dn2CppGodotVariant*>(arr->data);

@@ -815,16 +815,6 @@ static std::atomic<int> g_parked_entries{0};
 static std::atomic<int> g_entry_pollers{0};
 static uint64_t g_entry_poll_generation;
 
-Dn2CppTaskEntryScope::Dn2CppTaskEntryScope()
-{
-    if (t_entry != nullptr)
-        return;
-    std::lock_guard<std::mutex> lock(g_entry_mtx);
-    next = g_entries;
-    g_entries = this;
-    t_entry = this;
-}
-
 Dn2CppTaskEntryScope::~Dn2CppTaskEntryScope()
 {
     if (t_entry != this)
@@ -837,7 +827,8 @@ Dn2CppTaskEntryScope::~Dn2CppTaskEntryScope()
         *entry = next;
         t_entry = nullptr;
     }
-    dn2cpp_sched_wake_all(t_sched_ptr);
+    if (observed)
+        dn2cpp_sched_wake_all(t_sched_ptr);
 }
 
 bool dn2cpp_on_entry_thread()
@@ -1005,10 +996,19 @@ static std::atomic<int> g_live_timer_threads{0};
 // count — the one the discount removes.
 static thread_local bool t_on_timer_thread = false;
 
-// True when some principal other than this thread could still settle a pending task:
-// pool work in flight (global items and worker-local resumptions/timers alike), another
-// live user thread, or an armed timer (a runtime timer thread with a fire pending or a
-// TimerCallback in flight).
+Dn2CppTaskEntryScope::Dn2CppTaskEntryScope()
+{
+    // Native reentry on a managed caller keeps the caller's existing principal.
+    if (t_entry != nullptr || t_on_user_thread || t_on_timer_thread
+        || (t_sched_ptr != nullptr && t_sched_ptr->pool_worker))
+        return;
+    std::lock_guard<std::mutex> lock(g_entry_mtx);
+    next = g_entries;
+    g_entries = this;
+    t_entry = this;
+}
+
+// True when another entry, pool item, user thread or armed timer could settle a task.
 static bool dn2cpp_task_settler_exists()
 {
     // A thread started by the entry can take over before it parks. Conversely,
@@ -1016,7 +1016,12 @@ static bool dn2cpp_task_settler_exists()
     std::lock_guard<std::mutex> lock(g_entry_mtx);
     for (auto* entry = g_entries; entry != nullptr; entry = entry->next)
         if (entry != t_entry && entry->waitingOn == nullptr)
+        {
+            // Removal takes the same lock. A waiter either sees the departure
+            // or marks the entry that must wake it when the callback returns.
+            entry->observed = true;
             return true;
+        }
     if (g_inflight_async_tasks.load(std::memory_order_acquire) != 0)
         return true;
     int live = g_live_user_threads.load(std::memory_order_acquire);

@@ -1,4 +1,6 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace GodotSample
 {
@@ -741,7 +743,29 @@ namespace GodotSample
                 if (filler.Length == 0)
                     Godot.GD.Print("unreachable");
             }
-            return s;
+
+            var source = new TaskCompletionSource<string>();
+            using var started = new ManualResetEventSlim();
+            string result = "";
+            var worker = new Thread(() =>
+            {
+                started.Set();
+                try
+                {
+                    result = source.Task.Result;
+                }
+                catch (InvalidOperationException)
+                {
+                    result = "Task.Result reported a deadlock inside the engine callback";
+                }
+            });
+            worker.Start();
+            started.Wait();
+            // Give the managed thread time to wait while the engine callback can still settle the task.
+            worker.Join(200);
+            source.SetResult(s);
+            worker.Join();
+            return result;
         }
 
     }
