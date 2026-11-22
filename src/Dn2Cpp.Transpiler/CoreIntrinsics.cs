@@ -849,6 +849,7 @@ internal static partial class CoreIntrinsics
         // same program must bind THIS handle — an emitted ti_ would not match a
         // runtime-thrown instance and the catch would silently not fire.
         ["System.DivideByZeroException"] = "&dn2cpp_divide_by_zero_exception_type",
+        ["System.Threading.BarrierPostPhaseException"] = "&dn2cpp_barrier_post_phase_exception_type",
         // ReaderWriterLockSlim's per-thread ownership checks raise these: a recursion-policy
         // violation and a release-without-hold. The .NET docs tell a caller to catch them by
         // type, so the clause must bind the handle the runtime stamps.
@@ -1091,6 +1092,11 @@ internal static partial class CoreIntrinsics
             .Concat(s_runtimeOwnedNestedTypeInfo)
             .Select(kv => (Name: kv.Key, Handle: kv.Value))
             .OrderBy(kv => kv.Name, StringComparer.Ordinal);
+
+    // A runtime handle's seed and any emitted definition share the defining assembly.
+    public static string RuntimeTypeInfoAssemblyName(string name) =>
+        name is "System.Threading.Barrier" or "System.Threading.BarrierPostPhaseException"
+            ? "System.Threading" : "System.Private.CoreLib";
 
     /// <summary>Every runtime type-info handle this file carries a row for, by C++ symbol
     /// (no leading <c>&amp;</c>) — the other half of the same check.</summary>

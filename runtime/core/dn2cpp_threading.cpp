@@ -1507,8 +1507,9 @@ Dn2CppTypeInfo dn2cpp_countdown_type =
     dn2cpp_ti_with_typeobject({ "System.Threading.CountdownEvent", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_countdown_type_obj);
 const Dn2CppType dn2cpp_countdown_type_obj = { { &dn2cpp_type_type }, &dn2cpp_countdown_type };
 extern const Dn2CppType dn2cpp_barrier_type_obj;
+static constexpr auto dn2cpp_barrier_reflection = dn2cpp_native_type_identity("System.Threading");
 Dn2CppTypeInfo dn2cpp_barrier_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.Barrier", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_barrier_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.Barrier", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, &dn2cpp_barrier_reflection }, &dn2cpp_barrier_type_obj);
 const Dn2CppType dn2cpp_barrier_type_obj = { { &dn2cpp_type_type }, &dn2cpp_barrier_type };
 
 struct Dn2CppCountdown : Dn2CppObject
@@ -1706,7 +1707,28 @@ static void dn2cpp_barrier_check_post_caller(Dn2CppBarrier* b)
         dn2cpp_throw_invalid_operation_msg("This method may not be called from within the postPhaseAction.");
 }
 
-static void dn2cpp_barrier_finish_phase(Dn2CppBarrier* b, std::unique_lock<std::mutex>& lock)
+Dn2CppObject* dn2cpp_barrier_post_phase_exception(Dn2CppString* message, Dn2CppObject* inner)
+{
+    if (message == nullptr)
+    {
+        const char* text = dn2cpp_sr_text(DN2CPP_SR_BARRIER_POST_PHASE);
+        if (text == nullptr)
+            text = "The postPhaseAction failed with an exception.";
+        message = dn2cpp_string_from_utf8(text, static_cast<int32_t>(std::strlen(text)));
+    }
+    return dn2cpp_exception_new(&dn2cpp_barrier_post_phase_exception_type, message, inner);
+}
+
+static void dn2cpp_barrier_check_result(std::unique_lock<std::mutex>& lock, Dn2CppObject* exception)
+{
+    if (exception == nullptr)
+        return;
+    // Each participant throws its own wrapper around the same callback exception.
+    lock.unlock();
+    dn2cpp_throw(dn2cpp_barrier_post_phase_exception(nullptr, exception));
+}
+
+static Dn2CppObject* dn2cpp_barrier_finish_phase(Dn2CppBarrier* b, std::unique_lock<std::mutex>& lock)
 {
     // Arrivals are committed before the callback. Getters can observe the next
     // participant counts while the phase number still names this callback.
@@ -1726,7 +1748,7 @@ static void dn2cpp_barrier_finish_phase(Dn2CppBarrier* b, std::unique_lock<std::
         }
     } advance{b, lock};
     if (b->postPhase == nullptr)
-        return;
+        return nullptr;
     b->postCaller = std::this_thread::get_id();
     b->cv.notify_all(); // committed timed arrivals now wait for the callback
     lock.unlock();
@@ -1736,11 +1758,14 @@ static void dn2cpp_barrier_finish_phase(Dn2CppBarrier* b, std::unique_lock<std::
     }
     catch (const Dn2CppException& e)
     {
+        Dn2CppObject* exception = e.obj;
         lock.lock();
         for (auto* waiter = b->postWaiters; waiter != nullptr; waiter = waiter->next)
-            waiter->exception = e.obj;
-        throw;
+            waiter->exception = exception;
+        dn2cpp_exc_inflight_pop(exception);
+        return exception;
     }
+    return nullptr;
 }
 
 // Real .NET's text for Barrier's timeout rejection. It lives in System.Threading's
@@ -1771,12 +1796,10 @@ int32_t dn2cpp_barrier_signal_and_wait_timeout(Dn2CppObject* o, int32_t ms)
     dn2cpp_barrier_check_post_caller(b);
     if (b->postCaller != std::thread::id{})
         dn2cpp_throw_invalid_operation_msg("The number of threads using the barrier exceeded the total number of registered participants.");
-    if (b->waiting + 1 == b->total)
-    {
-        dn2cpp_barrier_finish_phase(b, lk);
-        return 1;
-    }
     Dn2CppObject* exception;
+    if (b->waiting + 1 == b->total)
+        exception = dn2cpp_barrier_finish_phase(b, lk);
+    else
     {
         Dn2CppBarrierArrival arrival(*b, lk);
         if (ms >= 0 && !b->cv.wait_for(lk, std::chrono::milliseconds(ms), [&] {
@@ -1786,11 +1809,7 @@ int32_t dn2cpp_barrier_signal_and_wait_timeout(Dn2CppObject* o, int32_t ms)
         b->cv.wait(lk, [&] { return b->phase != arrival.phase; });
         exception = arrival.exception;
     }
-    if (exception != nullptr)
-    {
-        lk.unlock();
-        dn2cpp_rethrow(exception);
-    }
+    dn2cpp_barrier_check_result(lk, exception);
     return 1;
 }
 
@@ -1825,7 +1844,7 @@ void dn2cpp_barrier_remove(Dn2CppObject* o, int32_t n)
     dn2cpp_barrier_check_post_caller(b);
     b->total -= n;
     if (b->total > 0 && b->waiting >= b->total)
-        dn2cpp_barrier_finish_phase(b, lk);
+        dn2cpp_barrier_check_result(lk, dn2cpp_barrier_finish_phase(b, lk));
 }
 
 int32_t dn2cpp_barrier_participant_count(Dn2CppObject* o)

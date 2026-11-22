@@ -930,6 +930,13 @@ Dn2CppTypeInfo dn2cpp_divide_by_zero_exception_type =
     dn2cpp_ti_with_typeobject({ "System.DivideByZeroException", &dn2cpp_arithmetic_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_divide_by_zero_exception_type_obj);
 const Dn2CppType dn2cpp_divide_by_zero_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_divide_by_zero_exception_type };
 
+extern const Dn2CppType dn2cpp_barrier_post_phase_exception_type_obj;
+static constexpr auto dn2cpp_barrier_post_phase_exception_reflection =
+    dn2cpp_native_type_identity("System.Threading", DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR);
+Dn2CppTypeInfo dn2cpp_barrier_post_phase_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.Threading.BarrierPostPhaseException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, &dn2cpp_barrier_post_phase_exception_reflection }, &dn2cpp_barrier_post_phase_exception_type_obj);
+const Dn2CppType dn2cpp_barrier_post_phase_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_barrier_post_phase_exception_type };
+
 // System.Threading.LockRecursionException — raised by ReaderWriterLockSlim's
 // per-thread ownership checks: a same-thread re-entry the lock's
 // recursion policy forbids throws this instead of deadlocking against itself,

@@ -58,6 +58,7 @@ internal static class BclMessages
         "Arg_TypeNotSupported",
         "ArgumentNull_Array",
         "ArgumentNull_String",
+        "System.Threading:BarrierPostPhaseException",
         "System.Collections.Concurrent:BlockingCollection_Add_ConcurrentCompleteAdd",
         "System.Collections.Concurrent:BlockingCollection_CantTakeWhenDone",
         "System.Collections.Concurrent:BlockingCollection_Completed",

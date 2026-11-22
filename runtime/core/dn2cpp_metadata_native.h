@@ -4,12 +4,17 @@
 #include <array>
 #include <utility>
 
-// These runtime-owned types declare a public default constructor without a row.
-inline constexpr Dn2CppTypeReflection dn2cpp_default_ctor_reflection_rows[] = { [] {
+constexpr Dn2CppTypeReflection dn2cpp_native_type_identity(const char* assemblyName, int32_t activation = 0)
+{
     Dn2CppTypeReflection reflection{};
-    reflection.activation = DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR;
+    reflection.assemblyName = assemblyName;
+    reflection.activation = activation;
     return reflection;
-}() };
+}
+
+// These runtime-owned types declare a public default constructor without a row.
+inline constexpr Dn2CppTypeReflection dn2cpp_default_ctor_reflection_rows[] = {
+    dn2cpp_native_type_identity(nullptr, DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR) };
 inline constexpr Dn2CppMetadataHandle<Dn2CppTypeReflection> dn2cpp_default_ctor_reflection{
     dn2cpp_default_ctor_reflection_rows };
 

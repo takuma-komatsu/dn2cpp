@@ -1933,6 +1933,9 @@ internal sealed partial class MethodCompiler
                 .DecodeMethodSignature(_c.SigProvider, _method.Context).ParameterTypes;
             int rMsgIdx = Compilation.ExceptionMessageArgIndex(reps);
             int rInnerIdx = Compilation.ExceptionInnerArgIndex(reps);
+            bool barrierPostPhase = NewobjTypeName(handle) == "System.Threading.BarrierPostPhaseException";
+            if (barrierPostPhase && reps.Length == 1 && IsExceptionParam(reps[0]))
+                rInnerIdx = 0;
             string rMessage = "nullptr";
             string rInner = "nullptr";
             for (int i = reps.Length - 1; i >= 0; i--)
@@ -1944,7 +1947,10 @@ internal sealed partial class MethodCompiler
                     rInner = Cast(a, "Dn2CppObject*");
             }
             string rex = NewTemp("Dn2CppObject*");
-            Emit($"{rex} = dn2cpp_exception_new({runtimeExTi}, {rMessage}, {rInner});");
+            string allocation = barrierPostPhase
+                ? $"dn2cpp_barrier_post_phase_exception({rMessage}, {rInner})"
+                : $"dn2cpp_exception_new({runtimeExTi}, {rMessage}, {rInner})";
+            Emit($"{rex} = {allocation};");
             _stack.Add(new StackEntry(rex, StackKind.Ref, "Dn2CppObject*",
                 StaticType: TypeDesc.MakeExternal(NewobjTypeName(handle))));
             return;

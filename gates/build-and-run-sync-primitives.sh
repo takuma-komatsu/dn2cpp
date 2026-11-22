@@ -4,7 +4,8 @@
 # IsSet), AutoResetEvent (strict ping-pong, 3 turns each), Monitor condition signaling
 # (Pulse/PulseAll preserve the wait-set identity),
 # CountdownEvent (N workers Signal, main Wait), and Barrier (N threads run P phases,
-# with a post-phase action, including a phase query while the callback waits on a task).
+# with a post-phase action, a phase query while the callback waits on a task, and
+# per-participant exceptions after a failed callback).
 # MethodImplSubset.cs adds MethodImplAttribute:
 # [MethodImpl(Synchronized)] instance/static/recursive/throwing bodies hammered
 # by racing threads, lock(typeof(X)) identity (interned Type objects) and its
@@ -31,6 +32,7 @@ gate_extra_asserts() {
     gate_capture_ok "$out/assert-native-1" run_bounded "./$out/SyncPrimitives"
     native="$out/assert-native-1.stdout"
     gate_output witness "$native" 'barrier callback wait: phase=0 result=7' --policy crlf
+    gate_output witness "$native" 'barrier post failure: inner=True/True distinct=True phase=2 assembly=System.Threading entries=1' --policy crlf
 
     gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-null-receivers
     before="$out/assert-before-2.stdout"
