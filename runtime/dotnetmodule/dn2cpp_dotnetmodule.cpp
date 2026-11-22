@@ -72,6 +72,7 @@ void dn2cpp_dm_set_managed_shutdown_callback(void (*callback)())
 void dn2cpp_dm_shutdown_callback()
 {
     dn2cpp_dotnetmodule_thread_guard();
+    Dn2CppTaskEntryScope entry;
     // Finalizers and tracker initialization allocate. Keep their collections
     // from clearing weak tracker targets after the last finalizer drain.
     Dn2CppGcCollectionPause collectionPause;
@@ -167,6 +168,7 @@ void dn2cpp_dm_frame_callback()
         dn2cpp_dm_trace("frame");
     }
     dn2cpp_dotnetmodule_thread_guard();
+    Dn2CppTaskEntryScope entry;
     if (g_deferred_cctor_pass != nullptr)
     {
         void (*pass)() = g_deferred_cctor_pass;

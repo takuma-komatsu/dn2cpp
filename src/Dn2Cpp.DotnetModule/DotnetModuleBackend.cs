@@ -752,6 +752,7 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         emitter.EmitInitCalls(sb, Array.Empty<MethodInfo>());
         sb.AppendLine("    // The engine calls this on a thread Boehm has not seen; register it.");
         sb.AppendLine("    dn2cpp_dotnetmodule_thread_guard();");
+        sb.AppendLine("    Dn2CppTaskEntryScope __entryScope;");
         sb.AppendLine("    dn2cpp_dm_trace(\"interop received (size=%d)\", (int)interop_funcs_size_bytes);");
         sb.AppendLine("    try {");
         sb.AppendLine("        // Install the engine's interop function table FIRST: static");

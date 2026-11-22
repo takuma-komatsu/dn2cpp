@@ -3118,7 +3118,7 @@ internal sealed partial class CppEmitter
             // on a thread the prologue registered, and what it throws leaves the export as
             // an exception from the body does; the body's own prologue is then a no-op.
             string guard = InitializerGuard(m) is { } ensure
-                ? $"dn2cpp_native_callback_prologue(); {ensure}(); " : "";
+                ? $"auto __entryScope = dn2cpp_enter_native_callback(); {ensure}(); " : "";
             sb.AppendLine($"DN2CPP_UCO_EXPORT {ret} {m.UnmanagedEntryPoint}({string.Join(", ", ps)}) "
                 + (m.Signature.ReturnType.IsVoid ? $"{{ {guard}{call}; }}" : $"{{ {guard}return {call}; }}"));
         }
@@ -7272,7 +7272,7 @@ internal sealed partial class CppEmitter
                 string invokeCall = $"dginvoke_{cls.CppName}({string.Join(", ", callArgs)})";
                 sb.AppendLine($"static {nativeRet} dn2cpp_fnptrtramp_{cls.CppName}_{i}({string.Join(", ", sigParams)})");
                 sb.AppendLine("{");
-                sb.AppendLine("    dn2cpp_native_callback_prologue();");
+                sb.AppendLine("    auto __entryScope = dn2cpp_enter_native_callback();");
                 sb.AppendLine($"    auto* dg = ({cls.CppStructName}*){pool}[{i}];");
                 sb.AppendLine("    try");
                 sb.AppendLine("    {");

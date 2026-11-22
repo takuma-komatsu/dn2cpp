@@ -194,9 +194,19 @@ int main(int argc, char** argv)
     // makes an allocation loop this large safe here.
     int32_t t_alloc = -1;
     int32_t t_mul = -1;
+    auto wait_for_callback_result =
+        (int32_t (*)(int32_t))sym("uco_wait_for_callback_result");
+    auto get_wait_thunk = (intptr_t (*)())sym("uco_get_wait_thunk");
+    int32_t callback_result = 0;
+    int32_t blocked_callback_result = 0;
+    int32_t thunk_result = 0;
     std::thread th([&] {
         t_alloc = uco_alloc_sum(400000);
         t_mul = mul(t_alloc % 1000, 3);
+        auto wait_thunk = (int32_t (*)(int32_t))get_wait_thunk();
+        callback_result = wait_for_callback_result(1);
+        blocked_callback_result = wait_for_callback_result(0);
+        thunk_result = wait_thunk(1);
     });
     th.join();
     check("alloc_thread", t_alloc, alloc_sum_expected(400000));
@@ -224,5 +234,8 @@ int main(int argc, char** argv)
 
     std::puts("driver OK");
     check("delegate_latch", delegate_latch, 1);
+    check("callback_result", callback_result, 7);
+    check("blocked_callback_result", blocked_callback_result, -1);
+    check("thunk_result", thunk_result, 7);
     return 0;
 }

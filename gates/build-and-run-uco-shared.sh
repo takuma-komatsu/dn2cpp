@@ -8,6 +8,9 @@
 #     one-way registration latch still protects later foreign-thread calls,
 #   - calls the exported entry points from the main thread AND from a foreign
 #     std::thread (allocation loop big enough to trigger collections),
+#   - checks that an export and a retained delegate thunk can supply a worker's
+#     task result after a timed join, and that an indefinite join diagnoses the
+#     unsatisfiable wait,
 #   - exercises by-value blittable structs, private-method rooting, and a
 #     non-exported callback's address handed out through an exported one,
 #   - starts the Task.Run worker pool, quiesces it (dn2cpp_runtime_quiesce
@@ -72,7 +75,10 @@ task_run=42
 quiesce OK
 dlclose OK
 driver OK
-delegate_latch=1'
+delegate_latch=1
+callback_result=7
+blocked_callback_result=-1
+thunk_result=7'
 # Teardown aborts after the complete output must not pass the fixture comparison.
 gate_capture_ok "$OUT/driver-run" run_bounded "$OUT/driver$EXE_EXT" "$DYLIB"
 gate_assert_text "$OUT/driver-run.stdout" "$EXPECTED"

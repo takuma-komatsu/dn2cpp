@@ -3359,7 +3359,8 @@ T& dn2cpp_never_destroyed()
 using Dn2CppCpuFeaturesInit = uint64_t (*)();
 void dn2cpp_runtime_init(Dn2CppCpuFeaturesInit initCpuFeatures = nullptr);
 
-// A shared-library main returns to its host, which may keep the OS thread idle.
+// A native invocation can complete another thread's task until it parks or
+// returns to its host. The host may keep the OS thread alive between calls.
 struct Dn2CppTaskEntryScope
 {
     Dn2CppTaskEntryScope();
@@ -3369,6 +3370,7 @@ struct Dn2CppTaskEntryScope
     Dn2CppTaskEntryScope* next = nullptr;
     const void* waitingOn = nullptr;
     bool notified = false;
+    bool observed = false; // a blocking task wait relied on this entry
 };
 // Stop and join the background threads the runtime owns — the Task.Run pool
 // workers and (when it runs at all) the finalizer thread — so a host can
@@ -3469,6 +3471,11 @@ void dn2cpp_gc_set_manual_finalizer_drain(int on);
 // extern "C": both hooks are host-facing ABI — a dlopen host resolves the setter
 // by unmangled name (dlsym) from a shared-library build.
 extern "C" DN2CPP_RT_EXPORT void dn2cpp_native_callback_prologue();
+[[nodiscard]] inline Dn2CppTaskEntryScope dn2cpp_enter_native_callback()
+{
+    dn2cpp_native_callback_prologue();
+    return Dn2CppTaskEntryScope{};
+}
 // Control the host opt-in for GC registration performed by
 // dn2cpp_native_callback_prologue. Disabling it cannot revoke the one-way latch
 // set by a published delegate thunk, whose native owner may retain the pointer. A
