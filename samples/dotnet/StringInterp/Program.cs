@@ -38,6 +38,7 @@ namespace StringInterp
                 return;
             CustomFormatSubset.Program.__StandardDecimalGate();
             InterpHandlerSubset.Program.__SpanTryWriteGate();
+            Console.WriteLine($"padded hex={0xAB:X20} {0xABul:x32}");
         }
     }
 }
