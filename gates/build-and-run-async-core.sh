@@ -9,8 +9,9 @@
 # incremental-GC preservation of references copied by Task.WhenAll<TStruct>,
 # task state, a suspended state machine
 # rooted only by per-thread scheduler state, and a continuation handed to the
-# scheduler of a thread that has already exited. One multi-section program
-# transpiled once against the tree-shaken real CoreLib.
+# scheduler of a thread that has already exited. Canceling a worker's delay
+# restores the deadlock diagnostic for a subsequent uncompletable wait. One
+# multi-section program transpiled once against the tree-shaken real CoreLib.
 #
 # Uses a frozen snapshot (gates/expected/async-core.txt) rather than a live
 # `dotnet $app` diff, for three intentional divergences: the async-suspend section

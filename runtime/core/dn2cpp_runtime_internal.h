@@ -77,15 +77,19 @@ void dn2cpp_sync_ctx_release();
 // stays, so std::thread's ctor throws at runtime — an intended loud degrade.
 struct Dn2CppGCThread
 {
+    static inline thread_local bool active = false; // runtime-spawned, including dedicated timers and finalizers
 #if defined(DN2CPP_USE_BOEHM_GC) && defined(GC_THREADS)
     bool registered = false;
+#endif
     Dn2CppGCThread()
     {
+        active = true;
+#if defined(DN2CPP_USE_BOEHM_GC) && defined(GC_THREADS)
         struct GC_stack_base sb;
         if (GC_get_stack_base(&sb) == GC_SUCCESS)
             registered = (GC_register_my_thread(&sb) == GC_SUCCESS);
-    }
 #endif
+    }
     ~Dn2CppGCThread()
     {
         // The thread is exiting: drop its thread-static block and its
@@ -93,6 +97,7 @@ struct Dn2CppGCThread
         // registered with the collector.
         dn2cpp_threadstatic_release();
         dn2cpp_sync_ctx_release();
+        active = false;
 #if defined(DN2CPP_USE_BOEHM_GC) && defined(GC_THREADS)
         if (registered)
             GC_unregister_my_thread();

@@ -12,7 +12,14 @@
 # Task.Wait()/Wait(TimeSpan)/Task<T>.Result wrap a fault or cancellation in an
 # AggregateException (with .NET's composed Message) while GetAwaiter().GetResult()
 # re-raises unwrapped, and a canceled task carries a TaskCanceledException with
-# .NET's default message.
+# .NET's default message. A timed blocking wait can expire on a pending promise
+# or before a later delay, and succeeds if the delay is already due or falls
+# within its timeout. A yielded continuation can wait for the caller's signal.
+# A delay can expire while its creating thread waits for the caller to release it.
+# An earlier timeout on the waiting thread still wins when both timers are overdue.
+# Polling overdue timers preserves the WhenAny winner and observes a ready WhenAll.
+# Context-free configured awaits, default-scheduler continuations and yields
+# under the base SynchronizationContext can complete during a finite wait.
 # BlockingWaitArgsSubset.cs asserts the argument contracts of the BLOCKING waits
 # (Task.WaitAny/WaitAll) and of Task.WhenAll — the entry-point validation that keeps
 # the C++ runtime's remaining aborts unreachable. WaitAny's contract is deliberately
@@ -157,8 +164,15 @@ gate_extra_asserts() {
     gate_output prefix "$native" "$before" --before '== scheduler ids ==' --policy crlf || return 1
     printf '%s\n' 'default/current/reflected: True/True/True/True' \
         'read order and independent task counter: True/True/True/True' \
-        'shared first read: True/True/True' > "$out/scheduler-ids.expected"
-    gate_output suffix "$native" "$out/scheduler-ids.expected" --after '== scheduler ids ==' --policy crlf || return 1
+        'shared first read: True/True/True' \
+        'wait before delay: False' 'wait through delay: True' \
+        'wait pending zero: False' 'wait pending finite: False' \
+        'wait after idle: True/True' 'wait before signal: False/True' \
+        'timed wait contexts: configured=True continued=True base yield=True posts=0' \
+        'parked owner delay: completed=True owner released=True' \
+        'overdue WhenAll poll: True' \
+        'parked owner race: completed=True earlier timeout=True' > "$out/scheduler-ids-and-timed-waits.expected"
+    gate_output suffix "$native" "$out/scheduler-ids-and-timed-waits.expected" --after '== scheduler ids ==' --policy crlf || return 1
     before="$out/before-semaphore-waiters.stdout"
     gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-semaphore-waiters
     gate_output prefix "$native" "$before" --before '== semaphore waiter helpers ==' --policy crlf

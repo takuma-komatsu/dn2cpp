@@ -158,3 +158,4 @@ value-task-status: ran
 reset-source-success: completed=True result=17 version=0->1
 reset-source-fault: reset source fault version=0->1
 reset-source-token: ran
+canceled worker delay: True | async: deadlock — task never completes (no runnable continuations on this thread, no pool work in flight, no other live user thread, no armed timer)

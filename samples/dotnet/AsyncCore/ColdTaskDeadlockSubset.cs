@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace ColdTaskDeadlockSubset
@@ -177,6 +178,27 @@ namespace ColdTaskDeadlockSubset
 
             // Catchable means catchable: the runtime is still usable after the report.
             Console.WriteLine("alive: " + Task.Run(() => 6 * 7).Result);
+        }
+
+        private static async Task<Task> StartWorkerDelay(CancellationToken token)
+        {
+            int caller = Environment.CurrentManagedThreadId;
+            await Task.Yield();
+            if (Environment.CurrentManagedThreadId == caller)
+                throw new InvalidOperationException("The delay must be armed on the worker.");
+            return Task.Delay(TimeSpan.FromDays(1), token);
+        }
+
+        internal static void RunCanceledWorkerDelay()
+        {
+            using var source = new CancellationTokenSource();
+            Task<Task> started = StartWorkerDelay(source.Token);
+            if (!started.Wait(TimeSpan.FromSeconds(8)))
+                throw new TimeoutException("The worker did not arm its delay.");
+            Task delay = started.Result;
+            source.Cancel();
+            Console.WriteLine("canceled worker delay: " + delay.IsCanceled + " | "
+                + Defeated(() => new TaskCompletionSource<int>().Task.Wait()));
         }
     }
 }

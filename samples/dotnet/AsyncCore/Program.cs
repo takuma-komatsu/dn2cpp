@@ -35,6 +35,7 @@ namespace AsyncCore
             AsyncIntrinsicToStringSubset.Program.__GateEntry();
             // APPENDED LAST (the prove-it-ran prefix rule, AGENTS.md).
             ValueTaskStatusSubset.Program.__GateEntry();
+            ColdTaskDeadlockSubset.Program.RunCanceledWorkerDelay();
         }
     }
 }

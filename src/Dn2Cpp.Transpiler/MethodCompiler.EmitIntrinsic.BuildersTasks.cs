@@ -1119,19 +1119,13 @@ internal sealed partial class MethodCompiler
                 Emit($"dn2cpp_task_block_wait((Dn2CppTask*)({t.Expr}));");
                 return true;
             }
-            // Wait(TimeSpan) -> bool: dn2cpp_task_block_wait drains this thread's
-            // scheduler until the task settles, so the wait always completes and
-            // the timeout bound is never consulted past its range check — the result
-            // is constant true (a settled fault still throws the AggregateException,
-            // as in .NET). Wait(int) / Wait(CancellationToken) stay loud unmapped errors.
             case ("System.Threading.Tasks.Task", "Wait") when sig.ParameterTypes is [{ } waitTimeout]
                 && IsTimeSpan(waitTimeout):
             {
-                var to = Pop(); // TimeSpan timeout — checked, then never hit
+                var timeout = Pop();
                 var t = Pop();
-                Emit($"dn2cpp_task_wait_require_timeout(({TSVal(to)}).ticks);");
-                Emit($"dn2cpp_task_block_wait((Dn2CppTask*)({t.Expr}));");
-                Push(StackKind.I4, "int32_t", "1"); // completed within the timeout
+                Push(StackKind.I4, "int32_t",
+                    $"dn2cpp_task_wait_timeout((Dn2CppTask*)({t.Expr}), ({TSVal(timeout)}).ticks)");
                 return true;
             }
             case ("System.Threading.Tasks.Task", "Dispose") when sig.ParameterTypes.Length == 0:
@@ -1246,7 +1240,7 @@ internal sealed partial class MethodCompiler
                 string kind = cwHasState ? "DN2CPP_CONTWITH_VOID_STATE" : "DN2CPP_CONTWITH_VOID";
                 PushStampedTask(
                     $"dn2cpp_task_continue_with((Dn2CppTask*)({cwT.Expr}), (Dn2CppObject*)({cwD.Expr}), "
-                    + $"{stateExpr}, {kind}, {cwOpts}, {cwSource})", sig.ReturnType);
+                    + $"{stateExpr}, {kind}, {cwOpts}, {cwSource}, {ContinuationNeedsOwner(cwScheduler)})", sig.ReturnType);
                 return true;
             }
             // ---- TaskCompletionSource(<T>) -----------------------------------------
@@ -1540,6 +1534,9 @@ internal sealed partial class MethodCompiler
 
     private void EmitArgumentRequired(StackEntry argument, string paramName) =>
         Emit($"if ({Cast(argument, "Dn2CppObject*")} == nullptr) dn2cpp_throw_argument_null_param(\"{paramName}\");");
+
+    private string ContinuationNeedsOwner(StackEntry? scheduler) => scheduler is { } s
+        ? $"({Cast(s, "Dn2CppObject*")} != dn2cpp_taskscheduler_default())" : "false";
 
     // Callvirt faults after argument evaluation and before the helper validates them.
     private string PopBuilderReceiver()

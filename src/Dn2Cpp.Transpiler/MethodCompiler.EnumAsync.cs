@@ -789,12 +789,16 @@ internal sealed partial class MethodCompiler
                 // adopted builder keeps its library's contract, which lets the throw reach
                 // MoveNext.
                 bool reraise = _c.AdoptedAsyncKey(builderField.Type.Class!) is null;
+                string subscribe = reraise ? "dn2cpp_async_await_on_completed" : "dn2cpp_task_on_completed";
                 string resume = methodArgs[0].Class?.IntrinsicCppName switch
                 {
                     "Dn2CppTaskAwaiter" =>
-                        (reraise ? "dn2cpp_async_await_on_completed" : "dn2cpp_task_on_completed") +
-                        $"(((Dn2CppTaskAwaiter*)({awaiterRef.Expr}))->task, " +
+                        $"{subscribe}(((Dn2CppTaskAwaiter*)({awaiterRef.Expr}))->task, " +
                         $"(void (*)(void*))&{mn.Emittable.CppName}, __sm);",
+                    "Dn2CppConfiguredTaskAwaiter" =>
+                        $"{subscribe}(((Dn2CppConfiguredTaskAwaiter*)({awaiterRef.Expr}))->task, " +
+                        $"(void (*)(void*))&{mn.Emittable.CppName}, __sm, " +
+                        $"((Dn2CppConfiguredTaskAwaiter*)({awaiterRef.Expr}))->captureContext);",
                     "Dn2CppYieldAwaiter" =>
                         $"dn2cpp_sched_post((void (*)(void*))&{mn.Emittable.CppName}, __sm);",
                     // A custom (non-Task/Yield) awaiter that genuinely suspends:

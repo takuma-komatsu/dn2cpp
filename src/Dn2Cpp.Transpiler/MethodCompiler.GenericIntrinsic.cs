@@ -2002,6 +2002,7 @@ internal sealed partial class MethodCompiler
                 NullCheckReceiverUnder(cwsig.ParameterTypes.Length);
             bool cwHasState = cwDel.Context.TypeArgs.Length == 3;
             string cwOpts = PopContinuationHints(cwsig.ParameterTypes, cwHasState ? 2 : 1, out var cwScheduler, out string cwSource);
+            string needsOwner = ContinuationNeedsOwner(cwScheduler);
             if (cwHasState)
             {
                 var state = Pop();
@@ -2012,7 +2013,7 @@ internal sealed partial class MethodCompiler
                     EmitArgumentRequired(scheduler, "scheduler");
                 PushStampedTask($"dn2cpp_task_continue_with_state_result((Dn2CppTask*)({antecedent.Expr}), "
                     + $"(Dn2CppObject*)({continuation.Expr}), {Cast(state, "Dn2CppObject*")}, "
-                    + $"{TaskContWithStateResultThunk(tnew)}, {cwOpts}, {cwSource})", cwsig.ReturnType);
+                    + $"{TaskContWithStateResultThunk(tnew)}, {cwOpts}, {cwSource}, {needsOwner})", cwsig.ReturnType);
                 return;
             }
             // A value-type continuation result rides the boxing trampoline (the ContinueWith
@@ -2026,7 +2027,7 @@ internal sealed partial class MethodCompiler
                     EmitArgumentRequired(cs, "scheduler");
                 PushStampedTask(
                     $"dn2cpp_task_continue_with_struct((Dn2CppTask*)({cwts.Expr}), " +
-                    $"(Dn2CppObject*)({cwds.Expr}), {TaskStructContWithThunk(CppTypes.Of(tnew))}, {cwOpts}, {cwSource})",
+                    $"(Dn2CppObject*)({cwds.Expr}), {TaskStructContWithThunk(CppTypes.Of(tnew))}, {cwOpts}, {cwSource}, {needsOwner})",
                     cwsig.ReturnType);
                 return;
             }
@@ -2048,7 +2049,7 @@ internal sealed partial class MethodCompiler
                 EmitArgumentRequired(cs2, "scheduler");
             PushStampedTask(
                 $"dn2cpp_task_continue_with((Dn2CppTask*)({cwt.Expr}), (Dn2CppObject*)({cwd.Expr}), "
-                + $"nullptr, {cwKind}, {cwOpts}, {cwSource})", cwsig.ReturnType);
+                + $"nullptr, {cwKind}, {cwOpts}, {cwSource}, {needsOwner})", cwsig.ReturnType);
             return;
         }
 
