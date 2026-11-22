@@ -69,6 +69,21 @@ internal sealed partial class MethodCompiler
         _ => throw new NotSupportedException($"{op} of {handle.Kind} is not supported"),
     };
 
+    private MethodInfo ResolveLdftnTarget(Instruction insn, TypeDesc? constraint)
+    {
+        var declaration = ResolveMethodHandle(SRME.EntityHandle(insn.Token), "ldftn");
+        if (constraint is null
+            || declaration is not { IsStatic: true, IsVirtual: true, DeclaringClass.IsInterface: true })
+            return declaration;
+
+        TaintIfCanonical(constraint, "static-virtual");
+        if (SharedTrial && Compilation.IsCanonicalMethod(declaration))
+            ThrowSharedTaint("static-virtual", declaration.DeclaringClass.FullName);
+        return _c.ResolveStaticVirtualAddress(constraint, declaration)
+            ?? throw new NotSupportedException($"{_method.DeclaringClass.FullName}.{_method.Name}: "
+                + $"constrained ldftn on {constraint} cannot bind {declaration.DeclaringClass.FullName}::{declaration.Name}");
+    }
+
     private TypeDesc ResolveTypeToken(int token)
     {
         var handle = SRME.EntityHandle(token);

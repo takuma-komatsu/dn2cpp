@@ -6293,7 +6293,7 @@ internal sealed partial class Compilation
                         if (insn.OpCode != ILOpCode.Ldvirtftn
                             && ResolveInitializerTriggerClass(module, handle, m.Context,
                                 constrainedCall: constrained is not null
-                                    && insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt) is
+                                    && insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt or ILOpCode.Ldftn) is
                                 { IsBeforeFieldInit: false, IntrinsicCppName: null } callCls)
                             ReachCctor(callCls);
 
@@ -6439,6 +6439,15 @@ internal sealed partial class Compilation
                         // Godot.Collections.Array<Sprite2D>) name engine wrappers.
                         if (trimUserSite)
                             TrimNoteCallSite(module, handle, m.Context);
+                        // Retain the selected address and its entry initializer, not the interface slot.
+                        if (insn.OpCode == ILOpCode.Ldftn && constrained is { } self
+                            && t is { IsStatic: true, IsVirtual: true, DeclaringClass.IsInterface: true })
+                        {
+                            if (ResolveStaticVirtualAddress(self, t) is { } target)
+                                ReachEntered(target);
+                            constrained = null;
+                            continue;
+                        }
                         // Comparer<T>.Default -> the CoreLib comparer the reflection-based
                         // real getter would create (DefaultComparerClassFor): don't transpile
                         // the getter; reach the comparer's ctor and allocate it so its
