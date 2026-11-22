@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 
 namespace FloatingPointComparisons;
@@ -265,4 +266,20 @@ internal static class Program
         Console.WriteLine("comparison null-both=" + Compare((object)null, null));
         Console.WriteLine("floating-point comparisons end");
     }
+
+    internal static void RunSingleArithmetic()
+    {
+        Console.WriteLine("== single-precision arithmetic ==");
+        float x = float.Parse("0.7", CultureInfo.InvariantCulture);
+        float y = float.Parse("0.29", CultureInfo.InvariantCulture);
+        Console.WriteLine("single byte=" + (byte)(x * 10f));
+        Console.WriteLine("single int=" + (int)(y * 100f));
+        Console.WriteLine("single compare=" + (x * 10f == 7f));
+        Console.WriteLine("double arithmetic=" + (int)((double)x * 10d) + "/" + ((double)x * 10d == 7d));
+        Console.WriteLine("single array join=" + ChainedSingle(x > y, new[] { x, y }));
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool ChainedSingle(bool first, float[] values) =>
+        (first ? values[0] : values[1]) * 10f - 7f == 0f;
 }

@@ -14,6 +14,11 @@ namespace MathSubset
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+            if (args.Length > 0 && args[0] == "single-arithmetic-only")
+            {
+                FloatingPointComparisons.Program.RunSingleArithmetic();
+                return;
+            }
 
             MathIntMinMaxClamp.Program.__GateEntry();
             MathTrigSubset.Program.__GateEntry();
@@ -58,6 +63,9 @@ namespace MathSubset
             if (args.Length > 0 && args[0] == "before-mixed-width-bigmul")
                 return;
             Dn2Cpp.MathMixedBigMulSubset.Run();
+            if (args.Length > 0 && args[0] == "before-single-arithmetic")
+                return;
+            FloatingPointComparisons.Program.RunSingleArithmetic();
         }
     }
 }

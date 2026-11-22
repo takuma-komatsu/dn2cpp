@@ -112,7 +112,7 @@ internal sealed partial class MethodCompiler
         switch (ret.Primitive)
         {
             case PrimitiveTypeCode.Double: Push(StackKind.R8, "double", DecimalToScalarExpr(v, ret)); break;
-            case PrimitiveTypeCode.Single: Push(StackKind.R8, "double", $"(double){DecimalToScalarExpr(v, ret)}"); break;
+            case PrimitiveTypeCode.Single: Push(StackKind.R8, "float", DecimalToScalarExpr(v, ret)); break;
             case PrimitiveTypeCode.Int64: Push(StackKind.I8, "int64_t", DecimalToScalarExpr(v, ret)); break;
             case PrimitiveTypeCode.UInt64: Push(StackKind.I8, "int64_t", $"(int64_t){DecimalToScalarExpr(v, ret)}"); break;
             case PrimitiveTypeCode.Int32 or PrimitiveTypeCode.Int16 or PrimitiveTypeCode.SByte:
@@ -2618,7 +2618,7 @@ internal sealed partial class MethodCompiler
                         : rst is "int64_t" or "uint64_t"
                             ? (StackKind.I8, "int64_t", $"(int64_t)(*({rst}*){vbase})")
                             : rst is "float" or "double"
-                                ? (StackKind.R8, "double", $"(double)(*({rst}*){vbase})")
+                                ? (StackKind.R8, rst, $"*({rst}*){vbase}")
                                 : (StackKind.I4, "int32_t", $"(int32_t)(*({rst}*){vbase})");
                     string value = NewTemp(type);
                     Emit($"{value} = {load};");

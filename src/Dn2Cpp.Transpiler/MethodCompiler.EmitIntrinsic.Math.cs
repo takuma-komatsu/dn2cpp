@@ -149,7 +149,7 @@ internal sealed partial class MethodCompiler
             };
             if (fconst is not null)
             {
-                Push(StackKind.R8, "double", $"(double){fconst}");
+                Push(StackKind.R8, fkind, $"{fconst}");
                 return true;
             }
         }
@@ -425,7 +425,7 @@ internal sealed partial class MethodCompiler
         if (unary is not null && sig.ParameterTypes.Length == 1)
         {
             var a = Pop();
-            Push(StackKind.R8, "double", $"(double){unary}(({fkind})({a.Expr}))");
+            Push(StackKind.R8, fkind, $"{unary}(({fkind})({a.Expr}))");
             return true;
         }
         // The Double/Single-only exp/log derivatives and the *Pi angle family.
@@ -457,7 +457,7 @@ internal sealed partial class MethodCompiler
         if (composed is not null && sig.ParameterTypes.Length == 1)
         {
             var ca = Pop();
-            Push(StackKind.R8, "double", "(double)(" + string.Format(
+            Push(StackKind.R8, fkind, "(" + string.Format(
                 composed, $"(({fkind})({ca.Expr}))", fkind, FloatPi(isFloat)) + ")");
             return true;
         }
@@ -476,8 +476,8 @@ internal sealed partial class MethodCompiler
         if (piTrig is not null && sig.ParameterTypes.Length == 1)
         {
             var pa = Pop();
-            Push(StackKind.R8, "double",
-                $"(double){piTrig}{(isFloat ? "_f" : "")}(({fkind})({pa.Expr}))");
+            Push(StackKind.R8, fkind,
+                $"{piTrig}{(isFloat ? "_f" : "")}(({fkind})({pa.Expr}))");
             return true;
         }
         // RootN(x, int n) — the BCL's managed algorithm in a runtime helper
@@ -488,8 +488,8 @@ internal sealed partial class MethodCompiler
         {
             var rn = Pop();
             var rx = Pop();
-            Push(StackKind.R8, "double",
-                $"(double)dn2cpp_math_rootn{(isFloat ? "_f" : "")}(({fkind})({rx.Expr}), {Cast(rn, "int32_t")})");
+            Push(StackKind.R8, fkind,
+                $"dn2cpp_math_rootn{(isFloat ? "_f" : "")}(({fkind})({rx.Expr}), {Cast(rn, "int32_t")})");
             return true;
         }
         // Atan2Pi(y, x) = Atan2(y, x) / Pi — the two-operand member of the same
@@ -498,8 +498,8 @@ internal sealed partial class MethodCompiler
         if (name == "Atan2Pi" && sig.ParameterTypes.Length == 2)
         {
             var px = Pop(); var py = Pop();
-            Push(StackKind.R8, "double",
-                $"(double)(std::atan2(({fkind})({py.Expr}), ({fkind})({px.Expr})) / {FloatPi(isFloat)})");
+            Push(StackKind.R8, fkind,
+                $"(std::atan2(({fkind})({py.Expr}), ({fkind})({px.Expr})) / {FloatPi(isFloat)})");
             return true;
         }
         // Lerp(v1, v2, t) = MultiplyAddEstimate(v1, 1 - t, v2 * t): with
@@ -511,8 +511,8 @@ internal sealed partial class MethodCompiler
             var lt = Pop(); var lv2 = Pop(); var lv1 = Pop();
             string tt = NewTemp(fkind);
             Emit($"{tt} = ({fkind})({lt.Expr});");
-            Push(StackKind.R8, "double",
-                $"(double)std::fma(({fkind})({lv1.Expr}), ({fkind})1 - {tt}, ({fkind})({lv2.Expr}) * {tt})");
+            Push(StackKind.R8, fkind,
+                $"std::fma(({fkind})({lv1.Expr}), ({fkind})1 - {tt}, ({fkind})({lv2.Expr}) * {tt})");
             return true;
         }
         // ReciprocalEstimate / ReciprocalSqrtEstimate: .NET documents the result as a
@@ -527,7 +527,7 @@ internal sealed partial class MethodCompiler
             string expr = name == "ReciprocalEstimate"
                 ? $"(({fkind})1 / ({fkind})({re.Expr}))"
                 : $"(({fkind})1 / std::sqrt(({fkind})({re.Expr})))";
-            Push(StackKind.R8, "double", $"(double){expr}");
+            Push(StackKind.R8, fkind, $"{expr}");
             return true;
         }
         // Round(value, MidpointRounding mode): the mode (enum -> int on the stack)
@@ -537,8 +537,8 @@ internal sealed partial class MethodCompiler
         {
             var mode = Pop();
             var v = Pop();
-            Push(StackKind.R8, "double",
-                $"(double)dn2cpp_math_round_mode(({fkind})({v.Expr}), {Cast(mode, "int32_t")})");
+            Push(StackKind.R8, fkind,
+                $"dn2cpp_math_round_mode(({fkind})({v.Expr}), {Cast(mode, "int32_t")})");
             return true;
         }
         // Round(value, int digits) and Round(value, int digits, MidpointRounding):
@@ -556,8 +556,8 @@ internal sealed partial class MethodCompiler
                 modeExpr = Cast(Pop(), "int32_t");
             var dg = Pop();
             var rv = Pop();
-            Push(StackKind.R8, "double",
-                $"(double)dn2cpp_math_round_digits{(isFloat ? "_f" : "")}"
+            Push(StackKind.R8, fkind,
+                $"dn2cpp_math_round_digits{(isFloat ? "_f" : "")}"
                 + $"(({fkind})({rv.Expr}), {Cast(dg, "int32_t")}, {modeExpr})");
             return true;
         }
@@ -598,7 +598,7 @@ internal sealed partial class MethodCompiler
         if (binary is not null && sig.ParameterTypes.Length == 2)
         {
             var b = Pop(); var a = Pop();
-            Push(StackKind.R8, "double", $"(double){binary}(({fkind})({a.Expr}), ({fkind})({b.Expr}))");
+            Push(StackKind.R8, fkind, $"{binary}(({fkind})({a.Expr}), ({fkind})({b.Expr}))");
             return true;
         }
         // FusedMultiplyAdd(x, y, z) = x*y + z with a single rounding — std::fma
@@ -610,8 +610,8 @@ internal sealed partial class MethodCompiler
         if (name is "FusedMultiplyAdd" or "MultiplyAddEstimate" && sig.ParameterTypes.Length == 3)
         {
             var fz = Pop(); var fy = Pop(); var fx = Pop();
-            Push(StackKind.R8, "double",
-                $"(double)std::fma(({fkind})({fx.Expr}), ({fkind})({fy.Expr}), ({fkind})({fz.Expr}))");
+            Push(StackKind.R8, fkind,
+                $"std::fma(({fkind})({fx.Expr}), ({fkind})({fy.Expr}), ({fkind})({fz.Expr}))");
             return true;
         }
         // ScaleB(x, int n) = x * 2^n, exactly — std::scalbn is the same musl
@@ -619,8 +619,8 @@ internal sealed partial class MethodCompiler
         if (name == "ScaleB" && sig.ParameterTypes.Length == 2)
         {
             var sn = Pop(); var sx = Pop();
-            Push(StackKind.R8, "double",
-                $"(double)std::scalbn(({fkind})({sx.Expr}), {Cast(sn, "int32_t")})");
+            Push(StackKind.R8, fkind,
+                $"std::scalbn(({fkind})({sx.Expr}), {Cast(sn, "int32_t")})");
             return true;
         }
         // BitIncrement/BitDecrement — the adjacent representable value toward
@@ -633,16 +633,16 @@ internal sealed partial class MethodCompiler
             string toward = name == "BitIncrement"
                 ? $"std::numeric_limits<{fkind}>::infinity()"
                 : $"-std::numeric_limits<{fkind}>::infinity()";
-            Push(StackKind.R8, "double",
-                $"(double)std::nextafter(({fkind})({bv.Expr}), {toward})");
+            Push(StackKind.R8, fkind,
+                $"std::nextafter(({fkind})({bv.Expr}), {toward})");
             return true;
         }
         // Log(value, newBase) = log(value)/log(newBase), like the BCL.
         if (name == "Log" && sig.ParameterTypes.Length == 2)
         {
             var nb = Pop(); var v = Pop();
-            Push(StackKind.R8, "double",
-                $"(double)(std::log(({fkind})({v.Expr})) / std::log(({fkind})({nb.Expr})))");
+            Push(StackKind.R8, fkind,
+                $"(std::log(({fkind})({v.Expr})) / std::log(({fkind})({nb.Expr})))");
             return true;
         }
         // Floating-point Clamp(value, min, max) — the same runtime template as
@@ -655,8 +655,8 @@ internal sealed partial class MethodCompiler
         {
             string clampFn = name == "Clamp" ? "dn2cpp_math_clamp" : "dn2cpp_math_clampnative";
             var hi = Pop(); var lo = Pop(); var v = Pop();
-            Push(StackKind.R8, "double",
-                $"(double){clampFn}(({fkind})({v.Expr}), ({fkind})({lo.Expr}), ({fkind})({hi.Expr}))");
+            Push(StackKind.R8, fkind,
+                $"{clampFn}(({fkind})({v.Expr}), ({fkind})({lo.Expr}), ({fkind})({hi.Expr}))");
             return true;
         }
         return false;

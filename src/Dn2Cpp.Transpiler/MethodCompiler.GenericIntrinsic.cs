@@ -467,9 +467,8 @@ internal sealed partial class MethodCompiler
             string srcCpp = CppTypes.StorageOf(fsrc);    // recover the source's true sign/width
             string tgtCpp = CppTypes.StorageOf(ftarget);
             var fkind = CppTypes.KindOf(ftarget);
-            string fstackCpp = CppTypes.DefaultForKind(fkind);
             var value = Pop();
-            Push(fkind, fstackCpp, $"(({fstackCpp})(({tgtCpp})(({srcCpp})({value.Expr}))))");
+            Push(fkind, tgtCpp, $"(({tgtCpp})(({srcCpp})({value.Expr})))");
             return;
         }
 

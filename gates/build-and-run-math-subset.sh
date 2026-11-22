@@ -49,6 +49,7 @@
 # inputs, native-width multiplication, checked overflow and floating-point isolation,
 # plus ordered/unordered floating-point comparisons and branches with NaN operands,
 # finite fractions, infinities and signed zeros, and integral/reference controls.
+# Single-precision arithmetic rounds before chained operations, casts and comparisons.
 # One section file per area in samples/dotnet/MathSubset, driven in order by
 # Program.cs. Retention-only roots keep callable BigMul bodies; malformed primitive
 # references are refused before emission with and without ILDiet.
@@ -58,7 +59,7 @@
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_numeric-signatures.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/primitive-bigmul-retained gates/_numeric-signatures.sh gates/fixtures/numeric-signatures"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|cli:$(_gate_cli_hash)"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|single-arithmetic-prefix:before-single-arithmetic|cli:$(_gate_cli_hash)"
 
 # Default order and equality preserve the earlier bucket and run the appended cases.
 # Direct integer DivRem calls cover every scalar width, zero divisors and signed minima.
@@ -187,6 +188,12 @@ gate_extra_asserts() {
     gate_output select "$native" "$out/assert-mixed-width-bigmul-prefix.stdout" --before '== mixed-width BigMul ==' --policy crlf
     gate_output compare "$out/assert-mixed-width-bigmul-prefix.stdout" "$out/assert-before-mixed-width-bigmul.stdout"
     gate_output byte-witness "$native" 'mixed-width BigMul end' --count 1 --policy crlf
+    gate_capture_ok "$out/single-arithmetic-before" run_bounded dotnet "$_CG_APP" before-single-arithmetic
+    gate_output select "$native" "$out/single-arithmetic-prefix.stdout" \
+        --before='== single-precision arithmetic ==' --policy crlf
+    gate_output compare "$out/single-arithmetic-prefix.stdout" "$out/single-arithmetic-before.stdout"
+    gate_output byte-witness "$native" 'single byte=7' 'single int=29' 'single compare=True' \
+        'double arithmetic=6/False' 'single array join=True' --count 1 --policy crlf
     primitive_bigmul_retention "$out"
     numeric_signature_regressions bigmul
 }

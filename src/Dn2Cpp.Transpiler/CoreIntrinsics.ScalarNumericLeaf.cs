@@ -56,9 +56,6 @@ internal static partial class CoreIntrinsics
             && signature.ParameterTypes[0] is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Single, IsCanonPlaceholder: false };
     }
 
-    internal static bool IsSingleStorageBitLoad(MethodInfo method) =>
-        ScalarNumericLeafContract.RequiresSingleStorageLoad(method.DeclaringClass.FullName, method.Name) && IsScalarNumericLeaf(method);
-
     internal static bool IsScalarNumericLeafSignature(string owner, string name, MethodSignature<TypeDesc> signature)
     {
         if (!ScalarNumericLeafContract.IsCandidate(owner, name)) return false;

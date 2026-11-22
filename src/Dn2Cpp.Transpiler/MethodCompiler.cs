@@ -32,7 +32,11 @@ namespace Dn2Cpp;
 /// from its text and any consumer that needs the origin must carry it here.
 /// <c>ArgSlot</c> is that for <c>ldarga</c>: the IL argument number whose address
 /// this entry holds.</summary>
-internal sealed record StackEntry(string Expr, StackKind Kind, string CppType, TypeDesc? TypeToken = null, TypeDesc? StaticType = null, int? BlobLen = null, string? StrLiteral = null, bool NonNull = false, bool SlotAddr = false, bool KnownNull = false, int? ArgSlot = null, MethodInfo? DelegateMethod = null, bool DelegateVirtual = false, string? DelegateTag = null, bool DelegateAddressReady = false);
+internal sealed record StackEntry(string Expr, StackKind Kind, string CppType, TypeDesc? TypeToken = null, TypeDesc? StaticType = null, int? BlobLen = null, string? StrLiteral = null, bool NonNull = false, bool SlotAddr = false, bool KnownNull = false, int? ArgSlot = null, MethodInfo? DelegateMethod = null, bool DelegateVirtual = false, string? DelegateTag = null, bool DelegateAddressReady = false, bool SpilledSingle = false)
+{
+    // The IL F kind is shared; a join may store a known binary32 value in the common double slot.
+    public bool IsSinglePrecision => Kind == StackKind.R8 && (CppType == "float" || SpilledSingle);
+}
 
 /// <summary>
 /// Translates one IL method body into a C++ function. The evaluation stack is
@@ -2295,6 +2299,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     {
         _entryStacks.TryGetValue(targetOffset, out var recorded);
         var canonical = new List<StackEntry>();
+        bool forwardOnly = !_backwardBranchTargets.Contains(targetOffset);
         for (int i = 0; i < _stack.Count; i++)
         {
             var e = _stack[i];
@@ -2328,8 +2333,8 @@ internal sealed partial class MethodCompiler : IEvalStack
             // A backedge can supply a non-null value after the target was rendered.
             // Only forward joins may use the null fact to remove a lowering.
             canonical.Add(new StackEntry(name, e.Kind, type, StaticType: e.StaticType,
-                KnownNull: e.KnownNull && !_backwardBranchTargets.Contains(targetOffset),
-                DelegateTag: delegateTag));
+                KnownNull: e.KnownNull && forwardOnly, DelegateTag: delegateTag,
+                SpilledSingle: e.IsSinglePrecision && forwardOnly));
         }
 
         if (recorded is { } existing)
@@ -2375,8 +2380,12 @@ internal sealed partial class MethodCompiler : IEvalStack
                 if (!Equals(existing[i].StaticType, canonical[i].StaticType))
                     existing[i] = existing[i] with { StaticType = null };
             for (int i = 0; i < existing.Count; i++)
+            {
                 if (!canonical[i].KnownNull)
                     existing[i] = existing[i] with { KnownNull = false };
+                if (existing[i].SpilledSingle && !canonical[i].SpilledSingle)
+                    existing[i] = existing[i] with { SpilledSingle = false };
+            }
             // Continue below with the recorded entry stack (existing wins), so the
             // fallthrough path stays consistent with what the target block reads.
             canonical = existing;
@@ -2393,8 +2402,16 @@ internal sealed partial class MethodCompiler : IEvalStack
                 : $"if ({condition}) goto IL_{targetOffset:X4};");
         }
 
-        // Continue (fallthrough / not-taken path) with the canonical names.
-        _stack = new List<StackEntry>(canonical);
+        // A not-taken conditional edge still carries this predecessor's precision,
+        // even when the branch target merges it with a wider or unvisited path.
+        var fallthrough = new List<StackEntry>(canonical);
+        if (condition is not null)
+        {
+            for (int i = 0; i < fallthrough.Count; i++)
+                if (fallthrough[i].Kind == StackKind.R8 && _stack[i].IsSinglePrecision)
+                    fallthrough[i] = fallthrough[i] with { SpilledSingle = true };
+        }
+        _stack = fallthrough;
     }
 
     internal static string Cast(StackEntry e, string targetType)
@@ -2719,7 +2736,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // Shared with the custom-attribute float-argument path (CppEmitter):
                 // maps the special values to C++ tokens and forces a floating literal
                 // on an integral value. See CppTypes.FloatLiteral.
-                Push(StackKind.R8, "double", CppTypes.FloatLiteral(insn.FloatOperand));
+                Push(StackKind.R8, op == ILOpCode.Ldc_r4 ? "float" : "double", CppTypes.FloatLiteral(insn.FloatOperand));
                 break;
             }
             case ILOpCode.Ldnull:
@@ -2831,7 +2848,8 @@ internal sealed partial class MethodCompiler : IEvalStack
             case ILOpCode.Neg:
             {
                 var a = Pop();
-                Push(a.Kind, a.CppType, $"-({a.Expr})");
+                string type = a.IsSinglePrecision ? "float" : a.CppType;
+                Push(a.Kind, type, $"-({Cast(a, type)})");
                 break;
             }
             case ILOpCode.Not:
@@ -2855,7 +2873,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             case ILOpCode.Conv_u4: Convert("int32_t", StackKind.I4, "(uint32_t)"); break;
             case ILOpCode.Conv_i8: ConvertWiden(unsigned: false); break;
             case ILOpCode.Conv_u8: ConvertWiden(unsigned: true); break;
-            case ILOpCode.Conv_r4: Convert("double", StackKind.R8, "(float)"); break;
+            case ILOpCode.Conv_r4: Convert("float", StackKind.R8, "(float)"); break;
             case ILOpCode.Conv_r8: Convert("double", StackKind.R8, "(double)"); break;
             case ILOpCode.Conv_i: ConvertWiden(unsigned: false); break;
             case ILOpCode.Conv_u: ConvertWiden(unsigned: true); break;
@@ -3168,7 +3186,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             case ILOpCode.Ldelem_u2: EmitLdelemPrim("uint16_t", StackKind.I4, "int32_t"); break;
             case ILOpCode.Ldelem_i8: EmitLdelemPrim("int64_t", StackKind.I8, "int64_t"); break;
             case ILOpCode.Ldelem_i: EmitLdelemPrim("intptr_t", StackKind.I8, "int64_t"); break;
-            case ILOpCode.Ldelem_r4: EmitLdelemPrim("float", StackKind.R8, "double"); break;
+            case ILOpCode.Ldelem_r4: EmitLdelemPrim("float", StackKind.R8, "float"); break;
             case ILOpCode.Ldelem_r8: EmitLdelemPrim("double", StackKind.R8, "double"); break;
             case ILOpCode.Stelem_i1: EmitStelemPrim("int8_t"); break;
             case ILOpCode.Stelem_i2: EmitStelemPrim("int16_t"); break;
@@ -3571,9 +3589,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             case ILOpCode.Ldind_u4: LoadIndirect("uint32_t", StackKind.I4, "int32_t"); break;
             case ILOpCode.Ldind_i8: LoadIndirect("int64_t", StackKind.I8, "int64_t"); break;
             case ILOpCode.Ldind_i: LoadIndirect("intptr_t", StackKind.I8, "int64_t"); break;
-            case ILOpCode.Ldind_r4:
-                LoadIndirect("float", StackKind.R8, CoreIntrinsics.IsSingleStorageBitLoad(_method) ? "float" : "double");
-                break;
+            case ILOpCode.Ldind_r4: LoadIndirect("float", StackKind.R8, "float"); break;
             case ILOpCode.Ldind_r8: LoadIndirect("double", StackKind.R8, "double"); break;
             case ILOpCode.Ldind_ref: LoadIndirectRef(); break;
 

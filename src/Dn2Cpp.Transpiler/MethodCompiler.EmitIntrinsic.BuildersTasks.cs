@@ -1459,8 +1459,8 @@ internal sealed partial class MethodCompiler
     ///
     /// float/double route through one integer atomic over the bit pattern, matching
     /// .NET's bitwise CompareExchange comparison (-0.0 comparand does not match a
-    /// +0.0 location; a bit-identical NaN comparand does); the result re-enters the
-    /// IL stack as R8-as-double per the repo's float-return convention.</summary>
+    /// +0.0 location; a bit-identical NaN comparand does); the result retains its
+    /// original precision on the shared R8 stack kind.</summary>
     private void EmitInterlockedSwap(TypeDesc t, StackEntry loc, StackEntry value, StackEntry? comparand, string opName)
     {
         if (InterlockedWidthOf(t) == InterlockedWidth.Ref)
@@ -1481,7 +1481,7 @@ internal sealed partial class MethodCompiler
             InterlockedWidth.U2 => ("i2", "int16_t", "(int32_t)(uint16_t)", StackKind.I4, "int32_t"),
             InterlockedWidth.I4 => ("i4", "int32_t", "", StackKind.I4, "int32_t"),
             InterlockedWidth.I8 => ("i8", "int64_t", "", StackKind.I8, "int64_t"),
-            InterlockedWidth.R4 => ("r4", "float", "(double)", StackKind.R8, "double"),
+            InterlockedWidth.R4 => ("r4", "float", "", StackKind.R8, "float"),
             InterlockedWidth.R8 => ("r8", "double", "", StackKind.R8, "double"),
             _ => throw new NotSupportedException(
                 $"{Method.DeclaringClass.FullName}.{Method.Name}: Interlocked.{opName}<{t}> " +
