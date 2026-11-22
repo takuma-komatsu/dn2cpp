@@ -39,6 +39,9 @@ namespace StringInterp
             CustomFormatSubset.Program.__StandardDecimalGate();
             InterpHandlerSubset.Program.__SpanTryWriteGate();
             Console.WriteLine($"padded hex={0xAB:X20} {0xABul:x32}");
+            if (args.Length > 0 && args[0] == "before-generic-enum")
+                return;
+            InterpHandlerSubset.Program.__SharedEnumInterpolationGate();
         }
     }
 }
