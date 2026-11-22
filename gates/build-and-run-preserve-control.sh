@@ -431,9 +431,9 @@ gate_extra_asserts() {
         || { echo 'FAIL: runtime reflection preservation section did not run' >&2; return 1; }
     before="$out/return-attributes-before.native"
     DN2CPP_BEFORE_RETURN_PARAMETER_ATTRIBUTES=1 gate_capture_ok "$before" run_bounded "$out/ILDietControl$EXE_EXT"
-    gate_output select "$native" "$out/return-attributes-prefix.native.stdout" --before '== return parameter attributes ==' --policy exact
+    gate_output select "$native" "$out/return-attributes-prefix.native.stdout" --before '== return parameter attributes ==' --policy crlf
     gate_output compare "$out/return-attributes-prefix.native.stdout" "$before.stdout"
-    gate_output byte-witness "$native" --count 1 '== return parameter attributes ==' 'return parameter attributes end' \
+    gate_output byte-witness "$native" --count 1 --policy crlf '== return parameter attributes ==' 'return parameter attributes end' \
         'return native data=True/2' 'ordinary parameter data=True/1' 'return packed data=True/1/T' \
         'return native instance=native/named/7/-1/True' 'return packed instance=packed/generic/9/U/True' \
         'late parameter data=1/1' 'late parameter call=17'

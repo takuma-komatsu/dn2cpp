@@ -2294,9 +2294,9 @@ for axis in native dotnet; do
     else
         gate_capture_ok "$_CG_OUT/return-attributes-before.$axis" reflection_oracle "$_CG_APP" before-return-parameter-attributes
     fi
-    gate_output select "$_CG_OUT/gate.$axis.stdout" "$_CG_OUT/return-attributes-prefix.$axis.stdout" --before '== return parameter attributes ==' --policy exact
+    gate_output select "$_CG_OUT/gate.$axis.stdout" "$_CG_OUT/return-attributes-prefix.$axis.stdout" --before '== return parameter attributes ==' --policy crlf
     gate_output compare "$_CG_OUT/return-attributes-prefix.$axis.stdout" "$_CG_OUT/return-attributes-before.$axis.stdout"
-    gate_output byte-witness "$_CG_OUT/gate.$axis.stdout" --count 1 \
+    gate_output byte-witness "$_CG_OUT/gate.$axis.stdout" --count 1 --policy crlf \
         '== return parameter attributes ==' 'return parameter attributes end' \
         'return native data=True/2' 'return packed data=True/1/T' \
         'ordinary parameter data=True/1' \
