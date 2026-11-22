@@ -30,7 +30,7 @@
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/DateTimeInterceptFixture.cs gates/fixtures/ldftn-local/DateTimeTCharFixture.cs gates/fixtures/ldftn-local/AbbreviatedDayFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj gates/expected/datetime-refusals.txt"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|datetime-private-calls:fixture,direct-only-emission|public-ctor:no-corelib,no-ildiet|refusals:native-frozen|tchar:malformed-return-owner|day:malformed-return|dtfi-name-edges:prefix|dtfi-timespan-patterns:prefix|cli:$(_gate_cli_hash)"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|dto-local-time-prefix:before-dto-local-time"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|dto-local-time-prefix:before-dto-local-time|date-defaults-prefix:before-missing-date-defaults"
 
 # Keep the rewritten input private to this gate; the suite prebuild stays intact.
 _corelib_gate_core() {
@@ -166,6 +166,16 @@ gate_extra_asserts() {
         --before='-- DateTimeOffset.ToLocalTime --' --policy crlf
     gate_output compare "$out/dto-local-prefix.stdout" "$out/dto-local-before.stdout"
     gate_output byte-witness "$out/native.stdout" 'dto local UTC/offset: True/True' --count 1 --policy crlf
+
+    gate_capture_ok "$out/missing-date-before" run_bounded "./$out/DateTimeOps$EXE_EXT" before-missing-date-defaults
+    gate_output select "$out/native.stdout" "$out/missing-date-prefix.stdout" \
+        --before='== date parsing defaults ==' --policy crlf
+    gate_output compare "$out/missing-date-prefix.stdout" "$out/missing-date-before.stdout"
+    gate_output byte-witness "$out/native.stdout" 'date exact today=True' 'date exact minimum=True' \
+        'date exact month-day=True/True' 'date exact day/year=True/True' \
+        'date general today=True' 'date general try=True/True' \
+        'offset exact today=True' 'offset exact relative date=True/True' 'offset exact incomplete=True' \
+        'offset exact style=styles' 'offset exact try style=styles' --count 1 --policy crlf
 
     local isolated="$out/direct-only" method
     mkdir -p "$isolated/input"

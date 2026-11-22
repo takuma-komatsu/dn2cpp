@@ -13,6 +13,11 @@ namespace DateTimeOps
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+            if (args.Length > 0 && args[0] == "missing-date-defaults-only")
+            {
+                DateTimeParse.Program.RunMissingDateDefaults();
+                return;
+            }
             if (args.Length > 0 && args[0] == "dtfi-refusals")
             {
                 DateTimeFormatInfoSubset.Program.RunRefusals();
@@ -85,6 +90,9 @@ namespace DateTimeOps
             if (args.Length > 0 && args[0] == "before-dto-local-time")
                 return;
             DateTimeOffsetSubset.Program.RunLocalTime();
+            if (args.Length > 0 && args[0] == "before-missing-date-defaults")
+                return;
+            DateTimeParse.Program.RunMissingDateDefaults();
         }
     }
 }

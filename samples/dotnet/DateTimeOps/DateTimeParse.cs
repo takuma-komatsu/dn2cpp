@@ -78,4 +78,78 @@ static class Program
         Console.WriteLine(DateTime.TryParseExact("2026-06-23", "yyyy-MM-dd", ci, DateTimeStyles.None, out var e1) + " " + e1.Ticks);
         Console.WriteLine(DateTime.TryParseExact("2026-06-23", "MM/dd/yyyy", ci, DateTimeStyles.None, out var e2) + " " + e2.Ticks);
     }
+
+    internal static void RunMissingDateDefaults()
+    {
+        Console.WriteLine("== date parsing defaults ==");
+        const string time = "12:34:56";
+        const string format = "HH:mm:ss";
+        var clock = new TimeSpan(12, 34, 56);
+        var before = DateTime.Now;
+        var exact = DateTime.ParseExact(time, format, ci);
+        Console.WriteLine("date exact today=" + IsToday(exact, before, clock));
+        bool exactOk = DateTime.TryParseExact(time.AsSpan(), format.AsSpan(), ci, DateTimeStyles.NoCurrentDateDefault, out var minimum);
+        Console.WriteLine("date exact minimum=" + (exactOk && minimum.Ticks == clock.Ticks));
+
+        var monthDay = DateTime.ParseExact("06-15", "MM-dd", ci);
+        var monthDayWithStyle = DateTime.ParseExact("06-15", "MM-dd", ci, DateTimeStyles.NoCurrentDateDefault);
+        var day = DateTime.ParseExact("15", "dd", ci);
+        Console.WriteLine("date exact month-day=" + IsThisYear(monthDay, before, 6, 15)
+            + "/" + IsThisYear(monthDayWithStyle, before, 6, 15));
+        Console.WriteLine("date exact day/year=" + IsThisYear(day, before, 1, 15)
+            + "/" + (DateTime.ParseExact("2024", "yyyy", ci) == new DateTime(2024, 1, 1)));
+
+        try { Console.WriteLine("date general today=" + IsToday(DateTime.Parse(time, ci), before, clock)); }
+        catch (FormatException) { Console.WriteLine("date general today=FormatException"); }
+        bool general = DateTime.TryParse(time, ci, DateTimeStyles.None, out var tried);
+        bool generalMinimum = DateTime.TryParse(time, ci, DateTimeStyles.NoCurrentDateDefault, out var triedMinimum);
+        Console.WriteLine("date general try=" + (general && IsToday(tried, before, clock))
+            + "/" + (generalMinimum && triedMinimum.Ticks == clock.Ticks));
+
+        bool localOk = DateTimeOffset.TryParseExact(time, format, ci, DateTimeStyles.None, out var local);
+        Console.WriteLine("offset exact today=" + (localOk && IsToday(local.DateTime, before, clock)));
+        Console.WriteLine("offset exact relative date=" + IsOffsetToday(time + " +14:00", TimeSpan.FromHours(14), clock)
+            + "/" + IsOffsetToday(time + " -14:00", TimeSpan.FromHours(-14), clock));
+        const string incomplete = "06-15 +02:00";
+        bool incompleteRejected = !DateTimeOffset.TryParseExact(incomplete, "MM-dd zzz", ci, DateTimeStyles.None, out _);
+        try
+        {
+            _ = DateTimeOffset.ParseExact(incomplete, "MM-dd zzz", ci, DateTimeStyles.None);
+            Console.WriteLine("offset exact incomplete=False");
+        }
+        catch (FormatException e)
+        {
+            Console.WriteLine("offset exact incomplete=" + (incompleteRejected && e.Message.Contains(incomplete)));
+        }
+
+        try
+        {
+            _ = DateTimeOffset.ParseExact(time, format, ci, DateTimeStyles.NoCurrentDateDefault);
+            Console.WriteLine("offset exact style=accepted");
+        }
+        catch (ArgumentException e) { Console.WriteLine("offset exact style=" + e.ParamName); }
+        try
+        {
+            _ = DateTimeOffset.TryParseExact(time.AsSpan(), new[] { format }, ci, DateTimeStyles.NoCurrentDateDefault, out _);
+            Console.WriteLine("offset exact try style=accepted");
+        }
+        catch (ArgumentException e) { Console.WriteLine("offset exact try style=" + e.ParamName); }
+    }
+
+    private static bool IsToday(DateTime parsed, DateTime before, TimeSpan clock) =>
+        (parsed.Date == before.Date || parsed.Date == DateTime.Now.Date)
+        && parsed.TimeOfDay == clock && parsed.Kind == DateTimeKind.Unspecified;
+
+    private static bool IsThisYear(DateTime parsed, DateTime before, int month, int day) =>
+        (parsed.Year == before.Year || parsed.Year == DateTime.Now.Year)
+        && parsed.Month == month && parsed.Day == day;
+
+    private static bool IsOffsetToday(string input, TimeSpan offset, TimeSpan clock)
+    {
+        var before = DateTime.UtcNow.Add(offset).Date;
+        if (!DateTimeOffset.TryParseExact(input, "HH:mm:ss zzz", ci, DateTimeStyles.None, out var parsed))
+            return false;
+        return (parsed.Date == before || parsed.Date == DateTime.UtcNow.Add(offset).Date)
+            && parsed.Offset == offset && parsed.TimeOfDay == clock;
+    }
 }

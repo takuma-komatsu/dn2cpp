@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Reflection.Metadata;
 using System.Text;
 using SRME = System.Reflection.Metadata.Ecma335.MetadataTokens;
@@ -1059,6 +1060,21 @@ internal sealed partial class MethodCompiler
         return false;
     }
 
+    // The invariant parsers inspect only NoCurrentDateDefault. Continue discarding
+    // the provider while preserving the style value for the supported parse shapes.
+    private string PopDateTimeParseStyles(ImmutableArray<TypeDesc> ps, int first, int last)
+    {
+        string styles = "0";
+        for (int x = last; x >= first; x--)
+        {
+            var arg = Pop();
+            if (ps[x] is { Kind: TypeKind.Class, Class.FullName: "System.Globalization.DateTimeStyles" }
+                or { Kind: TypeKind.External, ExternalName: "System.Globalization.DateTimeStyles" })
+                styles = $"(int32_t)({arg.Expr})";
+        }
+        return styles;
+    }
+
     /// <summary>Lowers a System.DateTime member to its Dn2CppDateTime runtime helper.
     /// Returns false if unmapped so the caller reports a clear error.</summary>
     private bool TryEmitDateTimeIntrinsic(string name, MethodSignature<TypeDesc> sig)
@@ -1113,11 +1129,10 @@ internal sealed partial class MethodCompiler
 
         // Parse / TryParse / ParseExact share string and character-span parsers.
         // Format arrays remain unsupported.
-        // IFormatProvider / DateTimeStyles args are dropped (invariant). The out result
-        // is the last param (a ByRef).
+        // Provider is ignored (invariant); the out result is the last param (a ByRef).
         if (name == "Parse" && ps.Length >= 1 && (ps[0].IsString || IsReadOnlySpanChar(ps[0])))
         {
-            for (int x = ps.Length - 1; x >= 1; x--) Pop();
+            string styles = PopDateTimeParseStyles(ps, 1, ps.Length - 1);
             var s = Pop();
             string value;
             if (ps[0].IsString)
@@ -1127,13 +1142,13 @@ internal sealed partial class MethodCompiler
                 string sp = SpanPtr(s, CppTypes.Of(ps[0]));
                 value = $"dn2cpp_string_from_chars((const char16_t*){sp}->f__reference, {sp}->f__length)";
             }
-            Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_parse({value})");
+            Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_parse({value}, {styles})");
             return true;
         }
         if (name == "TryParse" && ps.Length >= 2 && (ps[0].IsString || IsReadOnlySpanChar(ps[0])))
         {
             var outAddr = Pop();
-            for (int x = ps.Length - 2; x >= 1; x--) Pop(); // provider, if present
+            string styles = PopDateTimeParseStyles(ps, 1, ps.Length - 2);
             var s = Pop();
             string value;
             if (ps[0].IsString)
@@ -1143,7 +1158,7 @@ internal sealed partial class MethodCompiler
                 string sp = SpanPtr(s, CppTypes.Of(ps[0]));
                 value = $"dn2cpp_string_from_chars((const char16_t*){sp}->f__reference, {sp}->f__length)";
             }
-            Push(StackKind.I4, "int32_t", $"dn2cpp_datetime_try_parse({value}, {Cast(outAddr, "Dn2CppDateTime*")})");
+            Push(StackKind.I4, "int32_t", $"dn2cpp_datetime_try_parse({value}, {Cast(outAddr, "Dn2CppDateTime*")}, {styles})");
             return true;
         }
         if (name is "ParseExact" or "TryParseExact" && ps.Length >= 2
@@ -1152,7 +1167,7 @@ internal sealed partial class MethodCompiler
         {
             bool isTry = name == "TryParseExact";
             var outAddr = isTry ? Pop() : default;
-            for (int x = ps.Length - (isTry ? 2 : 1); x >= 2; x--) Pop();
+            string styles = PopDateTimeParseStyles(ps, 2, ps.Length - (isTry ? 2 : 1));
             string[] values = new string[2];
             for (int x = 1; x >= 0; x--)
             {
@@ -1167,9 +1182,9 @@ internal sealed partial class MethodCompiler
                 }
             }
             if (isTry)
-                Push(StackKind.I4, "int32_t", $"dn2cpp_datetime_try_parse_exact({values[0]}, {values[1]}, {Cast(outAddr!, "Dn2CppDateTime*")})");
+                Push(StackKind.I4, "int32_t", $"dn2cpp_datetime_try_parse_exact({values[0]}, {values[1]}, {Cast(outAddr!, "Dn2CppDateTime*")}, {styles})");
             else
-                Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_parse_exact({values[0]}, {values[1]})");
+                Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_parse_exact({values[0]}, {values[1]}, {styles})");
             return true;
         }
 
@@ -1774,7 +1789,7 @@ internal sealed partial class MethodCompiler
         }
 
         // Parsing uses invariant formats; TryParseExact accepts string/span inputs and
-        // single/array formats. Provider/styles arguments retain the invariant subset.
+        // single/array formats. Providers are ignored; the exact parser rejects NoCurrentDateDefault.
         // The out result of the Try* forms is the last param (a ByRef).
         if (name == "Parse" && ps.Length >= 1 && ps[0].IsString)
         {
@@ -1785,9 +1800,9 @@ internal sealed partial class MethodCompiler
         }
         if (name == "ParseExact" && ps.Length >= 2 && ps[0].IsString && ps[1].IsString)
         {
-            for (int x = ps.Length - 1; x >= 2; x--) Pop(); // provider [, styles]
+            string styles = PopDateTimeParseStyles(ps, 2, ps.Length - 1);
             var f = Pop(); var s = Pop();
-            Push(StackKind.Struct, "Dn2CppDateTimeOffset", $"dn2cpp_datetimeoffset_parse_exact({Cast(s, "Dn2CppString*")}, {Cast(f, "Dn2CppString*")})");
+            Push(StackKind.Struct, "Dn2CppDateTimeOffset", $"dn2cpp_datetimeoffset_parse_exact({Cast(s, "Dn2CppString*")}, {Cast(f, "Dn2CppString*")}, {styles})");
             return true;
         }
         if (name == "TryParse" && ps.Length >= 2 && ps[0].IsString)
@@ -1801,24 +1816,24 @@ internal sealed partial class MethodCompiler
         if (name == "TryParseExact" && ps.Length >= 3 && ps[0].IsString && ps[1].IsString)
         {
             var outAddr = Pop();
-            for (int x = ps.Length - 2; x >= 2; x--) Pop(); // provider [, styles]
+            string styles = PopDateTimeParseStyles(ps, 2, ps.Length - 2);
             var f = Pop(); var s = Pop();
-            Push(StackKind.I4, "int32_t", $"dn2cpp_datetimeoffset_try_parse_exact({Cast(s, "Dn2CppString*")}, {Cast(f, "Dn2CppString*")}, {Cast(outAddr, "Dn2CppDateTimeOffset*")})");
+            Push(StackKind.I4, "int32_t", $"dn2cpp_datetimeoffset_try_parse_exact({Cast(s, "Dn2CppString*")}, {Cast(f, "Dn2CppString*")}, {Cast(outAddr, "Dn2CppDateTimeOffset*")}, {styles})");
             return true;
         }
         // Span overloads (ReadOnlySpan<char> input + single format span): materialize both
-        // spans to strings and reuse the string parser; provider/styles dropped (invariant).
+        // spans to strings and reuse the string parser.
         if (name == "TryParseExact" && ps.Length >= 3 && IsReadOnlySpanChar(ps[0]) && IsReadOnlySpanChar(ps[1]))
         {
             var outAddr = Pop();
-            for (int x = ps.Length - 2; x >= 2; x--) Pop(); // provider [, styles]
+            string styles = PopDateTimeParseStyles(ps, 2, ps.Length - 2);
             string fPtr = SpanPtr(Pop(), CppTypes.Of(ps[1]));
             string f = NewTemp("Dn2CppString*");
             Emit($"{f} = dn2cpp_string_from_chars((const char16_t*){fPtr}->f__reference, {fPtr}->f__length);");
             string sPtr = SpanPtr(Pop(), CppTypes.Of(ps[0]));
             string sv = NewTemp("Dn2CppString*");
             Emit($"{sv} = dn2cpp_string_from_chars((const char16_t*){sPtr}->f__reference, {sPtr}->f__length);");
-            Push(StackKind.I4, "int32_t", $"dn2cpp_datetimeoffset_try_parse_exact({sv}, {f}, {Cast(outAddr, "Dn2CppDateTimeOffset*")})");
+            Push(StackKind.I4, "int32_t", $"dn2cpp_datetimeoffset_try_parse_exact({sv}, {f}, {Cast(outAddr, "Dn2CppDateTimeOffset*")}, {styles})");
             return true;
         }
         // String and span inputs share the same format-array validation and result reset.
@@ -1826,7 +1841,7 @@ internal sealed partial class MethodCompiler
             && ps[1] is { Kind: TypeKind.SZArray, Element.IsString: true })
         {
             var outAddr = Pop();
-            for (int x = ps.Length - 2; x >= 2; x--) Pop(); // provider [, styles]
+            string styles = PopDateTimeParseStyles(ps, 2, ps.Length - 2);
             var formats = Pop();
             var input = Pop();
             string value;
@@ -1838,7 +1853,7 @@ internal sealed partial class MethodCompiler
                 value = NewTemp("Dn2CppString*");
                 Emit($"{value} = dn2cpp_string_from_chars((const char16_t*){pointer}->f__reference, {pointer}->f__length);");
             }
-            Push(StackKind.I4, "int32_t", $"dn2cpp_datetimeoffset_try_parse_exact_multi({value}, {Cast(formats, "Dn2CppArrayRef*")}, {Cast(outAddr, "Dn2CppDateTimeOffset*")})");
+            Push(StackKind.I4, "int32_t", $"dn2cpp_datetimeoffset_try_parse_exact_multi({value}, {Cast(formats, "Dn2CppArrayRef*")}, {Cast(outAddr, "Dn2CppDateTimeOffset*")}, {styles})");
             return true;
         }
 

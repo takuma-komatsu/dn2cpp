@@ -2178,6 +2178,8 @@ inline constexpr const char* DN2CPP_SR_DATE_TIME_BAD_YEARS = "ArgumentOutOfRange
 inline constexpr const char* DN2CPP_SR_FILE_TIME_INVALID = "ArgumentOutOfRange_FileTimeInvalid";
 inline constexpr const char* DN2CPP_SR_FORMAT_OFFSET_OUT_OF_RANGE = "Format_OffsetOutOfRange";
 inline constexpr const char* DN2CPP_SR_FORMAT_UTC_OUT_OF_RANGE = "Format_UTCOutOfRange";
+inline constexpr const char* DN2CPP_SR_DATE_TIME_OFFSET_INVALID_STYLES = "Argument_DateTimeOffsetInvalidDateTimeStyles";
+inline constexpr const char* DN2CPP_SR_FORMAT_MISSING_INCOMPLETE_DATE = "Format_MissingIncompleteDate";
 inline constexpr const char* DN2CPP_SR_INVALID_DATE_TIME_KIND = "Argument_InvalidDateTimeKind";
 inline constexpr const char* DN2CPP_SR_MONTH = "ArgumentOutOfRange_Month";
 inline constexpr const char* DN2CPP_SR_OFFSET_LOCAL_MISMATCH = "Argument_OffsetLocalMismatch";
@@ -8853,22 +8855,22 @@ int32_t dn2cpp_datetime_hash(Dn2CppDateTime a);
 // \ escape, % single-specifier). null/empty == "G". Time-zone offset (z/zzz) and the
 // "U" specifier are carve-outs (no time-zone model — invariant only).
 Dn2CppString* dn2cpp_datetime_format(Dn2CppDateTime a, Dn2CppString* fmt);
-// Parse / TryParse / ParseExact — InvariantCulture. Parse reads ISO
-// (yyyy-MM-dd[THH:mm:ss[.fff]]) and the US-invariant short forms (M/d/yyyy[ HH:mm[:ss]]);
-// ParseExact reads a custom format (y/M[/MMM/MMMM]/d/H/h/m/s/f/F/t literals) or a
-// single-char standard specifier expanded to its pattern. A format with no date part
-// defaults to 0001-01-01 (no clock — .NET uses today; carve-out). Time-zone
-// offsets are consumed but not applied (invariant only).
-bool dn2cpp_datetime_try_parse(Dn2CppString* s, Dn2CppDateTime* out);
-bool dn2cpp_datetime_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, Dn2CppDateTime* out);
-Dn2CppDateTime dn2cpp_datetime_parse(Dn2CppString* s);
-Dn2CppDateTime dn2cpp_datetime_parse_exact(Dn2CppString* s, Dn2CppString* fmt);
+// Parse / TryParse / ParseExact — InvariantCulture. Parse reads ISO or US dates with
+// optional time, or HH:mm[:ss[.fffffff]] alone. ParseExact reads custom formats or
+// a single-char standard specifier. Time alone uses today's local date, or 0001-01-01
+// with NoCurrentDateDefault. Partial exact dates use the local year if it is missing
+// and 1 for a missing month or day. Time-zone offsets in exact DateTime parsing are
+// consumed but not applied.
+bool dn2cpp_datetime_try_parse(Dn2CppString* s, Dn2CppDateTime* out, int32_t styles = 0);
+bool dn2cpp_datetime_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, Dn2CppDateTime* out, int32_t styles = 0);
+Dn2CppDateTime dn2cpp_datetime_parse(Dn2CppString* s, int32_t styles = 0);
+Dn2CppDateTime dn2cpp_datetime_parse_exact(Dn2CppString* s, Dn2CppString* fmt, int32_t styles = 0);
 // Convert.ToDateTime(string/object): null -> DateTime.MinValue; a string parses
 // (catchable FormatException on bad input), a boxed DateTime passes through.
 Dn2CppDateTime dn2cpp_convert_str_to_datetime(Dn2CppString* s);
 Dn2CppDateTime dn2cpp_convert_obj_to_datetime(Dn2CppObject* v);
-// Wall clock. The only non-deterministic DateTime helpers — gates assert
-// invariants (Kind, a sane year range, Today at midnight), never an exact instant.
+// Wall clock. Gates check clock-dependent results using invariants (Kind, a sane
+// year range, Today at midnight), not an exact instant.
 // Now/Today read local time (Kind=Local); UtcNow reads UTC (Kind=Utc).
 Dn2CppDateTime dn2cpp_datetime_now();
 Dn2CppDateTime dn2cpp_datetime_utc_now();
@@ -8922,9 +8924,9 @@ Dn2CppString* dn2cpp_datetimeoffset_to_string(Dn2CppDateTimeOffset d);
 // non-deterministic helpers (host clock + zone) — gates assert invariants only.
 Dn2CppString* dn2cpp_datetimeoffset_format(Dn2CppDateTimeOffset d, Dn2CppString* fmt);
 bool dn2cpp_datetimeoffset_try_parse(Dn2CppString* s, Dn2CppDateTimeOffset* out);
-bool dn2cpp_datetimeoffset_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, Dn2CppDateTimeOffset* out);
+bool dn2cpp_datetimeoffset_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, Dn2CppDateTimeOffset* out, int32_t styles = 0);
 // TryParseExact(input, string[] formats, ...): first format that matches wins.
-bool dn2cpp_datetimeoffset_try_parse_exact_multi(Dn2CppString* s, Dn2CppArrayRef* formats, Dn2CppDateTimeOffset* out);
+bool dn2cpp_datetimeoffset_try_parse_exact_multi(Dn2CppString* s, Dn2CppArrayRef* formats, Dn2CppDateTimeOffset* out, int32_t styles = 0);
 // Frozen DTFI tables use precise String[] identities. Managed getters clone the
 // shared name/pattern arrays before returning them through the public API.
 Dn2CppArrayRef* dn2cpp_dtfi_invariant_month_names(const Dn2CppTypeInfo* arrType, bool abbreviated);
@@ -8932,7 +8934,7 @@ Dn2CppArrayRef* dn2cpp_dtfi_invariant_day_names(const Dn2CppTypeInfo* arrType, i
 Dn2CppArrayRef* dn2cpp_dtfi_invariant_patterns(const Dn2CppTypeInfo* arrType, int32_t kind);
 Dn2CppArrayRef* dn2cpp_dtfi_invariant_abbrev_day_names(const Dn2CppTypeInfo* arrType);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse(Dn2CppString* s);
-Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse_exact(Dn2CppString* s, Dn2CppString* fmt);
+Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse_exact(Dn2CppString* s, Dn2CppString* fmt, int32_t styles = 0);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_add_ticks(Dn2CppDateTimeOffset d, int64_t ticks, const char* paramName);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_subtract_ticks(Dn2CppDateTimeOffset d, int64_t ticks, const char* paramName);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_add_unit(Dn2CppDateTimeOffset d, double value, int64_t ticksPerUnit);

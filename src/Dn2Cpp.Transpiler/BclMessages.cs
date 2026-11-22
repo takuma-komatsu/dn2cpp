@@ -31,6 +31,8 @@ internal static class BclMessages
         "ArgumentOutOfRange_FileTimeInvalid",
         "Format_OffsetOutOfRange",
         "Format_UTCOutOfRange",
+        "Argument_DateTimeOffsetInvalidDateTimeStyles",
+        "Format_MissingIncompleteDate",
         "Argument_InvalidDateTimeKind",
         "ArgumentOutOfRange_Month",
         "Argument_OffsetLocalMismatch",
