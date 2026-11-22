@@ -27,9 +27,10 @@
 #                       lookup (Environment.ProcessId / Environment.UserName ->
 #                       SystemNative_{GetPid,GetEUid,GetPwUidR} on Unix and
 #                       GetCurrentProcessId/GetUserNameExW on Windows), plus
-#                       System.Diagnostics.Process for the two entries no
-#                       CoreLib-only closure can name (HasExited ->
-#                       SystemNative_Kill, SessionId -> SystemNative_GetSid).
+#                       System.Diagnostics.Process for the two entries it
+#                       declares (HasExited -> SystemNative_Kill, SessionId ->
+#                       SystemNative_GetSid, which CoreLib reaches only behind
+#                       named mutexes).
 #                       Part of its regression is a LINK error rather than wrong
 #                       output, so step 5 asserts the symbol set directly on top
 #                       of the diff. It also covers the SECOND native module
@@ -250,7 +251,7 @@ else
     # block reaches it through HasExited (ProcessWaitState's liveness probe). It
     # is declared in System.Diagnostics.Process.dll, so this line is also the
     # check that step 3's -r survived.
-    for sym in SystemNative_GetPid SystemNative_GetEUid SystemNative_GetPwUidR SystemNative_Kill; do
+    for sym in SystemNative_GetPid SystemNative_GetEUid SystemNative_GetPwUidR SystemNative_Kill SystemNative_GetPlatformSIGSTOP; do
         grep -qE "^_?$sym\$" "$undefined_syms" || {
             echo "FAIL: no app object references $sym — PalIdentitySubset stopped reaching the P/Invoke" >&2
             exit 1; }
@@ -301,10 +302,8 @@ else
 # DEFINED: the PAL object defines the whole identity surface from ITS OWN object,
 # rather than from anything the link happened to find — the failure mode being a
 # scratch archive that answers every SystemNative_* with a plausible constant.
-# The runtime contract is held by the static_asserts and the signal-translation
-# table at the call site — notably PAL SIGSTOP=19 vs Darwin's 17, where a
-# pass-through would resume a process the caller asked to stop, and SIGKILL being
-# 9 on both platforms is exactly what makes a pass-through look correct.
+# Static_asserts at the definitions pin the Passwd layout and the access modes;
+# the signal entries pass the host's numbers through, and nothing here checks them.
     pal_objdir="$(dirname "$(ensure_cmake_runtime)")"
     pal_defined="$out/pal-defined-syms.txt"
     dump_object_symbols_defined "$pal_objdir" dn2cpp_system_native > "$pal_defined"

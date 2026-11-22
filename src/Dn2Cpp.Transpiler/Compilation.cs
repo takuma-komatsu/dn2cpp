@@ -833,6 +833,14 @@ internal sealed partial class Compilation
         + "socket.")
         .Replace("\\", "\\\\").Replace("\"", "\\\"");
 
+    /// <summary>What the cut WinZip AES factories throw
+    /// (<see cref="CoreIntrinsics.MdAbsentWinZipAes"/>). The first sentence is the BCL's
+    /// own <c>SR.WinZipEncryptionNotSupportedOnPlatform</c>; the text needs no C++
+    /// escaping.</summary>
+    internal const string AbsentWinZipAesThrowMessage =
+        "WinZip AES encryption is not supported on this platform. A dn2cpp-transpiled "
+        + "binary provides no AES or PBKDF2 implementation.";
+
     /// <summary>Loads one assembly image as the next module (index = current module
     /// count) and registers it in <see cref="Modules"/> / the reader map.
     /// Reads the whole image via the already-intercepted File.ReadAllBytes and hands the
@@ -1451,23 +1459,20 @@ internal sealed partial class Compilation
     /// instead to declare each distinct entry-point symbol <c>extern "C"</c>.</summary>
     public HashSet<MethodInfo> PInvokeCalls { get; } = new();
 
-    /// <summary>Program-wide lazy P/Invoke resolution cells. Direct IL calls share a
-    /// MethodDef cell; the address-taken forwarder has a second cell, matching CoreCLR's
-    /// distinct delegate/function-pointer stub while still sharing across all users of
-    /// each route.</summary>
+    /// <summary>Program-wide lazy P/Invoke resolution cells, one per import. Its call
+    /// sites and its address-taken forwarder read and publish the same cell, so a
+    /// delegate or function pointer over an import that was already called, or the
+    /// reverse, does not run the resolver again.</summary>
     public HashSet<string> LazyPInvokeCaches { get; } = new(StringComparer.Ordinal);
 
-    public string NoteLazyPInvokeCall(MethodInfo method, bool ftnWrapper)
+    public string NoteLazyPInvokeCall(MethodInfo method)
     {
-        string name = LazyPInvokeCacheName(method, ftnWrapper);
+        string name = "dn2cpp_pinvoke_cache_" + method.CppName;
         LazyPInvokeCaches.Add(name);
         return name;
     }
 
     internal void ResetLazyPInvokeCallsForEmission() => LazyPInvokeCaches.Clear();
-
-    private static string LazyPInvokeCacheName(MethodInfo method, bool ftnWrapper) =>
-        "dn2cpp_pinvoke_cache_" + method.CppName + (ftnWrapper ? "_ftn" : "");
 
     /// <summary>Managed implementations of native P/Invoke entry points, keyed by the
     /// <c>[DllImport]</c> (module, entry point) they replace: static methods carrying
@@ -6500,6 +6505,12 @@ internal sealed partial class Compilation
             // the real framework, linked via `-framework CoreFoundation` in
             // runtime/CMakeLists.txt — no -l token.
             "corefoundation" => null,
+            // Windows' "c": the C runtime every binary already links, and no import
+            // library carries this name.
+            "ucrtbase" => null,
+            // An API set has no import library of its own name; the runtime target
+            // links synchronization.lib, which exports it (runtime/CMakeLists.txt).
+            "api-ms-win-core-synch-l1-2-0" => null,
             _ => name,
         };
     }
@@ -6513,10 +6524,14 @@ internal sealed partial class Compilation
     {
         if (method.PInvoke is not { } pinv)
             return false;
-        if (_directPInvokes.Contains("*")
-            || _directPInvokes.Contains(pinv.ModuleName)
+        if (_directPInvokes.Contains(pinv.ModuleName)
             || _directPInvokes.Contains(pinv.ModuleName + "!" + pinv.RawEntryPoint))
             return true;
+        // The wildcard picks static binding for imports a library can supply. No target
+        // has a library behind CoreLib's QCall module, so only a selector naming it
+        // lifts the refusal; admitting it here would put the module on the link line.
+        if (_directPInvokes.Contains("*"))
+            return !CoreIntrinsics.PiAbsentCoreClrQCall.Matches(method);
 
         // These imports bind to symbols supplied by the runtime or the target OS
         // itself. Keep only framework/shim declarations direct; an application or
@@ -6525,7 +6540,8 @@ internal sealed partial class Compilation
         string assembly = method.DeclaringClass.Module.AssemblyName;
         bool framework = IsFrameworkAssemblyName(assembly)
             || assembly is "DnZlib" or "DnBrotli" or "DnHttp";
-        return framework && IsRuntimeProvidedPInvokeModule(pinv.ModuleName);
+        return framework && (IsRuntimeProvidedPInvokeModule(pinv.ModuleName)
+            || IsRuntimeProvidedPInvokeEntry(pinv.ModuleName, pinv.RawEntryPoint));
     }
 
     /// <summary>True for a bodyless <c>[DllImport]</c> method whose call sites lower to a
@@ -6710,6 +6726,33 @@ internal sealed partial class Compilation
             // under DN2CPP_USE_CURL): the DnHttp shim's [DllImport("dn2cpp_http")] direct-links
             // to those dn2cpp_http2_call_* entry points, the same posture as the zlib shim.
             or "dn2cpp_http";
+
+    /// <summary>Framework imports admitted one entry point at a time, from Windows
+    /// modules <see cref="IsRuntimeProvidedPInvokeModule"/> does not admit whole. Both
+    /// sets are what the win-x64 CoreLib's <c>LowLevelLock</c> stands on
+    /// (<c>LowLevelThreadBlocker</c> allocates its state cache-line aligned and blocks
+    /// in <c>LowLevelFutex</c>), reached through <c>RegisteredWaitHandle</c>'s static
+    /// lock.
+    /// <para><c>ucrtbase.dll</c>: the aligned heap behind the real
+    /// <c>NativeMemory.AlignedAlloc</c>/<c>AlignedFree</c> bodies in-CoreLib callers
+    /// run. A direct call binds the C runtime the binary itself links, which is the one
+    /// <c>dn2cpp_native_aligned_alloc</c>/<c>_free</c> (the intercepted cross-assembly
+    /// route) call, so a block from either route may be released by the other. That
+    /// is why these are direct and never lazily bound: a loaded <c>ucrtbase.dll</c> is
+    /// a second allocator beside a statically linked CRT. The module's plain
+    /// <c>malloc</c> family stays refused; nothing reached needs it.</para>
+    /// <para><c>api-ms-win-core-synch-l1-2-0.dll</c>: the address-wait pair. An API
+    /// set has no import library of its own name; <c>synchronization.lib</c> exports
+    /// it, and <c>runtime/CMakeLists.txt</c> links that on the WIN32 arm.</para>
+    /// Neither module yields a link token (<see cref="LinkLibToken"/>).</summary>
+    public static bool IsRuntimeProvidedPInvokeEntry(string module, string entryPoint) =>
+        module switch
+        {
+            "ucrtbase.dll" => entryPoint is "_aligned_malloc" or "_aligned_free",
+            "api-ms-win-core-synch-l1-2-0.dll" =>
+                entryPoint is "WaitOnAddress" or "WakeByAddressSingle",
+            _ => false,
+        };
 
     // ── Conditional default references (the shim assemblies shipped with the CLI) ──
     /// <summary>The shim assemblies dn2cpp ships beside its CLI, each paired with the

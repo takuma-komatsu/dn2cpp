@@ -56,18 +56,16 @@ static class Program
         Console.WriteLine("-- System.Diagnostics.Process: the Unix PAL entries, not exercised here --");
 #else
         // ---- System.Diagnostics.Process: SystemNative_Kill and SystemNative_GetSid ----
-        // The two PAL entries no CoreLib-only closure can name (they are declared in
-        // System.Diagnostics.Process.dll). This is a real round-trip, not a symbol probe:
+        // The two PAL entries System.Diagnostics.Process.dll declares. No CoreLib-only
+        // closure names Kill, and CoreLib reaches GetSid only through the shared memory
+        // behind named mutexes. This is a real round-trip, not a symbol probe:
         // every line below is diffed against real .NET and the transpile buys none of it
         // with --cut.
         //
         // Which property reaches which:
-        //   HasExited  -> ProcessWaitState.GetExited -> Interop.Sys.Kill(pid,
-        //                 Signals.None), the "is this pid still alive" probe. The
-        //                 signal translation in the PAL matters here for the
-        //                 reason written at SystemNative_Kill: PAL_NONE is 0 and
-        //                 must stay 0, and a table that passed the managed value
-        //                 through would be indistinguishable on this call alone.
+        //   HasExited  -> ProcessWaitState.GetExited -> Interop.Sys.Kill(pid, 0),
+        //                 the "is this pid still alive" probe: 0 is kill(2)'s
+        //                 own null signal and reaches it unchanged.
         //   SessionId  -> ProcessManager.CreateProcessInfo -> Interop.Sys.GetSid.
         //                 macOS only: on Linux the same property parses
         //                 /proc/self/stat and never enters the PAL, which is why
@@ -91,6 +89,13 @@ static class Program
             // False, and it has to be a real answer: Kill(pid, None) returning
             // failure for a live process would print True here.
             Console.WriteLine("HasExited: " + self.HasExited);
+            // Never taken: a live process has not exited, and the runtime answer cannot
+            // be folded away. Kill(true) reaches StopTree -> Interop.Sys.GetPlatformSIGSTOP,
+            // so the branch exists to make the C++ link ask for that entry.
+            if (self.HasExited)
+            {
+                self.Kill(entireProcessTree: true);
+            }
             sessionId = self.SessionId;
         }
 

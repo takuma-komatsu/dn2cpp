@@ -2,10 +2,10 @@
 using System;
 using System.Runtime.InteropServices;
 
-// Unlike a primitive blittable array, which .NET pins and passes by pointer so write-backs
-// are visible either way, a struct array is marshalled BY COPY with direction semantics:
-// [In] copies in only, [In,Out] copies both ways, [Out] zeroes the input first. The packed
-// storage stride, trailing padding included, must match the native C array layout.
+// A blittable struct array is pinned and passed by pointer like a primitive one, so the
+// native reads and writes the managed elements whatever [In]/[Out] the parameter carries.
+// The packed storage stride, trailing padding included, must match the native C array
+// layout.
 namespace PInvokeStructArraySubset;
 
 internal static class Program
@@ -20,7 +20,7 @@ internal static class Program
     [DllImport("dn2cpptest")] private static extern int dn2cpptest_ptarr_x(Point[] a, int i);
     [DllImport("dn2cpptest")] private static extern int dn2cpptest_ptarr_isnull(Point[]? a);
 
-    // One swap function under all three directions, so the trio pins the copy semantics.
+    // One swap function under all three directions, so the trio pins that none copies.
     [DllImport("dn2cpptest", EntryPoint = "dn2cpptest_ptarr_swap_all")]
     private static extern void ptarr_swap_default(Point[] a, int n);
     [DllImport("dn2cpptest", EntryPoint = "dn2cpptest_ptarr_swap_all")]
@@ -47,10 +47,10 @@ internal static class Program
         Console.WriteLine(dn2cpptest_ptarr_isnull(Array.Empty<Point>())); // 0
         Console.WriteLine(dn2cpptest_ptarr_sum(Array.Empty<Point>(), 0)); // 0
 
-        // The default [In] copies in rather than pinning, so the mutation is invisible.
+        // The default direction pins rather than copying in, so the mutation is visible.
         var pd = new Point[] { new Point { X = 1, Y = 2 } };
         ptarr_swap_default(pd, pd.Length);
-        Console.WriteLine($"{pd[0].X} {pd[0].Y}"); // 1 2 (unchanged)
+        Console.WriteLine($"{pd[0].X} {pd[0].Y}"); // 2 1
 
         var pio = new Point[]
         {
@@ -60,10 +60,10 @@ internal static class Program
         ptarr_swap_inout(pio, pio.Length);
         Console.WriteLine($"{pio[0].X} {pio[0].Y} {pio[1].X} {pio[1].Y}"); // 2 1 20 10
 
-        // [Out]: the native sees a zeroed buffer, so swapping yields zeroes.
+        // [Out]: the native still sees the managed elements, never a zeroed buffer.
         var po = new Point[] { new Point { X = 5, Y = 6 } };
         ptarr_swap_out(po, po.Length);
-        Console.WriteLine($"{po[0].X} {po[0].Y}"); // 0 0
+        Console.WriteLine($"{po[0].X} {po[0].Y}"); // 6 5
 
         // A mixed int + double struct strides by 16 with Value at offset 8, so this pins
         // the C padding against dn2cpp's layout.

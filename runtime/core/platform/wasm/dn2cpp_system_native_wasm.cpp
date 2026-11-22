@@ -69,7 +69,6 @@
 #include <fcntl.h>  // open, O_*, posix_fadvise
 #include <sys/file.h>   // flock
 #include <sys/stat.h>   // stat / fstat
-#include <sys/statfs.h> // fstatfs — GetFileSystemType
 #include <unistd.h> // getentropy, write
 
 extern "C" {
@@ -449,6 +448,22 @@ int32_t SystemNative_Close(intptr_t fd)
     return ::close((int)fd);
 }
 
+// How SafeFileHandle.IsAsync learns the mode of a descriptor it did not open itself.
+// A null out-pointer answers the PAL's EFAULT code directly, like the real PAL.
+int32_t SystemNative_FcntlGetIsNonBlocking(intptr_t fd, int32_t* isNonBlocking)
+{
+    if (isNonBlocking == nullptr)
+        return SystemNative_ConvertErrorPlatformToPal(EFAULT);
+    int flags = ::fcntl((int)fd, F_GETFL);
+    if (flags == -1)
+    {
+        *isNonBlocking = 0;
+        return -1;
+    }
+    *isNonBlocking = (flags & O_NONBLOCK) != 0 ? 1 : 0;
+    return 0;
+}
+
 intptr_t SystemNative_MksTemps(char* pathTemplate, int32_t suffixLength)
 {
     int descriptor;
@@ -489,6 +504,19 @@ int32_t SystemNative_PWrite(intptr_t fd, const void* buffer, int32_t bufferSize,
     return (int32_t)n;
 }
 
+// RandomAccess's transfers for a descriptor in O_NONBLOCK mode. The POSIX twin waits
+// in poll(2) when the descriptor is not ready. The page's one thread cannot wait for
+// readiness nothing else can produce, so EAGAIN is reported to the managed caller.
+int32_t SystemNative_ReadFromNonblocking(intptr_t fd, void* buffer, int32_t bufferSize)
+{
+    return SystemNative_Read(fd, buffer, bufferSize);
+}
+
+int32_t SystemNative_WriteToNonblocking(intptr_t fd, const void* buffer, int32_t bufferSize)
+{
+    return SystemNative_Write(fd, buffer, bufferSize);
+}
+
 // PAL SeekWhence values equal the host SEEK_SET/SEEK_CUR/SEEK_END (0/1/2).
 int64_t SystemNative_LSeek(intptr_t fd, int64_t offset, int32_t whence)
 {
@@ -526,6 +554,14 @@ int32_t SystemNative_FLock(intptr_t fd, int32_t operation)
     return r;
 }
 
+// SafeFileHandle.CanLockTheFile's query. MEMFS arbitrates no lock (FLock above
+// succeeds without taking one), so report none and let the open skip the flock.
+uint32_t SystemNative_FileSystemSupportsLocking(intptr_t fd, int32_t lockOperation, int32_t accessWrite)
+{
+    (void)fd; (void)lockOperation; (void)accessWrite;
+    return 0;
+}
+
 // Advisory readahead hint; the managed caller only debug-asserts success. Returns
 // the error number directly (posix_fadvise convention).
 int32_t SystemNative_PosixFAdvise(intptr_t fd, int64_t offset, int64_t length, int32_t advice)
@@ -554,8 +590,9 @@ int32_t SystemNative_FAllocate(intptr_t fd, int64_t offset, int64_t length)
     return 0;
 }
 
-// Managed Interop.Sys.FileStatus, sequential layout (net10.0): 120 bytes with
-// trailing pad. Mode is the RAW st_mode — the managed FileTypes constants
+// Managed Interop.Sys.FileStatus, sequential layout. The fields through
+// UserFlags match CoreLib's struct; its trailing HardLinkCount is never
+// written. Mode is the RAW st_mode — the managed FileTypes constants
 // (S_IFMT/S_IFREG/…) match the POSIX octal values.
 struct Dn2CppPalFileStatus
 {
@@ -635,21 +672,6 @@ int32_t SystemNative_Unlink(const char* path)
 char* SystemNative_GetCwd(char* buffer, int32_t bufferSize)
 {
     return ::getcwd(buffer, (size_t)bufferSize);
-}
-
-// The managed caller compares this against the NFS/CIFS magics to decide whether
-// file locking is trustworthy. MEMFS reports 0, which is none of them — the
-// ordinary local-filesystem behaviour, which is what MEMFS is.
-uint32_t SystemNative_GetFileSystemType(intptr_t fd)
-{
-    struct statfs fs;
-    int r;
-    while ((r = ::fstatfs((int)fd, &fs)) < 0 && errno == EINTR)
-    {
-    }
-    if (r != 0)
-        return 0;
-    return (uint32_t)fs.f_type;
 }
 
 } // extern "C"

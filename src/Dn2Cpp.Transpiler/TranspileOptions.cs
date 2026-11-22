@@ -169,7 +169,8 @@ public sealed record TranspileOptions
 
     /// <summary>Ordinal <c>module</c> or <c>module!entrypoint</c> selectors from the
     /// repeatable <c>--direct-pinvoke</c> option. A single <c>*</c> selects every
-    /// import. Imports not selected here use the runtime loader lazily; framework
+    /// import except CoreLib's private <c>QCall</c> module, which only a selector
+    /// naming it admits. Imports not selected here use the runtime loader lazily; framework
     /// PAL imports implemented by the dn2cpp runtime remain direct independently.</summary>
     public IReadOnlyList<string>? DirectPInvokes { get; init; }
 

@@ -249,10 +249,7 @@ internal static class CppTypes
         // as a variable-length UTF-8 buffer (NUL-terminated, embedded NULs included) and
         // decodes [In,Out]/[Out] write-backs back into the array — the encode/decode is
         // woven at the call site (EmitPInvokeCall). An array of a blittable value-type
-        // struct (Point[]) also marshals as void*, but — unlike a primitive
-        // blittable array, which .NET pins and passes by pointer — .NET marshals a struct
-        // array BY COPY with [In]/[Out] direction semantics (probe-confirmed); that
-        // copy-in / copy-back is woven at the call site (EmitPInvokeCall).
+        // struct (Point[]) is pinned and passed by pointer like a primitive one.
         : !isReturn && t.Kind == TypeKind.SZArray
             && (NativeAbiType(t.Element!) is not null
                 || t.Element! is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char }

@@ -906,36 +906,6 @@ void dn2cpp_pinvoke_chararr_from_ansi(Dn2CppArrayN* arr, void* buf)
         dst[count] = u'\0';
 }
 
-// P/Invoke blittable-struct array marshalling. Unlike a primitive
-// blittable array (int[]/double[]/...), which .NET pins and passes by pointer (two-way
-// regardless of [In]/[Out]), an array of a blittable value-type struct (Point[]) is
-// marshalled BY COPY with direction semantics (probe-confirmed vs real .NET): copy the
-// managed buffer into a fresh native buffer in (unless the parameter is [Out]-only,
-// which zeroes it), pass the buffer, and copy it back into the array only for
-// [Out]/[In,Out]. The buffer is length * elemSize bytes (elemSize == sizeof(t_<Struct>),
-// the packed Dn2CppArrayN stride, which matches the native C array layout). GC-allocated
-// so it survives the call without an explicit free; non-null even for an empty array.
-void* dn2cpp_pinvoke_blitarr_to_native(Dn2CppArrayN* arr, int32_t copyIn)
-{
-    if (arr == nullptr)
-        return nullptr;
-    size_t bytes = static_cast<size_t>(arr->length) * static_cast<size_t>(arr->elemSize);
-    void* buf = dn2cpp_alloc(bytes > 0 ? bytes : 1);
-    if (copyIn)
-        std::memcpy(buf, arr->data, bytes);
-    else
-        std::memset(buf, 0, bytes);
-    return buf;
-}
-
-void dn2cpp_pinvoke_blitarr_from_native(Dn2CppArrayN* arr, void* buf)
-{
-    if (arr == nullptr || buf == nullptr)
-        return;
-    size_t bytes = static_cast<size_t>(arr->length) * static_cast<size_t>(arr->elemSize);
-    std::memcpy(arr->data, buf, bytes);
-}
-
 // P/Invoke [MarshalAs(ByValArray, SizeConst=N)] inline fixed-length array struct field.
 // The native struct embeds the elements INLINE (<elem> f[N]); the managed struct holds a
 // managed array reference. A blittable element's packed managed stride equals its native
@@ -1428,6 +1398,12 @@ void* dn2cpp_native_library_load(Dn2CppString* path, int32_t throwOnError)
         dn2cpp_throw_argument_null_param("libraryPath");
     std::string name = dn2cpp_native_utf8(path);
     void* handle = dn2cpp_native_load_exact(name);
+#ifndef _WIN32
+    // CoreLib hands a path to dlopen unchecked, so the host loader decides an empty
+    // one: glibc answers with the main program.
+    if (name.empty())
+        handle = ::dlopen("", RTLD_LAZY | RTLD_LOCAL);
+#endif
     if (handle == nullptr && throwOnError != 0)
         dn2cpp_throw_dll_not_found(name.c_str());
     return handle;
