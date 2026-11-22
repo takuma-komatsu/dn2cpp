@@ -152,7 +152,7 @@ internal sealed partial class MethodCompiler
                 string text = NewTemp("Dn2CppString*");
                 Emit($"{text} = {Cast(value, "Dn2CppString*")};");
                 int single = name == "ToSingle" ? 1 : 0;
-                Push(StackKind.R8, "double", $"{text} == nullptr ? 0.0 : "
+                Push(StackKind.R8, single == 1 ? "float" : "double", $"{text} == nullptr ? 0.0 : "
                     + $"dn2cpp_fp_parse_str({text}, {DefaultFloatingParseStyles}, {nfi}, {single})");
                 return true;
             }
@@ -190,21 +190,20 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", $"(({Pop().Expr}) != 0 ? 1 : 0)");
                 return true;
 
-            // ToSingle widens the rounded float into the R8 stack slot.
             case ("System.Convert", "ToSingle")
                 when sig.ParameterTypes is [{ Primitive: PrimitiveTypeCode.UInt32 }]:
-                Push(StackKind.R8, "double", $"(double)(float)(uint32_t)({Pop().Expr})");
+                Push(StackKind.R8, "float", $"(float)(uint32_t)({Pop().Expr})");
                 return true;
             case ("System.Convert", "ToSingle")
                 when sig.ParameterTypes is [{ Primitive: PrimitiveTypeCode.UInt64 }]:
-                Push(StackKind.R8, "double", $"(double)(float)(uint64_t)({Pop().Expr})");
+                Push(StackKind.R8, "float", $"(float)(uint64_t)({Pop().Expr})");
                 return true;
             case ("System.Convert", "ToSingle")
                 when sig.ParameterTypes is [{ Primitive: PrimitiveTypeCode.Int32
                     or PrimitiveTypeCode.Int64
                     or PrimitiveTypeCode.Double or PrimitiveTypeCode.Single
                     or PrimitiveTypeCode.SByte or PrimitiveTypeCode.Byte or PrimitiveTypeCode.Int16 or PrimitiveTypeCode.UInt16 or PrimitiveTypeCode.Char }]:
-                Push(StackKind.R8, "double", $"(double)(float)({Cast(Pop(), "double")})");
+                Push(StackKind.R8, "float", $"(float)({Cast(Pop(), "double")})");
                 return true;
 
             // Convert.To*(object[, IFormatProvider]) — boxed-source IConvertible overloads:
@@ -250,7 +249,7 @@ internal sealed partial class MethodCompiler
                 return true;
             case ("System.Convert", "ToSingle") when sig.ParameterTypes is [{ IsObject: true }, ..]:
                 if (sig.ParameterTypes.Length == 2) Pop();
-                Push(StackKind.R8, "double", $"(double)(float)dn2cpp_convert_obj_to_f64({Cast(Pop(), "Dn2CppObject*")})");
+                Push(StackKind.R8, "float", $"(float)dn2cpp_convert_obj_to_f64({Cast(Pop(), "Dn2CppObject*")})");
                 return true;
             case ("System.Convert", "ToDouble") when sig.ParameterTypes is [{ IsObject: true }, ..]:
                 if (sig.ParameterTypes.Length == 2) Pop();

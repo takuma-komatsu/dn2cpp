@@ -109,9 +109,8 @@ internal sealed partial class MethodCompiler
         var (kind, type) = Promote(a, b);
         if (kind == StackKind.R8)
         {
-            // The remainder of two doubles is fmod, not `%` (which C++ does not
-            // define for floating point); division stays the plain operator.
-            Push(kind, type, rem ? $"fmod({a.Expr}, {b.Expr})" : $"{Cast(a, type)} / {Cast(b, type)}");
+            // Select the fmod overload at the same precision as a division.
+            Push(kind, type, rem ? $"std::fmod({Cast(a, type)}, {Cast(b, type)})" : $"{Cast(a, type)} / {Cast(b, type)}");
             return;
         }
         Push(kind, type, $"{DivRemGuard(type, rem)}({Cast(a, type)}, {Cast(b, type)})");
@@ -2331,7 +2330,7 @@ internal sealed partial class MethodCompiler
                 case PrimitiveTypeCode.UIntPtr:
                     Push(StackKind.I8, "int64_t", $"(int64_t)__atomic_load_n((intptr_t*)({p}), __ATOMIC_SEQ_CST)"); return;
                 case PrimitiveTypeCode.Single:
-                    Push(StackKind.R8, "double", $"(double)dn2cpp_volatile_read_r4((const float*)({p}))"); return;
+                    Push(StackKind.R8, "float", $"dn2cpp_volatile_read_r4((const float*)({p}))"); return;
                 case PrimitiveTypeCode.Double:
                     Push(StackKind.R8, "double", $"dn2cpp_volatile_read_r8((const double*)({p}))"); return;
             }
@@ -2401,7 +2400,7 @@ internal sealed partial class MethodCompiler
         if (a.Kind == StackKind.Ptr || b.Kind == StackKind.Ptr)
             return (StackKind.I8, "uintptr_t");
         if (a.Kind == StackKind.R8 || b.Kind == StackKind.R8)
-            return (StackKind.R8, "double");
+            return (StackKind.R8, a.IsSinglePrecision && b.IsSinglePrecision ? "float" : "double");
         if (a.Kind == StackKind.I8 || b.Kind == StackKind.I8)
             return (StackKind.I8, "int64_t");
         return (StackKind.I4, "int32_t");

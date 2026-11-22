@@ -1983,8 +1983,7 @@ internal sealed partial class MethodCompiler
         }
         else
         {
-            // float on the CLR stack is the F type — already double-widened.
-            Push(StackKind.R8, "double", $"dn2cpp_fp_parse_{suffix}({args}, {single})");
+            Push(StackKind.R8, single == 1 ? "float" : "double", $"dn2cpp_fp_parse_{suffix}({args}, {single})");
         }
         return true;
     }
