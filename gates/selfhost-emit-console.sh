@@ -18,10 +18,10 @@
 #
 # Reference set mirrors the full-CLI selfhost-emit.sh: the console CLI's own DLLs
 # (Transpiler + Runtime — NO Godot) plus the real CoreLib/BCL a console transpile
-# touches (including the real System.Linq), pinned to net10.0
-# (resolve_net10_corelib) and closed transitively with --auto-ref. The net10 pin
-# avoids the 11.0-preview CoreLib version skew (ResolveMemberRefField "Sequence
-# contains no matching element"; see resolve_net10_corelib in _common.sh).
+# touches (including the real System.Linq), pinned to the supported major
+# (resolve_pinned_corelib) and closed transitively with --auto-ref. The pin
+# keeps another major's CoreLib shape out of the transpile (see
+# resolve_pinned_corelib in _common.sh).
 # --auto-ref turns on AssemblyLoadSet.LoadReferenceClosure, which pulls
 # System.Security.Cryptography.dll out of the shared framework (the Transpiler
 # references it) so the SHA1-based public-key-token derivation in
@@ -42,8 +42,8 @@ BIN="src/Dn2Cpp.Cli.Console/bin/$CONFIG/$TFM"
 CLI="$BIN/dn2cpp-console.dll"
 [ -f "$CLI" ]  || { echo "error: console CLI not built: $CLI" >&2; exit 1; }
 
-echo "== 2/4 Locating the real net10.0 CoreLib + BCL =="
-corelib=$(resolve_net10_corelib)
+echo "== 2/4 Locating the real pinned CoreLib + BCL =="
+corelib=$(resolve_pinned_corelib)
 bcl=$(dirname "$corelib")
 echo "corelib: $corelib"
 echo "bcl dir: $bcl"

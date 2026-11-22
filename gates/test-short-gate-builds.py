@@ -35,12 +35,12 @@ xasm = common[common.index("xasm_gate() {"):
 stubs = r'''
 set -euo pipefail
 CONFIG=Debug
-TFM=net10.0
+TFM=net11.0
 EXE_EXT=
 DN2CPP_OS=linux
 record() { printf '%s\n' "$*" >> "$FAKE_LOG"; }
 locate_corelib() { printf '%s\n' "$PWD/runtime/System.Private.CoreLib.dll"; }
-resolve_net10_corelib() { locate_corelib; }
+resolve_pinned_corelib() { locate_corelib; }
 _gate_cli_hash() { printf 'fake-cli'; }
 prepare_cli() {
     if [ -z "${DN2CPP_CLI_DLL:-}" ]; then
@@ -1228,7 +1228,7 @@ for label, extra, expected in (
     work = root / ("selfhost-" + label)
     check((work / "artifacts/selfhost-prim-routes-Debug/previous-run/native.stdout").read_bytes()
           == b"retained route evidence\n", label)
-    check((work / "samples/dotnet/SelfHostPrimSubset/bin/Debug/net10.0/SelfHostPrimSubset.dll").read_bytes()
+    check((work / "samples/dotnet/SelfHostPrimSubset/bin/Debug/net11.0/SelfHostPrimSubset.dll").read_bytes()
           == b"", (label, "shared build output was rewritten"))
     emit = [line for line in calls if line.startswith("EMIT:")]
     native = [line for line in calls if line.startswith("NATIVE:")]
@@ -1249,7 +1249,7 @@ for label, extra, expected in (
                        "gc-collector:il-wrappers,finalizer-refusal", "buffer-reference-moves:internal,batch,overlap,barrier,wrong-count,standalone-clr",
                        "gen2:reflection,register,stack,reference-only,newobj,memberref"):
         check(any(dependency in line for line in cache), (label, dependency, cache))
-    raw_base = "samples/dotnet/SelfHostPrimSubset/bin/Debug/net10.0/SelfHostPrimSubset"
+    raw_base = "samples/dotnet/SelfHostPrimSubset/bin/Debug/net11.0/SelfHostPrimSubset"
     raw = [line for line in captures if "/buffer-unrewritten:" in line]
     check(len(raw) == 1 and raw[0].endswith("run_bounded dotnet " + raw_base + ".dll"), raw)
     delegate_fixture = next(line for line in captures if " --delegate-callable-bodies " in line)
@@ -1294,7 +1294,7 @@ for label, extra, expected in (
         check(" --auto-ref " not in route_refusals[2] and "System.Runtime.dll" in route_refusals[2]
               and "System.Console.dll" in route_refusals[2] and "System.Security.Claims.dll" not in route_refusals[2], route_refusals)
         check("/claims/copy/System.Security.Claims.dll" in route_refusals[3], route_refusals)
-        check("gates/fixtures/default-principal/bin/Debug/net10.0/ImplicitPrincipalProbe.dll --auto-ref" in route_refusals[4], route_refusals)
+        check("gates/fixtures/default-principal/bin/Debug/net11.0/ImplicitPrincipalProbe.dll --auto-ref" in route_refusals[4], route_refusals)
         check(sum(line.startswith("ASSERT:match-record artifacts/selfhost-prim-routes-") for line in calls) == 5, calls)
         check(fixtures == positive_fixtures + [
               "--runtime-type-is-pointer-negative-address-return", "--runtime-type-is-pointer-negative-call-class-return",

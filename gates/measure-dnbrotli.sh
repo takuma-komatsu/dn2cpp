@@ -21,7 +21,7 @@
 # DnBrotli's own stream. The same BCL-produced
 # bytes are what DnBrotli.Benchmarks' DecompressBenchmarks baseline decodes, so
 # the rows stay comparable. Because the driver therefore references the real
-# System.IO.Compression[.Brotli], the transpile pins net10.0 and passes those
+# System.IO.Compression[.Brotli], the transpile pins the CoreLib and passes those
 # assemblies like the compression-dnbrotli gate does; DnBrotli's
 # [NativeImplementation] swap keeps the resulting binary native-brotli-free.
 source "$(dirname "$0")/_common.sh"
@@ -40,7 +40,7 @@ export DN2CPP_DNBROTLI_REPO_ROOT="$PWD/internal/DnBrotli"
 dotnet "$APP" --produce-blobs "$PWD/$BLOB_DIR"
 
 echo "== 3/5 Transpiling IL -> C++ (backend-agnostic, once) =="
-CORELIB="$(resolve_net10_corelib)"
+CORELIB="$(resolve_pinned_corelib)"
 BCL="$(dirname "$CORELIB")"
 # --no-default-ref DnZlib keeps this benchmark measuring what it says it
 # measures: managed brotli against the NATIVE zlib. System.IO.Compression is in

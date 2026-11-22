@@ -181,7 +181,7 @@ reference boundaries.
 
 Medium applies in ILDiet and C++ generation; `--no-ildiet` only bypasses the DLL
 rewrite and leaves the selected level active. Verified BCL assemblies from the
-selected .NET 10 runtime pack or packaged target refs use High's member-level
+selected .NET 11 runtime pack or packaged target refs use High's member-level
 retention even under Medium. Application, library and backend types, and
 unverified inputs, keep Medium's type-wide policy. Known closed generic types retain
 their members; an open definition does not generate arbitrary specializations.
@@ -394,9 +394,11 @@ For a toolchain or editor bundle, reference its existing assembly instead:
 </ItemGroup>
 ```
 
-Adjust the relative checkout path or bundle path to the project location. The
-assembly contains no platform-specific managed code, so a project may compile
-against either matching target-framework build.
+Adjust the relative checkout path or bundle path to the project location. A
+bundle carries the `net8.0` build of the assembly, which a project targeting
+`net8.0` or any later framework can reference; a project reference selects the
+build nearest the project's own target framework. Every build holds the same
+IL, and none contains platform-specific managed code.
 
 Unity-format `link.xml` files are also supported. Pass individual descriptors
 with the repeatable `--link-xml <file>` option, or pass a project directory with

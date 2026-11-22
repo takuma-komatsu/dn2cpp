@@ -63,11 +63,11 @@
 # a re-published package, a poisoned cache or an accidental version bump fails there,
 # not as a mystery gap count.
 #
-# net10.0-pinned (resolve_net10_corelib), like every System.Net.Http gate.
+# Pinned CoreLib (resolve_pinned_corelib), like every System.Net.Http gate.
 source "$(dirname "$0")/_common.sh"
 
-echo "== 1/6 Locating the real net10 CoreLib + the gRPC oracle prerequisites =="
-corelib=$(resolve_net10_corelib)
+echo "== 1/6 Locating the real pinned CoreLib + the gRPC oracle prerequisites =="
+corelib=$(resolve_pinned_corelib)
 bcl=$(dirname "$corelib")
 nethttp="$bcl/System.Net.Http.dll"
 [ -f "$nethttp" ] || { echo "error: System.Net.Http.dll not found: $nethttp" >&2; exit 1; }
@@ -93,13 +93,18 @@ srv="samples/dotnet/GrpcUnaryServer/bin/$CONFIG/$TFM/GrpcUnaryServer.dll"
 
 # Content tripwire on every restored assembly the transpile consumes (the gdtask
 # discipline, one file for the set): the transport is the network, WHAT is transpiled
-# is pinned by hash. This loop is also what keeps the -r list below honest — a DLL
-# named here must exist in the client's bin, so a package rename/regroup fails here
-# first with its own sentence.
+# is pinned by hash. This loop is also what keeps the -r list below honest — a hashed DLL
+# named here must exist in the client's bin and a `shared-framework` one must not, so a
+# package rename/regroup fails here first with its own sentence.
 GRPC_SHA_EXPECTED=gates/expected/grpc-unary-dlls.sha256
 grpc_refs=()
 while read -r want name; do
     [ -n "$want" ] || continue
+    if [ "$want" = shared-framework ]; then
+        dll="$(gate_shared_framework_assembly "$appbin" "$name")"
+        grpc_refs+=(-r "$dll")
+        continue
+    fi
     dll="$appbin/$name"
     [ -f "$dll" ] || { echo "FAIL: pinned assembly missing from the client's bin: $name" >&2; exit 1; }
     got="$(shasum -a 256 "$dll" | awk '{print $1}')"

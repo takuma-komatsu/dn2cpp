@@ -8,7 +8,7 @@ CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
 try
 {
-    Version runtime = new Version(10, 0, 13);
+    Version runtime = new Version(11, 0, 0);
     Version icu = OperatingSystem.IsWindows() ? new Version(72, 1, 0, 4)
         : OperatingSystem.IsMacOS() ? new Version(78, 1, 0, 0)
         : OperatingSystem.IsLinux() ? new Version(74, 2, 0, 0)

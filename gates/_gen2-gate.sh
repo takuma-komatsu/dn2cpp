@@ -24,7 +24,7 @@ gen2_retained_boundary_gate() {
     local prefix="$1" root projects=gates/fixtures/gen2-callback/interpreter fixture corelib mode kind codec
     local flags=()
     fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll"
-    corelib=$(resolve_net10_corelib)
+    corelib=$(resolve_pinned_corelib)
     # The aggregate gate already prepared the shared Cecil driver. Only this
     # patch project is ours; its ProjectReference also builds the base.
     build_proj "$projects/Patch/Gen2CallbackPatch.csproj"

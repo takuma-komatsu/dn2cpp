@@ -23,10 +23,10 @@
 # in this managed-side measurement.
 #
 # Uses --auto-ref so the transitive shared-framework closure resolves
-# automatically, and pins net10.0 via resolve_net10_corelib (NOT
-# locate_corelib — this host has 8.0/10.0/11.0-preview runtimes installed
-# side by side and the System.IO.Compression native ABI differs across them;
-# see the resolve_net10_corelib comment in _common.sh).
+# automatically, and pins the CoreLib via resolve_pinned_corelib (NOT
+# locate_corelib — the System.IO.Compression native ABI differs across the
+# runtimes a host can have installed side by side; see the
+# resolve_pinned_corelib comment in _common.sh).
 #
 # Output: <out>/s0-gaps.tsv (phase|namespace|method|exception|message) + a
 # grouped stdout summary. Read gaps as CLUSTERS, not rows: one unmapped member
@@ -43,8 +43,8 @@ build_proj samples/dotnet/BrotliProbe/BrotliProbe.csproj
 CLI="src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll"
 [ -f "$CLI" ] || { echo "error: not built: $CLI" >&2; exit 1; }
 
-echo "== 2/4 Locating the real net10.0 CoreLib + System.IO.Compression.Brotli =="
-corelib=$(resolve_net10_corelib)
+echo "== 2/4 Locating the real pinned CoreLib + System.IO.Compression.Brotli =="
+corelib=$(resolve_pinned_corelib)
 bcl=$(dirname "$corelib")
 REAL_BROTLI="$bcl/System.IO.Compression.Brotli.dll"
 [ -f "$REAL_BROTLI" ] || { echo "error: real System.IO.Compression.Brotli not found: $REAL_BROTLI" >&2; exit 1; }

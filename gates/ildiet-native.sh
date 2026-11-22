@@ -17,7 +17,7 @@ OUT="$(mktemp -d "artifacts/ildiet-native-$CONFIG.XXXXXX")"
 echo "ILDiet native artifacts: $OUT"
 
 DIET="src/ILDiet/bin/$CONFIG/$TFM"
-corelib="$(resolve_net10_corelib)"
+corelib="$(resolve_pinned_corelib)"
 
 if [ "$stage" = emit ]; then
     ildiet_emit_native "$OUT" "$corelib"

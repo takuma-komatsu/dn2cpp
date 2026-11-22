@@ -43,7 +43,7 @@
 # (gates/expected/unitask-dll.sha256, the gdtask discipline): a re-published
 # 2.5.11, a poisoned cache or an accidental version bump fails there, not as a
 # mystified gap count. The package's net7.0 lib is its highest TFM, so that is
-# what a net10.0 app restores.
+# what the sample app restores.
 source "$(dirname "$0")/_common.sh"
 
 project=UniTaskSample
@@ -52,10 +52,10 @@ measure="artifacts/unitask-measure"
 UNITASK_SHA_EXPECTED=gates/expected/unitask-dll.sha256
 MARKERS_EXPECTED=gates/expected/unitask-markers.txt
 
-echo "== 1/7 Locating the real net10 CoreLib =="
-# net10-pinned: the highest installed runtime can be an 11.0 preview whose
-# CoreLib shape skews the transpile spuriously.
-corelib=$(resolve_net10_corelib)
+echo "== 1/7 Locating the real pinned CoreLib =="
+# Pinned: a newer major or a prerelease runtime installed side by side skews
+# the transpile spuriously.
+corelib=$(resolve_pinned_corelib)
 echo "corelib: $corelib"
 
 echo "== 2/7 Building the driver against the real NuGet UniTask =="

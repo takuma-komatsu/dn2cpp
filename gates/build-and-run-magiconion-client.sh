@@ -14,8 +14,8 @@ MARKERS_EXPECTED=gates/expected/magiconion-client-markers.txt
 [ -s "$MARKERS_EXPECTED" ] \
     || { echo "FAIL: generated-machinery marker fixture is missing or empty: $MARKERS_EXPECTED" >&2; exit 1; }
 
-echo "== 1/7 Locating the real net10 CoreLib =="
-corelib=$(resolve_net10_corelib)
+echo "== 1/7 Locating the real pinned CoreLib =="
+corelib=$(resolve_pinned_corelib)
 echo "corelib: $corelib"
 
 echo "== 2/7 Building the driver against the real NuGet MagicOnion.Client =="
@@ -36,6 +36,12 @@ package_refs=()
 package_dlls=()
 while read -r want name; do
     [ -n "$want" ] || continue
+    if [ "$want" = shared-framework ]; then
+        dll="$(gate_shared_framework_assembly "$appbin" "$name")"
+        package_refs+=(-r "$dll")
+        package_dlls+=("$dll")
+        continue
+    fi
     dll="$appbin/$name"
     [ -f "$dll" ] || { echo "FAIL: pinned assembly did not restore to $dll" >&2; exit 1; }
     got="$(shasum -a 256 "$dll" | awk '{print $1}')"

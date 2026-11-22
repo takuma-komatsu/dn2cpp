@@ -4,7 +4,7 @@
        application compiled against the first version and run against this one
        meets sibling overrides that C# would reject at compile time. -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <AssemblyName>AmbiguousDefaultLib</AssemblyName>
     <RootNamespace>AmbiguousDefaultLib</RootNamespace>
     <Nullable>disable</Nullable>

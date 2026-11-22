@@ -13,8 +13,8 @@ measure="artifacts/mastermemory-measure"
 DLLS_EXPECTED=gates/expected/mastermemory-dlls.sha256
 MARKERS_EXPECTED=gates/expected/mastermemory-markers.txt
 
-echo "== 1/7 Locating the real net10 CoreLib =="
-corelib=$(resolve_net10_corelib)
+echo "== 1/7 Locating the real pinned CoreLib =="
+corelib=$(resolve_pinned_corelib)
 echo "corelib: $corelib"
 
 echo "== 2/7 Building the driver against the real NuGet MasterMemory =="

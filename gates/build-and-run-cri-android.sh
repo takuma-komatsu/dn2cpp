@@ -330,16 +330,16 @@ APPDIR="$PROJ/.godot/mono/temp/bin/ExportRelease"
 # what the device runs, so it is what the transpile must see.
 cp -f "$CRI_MANAGED_ANDROID" "$APPDIR/CriWare.CriAtomLE.dll"
 
-# Pin net10.0 (the JSON/measure gates' rule) and reference the fork editor's
+# Pin the CoreLib (the JSON/measure gates' rule) and reference the fork editor's
 # own GodotSharp, exactly as the fork's Dn2CppExporter does; the dependency
 # order (CriWare before SampleExtensions) mirrors its sorted dependency walk.
 #
 # ANDROID-flavour CoreLib, not the host's — section 4 cross-links what this
-# transpiles. On a POSIX host the two coincide and this is resolve_net10_corelib
+# transpiles. On a POSIX host the two coincide and this is resolve_pinned_corelib
 # verbatim; on Windows they do not, and the host CoreLib's FileStream internals
 # reach the NDK link as literal kernel32/ntdll P/Invokes (see
 # locate_corelib_cross_posix in gates/_common.sh for the full shape).
-corelib=$(locate_corelib_cross_posix net10)
+corelib=$(locate_corelib_cross_posix pinned)
 GEN="$OUT/gen"
 rm -rf "$GEN"
 invoke_cli "$APPDIR/$PROJECT_NAME.dll" --dotnet-module \

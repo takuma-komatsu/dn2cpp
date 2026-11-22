@@ -7,7 +7,7 @@
 # ZLibStream, and the Brotli face: BrotliStream round-trips across every
 # CompressionLevel plus the BrotliEncoder/BrotliDecoder one-shot struct API
 # and corrupted-input error paths, against the vendored third_party/brotli),
-# transpiled once against the tree-shaken real net10.0 CoreLib + real
+# transpiled once against the tree-shaken real pinned CoreLib + real
 # System.IO.Compression + real System.IO.Compression.Brotli, and diffed
 # exactly against real .NET.
 #
@@ -35,10 +35,10 @@
 #     so together the two arms prove the DEFAULT is managed, the OPT-OUT is
 #     native, and both produce byte-identical output to real .NET.
 #
-# Pinned to net10.0 (resolve_net10_corelib, not locate_corelib) for the same
+# Pinned CoreLib (resolve_pinned_corelib, not locate_corelib) for the same
 # reason the JSON gates are: this host has multiple side-by-side shared
 # runtimes installed and the System.IO.Compression native surface can shift
-# shape across them. See net10_bcl_diff_gate / resolve_net10_corelib in
+# shape across them. See bcl_diff_gate / resolve_pinned_corelib in
 # _common.sh.
 source "$(dirname "$0")/_common.sh"
 source gates/_compression-reference.sh
@@ -104,14 +104,14 @@ assert_managed_codecs() {
 }
 
 echo "#### Arm 1/2: the NATIVE codecs, with both default shims declined ####"
-net10_bcl_diff_gate \
+bcl_diff_gate \
     --out-suffix -native --keep-symbols --post-assert assert_native_codecs \
     --cli-arg --no-default-ref --cli-arg DnZlib \
     --cli-arg --no-default-ref --cli-arg DnBrotli \
     CompressionCore System.IO.Compression System.IO.Compression.Brotli
 
 echo "#### Arm 2/2: the DEFAULT shape — no flag, both shims injected ####"
-net10_bcl_diff_gate \
+bcl_diff_gate \
     --out-suffix -default --keep-symbols --post-assert assert_managed_codecs \
     CompressionCore System.IO.Compression System.IO.Compression.Brotli
 

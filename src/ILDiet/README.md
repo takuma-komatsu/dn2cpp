@@ -26,7 +26,7 @@ original inputs to replay the verified BCL policy.
 `high` is the default member-level policy. `medium` keeps every declared member
 of a statically used type, including non-public constructors and accessors, and
 follows those members' static references to a fixed point. Verified BCL assemblies
-of the selected installed .NET 10 runtime pack or packaged target refs use
+of the selected installed .NET 11 runtime pack or packaged target refs use
 member-level retention instead. `low` adds primary input type definitions to
 the same root queue without copying the assembly wholesale or rooting its
 reference assemblies.
