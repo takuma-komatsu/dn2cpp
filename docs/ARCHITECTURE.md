@@ -1653,7 +1653,7 @@ capability contract, not a set of independent constants:
 - **AVX10.2 needs a positive policy decision.** Raw CPUID detection retains the
   hardware fact, but `Avx10v2` and the V512 `AvxVnniInt8` / `AvxVnniInt16`
   surface enter the effective set only under `DN2CPP_ENABLE_AVX10V2=1`, matching
-  .NET 10's default-off policy. The compiler-capability guard is an independent
+  .NET's default-off policy. The compiler-capability guard is an independent
   requirement, so the opt-in cannot expose helpers the compiler cannot build.
 - **The mask intersects policy.** `DN2CPP_CPU_FEATURES` narrows the post-policy
   detected set (the effective set is the implication closure of policy ∩ allowed)

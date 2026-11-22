@@ -529,12 +529,12 @@ entry-identity True
 asm-name ReflectTypes
 == assembly identity ==
 ReflectAssemblySubset.Widget, ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
-System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+System.Int32, System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
 roundtrip-user True
 roundtrip-bcl True
 exec-is-entry True
 ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
-System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
 ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
 get-hit Widget
 get-miss True
@@ -1077,7 +1077,7 @@ ReaderWriterLockSlim -> PlatformNotSupportedException: MemberwiseClone of 'Syste
 Timer -> PlatformNotSupportedException: MemberwiseClone of 'System.Threading.Timer' is not supported
 Thread -> PlatformNotSupportedException: MemberwiseClone of 'System.Threading.Thread' is not supported
 CancellationTokenSource -> clone same=False
-ThreadLocal<int> -> clone type=System.Threading.ThreadLocal`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]] same=False
+ThreadLocal<int> -> clone type=System.Threading.ThreadLocal`1[[System.Int32, System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]] same=False
 Type -> clone type=System.RuntimeType named=System.Int32 same=False
 == one CLR type, one type-info ==
 typeof(Root).BaseType == typeof(object) -> True
@@ -1143,7 +1143,7 @@ mg-var:True:'ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
 mg-par:T:ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
 hash:True
 mod-asm:True
-corelib:'System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e'
+corelib:'System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e'
 == bound handles (a): the primitives' reflection field tables ==
 prim bool fields=2 [FalseString,TrueString]
   bool.FalseString type=System.String decl=System.Boolean static=True lit=False ro=True pub=True attrs=0x36 val='False'
@@ -1262,33 +1262,33 @@ agg-inner 2 InvalidOperationException
 seed 711k5
 box Name=Box`1 Namespace=GenericTypeNameSubset
 box ToString=GenericTypeNameSubset.Box`1[System.Int32]
-box FullName=GenericTypeNameSubset.Box`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]
-box AQN=GenericTypeNameSubset.Box`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+box FullName=GenericTypeNameSubset.Box`1[[System.Int32, System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]
+box AQN=GenericTypeNameSubset.Box`1[[System.Int32, System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
 box roundtrip full=True aqn=True tostring=True
 list Name=List`1 Namespace=System.Collections.Generic
 list ToString=System.Collections.Generic.List`1[System.Int32]
-list FullName=System.Collections.Generic.List`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]
-list AQN=System.Collections.Generic.List`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+list FullName=System.Collections.Generic.List`1[[System.Int32, System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]
+list AQN=System.Collections.Generic.List`1[[System.Int32, System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
 list roundtrip full=True aqn=True tostring=True
 nullable Name=Nullable`1 Namespace=System
 nullable ToString=System.Nullable`1[System.Int32]
-nullable FullName=System.Nullable`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]
-nullable AQN=System.Nullable`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+nullable FullName=System.Nullable`1[[System.Int32, System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]
+nullable AQN=System.Nullable`1[[System.Int32, System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
 nullable roundtrip full=True aqn=True tostring=True
 kvp Name=KeyValuePair`2 Namespace=System.Collections.Generic
 kvp ToString=System.Collections.Generic.KeyValuePair`2[System.String,System.Int32]
-kvp FullName=System.Collections.Generic.KeyValuePair`2[[System.String, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e],[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]
-kvp AQN=System.Collections.Generic.KeyValuePair`2[[System.String, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e],[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+kvp FullName=System.Collections.Generic.KeyValuePair`2[[System.String, System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e],[System.Int32, System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]
+kvp AQN=System.Collections.Generic.KeyValuePair`2[[System.String, System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e],[System.Int32, System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
 kvp roundtrip full=True aqn=True tostring=True
 nested Name=Dictionary`2 Namespace=System.Collections.Generic
 nested ToString=System.Collections.Generic.Dictionary`2[System.String,System.Collections.Generic.List`1[System.Int32]]
-nested FullName=System.Collections.Generic.Dictionary`2[[System.String, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e],[System.Collections.Generic.List`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]
-nested AQN=System.Collections.Generic.Dictionary`2[[System.String, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e],[System.Collections.Generic.List`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+nested FullName=System.Collections.Generic.Dictionary`2[[System.String, System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e],[System.Collections.Generic.List`1[[System.Int32, System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]
+nested AQN=System.Collections.Generic.Dictionary`2[[System.String, System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e],[System.Collections.Generic.List`1[[System.Int32, System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
 nested roundtrip full=True aqn=True tostring=True
 plain Name=String Namespace=System
 plain ToString=System.String
 plain FullName=System.String
-plain AQN=System.String, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+plain AQN=System.String, System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
 plain roundtrip full=True aqn=True tostring=True
 def Name=List`1 FullName=System.Collections.Generic.List`1 ToString=System.Collections.Generic.List`1[T]
 boxinstance=GenericTypeNameSubset.Box`1[System.Int32]
@@ -1372,7 +1372,7 @@ r-late LateNoted[] itfs = 11 IList`1 = IList`1 arg = LateNoted
 seed 10
 vec Name=Vector128`1 Namespace=System.Runtime.Intrinsics
 vec ToString=System.Runtime.Intrinsics.Vector128`1[System.Int32]
-vec FullName=System.Runtime.Intrinsics.Vector128`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]
+vec FullName=System.Runtime.Intrinsics.Vector128`1[[System.Int32, System.Private.CoreLib, Version=11.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]
 vec byclrname=True
 vec byfullname=True byaqn=True bytostring=True
 vec bymangled=True

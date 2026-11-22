@@ -35,6 +35,19 @@ DN2CPP_ISA_INLINE int32_t dn2cpp_isa_arm_armbase_arm64_leadingsigncount_i64(int6
 #endif
 
 #if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE int32_t dn2cpp_isa_arm_armbase_arm64_leadingsigncount_nint(intptr_t a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_ArmBase_Arm64, "System.Runtime.Intrinsics.Arm.ArmBase+Arm64.LeadingSignCount");
+    return dn2cpp_isa_cls64((int64_t)a0);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE int32_t dn2cpp_isa_arm_armbase_arm64_leadingsigncount_nint(intptr_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.ArmBase+Arm64.LeadingSignCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
 DN2CPP_ISA_INLINE int32_t dn2cpp_isa_arm_armbase_arm64_leadingzerocount_i64(int64_t a0)
 {
     dn2cpp_isa_require(DN2CPP_ISA_Arm_ArmBase_Arm64, "System.Runtime.Intrinsics.Arm.ArmBase+Arm64.LeadingZeroCount");

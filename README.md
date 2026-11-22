@@ -1353,12 +1353,14 @@ capabilities only once its whole instruction surface lowers, a promotion
 table `src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs`. Every other
 family answers false, so the BCL software fallback runs, and calling one of
 its instructions throws `PlatformNotSupportedException` exactly as .NET does
-when `IsSupported` is false. Every family with feature bits lowers: the whole `X86.*` surface through
-the AVX-512 and AVX10 families, the whole `Arm.*` surface, and
-`Wasm.PackedSimd`; `Arm.Sve` and `Arm.Sve2`, experimental in .NET 10 and
-without a fixed register width, have no feature bits and answer false by
-design. On x86 the AVX, AVX-512 and AVX10 instruction bodies have run on no
-supporting host yet (see the open issues). Like .NET 10, dn2cpp keeps `Avx10v2`
+when `IsSupported` is false. Every family with feature bits lowers: the `X86.*`
+families through AVX-512 and AVX10, `Arm.ArmBase`, `Crc32`, `AdvSimd`, `Aes`,
+`Sha1`, `Sha256`, `Dp` and `Rdm`, and `Wasm.PackedSimd`. A family without
+feature bits answers false on every CPU: `Arm.Sve`, `Arm.Sve2`, `Arm.SveSha3`
+and `Arm.SveSm4` have no fixed register width, and `Arm.Sha3`, `Arm.Sm4`,
+`X86.Avx512Bmm` and `X86.AvxVnni.V512` have no lowering. On x86 the AVX,
+AVX-512 and AVX10 instruction bodies have run on no
+supporting host yet (see the open issues). Like .NET, dn2cpp keeps `Avx10v2`
 and the V512 `AvxVnniInt8` / `AvxVnniInt16` surface disabled until the positive
 run-time opt-in `DN2CPP_ENABLE_AVX10V2=1`. AVX10.2 also uses a compiler-intrinsic
 capability: a compiler without the checked spellings reports those families

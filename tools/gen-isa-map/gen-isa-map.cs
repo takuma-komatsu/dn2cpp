@@ -12,10 +12,11 @@
 //     dotnet run tools/gen-isa-map/gen-isa-map.cs -- --corelib <System.Private.CoreLib.dll> [--check] [--root <repo>]
 //                                                    [--lowered-preview <Arch.Family,...>]
 //
-// A .NET 10 file-based program, like gen-culture-table: a manual aid, not a build step, not
-// transpiled by the self-host, and referenced by nothing the CLI ships. `--check` regenerates
-// in memory and fails when any checked-in output differs byte for byte, so a gate can prove
-// the outputs are current without giving the generator write access to the tree.
+// A file-based program (`dotnet run <file>.cs`), like gen-culture-table: a manual aid, not a
+// build step, not transpiled by the self-host, and referenced by nothing the CLI ships.
+// `--check` regenerates in memory and fails when any checked-in output differs byte for byte,
+// so a gate can prove the outputs are current without giving the generator write access to
+// the tree.
 //
 // The oracle is CoreLib METADATA, never method bodies: the public static surface of the
 // System.Runtime.Intrinsics.{X86,Arm,Wasm} families is identical across the x64 and arm64
@@ -35,7 +36,7 @@
 // AdvSimd). Otherwise Dp.IsSupported could answer true while AdvSimd.IsSupported is the
 // constant 0, a state .NET never has, and BCL code guarded by Dp would reach AdvSimd calls
 // that throw. A family with no methods of its own is vacuously covered; a family with no
-// feature bits (Sve, Sve2) is never lowered, whatever its maps say.
+// feature bits (Sve, Sha3, Avx512Bmm) is never lowered, whatever its maps say.
 //
 // `--lowered-preview` names families to treat as covered while their maps are incomplete: the
 // unmapped methods get throwing native stubs, and the exercise file exercises the mapped ones,
@@ -1159,8 +1160,8 @@ static class Maps
 
     // A derived family takes, for each method it shares with a source family (same name and
     // argument codes), the source's row under its own file's target; the first source in the
-    // list wins, and an explicit row in the family's own file wins over every source. .NET 10's
-    // Avx10v1 is the AVX-512 VL and scalar surfaces re-exposed under one token, so copying the
+    // list wins, and an explicit row in the family's own file wins over every source. Avx10v1
+    // is the AVX-512 VL and scalar surfaces re-exposed under one token, so copying the
     // rows would drift silently; a method no source covers is an error rather than an unmapped
     // method, so a surface addition to the derived family cannot hide behind the derivation.
     static void Derive(Family f, List<Family> families)
@@ -1605,8 +1606,7 @@ static class Emit
             }
             if (never.Count > 0)
             {
-                sb.Append("// Scalable vectors are never lowered: experimental in .NET 10 and without a fixed\n");
-                sb.Append("// register width, so IsSupported is false on every target.\n");
+                sb.Append("// No feature bit: never lowered, so IsSupported is false on every target.\n");
                 foreach (var f in never)
                     sb.Append("#define ").Append(f.Token).Append(" 0\n");
             }

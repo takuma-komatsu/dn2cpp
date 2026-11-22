@@ -29,6 +29,10 @@ internal static class ArmSections
     internal static void ProbeRdm() { _ = Rdm.MultiplyRoundedDoublingAndAddSaturateHigh(Vector128<short>.Zero, Vector128<short>.Zero, Vector128<short>.Zero); }
     internal static void ProbeSve() { _ = Sve.Abs(Vector<int>.Zero); }
     internal static void ProbeSve2() { _ = Sve2.AbsSaturate(Vector<int>.Zero); }
+    internal static void ProbeSha3() { _ = Sha3.Xor(Vector128<ulong>.Zero, Vector128<ulong>.Zero, Vector128<ulong>.Zero); }
+    internal static void ProbeSm4() { _ = Sm4.Encode(Vector128<uint>.Zero, Vector128<uint>.Zero); }
+    internal static void ProbeSveSha3() { _ = SveSha3.BitwiseRotateLeftBy1AndXor(Vector<ulong>.Zero, Vector<ulong>.Zero); }
+    internal static void ProbeSveSm4() { _ = SveSm4.Encode(Vector<uint>.Zero, Vector<uint>.Zero); }
 
     private static void ArmBaseExercise()
     {
@@ -64,7 +68,19 @@ internal static class ArmSections
             Console.WriteLine("Arm64.ReverseElementBits(i64 0xF)=" + Fmt.Hex((ulong)ArmBase.Arm64.ReverseElementBits(0xFL)) + " ref=" + Fmt.Hex(0xF000000000000000ul));
             Console.WriteLine("Arm64.ReverseElementBits(u64 1)=" + Fmt.Hex(ArmBase.Arm64.ReverseElementBits(1ul)) + " ref=" + Fmt.Hex(0x8000000000000000ul));
             Console.WriteLine("Arm64.ReverseElementBits(u64 w)=" + Fmt.Hex(ArmBase.Arm64.ReverseElementBits(0x123456789ABCDEF0ul)) + " ref=" + Fmt.Hex(0x0F7B3D591E6A2C48ul));
+            Console.WriteLine("Arm64.LeadingSignCount(nint 1)=" + ArmBase.Arm64.LeadingSignCount((nint)1) + " ref=" + Fmt.ClsRef(1L));
+            Console.WriteLine("Arm64.LeadingSignCount(nint -2)=" + ArmBase.Arm64.LeadingSignCount((nint)(-2)) + " ref=" + Fmt.ClsRef(-2L));
         }
+
+        // The JIT folds a constant operand of these nint/nuint overloads at 32-bit
+        // width, unlike the instruction it runs for a non-constant one. dn2cpp
+        // follows the instruction, so NonConstant keeps the oracle on it.
+        Console.WriteLine("LeadingZeroCount(nint 0x00F0)=" + ArmBase.LeadingZeroCount(Fmt.NonConstant((nint)0x00F0)) + " ref=" + BitOperations.LeadingZeroCount((nuint)0x00F0));
+        Console.WriteLine("LeadingZeroCount(nint -1)=" + ArmBase.LeadingZeroCount(Fmt.NonConstant((nint)(-1))) + " ref=" + 0);
+        Console.WriteLine("LeadingZeroCount(nuint 0)=" + ArmBase.LeadingZeroCount(Fmt.NonConstant((nuint)0)) + " ref=" + BitOperations.LeadingZeroCount((nuint)0));
+        Console.WriteLine("LeadingZeroCount(nuint 1<<40)=" + ArmBase.LeadingZeroCount(Fmt.NonConstant((nuint)1 << 40)) + " ref=" + BitOperations.LeadingZeroCount((nuint)1 << 40));
+        Console.WriteLine("ReverseElementBits(nint 0xF)=" + Fmt.Hex((ulong)ArmBase.ReverseElementBits(Fmt.NonConstant((nint)0xF))) + " ref=" + Fmt.Hex(0xF000000000000000ul));
+        Console.WriteLine("ReverseElementBits(nuint w)=" + Fmt.Hex((ulong)ArmBase.ReverseElementBits(Fmt.NonConstant(unchecked((nuint)0x123456789ABCDEF0ul)))) + " ref=" + Fmt.Hex(0x0F7B3D591E6A2C48ul));
     }
 
     // ComputeCrc32 is the ISO 3309 polynomial, ComputeCrc32C the Castagnoli one;
@@ -88,5 +104,7 @@ internal static class ArmSections
             Console.WriteLine("Arm64.ComputeCrc32(u64)=" + Fmt.Hex(Crc32.Arm64.ComputeCrc32(seed, data)) + " ref=" + Fmt.Hex(Fmt.Crc32Ref(seed, data, 8, iso)));
             Console.WriteLine("Arm64.ComputeCrc32C(u64)=" + Fmt.Hex(Crc32.Arm64.ComputeCrc32C(seed, data)) + " ref=" + Fmt.Hex(Fmt.Crc32Ref(seed, data, 8, castagnoli)) + " bitops=" + Fmt.Hex(BitOperations.Crc32C(seed, data)));
         }
+        Console.WriteLine("ComputeCrc32(nuint)=" + Fmt.Hex(Crc32.ComputeCrc32(seed, unchecked((nuint)data))) + " ref=" + Fmt.Hex(Fmt.Crc32Ref(seed, data, IntPtr.Size, iso)));
+        Console.WriteLine("ComputeCrc32C(nuint)=" + Fmt.Hex(Crc32.ComputeCrc32C(seed, unchecked((nuint)data))) + " ref=" + Fmt.Hex(Fmt.Crc32Ref(seed, data, IntPtr.Size, castagnoli)));
     }
 }
