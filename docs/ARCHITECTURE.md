@@ -1838,6 +1838,52 @@ continuations outside that lock. Synchronous waiters retain their reserved permi
 This bridge does not expose the other managed SemaphoreSlim fields or expand the
 public timeout/cancellation overload contracts.
 
+#### Runtime-async bodies
+
+A method flagged `MethodImplAttributes.Async` carries synchronous IL whose `ret`
+holds the unwrapped result and whose awaits are calls into
+`System.Runtime.CompilerServices.AsyncHelpers`. `AsyncHelpers` is an intrinsic
+type: `MethodCompiler.RuntimeAsync.cs` lowers every call into it, and none of
+its CoreCLR continuation machinery is transpiled.
+
+- **The method keeps its signature and ABI.** A body with no suspension site is
+  one function. A body with sites keeps the signature as a wrapper forwarding
+  to the resumable function `M__async`, emitted beside its frame
+  `M__AsyncFrame` and the trampoline `M__resume`. Call sites, vtable slots and
+  delegates bind the wrapper. The group is several definitions, so such a body
+  is never emitted inline.
+- **Completion goes through the native task.** The body allocates its task at
+  entry and settles it instead of returning: `ret` sets the result, and a
+  managed exception escaping the body settles the task faulted or canceled
+  instead of reaching the caller. These are the transitions the state-machine
+  builders make.
+- **The frame exists only after a suspension.** The first suspension of an
+  activation allocates the frame on the GC heap and saves the arguments, IL
+  locals and residual evaluation stack; later suspensions reuse it. Byref and
+  byref-like arguments and locals may point into the stack the activation is
+  leaving, so they are not saved and read as default after a resumption.
+- **A resumption re-enters `M__async` with the frame** and dispatches on the
+  saved state. C++ cannot jump into a `try` block, so a site inside try bodies
+  is reached through them: the jump lands on a label before the outermost
+  enclosing `try {`, and each enclosing block opens with a switch forwarding
+  the state one level in. A suspension leaves its try blocks by `goto`, which
+  runs no handler. No site lies in a handler, so the exception-region
+  bookkeeping is idle at every site.
+- **The caller's value is settled before the resumption is registered.** The
+  resumption may run on another thread as soon as it is registered, so the
+  suspending activation reads nothing but its return value afterwards.
+- **Awaits lower over tasks and `Task.Yield`.** An await on a `Task`, a
+  `ValueTask` or a configured form of either registers the resumption on the
+  native task, and `Task.Yield` posts it to the run queue. A body that awaits a
+  custom awaiter is refused with `NotSupportedException`.
+- **A shared generic body is not lowered.** The frame layout and the
+  trampoline are spelled per closed body, so a runtime-async generic method
+  compiles per instantiation.
+
+Shapes outside this contract throw `NotSupportedException` naming the method;
+README's *Language & IL* lists them.
+`gates/build-and-run-async-combinators.sh` asserts opted-in user bodies.
+
 #### Adopting a third-party async task type
 
 `Compilation.AdoptCustomAsyncTaskTypes` is the one place a non-BCL type is

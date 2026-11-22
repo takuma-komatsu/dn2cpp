@@ -133,6 +133,10 @@ namespace AsyncCombinators
             // as an unhandled ThreadPool exception.
             if (args.Length == 2 && args[0] == "suspension-rejection")
                 RegistrationRejectionSubset.Program.Suspend(args[1]);
+            if (args.Length == 1 && args[0] == "before-runtime-async")
+                return;
+            RuntimeAsyncSubset.Program.Run();
+            RuntimeAsyncSubset.Program.RunConfiguredContexts();
         }
     }
 }
