@@ -2132,13 +2132,14 @@ inline constexpr const char* DN2CPP_SR_OVERFLOW_CURRENCY = "Overflow_Currency";
 inline constexpr const char* DN2CPP_SR_DECIMAL_ROUND = "ArgumentOutOfRange_DecimalRound";
 inline constexpr const char* DN2CPP_SR_DESTINATION_TOO_SHORT = "Argument_DestinationTooShort";
 inline constexpr const char* DN2CPP_SR_HEX_BINARY_STYLES_NOT_SUPPORTED = "Arg_HexBinaryStylesNotSupported";
+inline constexpr const char* DN2CPP_SR_BINARY_STYLE_NOT_SUPPORTED = "Arg_BinaryStyleNotSupported";
+inline constexpr const char* DN2CPP_SR_INVALID_HEX_FLOAT_STYLE = "Arg_InvalidHexFloatStyle";
 inline constexpr const char* DN2CPP_SR_INDEX_COUNT_BUFFER = "ArgumentOutOfRange_IndexCountBuffer";
 inline constexpr const char* DN2CPP_SR_INVALID_ENUM_VALUE = "Argument_InvalidEnumValue";
 inline constexpr const char* DN2CPP_SR_INVALID_HEX_BINARY_STYLE = "Arg_InvalidHexBinaryStyle";
 inline constexpr const char* DN2CPP_SR_INVALID_NUMBER_STYLES = "Argument_InvalidNumberStyles";
 inline constexpr const char* DN2CPP_SR_PARALLEL_INVOKE_ACTION_NULL = "System.Threading.Tasks.Parallel:Parallel_Invoke_ActionNull";
 inline constexpr const char* DN2CPP_SR_ROUNDING_DIGITS = "ArgumentOutOfRange_RoundingDigits";
-inline constexpr const char* DN2CPP_SR_ROUNDING_DIGITS_MATH_F = "ArgumentOutOfRange_RoundingDigits_MathF";
 inline constexpr const char* DN2CPP_SR_STRING_ZERO_LENGTH = "Format_StringZeroLength";
 inline constexpr const char* DN2CPP_SR_WRONG_SIZE_ARRAY_IN_NATIVE_STRUCT = "Argument_WrongSizeArrayInNativeStruct";
 inline constexpr const char* DN2CPP_SR_OVERFLOW = "Arg_OverflowException";
@@ -5470,11 +5471,15 @@ struct Dn2CppNumberParse
 };
 // kind: 0 = Integer, 1 = Float, 2 = Decimal. Returns 1 when the number
 // grammar matched and consumed the entire input (styles must be pre-validated).
+// utf8 != 0 for text widened from UTF-8 input, whose separators and signs match
+// without the U+00A0/U+202F/U+0020 equivalence UTF-16 input gets.
 int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
                                    const Dn2CppNumberFormatInfo* nfi, int32_t kind,
-                                   Dn2CppNumberParse* num);
-// ValidateParseStyleFloatingPoint (throws ArgumentException / traps currency).
+                                   int32_t utf8, Dn2CppNumberParse* num);
+// ValidateParseStyleFloatingPoint / ValidateParseStyleDecimal (throw
+// ArgumentException).
 void dn2cpp_parse_validate_fp_styles(int32_t styles);
+void dn2cpp_parse_validate_decimal_styles(int32_t styles);
 void dn2cpp_parse_validate_integer_styles(int32_t styles);
 int32_t dn2cpp_integer_tryparse_chars(const char16_t* p, int32_t n, int32_t styles,
                                       const Dn2CppNumberFormatInfo* nfi, int32_t bitWidth,
@@ -5488,8 +5493,8 @@ int64_t dn2cpp_integer_parse_chars(const char16_t* p, int32_t n, int32_t styles,
 int64_t dn2cpp_integer_parse_str(Dn2CppString* s, int32_t styles,
                                  const Dn2CppNumberFormatInfo* nfi, int32_t bitWidth,
                                  int32_t isSigned);
-// isSingle selects strtof (exact float rounding); the result is the float
-// value widened to double.
+// isSingle rounds once to float; the result is the float value widened to
+// double.
 int32_t dn2cpp_fp_tryparse_chars(const char16_t* p, int32_t n, int32_t styles,
                                  const Dn2CppNumberFormatInfo* nfi, int32_t isSingle, double* out);
 int32_t dn2cpp_fp_tryparse_str(Dn2CppString* s, int32_t styles,
@@ -5499,8 +5504,9 @@ double dn2cpp_fp_parse_chars(const char16_t* p, int32_t n, int32_t styles,
 double dn2cpp_fp_parse_str(Dn2CppString* s, int32_t styles,
                            const Dn2CppNumberFormatInfo* nfi, int32_t isSingle);
 // The ReadOnlySpan<byte> (IUtf8SpanParsable) input forms: widen the UTF-8 text and run
-// the SAME engine as the char16/string forms, so the two lanes cannot disagree about what
-// a number is. The NumberFormatInfo symbols are UTF-16, and a real culture supplies
+// the SAME engine as the char16/string forms, told the text came from UTF-8: separators
+// and signs then match exactly, without the U+00A0 / U+202F / space equivalence UTF-16
+// input gets. The NumberFormatInfo symbols are UTF-16, and a real culture supplies
 // non-ASCII ones (U+00A0 group separator, U+2212 minus), so a byte-wise scanner would
 // have to transcode them anyway — in a second place that can drift from the first. See
 // the block comment in dn2cpp_parse.cpp.
@@ -5565,6 +5571,7 @@ int32_t dn2cpp_convert_get_type_code(Dn2CppObject* value);
 // The caller's emit applies the final width/signedness cast. A null source yields zero.
 int64_t dn2cpp_convert_obj_to_i64(Dn2CppObject* v);
 double dn2cpp_convert_obj_to_f64(Dn2CppObject* v);
+float dn2cpp_convert_obj_to_f32(Dn2CppObject* v);
 int32_t dn2cpp_convert_obj_to_bool(Dn2CppObject* v);
 int32_t dn2cpp_convert_obj_to_char(Dn2CppObject* v);
 // Convert.ToString(object[, provider]): the boxed value's virtual ToString via the
@@ -5652,13 +5659,15 @@ int32_t dn2cpp_convert_from_hex_span_string(Dn2CppString* source,
 // an invalid mode raises a catchable ArgumentException like the BCL.
 double dn2cpp_math_round_mode(double value, int32_t mode);
 
-// Math/MathF.Round(value, digits[, mode]): the BCL's scale/round/unscale.
-// digits outside 0..15 (double) / 0..6 (float) raise ArgumentOutOfRangeException;
-// values at or beyond 1e16 / 1e8f pass through unscaled (so an invalid mode is
-// only detected below the limit, like the BCL). The float variant keeps every
-// operation in single precision.
-double dn2cpp_math_round_digits(double value, int32_t digits, int32_t mode);
-float dn2cpp_math_round_digits_f(float value, int32_t digits, int32_t mode);
+// Math/MathF.Round(value, digits, mode) argument checks in the BCL's order:
+// a negative digits count raises ArgumentOutOfRangeException before an
+// undefined mode raises ArgumentException, whatever the value.
+void dn2cpp_math_round_digits_validate(int32_t digits, int32_t mode);
+
+// Double.DegreesToRadians / RadiansToDegrees: the product with pi/180 (180/pi)
+// rounded once, as the BCL computes it.
+double dn2cpp_math_degrees_to_radians(double degrees);
+double dn2cpp_math_radians_to_degrees(double radians);
 
 // Math/MathF.ILogB: the unbiased base-2 exponent as an int32 with the BCL's
 // exact special values (0 -> int.MinValue, ±infinity/NaN -> int.MaxValue,
@@ -8497,8 +8506,8 @@ Dn2CppDecimal dn2cpp_decimal_from_u8(uint64_t v);
 Dn2CppDecimal dn2cpp_decimal_from_double(double v);
 Dn2CppDecimal dn2cpp_decimal_from_float(float v);
 
-// Arithmetic. Results are rounded to fit the 96-bit mantissa / 28-digit scale
-// using round-half-away-from-zero, matching .NET's operator semantics.
+// Arithmetic. Every operator rounds half to even to fit the 96-bit mantissa /
+// 28-digit scale, and an inexact quotient drops its trailing zeros.
 Dn2CppDecimal dn2cpp_decimal_add(Dn2CppDecimal a, Dn2CppDecimal b);
 Dn2CppDecimal dn2cpp_decimal_sub(Dn2CppDecimal a, Dn2CppDecimal b);
 Dn2CppDecimal dn2cpp_decimal_mul(Dn2CppDecimal a, Dn2CppDecimal b);

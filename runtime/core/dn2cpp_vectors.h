@@ -918,16 +918,21 @@ static inline Dn2CppVec<N> dn2cpp_vec_hypot(const Dn2CppVec<N>& a, const Dn2CppV
     }
 }
 
-// CoreLib rounds the product to the lane type before dividing. Combining the
-// constants changes both rounding and overflow for finite inputs.
+// Each lane is the scalar conversion: a double lane the correctly rounded
+// product (dn2cpp_system_math.cpp), a float lane the double product with the
+// double constant, narrowed once.
+double dn2cpp_math_degrees_to_radians(double degrees);
+double dn2cpp_math_radians_to_degrees(double radians);
+
 template <class T, int N>
 static inline Dn2CppVec<N> dn2cpp_vec_degrees_to_radians(const Dn2CppVec<N>& v) {
     static_assert(std::is_floating_point<T>::value, "DegreesToRadians requires floating-point lanes");
     Dn2CppVec<N> r;
-    const T pi = (T)3.141592653589793238462643383279502884;
     for (int i = 0; i < N / (int)sizeof(T); ++i) {
-        volatile T product = dn2cpp_vec_get<T>(v, i) * pi;
-        dn2cpp_vec_set<T>(r, i, product / (T)180);
+        if constexpr (sizeof(T) == sizeof(double))
+            dn2cpp_vec_set<T>(r, i, (T)dn2cpp_math_degrees_to_radians((double)dn2cpp_vec_get<T>(v, i)));
+        else
+            dn2cpp_vec_set<T>(r, i, (T)((double)dn2cpp_vec_get<T>(v, i) * 0.017453292519943295));
     }
     return r;
 }
@@ -936,10 +941,11 @@ template <class T, int N>
 static inline Dn2CppVec<N> dn2cpp_vec_radians_to_degrees(const Dn2CppVec<N>& v) {
     static_assert(std::is_floating_point<T>::value, "RadiansToDegrees requires floating-point lanes");
     Dn2CppVec<N> r;
-    const T pi = (T)3.141592653589793238462643383279502884;
     for (int i = 0; i < N / (int)sizeof(T); ++i) {
-        volatile T product = dn2cpp_vec_get<T>(v, i) * (T)180;
-        dn2cpp_vec_set<T>(r, i, product / pi);
+        if constexpr (sizeof(T) == sizeof(double))
+            dn2cpp_vec_set<T>(r, i, (T)dn2cpp_math_radians_to_degrees((double)dn2cpp_vec_get<T>(v, i)));
+        else
+            dn2cpp_vec_set<T>(r, i, (T)((double)dn2cpp_vec_get<T>(v, i) * 57.29577951308232));
     }
     return r;
 }

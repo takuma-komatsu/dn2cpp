@@ -2,10 +2,8 @@ using System;
 using System.Globalization;
 
 // DateTime.TryParseExact custom-format '.' elision: a '.' absent from the input
-// elides together with its 'F' run, in .NET 10's exact shape -- one format char
-// after the '.' skips unconditionally, then an 'F' must stand right there. That
-// shape is SDK-sensitive (dotnet/runtime main tightened it to an immediate 'F'),
-// so a red diff here after an SDK bump means the rule moved. CoreLib only.
+// elides together with its 'F' run, and only when the 'F' stands immediately
+// after the '.'. CoreLib only.
 namespace ParseExactDotElision;
 
 static class Program
@@ -25,10 +23,10 @@ static class Program
         P("12:34:56.5", "HH:mm:ss.FFF");   // partial F digits
         P("12:34:56.", "HH:mm:ss.FFF");    // dot present, zero F digits
         P("12:34:56", "HH:mm:ss.FF");      // two F's: elides
-        P("12:34:56", "HH:mm:ss.F");       // one F: does NOT elide
+        P("12:34:56", "HH:mm:ss.F");       // one F: elides too
         P("12:34:56.5", "HH:mm:ss.F");
         P("12:34:56", "HH:mm:ss.");        // no F at all
-        P("12:34:56", "HH:mm:ss..FFF");    // double dot still elides
+        P("12:34:56", "HH:mm:ss..FFF");    // double dot: no F right after the first
         P("12:34:56.", "HH:mm:ss..FFF");   // first dot matches, second elides
         P("12:34:56..5", "HH:mm:ss..FFF"); // dots match the input 1:1
         P("12:34:56.5", "HH:mm:ss..FFF");  // digit where the second dot must stand
@@ -38,5 +36,11 @@ static class Program
         P("12:34:56", "HH:mm:ss.FFF.FFF"); // each unmatched dot elides its own run
         P("12:34:56.1", "HH:mm:ss.FFF.FFF");
         P("12:34:56.56", "HH:mm:ss.FF.FF");
+    }
+
+    // The 'zzz' after an elided ".F" still requires an offset.
+    internal static void RunMissingOffset()
+    {
+        P("2025-06-01T12:34:56", "yyyy-MM-dd'T'HH:mm:ss.Fzzz");
     }
 }

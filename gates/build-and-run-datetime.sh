@@ -185,6 +185,8 @@ gate_extra_asserts() {
         'date general today=True' 'date general try=True/True' \
         'offset exact today=True' 'offset exact relative date=True/True' 'offset exact incomplete=True' \
         'offset exact style=styles' 'offset exact try style=styles' --count 1 --policy crlf
+    gate_output byte-witness "$out/native.stdout" \
+        "2025-06-01T12:34:56 | yyyy-MM-dd'T'HH:mm:ss.Fzzz -> False 00:00:00.0000000" --count 1 --policy crlf
 
     gate_capture_ok "$out/exact-offset-before" run_bounded "./$out/DateTimeOps$EXE_EXT" before-exact-offset-parse
     gate_output select "$out/native.stdout" "$out/exact-offset-prefix.stdout" \

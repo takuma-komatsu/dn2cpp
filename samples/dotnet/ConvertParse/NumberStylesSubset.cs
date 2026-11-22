@@ -292,5 +292,12 @@ namespace NumberStylesSubset
             Show("currency duplicate", () => int.TryParse("$1,234$", currency, us, out var value) + ":" + value);
             Show("currency disallowed", () => int.TryParse("$1,234", NumberStyles.Number, us, out var value) + ":" + value);
         }
+
+        internal static void RunHexFloat()
+        {
+            var inv = CultureInfo.InvariantCulture;
+            Console.WriteLine("HexFloat parse=" + double.Parse("0x1.8p1", NumberStyles.HexFloat, inv).ToString("R", inv)
+                + "/" + float.Parse("0x1.8p1", NumberStyles.HexFloat, inv).ToString("R", inv));
+        }
     }
 }

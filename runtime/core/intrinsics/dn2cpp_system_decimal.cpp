@@ -1,8 +1,8 @@
 #include "dn2cpp_metadata_native.h"
 // dn2cpp_system_decimal.cpp — System.Decimal intrinsics: libc-free 96-bit
 // fixed-point arithmetic, parsing and formatting emitted in place of the BCL's
-// Decimal IL. Value layout, rounding (half-away-from-zero to 96 bits / 28-place
-// scale) and formatting match .NET exactly.
+// Decimal IL. Value layout and formatting match .NET; arithmetic rounds half
+// to even to 96 bits / 28-place scale.
 #include "dn2cpp_core.h"
 
 #include <cstdint>
@@ -14,8 +14,8 @@
 // value = (-1)^sign * mantissa * 10^-scale, mantissa a 96-bit integer.
 // The mantissa fits in unsigned __int128 (top 32 bits spare); intermediate
 // products/aligned sums can exceed 128 bits, so those use a small base-2^32
-// bignum (`DecBig`). All operators round half-away-from-zero to fit 96 bits /
-// 28-place scale, matching .NET's Decimal arithmetic.
+// bignum (`DecBig`). Every operator rounds half to even to fit 96 bits /
+// 28-place scale, and an inexact quotient drops its trailing zeros.
 
 #if !(defined(_MSC_VER) && !defined(__clang__))
 typedef unsigned __int128 dec_u128;
@@ -243,22 +243,26 @@ static inline void dec_set_sign(Dn2CppDecimal& d, int neg)
 }
 
 // Reduce a magnitude (possibly > 96 bits) to fit in 96 bits with scale <= 28,
-// dropping least-significant digits and rounding the result half-away-from-zero.
+// dropping least-significant digits and rounding the result half to even. A
+// non-zero digit dropped before the last one makes a last 5 round up.
 static Dn2CppDecimal dec_reduce_round(DecBig s, int sign, int scale)
 {
     uint32_t lastDropped = 0;
+    bool sticky = false;
     while (!decbig_fits96(s) || scale > 28)
     {
         if (scale <= 0 && !decbig_fits96(s))
             dn2cpp_overflow();
+        sticky |= lastDropped != 0;
         lastDropped = decbig_divmod_small(s, 10);
         scale--;
     }
     dec_u128 m = decbig_to_u128(s);
-    if (lastDropped >= 5)
+    if (lastDropped > 5 || (lastDropped == 5 && (sticky || (m & 1) != 0)))
     {
         m += 1;
-        if (m > DEC_MANT_MAX) { m /= 10; scale--; if (scale < 0) dn2cpp_overflow(); }
+        // The carry leaves exactly 2^96, whose tenth has remainder 6 and rounds up.
+        if (m > DEC_MANT_MAX) { m = m / 10 + 1; scale--; if (scale < 0) dn2cpp_overflow(); }
     }
     return dec_pack(m, sign, scale);
 }
@@ -334,34 +338,81 @@ Dn2CppDecimal dn2cpp_decimal_from_u4(uint32_t v) { return dec_pack((dec_u128)v, 
 Dn2CppDecimal dn2cpp_decimal_from_i8(int64_t v) { return dec_pack(v < 0 ? (dec_u128)(uint64_t)(0 - (uint64_t)v) : (dec_u128)v, v < 0 ? 1 : 0, 0); }
 Dn2CppDecimal dn2cpp_decimal_from_u8(uint64_t v) { return dec_pack((dec_u128)v, 0, 0); }
 
+static inline dec_u128 dec_pow5(int e)
+{
+    static const uint64_t p5[] = {
+        1ull, 5ull, 25ull, 125ull, 625ull, 3125ull, 15625ull, 78125ull, 390625ull, 1953125ull,
+        9765625ull, 48828125ull, 244140625ull, 1220703125ull, 6103515625ull, 30517578125ull,
+        152587890625ull, 762939453125ull, 3814697265625ull, 19073486328125ull,
+        95367431640625ull, 476837158203125ull, 2384185791015625ull, 11920928955078125ull,
+        59604644775390625ull, 298023223876953125ull, 1490116119384765625ull,
+        7450580596923828125ull };
+    // 5^28 is the one power above 64 bits: 2 * 2^64 + 359414837200037393.
+    return e < 28 ? (dec_u128)p5[e] : ((((dec_u128)2u) << 64) | 359414837200037393ull);
+}
+
+// The decimal nearest to sig * 2^exp: the exact binary value rounded half-to-even
+// once, at the largest scale whose mantissa fits 96 bits. Digits are never
+// trimmed, and a magnitude that rounds to zero is the canonical +0.
+static Dn2CppDecimal dec_from_binary(uint64_t sig, int exp, int sign)
+{
+    if (sig == 0) return dec_pack(0, 0, 0);
+    while ((sig & 1u) == 0) { sig >>= 1; exp++; }
+    if (exp >= 0)
+    {
+        int bits = 0;
+        for (uint64_t t = sig; t != 0; t >>= 1) bits++;
+        if (bits + exp > 96) dn2cpp_throw_sr0(&dn2cpp_overflow_exception_type, DN2CPP_SR_OVERFLOW_DECIMAL);
+        return dec_pack(((dec_u128)sig) << exp, sign, 0);
+    }
+    // An odd significand makes k the exact count of fractional digits:
+    // sig * 2^-k == sig * 5^k * 10^-k.
+    int k = -exp;
+    int scale = k < 28 ? k : 28;
+    dec_u128 m = 0;
+    for (;; scale--)
+    {
+        // Each candidate scale rounds the exact numerator (< 2^119), never a
+        // previously rounded mantissa.
+        dec_u128 num = (dec_u128)sig * dec_pow5(scale);
+        int shift = k - scale;
+        if (shift >= 120) { m = 0; break; }
+        m = num >> shift;
+        if (shift > 0)
+        {
+            dec_u128 rem = num - (m << shift);
+            dec_u128 half = ((dec_u128)1u) << (shift - 1);
+            if (rem > half || (rem == half && ((uint64_t)m & 1u) != 0)) m += 1;
+        }
+        if (m <= DEC_MANT_MAX) break;
+    }
+    if (m == 0) return dec_pack(0, 0, 0);
+    return dec_pack(m, sign, scale);
+}
+
 // NaN/Infinity and out-of-range magnitudes raise a catchable
 // OverflowException — the .NET contract for both the (decimal) cast and
 // Convert.ToDecimal.
 Dn2CppDecimal dn2cpp_decimal_from_double(double v)
 {
-    if (std::isnan(v) || std::isinf(v)) dn2cpp_overflow();
-    int sign = std::signbit(v) ? 1 : 0;
-    double mag = sign ? -v : v;
-    if (mag < 1e-28) return dec_pack(0, 0, 0);
-    if (mag >= 7.922816251426434e28) dn2cpp_overflow();
-    // .NET converts a double to decimal using 15 significant digits.
-    char buf[40];
-    std::snprintf(buf, sizeof(buf), "%.15g", mag);
-    Dn2CppDecimal r = dn2cpp_decimal_parse(dn2cpp_string_from_ascii(buf, (int32_t)std::strlen(buf)));
-    dec_set_sign(r, sign);
-    return r;
+    if (std::isnan(v) || std::isinf(v))
+        dn2cpp_throw_sr0(&dn2cpp_overflow_exception_type, DN2CPP_SR_OVERFLOW_DECIMAL);
+    uint64_t bits;
+    std::memcpy(&bits, &v, sizeof(bits));
+    uint64_t sig = bits & 0xFFFFFFFFFFFFFull;
+    int biased = (int)((bits >> 52) & 0x7FFu);
+    int exp = -1074;
+    if (biased != 0)
+    {
+        sig |= 1ull << 52;
+        exp = biased - 1075;
+    }
+    return dec_from_binary(sig, exp, (int)(bits >> 63));
 }
+// Widening to double is exact, so the float conversion is the same rounding.
 Dn2CppDecimal dn2cpp_decimal_from_float(float v)
 {
-    if (std::isnan(v) || std::isinf(v)) dn2cpp_overflow();
-    int sign = std::signbit(v) ? 1 : 0;
-    double mag = sign ? -(double)v : (double)v;
-    if (mag >= 7.922816251426434e28) dn2cpp_overflow();
-    char buf[40];
-    std::snprintf(buf, sizeof(buf), "%.7g", mag); // float carries 7 significant digits
-    Dn2CppDecimal r = dn2cpp_decimal_parse(dn2cpp_string_from_ascii(buf, (int32_t)std::strlen(buf)));
-    dec_set_sign(r, sign);
-    return r;
+    return dn2cpp_decimal_from_double((double)v);
 }
 
 static Dn2CppDecimal dec_addsub(Dn2CppDecimal a, Dn2CppDecimal b, bool subtract)
@@ -395,7 +446,14 @@ Dn2CppDecimal dn2cpp_decimal_sub(Dn2CppDecimal a, Dn2CppDecimal b) { return dec_
 
 Dn2CppDecimal dn2cpp_decimal_mul(Dn2CppDecimal a, Dn2CppDecimal b)
 {
-    DecBig p = decbig_mul_u128(dec_mant(a), dec_mant(b));
+    dec_u128 ma = dec_mant(a), mb = dec_mant(b);
+    // As in CoreLib's VarDecMul, the product is default(decimal) when it is zero
+    // and a mantissa is wider than 32 bits, or when both mantissas fit 32 bits and
+    // the scales sum above 47.
+    const bool wide = ma > 0xFFFFFFFFu || mb > 0xFFFFFFFFu;
+    if (wide ? (ma == 0 || mb == 0) : a.scale() + b.scale() > 47)
+        return dec_pack(0, 0, 0);
+    DecBig p = decbig_mul_u128(ma, mb);
     return dec_reduce_round(p, a.sign() ^ b.sign(), a.scale() + b.scale());
 }
 
@@ -411,6 +469,7 @@ Dn2CppDecimal dn2cpp_decimal_div(Dn2CppDecimal a, Dn2CppDecimal b)
 
     dec_u128 Q = num / den;
     dec_u128 r = num % den;
+    bool inexact = r != 0; // at the natural scale
     int f = 0; // fractional digits produced
     while (r != 0)
     {
@@ -421,8 +480,10 @@ Dn2CppDecimal dn2cpp_decimal_div(Dn2CppDecimal a, Dn2CppDecimal b)
         r %= den;
         f++;
     }
-    if (r != 0 && 2 * r >= den) { Q += 1; } // round half-away-from-zero
+    if (r != 0 && (2 * r > den || (2 * r == den && (Q & 1) != 0))) { Q += 1; } // round half to even
     int scale = f + a.scale() - b.scale();
+    // An inexact quotient drops its trailing zeros; an exact one keeps the natural scale.
+    while (inexact && scale > 0 && Q % 10 == 0) { Q /= 10; scale--; }
     if (scale < 0)
     {
         DecBig qb = decbig_from_u128(Q); decbig_mul_pow10(qb, -scale);
@@ -532,18 +593,24 @@ int32_t dn2cpp_decimal_hash(Dn2CppDecimal a)
     return (int32_t)((h ^ (h >> 32)) & 0x7fffffff);
 }
 
-double dn2cpp_decimal_to_double(Dn2CppDecimal a)
+// The exact value is mantissa * 10^-scale; strtod/strtof round it once, directly
+// to the destination format (a double intermediate would round twice for float).
+// The C-locale scientific form carries no decimal point. A negative zero keeps its sign.
+static double dec_to_fp(Dn2CppDecimal a, bool single)
 {
-    double m = (double)(uint64_t)(dec_mant(a) >> 32) * 4294967296.0 + (double)(uint64_t)(dec_mant(a) & 0xFFFFFFFFull);
-    // Scale by a single 10^scale divisor (built exactly — 10^k is representable in
-    // double for k <= 22) rather than dividing by 10 in a loop, which would accumulate
-    // rounding error (314/10/10 != 314/100, so 3.14m would round to 3.1399999999999997).
-    double div = 1.0;
-    for (int i = 0; i < a.scale(); i++) div *= 10.0;
-    m /= div;
-    return a.sign() ? -m : m;
+    char buf[48];
+    int o = 0;
+    char rev[32];
+    int n = 0;
+    DecBig b = decbig_from_u128(dec_mant(a));
+    do { rev[n++] = (char)('0' + decbig_divmod_small(b, 10)); } while (b.n != 0);
+    if (a.sign()) buf[o++] = '-';
+    while (n > 0) buf[o++] = rev[--n];
+    snprintf(buf + o, sizeof(buf) - (size_t)o, "e-%d", (int)a.scale());
+    return single ? (double)strtof(buf, nullptr) : strtod(buf, nullptr);
 }
-float dn2cpp_decimal_to_float(Dn2CppDecimal a) { return (float)dn2cpp_decimal_to_double(a); }
+double dn2cpp_decimal_to_double(Dn2CppDecimal a) { return dec_to_fp(a, false); }
+float dn2cpp_decimal_to_float(Dn2CppDecimal a) { return (float)dec_to_fp(a, true); }
 int64_t dn2cpp_decimal_to_i8(Dn2CppDecimal a)
 {
     dec_u128 m = dec_mant(a);
@@ -844,13 +911,13 @@ static int32_t dec_from_number(const Dn2CppNumberParse* num, Dn2CppDecimal* out)
 
 // Status: 0 ok, 1 format, 2 overflow (argument errors throw in the validator).
 static int32_t dec_styles_core(const char16_t* p, int32_t n, int32_t styles,
-                               const Dn2CppNumberFormatInfo* nfi, Dn2CppDecimal* out)
+                               const Dn2CppNumberFormatInfo* nfi, bool utf8, Dn2CppDecimal* out)
 {
-    dn2cpp_parse_validate_fp_styles(styles);
+    dn2cpp_parse_validate_decimal_styles(styles);
     nfi = dn2cpp_nfi_or_current(nfi);
     *out = dec_pack(0, 0, 0);
     Dn2CppNumberParse num;
-    if (!dn2cpp_parse_number_styles(p, n, styles, nfi, 2, &num))
+    if (!dn2cpp_parse_number_styles(p, n, styles, nfi, 2, utf8, &num))
         return 1;
     if (dec_from_number(&num, out) != 0)
     {
@@ -863,33 +930,51 @@ static int32_t dec_styles_core(const char16_t* p, int32_t n, int32_t styles,
 int32_t dn2cpp_decimal_tryparse_styles_chars(const char16_t* p, int32_t n, int32_t styles,
                                              const Dn2CppNumberFormatInfo* nfi, Dn2CppDecimal* out)
 {
-    return dec_styles_core(p, n, styles, nfi, out) == 0 ? 1 : 0;
+    return dec_styles_core(p, n, styles, nfi, false, out) == 0 ? 1 : 0;
 }
 
 int32_t dn2cpp_decimal_tryparse_styles_str(Dn2CppString* s, int32_t styles,
                                            const Dn2CppNumberFormatInfo* nfi, Dn2CppDecimal* out)
 {
+    // A null string is the empty span: the provider is resolved for it too.
     if (s == nullptr)
-    {
-        // Styles are validated (and may throw) before the null check, like .NET.
-        dn2cpp_parse_validate_fp_styles(styles);
-        *out = dec_pack(0, 0, 0);
-        return 0;
-    }
+        return dn2cpp_decimal_tryparse_styles_chars(u"", 0, styles, nfi, out);
     return dn2cpp_decimal_tryparse_styles_chars(s->chars, s->length, styles, nfi, out);
 }
 
-Dn2CppDecimal dn2cpp_decimal_parse_styles_chars(const char16_t* p, int32_t n, int32_t styles,
-                                                const Dn2CppNumberFormatInfo* nfi)
+static Dn2CppDecimal dec_styles_parse(const char16_t* p, int32_t n, int32_t styles,
+                                      const Dn2CppNumberFormatInfo* nfi, bool utf8)
 {
     Dn2CppDecimal r;
-    switch (dec_styles_core(p, n, styles, nfi, &r))
+    switch (dec_styles_core(p, n, styles, nfi, utf8, &r))
     {
         case 1: dn2cpp_throw_format_value(dn2cpp_string_from_chars(p, n));
         case 2: dn2cpp_throw_sr0(&dn2cpp_overflow_exception_type, DN2CPP_SR_OVERFLOW_DECIMAL);
         default: break;
     }
     return r;
+}
+
+Dn2CppDecimal dn2cpp_decimal_parse_styles_chars(const char16_t* p, int32_t n, int32_t styles,
+                                                const Dn2CppNumberFormatInfo* nfi)
+{
+    return dec_styles_parse(p, n, styles, nfi, false);
+}
+
+int32_t dn2cpp_decimal_tryparse_styles_utf8(const char* p, int32_t n, int32_t styles,
+                                          const Dn2CppNumberFormatInfo* nfi, Dn2CppDecimal* out)
+{
+    dn2cpp_parse_validate_decimal_styles(styles);
+    Dn2CppString* s = dn2cpp_string_decode_utf8(p, n < 0 ? 0 : n);
+    return dec_styles_core(s->chars, s->length, styles, nfi, true, out) == 0 ? 1 : 0;
+}
+
+Dn2CppDecimal dn2cpp_decimal_parse_styles_utf8(const char* p, int32_t n, int32_t styles,
+                                             const Dn2CppNumberFormatInfo* nfi)
+{
+    dn2cpp_parse_validate_decimal_styles(styles);
+    Dn2CppString* s = dn2cpp_string_decode_utf8(p, n < 0 ? 0 : n);
+    return dec_styles_parse(s->chars, s->length, styles, nfi, true);
 }
 
 Dn2CppDecimal dn2cpp_decimal_parse_styles_str(Dn2CppString* s, int32_t styles,

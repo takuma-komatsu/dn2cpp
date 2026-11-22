@@ -394,6 +394,8 @@ static int64_t dn2cpp_dt_windows_binary_offset(int64_t ticks, bool utc, bool day
 static bool dn2cpp_dt_same_clock(const std::tm& left, const std::tm& right);
 static int64_t dn2cpp_dt_tm_ticks(const std::tm& clock);
 static int64_t dn2cpp_dt_binary_zone_offset(int64_t offset);
+static int64_t dn2cpp_dt_range_end_utc_offset(int64_t utcTicks, int64_t seconds, int64_t offset,
+                                              bool* ambiguousDaylight);
 #endif
 static int64_t dn2cpp_dt_binary_local_ticks(Dn2CppDateTime value);
 
@@ -410,17 +412,22 @@ static int64_t dn2cpp_dt_local_offset_from_utc(int64_t utcTicks, bool* ambiguous
     std::time_t secs = (std::time_t)((whole - DN2CPP_UNIX_EPOCH_TICKS) / DN2CPP_TPS);
     std::tm lt{};
     dn2cpp_pal_localtime((int64_t)secs, &lt);
-    int64_t offset = dn2cpp_dt_binary_zone_offset(dn2cpp_dt_tm_ticks(lt) - whole);
+    int64_t zone = dn2cpp_dt_binary_zone_offset(dn2cpp_dt_tm_ticks(lt) - whole);
+    bool ambiguous = false;
+    int64_t offset = dn2cpp_dt_range_end_utc_offset(utcTicks, secs, zone, &ambiguous);
     int64_t ticks = utcTicks + offset;
-    if (ambiguousDaylight != nullptr && lt.tm_isdst > 0 && ticks >= 0 && ticks <= DN2CPP_DT_MAX_TICKS)
+    if (ambiguousDaylight != nullptr && lt.tm_isdst > 0 && offset == zone && !ambiguous
+        && ticks >= 0 && ticks <= DN2CPP_DT_MAX_TICKS)
     {
         auto standard = lt;
         standard.tm_isdst = 0;
         int64_t otherSeconds = dn2cpp_pal_mktime_local(&standard);
         std::tm otherClock{};
         dn2cpp_pal_localtime(otherSeconds, &otherClock);
-        *ambiguousDaylight = otherSeconds != secs && dn2cpp_dt_same_clock(lt, otherClock);
+        ambiguous = otherSeconds != secs && dn2cpp_dt_same_clock(lt, otherClock);
     }
+    if (ambiguousDaylight != nullptr)
+        *ambiguousDaylight = ambiguous;
     return offset;
 #endif
 }
@@ -449,8 +456,11 @@ Dn2CppDateTime dn2cpp_datetime_to_universal(Dn2CppDateTime a)
 int32_t dn2cpp_local_offset_minutes(Dn2CppDateTime localClock)
 {
     int64_t whole = localClock.ticks() - (localClock.ticks() % DN2CPP_TPS);
-    Dn2CppDateTime utc = dn2cpp_datetime_to_universal(dn2cpp_datetime_pack(whole, 0));
-    return (int32_t)((whole - utc.ticks()) / DN2CPP_TPM);
+    // The offset stays the zone's own where the UTC instant leaves the DateTime range,
+    // and a repeated clock keeps the reading its daylight flag selects.
+    int32_t kind = (static_cast<uint64_t>(localClock._dateData) >> 62) == 3 ? 3 : 0;
+    int64_t utc = dn2cpp_dt_binary_local_ticks(dn2cpp_dt_word(whole, kind));
+    return (int32_t)((whole - utc) / DN2CPP_TPM);
 }
 
 // Local binary payloads hold UTC ticks even when that instant is outside the
@@ -551,6 +561,50 @@ static int64_t dn2cpp_dt_binary_zone_offset(int64_t offset)
     return offset < -limit ? -limit : offset > limit ? limit : offset;
 }
 
+// TimeZoneInfo ends a daylight period that is still running at the top of the
+// DateTime range when its wall clock reaches the range end, and standard time
+// covers the remaining instants. libc keeps daylight time there. Reports whether
+// `seconds`, whose wall clock `clockTicks` reads with the east-of-UTC `offset`, is
+// in such a period, and the zone's standard offset.
+static bool dn2cpp_dt_range_end_daylight(int64_t clockTicks, int64_t seconds, int64_t offset,
+                                         int64_t* standardOffset)
+{
+    if (offset <= 0 || clockTicks <= DN2CPP_DT_MAX_TICKS - DN2CPP_TPD)
+        return false;
+    std::tm clock{};
+    dn2cpp_pal_localtime(seconds, &clock);
+    if (clock.tm_isdst <= 0)
+        return false;
+    for (int month = 1; month < 12; month++)
+    {
+        int64_t earlier = seconds - month * 30LL * 86400;
+        dn2cpp_pal_localtime(earlier, &clock);
+        if (clock.tm_isdst > 0)
+            continue;
+        *standardOffset = dn2cpp_dt_binary_zone_offset(
+            dn2cpp_dt_tm_ticks(clock) - (DN2CPP_UNIX_EPOCH_TICKS + earlier * DN2CPP_TPS));
+        return true;
+    }
+    return false;
+}
+
+// The offset for a UTC instant given libc's `offset`. Local clocks within the
+// daylight delta of the range end occur under both offsets, so the daylight
+// reading is flagged ambiguous.
+static int64_t dn2cpp_dt_range_end_utc_offset(int64_t utcTicks, int64_t seconds, int64_t offset,
+                                              bool* ambiguousDaylight)
+{
+    int64_t local = utcTicks + offset;
+    int64_t standardOffset;
+    if (!dn2cpp_dt_range_end_daylight(local, seconds, offset, &standardOffset))
+        return offset;
+    if (local > DN2CPP_DT_MAX_TICKS)
+        return standardOffset;
+    *ambiguousDaylight = local + offset - standardOffset > DN2CPP_DT_MAX_TICKS
+        && local - standardOffset <= DN2CPP_DT_MAX_TICKS;
+    return offset;
+}
+
 static int64_t dn2cpp_dt_local_binary_ticks(Dn2CppDateTime value)
 {
     int y, mo, d;
@@ -584,7 +638,8 @@ static int64_t dn2cpp_dt_local_binary_ticks(Dn2CppDateTime value)
         seconds = standardSeconds;
     int64_t wall = value.ticks() - value.ticks() % DN2CPP_TPS;
     int64_t offset;
-    if (seconds == -1 && y != 1970)
+    bool projectedOffset = seconds == -1 && y != 1970;
+    if (projectedOffset)
     {
         // Some CRTs reject early years in mktime while localtime still admits them.
         int64_t naive = (wall - DN2CPP_UNIX_EPOCH_TICKS) / DN2CPP_TPS;
@@ -594,7 +649,15 @@ static int64_t dn2cpp_dt_local_binary_ticks(Dn2CppDateTime value)
     }
     else
         offset = wall - DN2CPP_UNIX_EPOCH_TICKS - seconds * DN2CPP_TPS;
-    return value.ticks() - dn2cpp_dt_binary_zone_offset(offset);
+    int64_t zone = dn2cpp_dt_binary_zone_offset(offset);
+    int64_t standardOffset;
+    if (!projectedOffset && (static_cast<uint64_t>(value._dateData) >> 62) != 3
+        && dn2cpp_dt_range_end_daylight(value.ticks(), seconds, zone, &standardOffset)
+        && value.ticks() + zone - standardOffset > DN2CPP_DT_MAX_TICKS
+        && value.ticks() - standardOffset <= DN2CPP_DT_MAX_TICKS)
+        // The repeated clock reads as standard time unless it carries the daylight flag.
+        zone = standardOffset;
+    return value.ticks() - zone;
 }
 #endif
 
@@ -657,7 +720,8 @@ Dn2CppDateTime dn2cpp_datetime_from_binary(int64_t data)
             ambiguousDaylight = otherSeconds != secs && dn2cpp_dt_same_clock(local, otherClock);
         }
         int64_t offset = dn2cpp_dt_tm_ticks(local) - (DN2CPP_UNIX_EPOCH_TICKS + secs * DN2CPP_TPS);
-        ticks += dn2cpp_dt_binary_zone_offset(offset);
+        ticks += dn2cpp_dt_range_end_utc_offset(ticks, secs, dn2cpp_dt_binary_zone_offset(offset),
+            &ambiguousDaylight);
 #endif
     }
     if (ticks < 0)
@@ -1410,9 +1474,9 @@ static bool dn2cpp_ts_parse_custom(const char16_t* p, int pn, const char16_t* in
             }
             case u'.':
                 // A '.' whose fraction is absent from the input is elided together
-                // with its 'F' run -- .NET 10's exact shape: one format char after
-                // the '.' skips unconditionally, then an 'F' must stand right there,
-                // so ".FF" / "..FFF" elide while ".F" / "...FFF" fail. Dots match 1:1.
+                // with its 'F' run: one format char after the '.' skips
+                // unconditionally, then an 'F' must stand right there, so ".FF" /
+                // "..FFF" elide while ".F" / "...FFF" fail. Dots match 1:1.
                 if (ii < inLen && in[ii] == u'.') { ii++; fi++; continue; }
                 if (fi + 2 < pn && p[fi + 2] == u'F')
                 { fi += 2; while (fi < pn && p[fi] == u'F') fi++; continue; }
@@ -1593,12 +1657,11 @@ static bool dn2cpp_dt_parse_custom(const char16_t* p, int pn, const char16_t* in
                 break;
             case u'.':
                 // A '.' whose fraction is absent from the input is elided together
-                // with its 'F' run -- .NET 10's exact shape: one format char after
-                // the '.' skips unconditionally, then an 'F' must stand right there,
-                // so ".FF" / "..FFF" elide while ".F" / "...FFF" fail. Dots match 1:1.
+                // with its 'F' run, and only when the 'F' stands immediately after
+                // it: ".F" / ".FFF" elide while "..FFF" / ".fff" fail. Dots match 1:1.
                 if (ii < inLen && in[ii] == u'.') { ii++; fi++; continue; }
-                if (fi + 2 < pn && p[fi + 2] == u'F')
-                { fi += 2; while (fi < pn && p[fi] == u'F') fi++; continue; }
+                if (fi + 1 < pn && p[fi + 1] == u'F')
+                { fi++; while (fi < pn && p[fi] == u'F') fi++; continue; }
                 return false;
             default:
                 if (ii >= inLen || in[ii] != ch) return false; ii++; fi += cnt; continue;

@@ -232,6 +232,15 @@ static double dn2cpp_box_read_f64(Dn2CppObject* v)
     dn2cpp_throw_sr0(&dn2cpp_invalid_cast_exception_type, DN2CPP_SR_INVALID_CAST);
 }
 
+// A boxed decimal rounds once from its exact value, as the (float) cast does;
+// read through double it could round twice.
+static float dn2cpp_box_read_f32(Dn2CppObject* v)
+{
+    if (v->type == &dn2cpp_decimal_type)
+        return dn2cpp_decimal_to_float(*static_cast<const Dn2CppDecimal*>(dn2cpp_box_payload(v)));
+    return static_cast<float>(dn2cpp_box_read_f64(v));
+}
+
 // Format a boxed primitive as its .NET string (Convert.ChangeType(.., typeof(string))).
 static Dn2CppString* dn2cpp_box_to_string(Dn2CppObject* v)
 {
@@ -344,10 +353,10 @@ static Dn2CppObject* dn2cpp_change_type_to(Dn2CppObject* value, const Dn2CppType
     }
     if (tt == &dn2cpp_single_type)
     {
-        float f = static_cast<float>(value->type == &dn2cpp_string_type
-            ? dn2cpp_fp_parse_str(reinterpret_cast<Dn2CppString*>(value), 231 /* Float | AllowThousands */,
-                dn2cpp_format_provider_nfi(provider), 1)
-            : dn2cpp_box_read_f64(value));
+        float f = value->type == &dn2cpp_string_type
+            ? static_cast<float>(dn2cpp_fp_parse_str(reinterpret_cast<Dn2CppString*>(value),
+                231 /* Float | AllowThousands */, dn2cpp_format_provider_nfi(provider), 1))
+            : dn2cpp_box_read_f32(value);
         return dn2cpp_box(tt, &f, sizeof(f));
     }
     if (tt == &dn2cpp_int64_type)
@@ -507,6 +516,11 @@ int64_t dn2cpp_convert_obj_to_i64(Dn2CppObject* v)
 double dn2cpp_convert_obj_to_f64(Dn2CppObject* v)
 {
     return v != nullptr ? dn2cpp_box_read_f64(v) : 0.0;
+}
+
+float dn2cpp_convert_obj_to_f32(Dn2CppObject* v)
+{
+    return v != nullptr ? dn2cpp_box_read_f32(v) : 0.0f;
 }
 
 int32_t dn2cpp_convert_obj_to_bool(Dn2CppObject* v)
@@ -922,16 +936,18 @@ int32_t dn2cpp_convert_try_to_base64(const uint8_t* data, int32_t n, char16_t* d
 }
 
 // Decode core, streaming 4-unit quanta (whitespace skipped anywhere; '=' only
-// in the final quantum's last two slots; a completed padded quantum must end the
-// data). Each complete quantum's bytes are written atomically, so on a
-// too-short destination the earlier quanta are already in the buffer but
-// *written reports 0 — exactly the BCL's Try* semantics. The throwing forms
-// explicitly request a sizing pass; a null public destination keeps its capacity
-// and throws only when a complete quantum would be written.
+// in the final quantum's last two slots, over zero unused bits; a completed
+// padded quantum must end the data). Each complete quantum's bytes are written
+// atomically, so on a too-short destination the earlier quanta are already in
+// the buffer but *written reports 0 — exactly the BCL's Try* semantics. The
+// throwing forms explicitly request a sizing pass; a null public destination
+// keeps its capacity and throws only when a complete quantum would be written.
+// *written is assigned on return. When that write faults, the caller's value
+// stays observable unless .NET's raw first pass would already have zeroed it,
+// which the null-destination throw below reproduces.
 static int32_t dn2cpp_base64_decode_core(const char16_t* p, int32_t n, uint8_t* dest,
                                          int32_t destLen, int32_t* written, bool measureOnly)
 {
-    *written = 0;
     int32_t w = 0;
     uint32_t acc = 0;
     int32_t dataInQ = 0, padsInQ = 0;
@@ -962,12 +978,23 @@ static int32_t dn2cpp_base64_decode_core(const char16_t* p, int32_t n, uint8_t* 
         {
             int32_t bytes = 3 - padsInQ;
             uint32_t v = acc << (6 * padsInQ);
+            if ((v & ((1u << (8 * padsInQ)) - 1u)) != 0)
+                goto fail;
             if (!measureOnly)
             {
                 if (w + bytes > destLen)
                     goto fail;
                 if (dest == nullptr)
+                {
+                    // .NET's decoder first runs over the raw text and reports
+                    // nothing until it returns; a quantum it cannot take there
+                    // (whitespace inside the first four units, or padding with a
+                    // further block behind it) zeroes the count before the
+                    // whitespace-aware pass reaches the same write.
+                    if (i != 3 || (padsInQ > 0 && n >= 8))
+                        *written = 0;
                     dn2cpp_throw_null_reference();
+                }
                 dest[w] = static_cast<uint8_t>(v >> 16);
                 if (bytes > 1)
                     dest[w + 1] = static_cast<uint8_t>(v >> 8);
@@ -992,13 +1019,16 @@ fail:
 }
 
 // Validate + size + decode into a fresh packed byte[]; FormatException on
-// invalid input (the throwing FromBase64* forms).
+// invalid input (the throwing FromBase64* forms). Text that decodes to no bytes
+// yields the shared empty array.
 static Dn2CppArrayN* dn2cpp_base64_decode_alloc(const char16_t* p, int32_t n,
                                                 const Dn2CppTypeInfo* ti)
 {
     int32_t outLen;
     if (!dn2cpp_base64_decode_core(p, n, nullptr, 0, &outLen, true))
         dn2cpp_throw_sr0(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_BASE64_CHAR);
+    if (outLen == 0)
+        return dn2cpp_array_empty_n_atomic(ti, static_cast<int32_t>(sizeof(uint8_t)));
     Dn2CppArrayN* out = dn2cpp_newarr_n_t(outLen, static_cast<int32_t>(sizeof(uint8_t)), ti);
     dn2cpp_base64_decode_core(p, n, reinterpret_cast<uint8_t*>(out->data), outLen, &outLen, false);
     return out;

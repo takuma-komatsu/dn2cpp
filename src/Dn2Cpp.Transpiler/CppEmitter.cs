@@ -2692,6 +2692,14 @@ internal sealed partial class CppEmitter
                             {
                                 var wrapper = new MethodCompiler(_c, m, literals, _backend)
                                         .CompileCoreIntrinsicWrapper();
+                                // A lowering that calls this method's own real body reaches it,
+                                // which leaves the set: that body serves the address instead.
+                                if (!_c.IntrinsicFtnTargets.Contains(m))
+                                {
+                                    compiled.Remove(m);
+                                    reachCursor = 0;
+                                    continue;
+                                }
                                 if (wrapper is null && _c.RuntimeInterfaceLowerings.ContainsKey(m))
                                 {
                                     _c.ReachRuntimeInterfaceBody(m);
