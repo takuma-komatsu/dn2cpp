@@ -80,6 +80,14 @@ shared-framework closure — `--auto-ref` resolves that from the running
 framework. Your project's own target framework is its own affair: the
 Godot .NET samples under `samples/godot-dotnet/` are `net8.0` (what
 `Godot.NET.Sdk` picks) and transpile against that closure just the same.
+The exception is C# 15 `union` types and `closed` classes: they need the
+attribute and interface types that the .NET 11 CoreLib provides, so a
+project that uses them must target `net11.0`. A project on an older
+framework, such as a `net8.0` Godot project, that declares its own copies
+of those types is refused, because an input type may not share a public
+CoreLib type's full name. The only exception is an attribute the compiler
+embeds: internal, in `System.Runtime.CompilerServices`, and marked
+`[CompilerGenerated]` and `[Microsoft.CodeAnalysis.Embedded]`.
 
 **What works out of the box.** The real CoreLib collections and strings,
 LINQ, `System.Text.Json` through source-gen, `Regex` (both engines),

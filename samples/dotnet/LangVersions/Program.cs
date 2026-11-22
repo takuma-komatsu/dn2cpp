@@ -43,3 +43,9 @@ RecordSubset.Program.__GateEntry();                 // C# 9 — positional recor
 if (System.Environment.GetEnvironmentVariable("DN2CPP_BEFORE_ORDINARY_SEALED_INTERFACE") == "1")
     return;
 InterfaceSealedMemberSubset.Program.__GateEntry();
+
+// A version newer than the feature sections is appended after them for the same
+// reason. A run stopped here prints exactly the output above.
+if (System.Environment.GetEnvironmentVariable("DN2CPP_BEFORE_CS15") == "1")
+    return;
+Cs15.Program.__GateEntry();
