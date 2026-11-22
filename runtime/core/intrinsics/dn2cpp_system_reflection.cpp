@@ -5064,30 +5064,17 @@ static const Dn2CppTypeInfo* dn2cpp_enum_underlying_or_self(const Dn2CppTypeInfo
     return ti->enumUnderlying != nullptr ? ti->enumUnderlying : &dn2cpp_int32_type;
 }
 
-// A parameter the invoker thunk receives headerless: CultureInfo, NumberFormatInfo,
-// TextInfo as the culture pointer, Assembly and Module as the
-// name. The thunk unwraps a wrapper and passes anything else through as the raw
-// handle an erased path can leave in the argument array, whose first word is no
-// type-info. Each name is "System." followed by Gl or Re, so a parameter type
-// outside those prefixes is rejected without a string compare.
+// An erased culture argument can still carry a headerless native pointer.
+// The invoker thunk handles these three parameter types before reading a header.
 static bool dn2cpp_invoke_headerless_param(const Dn2CppTypeInfo* p)
 {
-    static constexpr char prefix[] = "System.";
-    const char* n = p->name;
-    if (n == nullptr)
+    static constexpr char prefix[] = "System.Globalization.";
+    const char* name = p->name;
+    if (name == nullptr || std::strncmp(name, prefix, sizeof(prefix) - 1) != 0)
         return false;
-    for (std::size_t i = 0; i + 1 < sizeof prefix; i++)
-        if (n[i] != prefix[i])
-            return false;
-    const char* rest = n + sizeof prefix - 1;
-    if (rest[0] == 'G' && rest[1] == 'l')
-        return std::strcmp(rest, "Globalization.CultureInfo") == 0
-            || std::strcmp(rest, "Globalization.NumberFormatInfo") == 0
-            || std::strcmp(rest, "Globalization.TextInfo") == 0;
-    if (rest[0] == 'R' && rest[1] == 'e')
-        return std::strcmp(rest, "Reflection.Assembly") == 0
-            || std::strcmp(rest, "Reflection.Module") == 0;
-    return false;
+    const char* type = name + sizeof(prefix) - 1;
+    return std::strcmp(type, "CultureInfo") == 0 || std::strcmp(type, "NumberFormatInfo") == 0
+        || std::strcmp(type, "TextInfo") == 0;
 }
 
 // RuntimeType.CheckValue for one non-null argument: the value to pass, or the
@@ -10219,7 +10206,7 @@ static Dn2CppMetadataTable<Dn2CppAttrInfo> dn2cpp_member_custom_attrs(Dn2CppObje
     *count = 0;
     if (m != nullptr && m->type == &dn2cpp_runtime_module_type)
     {
-        const char* name = dn2cpp_asm_unwrap(m);
+        const char* name = dn2cpp_asm_name(m);
         for (int32_t i = 0; i < dn2cpp_assembly_registry_count; i++)
             if (std::strcmp(dn2cpp_assembly_registry[i].name, name) == 0)
             {
@@ -10291,7 +10278,7 @@ static std::string dn2cpp_attr_owner_text(Dn2CppObject* member, const char* asse
     if (member == nullptr)
         return std::string("assembly ") + (assembly != nullptr ? assembly : "?");
     if (member->type == &dn2cpp_runtime_module_type)
-        return std::string("module ") + dn2cpp_asm_unwrap(member);
+        return std::string("module ") + dn2cpp_asm_name(member);
     if (member->type == &dn2cpp_type_type)
         return dn2cpp_utf8_of(dn2cpp_type_tostring(reinterpret_cast<Dn2CppType*>(member)->typeInfo));
     auto subject = [](const Dn2CppTypeInfo* owner, const char* name) {
@@ -10635,16 +10622,7 @@ Dn2CppString* dn2cpp_assembly_full_name(const char* name)
     return dn2cpp_assembly_display_name(name);
 }
 
-// ---- Assembly/Module escaped into `object` ----------------------------------
-// The managed types lower to the headerless simple-name `const char*`, so an
-// escape into an `object` context allocates a real managed object around the
-// handle (the Dn2CppNfiBox pattern). The box carries the PRIVATE implementation
-// identity real .NET reports — RuntimeAssembly/RuntimeModule, each based on its
-// public abstract shell — so GetType().Name says "RuntimeAssembly",
-// GetType() == typeof(Assembly) is false and `o is Assembly` is true through the
-// generic base-chain walk, exactly as on .NET. ToString dispatches to the same
-// strings the statically-typed arms print: the assembly display FullName, the
-// module file name.
+// RuntimeAssembly and RuntimeModule carry the registry name inside a managed object.
 struct Dn2CppAsmBox : Dn2CppObject
 {
     const char* name;
@@ -10671,14 +10649,8 @@ const Dn2CppTypeInfo dn2cpp_runtime_assembly_type =
 const Dn2CppTypeInfo dn2cpp_runtime_module_type =
     { "System.Reflection.RuntimeModule", &dn2cpp_module_type, nullptr, nullptr, dn2cpp_mod_box_tostring, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppAsmBox), 0, 0, 0, 0, 0, nullptr };
 
-// Interned per (assembly NAME, kind): by string compare, because two intrinsics
-// can hand out two different `const char*`s for one assembly (a registry entry
-// vs an emitted literal), and .NET's Assembly/Module instances are singletons
-// reference-equal across every escape. The chain is GC-visible (nodes on the GC
-// heap, head a scanned static slot). It doubles as the box-detection set: a box
-// is recognized by chain MEMBERSHIP (pointer identity against the nodes), never
-// by reading a header word — a raw `const char*` can be shorter than a pointer,
-// so even a value-compare read of its first bytes would over-read.
+// Registry rows, metadata blobs and native fallbacks can have different addresses
+// for the same name. Keep one GC-rooted object per (simple name, runtime kind).
 struct Dn2CppAsmBoxNode
 {
     Dn2CppAsmBox box;
@@ -10715,6 +10687,15 @@ Dn2CppObject* dn2cpp_asm_wrap(const char* h, int32_t kind)
     dn2cpp_gc_store_ref(&node->next, g_asmBoxes);
     g_asmBoxes = node;
     return &node->box;
+}
+
+const char* dn2cpp_asm_name(Dn2CppObject* o)
+{
+    if (o == nullptr)
+        return nullptr;
+    if (o->type == &dn2cpp_runtime_assembly_type || o->type == &dn2cpp_runtime_module_type)
+        return static_cast<Dn2CppAsmBox*>(o)->name;
+    dn2cpp_throw_not_supported_msg("The assembly registry requires a runtime Assembly or Module.");
 }
 
 const char* dn2cpp_asm_unwrap(Dn2CppObject* o)
@@ -11000,7 +10981,7 @@ Dn2CppArrayRef* dn2cpp_assembly_get_modules(const char* name)
     if (name == nullptr)
         name = "System.Private.CoreLib";
     Dn2CppArrayRef* arr = dn2cpp_newarr_ref(1);
-    arr->data[0] = reinterpret_cast<Dn2CppObject*>(const_cast<char*>(name));
+    dn2cpp_gc_store_ref(&arr->data[0], dn2cpp_asm_wrap(name, DN2CPP_ASM_KIND_MODULE));
     return arr;
 }
 
@@ -11628,8 +11609,7 @@ int32_t dn2cpp_memberinfo_metadata_token(Dn2CppObject* m)
     return 0;
 }
 
-// MemberInfo.Module: modeled as the defining assembly's simple-name handle
-// (each loaded assembly is single-module), the same handle Assembly is.
+// The declaring assembly name identifies the manifest module of a reflected member.
 const char* dn2cpp_memberinfo_module(Dn2CppObject* m)
 {
     dn2cpp_memberref_require(m);
@@ -12520,10 +12500,6 @@ static int32_t dn2cpp_array_headerless_kind(const Dn2CppTypeInfo* elem)
         return 2;
     if (std::strcmp(elem->name, "System.Globalization.TextInfo") == 0)
         return 3;
-    if (std::strcmp(elem->name, "System.Reflection.Assembly") == 0)
-        return 4;
-    if (std::strcmp(elem->name, "System.Reflection.Module") == 0)
-        return 5;
     return 0;
 }
 
@@ -12559,9 +12535,6 @@ Dn2CppObject* dn2cpp_array_load_ref(const Dn2CppTypeInfo* elem, const void* slot
     if (kind >= 1 && kind <= 3)
         return dn2cpp_nfi_wrap(reinterpret_cast<const Dn2CppNumberFormatInfo*>(value),
             kind == 1 ? DN2CPP_NFI_KIND_CULTURE : kind == 2 ? DN2CPP_NFI_KIND_NFI : DN2CPP_NFI_KIND_TEXTINFO);
-    if (kind >= 4)
-        return dn2cpp_asm_wrap(reinterpret_cast<const char*>(value),
-            kind == 4 ? DN2CPP_ASM_KIND_ASSEMBLY : DN2CPP_ASM_KIND_MODULE);
     return value;
 }
 
@@ -12572,8 +12545,6 @@ void dn2cpp_array_store_ref(const Dn2CppTypeInfo* elem, void* slot, Dn2CppObject
         int32_t kind = dn2cpp_array_headerless_kind(elem);
         if (kind >= 1 && kind <= 3)
             value = reinterpret_cast<Dn2CppObject*>(const_cast<Dn2CppNumberFormatInfo*>(dn2cpp_nfi_unwrap(value)));
-        else if (kind >= 4)
-            value = reinterpret_cast<Dn2CppObject*>(const_cast<char*>(dn2cpp_asm_unwrap(value)));
     }
     std::memcpy(slot, &value, sizeof(value));
     dn2cpp_gc_write_barrier_if_heap(slot);

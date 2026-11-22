@@ -718,7 +718,8 @@ grep -q "EventListenerProbe.ProbeListener..ctor <- EventListenerProbe.Program.Ma
 echo "refusal OK: exit $es_code, named the observation side + EventListener + a remedy + the caller, emitted nothing"
 
 # Native String rows, Type construction faults, lossless attribute displays,
-# and complete matching attribute construction before single-query ambiguity.
+# matching attribute construction before single-query ambiguity, and Assembly/Module
+# reference identity across type metadata sources.
 unset -f gate_extra_asserts
 source gates/_ordinary-reflection.sh
 gate_extra_asserts() {
@@ -954,7 +955,10 @@ gate_extra_asserts() {
     gate_capture_ok "$out/collectibility-before" run_bounded dotnet "$_CG_APP" before-collectibility || return $?
     gate_output prefix "$out/native.stdout" "$out/collectibility-before.stdout" \
         --before '== noncollectible reflection types ==' --policy crlf || return $?
-    gate_output byte-witness "$out/native.stdout" 'noncollectible reflection types end' --count 1 --policy crlf || return $?
+    gate_output byte-witness "$out/native.stdout" --count 1 --policy crlf \
+        'noncollectible reflection types end' \
+        'assembly reference=True module reference=same assembly/module=False derived assemblies=False' \
+        'module cast/as=True/True enumerated=True byref=True generic ref=True' || return $?
 }
 # Helpers that read a Type parameter's attributes or construct a Type an attribute
 # carries are preserved explicitly; their callers' typeof arguments select nothing.

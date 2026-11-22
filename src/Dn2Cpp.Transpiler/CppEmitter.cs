@@ -1862,7 +1862,7 @@ internal sealed partial class CppEmitter
         // (CnRef -> Dn2CppObject*), the forwarder keeps this instantiation's real
         // signature — every position whose spelling differs converts through the SAME
         // funnel the direct-call binder uses (MethodCompiler.ErasedBoundaryCast → Cast), so
-        // a headerless position (the NFI trio, Assembly/Module) wraps into the erased slot
+        // a headerless position (the NFI trio) wraps into the erased slot
         // and unwraps out of it instead of riding a plain C cast, and the verdict is never
         // maintained in a second place. Every other differing spelling keeps its C cast.
         var args = new List<string>();
@@ -4288,14 +4288,14 @@ internal sealed partial class CppEmitter
                     // The thunk parameter is typed at the concrete interface element while
                     // the canonical impl body's is `Dn2CppObject*`, so the forward casts
                     // (dropping const, widening the reference); a matching type casts to
-                    // itself. A headerless element (the NFI trio, Assembly/Module) must be
+                    // itself. A headerless element (the NFI trio) must be
                     // WRAPPED rather than punned: the ref-array SLOTS hold the interned
                     // wrapper, and IndexOf/Contains inside the canonical body compare the
                     // argument against those slots.
                     string implCpp = p < implPs.Length ? CppTypes.Of(implPs[p]) : pCpp;
                     fargs.Add(pCpp == implCpp ? $"p{p}"
-                        : MethodCompiler.IsHeaderlessWrapCpp(pCpp) && implCpp == "Dn2CppObject*"
-                            ? MethodCompiler.HeaderlessWrapExpr($"p{p}", pCpp, ps[p])
+                        : MethodCompiler.IsNfiCppType(pCpp) && implCpp == "Dn2CppObject*"
+                            ? MethodCompiler.NfiWrapExpr($"p{p}", ps[p])
                             : $"({implCpp})p{p}");
                 }
                 string thunk = $"arrthunk_{key}_{i}_{decl.VtableSlot}";
@@ -4309,8 +4309,8 @@ internal sealed partial class CppEmitter
                 // (Dn2CppObject*) from the canonical body — unwrap to the declared
                 // element type.
                 sb.AppendLine(retCpp == "void" ? $"    {call};"
-                    : MethodCompiler.IsHeaderlessWrapCpp(retCpp)
-                        ? $"    return {MethodCompiler.HeaderlessUnwrapExpr(call, retCpp)};"
+                    : MethodCompiler.IsNfiCppType(retCpp)
+                        ? $"    return {MethodCompiler.NfiUnwrapExpr(call, retCpp)};"
                         : $"    return ({retCpp}){call};");
                 sb.AppendLine("}");
                 slots[decl.VtableSlot] = $"(const void*)&{thunk}";
@@ -4793,7 +4793,7 @@ internal sealed partial class CppEmitter
             copyable = valueType switch
             {
                 true => !pointerShaped && referent != "&dn2cpp_object_type",
-                false => pointerShaped && !MethodCompiler.IsNfiCppType(cpp) && !MethodCompiler.IsAsmCppType(cpp),
+                false => pointerShaped && !MethodCompiler.IsNfiCppType(cpp),
                 null => false,
             };
         }
@@ -5776,14 +5776,6 @@ internal sealed partial class CppEmitter
                 sigParams.Add("void*");
                 callArgs.Add($"(void*)dn2cpp_nfi_unwrap(args[{i}])");
             }
-            else if (MethodCompiler.IsAsmCppType(cpp))
-            {
-                // The other wrappable headerless parameter — Assembly/Module's
-                // const char*. Same argument, own funnel, own shape letter.
-                key.Append("_A");
-                sigParams.Add("void*");
-                callArgs.Add($"(void*)dn2cpp_asm_unwrap(args[{i}])");
-            }
             else if (ptr)
             {
                 key.Append("_P");
@@ -5807,10 +5799,9 @@ internal sealed partial class CppEmitter
         }
         // Return shape.
         string retSig, retToken;
-        // 0 void, 1 pointer, 2 value, 3 NFI headerless (nfi-wrapped), 4 Assembly/
-        // Module headerless (asm-wrapped).
+        // 0 void, 1 pointer, 2 value, 3 NFI headerless (nfi-wrapped).
         int retKind;
-        string nfiRetKind = ""; // the DN2CPP_NFI_KIND_* / DN2CPP_ASM_KIND_* macro of retKind 3/4
+        string nfiRetKind = ""; // the DN2CPP_NFI_KIND_* macro of retKind 3
         if (ret.IsVoid) { retSig = "void"; retToken = "v"; retKind = 0; }
         else
         {
@@ -5829,15 +5820,6 @@ internal sealed partial class CppEmitter
                 retToken = "N" + nfiRetKind["DN2CPP_NFI_KIND_".Length..];
                 retKind = 3;
             }
-            else if (MethodCompiler.IsAsmCppType(cpp))
-            {
-                // The Assembly/Module mirror: wrap the raw handle with the DECLARED
-                // kind, which rides the dedup key like the NFI one.
-                nfiRetKind = MethodCompiler.AsmKindOf(ret);
-                retSig = "const char*";
-                retToken = "A" + nfiRetKind["DN2CPP_ASM_KIND_".Length..];
-                retKind = 4;
-            }
             else if (ptr) { retSig = "Dn2CppObject*"; retToken = "P"; retKind = 1; }
             else { retSig = cpp; retToken = CppNaming.Sanitize(cpp); retKind = 2; }
         }
@@ -5853,7 +5835,6 @@ internal sealed partial class CppEmitter
                 0 => $"{call}; return nullptr;",
                 1 => $"return (Dn2CppObject*){call};",
                 3 => $"return dn2cpp_nfi_wrap({call}, {nfiRetKind});",
-                4 => $"return dn2cpp_asm_wrap({call}, {nfiRetKind});",
                 _ => $"{retSig} r = {call}; return dn2cpp_box(retType, &r, sizeof(r));",
             };
             sb.AppendLine($"static Dn2CppObject* {name}(void* fn, [[maybe_unused]] Dn2CppObject* self, " +
@@ -6570,8 +6551,7 @@ internal sealed partial class CppEmitter
     }
 
     /// <summary>Assembly registry: one entry per loaded module (app + -r references),
-    /// keyed by the assembly simple name — the <c>const char*</c> handle Assembly is
-    /// modeled as — with the module's reflectable assembly-level custom attributes.
+    /// keyed by assembly simple name, with the module's reflectable assembly-level custom attributes.
     /// Backs Assembly.GetCustomAttributes/IsDefined on any Assembly handle
     /// (Type.Assembly / GetEntryAssembly). The attribute rows follow the same
     /// conditional bound as the member tables: an attribute renders only when its ctor
@@ -6911,8 +6891,8 @@ internal sealed partial class CppEmitter
             // The bound first argument rides the target slot, which is always a
             // Dn2CppObject*: a headerless-typed one arrived there as the wrapper.
             string t0 = CppTypes.Of(ps[0]);
-            callArgs.Add(MethodCompiler.IsHeaderlessWrapCpp(t0)
-                ? MethodCompiler.HeaderlessUnwrapExpr("__target", t0)
+            callArgs.Add(MethodCompiler.IsNfiCppType(t0)
+                ? MethodCompiler.NfiUnwrapExpr("__target", t0)
                 : $"({t0})__target");
             start = 1;
         }
@@ -6924,8 +6904,8 @@ internal sealed partial class CppEmitter
         {
             string real = CppTypes.Of(ps[i]);
             sigParams.Add($"{MethodCompiler.NfiErasedAbi(real)} a{i}");
-            callArgs.Add(MethodCompiler.IsHeaderlessWrapCpp(real)
-                ? MethodCompiler.HeaderlessUnwrapExpr($"a{i}", real)
+            callArgs.Add(MethodCompiler.IsNfiCppType(real)
+                ? MethodCompiler.NfiUnwrapExpr($"a{i}", real)
                 : $"a{i}");
         }
         var rt = m.Signature.ReturnType;
@@ -6934,8 +6914,8 @@ internal sealed partial class CppEmitter
         // A delegate's Invoke has no body of its own; its calls lower to the invoker.
         string callee = MethodCompiler.IsDelegateInvoke(m) ? $"dginvoke_{m.DeclaringClass.CppName}" : m.CppName;
         string call = $"{callee}({string.Join(", ", callArgs)})";
-        if (!rt.IsVoid && MethodCompiler.IsHeaderlessWrapCpp(realRet))
-            call = MethodCompiler.HeaderlessWrapExpr(call, realRet, rt);
+        if (!rt.IsVoid && MethodCompiler.IsNfiCppType(realRet))
+            call = MethodCompiler.NfiWrapExpr(call, rt);
         string head = $"{ret} {adapter.CppName}({string.Join(", ", sigParams)})";
         o.Header.AppendLine($"{head};");
         o.Data.AppendLine(head);
@@ -7011,7 +6991,7 @@ internal sealed partial class CppEmitter
                 string t = CppTypes.Of(ps[i]);
                 sigParams.Add($"{t} a{i}");
                 // f_method's ABI erases every wrappable headerless position (the
-                // NFI trio, Assembly/Module) to Dn2CppObject* (DelegateAdapter):
+                // NFI trio) to Dn2CppObject* (DelegateAdapter):
                 // the delegate's own spelling is converted here, the target's in
                 // the adapter, and the two derive the erasure independently — the
                 // only way they can differ is a headerless spelling against
@@ -7020,13 +7000,13 @@ internal sealed partial class CppEmitter
                 // reference conversion that emits no IL to hook — would read one
                 // f_method under two incompatible ABIs.
                 fnParamTypes.Add(MethodCompiler.NfiErasedAbi(t));
-                callArgs.Add(MethodCompiler.IsHeaderlessWrapCpp(t)
-                    ? MethodCompiler.HeaderlessWrapExpr($"a{i}", t, ps[i])
+                callArgs.Add(MethodCompiler.IsNfiCppType(t)
+                    ? MethodCompiler.NfiWrapExpr($"a{i}", ps[i])
                     : $"a{i}");
                 fwdArgs.Add($"a{i}");
             }
             string name = $"dginvoke_{cls.CppName}";
-            bool nfiRet = !invoke.Signature.ReturnType.IsVoid && MethodCompiler.IsHeaderlessWrapCpp(ret);
+            bool nfiRet = !invoke.Signature.ReturnType.IsVoid && MethodCompiler.IsNfiCppType(ret);
             string fnRet = nfiRet ? "Dn2CppObject*" : ret;
             string fnPtr = $"({fnRet} (*)({string.Join(", ", fnParamTypes)}))dg->f_method";
             var fwd = new List<string> { $"({cls.CppStructName}*)dg->f_prev" };
@@ -7038,7 +7018,7 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"        {name}({string.Join(", ", fwd)});");
             string call = $"({fnPtr})({string.Join(", ", callArgs)})";
             if (nfiRet)
-                call = MethodCompiler.HeaderlessUnwrapExpr(call, ret);
+                call = MethodCompiler.NfiUnwrapExpr(call, ret);
             sb.AppendLine(invoke.Signature.ReturnType.IsVoid ? $"    {call};" : $"    return {call};");
             sb.AppendLine("}");
         }
@@ -7116,7 +7096,7 @@ internal sealed partial class CppEmitter
 
         // The trampoline IS an f_method, so its signature is spelled in f_method's
         // canonical erased ABI (MethodCompiler.NfiErasedAbi): every wrappable
-        // headerless position (the NFI trio, Assembly/Module's const char*) is a
+        // headerless position (the NFI trio) is a
         // Dn2CppObject* here, which is exactly what the delegate invoker's
         // function-pointer cast says and exactly what the boxed reflbind world
         // underneath speaks — the invoker wraps such an argument before the call
@@ -7828,8 +7808,8 @@ internal sealed partial class CppEmitter
     private static string NfiSlotArg(TypeDesc implParam, string arg)
     {
         string cpp = CppTypes.Of(implParam);
-        return MethodCompiler.IsHeaderlessWrapCpp(cpp)
-            ? MethodCompiler.HeaderlessUnwrapExpr(arg, cpp)
+        return MethodCompiler.IsNfiCppType(cpp)
+            ? MethodCompiler.NfiUnwrapExpr(arg, cpp)
             : $"({cpp}){arg}";
     }
 
@@ -7865,7 +7845,7 @@ internal sealed partial class CppEmitter
             return null;
         bool any = false;
         for (int k = 0; k < ps.Length && !any; k++)
-            any = MethodCompiler.IsHeaderlessWrapCpp(CppTypes.Of(implPs[k]))
+            any = MethodCompiler.IsNfiCppType(CppTypes.Of(implPs[k]))
                   && CppTypes.Of(cps[k]) == "Dn2CppObject*";
         if (!any)
             return null;

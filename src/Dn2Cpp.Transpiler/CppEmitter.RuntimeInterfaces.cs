@@ -48,8 +48,8 @@ internal sealed partial class CppEmitter
                     string receiverType = MethodCompiler.ReceiverCppType(target.DeclaringClass);
                     string receiver = target.DeclaringClass.IsValueType
                         ? "((Dn2CppObject*)self + 1)"
-                        : MethodCompiler.IsHeaderlessWrapCpp(receiverType)
-                            ? MethodCompiler.HeaderlessUnwrapExpr("self", receiverType) : "self";
+                        : MethodCompiler.IsNfiCppType(receiverType)
+                            ? MethodCompiler.NfiUnwrapExpr("self", receiverType) : "self";
                     args.Add($"({receiverType})({receiver})");
                     for (int i = 0; i < declaration.Signature.ParameterTypes.Length; i++)
                     {

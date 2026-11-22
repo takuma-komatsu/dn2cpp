@@ -954,13 +954,8 @@ internal static partial class CoreIntrinsics
         ["System.Reflection.EventInfo"] = "&dn2cpp_eventinfo_type",
         ["System.Reflection.ParameterInfo"] = "&dn2cpp_parameterinfo_type",
         ["System.Reflection.CustomAttributeData"] = "&dn2cpp_customattributedata_type",
-        // The headerless `const char*` Assembly/Module handles escape into `object` through
-        // an interned runtime wrapper (dn2cpp_asm_wrap), whose header is the PRIVATE
-        // implementation identity real .NET reports — RuntimeAssembly/RuntimeModule, each
-        // based on its public abstract shell — so GetType() == typeof(Assembly) is false and
-        // `o is Assembly` true via the base chain, as on .NET. All four are rowed so
-        // typeof/isinst/castclass name the wrapper's own symbols and no emitted ti_ shadows
-        // them.
+        // RuntimeAssembly and RuntimeModule derive from the public abstract types.
+        // The intern table and generated type checks must use the same identities.
         ["System.Reflection.Assembly"] = "&dn2cpp_assembly_type",
         ["System.Reflection.Module"] = "&dn2cpp_module_type",
         ["System.Reflection.RuntimeAssembly"] = "&dn2cpp_runtime_assembly_type",
@@ -1644,12 +1639,9 @@ internal static partial class CoreIntrinsics
         ["System.Reflection.ConstructorInfo"] = "Dn2CppObject*",
         ["System.Reflection.PropertyInfo"] = "Dn2CppObject*",
         ["System.Reflection.EventInfo"] = "Dn2CppObject*",
-        // System.Reflection.Assembly is modeled as its defining assembly's
-        // simple-name pointer (Type.Assembly identity / the assembly-registry
-        // key). Module is the same handle (single-module assemblies).
-        // AssemblyName is a plain transpiled class (no entry — arm fallbacks).
-        ["System.Reflection.Assembly"] = "const char*",
-        ["System.Reflection.Module"] = "const char*",
+        // Assemblies and their manifest modules have distinct interned references.
+        ["System.Reflection.Assembly"] = "Dn2CppObject*",
+        ["System.Reflection.Module"] = "Dn2CppObject*",
         // RuntimeTypeHandle is the type-info pointer everywhere (ldtoken,
         // Type.TypeHandle, GetTypeFromHandle) — the loaded CoreLib's struct
         // shape must not leak into signatures. Its External STACK kind stays a

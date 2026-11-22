@@ -1451,7 +1451,7 @@ internal sealed partial class MethodCompiler
                 : ResolveMethodDef((MethodDefinitionHandle)handle).Signature.ParameterTypes;
             if (rmParams is [{ IsString: true }, { Kind: TypeKind.Class, Class.FullName: "System.Reflection.Assembly" }])
             {
-                string asm = Cast(Pop(), "const char*");
+                string asm = AssemblyNameOf(Pop());
                 string bn = Cast(Pop(), "Dn2CppString*");
                 Push(StackKind.Ref, "Dn2CppResourceManager*",
                     $"dn2cpp_resourcemanager_new({bn}, {asm})");

@@ -877,19 +877,9 @@ const Dn2CppNumberFormatInfo* dn2cpp_nfi_isinst(Dn2CppObject* o, int32_t kind,
 // it as an expression; it never returns.
 Dn2CppObject* dn2cpp_headerless_escape(const char* managedTypeName);
 
-// ---- Assembly/Module escaped into `object` ----------------------------------
-// System.Reflection.Assembly and Module are modeled as the defining assembly's
-// simple-name `const char*`, headerless like the NFI trio, so an escape into an
-// `object` context allocates a real managed object around the handle. Unlike the
-// NFI wrappers the box's header type-info is the PRIVATE implementation identity
-// real .NET reports (RuntimeAssembly/RuntimeModule over the public abstract
-// shell), so GetType().Name, GetType() == typeof(Assembly) (false) and
-// `o is Assembly` (true, via the base chain) all answer like .NET. Wrappers intern
-// per (assembly NAME, kind) by STRING compare, not pointer — two intrinsics can
-// hand out two different `const char*`s for one assembly — so reference equality
-// across escapes matches .NET's singleton Assembly. The box struct is private to
-// dn2cpp_system_reflection.cpp; unwrap/box detection is an intern-chain membership
-// test, never a header read (a raw `const char*` must not be dereferenced as one).
+// ---- Managed Assembly and Module references --------------------------------
+// RuntimeAssembly and RuntimeModule are interned by defining assembly name and
+// kind. Managed slots, byrefs and object arrays all hold the managed reference.
 
 // The public abstract shells: never an instance's header word (instanceSize 0),
 // carried so typeof(Assembly)/typeof(Module) and isinst/castclass name a real
@@ -900,16 +890,13 @@ extern const Dn2CppTypeInfo dn2cpp_module_type;
 extern const Dn2CppTypeInfo dn2cpp_runtime_assembly_type;
 extern const Dn2CppTypeInfo dn2cpp_runtime_module_type;
 
-// DN2CPP_ASM_KIND_*: the escape site's static managed type, deciding the
-// wrapper's identity. Assembly is the default when the static type was lost —
-// the same convention as the Object::ToString arm on a `const char*` receiver
-// (Assembly handles are the overwhelmingly common case).
 #define DN2CPP_ASM_KIND_ASSEMBLY 0
 #define DN2CPP_ASM_KIND_MODULE   1
 
-// object <- Assembly/Module escape: interned wrapper allocation (null passes
-// through; a value that is already a wrapper passes through unchanged).
+// Materialize managed identity from a native registry name (null passes through).
 Dn2CppObject* dn2cpp_asm_wrap(const char* h, int32_t kind);
+// Read the registry key from a managed runtime Assembly or Module.
+const char* dn2cpp_asm_name(Dn2CppObject* o);
 // Assembly/Module <- object: total and tolerant — null stays null, a wrapper
 // yields its inner handle, anything else is returned as-is (a raw handle that
 // flowed through an erased context; the probe is intern-chain membership, never
@@ -1850,11 +1837,7 @@ int32_t dn2cpp_type_is_subclass_of(Dn2CppType* a, Dn2CppType* c);
 int32_t dn2cpp_object_has_component_size(Dn2CppObject* o);
 // Array ownership follows its final element; absent assembly metadata means CoreLib.
 const char* dn2cpp_ti_assembly_name(const Dn2CppTypeInfo* ti);
-// Type.Assembly identity: the defining assembly's simple name (null type-info name
-// falls back to "System.Private.CoreLib", since only hand-written CoreLib type-infos
-// omit it). Assembly is modeled as this opaque name pointer; op_Equality compares the
-// names. Reached from JsonConverter..ctor (IsInternalConverter = GetType().Assembly ==
-// typeof(JsonConverter).Assembly).
+// The defining assembly name used to intern Type.Assembly and Type.Module.
 const char* dn2cpp_type_assembly_name(Dn2CppType* a);
 // The .NET assembly display name ("Name, Version=…, Culture=…, PublicKeyToken=…")
 // as UTF-8. Exposed because the assembly registry lives in another TU than
@@ -2750,15 +2733,14 @@ struct Dn2CppManifestResource
     int32_t length;
 };
 
-// Assembly registry: one entry per loaded module (app + -r references), keyed by
-// the assembly simple name — the same `const char*` handle System.Reflection.Assembly
-// is modeled as (Type.Assembly / Assembly.GetEntryAssembly; equality is a name
-// compare). CppEmitter emits the table (`dn2cpp_assembly_registry` / `_count` in
+// Assembly registry: one entry per loaded module (app + -r references). RuntimeAssembly
+// and RuntimeModule carry the defining assembly's simple name as the registry key.
+// CppEmitter emits the table (`dn2cpp_assembly_registry` / `_count` in
 // generated.cpp); customAttrs carries the module's reflectable assembly-level custom
 // attributes (same Dn2CppAttrInfo encoding/bounds as the member tables above).
 struct Dn2CppAssemblyRegEntry
 {
-    const char* name;                 // assembly simple name (the Assembly handle)
+    const char* name;                 // assembly simple name
     Dn2CppMetadataTable<Dn2CppAttrInfo> customAttrs;
     int32_t customAttrCount;
     // Assembly identity pieces read out of the module's metadata (the same
@@ -2876,7 +2858,7 @@ Dn2CppObject* dn2cpp_assembly_create_instance(const char* asmName, Dn2CppString*
     int32_t ignoreCase, int32_t bindingFlags, Dn2CppObject* binder, Dn2CppArrayRef* args,
     Dn2CppArrayRef* activationAttrs);
 // Assembly.GetModules() — dn2cpp assemblies are single-module, so a one-element
-// Module[] holding the manifest module (the same simple-name handle Assembly is).
+// Module[] containing the interned RuntimeModule for this assembly.
 Dn2CppArrayRef* dn2cpp_assembly_get_modules(const char* name);
 // Assembly.Load(String/AssemblyName) / LoadWithPartialName(String): name-based
 // assembly resolution is a lookup over the linked-assembly registry — an AOT
@@ -2958,8 +2940,8 @@ Dn2CppObject* dn2cpp_type_get_enum_values_as_underlying(Dn2CppType* t);
 Dn2CppArrayRef* dn2cpp_type_find_interfaces(Dn2CppType* t, Dn2CppObject* filter, Dn2CppObject* criteria);
 int32_t dn2cpp_type_implement_interface(Dn2CppType* t, Dn2CppType* itf);
 // MemberInfo.MemberType/MetadataToken/Module — dispatch on the handle's object
-// header like dn2cpp_memberinfo_name. Module is modeled as the defining
-// assembly's simple-name handle (dn2cpp is single-module per assembly).
+// header like dn2cpp_memberinfo_name. The declaring assembly name identifies the
+// manifest module in this single-module model.
 int32_t dn2cpp_memberinfo_member_type(Dn2CppObject* m);
 int32_t dn2cpp_memberinfo_metadata_token(Dn2CppObject* m);
 extern int32_t dn2cpp_memberinfo_has_same_metadata_slot;
@@ -4571,8 +4553,8 @@ struct Dn2CppResourceManager : Dn2CppObject
     const char* assemblyName;    // the assembly handle (a registry key), never null
 };
 extern const Dn2CppTypeInfo dn2cpp_resourcemanager_type;
-// new ResourceManager(baseName, assembly) — `assembly` is the `const char*` handle
-// System.Reflection.Assembly lowers to. A null baseName is ArgumentNullException, as
+// new ResourceManager(baseName, assembly) — `assembly` names the registry row
+// for the managed Assembly. A null baseName is ArgumentNullException, as
 // .NET. No probing happens here: real .NET is lazy too, and the throw a missing set
 // produces belongs to the first lookup, not to construction.
 Dn2CppResourceManager* dn2cpp_resourcemanager_new(Dn2CppString* baseName, const char* assembly);

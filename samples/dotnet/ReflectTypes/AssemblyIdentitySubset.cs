@@ -4,23 +4,9 @@ using System.Reflection;
 
 namespace AssemblyIdentitySubset
 {
-    // The Assembly/Module object-escape surface. Both types are modeled
-    // as the defining assembly's simple-name `const char*` — headerless, like
-    // the NFI trio — and used to TRAP (PlatformNotSupportedException) on any
-    // escape into `object`. They now take the interned-wrapper treatment
-    // (dn2cpp_asm_wrap), whose header is the PRIVATE implementation identity
-    // real .NET reports (RuntimeAssembly/RuntimeModule over the abstract
-    // shells), so every line below matches real .NET verbatim — including
-    // GetType().Name == "RuntimeAssembly" and GetType() != typeof(Assembly).
-    //
-    // The section's real SUBJECT is wider than its reflection heading: the
-    // wrap/unwrap funnel at Cast (escape + reverse), castclass/isinst, array
-    // slots (stelem wraps, ldelem unwraps), object-keyed Dictionary interning,
-    // reference equality across two escapes, the reflection Invoke thunk's _A
-    // arms, reflected field Get/SetValue, CreateDelegate's dgrefl trampolines
-    // under the erased f_method ABI, and delegate VARIANCE over both a
-    // dgrefl-bound and a method-group delegate (the conversion that emits no
-    // IL at all). Do not prune it by theme.
+    // RuntimeAssembly and RuntimeModule stay reference-identical across typed and
+    // object slots, including arrays, dictionaries, reflected calls and fields,
+    // CreateDelegate trampolines and variant method-group delegates.
     //
     // Func<object> is deliberately NEVER constructed here: it exists only as a
     // variance VIEW of Func<Assembly>, so the cd-var/mg-var invocations are also
@@ -43,7 +29,7 @@ namespace AssemblyIdentitySubset
             Assembly app = typeof(Program).Assembly;
             Module mod = typeof(Program).Module;
 
-            // The escape itself: ToString, isinst, GetType over the wrapper.
+            // The object view preserves the runtime type and its ToString override.
             object oa = app;
             object om = mod;
             Console.WriteLine("tostr-a:'" + oa + "'");
@@ -63,7 +49,7 @@ namespace AssemblyIdentitySubset
             Console.WriteLine("refeq2:" + ReferenceEquals(oa, app));
             Console.WriteLine("eq:" + oa.Equals(app) + ":" + Equals(oa, om));
 
-            // Array slots (stelem wraps, ldelem unwraps) and the object view.
+            // The typed array and its covariant object view share the same references.
             object[] arr = { app, mod };
             Console.WriteLine("arr:" + (arr[0] is Assembly) + ":'" + arr[1] + "'");
             Assembly[] aarr = { app, typeof(Refl).Assembly };
@@ -80,7 +66,7 @@ namespace AssemblyIdentitySubset
             Console.WriteLine("xis:" + (om is Assembly));
 
             // Reflection Invoke: Assembly/Module arguments and an Assembly return
-            // (the invoker thunk's _A shape letters).
+            // (including the return value).
             MethodInfo mt = typeof(Refl).GetMethod("Take");
             Console.WriteLine("inv-take:" + mt.Invoke(null, new object[] { app }));
             MethodInfo mg = typeof(Refl).GetMethod("Give");
@@ -89,7 +75,7 @@ namespace AssemblyIdentitySubset
             MethodInfo mm = typeof(Refl).GetMethod("TakeMod");
             Console.WriteLine("inv-mod:" + mm.Invoke(null, new object[] { mod }));
 
-            // Reflected field: SetValue unwraps, GetValue wraps.
+            // The reflected and statically typed field access the same reference.
             typeof(Refl).GetField("Field").SetValue(null, app);
             Console.WriteLine("fld-set:" + ReferenceEquals(Refl.Field, app));
             object fv = typeof(Refl).GetField("Field").GetValue(null);

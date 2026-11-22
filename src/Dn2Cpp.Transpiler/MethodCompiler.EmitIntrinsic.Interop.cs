@@ -216,7 +216,7 @@ internal sealed partial class MethodCompiler
                 NoteBuiltStructLayout(ga[0]);
                 string st = CppTypes.StorageOf(ga[0]);
                 string ct = CppTypes.Of(ga[0]);
-                if (CppTypes.KindOf(ga[0]) == StackKind.Ref && !IsHeaderlessWrapCpp(ct))
+                if (CppTypes.KindOf(ga[0]) == StackKind.Ref && !IsNfiCppType(ct))
                 {
                     Push(StackKind.Ref, ct, $"({ct})dn2cpp_byref_load_ref((const void*)({src.Expr}))");
                     return true;
@@ -231,7 +231,7 @@ internal sealed partial class MethodCompiler
                 NoteBuiltStructLayout(ga[0]);
                 string st = CppTypes.StorageOf(ga[0]);
                 string ct = CppTypes.Of(ga[0]);
-                if (CppTypes.KindOf(ga[0]) == StackKind.Ref && !IsHeaderlessWrapCpp(ct))
+                if (CppTypes.KindOf(ga[0]) == StackKind.Ref && !IsNfiCppType(ct))
                 {
                     Push(StackKind.Ref, ct, $"({ct})dn2cpp_byref_load_ref((const void*)({src.Expr}))");
                     return true;
@@ -910,12 +910,8 @@ internal sealed partial class MethodCompiler
         {
             var type = Pop();
             TaintPoisonedTypeEscape(type);
-            var result = callee.Signature.ReturnType;
-            var module = new StackEntry($"dn2cpp_type_assembly_name({Cast(type, "Dn2CppType*")})",
-                StackKind.Ref, "const char*", StaticType: result);
-            // RuntimeModule is an interned object; public Module consumers unwrap it.
-            Push(StackKind.Ref, CppTypes.Of(result), Cast(module, CppTypes.Of(result)));
-            Top = Top with { StaticType = result };
+            PushAssemblyReference(callee.Signature.ReturnType,
+                $"dn2cpp_type_assembly_name({Cast(type, "Dn2CppType*")})");
             return;
         }
 
@@ -926,12 +922,7 @@ internal sealed partial class MethodCompiler
             string handle = NewTemp("const Dn2CppTypeInfo*");
             Emit($"{handle} = dn2cpp_type_info_or_null({Cast(type, "Dn2CppType*")});");
             ValidateRuntimeTypeHandle(handle, callee);
-            var result = callee.Signature.ReturnType;
-            var assembly = new StackEntry($"dn2cpp_ti_assembly_name({handle})", StackKind.Ref,
-                "const char*", StaticType: result);
-            // RuntimeAssembly returns a managed wrapper; Assembly consumers unwrap it.
-            Push(StackKind.Ref, CppTypes.Of(result), Cast(assembly, CppTypes.Of(result)));
-            Top = Top with { StaticType = result };
+            PushAssemblyReference(callee.Signature.ReturnType, $"dn2cpp_ti_assembly_name({handle})");
             return;
         }
 
@@ -993,7 +984,7 @@ internal sealed partial class MethodCompiler
             var assembly = Pop();
             // Argument expressions still run; the unsupported helper never reads their payloads.
             Emit($"(void)({arguments.Expr});");
-            Emit($"if ({Cast(assembly, "const char*")} == nullptr) dn2cpp_throw_null_reference();");
+            Emit($"if ({Cast(assembly, "Dn2CppObject*")} == nullptr) dn2cpp_throw_null_reference();");
             Emit("dn2cpp_throw_platform_not_supported(\"AppDomain assembly entrypoint execution is not supported\");");
             Push(StackKind.I4, "int32_t", "0"); // unreachable stack shape
             return;
@@ -1347,8 +1338,8 @@ internal sealed partial class MethodCompiler
                 + " = (uint8_t)__has_search_path; __search." + valueField
                 + " = __search_path; return dginvoke_" + resolverClass.CppName
                 + "((" + resolverClass.CppStructName
-                + "*)__resolver, __name, __assembly, __search); }";
-            Emit($"dn2cpp_pinvoke_set_resolver({Cast(values[0], "const char*")}, "
+                + "*)__resolver, __name, dn2cpp_asm_wrap(__assembly, DN2CPP_ASM_KIND_ASSEMBLY), __search); }";
+            Emit($"dn2cpp_pinvoke_set_resolver({AssemblyNameOf(values[0])}, "
                 + $"{Cast(values[1], "Dn2CppObject*")}, {callback});");
             return true;
         }
@@ -1370,7 +1361,7 @@ internal sealed partial class MethodCompiler
                 libraryName = NewTemp("Dn2CppString*");
                 Emit($"{libraryName} = {Cast(values[0], "Dn2CppString*")};");
                 Emit($"if ({libraryName} == nullptr) dn2cpp_throw_argument_null_param(\"libraryName\");");
-                Emit($"if ({Cast(values[1], "const char*")} == nullptr) dn2cpp_throw_argument_null_param(\"assembly\");");
+                Emit($"if ({Cast(values[1], "Dn2CppObject*")} == nullptr) dn2cpp_throw_argument_null_param(\"assembly\");");
                 if (NullableLayout(ps[2]) is not (_, { } hasValueField, { } valueField))
                     throw new NotSupportedException(
                         $"NativeLibrary.{callee.Name} search path is not a Nullable<T>");

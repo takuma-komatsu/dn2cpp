@@ -267,18 +267,10 @@ internal static class CoreIntrinsicTypeMaps
         // RuntimePropertyInfo IL stays out of the tree.
         "System.Reflection.PropertyInfo",
         "System.Reflection.EventInfo",
-        // System.Reflection.Assembly is opaque: an Assembly value is its defining
-        // assembly's simple-name handle (Type.Assembly / GetEntryAssembly identity;
-        // op_Equality is a name compare) and its reflected members (GetCustomAttributes/
-        // IsDefined/GetName) dispatch to the generated assembly registry. The real
-        // Assembly IL stays out of the tree. AssemblyName is NOT intrinsic-mapped:
-        // it is a plain managed class (name/version/flags fields + display-name
-        // parsing/formatting), so its real BCL IL transpiles; Assembly.GetName()
-        // bridges the handle world into it via the AssemblyName(string) ctor.
+        // RuntimeAssembly and RuntimeModule are interned managed references. Their
+        // metadata comes from the defining assembly's registry entry. AssemblyName
+        // retains its managed layout, parsing and formatting.
         "System.Reflection.Assembly",
-        // System.Reflection.Module is opaque like Assembly: dn2cpp assemblies are
-        // single-module, so a Module value is the defining assembly's simple-name
-        // handle (Type.Module / MemberInfo.Module; equality is a name compare).
         "System.Reflection.Module",
         // Reflected attribute rows (MemberInfo.CustomAttributes /
         // GetCustomAttributesData). Modeled as a Dn2CppAttrDataRef wrapping the

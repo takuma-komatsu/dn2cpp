@@ -1716,10 +1716,7 @@ int32_t dn2cpp_type_is_subclass_of(Dn2CppType* a, Dn2CppType* c)
     return 0;
 }
 
-// Type.Assembly identity. Assembly is modeled as the defining assembly's simple-name
-// string; only hand-written CoreLib type-infos leave assemblyName null, so a null name
-// resolves to System.Private.CoreLib. op_Equality is a name compare (the source-gen
-// JsonConverter..ctor only asks "is this converter in the STJ assembly?").
+// Reflection producers intern the defining assembly name from the Type metadata.
 const char* dn2cpp_type_assembly_name(Dn2CppType* a)
 {
     return dn2cpp_ti_assembly_name(dn2cpp_type_require(a));

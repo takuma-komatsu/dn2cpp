@@ -811,6 +811,7 @@ internal sealed partial class Compilation
         "dginvoke_",                    // delegate Invoke trampoline
         "dn2cpp_gvm_",                  // generic-virtual-method dispatcher (GvmDispatchName)
         "dn2cpp_object_tostring",       // runtime-internal tostring-slot dispatch (interpolation, Append(object), x.ToString())
+        "dn2cpp_object_equals(",        // static equality can call the left operand's virtual Equals
         "dn2cpp_object_equals_",        // runtime equality-slot / typed IEquatable dispatch
         "dn2cpp_array_search_equals(",  // runtime array-element equality-slot dispatch
         "dn2cpp_default_equality_comparer_equals_nongeneric",
@@ -2528,7 +2529,7 @@ internal sealed partial class Compilation
         {
             // CnRef byrefs expose managed cells; these MD elements expose raw
             // handles. Keep their bodies typed rather than sharing that ABI.
-            if (MethodCompiler.IsHeaderlessWrapCpp(CppTypes.Of(t.Element!)))
+            if (MethodCompiler.IsNfiCppType(CppTypes.Of(t.Element!)))
                 throw new NotSupportedException("rgctx: raw MD reference slots require their closed body");
             NoteMdArrayType(t);
             return "&ti_md_" + ArrayElemMangle(t);

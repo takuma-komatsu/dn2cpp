@@ -107,16 +107,6 @@ internal sealed partial class MethodCompiler
             Emit($"dn2cpp_{fam}_{fn}_i8({pre}{a.Expr});");
         else if (a.Kind == StackKind.I4)
             Emit($"dn2cpp_{fam}_{fn}_i4({pre}{a.Expr});");
-        // An Assembly/Module handle rides as a raw const char* (no object header) —
-        // dn2cpp_object_tostring would dispatch garbage. Same static-type routing
-        // as the Object::ToString intrinsic: a Module prints its file name, an
-        // Assembly (the default) its display FullName, matching real .NET.
-        else if (a.Kind == StackKind.Ref && a.CppType == "const char*")
-            Emit(a.StaticType is
-                    { Kind: TypeKind.Class, Class.FullName: "System.Reflection.Module" }
-                    or { Kind: TypeKind.External, ExternalName: "System.Reflection.Module" }
-                ? $"dn2cpp_{fam}_{fn}_str({pre}dn2cpp_module_name({a.Expr}));"
-                : $"dn2cpp_{fam}_{fn}_str({pre}dn2cpp_assembly_full_name({a.Expr}));");
         else if (a.Kind == StackKind.Ref)
             Emit($"dn2cpp_{fam}_{fn}_str({pre}dn2cpp_object_tostring({Cast(a, "Dn2CppObject*")}));");
         else

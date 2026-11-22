@@ -6,6 +6,19 @@ namespace Dn2Cpp;
 
 internal sealed partial class MethodCompiler
 {
+    private static string AssemblyNameOf(StackEntry value) =>
+        $"dn2cpp_asm_name({Cast(value, "Dn2CppObject*")})";
+
+    private void PushAssemblyReference(TypeDesc result, string name)
+    {
+        string kind = result is { Kind: TypeKind.Class, Class.FullName: "System.Reflection.Module" or "System.Reflection.RuntimeModule" }
+            or { Kind: TypeKind.External, ExternalName: "System.Reflection.Module" or "System.Reflection.RuntimeModule" }
+            ? "DN2CPP_ASM_KIND_MODULE" : "DN2CPP_ASM_KIND_ASSEMBLY";
+        string cpp = CppTypes.Of(result);
+        Push(StackKind.Ref, cpp, $"({cpp})dn2cpp_asm_wrap({name}, {kind})");
+        Top = Top with { StaticType = result };
+    }
+
     /// <summary>Pushes a runtime-allocated reflection member-enumeration array
     /// (GetConstructors/GetMethods/GetProperties/GetFields/GetParameters), retagged
     /// with the precise per-element <c>ti_arr_</c> handle and with the element's
@@ -345,13 +358,10 @@ internal sealed partial class MethodCompiler
                     : $"({ct})dn2cpp_type_get_type_code(dn2cpp_type_info_or_null({Cast(a, "Dn2CppType*")}))");
                 return true;
             }
-            // Type.Assembly: the defining assembly's identity (its simple name, an
-            // opaque const char* handle). op_Equality compares two such handles.
-            // Reached from JsonConverter..ctor (IsInternalConverter).
             case ("System.Type", "get_Assembly"):
             {
                 var a = Pop();
-                Push(StackKind.Ref, "const char*", $"dn2cpp_type_assembly_name({Cast(a, "Dn2CppType*")})");
+                PushAssemblyReference(sig.ReturnType, $"dn2cpp_type_assembly_name({Cast(a, "Dn2CppType*")})");
                 return true;
             }
             // Type.AssemblyQualifiedName: "FullName, <assembly display name>" —
@@ -364,24 +374,6 @@ internal sealed partial class MethodCompiler
                     $"dn2cpp_type_assembly_qualified_name({Cast(a, "Dn2CppType*")})");
                 return true;
             }
-            case ("System.Reflection.Assembly", "op_Equality") when sig.ParameterTypes.Length == 2:
-            {
-                var b = Pop();
-                var a = Pop();
-                Push(StackKind.I4, "int32_t", $"dn2cpp_assembly_equals({Cast(a, "const char*")}, {Cast(b, "const char*")})");
-                return true;
-            }
-            case ("System.Reflection.Assembly", "op_Inequality") when sig.ParameterTypes.Length == 2:
-            {
-                var b = Pop();
-                var a = Pop();
-                Push(StackKind.I4, "int32_t", $"(!dn2cpp_assembly_equals({Cast(a, "const char*")}, {Cast(b, "const char*")}))");
-                return true;
-            }
-            // Assembly.GetEntryAssembly() -> the app module's simple-name handle (an
-            // Assembly is modeled as its simple-name const char* handle), so
-            // typeof(X).Assembly == Assembly.GetEntryAssembly() holds for app types and
-            // GetCustomAttributes resolves the app module's assembly registry entry.
             // MemberInfo-family equality: two reflected handles are equal when they
             // wrap the same metadata entry. The runtime interns handles per row
             // (matching real .NET's RuntimeType member cache, so reference identity
@@ -450,12 +442,12 @@ internal sealed partial class MethodCompiler
             {
                 var a = Pop();
                 PushReflectionMemberArray(
-                    $"dn2cpp_assembly_get_types({Cast(a, "const char*")})", sig.ReturnType);
+                    $"dn2cpp_assembly_get_types({AssemblyNameOf(a)})", sig.ReturnType);
                 return true;
             }
             case ("System.Reflection.Assembly", "GetEntryAssembly")
                 when sig.ParameterTypes.Length == 0:
-                Push(StackKind.Ref, "const char*",
+                PushAssemblyReference(sig.ReturnType,
                     $"\"{Comp.Reader.GetString(Comp.Reader.GetAssemblyDefinition().Name)}\"");
                 return true;
             // Assembly.GetExecutingAssembly(): folded at transpile time to the
@@ -467,7 +459,7 @@ internal sealed partial class MethodCompiler
             // identity, where every candidate caller lives in the same assembly).
             case ("System.Reflection.Assembly", "GetExecutingAssembly" or "GetCallingAssembly")
                 when sig.ParameterTypes.Length == 0:
-                Push(StackKind.Ref, "const char*", $"\"{Module.AssemblyName}\"");
+                PushAssemblyReference(sig.ReturnType, $"\"{Module.AssemblyName}\"");
                 return true;
             // Assembly.get_Location -> null. A native binary has no assembly file on
             // disk (DECLARED DIVERGENCE; real NativeAOT returns "" here).
@@ -475,7 +467,7 @@ internal sealed partial class MethodCompiler
             // onto the process image — so nothing turns this null into a directory to
             // probe.
             case ("System.Reflection.Assembly", "get_Location"):
-                Pop(); // the assembly receiver (const char* handle)
+                Pop(); // assembly
                 Push(StackKind.Ref, "Dn2CppString*", "nullptr");
                 return true;
             // Assembly.GetCustomAttributes([attrType,] inherit) / IsDefined(attrType,
@@ -488,7 +480,7 @@ internal sealed partial class MethodCompiler
                 Pop(); // inherit
                 var asm = Pop();
                 PushAttributeArray(
-                    $"dn2cpp_assembly_get_custom_attributes({Cast(asm, "const char*")}, nullptr)",
+                    $"dn2cpp_assembly_get_custom_attributes({AssemblyNameOf(asm)}, nullptr)",
                     sig.ReturnType);
                 return true;
             }
@@ -499,7 +491,7 @@ internal sealed partial class MethodCompiler
                 var filter = Pop();
                 var asm = Pop();
                 PushAttributeArray(
-                    $"dn2cpp_assembly_get_custom_attributes_typed({Cast(asm, "const char*")}, {Cast(filter, "Dn2CppType*")})",
+                    $"dn2cpp_assembly_get_custom_attributes_typed({AssemblyNameOf(asm)}, {Cast(filter, "Dn2CppType*")})",
                     sig.ReturnType);
                 return true;
             }
@@ -509,7 +501,7 @@ internal sealed partial class MethodCompiler
                 var filter = Pop();
                 var asm = Pop();
                 Push(StackKind.I4, "int32_t",
-                    $"dn2cpp_assembly_is_defined({Cast(asm, "const char*")}, {Cast(filter, "Dn2CppType*")})");
+                    $"dn2cpp_assembly_is_defined({AssemblyNameOf(asm)}, {Cast(filter, "Dn2CppType*")})");
                 return true;
             }
             // Assembly.GetName([copiedName]) -> a real managed AssemblyName carrying
@@ -529,7 +521,7 @@ internal sealed partial class MethodCompiler
                 var asm = Pop();
                 var anCls = anCtor.DeclaringClass;
                 string dn = NewTemp("Dn2CppString*");
-                Emit($"{dn} = dn2cpp_assembly_full_name({Cast(asm, "const char*")});");
+                Emit($"{dn} = dn2cpp_assembly_full_name({AssemblyNameOf(asm)});");
                 string an = NewTemp(anCls.CppStructName + "*");
                 Emit($"{an} = ({anCls.CppStructName}*)dn2cpp_alloc(sizeof({anCls.CppStructName}));");
                 Emit($"((Dn2CppObject*){an})->type = &{anCls.CppTypeInfoName};");
@@ -544,7 +536,7 @@ internal sealed partial class MethodCompiler
             case ("System.Reflection.Assembly", "get_FullName"):
             {
                 var asm = Pop();
-                Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_assembly_full_name({Cast(asm, "const char*")})");
+                Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_assembly_full_name({AssemblyNameOf(asm)})");
                 return true;
             }
             // Assembly.GetType(name[, throwOnError[, ignoreCase]]): the type-name
@@ -561,7 +553,7 @@ internal sealed partial class MethodCompiler
                 var n = Pop();
                 var asm = Pop();
                 Push(StackKind.Ref, "Dn2CppType*",
-                    $"dn2cpp_assembly_get_type({Cast(asm, "const char*")}, {Cast(n, "Dn2CppString*")}, {throwOnError}, {ignoreCase})");
+                    $"dn2cpp_assembly_get_type({AssemblyNameOf(asm)}, {Cast(n, "Dn2CppString*")}, {throwOnError}, {ignoreCase})");
                 return true;
             }
             // Assembly.CreateInstance(name[, ignoreCase[, flags, binder, args, culture,
@@ -584,7 +576,7 @@ internal sealed partial class MethodCompiler
                 var n = Pop();
                 var asm = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
-                    $"dn2cpp_assembly_create_instance({Cast(asm, "const char*")}, {Cast(n, "Dn2CppString*")}, {ignoreCase}, {flags}, {binder}, {args}, {attrs})");
+                    $"dn2cpp_assembly_create_instance({AssemblyNameOf(asm)}, {Cast(n, "Dn2CppString*")}, {ignoreCase}, {flags}, {binder}, {args}, {attrs})");
                 return true;
             }
             // Assembly.IsDynamic: true only for Reflection.Emit-built assemblies,
@@ -593,24 +585,20 @@ internal sealed partial class MethodCompiler
                 Pop();
                 Push(StackKind.I4, "int32_t", "0");
                 return true;
-            // Assembly.GetModules([getResourceModules]) / ManifestModule: dn2cpp
-            // assemblies are single-module, so the manifest module IS the assembly
-            // handle (Module is modeled as the same simple-name const char*).
+            // Each linked assembly has one manifest module.
             case ("System.Reflection.Assembly", "GetModules") when sig.ParameterTypes.Length <= 1:
             {
                 if (sig.ParameterTypes.Length == 1)
                     Pop(); // getResourceModules — no resource modules exist
                 var asm = Pop();
                 PushReflectionMemberArray(
-                    $"dn2cpp_assembly_get_modules({Cast(asm, "const char*")})", sig.ReturnType);
+                    $"dn2cpp_assembly_get_modules({AssemblyNameOf(asm)})", sig.ReturnType);
                 return true;
             }
             case ("System.Reflection.Assembly", "get_ManifestModule"):
             {
                 var asm = Pop();
-                Push(StackKind.Ref, "const char*", Cast(asm, "const char*"));
-                // Module static type — see the get_Module note (Object::ToString).
-                Top = Top with { StaticType = sig.ReturnType };
+                PushAssemblyReference(sig.ReturnType, AssemblyNameOf(asm));
                 return true;
             }
             // Assembly.Load(String) / LoadWithPartialName(String): NAME-based
@@ -628,7 +616,7 @@ internal sealed partial class MethodCompiler
                 string call = name == "Load"
                     ? $"dn2cpp_assembly_load({Cast(n, "Dn2CppString*")}, \"assemblyName\")"
                     : $"dn2cpp_assembly_load_partial({Cast(n, "Dn2CppString*")})";
-                Push(StackKind.Ref, "const char*", call);
+                PushAssemblyReference(sig.ReturnType, call);
                 return true;
             }
             // The object, its missing simple name and its empty/blank simple
@@ -685,7 +673,7 @@ internal sealed partial class MethodCompiler
                 Emit($"{DirectCall(fileCtor, new List<string> { ex, "dn2cpp_assembly_name_missing_message(" + file + ")", file })};");
                 Emit($"dn2cpp_throw((Dn2CppObject*){ex});");
                 Emit("}");
-                Push(StackKind.Ref, "const char*", $"dn2cpp_assembly_load({nm}, \"assemblyRef\")");
+                PushAssemblyReference(sig.ReturnType, $"dn2cpp_assembly_load({nm}, \"assemblyRef\")");
                 return true;
             }
             // Assembly loading from a file path or a raw IL image is the definitional
@@ -702,7 +690,7 @@ internal sealed partial class MethodCompiler
                 if (name == "LoadModule")
                     Pop(); // instance receiver
                 Emit($"dn2cpp_throw_platform_not_supported(\"Assembly.{name} is not available in AOT-compiled code (no assembly loading)\");");
-                Push(StackKind.Ref, "const char*", "nullptr"); // unreachable; stack typing only
+                Push(StackKind.Ref, "Dn2CppObject*", "nullptr"); // unreachable; stack typing only
                 return true;
             }
             // Assembly.GetManifestResourceNames(): the embedded resources' names in
@@ -715,7 +703,7 @@ internal sealed partial class MethodCompiler
                 Comp.NoteManifestResourceUse();
                 var asm = Pop();
                 PushReflectionMemberArray(
-                    $"dn2cpp_assembly_get_manifest_resource_names({Cast(asm, "const char*")})",
+                    $"dn2cpp_assembly_get_manifest_resource_names({AssemblyNameOf(asm)})",
                     sig.ReturnType);
                 return true;
             }
@@ -745,7 +733,7 @@ internal sealed partial class MethodCompiler
                 Comp.NoteArrayElementType(byteElem); // emit ti_arr_Byte — GetType() is Byte[]
                 string bytes = NewTemp("Dn2CppArrayN*");
                 Emit($"{bytes} = dn2cpp_assembly_get_manifest_resource_bytes("
-                    + $"{Cast(asm, "const char*")}, {scope}, {(scoped ? "true" : "false")}, "
+                    + $"{AssemblyNameOf(asm)}, {scope}, {(scoped ? "true" : "false")}, "
                     + $"{Cast(resName, "Dn2CppString*")}, "
                     + $"{PreciseArrayTypeInfoExpr(byteElem)});");
                 var msCls = msCtor.DeclaringClass;
@@ -775,7 +763,7 @@ internal sealed partial class MethodCompiler
                 var asm = Pop();
                 string has = NewTemp("int32_t");
                 Emit($"{has} = dn2cpp_assembly_has_manifest_resource("
-                    + $"{Cast(asm, "const char*")}, {Cast(resName, "Dn2CppString*")});");
+                    + $"{AssemblyNameOf(asm)}, {Cast(resName, "Dn2CppString*")});");
                 var infoCls = infoCtor.DeclaringClass;
                 string info = NewTemp(infoCls.CppStructName + "*");
                 Emit($"{info} = ({has} == 0) ? nullptr "
@@ -2080,54 +2068,22 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", $"((dn2cpp_type_require({Cast(a, "Dn2CppType*")})->flags & DN2CPP_TF_GENERICPARAM) != 0 ? 1 : 0)");
                 return true;
             }
-            // Type.Module / MemberInfo.Module: modeled as the defining assembly's
-            // simple-name handle (single-module assemblies) — the same const char*
-            // an Assembly is, so Module equality is a name compare below.
             case ("System.Type", "get_Module"):
             {
                 var a = Pop();
-                Push(StackKind.Ref, "const char*", $"dn2cpp_type_assembly_name({Cast(a, "Dn2CppType*")})");
-                // The static type distinguishes a Module handle from an Assembly
-                // handle at an Object::ToString receiver (both ride as const char*).
-                Top = Top with { StaticType = sig.ReturnType };
+                PushAssemblyReference(sig.ReturnType, $"dn2cpp_type_assembly_name({Cast(a, "Dn2CppType*")})");
                 return true;
             }
             case ("System.Reflection.MemberInfo", "get_Module"):
             {
                 var a = Pop();
-                Push(StackKind.Ref, "const char*", $"dn2cpp_memberinfo_module({Cast(a, "Dn2CppObject*")})");
-                Top = Top with { StaticType = sig.ReturnType };
+                PushAssemblyReference(sig.ReturnType, $"dn2cpp_memberinfo_module({Cast(a, "Dn2CppObject*")})");
                 return true;
             }
-            case ("System.Reflection.Module", "op_Equality") when sig.ParameterTypes.Length == 2:
-            {
-                var b = Pop();
-                var a = Pop();
-                Push(StackKind.I4, "int32_t", $"dn2cpp_assembly_equals({Cast(a, "const char*")}, {Cast(b, "const char*")})");
-                return true;
-            }
-            case ("System.Reflection.Module", "op_Inequality") when sig.ParameterTypes.Length == 2:
-            {
-                var b = Pop();
-                var a = Pop();
-                Push(StackKind.I4, "int32_t", $"(!dn2cpp_assembly_equals({Cast(a, "const char*")}, {Cast(b, "const char*")}))");
-                return true;
-            }
-            case ("System.Reflection.Module", "Equals") when sig.ParameterTypes.Length == 1:
-            {
-                var b = Pop();
-                var a = Pop();
-                Push(StackKind.I4, "int32_t", $"dn2cpp_assembly_equals({Cast(a, "const char*")}, {Cast(b, "const char*")})");
-                return true;
-            }
-            // Module.Assembly: identity under the single-module model — the Module
-            // handle IS the assembly's simple-name handle. The pushed static type
-            // flips the handle's Object::ToString answer back to the Assembly form.
             case ("System.Reflection.Module", "get_Assembly"):
             {
                 var m = Pop();
-                Push(StackKind.Ref, "const char*", Cast(m, "const char*"));
-                Top = Top with { StaticType = sig.ReturnType };
+                PushAssemblyReference(sig.ReturnType, AssemblyNameOf(m));
                 return true;
             }
             // Module.Name / ScopeName / ToString: the manifest module's file name
@@ -2138,7 +2094,7 @@ internal sealed partial class MethodCompiler
                 "get_Name" or "get_ScopeName" or "get_FullyQualifiedName" or "ToString"):
             {
                 var m = Pop();
-                Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_module_name({Cast(m, "const char*")})");
+                Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_module_name({AssemblyNameOf(m)})");
                 return true;
             }
             // Module.ModuleHandle / ResolveType(int, …): raw metadata-token
@@ -2434,7 +2390,7 @@ internal sealed partial class MethodCompiler
             {
                 var asm = Pop();
                 PushReflectionMemberArray(
-                    $"dn2cpp_assembly_custom_attributes_data({Cast(asm, "const char*")})",
+                    $"dn2cpp_assembly_custom_attributes_data({AssemblyNameOf(asm)})",
                     TypeDesc.MakeSZArray(CustomAttributeDataElem(sig.ReturnType)));
                 return true;
             }
@@ -2833,11 +2789,10 @@ internal sealed partial class MethodCompiler
         foreach (var p in ps)
             if (p.ToString() == "System.Type") { hasType = true; break; }
         string filter = hasType ? Cast(Pop(), "Dn2CppType*") : "nullptr";
-        // An Assembly element is a simple-name const char* handle, not a managed
-        // object — route it to the assembly-registry helpers.
+        // Assembly attributes live in the registry under the defining assembly name.
         if (ps.Length > 0 && ps[0].ToString() == "System.Reflection.Assembly")
         {
-            string asm = Cast(Pop(), "const char*");
+            string asm = AssemblyNameOf(Pop());
             switch (name)
             {
                 case "GetCustomAttribute":
