@@ -5062,19 +5062,6 @@ char16_t dn2cpp_pinvoke_char_from_ansi(uint8_t b);
 void* dn2cpp_pinvoke_chararr_to_ansi(Dn2CppArrayN* arr, int32_t copyIn);
 void dn2cpp_pinvoke_chararr_from_ansi(Dn2CppArrayN* arr, void* buf);
 
-// P/Invoke blittable-struct array marshalling. Unlike a primitive
-// blittable array (int[]/double[]/...), which .NET pins and passes by pointer (so
-// write-backs are visible regardless of [In]/[Out]), an array of a blittable value-type
-// struct (Point[]) is marshalled BY COPY with direction semantics (probe-confirmed):
-//   _blitarr_to_native: copy the managed buffer (length * elemSize bytes, the packed
-//     Dn2CppArrayN stride == the native C array layout) into a fresh GC-allocated buffer
-//     when copyIn != 0 ([In]/[In,Out]); zero it when copyIn == 0 ([Out]-only). null
-//     array -> null pointer; non-null even for an empty array.
-//   _blitarr_from_native: copy the native buffer back into the array (only emitted for
-//     [In,Out]/[Out]; the default direction is [In], no write-back).
-void* dn2cpp_pinvoke_blitarr_to_native(Dn2CppArrayN* arr, int32_t copyIn);
-void dn2cpp_pinvoke_blitarr_from_native(Dn2CppArrayN* arr, void* buf);
-
 // P/Invoke [MarshalAs(ByValArray, SizeConst=N)] inline fixed-length array
 // struct field. The native struct embeds the elements INLINE (<elem> f[N]); the managed
 // struct holds a managed array reference. A blittable element's packed managed stride
@@ -5154,8 +5141,8 @@ void* dn2cpp_native_library_get_symbol(void* handle, Dn2CppString* symbolName);
 // NativeAOT-style native-library binding. Resolver registrations are keyed by the
 // declaring assembly's simple-name handle and retain the managed delegate as a GC
 // root. A lazy [DllImport] asks resolver-first, then the platform loader, then looks
-// up the export. Direct calls share a MethodDef cell; an address-taken forwarder has
-// its own cell, matching CoreCLR's distinct delegate/function-pointer stub.
+// up the export. Direct calls and the address-taken forwarder of one imported
+// MethodDef share its cell.
 using Dn2CppPInvokeResolverInvoke = intptr_t (*)(
     Dn2CppObject* resolver, Dn2CppString* libraryName, const char* assemblyName,
     int32_t searchPathHasValue, int32_t searchPathValue);

@@ -35,14 +35,14 @@
 // DnZlib.dll beside the CLI, or an embedder that never sets DefaultRefDir.
 // It is live code with live gates — not dead code awaiting a deletion.
 //
-// ABI source of truth: this mirrors dotnet/runtime's own
-// src/native/libs/System.IO.Compression.Native/pal_zlib.c/.h (fetched at tag
-// v10.0.1) function-for-function, and the Dn2CppPalZStream layout below
-// mirrors the managed System.IO.Compression.ZLibNative.ZStream struct
-// field-for-field — both verified directly (pal_zlib.c/.h via the
-// dotnet/runtime GitHub source; ZLibNative.ZStream and the Interop.ZLib
-// P/Invoke declarations by decompiling the real net10.0
-// System.IO.Compression.dll with ilspycmd). Every PAL_* constant
+// ABI source of truth: each entry below mirrors its namesake in
+// src/native/libs/System.IO.Compression.Native/pal_zlib.c/.h of the source
+// .NET 11.0.0 shipped from (dotnet/dotnet commit
+// 297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f, under src/runtime/), and the
+// Dn2CppPalZStream layout below mirrors the managed
+// System.IO.Compression.ZLibNative.ZStream struct field-for-field as the
+// shipped .NET 11.0.0 System.IO.Compression.dll declares it, like the
+// Interop.ZLib P/Invoke signatures. Every PAL_* constant
 // dotnet/runtime defines for this surface (error codes, flush codes,
 // compression level/method/strategy) is numerically identical to zlib's own
 // Z_* constant of the same meaning — pal_zlib.c itself static_asserts this —
@@ -67,7 +67,7 @@ extern "C" {
 // Mirrors managed System.IO.Compression.ZLibNative.ZStream
 // ([StructLayout(LayoutKind.Sequential)]) field-for-field:
 //   internal struct ZStream {
-//       nint nextIn; nint nextOut; nint msg; nint internalState;
+//       nint nextIn; nint nextOut; byte* msg; nint internalState;
 //       uint availIn; uint availOut;
 //   }
 // internalState is opaque to managed code; we stash a heap-allocated real

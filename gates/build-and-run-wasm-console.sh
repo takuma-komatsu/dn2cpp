@@ -181,25 +181,30 @@ for thunk in \
     dn2cpp_pinvoke_SystemNative_SetErrNo \
     dn2cpp_pinvoke_SystemNative_Open \
     dn2cpp_pinvoke_SystemNative_Close \
+    dn2cpp_pinvoke_SystemNative_FcntlGetIsNonBlocking \
     dn2cpp_pinvoke_SystemNative_Read \
     dn2cpp_pinvoke_SystemNative_PRead \
     dn2cpp_pinvoke_SystemNative_PWrite \
+    dn2cpp_pinvoke_SystemNative_ReadFromNonblocking \
+    dn2cpp_pinvoke_SystemNative_WriteToNonblocking \
     dn2cpp_pinvoke_SystemNative_LSeek \
     dn2cpp_pinvoke_SystemNative_FSync \
     dn2cpp_pinvoke_SystemNative_FStat \
     dn2cpp_pinvoke_SystemNative_Stat \
     dn2cpp_pinvoke_SystemNative_Unlink \
     dn2cpp_pinvoke_SystemNative_FLock \
+    dn2cpp_pinvoke_SystemNative_FileSystemSupportsLocking \
     dn2cpp_pinvoke_SystemNative_FTruncate \
     dn2cpp_pinvoke_SystemNative_FAllocate \
     dn2cpp_pinvoke_SystemNative_PosixFAdvise \
     dn2cpp_pinvoke_SystemNative_GetCwd \
-    dn2cpp_pinvoke_SystemNative_GetFileSystemType \
     dn2cpp_pinvoke_SystemNative_ConvertErrorPalToPlatform \
     dn2cpp_pinvoke_SystemNative_ConvertErrorPlatformToPal \
     dn2cpp_pinvoke_SystemNative_StrErrorR \
     dn2cpp_pinvoke_SystemNative_MksTemps; do
-    if ! grep -qF "$thunk" "$_CG_OUT"/generated*; then
+    # The emitted symbol appends `_` and an eight-digit shape hash. Match it as
+    # one word so `_Read` is not satisfied by `_ReadFromNonblocking`.
+    if ! grep -qwE "${thunk}_[0-9a-f]{8}" "$_CG_OUT"/generated*; then
         echo "FAIL: PalSurface no longer emits $thunk" >&2
         echo "      The section still passes, but it stopped reaching this wasm PAL" >&2
         echo "      entry, so a regression in it would be invisible. If the lowering" >&2

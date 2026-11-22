@@ -17,8 +17,8 @@ internal static class Program
     [DllImport("dn2cpptest")] private static extern int dn2cpptest_huff_sum(Huff h);
     [DllImport("dn2cpptest")] private static extern void dn2cpptest_huff_bump(ref Huff h);
 
-    // One function under two directions: struct arrays copy-marshal, so the default
-    // [In] must NOT write back.
+    // One function under two directions: a blittable struct array is pinned, so the
+    // native's writes land in the managed storage under the default direction too.
     [DllImport("dn2cpptest", EntryPoint = "dn2cpptest_huff_arr_sum_bump")]
     private static extern int huff_arr_default(Huff[] a, int n);
     [DllImport("dn2cpptest", EntryPoint = "dn2cpptest_huff_arr_sum_bump")]
@@ -40,9 +40,9 @@ internal static class Program
             new Huff { Bits = 3, Value = 0x0300 },
         };
         Console.WriteLine(huff_arr_default(arr, arr.Length));  // 1542
-        Console.WriteLine($"{arr[0].Bits},{arr[1].Bits},{arr[2].Bits}");  // 1,2,3 (no write-back)
-
-        Console.WriteLine(huff_arr_inout(arr, arr.Length));     // 1542
         Console.WriteLine($"{arr[0].Bits},{arr[1].Bits},{arr[2].Bits}");  // 2,3,4
+
+        Console.WriteLine(huff_arr_inout(arr, arr.Length));     // 1545
+        Console.WriteLine($"{arr[0].Bits},{arr[1].Bits},{arr[2].Bits}");  // 3,4,5
     }
 }
