@@ -1576,7 +1576,7 @@ internal static partial class CoreIntrinsics
     public static bool IntrinsicValueTypeHoldsGcReference(string cppName) => cppName switch
     {
         "Dn2CppDependentHandle" => true,                     // Dn2CppDependentCell*
-        "Dn2CppTaskAwaiter" or "Dn2CppAsyncBuilder" => true, // Dn2CppTask*
+        "Dn2CppTaskAwaiter" or "Dn2CppConfiguredTaskAwaiter" or "Dn2CppAsyncBuilder" => true, // Dn2CppTask*
         "Dn2CppCancelToken" => true,                         // Dn2CppCancelSource*
         "Dn2CppLockScope" => true,                           // the Lock object
         "Dn2CppSbChunkEnum" => true,                         // the snapshot string

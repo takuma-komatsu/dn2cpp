@@ -1677,8 +1677,8 @@ state: cancellation or a previous start prevents it, but successful or faulted
 promises need not have been scheduled. The claim alone neither queues nor invokes
 a delegate. Cold starts, queued delegate work and eligible continuations publish
 their scheduling phase; unwrapping promises do not inherit the delegate's phase.
-A settled status takes precedence over WaitingToRun or Running. Ordinary await
-resumptions remain on their owning scheduler, without acquiring a Task start claim.
+A settled status takes precedence over WaitingToRun or Running. Ordinary awaits
+queue to their owning scheduler without acquiring a Task start claim.
 
 A blocking task wait counts a running console entry on another thread as a
 possible settler. A timed `Thread.Join` can return control to the entry, so
@@ -1686,6 +1686,18 @@ it still counts. An indefinite managed wait withdraws the entry while parked,
 and the thread that signals the wait restores it before returning to managed
 code. A task wait can still run its entry scheduler's queued work before
 parking. Returning from a shared-library `main` ends its participation.
+
+A zero-duration `Task.Wait(TimeSpan)` probes the task without running queued work.
+Finite waits publish elapsed local timers, including timeouts and joins. When
+the task is a delay on another thread, the wait observes both timer queues in
+wall-deadline order, with registration order breaking ties.
+A positive wait drives owner-local delays against its steady-clock deadline.
+On a threaded target it lets the pool run context-free continuations, so a
+callback blocking on the caller cannot prevent the timeout. Delays created by
+those resumptions retain their wall deadlines. A derived synchronization context
+owns awaits that request capture. `ConfigureAwait(false)` and continuations on
+the default task scheduler can run on the pool. Host-thread callbacks stay on
+their owner.
 
 The default scheduler and generated scheduler subclasses share a native identity
 field. CoreLib's `TaskScheduler.Id` getter assigns it lazily from its own counter,

@@ -287,6 +287,7 @@ static void dn2cpp_task_init(Dn2CppTask* t, int32_t options, Dn2CppCancelSource*
     t->execution.store(DN2CPP_TASK_NOT_STARTED, std::memory_order_relaxed);
     t->asyncState = nullptr;
     t->completionWaitHandle = nullptr;
+    t->delayTimer.store(nullptr, std::memory_order_relaxed);
     t->disposed = 0;
     t->creationOptions.store(options & DN2CPP_TASK_OPTIONS_MASK, std::memory_order_relaxed);
     dn2cpp_gc_store_ref(&t->cancellationSource, source);
@@ -467,7 +468,7 @@ Dn2CppTask* dn2cpp_task_completed()
 Dn2CppTask dn2cpp_task_default_completed{
     { &dn2cpp_task_type }, DN2CPP_TASK_SUCCEEDED,
     dn2cpp_task_next_id(), nullptr, nullptr, 0, nullptr, nullptr, nullptr, nullptr,
-    DN2CPP_TASK_ORIGIN_PRECOMPLETED, DN2CPP_TASK_NOT_STARTED, nullptr, nullptr, -1, 0, nullptr, nullptr, 0, false, 0 };
+    DN2CPP_TASK_ORIGIN_PRECOMPLETED, DN2CPP_TASK_NOT_STARTED, nullptr, nullptr, -1, 0, nullptr, nullptr, 0, false, 0, nullptr };
 
 Dn2CppTask* dn2cpp_task_from_result(uint64_t result, bool doNotDispose)
 {
@@ -668,6 +669,20 @@ void dn2cpp_task_throw_if_faulted(Dn2CppTask* t)
 //   - the run queue may receive cross-thread pushes (a worker completing a Task the
 //     owner awaits routes the continuation here) -> guarded by `mtx`, with `cv` so
 //     task_block can sleep until a cross-thread completion arrives.
+using Dn2CppTaskClock = std::chrono::steady_clock;
+
+// The same wall/virtual origin serves frame pumps and nested finite waits.
+struct Dn2CppSchedulerClock
+{
+    Dn2CppTaskClock::time_point wall;
+    int64_t logical;
+
+    int64_t at(Dn2CppTaskClock::time_point time) const
+    {
+        return logical + std::chrono::duration_cast<std::chrono::milliseconds>(time - wall).count();
+    }
+};
+
 struct Dn2CppTimer; // full definition below
 struct Dn2CppScheduler
 {
@@ -675,13 +690,13 @@ struct Dn2CppScheduler
     Dn2CppCont* tail = nullptr;
     Dn2CppTimer* timers = nullptr;       // guarded by mtx
     Dn2CppTimer* timers_tail = nullptr;  // guarded by mtx
+    Dn2CppTimer* ready_timers = nullptr;
+    Dn2CppTimer* ready_timers_tail = nullptr;
+    std::thread::id timer_publisher{};   // guarded by mtx
+    bool notify_timer_observers = false;
     int64_t virtual_now = 0;             // owner-only
-    int64_t timer_seq = 0;               // owner-only
-    // Real-time base of the frame pump (owner-only): virtual_now advances by the
-    // real milliseconds elapsed between dn2cpp_sched_pump calls, with the sub-ms
-    // remainder carried in pump_last so it is never lost to rounding.
-    std::chrono::steady_clock::time_point pump_last{};
-    bool pump_has_last = false;
+    Dn2CppSchedulerClock frame_clock{};
+    Dn2CppSchedulerClock* clock = nullptr; // owner-only, frame clock or outer finite wait
     // Pool workers alternate this scheduler's owner-only work with the global
     // pool queue. The flag is also the scheduler's single settler principal:
     // an arbitrary number of queued resumptions/timers costs one count.
@@ -689,6 +704,53 @@ struct Dn2CppScheduler
     std::atomic<bool> pool_local_principal{false}; // transitions under mtx; read by pool wait
     std::mutex mtx;                      // guards continuation and timer lists
     Dn2CppWaitCondition cv;              // task_block waits here
+};
+
+struct Dn2CppTimedTaskWait;
+
+// MemberwiseClone copies a task's managed payload. Active stack frames belong
+// only to its original identity. Bucket links are protected by g_task_mtx.
+static Dn2CppTimedTaskWait*& dn2cpp_timed_wait_bucket(Dn2CppTask* task)
+{
+    constexpr size_t count = 64;
+    static Dn2CppTimedTaskWait* buckets[count]{};
+    return buckets[(reinterpret_cast<uintptr_t>(task) / alignof(Dn2CppTask)) % count];
+}
+
+struct Dn2CppTimedTaskWait
+{
+    Dn2CppTask* task;
+    Dn2CppScheduler* scheduler;
+    Dn2CppSchedulerClock origin;
+    Dn2CppTaskClock::time_point deadline;
+    Dn2CppTimedTaskWait* next;
+    bool completedInTime = true; // read only after acquiring terminal status
+
+    Dn2CppTimedTaskWait(Dn2CppTask* t, Dn2CppScheduler* s, int32_t ms)
+        : task(t), scheduler(s), origin{Dn2CppTaskClock::now(), s->virtual_now},
+          deadline(origin.wall + std::chrono::milliseconds(ms))
+    {
+        if (s->clock == nullptr)
+            s->clock = &origin;
+        std::lock_guard<std::mutex> lock(g_task_mtx);
+        auto& head = dn2cpp_timed_wait_bucket(t);
+        next = head;
+        head = this;
+    }
+
+    ~Dn2CppTimedTaskWait()
+    {
+        std::lock_guard<std::mutex> lock(g_task_mtx);
+        auto** waiter = &dn2cpp_timed_wait_bucket(task);
+        while (*waiter != this)
+            waiter = &(*waiter)->next;
+        *waiter = next;
+        if (scheduler->clock == &origin)
+        {
+            scheduler->virtual_now = origin.at(Dn2CppTaskClock::now());
+            scheduler->clock = nullptr;
+        }
+    }
 };
 
 // A scheduler outlives the thread that owns it. Its address is published to other
@@ -1039,9 +1101,29 @@ static void dn2cpp_pending_cont_unlink(Dn2CppCont* c)
     dn2cpp_gc_store_ref(&c->gcnext, static_cast<Dn2CppCont*>(nullptr));
 }
 
-// Defined beside the pool condition variable. A continuation may be posted before
-// its owner reaches the pool wait, so notification needs no lock or handshake.
+// Wake a pool worker waiting on either a global item or its owner-local scheduler.
 static void dn2cpp_pool_wake_for_scheduler();
+
+static thread_local bool t_wall_timers = false;
+
+static bool dn2cpp_has_custom_sync_context()
+{
+    auto* context = dn2cpp_sync_ctx_get();
+    // SynchronizationContext itself derives directly from Object and posts to
+    // the pool. Only a derived context owns the await's resumption.
+    return context != nullptr && context->type->base != &dn2cpp_object_type;
+}
+
+static void dn2cpp_sched_invoke_cont(Dn2CppCont* c)
+{
+    struct TimerScope
+    {
+        bool previous = t_wall_timers;
+        ~TimerScope() { t_wall_timers = previous; }
+    } scope;
+    t_wall_timers = c->wallTimers;
+    dn2cpp_task_invoke_as(nullptr, [&] { c->fn(c->state); });
+}
 
 // Append `c` (already populated, incl. its owner) onto scheduler `s`'s run queue and
 // wake a waiter. Safe to call from any thread, and safe after the owning thread has
@@ -1084,6 +1166,8 @@ static void dn2cpp_sched_post_to(Dn2CppScheduler* s, void (*fn)(void*), void* st
     c->state = state;
     dn2cpp_gc_write_barrier(&c->state);
     c->owner = s;
+    c->capturedContext = dn2cpp_has_custom_sync_context();
+    c->wallTimers = t_wall_timers;
     dn2cpp_sched_enqueue(s, c);
 }
 
@@ -1109,7 +1193,7 @@ static bool dn2cpp_sched_run_one()
     }
     // `c` (and through it the state) is now rooted by this frame; drop the global link.
     dn2cpp_pending_cont_unlink(c);
-    dn2cpp_task_invoke_as(nullptr, [&] { c->fn(c->state); });
+    dn2cpp_sched_invoke_cont(c);
     return true;
 }
 
@@ -1195,6 +1279,32 @@ static void dn2cpp_fire_conts(Dn2CppCont* conts)
     drain.run();
 }
 
+static void dn2cpp_task_publish_status_locked(Dn2CppTask* t, int32_t status)
+{
+    // The owner can be running managed code when its deadline passes. Record
+    // which side won at publication, before the waiter can observe the status.
+    auto* waiters = dn2cpp_timed_wait_bucket(t);
+    if (waiters != nullptr)
+    {
+        auto now = Dn2CppTaskClock::now();
+        for (auto* w = waiters; w != nullptr; w = w->next)
+            if (w->task == t)
+                w->completedInTime = now <= w->deadline;
+    }
+    t->status.store(status, std::memory_order_release);
+    for (auto* w = waiters; w != nullptr; w = w->next)
+    {
+        if (w->task != t)
+            continue;
+        std::lock_guard<std::mutex> lock(w->scheduler->mtx);
+        w->scheduler->cv.recheck();
+    }
+    if (g_task_completion_waiters != 0)
+        g_task_completed.notify_all();
+    if (t->completionWaitHandle != nullptr)
+        dn2cpp_event_set_if_open(t->completionWaitHandle);
+}
+
 // Detach a completing task's continuation list under g_task_mtx (so a concurrent
 // await-registration sees a settled status), then fire it outside the lock.
 static Dn2CppCont* dn2cpp_task_publish_locked(Dn2CppTask* t, int32_t status, uint64_t result,
@@ -1209,11 +1319,7 @@ static Dn2CppCont* dn2cpp_task_publish_locked(Dn2CppTask* t, int32_t status, uin
         t->disposed = -1;
     // Settled last, with release: await-registration gates on it under this
     // lock, and the drain reads it — and then result/exception — without it.
-    t->status.store(status, std::memory_order_release);
-    if (g_task_completion_waiters != 0)
-        g_task_completed.notify_all();
-    if (t->completionWaitHandle != nullptr)
-        dn2cpp_event_set_if_open(t->completionWaitHandle);
+    dn2cpp_task_publish_status_locked(t, status);
     if (releaseAction)
         dn2cpp_task_release_action_locked(t);
     auto* conts = t->continuations;
@@ -1385,7 +1491,7 @@ void dn2cpp_task_set_exception(Dn2CppTask* t, Dn2CppObject* exception)
 // Link a pending registration, or return its already-ready node for dispatch
 // outside g_task_mtx.
 static Dn2CppCont* dn2cpp_task_register_cont(Dn2CppTask* t, void (*fn)(void*), void* state,
-                                        bool synchronous = false)
+                                             bool synchronous, bool needsOwner)
 {
     // Outside g_task_mtx: arming runs the source's own code and may settle `t`.
     if (t->vtsBridge != nullptr)
@@ -1396,6 +1502,8 @@ static Dn2CppCont* dn2cpp_task_register_cont(Dn2CppTask* t, void (*fn)(void*), v
     c->state = state;
     dn2cpp_gc_write_barrier(&c->state);
     c->owner = synchronous ? nullptr : dn2cpp_sched_self();
+    c->capturedContext = needsOwner;
+    c->wallTimers = t_wall_timers;
     std::lock_guard<std::mutex> lk(g_task_mtx);
     if (t->status != DN2CPP_TASK_PENDING)
         return c;
@@ -1404,10 +1512,15 @@ static Dn2CppCont* dn2cpp_task_register_cont(Dn2CppTask* t, void (*fn)(void*), v
     return nullptr;
 }
 
-void dn2cpp_task_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state)
+static void dn2cpp_task_queue_cont(Dn2CppTask* t, void (*fn)(void*), void* state, bool needsOwner)
 {
-    if (auto* ready = dn2cpp_task_register_cont(t, fn, state))
+    if (auto* ready = dn2cpp_task_register_cont(t, fn, state, false, needsOwner))
         dn2cpp_fire_conts(ready);
+}
+
+void dn2cpp_task_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state, bool captureContext)
+{
+    dn2cpp_task_queue_cont(t, fn, state, captureContext && dn2cpp_has_custom_sync_context());
 }
 
 // .NET's builders hand a throwing continuation registration to Task.ThrowAsync, so the
@@ -1421,7 +1534,7 @@ void dn2cpp_async_await_rejected(Dn2CppObject* exc)
 
 // Only a source-backed task runs foreign code while registering: its source's OnCompleted.
 // A rejected registration registers nothing, so the method stays suspended.
-void dn2cpp_async_await_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state)
+void dn2cpp_async_await_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state, bool captureContext)
 {
     if (t->vtsBridge != nullptr)
     {
@@ -1435,7 +1548,7 @@ void dn2cpp_async_await_on_completed(Dn2CppTask* t, void (*fn)(void*), void* sta
             return;
         }
     }
-    dn2cpp_task_on_completed(t, fn, state);
+    dn2cpp_task_on_completed(t, fn, state, captureContext);
 }
 
 // Internal join notifications run outside g_task_mtx, both for settled inputs and
@@ -1443,7 +1556,7 @@ void dn2cpp_async_await_on_completed(Dn2CppTask* t, void (*fn)(void*), void* sta
 // Ordinary await and ContinueWith registrations retain their queued contract.
 static void dn2cpp_task_on_completed_sync(Dn2CppTask* t, void (*fn)(void*), void* state)
 {
-    if (dn2cpp_task_register_cont(t, fn, state, true) != nullptr)
+    if (dn2cpp_task_register_cont(t, fn, state, true, false) != nullptr)
         dn2cpp_task_invoke_as(nullptr, [&] { fn(state); });
 }
 
@@ -1486,9 +1599,9 @@ static void dn2cpp_action_continuation(void* state)
 // Register a System.Action to run when the task completes — the runtime side of a
 // user awaiter's TaskAwaiter.OnCompleted(Action) and of the Action-over-MoveNext
 // continuation a custom suspending awaitable's await synthesizes.
-void dn2cpp_task_on_completed_action(Dn2CppTask* t, Dn2CppObject* action)
+void dn2cpp_task_on_completed_action(Dn2CppTask* t, Dn2CppObject* action, bool captureContext)
 {
-    dn2cpp_task_on_completed(t, &dn2cpp_action_continuation, action);
+    dn2cpp_task_on_completed(t, &dn2cpp_action_continuation, action, captureContext);
 }
 
 // Action form of dn2cpp_sched_post — the delegate-continuation counterpart of
@@ -1498,19 +1611,16 @@ void dn2cpp_sched_post_action(Dn2CppObject* action)
     dn2cpp_sched_post(&dn2cpp_action_continuation, action);
 }
 
-// Virtual-time timer queue for Task.Delay (per-thread, in the scheduler). There is no
-// wall clock; instead a logical clock (virtual_now) advances only when the run
-// queue is empty, jumping to the earliest pending timer. This makes concurrent delays
-// complete in duration order — Delay(10) before Delay(50) — deterministically and
-// instantly (no real sleeping), while ready work (Task.Yield, resumed awaiters)
-// always runs first. Each thread advances its own clock; the timer list is locked
-// because a timed wait can finish and remove its timer from another thread.
+// Untimed drains can jump the owner's logical clock after its run queue empties.
+// Finite waits need the immutable wall deadline even when the owner is parked.
 struct Dn2CppTimer
 {
     Dn2CppTask* task;
     Dn2CppScheduler* owner;
     int64_t due;        // virtual time (ms) at which the delay completes
-    int64_t seq;        // insertion order: ties at the same `due` fire FIFO
+    Dn2CppTaskClock::time_point wall_due; // a finite wait can begin long after registration
+    bool wall_only;
+    uint64_t seq;       // registration order for equal wall deadlines across schedulers
     Dn2CppTimer* next;
     // Global static-rooted list links (see g_pending_timers): the timer list hangs
     // off thread-local storage, so a pending entry — often the only path to its
@@ -1518,7 +1628,27 @@ struct Dn2CppTimer
     // through scanned memory until it fires.
     Dn2CppTimer* gcprev;
     Dn2CppTimer* gcnext;
+
+    bool precedes(const Dn2CppTimer* other) const
+    {
+        return wall_due != other->wall_due ? wall_due < other->wall_due : seq < other->seq;
+    }
+
+    int64_t due_at(const Dn2CppSchedulerClock* clock, Dn2CppTaskClock::time_point now) const
+    {
+        if (wall_only)
+        {
+            if (now < wall_due)
+                return INT64_MAX;
+            if (clock != nullptr)
+                return clock->at(wall_due);
+        }
+        return clock == nullptr ? due : std::min(due, clock->at(wall_due));
+    }
 };
+
+static std::atomic<uint64_t> g_timer_sequence{0};
+static std::atomic<uint64_t> g_timer_observer_generation{0};
 
 static void dn2cpp_pending_timer_link(Dn2CppTimer* e)
 {
@@ -1543,55 +1673,233 @@ static void dn2cpp_pending_timer_unlink(Dn2CppTimer* e)
     dn2cpp_gc_store_ref(&e->gcnext, static_cast<Dn2CppTimer*>(nullptr));
 }
 
+// Claimed timers stay on the GC root list until publication. A wall-clock
+// observer and the owner can append batches concurrently, but the same thread
+// publishes them in claim order, including their native join notifications.
+static void dn2cpp_sched_queue_timer_locked(Dn2CppScheduler* s, Dn2CppTimer* e)
+{
+    dn2cpp_gc_store_ref(&e->next, static_cast<Dn2CppTimer*>(nullptr));
+    if (s->ready_timers_tail != nullptr)
+        dn2cpp_gc_store_ref(&s->ready_timers_tail->next, e);
+    else
+        s->ready_timers = e;
+    s->ready_timers_tail = e;
+}
+
+template<class Predicate, class Claim>
+static void dn2cpp_sched_claim_timers_locked(Dn2CppScheduler* s, Predicate due, Claim claim)
+{
+    Dn2CppTimer* previous = nullptr;
+    for (auto* e = s->timers; e != nullptr;)
+    {
+        auto* next = e->next;
+        if (due(e))
+        {
+            if (previous != nullptr)
+                dn2cpp_gc_store_ref(&previous->next, next);
+            else
+                s->timers = next;
+            claim(e);
+        }
+        else
+            previous = e;
+        e = next;
+    }
+    s->timers_tail = previous;
+}
+
+static void dn2cpp_sched_fire_timer(Dn2CppTimer* timer)
+{
+    struct ReleaseTimer
+    {
+        Dn2CppTimer* timer;
+        ~ReleaseTimer()
+        {
+            dn2cpp_gc_store_ref(&timer->task->delayTimer, static_cast<Dn2CppTimer*>(nullptr));
+            dn2cpp_pending_timer_unlink(timer);
+        }
+    } release{timer};
+    dn2cpp_task_try_set_result(timer->task, 0);
+}
+
+// A finite observation can span the caller and a delay's owner. Reserve both
+// publication queues together, but release both locks around each completion.
+struct Dn2CppTimerQueues
+{
+    Dn2CppScheduler* owners[2];
+    int count;
+    std::unique_lock<std::mutex> locks[2];
+    bool claimed[2]{};
+    bool foreign = false;
+    Dn2CppTimerQueues* previous = nullptr;
+    static thread_local Dn2CppTimerQueues* active;
+
+    explicit Dn2CppTimerQueues(Dn2CppScheduler* first, Dn2CppScheduler* second = nullptr)
+        : owners{first, second}, count(second != nullptr && first != second ? 2 : 1)
+    {
+        for (int i = 0; i < count; ++i)
+            locks[i] = std::unique_lock<std::mutex>(owners[i]->mtx, std::defer_lock);
+        lock();
+    }
+
+    void lock()
+    {
+        if (count == 2)
+            std::lock(locks[0], locks[1]);
+        else
+            locks[0].lock();
+    }
+
+    void unlock()
+    {
+        for (int i = 0; i < count; ++i)
+            locks[i].unlock();
+    }
+
+    bool busy(bool notify) const
+    {
+        for (int i = 0; i < count; ++i)
+        {
+            auto* s = owners[i];
+            if (s->timer_publisher != std::thread::id{} && s->timer_publisher != std::this_thread::get_id())
+            {
+                if (notify)
+                    s->notify_timer_observers = true;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    Dn2CppTimer* earliest_ready() const
+    {
+        auto* first = owners[0]->ready_timers;
+        auto* second = count == 2 ? owners[1]->ready_timers : nullptr;
+        return second != nullptr && (first == nullptr || second->precedes(first)) ? second : first;
+    }
+
+    bool publish()
+    {
+        auto* e = earliest_ready();
+        if (e == nullptr || busy(false))
+            return false;
+        previous = active;
+        active = this;
+        for (int i = 0; i < count; ++i)
+        {
+            auto* s = owners[i];
+            claimed[i] = s->timer_publisher == std::thread::id{};
+            s->timer_publisher = std::this_thread::get_id();
+            if (claimed[i] && s != t_sched_ptr)
+                foreign = true;
+        }
+        // A foreign publisher can hold an indefinite owner's last settler.
+        if (foreign)
+            g_inflight_async_tasks.fetch_add(1, std::memory_order_acq_rel);
+        do
+        {
+            auto* s = e->owner;
+            s->ready_timers = e->next;
+            if (s->ready_timers == nullptr)
+                s->ready_timers_tail = nullptr;
+            dn2cpp_gc_store_ref(&e->next, static_cast<Dn2CppTimer*>(nullptr));
+            unlock();
+            dn2cpp_sched_fire_timer(e);
+            lock();
+            e = earliest_ready();
+        } while (e != nullptr);
+        return true;
+    }
+
+    ~Dn2CppTimerQueues()
+    {
+        if (active != this)
+            return;
+        active = previous;
+        if (!locks[0].owns_lock())
+            lock();
+        bool notify = false;
+        for (int i = 0; i < count; ++i)
+        {
+            if (!claimed[i])
+                continue;
+            auto* s = owners[i];
+            s->timer_publisher = {};
+            notify |= s->notify_timer_observers;
+            s->notify_timer_observers = false;
+            // Restore unprocessed successors if a native notification threw.
+            if (s->ready_timers != nullptr)
+            {
+                dn2cpp_gc_store_ref(&s->ready_timers_tail->next, s->timers);
+                if (s->timers == nullptr)
+                    s->timers_tail = s->ready_timers_tail;
+                s->timers = s->ready_timers;
+                s->ready_timers = s->ready_timers_tail = nullptr;
+            }
+        }
+        if (notify)
+            g_timer_observer_generation.fetch_add(1, std::memory_order_release);
+        unlock();
+        if (foreign)
+        {
+            dn2cpp_pool_wake_for_scheduler();
+            dn2cpp_principal_left(g_inflight_async_tasks);
+        }
+        if (notify)
+            dn2cpp_sched_wake_all();
+    }
+};
+
+thread_local Dn2CppTimerQueues* Dn2CppTimerQueues::active = nullptr;
+
+// A reentrant timer observation finishes already claimed work in its original
+// order before claiming timers from a different pair of schedulers.
+static bool dn2cpp_sched_resume_timers()
+{
+    auto* active = Dn2CppTimerQueues::active;
+    if (active == nullptr)
+        return false;
+    Dn2CppTimerQueues queues(active->owners[0], active->owners[1]);
+    return queues.publish();
+}
+
 // Advance virtual time to the earliest pending timer and complete every timer due at
 // that instant (in insertion order), posting their continuations. Returns false when
 // no timers remain or the earliest due lies beyond `limit` (a blocking drain passes
 // INT64_MAX and keeps the classic jump-to-next-timer virtual clock; the frame pump
 // passes "virtual_now + real elapsed ms" so a delay completes only once its real
 // time has passed). Called only when this thread's run queue has drained.
-static bool dn2cpp_sched_advance_timers(int64_t limit)
+static bool dn2cpp_sched_advance_timers(int64_t limit, const Dn2CppSchedulerClock* clock = nullptr,
+                                       Dn2CppTaskClock::time_point* wake = nullptr)
 {
+    if (dn2cpp_sched_resume_timers())
+        return true;
     Dn2CppScheduler* s = dn2cpp_sched_self();
-    Dn2CppTimer* dueHead = nullptr;
     {
-        std::lock_guard<std::mutex> lk(s->mtx);
+        Dn2CppTimerQueues queues(s);
         if (s->timers == nullptr)
             return false;
-        int64_t minDue = s->timers->due;
-        for (Dn2CppTimer* e = s->timers->next; e != nullptr; e = e->next)
-            if (e->due < minDue)
-                minDue = e->due;
-        if (minDue > limit)
-            return false;
-        s->virtual_now = minDue;
-        // Detach due entries in insertion order. Cancellation can only unlink
-        // entries still on the scheduler, never this thread's detached list.
-        Dn2CppTimer* dueTail = nullptr;
-        Dn2CppTimer* keepHead = nullptr;
-        Dn2CppTimer* keepTail = nullptr;
-        for (Dn2CppTimer* e = s->timers; e != nullptr;)
+        auto now = Dn2CppTaskClock::now();
+        int64_t minDue = INT64_MAX;
+        for (Dn2CppTimer* e = s->timers; e != nullptr; e = e->next)
         {
-            Dn2CppTimer* next = e->next;
-            dn2cpp_gc_store_ref(&e->next, static_cast<Dn2CppTimer*>(nullptr));
-            Dn2CppTimer** head = e->due == minDue ? &dueHead : &keepHead;
-            Dn2CppTimer** tail = e->due == minDue ? &dueTail : &keepTail;
-            if (*tail != nullptr)
-                dn2cpp_gc_store_ref(&(*tail)->next, e);
-            else
-                *head = e;
-            *tail = e;
-            e = next;
+            int64_t due = e->due_at(clock, now);
+            if (due == INT64_MAX && wake != nullptr)
+                *wake = std::min(*wake, e->wall_due);
+            minDue = std::min(minDue, due);
         }
-        s->timers = keepHead;
-        s->timers_tail = keepTail;
-    }
-    for (Dn2CppTimer* e = dueHead; e != nullptr;)
-    {
-        Dn2CppTimer* next = e->next;
-        if (e->task->status == DN2CPP_TASK_PENDING) // skip a delay already canceled
-            dn2cpp_task_set_result(e->task, 0);
-        dn2cpp_pending_timer_unlink(e);
-        e = next;
+        if (minDue == INT64_MAX || minDue > limit)
+            return false;
+        s->virtual_now = std::max(s->virtual_now, minDue);
+        if (s->clock != nullptr && clock == nullptr)
+        {
+            // An unbounded drain inside a real-time pump may jump ahead.
+            if (minDue > s->clock->at(now))
+                *s->clock = {now, minDue};
+        }
+        dn2cpp_sched_claim_timers_locked(s, [&](Dn2CppTimer* e) { return e->due_at(clock, now) == minDue; },
+            [&](Dn2CppTimer* e) { dn2cpp_sched_queue_timer_locked(s, e); });
+        queues.publish();
     }
     return true;
 }
@@ -1604,8 +1912,11 @@ static Dn2CppTimer* dn2cpp_task_timer_new(Dn2CppTask* task, int64_t ms)
     auto* e = static_cast<Dn2CppTimer*>(dn2cpp_alloc(sizeof(Dn2CppTimer)));
     dn2cpp_gc_store_ref(&e->task, task);
     e->owner = s;
-    e->due = s->virtual_now + ms;
-    e->seq = s->timer_seq++;
+    auto now = Dn2CppTaskClock::now();
+    e->wall_due = now + std::chrono::milliseconds(ms);
+    e->wall_only = t_wall_timers;
+    e->due = (s->clock != nullptr ? s->clock->at(now) : s->virtual_now) + ms;
+    e->seq = g_timer_sequence.fetch_add(1, std::memory_order_relaxed);
     return e;
 }
 
@@ -1642,6 +1953,7 @@ static void dn2cpp_task_timer_cancel(Dn2CppTimer* timer)
                     s->timers_tail = previous;
                 dn2cpp_gc_store_ref(&timer->next, static_cast<Dn2CppTimer*>(nullptr));
                 removed = true;
+                s->cv.recheck();
                 break;
             }
             previous = *p;
@@ -1652,6 +1964,7 @@ static void dn2cpp_task_timer_cancel(Dn2CppTimer* timer)
         // Never nest the scheduler and global-root locks. A timer already
         // detached for firing is unrooted by its owner instead.
         dn2cpp_pending_timer_unlink(timer);
+        dn2cpp_gc_store_ref(&timer->task->delayTimer, static_cast<Dn2CppTimer*>(nullptr));
         dn2cpp_pool_wake_for_scheduler();
     }
 }
@@ -1671,13 +1984,6 @@ int64_t dn2cpp_task_delay_ms_from_ticks(int64_t ticks)
     return ms;
 }
 
-void dn2cpp_task_wait_require_timeout(int64_t ticks)
-{
-    int64_t ms = static_cast<int64_t>(static_cast<double>(ticks) / 10000.0);
-    if (ms < -1 || ms > INT32_MAX)
-        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ARGUMENT_OUT_OF_RANGE, "timeout");
-}
-
 Dn2CppTask* dn2cpp_task_delay(int64_t ms)
 {
     if (ms == 0)
@@ -1685,7 +1991,9 @@ Dn2CppTask* dn2cpp_task_delay(int64_t ms)
     Dn2CppTask* t = dn2cpp_task_alloc();
     if (ms < 0)
         return t;
-    dn2cpp_task_timer_schedule(dn2cpp_task_timer_new(t, ms));
+    auto* timer = dn2cpp_task_timer_new(t, ms);
+    dn2cpp_gc_store_ref(&t->delayTimer, timer);
+    dn2cpp_task_timer_schedule(timer);
     return t;
 }
 
@@ -2333,11 +2641,7 @@ static int32_t dn2cpp_task_try_complete_locked(Dn2CppTask* t, int32_t status, ui
     dn2cpp_gc_write_barrier(&t->result);
     dn2cpp_gc_store_ref(&t->exception, exception);
     dn2cpp_gc_store_ref(&t->exceptionAggregate, aggregate);
-    t->status.store(status, std::memory_order_release); // settled last, as above
-    if (g_task_completion_waiters != 0)
-        g_task_completed.notify_all();
-    if (t->completionWaitHandle != nullptr)
-        dn2cpp_event_set_if_open(t->completionWaitHandle);
+    dn2cpp_task_publish_status_locked(t, status);
     conts = t->continuations;
     dn2cpp_gc_store_ref(&t->continuations, static_cast<Dn2CppCont*>(nullptr));
     return 1;
@@ -3109,6 +3413,8 @@ static void dn2cpp_delay_unregister(void* state)
         registration->delayArmed = false;
     }
     dn2cpp_cts_unregister(registration);
+    if (registration->task->status == DN2CPP_TASK_CANCELED)
+        dn2cpp_task_timer_cancel(registration->task->delayTimer.load(std::memory_order_acquire));
 }
 
 Dn2CppTask* dn2cpp_task_delay_ct(int64_t ms, Dn2CppCancelSource* src)
@@ -3207,7 +3513,8 @@ static bool dn2cpp_task_drain_settle(Dn2CppTask* t)
         // virtual clock to the next Task.Delay.
         if (dn2cpp_sched_run_one())
             continue;
-        if (dn2cpp_sched_advance_timers(INT64_MAX))
+        auto wake = Dn2CppTaskClock::time_point::max();
+        if (dn2cpp_sched_advance_timers(INT64_MAX, nullptr, &wake))
             continue;
         // Nothing runnable on this thread. Either another principal will still settle
         // `t` — a pool worker (Task.Run / Start / pool work in flight) or a live user
@@ -3215,7 +3522,7 @@ static bool dn2cpp_task_drain_settle(Dn2CppTask* t)
         // thread of the program's own) — in which case we sleep until it posts a
         // continuation here and wakes our cv, or there is no such principal and the
         // wait can never be satisfied.
-        if (!dn2cpp_task_settler_exists())
+        if (wake == Dn2CppTaskClock::time_point::max() && !dn2cpp_task_settler_exists())
         {
             // Re-probe before the verdict: a departing settler settles tasks and
             // enqueues continuations BEFORE it leaves the count, so a zero read
@@ -3234,6 +3541,12 @@ static bool dn2cpp_task_drain_settle(Dn2CppTask* t)
         }
         Dn2CppScheduler* s = dn2cpp_sched_self();
         std::unique_lock<std::mutex> lk(s->mtx);
+        if (wake != Dn2CppTaskClock::time_point::max())
+        {
+            if (s->head == nullptr && s->timers != nullptr && t->status == DN2CPP_TASK_PENDING)
+                s->cv.wait_until(lk, wake);
+            continue;
+        }
         // The predicate carries the principal set as well as the task, so the wait ends
         // the moment the LAST principal leaves — dn2cpp_sched_wake_all, called on that
         // transition, is what delivers it. Without that term the wait is a hang: nothing
@@ -3313,6 +3626,132 @@ Dn2CppTask* dn2cpp_task_block_wait(Dn2CppTask* t)
         dn2cpp_throw(dn2cpp_aggregate_exception_new(dn2cpp_task_fault_snapshot(t)));
     }
     return t;
+}
+
+// A positive wait cannot run arbitrary managed code on its caller. Context-free
+// resumptions can run on the pool; a captured context keeps its queue position.
+static void dn2cpp_sched_pool_cont(Dn2CppObject*, Dn2CppObject* state)
+{
+    dn2cpp_sched_invoke_cont(reinterpret_cast<Dn2CppCont*>(state));
+}
+
+static Dn2CppCont* dn2cpp_sched_take_unbound_locked(Dn2CppScheduler* s)
+{
+    Dn2CppCont* prev = nullptr;
+    for (auto* c = s->head; c != nullptr; c = c->next)
+    {
+        if (!c->capturedContext)
+        {
+            if (prev == nullptr)
+                s->head = c->next;
+            else
+                dn2cpp_gc_store_ref(&prev->next, c->next);
+            if (s->tail == c)
+                s->tail = prev;
+            dn2cpp_gc_store_ref(&c->next, static_cast<Dn2CppCont*>(nullptr));
+            return c;
+        }
+        prev = c;
+    }
+    return nullptr;
+}
+
+// A timeout and the delay it observes can be on different schedulers. Snapshot
+// both against the same wall instant before either one's notifications can win.
+static bool dn2cpp_task_observe_timers(Dn2CppTask* task, Dn2CppTaskClock::time_point through,
+                                       Dn2CppTaskClock::time_point* wake = nullptr)
+{
+    dn2cpp_sched_resume_timers();
+    auto* timer = task->delayTimer.load(std::memory_order_acquire);
+    auto* owner = timer != nullptr && timer->task == task ? timer->owner : nullptr;
+    auto* local = t_sched_ptr;
+    if (local == nullptr && owner == nullptr)
+        return false;
+    Dn2CppTimerQueues queues(local != nullptr ? local : owner, owner);
+    if (queues.busy(wake != nullptr))
+        return false;
+    std::vector<Dn2CppTimer*> elapsed;
+    for (int i = 0; i < queues.count; ++i)
+    {
+        for (auto* e = queues.owners[i]->timers; e != nullptr; e = e->next)
+        {
+            if (e->wall_due <= through)
+                elapsed.push_back(e);
+            else if (wake != nullptr)
+                *wake = std::min(*wake, e->wall_due);
+        }
+    }
+    if (!elapsed.empty())
+    {
+        std::sort(elapsed.begin(), elapsed.end(), [](Dn2CppTimer* a, Dn2CppTimer* b) { return a->precedes(b); });
+        for (int i = 0; i < queues.count; ++i)
+            dn2cpp_sched_claim_timers_locked(queues.owners[i],
+                [&](Dn2CppTimer* e) { return e->wall_due <= through; }, [](Dn2CppTimer*) {});
+        for (auto* e : elapsed)
+            dn2cpp_sched_queue_timer_locked(e->owner, e);
+    }
+    return queues.publish();
+}
+
+static bool dn2cpp_task_drain_timed(Dn2CppTask* t, int32_t ms)
+{
+    auto* s = dn2cpp_sched_self();
+    Dn2CppTimedTaskWait wait(t, s, ms);
+#ifdef __EMSCRIPTEN__
+    bool canDispatch = false;
+#else
+    bool canDispatch = Dn2CppGCThread::active || !dn2cpp_boundary_sink_installed();
+#endif
+    if (t->vtsBridge != nullptr)
+        dn2cpp_vts_arm(t);
+    while (t->status == DN2CPP_TASK_PENDING)
+    {
+        auto generation = g_timer_observer_generation.load(std::memory_order_acquire);
+        auto now = Dn2CppTaskClock::now();
+        auto wake = wait.deadline;
+        if (dn2cpp_task_observe_timers(t, std::min(now, wait.deadline), &wake))
+            continue;
+        if (now >= wait.deadline)
+            break;
+        std::unique_lock<std::mutex> lock(s->mtx);
+        if (t->status != DN2CPP_TASK_PENDING)
+            break;
+        if (auto* c = canDispatch ? dn2cpp_sched_take_unbound_locked(s) : nullptr)
+        {
+            lock.unlock();
+            dn2cpp_pending_cont_unlink(c);
+            c->wallTimers = true;
+            static Dn2CppDelegate runner{{&dn2cpp_object_type}, nullptr,
+                reinterpret_cast<void*>(&dn2cpp_sched_pool_cont), nullptr, nullptr, nullptr, nullptr, false};
+            dn2cpp_threadpool_queue(&runner, reinterpret_cast<Dn2CppObject*>(c));
+        }
+        else
+        {
+            // A contending publisher can finish between observing its queue
+            // and parking here. A finite entry remains a possible settler.
+            if (g_timer_observer_generation.load(std::memory_order_acquire) == generation)
+                s->cv.wait_until(lock, wake);
+        }
+    }
+    return t->status != DN2CPP_TASK_PENDING && wait.completedInTime;
+}
+
+int32_t dn2cpp_task_wait_timeout(Dn2CppTask* t, int64_t ticks)
+{
+    int64_t ms = static_cast<int64_t>(static_cast<double>(ticks) / 10000.0);
+    if (ms < -1 || ms > INT32_MAX)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ARGUMENT_OUT_OF_RANGE, "timeout");
+    dn2cpp_null_check(t);
+    if (ms == 0 && t->status == DN2CPP_TASK_PENDING)
+    {
+        dn2cpp_task_observe_timers(t, Dn2CppTaskClock::now());
+        if (t->status == DN2CPP_TASK_PENDING)
+            return 0;
+    }
+    else if (ms > 0 && t->status == DN2CPP_TASK_PENDING && !dn2cpp_task_drain_timed(t, static_cast<int32_t>(ms)))
+        return 0;
+    dn2cpp_task_block_wait(t);
+    return 1;
 }
 
 // Task.WaitAll(Task[]): block until every input settles, then raise. Real .NET waits
@@ -3421,32 +3860,20 @@ Dn2CppObject* dn2cpp_task_exception(Dn2CppTask* t)
 
 void dn2cpp_sched_pump()
 {
-    // Timers first: advance the virtual clock by the real time elapsed since the
-    // previous pump, firing every delay whose due falls inside the window (the
-    // shared helper keeps the (due, insertion) firing order). A blocking drain
-    // interleaved between pumps can only have jumped virtual_now FORWARD, which
-    // just re-bases later delays — relative ordering stays correct either way.
+    // A finite wait may already be driving this scheduler from a wall-clock origin.
+    // Keep that origin when the host takes over frame pumping.
     Dn2CppScheduler* s = dn2cpp_sched_self();
-    auto now_tp = std::chrono::steady_clock::now();
-    if (!s->pump_has_last)
+    auto now = Dn2CppTaskClock::now();
+    if (s->clock != &s->frame_clock)
     {
-        s->pump_has_last = true; // first pump only establishes the baseline
-        s->pump_last = now_tp;
+        s->frame_clock = s->clock != nullptr ? *s->clock : Dn2CppSchedulerClock{now, s->virtual_now};
+        s->clock = &s->frame_clock;
     }
-    else
+    int64_t target = s->clock->at(now);
+    while (dn2cpp_sched_advance_timers(target, s->clock))
     {
-        int64_t delta = std::chrono::duration_cast<std::chrono::milliseconds>(
-                            now_tp - s->pump_last).count();
-        if (delta > 0)
-        {
-            s->pump_last += std::chrono::milliseconds(delta);
-            int64_t target = s->virtual_now + delta;
-            while (dn2cpp_sched_advance_timers(target))
-            {
-            }
-            s->virtual_now = target; // later delays stay real-time-relative
-        }
     }
+    s->virtual_now = std::max(s->virtual_now, target);
     // Steal the queue in one lock acquisition and run the snapshot outside the
     // lock. Timer completions above already enqueued their continuations, so a
     // delay that expired this frame also resumes this frame; anything posted BY
@@ -3466,7 +3893,7 @@ void dn2cpp_sched_pump()
         dn2cpp_pending_cont_unlink(c);
         try
         {
-            dn2cpp_task_invoke_as(nullptr, [&] { c->fn(c->state); });
+            dn2cpp_sched_invoke_cont(c);
         }
         catch (Dn2CppException& __ex)
         {
@@ -3880,6 +4307,7 @@ static DN2CPP_GC_STATIC_ROOT Dn2CppPoolNode* g_pool_pending = nullptr; // static
 
 static void dn2cpp_pool_wake_for_scheduler()
 {
+    { std::lock_guard<std::mutex> lock(g_pool_mtx); }
     g_pool_cv.notify_all();
 }
 
@@ -3963,6 +4391,12 @@ static void dn2cpp_sched_abandon_pool_local(Dn2CppScheduler* s)
         s->pool_worker = false;
         conts = s->head;
         timers = s->timers;
+        if (s->ready_timers != nullptr)
+        {
+            dn2cpp_gc_store_ref(&s->ready_timers_tail->next, timers);
+            timers = s->ready_timers;
+            s->ready_timers = s->ready_timers_tail = nullptr;
+        }
         s->head = nullptr;
         s->tail = nullptr;
         s->timers = nullptr;
@@ -3979,6 +4413,7 @@ static void dn2cpp_sched_abandon_pool_local(Dn2CppScheduler* s)
     while (timers != nullptr)
     {
         Dn2CppTimer* next = timers->next;
+        dn2cpp_gc_store_ref(&timers->task->delayTimer, static_cast<Dn2CppTimer*>(nullptr));
         dn2cpp_pending_timer_unlink(timers);
         dn2cpp_gc_store_ref(&timers->next, static_cast<Dn2CppTimer*>(nullptr));
         timers = next;
@@ -4016,20 +4451,29 @@ static void dn2cpp_pool_worker()
         scheduler->pool_worker = true;
     }
     bool preferLocal = false;
+    auto localWake = Dn2CppTaskClock::time_point::min();
     for (;;)
     {
         Dn2CppWorkItem it;
         bool runLocal = false;
         {
             std::unique_lock<std::mutex> lk(g_pool_mtx);
-            g_pool_cv.wait(lk, [&] {
-                return g_pool_stop || !g_pool_q.empty()
-                    || scheduler->pool_local_principal.load(std::memory_order_acquire);
-            });
+            auto localReady = [&] {
+                if (!scheduler->pool_local_principal.load(std::memory_order_acquire))
+                    return false;
+                if (localWake == Dn2CppTaskClock::time_point::min() || Dn2CppTaskClock::now() >= localWake)
+                    return true;
+                std::lock_guard<std::mutex> queue(scheduler->mtx);
+                return scheduler->head != nullptr || scheduler->timers == nullptr;
+            };
+            auto ready = [&] { return g_pool_stop || !g_pool_q.empty() || localReady(); };
+            if (localWake == Dn2CppTaskClock::time_point::min())
+                g_pool_cv.wait(lk, ready);
+            else
+                g_pool_cv.wait_until(lk, localWake, ready);
             if (g_pool_stop)
                 break; // quiesce: the queue was already dropped, leave at once
-            bool localReady = scheduler->pool_local_principal.load(std::memory_order_acquire);
-            if (!g_pool_q.empty() && (!localReady || !preferLocal))
+            if (!g_pool_q.empty() && (!preferLocal || !localReady()))
             {
                 it = g_pool_q.front();
                 g_pool_q.pop_front();
@@ -4041,6 +4485,7 @@ static void dn2cpp_pool_worker()
                 preferLocal = false;
             }
         }
+        localWake = Dn2CppTaskClock::time_point::min();
         if (runLocal)
         {
             try
@@ -4048,7 +4493,12 @@ static void dn2cpp_pool_worker()
                 // One turn only. A self-rescheduling await loop retains its
                 // principal but cannot monopolize the worker over global items.
                 if (!dn2cpp_sched_run_one())
-                    dn2cpp_sched_advance_timers(INT64_MAX);
+                {
+                    auto wake = Dn2CppTaskClock::time_point::max();
+                    if (!dn2cpp_sched_advance_timers(INT64_MAX, nullptr, &wake)
+                        && wake != Dn2CppTaskClock::time_point::max())
+                        localWake = wake;
+                }
             }
             catch (const Dn2CppException& exception)
             {
@@ -5001,7 +5451,7 @@ static void dn2cpp_cont_with_run(void* p)
 }
 
 Dn2CppTask* dn2cpp_task_continue_with(Dn2CppTask* t, Dn2CppObject* del, Dn2CppObject* state,
-                                      int32_t kind, int32_t options, Dn2CppCancelSource* source)
+                                      int32_t kind, int32_t options, Dn2CppCancelSource* source, bool needsOwner)
 {
     dn2cpp_null_check(t);
     Dn2CppTask* ct = dn2cpp_task_alloc(options, source);
@@ -5017,12 +5467,13 @@ Dn2CppTask* dn2cpp_task_continue_with(Dn2CppTask* t, Dn2CppObject* del, Dn2CppOb
     c->invokeStruct = nullptr;
     c->invokeState = nullptr;
     dn2cpp_gc_store_ref(&ct->workerKeepAlive, static_cast<void*>(c));
-    dn2cpp_task_on_completed(t, &dn2cpp_cont_with_run, c);
+    dn2cpp_task_queue_cont(t, &dn2cpp_cont_with_run, c, needsOwner);
     return ct;
 }
 
 Dn2CppTask* dn2cpp_task_continue_with_state_result(Dn2CppTask* t, Dn2CppObject* del,
-    Dn2CppObject* state, uint64_t (*invoke)(Dn2CppObject*, Dn2CppObject*, Dn2CppObject*), int32_t options, Dn2CppCancelSource* source)
+    Dn2CppObject* state, uint64_t (*invoke)(Dn2CppObject*, Dn2CppObject*, Dn2CppObject*), int32_t options,
+    Dn2CppCancelSource* source, bool needsOwner)
 {
     dn2cpp_null_check(t);
     Dn2CppTask* task = dn2cpp_task_alloc(options, source);
@@ -5038,7 +5489,7 @@ Dn2CppTask* dn2cpp_task_continue_with_state_result(Dn2CppTask* t, Dn2CppObject* 
     continuation->invokeStruct = nullptr;
     continuation->invokeState = invoke;
     dn2cpp_gc_store_ref(&task->workerKeepAlive, static_cast<void*>(continuation));
-    dn2cpp_task_on_completed(t, &dn2cpp_cont_with_run, continuation);
+    dn2cpp_task_queue_cont(t, &dn2cpp_cont_with_run, continuation, needsOwner);
     return task;
 }
 
@@ -5215,7 +5666,7 @@ Dn2CppTask* dn2cpp_task_wait_async_timeout(Dn2CppTask* t, int64_t ticks,
 // invoked through the transpiler-emitted boxing trampoline (DN2CPP_CONTWITH_STRUCT).
 Dn2CppTask* dn2cpp_task_continue_with_struct(Dn2CppTask* t, Dn2CppObject* del,
                                              uint64_t (*invoke)(Dn2CppObject*, Dn2CppObject*),
-                                             int32_t options, Dn2CppCancelSource* source)
+                                             int32_t options, Dn2CppCancelSource* source, bool needsOwner)
 {
     dn2cpp_null_check(t);
     Dn2CppTask* ct = dn2cpp_task_alloc(options, source);
@@ -5230,7 +5681,7 @@ Dn2CppTask* dn2cpp_task_continue_with_struct(Dn2CppTask* t, Dn2CppObject* del,
     c->invokeStruct = invoke;
     c->invokeState = nullptr;
     dn2cpp_gc_store_ref(&ct->workerKeepAlive, static_cast<void*>(c));
-    dn2cpp_task_on_completed(t, &dn2cpp_cont_with_run, c);
+    dn2cpp_task_queue_cont(t, &dn2cpp_cont_with_run, c, needsOwner);
     return ct;
 }
 

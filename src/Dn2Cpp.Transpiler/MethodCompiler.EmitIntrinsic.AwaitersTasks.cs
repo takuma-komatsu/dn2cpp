@@ -121,28 +121,26 @@ internal sealed partial class MethodCompiler
                 return true;
             }
 
-            // task.ConfigureAwait(bool) -> ConfiguredTaskAwaitable wrapping the same
-            // task (a no-op on the single-threaded model). The awaitable and its nested
-            // ConfiguredTaskAwaiter both lower to Dn2CppTaskAwaiter, so GetAwaiter is an
-            // identity copy and the await-suspend path matches the Task case.
             case ("System.Threading.Tasks.Task", "ConfigureAwait"):
             {
-                Pop(); // bool continueOnCapturedContext (unmodeled)
+                var options = Pop(); // ContinueOnCapturedContext is bit zero in ConfigureAwaitOptions.
                 var t = Pop();
-                Push(StackKind.Struct, "Dn2CppTaskAwaiter", $"Dn2CppTaskAwaiter{{ (Dn2CppTask*)({t.Expr}) }}");
+                Push(StackKind.Struct, "Dn2CppConfiguredTaskAwaiter",
+                    $"Dn2CppConfiguredTaskAwaiter{{ (Dn2CppTask*)({t.Expr}), (({Cast(options, "int32_t")}) & 1) != 0 }}");
                 return true;
             }
             case ("System.Runtime.CompilerServices.ConfiguredTaskAwaitable", "GetAwaiter"):
+            case ("System.Runtime.CompilerServices.ConfiguredValueTaskAwaitable", "GetAwaiter"):
             {
-                var a = Pop(); // ref awaitable (already a Dn2CppTaskAwaiter)
-                Push(StackKind.Struct, "Dn2CppTaskAwaiter", $"(*(Dn2CppTaskAwaiter*)({a.Expr}))");
+                var a = Pop();
+                Push(StackKind.Struct, "Dn2CppConfiguredTaskAwaiter", $"(*(Dn2CppConfiguredTaskAwaiter*)({a.Expr}))");
                 return true;
             }
             case ("ConfiguredTaskAwaiter", "get_IsCompleted"):
             {
                 var a = Pop();
                 Push(StackKind.I4, "int32_t",
-                    $"(((Dn2CppTaskAwaiter*)({a.Expr}))->task->status != DN2CPP_TASK_PENDING ? 1 : 0)");
+                    $"(((Dn2CppConfiguredTaskAwaiter*)({a.Expr}))->task->status != DN2CPP_TASK_PENDING ? 1 : 0)");
                 return true;
             }
             case ("ConfiguredTaskAwaiter", "GetResult"):
@@ -151,10 +149,10 @@ internal sealed partial class MethodCompiler
                 // Blocks on a still-pending task, exactly like TaskAwaiter.GetResult
                 // above — `t.ConfigureAwait(false).GetAwaiter().GetResult()` is the same
                 // sync-over-async idiom.
-                Emit($"dn2cpp_task_block(((Dn2CppTaskAwaiter*)({a.Expr}))->task);");
-                Emit($"dn2cpp_task_throw_if_faulted(((Dn2CppTaskAwaiter*)({a.Expr}))->task);");
+                Emit($"dn2cpp_task_block(((Dn2CppConfiguredTaskAwaiter*)({a.Expr}))->task);");
+                Emit($"dn2cpp_task_throw_if_faulted(((Dn2CppConfiguredTaskAwaiter*)({a.Expr}))->task);");
                 if (!sig.ReturnType.IsVoid) // ConfiguredTaskAwaiter<T>.GetResult
-                    PushTaskResult($"(((Dn2CppTaskAwaiter*)({a.Expr}))->task)", sig.ReturnType);
+                    PushTaskResult($"(((Dn2CppConfiguredTaskAwaiter*)({a.Expr}))->task)", sig.ReturnType);
                 return true;
             }
             // Same delegate-continuation form as TaskAwaiter above: a custom
@@ -164,9 +162,10 @@ internal sealed partial class MethodCompiler
             case ("ConfiguredTaskAwaiter", "UnsafeOnCompleted"):
             {
                 var cont = Pop(); // Action continuation
-                var a = Pop();    // this (ref Dn2CppTaskAwaiter)
-                Emit($"dn2cpp_task_on_completed_action(((Dn2CppTaskAwaiter*)({a.Expr}))->task, " +
-                     $"{Cast(cont, "Dn2CppObject*")});");
+                var a = Pop();
+                string awaiter = $"((Dn2CppConfiguredTaskAwaiter*)({a.Expr}))";
+                Emit($"dn2cpp_task_on_completed_action({awaiter}->task, {Cast(cont, "Dn2CppObject*")}, " +
+                    $"{awaiter}->captureContext);");
                 return true;
             }
 
@@ -175,16 +174,10 @@ internal sealed partial class MethodCompiler
             // ValueTask is a struct, so the receiver is a ref to the {task} struct.
             case ("System.Threading.Tasks.ValueTask", "ConfigureAwait"):
             {
-                Pop(); // bool continueOnCapturedContext (unmodeled)
+                var capture = Pop();
                 var v = Pop(); // ref this (ValueTask = {task} struct)
-                Push(StackKind.Struct, "Dn2CppTaskAwaiter",
-                    $"Dn2CppTaskAwaiter{{ ((Dn2CppTaskAwaiter*)({v.Expr}))->task }}");
-                return true;
-            }
-            case ("System.Runtime.CompilerServices.ConfiguredValueTaskAwaitable", "GetAwaiter"):
-            {
-                var a = Pop(); // ref awaitable (already a Dn2CppTaskAwaiter)
-                Push(StackKind.Struct, "Dn2CppTaskAwaiter", $"(*(Dn2CppTaskAwaiter*)({a.Expr}))");
+                Push(StackKind.Struct, "Dn2CppConfiguredTaskAwaiter",
+                    $"Dn2CppConfiguredTaskAwaiter{{ ((Dn2CppTaskAwaiter*)({v.Expr}))->task, ({capture.Expr}) != 0 }}");
                 return true;
             }
             // A ValueTask-derived awaiter may carry a NULL task — default(ValueTask)
@@ -194,13 +187,13 @@ internal sealed partial class MethodCompiler
             {
                 var a = Pop();
                 Push(StackKind.I4, "int32_t",
-                    $"(dn2cpp_vtask_status(((Dn2CppTaskAwaiter*)({a.Expr}))->task) != DN2CPP_TASK_PENDING ? 1 : 0)");
+                    $"(dn2cpp_vtask_status(((Dn2CppConfiguredTaskAwaiter*)({a.Expr}))->task) != DN2CPP_TASK_PENDING ? 1 : 0)");
                 return true;
             }
             case ("ConfiguredValueTaskAwaiter", "GetResult"):
             {
                 var a = Pop();
-                EmitAwaitedTaskResult($"dn2cpp_vtask(((Dn2CppTaskAwaiter*)({a.Expr}))->task)", sig.ReturnType);
+                EmitAwaitedTaskResult($"dn2cpp_vtask(((Dn2CppConfiguredTaskAwaiter*)({a.Expr}))->task)", sig.ReturnType);
                 return true;
             }
             // Delegate-continuation form; the NULL-task ("completed") encoding
@@ -209,9 +202,10 @@ internal sealed partial class MethodCompiler
             case ("ConfiguredValueTaskAwaiter", "UnsafeOnCompleted"):
             {
                 var cont = Pop(); // Action continuation
-                var a = Pop();    // this (ref Dn2CppTaskAwaiter)
-                Emit($"dn2cpp_task_on_completed_action(dn2cpp_vtask(((Dn2CppTaskAwaiter*)({a.Expr}))->task), " +
-                     $"{Cast(cont, "Dn2CppObject*")});");
+                var a = Pop();
+                string awaiter = $"((Dn2CppConfiguredTaskAwaiter*)({a.Expr}))";
+                Emit($"dn2cpp_task_on_completed_action(dn2cpp_vtask({awaiter}->task), {Cast(cont, "Dn2CppObject*")}, " +
+                    $"{awaiter}->captureContext);");
                 return true;
             }
 

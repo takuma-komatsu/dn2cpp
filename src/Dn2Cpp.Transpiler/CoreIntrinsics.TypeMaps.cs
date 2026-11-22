@@ -381,15 +381,10 @@ internal static class CoreIntrinsicTypeMaps
         // next scheduler turn.
         "System.Runtime.CompilerServices.YieldAwaitable",
         "YieldAwaiter",
-        // task.ConfigureAwait(bool) returns a ConfiguredTaskAwaitable wrapping the
-        // same task; its nested ConfiguredTaskAwaiter behaves exactly like a
-        // TaskAwaiter. ConfigureAwait is a no-op on the single-threaded model, so both
-        // lower to Dn2CppTaskAwaiter (carry the task pointer).
+        // Configured awaitables and their nested awaiters retain the capture bit.
         "System.Runtime.CompilerServices.ConfiguredTaskAwaitable",
         "ConfiguredTaskAwaiter",
-        // valueTask.ConfigureAwait(bool) mirrors it: ConfiguredValueTaskAwaitable
-        // and its nested ConfiguredValueTaskAwaiter (bare nested name) also lower
-        // to Dn2CppTaskAwaiter. The whole family must be intrinsic — the real
+        // ValueTask uses the same configured layout. The whole family must be intrinsic — the real
         // awaiter IL reaches into ValueTask's _obj field, which the fieldless
         // intrinsic ValueTask model does not carry.
         "System.Runtime.CompilerServices.ConfiguredValueTaskAwaitable",
@@ -702,15 +697,12 @@ internal static class CoreIntrinsicTypeMaps
         // of the nested awaiter, matching how nested TypeRefs decode here.
         ["System.Runtime.CompilerServices.YieldAwaitable"] = "Dn2CppYieldAwaiter",
         ["YieldAwaiter"] = "Dn2CppYieldAwaiter",
-        // ConfigureAwait's awaitable/awaiter both wrap a task and behave like a
-        // TaskAwaiter (ConfigureAwait is a no-op single-threaded), so reuse the Task
-        // awaiter struct — the await-suspend path then matches the Task case.
-        ["System.Runtime.CompilerServices.ConfiguredTaskAwaitable"] = "Dn2CppTaskAwaiter",
-        ["ConfiguredTaskAwaiter"] = "Dn2CppTaskAwaiter",
+        ["System.Runtime.CompilerServices.ConfiguredTaskAwaitable"] = "Dn2CppConfiguredTaskAwaiter",
+        ["ConfiguredTaskAwaiter"] = "Dn2CppConfiguredTaskAwaiter",
         // valueTask.ConfigureAwait(bool)'s awaitable/awaiter (non-generic and <T>,
         // matched arity-stripped): same task-wrapping model as the Task pair above.
-        ["System.Runtime.CompilerServices.ConfiguredValueTaskAwaitable"] = "Dn2CppTaskAwaiter",
-        ["ConfiguredValueTaskAwaiter"] = "Dn2CppTaskAwaiter",
+        ["System.Runtime.CompilerServices.ConfiguredValueTaskAwaitable"] = "Dn2CppConfiguredTaskAwaiter",
+        ["ConfiguredValueTaskAwaiter"] = "Dn2CppConfiguredTaskAwaiter",
         // StringBuilder lowers to a hand-written growable UTF-16 buffer.
         ["System.Text.StringBuilder"] = "Dn2CppStringBuilder*",
         // The degraded stack-trace model (see s_intrinsicTypes): real reference

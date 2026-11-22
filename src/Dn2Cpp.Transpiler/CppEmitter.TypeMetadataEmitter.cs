@@ -1585,7 +1585,7 @@ internal sealed partial class CppEmitter
                     genericArgs = GenericArgVector(c);
                     genericCount = c.Context.TypeArgs.Length;
                 }
-                string displayName = c.IntrinsicCppName == "Dn2CppTaskAwaiter"
+                string displayName = c.IntrinsicCppName is ("Dn2CppTaskAwaiter" or "Dn2CppConfiguredTaskAwaiter")
                     && c.Context.TypeArgs.Length > 0 && IsNestedType(c)
                         ? _e.ClosedNestedTypeDisplay(c)
                         : Compilation.ReflectionTypeName(c);

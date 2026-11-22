@@ -3197,7 +3197,7 @@ extern const Dn2CppTypeInfo dn2cpp_double_type;
 // _equals/_gethashcode read the Dn2CppDecimal payload back from it.
 extern const Dn2CppTypeInfo dn2cpp_decimal_type;
 // Boxed type-info for YieldAwaiter. Task-family awaiters use precise emitted
-// identities even though they share the Dn2CppTaskAwaiter C++ layout.
+// identities across the configured and ordinary C++ layouts.
 extern const Dn2CppTypeInfo dn2cpp_yield_awaiter_type;
 extern const Dn2CppTypeInfo dn2cpp_parallel_loop_result_type;
 // Dn2CppType objects carry RuntimeType; the public abstract bases have distinct identities.
@@ -5969,16 +5969,18 @@ enum
 // of those) are read, and a continuation they exclude settles CANCELED rather than running,
 // which is what .NET does. Pass 0 for the overloads that take no options.
 Dn2CppTask* dn2cpp_task_continue_with(Dn2CppTask* t, Dn2CppObject* del, Dn2CppObject* state,
-                                     int32_t kind, int32_t options, Dn2CppCancelSource* source = nullptr);
+                                     int32_t kind, int32_t options, Dn2CppCancelSource* source = nullptr,
+                                     bool needsOwner = false);
 // Task.ContinueWith(Func<Task, TStruct> : value type): the continuation's struct result
 // does not fit the 8-byte slot, so `invoke` is a transpiler-emitted trampoline taking
 // (delegate, settled antecedent) that heap-boxes the result (dn2cpp_struct_result_box)
 // into the slot — the ContinueWith mirror of dn2cpp_task_run_struct.
 Dn2CppTask* dn2cpp_task_continue_with_struct(Dn2CppTask* t, Dn2CppObject* del,
                                             uint64_t (*invoke)(Dn2CppObject*, Dn2CppObject*),
-                                            int32_t options, Dn2CppCancelSource* source = nullptr);
+                                            int32_t options, Dn2CppCancelSource* source = nullptr, bool needsOwner = false);
 Dn2CppTask* dn2cpp_task_continue_with_state_result(Dn2CppTask* t, Dn2CppObject* del,
-    Dn2CppObject* state, uint64_t (*invoke)(Dn2CppObject*, Dn2CppObject*, Dn2CppObject*), int32_t options, Dn2CppCancelSource* source = nullptr);
+    Dn2CppObject* state, uint64_t (*invoke)(Dn2CppObject*, Dn2CppObject*, Dn2CppObject*), int32_t options,
+    Dn2CppCancelSource* source = nullptr, bool needsOwner = false);
 // Task.WaitAsync(CancellationToken): a task that mirrors `t`'s outcome, but settles
 // CANCELED as soon as `src` cancels — whichever happens first wins, exactly once. `t`
 // itself keeps running; WaitAsync bounds the WAIT, not the work. A null source can never
@@ -7674,6 +7676,8 @@ struct Dn2CppCont
     // reachable through scanned memory until it runs.
     Dn2CppCont* gcprev;
     Dn2CppCont* gcnext;
+    bool capturedContext;
+    bool wallTimers; // a continuation dispatched by a finite wait keeps real timer deadlines
 };
 
 // The not-yet-started work of a cold task (`new Task(...)`): the delegate, its
@@ -7715,6 +7719,8 @@ enum : uint8_t
     DN2CPP_TASK_EXPLICIT_FINISH = 4,
 };
 
+struct Dn2CppTimer;
+
 struct Dn2CppTask : Dn2CppObject
 {
     // The publication point: a settle stores it last with release, so every read —
@@ -7754,6 +7760,7 @@ struct Dn2CppTask : Dn2CppObject
     int32_t exceptionHolderState; // guarded while pending, published with terminal status
     bool nativeFaultObserved; // protected by the task mutex, before holder installation
     std::atomic<uint8_t> finishProvenance; // actual attachment history and exclusive Finish ownership
+    std::atomic<Dn2CppTimer*> delayTimer; // published before returning a finite Task.Delay
 };
 
 struct Dn2CppTaskCompletionSource : Dn2CppObject
@@ -7802,6 +7809,12 @@ void dn2cpp_task_add_exception(Dn2CppTask* task, Dn2CppObject* exception, int32_
 struct Dn2CppTaskAwaiter
 {
     Dn2CppTask* task;
+};
+
+struct Dn2CppConfiguredTaskAwaiter
+{
+    Dn2CppTask* task;
+    bool captureContext;
 };
 
 // default(ValueTask) / default(ValueTask<T>) carries a NULL task pointer — the
@@ -7972,12 +7985,12 @@ void dn2cpp_task_set_exception(Dn2CppTask* t, Dn2CppObject* exception);
 void dn2cpp_task_set_exception_or_canceled(Dn2CppTask* t, Dn2CppObject* exception);
 // Register a resumption to run when `t` completes (the suspension path). If `t`
 // is already complete the resumption is posted immediately.
-void dn2cpp_task_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state);
+void dn2cpp_task_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state, bool captureContext = true);
 // A BCL builder's suspension: dn2cpp_task_on_completed, except that a throw from the
 // registration goes to dn2cpp_async_await_rejected, which re-raises it through
 // Task.ThrowAsync instead of into the suspended method. An explicit awaiter.OnCompleted
 // call keeps the synchronous throw.
-void dn2cpp_async_await_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state);
+void dn2cpp_async_await_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state, bool captureContext = true);
 void dn2cpp_async_await_rejected(Dn2CppObject* exc);
 // Invoke a no-arg System.Action delegate (and its multicast chain) generically, via
 // the uniform delegate layout.
@@ -7985,7 +7998,7 @@ void dn2cpp_action_invoke(Dn2CppObject* action);
 void dn2cpp_paramthread_invoke(Dn2CppObject* action, Dn2CppObject* state);
 // Register a System.Action to run when `t` completes — backs a user awaiter's
 // TaskAwaiter.OnCompleted(Action) and the custom-awaitable await continuation.
-void dn2cpp_task_on_completed_action(Dn2CppTask* t, Dn2CppObject* action);
+void dn2cpp_task_on_completed_action(Dn2CppTask* t, Dn2CppObject* action, bool captureContext = true);
 // Task.Delay(ms): a task that completes after `ms` of virtual time. There is no
 // wall clock — a logical clock advances only when no work is runnable, so concurrent
 // delays complete in duration order, deterministically and without real sleeping.
@@ -7993,7 +8006,6 @@ void dn2cpp_task_on_completed_action(Dn2CppTask* t, Dn2CppObject* action);
 Dn2CppTask* dn2cpp_task_delay(int64_t ms);
 int64_t dn2cpp_task_delay_ms(int32_t ms);
 int64_t dn2cpp_task_delay_ms_from_ticks(int64_t ticks);
-void dn2cpp_task_wait_require_timeout(int64_t ticks);
 // Task.WhenAll<TResult>(Task<TResult>[]): a task whose result is a TResult[] of
 // each input task's result, completing once every input completes (or faulting
 // with the first input's fault). `kind` selects how each input's raw result slot
@@ -8109,6 +8121,7 @@ int32_t dn2cpp_vtask_status(Dn2CppTask* t);
 // dn2cpp_task_block (unwrapped). The unsatisfiable-wait verdict is shared:
 // the deadlock InvalidOperationException is dn2cpp's own diagnosis, never wrapped.
 Dn2CppTask* dn2cpp_task_block_wait(Dn2CppTask* t);
+int32_t dn2cpp_task_wait_timeout(Dn2CppTask* t, int64_t ticks);
 // Task.WaitAll(Task[]): block until every input settles, then throw one
 // AggregateException carrying every failure (a single fault is still wrapped, like
 // real .NET's WaitAllCore) — so it does NOT re-raise as it goes.

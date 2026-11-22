@@ -4,13 +4,9 @@ using System.Threading.Tasks;
 
 namespace TaskInspectSubset
 {
-    // Task inspection surface: Dispose() — a no-op, the task is
-    // GC-managed; Wait(TimeSpan) — always True, the scheduler drains to
-    // completion so the timeout bound is never hit; Exception — FAULTED wraps
-    // the fault in an AggregateException, every other status (canceled
-    // included) answers null; Id — positive, unique, stable. Raw Id values are
-    // never printed (dn2cpp's numbering differs from real .NET's); everything
-    // asserted here is deterministic and matches real .NET.
+    // A completed task supports timed waits and disposal. Only a faulted task
+    // exposes an AggregateException. Task IDs are checked for positivity,
+    // uniqueness and stability because each runtime assigns its own values.
     internal static class Program
     {
         private static void Run()
