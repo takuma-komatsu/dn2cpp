@@ -13,6 +13,11 @@ namespace ConvertParse
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+            if (args.Length > 0 && args[0] == "currency-symbol-only")
+            {
+                NumberStylesSubset.Program.RunCurrencySymbol();
+                return;
+            }
 
             ConvertSubset.Program.__GateEntry();
             ConvertBaseSubset.Program.__GateEntry();
@@ -72,6 +77,9 @@ namespace ConvertParse
             Int128CheckedSubset.Program.__GateEntry();
             UInt128CheckedSubset.Program.__GateEntry();
             ConvertChangeTypeSubset.Program.RunFloatingStringConversions();
+            if (args.Length > 0 && args[0] == "before-currency-symbol")
+                return;
+            NumberStylesSubset.Program.RunCurrencySymbol();
         }
     }
 }
