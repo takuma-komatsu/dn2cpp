@@ -13,7 +13,7 @@ internal static class Program
         {
             if (args.Length == 0 || args.Contains("--help") || args.Contains("-h"))
             {
-                Console.WriteLine("Usage: ildiet <assembly.dll> [-r <reference.dll>] --link-xml <file> [-o <directory>] [--project-root <directory>] [--link-feature <com|sre|remoting>] [--work-budget <n>] [--ildiet-skip-assembly <name>] [--stripping-level high|medium]");
+                Console.WriteLine("Usage: ildiet <assembly.dll> [-r <reference.dll>] --link-xml <file> [-o <directory>] [--project-root <directory>] [--link-feature <com|sre|remoting>] [--work-budget <n>] [--ildiet-skip-assembly <name>] [--stripping-level high|medium|low]");
                 Console.WriteLine("       ildiet --request <request.xml> --result <result.xml> [--work-budget <n>]");
                 return args.Length == 0 ? 1 : 0;
             }
@@ -131,8 +131,8 @@ internal sealed class DietRequest
             },
         };
         if (request.FrameworkAssets is { } assets
-            && (request.StrippingLevel != StrippingLevel.Medium || !StableHash.IsHex(assets)))
-            throw new NotSupportedException("frameworkAssets must be a Medium framework membership digest");
+            && (!request.StrippingLevel.UsesTypeWideRetention() || !StableHash.IsHex(assets)))
+            throw new NotSupportedException("frameworkAssets must be a Medium or Low framework membership digest");
         foreach (var child in root.Children)
         {
             switch (child.Name)
@@ -189,7 +189,8 @@ internal sealed class DietRequest
     {
         "high" => StrippingLevel.High,
         "medium" => StrippingLevel.Medium,
-        _ => throw new NotSupportedException("stripping level must be high or medium: " + value),
+        "low" => StrippingLevel.Low,
+        _ => throw new NotSupportedException("stripping level must be high, medium or low: " + value),
     };
 
     internal static long ParseWorkBudget(string value)

@@ -5339,7 +5339,7 @@ internal sealed partial class Compilation
                     return null;
                 string full = TypeRefFullName(reader, (TypeReferenceHandle)mr.Parent);
                 // The proxy constructor's assembly is part of its retention contract.
-                var found = _strippingLevel == StrippingLevel.Medium && full == DebuggerProxyRetention.AttributeName
+                var found = _strippingLevel.UsesTypeWideRetention() && full == DebuggerProxyRetention.AttributeName
                     ? ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class : FindClassByFullName(full);
                 if (found is null)
                     return null;

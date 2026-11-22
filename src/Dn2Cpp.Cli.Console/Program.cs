@@ -113,7 +113,7 @@ for (int i = 0; i < args.Length; i++)
     {
         if (i + 1 >= args.Length)
         {
-            Console.Error.WriteLine("error: --stripping-level expects high or medium");
+            Console.Error.WriteLine("error: --stripping-level expects high, medium or low");
             return 1;
         }
         string value = args[++i];
@@ -121,9 +121,11 @@ for (int i = 0; i < args.Length; i++)
             strippingLevel = StrippingLevel.High;
         else if (value == "medium")
             strippingLevel = StrippingLevel.Medium;
+        else if (value == "low")
+            strippingLevel = StrippingLevel.Low;
         else
         {
-            Console.Error.WriteLine($"error: --stripping-level expects high or medium, got '{value}'");
+            Console.Error.WriteLine($"error: --stripping-level expects high, medium or low, got '{value}'");
             return 1;
         }
     }
@@ -210,7 +212,7 @@ for (int i = 0; i < args.Length; i++)
 
 if (string.IsNullOrEmpty(input))
 {
-    Console.Error.WriteLine("Usage: dn2cpp-console <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--auto-ref] [--stripping-level <high|medium>] [--no-ildiet] [--ildiet-output <dir>] [--ildiet-skip-assembly <name>] [--ildiet-arg <argument>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--fp-mode <strict|precise>] [--no-shared-generics] [--obfuscate] [--shadow-stack] [--no-metadata-compression] [--reflection-metadata <type>=native|packed] [--measure] [--verbose]");
+    Console.Error.WriteLine("Usage: dn2cpp-console <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--auto-ref] [--stripping-level <high|medium|low>] [--no-ildiet] [--ildiet-output <dir>] [--ildiet-skip-assembly <name>] [--ildiet-arg <argument>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--fp-mode <strict|precise>] [--no-shared-generics] [--obfuscate] [--shadow-stack] [--no-metadata-compression] [--reflection-metadata <type>=native|packed] [--measure] [--verbose]");
     return 1;
 }
 

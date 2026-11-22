@@ -18,6 +18,7 @@ cli = Path(profile_args.pop(0)).resolve() if profile_args and not profile_args[0
 if profile_args not in ([], ["--representative"]):
     raise SystemExit("expected an optional --representative profile")
 modes = ("full",) if profile_args else ("raw", "full")
+levels = ("default", "high", "medium") + (() if profile_args else ("low",))
 directory.mkdir(parents=True, exist_ok=True)
 original = directory / "original"
 
@@ -88,7 +89,7 @@ rejected = run(companion, "--request", wrong_request, success=False)
 assert "target framework assembly membership differs from the compiler request" in rejected.stderr
 assert not (directory / "wrong-framework-assets" / "ildiet-result.xml").exists()
 
-for args in (("--stripping-level",), ("--stripping-level", "low"),
+for args in (("--stripping-level",), ("--stripping-level", "unknown"),
              ("--request", directory / "medium-request.xml", "--stripping-level", "high")):
     run(companion, *args, success=False)
 
@@ -108,7 +109,7 @@ def emitted_files(output):
 
 for mode in modes:
     defaults = None
-    for level in ("default", "high", "medium"):
+    for level in levels:
         output = directory / ("emission-" + level + "-" + mode)
         arguments = [original / "MediumApp.dll", "-r", original / "MediumLib.dll", "-r",
                      original / "System.Private.CoreLib.dll", "--link-xml", original / "link.xml",
@@ -121,11 +122,33 @@ for mode in modes:
         run(cli, *arguments)
         files = emitted_files(output)
         assert files, "CLI emitted no C++"
+        text = "\n".join(content.decode("utf-8") for content in files.values())
+        if level == "low":
+            assert re.search(r"\bLowInputOnly_Marker_\w+\([^;]*?\)\s*\{[^}]*\b7423\b", text), \
+                "Low did not retain the primary input's unused executable body"
+            assert "gendef_MediumFixture_LowInputOpen_1" in text and not re.search(
+                r"\bLowInputOpen_\w*OpenMarker_\w+\([^;]*?\)\s*\{", text), \
+                "Low lost an open generic identity or minted a body without type arguments"
+            assert "Unreferenced_MustStayAbsent_" not in text and "Used__ctor_" in text, \
+                "Low changed the reference assembly's Medium retention policy"
+            assert startup_pass(text) == high_startup, \
+                "Low ran a retained initializer early"
+            if mode == "full":
+                result, _ = manifest(output / "ildiet")
+                request = ET.parse(directory / "medium-request.xml").getroot()
+                request.set("strippingLevel", "low")
+                # The integrated CLI also passes its runtime support assembly.
+                request.set("frameworkAssets", framed_hash(["ildiet-framework-assets-v1", *("0" for _ in result.findall("assembly"))]))
+                medium_result, _ = manifest(directory / "emission-medium-full" / "ildiet")
+                assert result.get("contract") == contract_digest(request) != medium_result.get("contract"), \
+                    "integrated ILDiet did not publish a distinct Low contract"
+                assert result.get("fallback") == "none" and result.find("assembly[@name='MediumApp']").get("mode") == "rewritten", \
+                    "Low did not exercise genuine rewriting"
+            continue
         if level == "default":
             defaults = files
         if level == "high":
             assert files == defaults, "explicit High changed generated C++"
-        text = "\n".join(content.decode("utf-8") for content in files.values())
         # Medium retention schedules no initializer at startup: both levels run the same
         # initializers before Main, and every other initializer waits for its first trigger.
         if level == "high":
@@ -135,6 +158,7 @@ for mode in modes:
         elif level == "medium":
             assert startup_pass(text) == high_startup, \
                 "Medium retention changed the startup pass: " + repr(startup_pass(text))
+        assert "LowInputOnly_Marker_" not in text, "High or Medium kept an unrelated input type body"
         ctor = re.search(r"\bUsed__ctor_\w+\([^;]*?\)\s*\{", text)
         assert bool(ctor) == (level == "medium"), "wrong emitted private constructor policy"
         for owner in ("AllocationTrigger", "VirtualTrigger", "GenericVirtualTrigger", "EqualityTrigger",
@@ -261,6 +285,10 @@ assert missing.returncode == 2 and "Unhandled exception" not in diagnostic, "unr
 for fact in ("MediumFixture.ForwardedAttribute", "MediumLib", "MediumFixture.Used.Follow",
              "MediumFixture.WideFlags, MediumFacade", "encoded width is unknown", "Medium stripping while retaining"):
     assert fact in diagnostic, "missing attribute failure provenance: " + fact
+
+if "low" in levels:
+    print("low-input-roots=" + ",".join(modes))
+
 print("stripping-levels=high-compatible,medium-static-closure,metadata-inert,known-generics,all-assemblies,lazy-initializer,emitted-metadata;modes=" + ",".join(modes))
 
 from intercept_retention import validate_intercept_retention

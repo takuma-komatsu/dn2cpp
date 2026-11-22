@@ -73,7 +73,10 @@ framework-like name or a copied ILDiet reference is not authority. Integrated
 ILDiet verifies the original membership before pruning; the compiler retains it
 across the validated projection. Application, third-party, backend and unverified
 inputs keep Medium's type-wide policy, including a flattened manual replay without
-original pack provenance.
+original pack provenance. Low uses the same queue but seeds every declared
+type in the primary input assembly, unless it is verified BCL. The reference
+list does not become a blanket root, and an open generic definition root keeps
+its identity without choosing type arguments.
 Normal calls, runtime and virtual dispatch, and explicit preservation still
 apply; for example, a framework generic still carries its application argument
 types into the ordinary Medium policy.

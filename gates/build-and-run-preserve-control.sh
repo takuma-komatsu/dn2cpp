@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Preserved reflection-created boxes retain interface dispatch after write-back.
-# Full mode also exercises the isolated routing and preprocessing variants below.
+# Full mode also exercises the isolated routing, preprocessing and Low input-root variants.
 # Managed DLL stripping and explicit preservation: unreachable metadata is removed,
 # while PreserveAttribute and merged Unity-format link.xml keep selected bodies.
 # An indexer selected through a nonexistent accessor fails signature validation.
@@ -46,7 +46,7 @@ preserve_full() { [ "$DN2CPP_PRESERVE_CONTROL_FULL" = 1 ]; }
 echo "preserve-control-profile=$([ "$DN2CPP_PRESERVE_CONTROL_FULL" = 1 ] && echo full || echo representative)"
 if ! preserve_full; then
     echo 'preserve-control coverage: aggregate preservation, basic High/Medium retention and ILDiet runtime parity'
-    echo 'preserve-control extended checks: skipped (not selected); not counted as passed'
+    echo 'preserve-control extended checks (including Low input roots): skipped (not selected); not counted as passed'
 fi
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|preserve-control-full:$DN2CPP_PRESERVE_CONTROL_FULL"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $(printf '%s ' gates/fixtures/ildiet-metadata-validation/*.py)"
@@ -56,6 +56,9 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|repeated-arrays-prefix:${D
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/CutRequestCapture.cs gates/fixtures/ildiet-metadata-validation/cut_authority_admission.py gates/fixtures/ildiet-metadata-validation/selected_cut_admission.py gates/fixtures/ildiet-metadata-validation/cut_request_capture.py"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.cs gates/fixtures/ildiet-metadata-validation/check-stripping.py"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|stripping-levels:high,medium"
+if preserve_full; then
+    DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|low-input-roots:raw,full"
+fi
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|return-parameter-prefix:${DN2CPP_BEFORE_RETURN_PARAMETER_ATTRIBUTES:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/ReturnParameterAttributesSubset.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.Intercepts.cs gates/fixtures/ildiet-metadata-validation/intercept_retention.py"

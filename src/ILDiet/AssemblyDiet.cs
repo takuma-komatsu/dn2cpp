@@ -115,7 +115,7 @@ internal sealed partial class AssemblyDiet : IDisposable
     {
         var paths = new List<string> { _request.Input };
         paths.AddRange(_request.References);
-        var targetFramework = _request.StrippingLevel == StrippingLevel.Medium
+        var targetFramework = _request.StrippingLevel.UsesTypeWideRetention()
             ? TargetFrameworkAssets.Classify(paths) : null;
         if (_request.FrameworkAssets is { } expected
             && (targetFramework is null || ILDietProtocol.FrameworkAssetsDigest(paths.Count, targetFramework) != expected))
@@ -278,6 +278,9 @@ internal sealed partial class AssemblyDiet : IDisposable
         foreach (var method in _cutMethods.OrderBy(m => _byModule[m.Module].Index).ThenBy(m => m.MetadataToken.ToInt32()))
             KeepCutMethod(method);
         var app = _assemblies[0].Assembly.MainModule;
+        if (_request.StrippingLevel == StrippingLevel.Low && !_assemblies[0].IsTargetFramework)
+            foreach (var type in AllTypes(app.Types).OrderBy(t => t.MetadataToken.ToInt32()))
+                if (type.Name != "<Module>") NoteMediumType(type);
         if (app.EntryPoint is not null) MarkMethod(app.EntryPoint);
         var stripped = _assemblies.Where(a => !a.Copy).Select(a => a.Assembly.Name.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var assembly in _assemblies)
@@ -578,7 +581,7 @@ internal sealed partial class AssemblyDiet : IDisposable
     {
         // A signature-only method does not activate its state-machine body.
         if (signatureOnly && IsStateMachineAttribute(attribute)) return true;
-        if (_request.StrippingLevel != StrippingLevel.Medium
+        if (!_request.StrippingLevel.UsesTypeWideRetention()
             || attribute.AttributeType.FullName != DebuggerProxyRetention.AttributeName
             || attribute.Constructor.Parameters.Count != 1
             || ResolveMember(attribute.Constructor) is not MethodDefinition constructor

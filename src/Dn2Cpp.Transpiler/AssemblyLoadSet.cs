@@ -52,7 +52,7 @@ internal sealed class AssemblyLoadSet
             if (injected && options.AutoRef)
                 result.LoadReferenceClosure(paths);
         }
-        if (options.StrippingLevel == StrippingLevel.Medium)
+        if (options.StrippingLevel.UsesTypeWideRetention())
             result.TargetFrameworkIndexes = TargetFrameworkAssets.Classify(result.Paths);
         return result;
     }

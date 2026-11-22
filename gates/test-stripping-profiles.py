@@ -31,12 +31,15 @@ def shell(source, cwd, extra=None):
 driver = GATES / "fixtures/ildiet-metadata-validation/check-stripping.py"
 driver_source = driver.read_text(encoding="utf-8")
 prefix = driver_source[:driver_source.index("directory.mkdir(parents=True, exist_ok=True)")]
-for suffix, valid, expected in [([], True, ["raw", "full"]), (["--representative"], True, ["full"]),
-                                (["--with-medium"], False, None),
-                                (["--representative", "--representative"], False, None)]:
+standard_levels = ["default", "high", "medium"]
+for suffix, valid, expected in [
+        ([], True, [["raw", "full"], [*standard_levels, "low"]]),
+        (["--representative"], True, [["full"], standard_levels]),
+        (["--with-medium"], False, None),
+        (["--representative", "--representative"], False, None)]:
     argv = [str(driver), "ildiet", "probe", "transpiler", "output", "cli", *suffix]
     parser = "import sys\nsys.argv = " + repr(argv) + "\n__file__ = " + repr(str(driver)) + "\n"
-    result = subprocess.run([sys.executable, "-c", parser + prefix + "\nprint(__import__('json').dumps(modes))\n"],
+    result = subprocess.run([sys.executable, "-c", parser + prefix + "\nprint(__import__('json').dumps([modes, levels]))\n"],
                             cwd=REPO, env=ENV, capture_output=True, text=True, encoding="utf-8")
     check((result.returncode == 0) == valid, (suffix, result.returncode, result.stderr))
     if valid:

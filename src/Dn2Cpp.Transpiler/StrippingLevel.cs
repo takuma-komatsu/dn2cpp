@@ -5,6 +5,21 @@ public enum StrippingLevel
 {
     High,
     Medium,
+    Low,
+}
+
+internal static class StrippingLevelPolicy
+{
+    internal static bool UsesTypeWideRetention(this StrippingLevel level)
+        => level is StrippingLevel.Medium or StrippingLevel.Low;
+
+    internal static string OptionName(this StrippingLevel level) => level switch
+    {
+        StrippingLevel.High => "high",
+        StrippingLevel.Medium => "medium",
+        StrippingLevel.Low => "low",
+        _ => throw new NotSupportedException("Unknown stripping level: " + level),
+    };
 }
 
 internal static class DebuggerProxyRetention

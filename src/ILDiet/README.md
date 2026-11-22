@@ -22,12 +22,14 @@ generation does not carry original target pack provenance, so those
 inputs use the conservative Medium rule. Use the integrated CLI with the
 original inputs to replay the verified BCL policy.
 
-`--stripping-level high|medium` selects the same policy as the dn2cpp CLI.
+`--stripping-level high|medium|low` selects the same policy as the dn2cpp CLI.
 `high` is the default member-level policy. `medium` keeps every declared member
 of a statically used type, including non-public constructors and accessors, and
 follows those members' static references to a fixed point. Verified BCL assemblies
 of the selected installed .NET 10 runtime pack or packaged target refs use
-member-level retention instead.
+member-level retention instead. `low` adds primary input type definitions to
+the same root queue without copying the assembly wholesale or rooting its
+reference assemblies.
 The compiler and ILDiet classify original inputs together, not by their names or
 by whether their files are copied. Application, third-party, backend and
 unverified assemblies keep the type-wide rule. Copied files retain the existing
@@ -54,7 +56,7 @@ construct unknown specializations. Medium retention schedules no initializer at
 startup: a retained initializer runs at its first use, as under High.
 
 Captured requests carry `strippingLevel`, and their contract digest distinguishes
-Medium from High. An omitted request attribute means High for existing request
+High, Medium and Low. An omitted request attribute means High for existing request
 producers.
 
 `--project-root` discovers files named exactly `link.xml`, excluding `bin`,

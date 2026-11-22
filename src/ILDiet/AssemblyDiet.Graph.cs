@@ -296,7 +296,7 @@ internal sealed partial class AssemblyDiet
     private void ApplyType(TypeNode node)
     {
         var mediumOwner = _mediumOwner;
-        if (_request.StrippingLevel == StrippingLevel.Medium) _mediumOwner = node.Def;
+        if (_request.StrippingLevel.UsesTypeWideRetention()) _mediumOwner = node.Def;
         bool passive = _passiveAttributeTypes.Contains(node.Def) && !_independentMetadataTypes.Contains(node.Def)
             && (node.State & TypeState.Runtime) == 0;
         var bindingOwner = _passiveBindingOwner;
@@ -388,7 +388,7 @@ internal sealed partial class AssemblyDiet
 
     private void ApplyMethod(MethodNode node)
     {
-        bool medium = _request.StrippingLevel == StrippingLevel.Medium;
+        bool medium = _request.StrippingLevel.UsesTypeWideRetention();
         var mediumOwner = _mediumOwner;
         var mediumSource = _mediumSource;
         if (medium)

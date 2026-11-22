@@ -29,8 +29,8 @@ internal static class ILDietPreprocessor
         text.Append("<ildiet version=\"2\" input=\"").Append(Escape(Path.GetFullPath(paths[0])))
             .Append("\" output=\"").Append(Escape(output))
             .Append("\" copyAll=\"").Append(options.HotupdateBase ? "true" : "false").Append('"');
-        if (options.StrippingLevel == StrippingLevel.Medium)
-            text.Append(" strippingLevel=\"medium\" frameworkAssets=\"")
+        if (options.StrippingLevel.UsesTypeWideRetention())
+            text.Append(" strippingLevel=\"").Append(options.StrippingLevel.OptionName()).Append("\" frameworkAssets=\"")
                 .Append(ILDietProtocol.FrameworkAssetsDigest(paths.Count, loadSet.TargetFrameworkIndexes)).Append('"');
         text.Append(">\n");
         for (int i = 1; i < paths.Count; i++)

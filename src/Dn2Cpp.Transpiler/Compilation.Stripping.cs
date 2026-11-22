@@ -28,7 +28,7 @@ internal sealed partial class Compilation
     internal TypeDesc ResolveAttributeTypeName(string name)
     {
         var type = ResolveSerializedTypeName(name);
-        if (_strippingLevel != StrippingLevel.Medium || type.Kind != TypeKind.External)
+        if (!_strippingLevel.UsesTypeWideRetention() || type.Kind != TypeKind.External)
             return type;
         string chain = SerializedTypeNamePrefix(name);
         int comma = name.IndexOf(',');
@@ -73,7 +73,7 @@ internal sealed partial class Compilation
 
     internal PrimitiveTypeCode AttributeEnumUnderlying(TypeDesc type)
     {
-        if (_strippingLevel == StrippingLevel.Medium
+        if (_strippingLevel.UsesTypeWideRetention()
             && (type.Class is not { } cls || !EnsureShape(cls).IsEnum))
             throw new NotSupportedException("Custom attribute enum " + type
                 + (type.ExternalAssembly is { } assembly ? ", " + assembly : "")
@@ -85,7 +85,7 @@ internal sealed partial class Compilation
     // signature probe or overload candidate is not evidence of static use.
     private void NoteMediumType(TypeDesc? type)
     {
-        if (_strippingLevel != StrippingLevel.Medium || type is null || type.IsCanonPlaceholder)
+        if (!_strippingLevel.UsesTypeWideRetention() || type is null || type.IsCanonPlaceholder)
             return;
         if (type.FunctionSignature is { } function)
             foreach (var part in function.Types)
@@ -207,7 +207,7 @@ internal sealed partial class Compilation
 
     private void NoteMediumMethod(MethodInfo method)
     {
-        if (_strippingLevel != StrippingLevel.Medium || !_mediumMethods.Add(method))
+        if (!_strippingLevel.UsesTypeWideRetention() || !_mediumMethods.Add(method))
             return;
         NoteMediumType(TypeDesc.MakeClass(method.DeclaringClass));
         NoteMediumSignature(method.Signature, MediumNativeSignatureOwner(TypeDesc.MakeClass(method.DeclaringClass)));
@@ -217,7 +217,7 @@ internal sealed partial class Compilation
 
     private void NoteMediumBodyTypes(MethodInfo method, MethodBodyBlock body)
     {
-        if (_strippingLevel != StrippingLevel.Medium)
+        if (!_strippingLevel.UsesTypeWideRetention())
             return;
         NoteMediumBodyTypes(method.Module, body, method.Context);
     }
@@ -236,7 +236,7 @@ internal sealed partial class Compilation
     private void NoteMediumOperand(Module module, EntityHandle handle, GenericContext context,
         TypeDesc[]? methodArguments = null)
     {
-        if (_strippingLevel != StrippingLevel.Medium)
+        if (!_strippingLevel.UsesTypeWideRetention())
             return;
         var reader = module.Reader;
         switch (handle.Kind)
@@ -293,6 +293,26 @@ internal sealed partial class Compilation
         }
     }
 
+    private void SeedLowInputTypes()
+    {
+        if (_strippingLevel != StrippingLevel.Low || AppModule.IsTargetFramework)
+            return;
+        // Root definitions, not whichever closed instances happened to be
+        // decoded while building the model. Open definitions need identities,
+        // but only real references can supply arguments for executable bodies.
+        foreach (var handle in AppModule.Reader.TypeDefinitions)
+        {
+            if (AppModule.ClassMap.TryGetValue(handle, out var cls) && cls.Name != "<Module>")
+                NoteMediumType(TypeDesc.MakeClass(cls));
+            else if (AppModule.GenericTemplates.Contains(handle))
+            {
+                NoteMediumType(TypeDesc.MakeTemplate(AppModule, handle));
+                NoteTypeofOpenGenericDef(GenericDefinitionKey(AppModule, handle),
+                    ResolveOpenGenericDefKind(AppModule, handle), GenericParamNames(AppModule, handle));
+            }
+        }
+    }
+
     private bool RetainPendingMediumTypes()
     {
         if (_mediumPending.Count == 0)
@@ -316,7 +336,7 @@ internal sealed partial class Compilation
             }
             catch (NotSupportedException exception) when (!IsMustEscape(exception))
             {
-                throw new NotSupportedException("Medium stripping while retaining "
+                throw new NotSupportedException(_strippingLevel + " stripping while retaining "
                     + (type.Class is { } owner ? MediumRetentionChain(owner)
                         : MethodCompiler.OpenDefBacktickName(type.TemplateModule!, type.TemplateHandle))
                     + ": " + exception.Message, exception);
@@ -820,7 +840,7 @@ internal sealed partial class Compilation
         }
     }
 
-    internal bool IsMediumProxyConstructor(MethodInfo? ctor) => _strippingLevel == StrippingLevel.Medium
+    internal bool IsMediumProxyConstructor(MethodInfo? ctor) => _strippingLevel.UsesTypeWideRetention()
         && ctor is { Name: ".ctor", IsStatic: false }
         && ctor.DeclaringClass.FullName == DebuggerProxyRetention.AttributeName
         && ctor.Signature.ParameterTypes.Length == 1
