@@ -68,14 +68,18 @@ A new export-preset enum option `dotnet/export_backend`:
 
 Every export target offers **Stripping Level**, the enum preset option
 `dotnet/dn2cpp/stripping_level`, visible with the dn2cpp backend. **High** (value
-`0`) is the default, including for presets without the key; **Medium** (value
-`1`) retains all members of statically referenced types across every assembly.
-The exporter always passes one `--stripping-level high|medium` pair. A matching
-pair in either the project or preset's `dotnet/dn2cpp/extra_transpile_args` is
-deduplicated; an incomplete, invalid or conflicting pair fails with a diagnostic
-directing the user to the preset. An invalid stored enum value also fails.
-The setting is independent of
-IL Pre-stripping: disabling the DLL rewrite leaves Medium active in C++ generation.
+`0`) is the default, including for presets without the key. **Medium** (`1`)
+retains all members of statically referenced types outside verified BCL
+assemblies. **Low** (`2`) also roots all declared types in the primary game
+assembly; it does not root other assemblies wholesale. Low requires a toolchain
+bundle with a Low-capable compiler and matching ILDiet companion.
+The exporter always passes one `--stripping-level high|medium|low` pair.
+A matching pair in either the project or preset's
+`dotnet/dn2cpp/extra_transpile_args` is deduplicated; an incomplete, invalid or
+conflicting pair fails with a diagnostic directing the user to the preset. An
+invalid stored enum value also fails. The setting is independent of
+IL Pre-stripping: disabling the DLL rewrite leaves the selected level active
+in C++ generation.
 See [the retention contract](ARCHITECTURE.md#1-pipeline) for the static-reference
 closure, initialization behavior and runtime-only reflection limits.
 

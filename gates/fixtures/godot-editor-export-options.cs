@@ -13,6 +13,7 @@ string[] names = ["trim_reflection", "trim_godot_classes", "shared_generics", "c
 string[] flags = ["--trim-reflection", "--trim-godot-classes", "--no-shared-generics", "--no-metadata-compression"];
 string[][] extras = [[], ["--trim-reflection", "--trim-godot-classes", "--shared-generics", "--no-ildiet"], ["--no-shared-generics"], ["--no-metadata-compression"]];
 bool?[] values = [null, true, false];
+string[] levels = ["high", "medium", "low"];
 int runs = 0;
 foreach (string platform in OS.PlatformFeatureMap.Keys)
 {
@@ -32,11 +33,12 @@ foreach (string platform in OS.PlatformFeatureMap.Keys)
         }
     }
     const string strippingKey = "dotnet/dn2cpp/stripping_level";
+    const string presetExtraKey = "dotnet/dn2cpp/extra_transpile_args";
     var strippingDefinition = definitions.Single(item => (string)((Godot.Collections.Dictionary)item["option"])["name"] == strippingKey);
     var strippingOption = (Godot.Collections.Dictionary)strippingDefinition["option"];
     Check((int)strippingDefinition["default_value"] == 0, platform + " default stripping level");
     Check((int)strippingOption["type"] == (int)Variant.Type.Int, "stripping enum option");
-    Check((int)strippingOption["hint"] == (int)PropertyHint.Enum && (string)strippingOption["hint_string"] == "High,Medium", "stripping choices");
+    Check((int)strippingOption["hint"] == (int)PropertyHint.Enum && (string)strippingOption["hint_string"] == "High,Medium,Low", "stripping choices");
     foreach (int backend in new[] { 0, 1, 2 })
     {
         probe.Preset["dotnet/export_backend"] = backend;
@@ -85,22 +87,25 @@ foreach (string platform in OS.PlatformFeatureMap.Keys)
         }
         runs++;
     }
-    foreach (int? level in new int?[] { null, 0, 1 })
+    foreach (int? level in new int?[] { null, 0, 1, 2 })
     foreach (bool? ildiet in values)
     foreach (bool duplicate in new[] { false, true })
     {
         probe.Preset.Clear();
         if (level.HasValue) probe.Preset[strippingKey] = level.Value;
         if (ildiet.HasValue) probe.Preset["dotnet/dn2cpp/il_prestripping"] = ildiet.Value;
-        string expectedLevel = level == 1 ? "medium" : "high";
+        string expectedLevel = levels[level ?? 0];
         ProjectSettings.Extra = duplicate ? ["--stripping-level", expectedLevel, "--ildiet-skip-assembly", "Library"] : [];
+        if (duplicate)
+            probe.Preset[presetExtraKey] = new[] { "--stripping-level", expectedLevel, "--reflection-root", "Game.Type" };
         string[] actual = probe.Generate();
         CheckStripping(actual, expectedLevel);
         Check(actual.Contains("--no-ildiet") == (ildiet == false), "stripping level independent of prestripping");
-        Check(actual.Contains("Library") == duplicate, "unrelated extra arguments retained");
+        Check(actual.Contains("Library") == duplicate && actual.Contains("Game.Type") == duplicate,
+            "matching project and preset pairs deduplicate without dropping unrelated arguments");
         runs++;
     }
-    foreach (int invalid in new[] { -1, 2 })
+    foreach (long invalid in new long[] { -1, 3, 4_294_967_298 })
     {
         probe.Preset.Clear();
         probe.Preset[strippingKey] = invalid;
@@ -108,12 +113,16 @@ foreach (string platform in OS.PlatformFeatureMap.Keys)
         ExpectInvalid(() => probe.Generate(), "Stripping Level");
         runs++;
     }
-    foreach (int level in new[] { 0, 1 })
-    foreach (string[] extra in new[] { new[] { "--stripping-level" }, new[] { "--stripping-level", level == 0 ? "medium" : "high" }, new[] { "--stripping-level", "low" } })
+    for (int level = 0; level < levels.Length; level++)
+    foreach (string? invalid in new[] { null, "unknown", levels[(level + 1) % levels.Length], levels[(level + 2) % levels.Length] })
+    foreach (bool inPreset in new[] { false, true })
     {
+        string[] extra = invalid is null ? ["--stripping-level"] : ["--stripping-level", invalid];
         probe.Preset.Clear();
         probe.Preset[strippingKey] = level;
-        ProjectSettings.Extra = extra;
+        ProjectSettings.Extra = inPreset ? [] : extra;
+        if (inPreset)
+            probe.Preset[presetExtraKey] = extra;
         ExpectInvalid(() => probe.Generate(), "extra_transpile_args");
         runs++;
     }
@@ -160,12 +169,6 @@ foreach (string platform in OS.PlatformFeatureMap.Keys)
     CheckStripping(actual, "high");
     additionalArgumentRuns++;
 
-    foreach (string[] invalid in new[] { new[] { "--stripping-level" }, new[] { "--stripping-level", "medium" }, new[] { "--stripping-level", "low" } })
-    {
-        probe.Preset["dotnet/dn2cpp/extra_transpile_args"] = invalid;
-        ExpectInvalid(() => probe.Generate(), "extra_transpile_args");
-        additionalArgumentRuns++;
-    }
 }
 Console.WriteLine($"PASS: preset CLI argument defaults, visibility, ordering and literal tokens ({additionalArgumentRuns} cases)");
 
@@ -248,10 +251,18 @@ namespace Godot
     readonly struct Variant(object? value)
     {
         public enum Type { Nil, Bool, Int, String, PackedStringArray }
-        public Type VariantType => value is null ? Type.Nil : Type.Bool;
+        public Type VariantType => value switch
+        {
+            null => Type.Nil,
+            int or long => Type.Int,
+            string => Type.String,
+            string[] => Type.PackedStringArray,
+            _ => Type.Bool,
+        };
         public bool AsBool() => (bool)value!;
         public string[] AsStringArray() => (string[])value!;
-        public static explicit operator int(Variant variant) => (int)variant.Value!;
+        public static explicit operator int(Variant variant) => unchecked((int)(long)variant);
+        public static explicit operator long(Variant variant) => variant.Value is long wide ? wide : (int)variant.Value!;
         private object? Value => value;
     }
     static class GD { public static void Print(string message) { } }
