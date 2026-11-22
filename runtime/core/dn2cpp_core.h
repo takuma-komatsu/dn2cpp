@@ -2177,6 +2177,7 @@ inline constexpr const char* DN2CPP_SR_DATE_TIME_BAD_BINARY = "Argument_DateTime
 inline constexpr const char* DN2CPP_SR_DATE_TIME_BAD_YEARS = "ArgumentOutOfRange_DateTimeBadYears";
 inline constexpr const char* DN2CPP_SR_FILE_TIME_INVALID = "ArgumentOutOfRange_FileTimeInvalid";
 inline constexpr const char* DN2CPP_SR_FORMAT_OFFSET_OUT_OF_RANGE = "Format_OffsetOutOfRange";
+inline constexpr const char* DN2CPP_SR_FORMAT_DATE_OUT_OF_RANGE = "Format_DateOutOfRange";
 inline constexpr const char* DN2CPP_SR_FORMAT_UTC_OUT_OF_RANGE = "Format_UTCOutOfRange";
 inline constexpr const char* DN2CPP_SR_DATE_TIME_OFFSET_INVALID_STYLES = "Argument_DateTimeOffsetInvalidDateTimeStyles";
 inline constexpr const char* DN2CPP_SR_FORMAT_MISSING_INCOMPLETE_DATE = "Format_MissingIncompleteDate";
@@ -8871,8 +8872,8 @@ Dn2CppString* dn2cpp_datetime_format(Dn2CppDateTime a, Dn2CppString* fmt);
 // optional time, or HH:mm[:ss[.fffffff]] alone. ParseExact reads custom formats or
 // a single-char standard specifier. Time alone uses today's local date, or 0001-01-01
 // with NoCurrentDateDefault. Partial exact dates use the local year if it is missing
-// and 1 for a missing month or day. Time-zone offsets in exact DateTime parsing are
-// consumed but not applied.
+// and 1 for a missing month or day. Exact z/K offsets project to local time, or
+// to UTC with AdjustToUniversal (or RoundtripKind with a K 'Z' marker).
 bool dn2cpp_datetime_try_parse(Dn2CppString* s, Dn2CppDateTime* out, int32_t styles = 0);
 bool dn2cpp_datetime_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, Dn2CppDateTime* out, int32_t styles = 0);
 Dn2CppDateTime dn2cpp_datetime_parse(Dn2CppString* s, int32_t styles = 0);

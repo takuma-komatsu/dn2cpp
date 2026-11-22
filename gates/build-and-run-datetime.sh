@@ -21,6 +21,7 @@
 # time through the internal TimeOnly.ToDateTime().
 # FromBinary/ToBinary and daylight checks cover kind flags and local-zone overlaps.
 # DateTimeOffset.ToLocalTime preserves the distinct offsets of repeated local clocks.
+# DateTime.ParseExact applies numeric offsets in local or UTC output, with named-zone checks.
 # DTFI names, patterns, private arithmetic and culture-name validation share one
 # image. Private calls/calli and closed span delegates use exact CoreLib
 # declarations; Calendar and Tokenize refusals have an explicitly frozen
@@ -30,7 +31,7 @@
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/DateTimeInterceptFixture.cs gates/fixtures/ldftn-local/DateTimeTCharFixture.cs gates/fixtures/ldftn-local/AbbreviatedDayFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj gates/expected/datetime-refusals.txt"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|datetime-private-calls:fixture,direct-only-emission|public-ctor:no-corelib,no-ildiet|refusals:native-frozen|tchar:malformed-return-owner|day:malformed-return|dtfi-name-edges:prefix|dtfi-timespan-patterns:prefix|cli:$(_gate_cli_hash)"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|dto-local-time-prefix:before-dto-local-time|date-defaults-prefix:before-missing-date-defaults"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|dto-local-time-prefix:before-dto-local-time|date-defaults-prefix:before-missing-date-defaults|exact-offset-prefix:before-exact-offset-parse"
 
 # Keep the rewritten input private to this gate; the suite prebuild stays intact.
 _corelib_gate_core() {
@@ -122,6 +123,14 @@ gate_extra_asserts() {
             TZ="$zone" gate_capture_ok "$out/zone-$zone/assert-expected-11" run_bounded dotnet "$_CG_APP" daylight-only
             expected="$out/zone-$zone/assert-expected-11.stdout"
             gate_output compare "$native" "$expected"
+            case "$zone" in
+                Etc/UTC)
+                    gate_output byte-witness "$native" 'exact zzz local=10:34:56 Local' \
+                        'exact zzz universal=10:34:56 Utc' --count 1 --policy crlf ;;
+                Asia/Tokyo)
+                    gate_output byte-witness "$native" 'exact zzz local=19:34:56 Local' \
+                        'exact zzz universal=10:34:56 Utc' --count 1 --policy crlf ;;
+            esac
             if [ "$zone" = America/New_York ]; then
                 gate_output byte-witness "$native" \
                     'dto local overlap: 638661942000000000/-144000000000/638662086000000000' \
@@ -176,6 +185,13 @@ gate_extra_asserts() {
         'date general today=True' 'date general try=True/True' \
         'offset exact today=True' 'offset exact relative date=True/True' 'offset exact incomplete=True' \
         'offset exact style=styles' 'offset exact try style=styles' --count 1 --policy crlf
+
+    gate_capture_ok "$out/exact-offset-before" run_bounded "./$out/DateTimeOps$EXE_EXT" before-exact-offset-parse
+    gate_output select "$out/native.stdout" "$out/exact-offset-prefix.stdout" \
+        --before='== DateTime exact offsets ==' --policy crlf
+    gate_output compare "$out/exact-offset-prefix.stdout" "$out/exact-offset-before.stdout"
+    gate_output byte-witness "$out/native.stdout" 'exact zzz local=True' 'exact zzz universal=True' \
+        'exact K roundtrip=True/True/True' 'exact offset syntax=True/True/True' --count 1 --policy crlf
 
     local isolated="$out/direct-only" method
     mkdir -p "$isolated/input"

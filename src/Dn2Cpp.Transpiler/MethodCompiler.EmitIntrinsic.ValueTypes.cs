@@ -1060,8 +1060,8 @@ internal sealed partial class MethodCompiler
         return false;
     }
 
-    // The invariant parsers inspect only NoCurrentDateDefault. Continue discarding
-    // the provider while preserving the style value for the supported parse shapes.
+    // Keep the invariant provider subset while forwarding styles for the native
+    // parser to apply the supported flags.
     private string PopDateTimeParseStyles(ImmutableArray<TypeDesc> ps, int first, int last)
     {
         string styles = "0";
