@@ -828,8 +828,9 @@ internal sealed partial class MethodCompiler : IEvalStack
         // constructor consumes it. Give each address load a stable runtime tag;
         // the constructor uses it to choose the adapter and reflected identity.
         if (HasFlowingDelegateTarget(insns))
-            foreach (var insn in insns)
+            for (int i = 0; i < insns.Count; i++)
             {
+                var insn = insns[i];
                 if (_liveness is not null && !_liveness.LiveAt(insn.Offset))
                     continue;
                 if (insn.OpCode is ILOpCode.Ldloca or ILOpCode.Ldloca_s)
@@ -840,7 +841,9 @@ internal sealed partial class MethodCompiler : IEvalStack
                 MethodInfo target;
                 try
                 {
-                    target = ResolveMethodHandle(SRME.EntityHandle(insn.Token), virtFtn ? "ldvirtftn" : "ldftn");
+                    target = virtFtn ? ResolveMethodHandle(SRME.EntityHandle(insn.Token), "ldvirtftn")
+                        : ResolveLdftnTarget(insn, i > 0 && insns[i - 1].OpCode == ILOpCode.Constrained
+                            ? ResolveTypeToken(insns[i - 1].Token) : null);
                 }
                 catch (Exception e) when (!Compilation.IsMustEscape(e))
                 {
@@ -4097,7 +4100,9 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // comparison helper is supported, not just a plain MethodDefinition.
                 TaintCanonicalVectorOperation(SRME.EntityHandle(insn.Token));
                 TaintCanonicalFixedVectorValueOperation(SRME.EntityHandle(insn.Token));
-                var m = ResolveMethodHandle(SRME.EntityHandle(insn.Token), "ldftn");
+                var m = ResolveLdftnTarget(insn, _constrained);
+                _constrained = null;
+                _constrainedHandle = default;
                 // --trim-godot-classes, the emit-side ROUTE: a deferred registry
                 // lambda's body is never emitted, so its symbol must never be named
                 // — its address is the nearest released ancestor's lambda instead

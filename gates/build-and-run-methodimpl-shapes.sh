@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Ordinary generic interface, static-abstract and default bodies retain definition identity.
+# Constrained static-abstract method groups bind the concrete delegate method.
 set -euo pipefail
 source "$(dirname "$0")/_common.sh"
 
@@ -33,11 +34,18 @@ gate_extra_asserts() {
         gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: MethodImpl definition witness missing: $line" >&2; exit 1; }
     done
+
+    gate_capture_ok "$out/static-groups-before" run_bounded "$out/MethodImplShapesOnly$EXE_EXT" before-static-method-groups
+    gate_output select "$native" "$out/static-groups-prefix.stdout" \
+        --before '== constrained static method groups ==' --policy crlf
+    gate_output compare "$out/static-groups-prefix.stdout" "$out/static-groups-before.stdout"
+    gate_output byte-witness "$native" 'first:RefFirst.SA' 'second:RefSecond.SA' \
+        'value:ValueImpl.SA' --count 1 --policy crlf
 }
 
 for methodimpl_sharing in --shared-generics --no-shared-generics; do
     DN2CPP_OUT_SUFFIX="-$CONFIG-${methodimpl_sharing#--}"
-    DN2CPP_GATE_EXTRA_CONTEXT="sharing:$methodimpl_sharing"
+    DN2CPP_GATE_EXTRA_CONTEXT="sharing:$methodimpl_sharing|static-groups-prefix:before-static-method-groups"
     corelib_diff_gate MethodImplShapesOnly
 done
 

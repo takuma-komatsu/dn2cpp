@@ -1143,6 +1143,22 @@ internal sealed partial class Compilation
         return null;
     }
 
+    internal MethodInfo? ResolveStaticVirtualAddress(TypeDesc self, MethodInfo declaration)
+    {
+        if (self is not { Kind: TypeKind.Class, Class: { } owner }
+            || ContainsCanonPlaceholder(self) || IsCanonicalMethod(declaration))
+            return null;
+        if (owner.Context.TypeArgs.Length > 0)
+            EnsureCompleted(owner);
+        // Static intrinsic calls may use a substitute lowering. An address
+        // must instead identify the actual method.
+        if (CoreIntrinsics.IsIntrinsicType(owner.FullName) || owner.IntrinsicCppName is not null)
+            return null;
+
+        var target = ResolveStaticVirtualImpl(owner, declaration, out bool ambiguous);
+        return ambiguous ? null : target ?? (declaration.Rva != 0 ? declaration : null);
+    }
+
     /// <summary>Finds the open generic-method template (MethodDef) on a type
     /// definition by name, method generic-parameter count and parameter count —
     /// for instantiating a generic method on a closed generic type. When
