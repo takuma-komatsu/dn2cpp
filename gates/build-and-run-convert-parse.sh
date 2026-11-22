@@ -47,6 +47,7 @@
 # UTF-8 destinations, including short buffers that must remain untouched.
 # Scalar Parse/TryParse overloads cover every string/UTF-16/UTF-8 entry point,
 # native integers, Half, Decimal and wide integers, invalid styles and custom symbols.
+# Currency styles cover signed affixes, culture-specific separators and symbol refusal.
 # ChangeType forwards custom numeric providers only to consumed conversions.
 # Unsupported DateTime, Boolean, Char and object conversions retain CLR faults.
 # Checked Int128 and UInt128 widening runs through direct, constrained and delegate routes.
@@ -54,7 +55,7 @@
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_numeric-signatures.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_numeric-signatures.sh gates/fixtures/numeric-signatures"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|integer-utf8-prefix:before-invalid-integer-utf8|cli:$(_gate_cli_hash)"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|integer-utf8-prefix:before-invalid-integer-utf8|currency-prefix:before-currency-symbol|cli:$(_gate_cli_hash)"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
@@ -226,6 +227,15 @@ gate_extra_asserts() {
         'invalid style=ArgumentException:style' \
         'integer UTF8 validation end' \
         --count 1 --policy crlf
+
+    gate_capture_ok "$out/currency-before" run_bounded dotnet "$_CG_APP" before-currency-symbol
+    gate_output select "$native" "$out/currency-prefix.stdout" \
+        --before='-- NumberStyles.Any / Currency (currency symbols) --' --policy crlf
+    gate_output compare "$out/currency-prefix.stdout" "$out/currency-before.stdout"
+    gate_output byte-witness "$native" 'currency en-US = 1234.50' \
+        'currency signed en-US = -1234/-1234.5' 'currency suffix separators = 1234.50' \
+        'currency suffix number fallback = 1234.50' 'currency prefix no number fallback ! FormatException' \
+        'currency duplicate = False:0' 'currency disallowed = False:0' --count 1 --policy crlf
 
     numeric_signature_regressions checked
 }

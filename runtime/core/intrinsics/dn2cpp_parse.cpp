@@ -20,10 +20,8 @@
 //   - unsigned targets overflow on any negative parse except a bare "-0";
 //   - the float path falls back to the culture's Infinity/NaN symbols with a
 //     full-Unicode trim and case-insensitive compare, ignoring the styles;
-//   - AllowCurrencySymbol is a VALID style, so it is accepted and an input
-//     without the symbol parses as the currency-less path; consuming a symbol
-//     that IS present is unmodeled and refused loudly (see the currency check
-//     in dn2cpp_parse_number_styles).
+//   - currency parsing permits one symbol in the leading or trailing affix;
+//     ordinary separators are a fallback only before a symbol has been read.
 #include "dn2cpp_core.h"
 
 #include <cmath>
@@ -103,26 +101,13 @@ int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
                                    Dn2CppNumberParse* num)
 {
     nfi = dn2cpp_nfi_or_current(nfi);
-    Dn2CppString* decSep = nfi->numberDecimal;
-    Dn2CppString* grpSep = nfi->numberGroup;
+    const bool currencyStyle = (styles & NS_CURRENCY) != 0;
+    Dn2CppString* currencySymbol = currencyStyle ? nfi->currencySymbol : nullptr;
+    Dn2CppString* decSep = currencyStyle ? nfi->currencyDecimal : nfi->numberDecimal;
+    Dn2CppString* grpSep = currencyStyle ? nfi->currencyGroup : nfi->numberGroup;
     Dn2CppString* negSign = nfi->negativeSign;
     Dn2CppString* posSign = nfi->positiveSign;
-
-    // AllowCurrencySymbol permits — does not require — the culture's currency
-    // symbol, and the state machine below does not model consuming one. An input
-    // that actually contains the symbol is refused with a catchable exception
-    // rather than silently rejected or mis-valued; an input without it falls
-    // through to the currency-less parse, which is the case that matters (the
-    // setting/environment readers pass NumberStyles.Any over plain decimal text).
-    if ((styles & NS_CURRENCY) != 0)
-    {
-        Dn2CppString* cur = nfi->currencySymbol;
-        if (cur != nullptr && cur->length > 0)
-            for (int32_t i = 0; i + cur->length <= n; i++)
-                if (ns_match_str(p, n, i, cur) >= 0)
-                    dn2cpp_throw_platform_not_supported(
-                        "NumberStyles.AllowCurrencySymbol: input contains a currency symbol (not modeled)");
-    }
+    bool currencySeen = false;
 
     num->count = 0;
     num->scale = 0;
@@ -133,12 +118,13 @@ int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
     int32_t state = 0;
     int32_t i = 0;
 
-    // A leading sign permits following whitespace only for the spaced
-    // negative-number pattern.
+    // After a leading sign, whitespace requires a consumed currency symbol
+    // or the spaced negative-number pattern.
     while (i < n)
     {
         char16_t ch = p[i];
-        if (ns_is_white(ch) && (styles & NS_LEADWHITE) != 0 && ((state & ST_SIGN) == 0 || nfi->numberNegPattern == 2))
+        if (ns_is_white(ch) && (styles & NS_LEADWHITE) != 0
+            && ((state & ST_SIGN) == 0 || currencySeen || nfi->numberNegPattern == 2))
         {
             i++;
             continue;
@@ -167,8 +153,18 @@ int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
             i++;
             continue;
         }
+        if (!currencySeen && currencySymbol != nullptr && (next = ns_match_str(p, n, i, currencySymbol)) >= 0)
+        {
+            currencySeen = true;
+            i = next;
+            continue;
+        }
         break;
     }
+
+    // Currency separators take precedence even for a trailing symbol. If no
+    // symbol was consumed in the prefix, also try the ordinary separators.
+    const bool numberSeparatorFallback = currencyStyle && !currencySeen;
 
     // Digits, decimal separator, group separators. Leading zeros are skipped
     // (fractional leading zeros lower the scale); a group separator needs at
@@ -207,14 +203,16 @@ int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
         }
         int32_t next;
         if ((styles & NS_DECIMAL) != 0 && (state & ST_DECIMAL) == 0
-            && (next = ns_match_str(p, n, i, decSep)) >= 0)
+            && ((next = ns_match_str(p, n, i, decSep)) >= 0
+                || (numberSeparatorFallback && (next = ns_match_str(p, n, i, nfi->numberDecimal)) >= 0)))
         {
             state |= ST_DECIMAL;
             i = next;
             continue;
         }
         if ((styles & NS_THOUSANDS) != 0 && (state & ST_DIGITS) != 0 && (state & ST_DECIMAL) == 0
-            && (next = ns_match_str(p, n, i, grpSep)) >= 0)
+            && ((next = ns_match_str(p, n, i, grpSep)) >= 0
+                || (numberSeparatorFallback && (next = ns_match_str(p, n, i, nfi->numberGroup)) >= 0)))
         {
             i = next;
             continue;
@@ -259,7 +257,7 @@ int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
                 i = save;
         }
 
-        // Trailing whitespace / trailing sign / ')'.
+        // Trailing whitespace / trailing sign / ')' / currency symbol.
         while (i < n)
         {
             char16_t ch = p[i];
@@ -289,6 +287,12 @@ int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
             {
                 state &= ~ST_PARENS;
                 i++;
+                continue;
+            }
+            if (!currencySeen && currencySymbol != nullptr && (next = ns_match_str(p, n, i, currencySymbol)) >= 0)
+            {
+                currencySeen = true;
+                i = next;
                 continue;
             }
             break;

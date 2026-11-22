@@ -273,5 +273,24 @@ namespace NumberStylesSubset
             Console.WriteLine(UriKind.RelativeOrAbsolute.ToString()); // RelativeOrAbsolute
             Console.WriteLine("k=" + UriKind.Absolute);               // k=Absolute
         }
+
+        internal static void RunCurrencySymbol()
+        {
+            Console.WriteLine("-- NumberStyles.Any / Currency (currency symbols) --");
+            const NumberStyles currency = NumberStyles.Currency;
+            var us = CultureInfo.GetCultureInfo("en-US");
+            Show("currency en-US", () => decimal.Parse("$1,234.50", currency, us));
+            Show("currency signed en-US", () => int.Parse("-$ 1,234", currency, us)
+                + "/" + double.Parse("1,234.5$-", NumberStyles.Any, us));
+
+            // Turkish with Arabic numbering has distinct number and currency separators.
+            var tr = CultureInfo.GetCultureInfo("tr-TR-u-nu-arab");
+            Show("currency suffix separators", () => decimal.Parse("1.234,50 ₺", currency, tr));
+            Show("currency suffix number fallback", () => decimal.Parse("1٬234٫50 ₺", NumberStyles.Any, tr));
+            Show("currency prefix no number fallback", () => decimal.Parse("₺1٬234٫50", currency, tr));
+
+            Show("currency duplicate", () => int.TryParse("$1,234$", currency, us, out var value) + ":" + value);
+            Show("currency disallowed", () => int.TryParse("$1,234", NumberStyles.Number, us, out var value) + ":" + value);
+        }
     }
 }
