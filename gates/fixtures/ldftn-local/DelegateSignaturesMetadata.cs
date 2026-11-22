@@ -68,7 +68,7 @@ internal static class DelegateSignaturesMetadata
             }
             else Require(opcode is 0x14 or 0x16 or 0x26 or 0x2a or 0xd3, "unexpected fixture IL opcode " + opcode);
         }
-        Require(operands.Count == (mode == "control" ? 50 : 1), "delegate fixture operand count changed");
+        Require(operands.Count == (mode == "control" ? 44 : 1), "delegate fixture operand count changed");
         if (mode == "control")
         {
             var routes = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -84,7 +84,7 @@ internal static class DelegateSignaturesMetadata
                 routes.TryGetValue(key, out int route);
                 routes[key] = route | (operand.Address ? 2 : 1);
             }
-            Require(routes.Count == 25 && routes.Values.All(route => route == 3), "control lost a call or ldftn route");
+            Require(routes.Count == 22 && routes.Values.All(route => route == 3), "control lost a call or ldftn route");
             return handles.ToArray();
         }
         var only = operands.Single();
@@ -93,16 +93,18 @@ internal static class DelegateSignaturesMetadata
         Require(only.Address == mode.EndsWith("-address", StringComparison.Ordinal), "delegate fixture lost its call/ldftn route");
         string memberName = reader.GetString(member.Name);
         string memberOwner = NamedOwner(reader, member.Parent, mode == "fake-owner-address" ? "FakeDelegateOwner" : "System.Private.CoreLib");
-        string expectedName = mode switch { "return-call" => "NewMulticastDelegate", "parameter-address" => "CtorOpened", "modifier-call" => "Equals", _ => "GetHashCode" };
-        string expectedOwner = mode is "modifier-call" or "trailing-call" ? "System.Delegate" : "System.MulticastDelegate";
-        Require(memberName == expectedName && memberOwner == expectedOwner, "delegate fixture target changed");
+        string expectedName = mode switch { "return-call" => "NewMulticastDelegate", "parameter-address" => "CtorOpen", "modifier-call" => "Equals", _ => "GetHashCode" };
+        Require(memberName == expectedName && memberOwner == "System.Delegate", "delegate fixture target changed");
         var blob = reader.GetBlobReader(member.Signature);
         switch (mode)
         {
             case "return-call":
-                Require(blob.ReadByte() == 0x20 && blob.ReadByte() == 2 && blob.ReadByte() == 0x12
-                    && NamedOwner(reader, blob.ReadTypeHandle()) == "System.Delegate"
-                    && blob.ReadBytes(blob.RemainingBytes).SequenceEqual(new byte[] { 0x1d, 0x1c, 8 }), "wrong return shape was lost");
+                Require(blob.ReadByte() == 0x20 && blob.ReadByte() == 3 && blob.ReadByte() == 0x12
+                    && NamedOwner(reader, blob.ReadTypeHandle()) == "System.MulticastDelegate"
+                    && blob.ReadByte() == 0x1d && blob.ReadByte() == 0x11
+                    && blob.ReadTypeHandle() is { Kind: HandleKind.TypeReference } element
+                    && reader.StringComparer.Equals(reader.GetTypeReference((TypeReferenceHandle)element).Name, "Wrapper")
+                    && blob.ReadBytes(blob.RemainingBytes).SequenceEqual(new byte[] { 8, 2 }), "wrong return shape was lost");
                 break;
             case "parameter-address": Exact(0x20, 3, 1, 0x1c, 0x18, 0x19); break;
             case "modifier-call":
@@ -137,7 +139,7 @@ internal static class DelegateSignaturesMetadata
                 if (mode == "owner-modifier-address")
                     Require(owner.ReadByte() == 0x20 && NamedOwner(reader, owner.ReadTypeHandle()) == "System.Runtime.CompilerServices.IsConst",
                         "owner modopt was lost");
-                Require(owner.ReadByte() == 0x12 && NamedOwner(reader, owner.ReadTypeHandle()) == "System.MulticastDelegate"
+                Require(owner.ReadByte() == 0x12 && NamedOwner(reader, owner.ReadTypeHandle()) == "System.Delegate"
                     && owner.RemainingBytes == 0, "owner TypeSpec is not exact");
                 break;
             default: throw new ArgumentException("unknown shape " + mode);

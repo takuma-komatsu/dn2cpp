@@ -372,8 +372,9 @@ static class Program
         Console.WriteLine("Object slots with MethodImpl bodies end");
     }
 
-    // A binding through a slot and one through the renamed body filling it are one
-    // delegate, so they hash alike and deduplicate.
+    // A binding through a slot and one through the renamed body filling it run one
+    // body, so they are equal. Each reports and hashes by the row it was given, so a
+    // hash set keeps both.
     public static void RunRenamedSlotBindings()
     {
         Console.WriteLine("== reflection-bound delegates over a renamed override ==");
@@ -421,9 +422,9 @@ static class Program
     }
 
     // A slot whose filler is a differently named MethodImpl body, or an override of
-    // one, binds that body: a delegate through the slot and one through the body are
-    // one delegate, and Delegate.Method names the body, as does a delegate over an
-    // Object virtual loaded with ldvirtftn. That holds on a MakeGenericType
+    // one, binds that body: a delegate through the slot equals one through the body,
+    // and each names the row it was given, while a delegate over an Object virtual
+    // loaded with ldvirtftn names the body. That holds on a MakeGenericType
     // instantiation and through a variant instantiation of the slot's interface.
     public static void RunRenamedSlotFillers()
     {

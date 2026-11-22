@@ -4991,8 +4991,9 @@ void dn2cpp_throw_target_invocation(Dn2CppObject* inner)
         dn2cpp_sr_message(DN2CPP_SR_PARAMETER_COUNT, nullptr, 0), 0x8002000Eu);
 }
 
-// .NET finds no entry point for a static virtual or abstract interface member
-// bound to a delegate.
+// .NET resolves a static virtual or abstract interface member bound over a first
+// argument on that argument's type, and finds no entry point where the type
+// implements no body of it.
 [[noreturn]] static void dn2cpp_throw_static_virtual_entry_point()
 {
     dn2cpp_throw_reflection_fault(&dn2cpp_entry_point_not_found_exception_type, nullptr, 0x80131523u);
@@ -6265,17 +6266,8 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
     // abort.
     void* fn = row.fnPtr;
     const Dn2CppTypeInfo* declaring = row.declaringType;
-    const bool delegateBaseEquals = row.invoker == reinterpret_cast<void*>(&dn2cpp_delegate_base_equals_invoker);
-    const bool delegateBaseHash = row.invoker == reinterpret_cast<void*>(&dn2cpp_delegate_base_hash_invoker);
-    // Exact CoreLib rows carry signature invokers, not name-based recognition.
-    // The invoker still honors fn for the interpreter's nonvirtual call. Here,
-    // Invoke/CreateDelegate enter virtually unless bound over a null receiver.
-    if (obj != nullptr && (delegateBaseEquals || delegateBaseHash))
-        fn = delegateBaseEquals ? reinterpret_cast<void*>(&dn2cpp_delegate_equal)
-            : reinterpret_cast<void*>(&dn2cpp_delegate_hash);
     const bool objectVirtualInvoker = row.invoker == reinterpret_cast<void*>(&dn2cpp_delegate_object_virtual_invoker)
         || row.invoker == reinterpret_cast<void*>(&dn2cpp_delegate_interface_invoker)
-        || delegateBaseEquals || delegateBaseHash
         || row.invoker == reinterpret_cast<void*>(&dn2cpp_attrdata_constructor_invoker);
     if (obj != nullptr && row.vtableSlot >= 0 && !objectVirtualInvoker && (declaring->flags & DN2CPP_TF_PATCH) == 0)
     {
@@ -6413,8 +6405,6 @@ struct Dn2CppNullReceiverContextScope
 // template row's call on its clone, as the reflected type places Invoke's.
 Dn2CppObject* dn2cpp_reflbind_invoke(Dn2CppReflBind* ctx, Dn2CppObject* self, Dn2CppObject** argv)
 {
-    if (ctx->fault == DN2CPP_DGBIND_FAULT_STATIC_VIRTUAL)
-        dn2cpp_throw_static_virtual_entry_point();
     if (self == nullptr && ctx->fault == DN2CPP_DGBIND_FAULT_NULL_RECEIVER)
         dn2cpp_throw_null_reference();
     if (self == nullptr && ctx->fault == DN2CPP_DGBIND_FAULT_NULL_BODILESS)
@@ -6799,11 +6789,13 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
     if (!dn2cpp_dgbind_return(row, *inv, true, unknown, declTi, dti))
         return fail();
     dn2cpp_dgbind_require_signature(unknown);
-    // .NET binds a static virtual or abstract interface member only open, and a call
-    // through that binding finds no entry point (dn2cpp_reflbind_invoke).
+    // A static virtual interface member binds its own body, which an abstract one
+    // lacks. Over a first argument .NET looks the member up on that argument's type,
+    // which yields the same body only where the type implements the interface.
     bool staticVirtual = mStatic && (row.ilAttrs & DN2CPP_MA_VIRTUAL) != 0
         && (declTi->flags & DN2CPP_TF_INTERFACE) != 0;
-    if (staticVirtual && mode == DN2CPP_DGBIND_CLOSED_STATIC)
+    if (staticVirtual && target != nullptr
+        && ((row.ilAttrs & DN2CPP_MA_ABSTRACT) != 0 || !dn2cpp_dgbind_instance_of(target, declTi)))
         dn2cpp_throw_static_virtual_entry_point();
     // .NET refuses an open binding of a generic virtual method once its shape binds,
     // even a final one and under throwOnBindFailure: false.
@@ -6813,8 +6805,8 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
     // (abstract or interface) binds the receiver's slot at each call, as
     // MethodInfo.Invoke does, and a generic virtual row its dispatcher. A boxed
     // value has no vtable, so a class row bound to one runs its own body. A binding
-    // closed over null runs the row's own body, and a bodiless row faults when called
-    // (dn2cpp_reflbind_invoke).
+    // closed over null and a static binding run the row's own body, and a bodiless
+    // row faults when called (dn2cpp_reflbind_invoke).
     bool nullBound = mode == DN2CPP_DGBIND_CLOSED_INSTANCE && target == nullptr;
     bool slotBound = !mStatic && !nullBound && row.vtableSlot >= 0 && (row.ilAttrs & DN2CPP_MA_VIRTUAL) != 0
         && ((declTi->flags & DN2CPP_TF_INTERFACE) != 0
@@ -6822,10 +6814,10 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
                 && (target == nullptr || target->type->vtable != nullptr)));
     if (!slotBound && !mStatic && !nullBound && row.genericParamCount != 0)
         slotBound = dn2cpp_gvm_row_dispatch_of(row) != nullptr;
-    bool bodiless = nullBound && (row.ilAttrs & DN2CPP_MA_ABSTRACT) != 0;
+    bool bodiless = (nullBound || mStatic) && (row.ilAttrs & DN2CPP_MA_ABSTRACT) != 0;
     // A metadata-answered row needs no body; dn2cpp_invoke_row answers it.
     bool answered = (row.attrs & DN2CPP_MTHA_METAANSWER) != 0;
-    if (!staticVirtual && !bodiless && !answered
+    if (!bodiless && !answered
         && (row.invoker == nullptr || (row.fnPtr == nullptr && !slotBound)))
         dn2cpp_throw_invoke_unavailable(mi, m->reflectedType);
     auto* node = static_cast<Dn2CppReflBind*>(dn2cpp_alloc(sizeof(Dn2CppReflBind)));
@@ -6865,21 +6857,20 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
     // receiver always calls with it. A null receiver runs the row's own body with a
     // null `this`, as .NET's call does, except where .NET dereferences it first: an
     // open binding of a virtual row dispatches on it. A binding closed over null
-    // never dispatches, so a bodiless row there is bad IL. The own body runs only
-    // where it tolerates the null receiver as .NET's does (DN2CPP_MTHA_NULLSAFE, and
-    // the System.Object and System.ValueType rows the runtime answers) or reads only
-    // its generic context off it (DN2CPP_MTHA_NULLCONTEXT), or keeps null while
-    // reading the context separately (DN2CPP_MTHA_NULLCTX_NULL); any other faults as
-    // .NET's dereference of the receiver would.
+    // and a static binding never dispatch, so a bodiless row there is bad IL. The own
+    // body runs only where it tolerates the null receiver as .NET's does
+    // (DN2CPP_MTHA_NULLSAFE, and the System.Object and System.ValueType rows the
+    // runtime answers) or reads only its generic context off it
+    // (DN2CPP_MTHA_NULLCONTEXT), or keeps null while reading the context separately
+    // (DN2CPP_MTHA_NULLCTX_NULL); any other faults as .NET's dereference of the
+    // receiver would.
     node->declaring = declTi;
-    if (staticVirtual)
-        node->fault = DN2CPP_DGBIND_FAULT_STATIC_VIRTUAL;
+    if (bodiless)
+        node->fault = DN2CPP_DGBIND_FAULT_NULL_BODILESS;
     else if (mStatic || (mode == DN2CPP_DGBIND_CLOSED_INSTANCE && target != nullptr))
         node->fault = DN2CPP_DGBIND_FAULT_NONE;
     else if (mode == DN2CPP_DGBIND_OPEN_INSTANCE && (row.ilAttrs & DN2CPP_MA_VIRTUAL) != 0)
         node->fault = DN2CPP_DGBIND_FAULT_NULL_RECEIVER;
-    else if ((row.ilAttrs & DN2CPP_MA_ABSTRACT) != 0)
-        node->fault = DN2CPP_DGBIND_FAULT_NULL_BODILESS;
     else if ((row.attrs & (DN2CPP_MTHA_NULLSAFE | DN2CPP_MTHA_NULLCONTEXT | DN2CPP_MTHA_NULLCTX_NULL)) != 0
         && dn2cpp_null_lookups_hit(row.attrs, declTi))
         node->fault = DN2CPP_DGBIND_FAULT_NULL_RECEIVER;
@@ -7466,22 +7457,6 @@ Dn2CppObject* dn2cpp_delegate_object_virtual_invoker(void* fn, Dn2CppObject* rec
     if (fn == reinterpret_cast<void*>(&dn2cpp_object_equals_virtual))
         return dn2cpp_meta_object_equals(nullptr, receiver, arguments);
     return dn2cpp_meta_object_gethashcode(nullptr, receiver, arguments);
-}
-
-Dn2CppObject* dn2cpp_delegate_base_equals_invoker(void* fn, Dn2CppObject* receiver,
-    Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType)
-{
-    auto body = reinterpret_cast<int32_t (*)(Dn2CppObject*, Dn2CppObject*)>(fn);
-    int32_t value = body(receiver, arguments[0]);
-    return dn2cpp_box(returnType, &value, sizeof(value));
-}
-
-Dn2CppObject* dn2cpp_delegate_base_hash_invoker(void* fn, Dn2CppObject* receiver,
-    Dn2CppObject**, const Dn2CppTypeInfo* returnType)
-{
-    auto body = reinterpret_cast<int32_t (*)(Dn2CppObject*)>(fn);
-    int32_t value = body(receiver);
-    return dn2cpp_box(returnType, &value, sizeof(value));
 }
 
 static const Dn2CppDelegateInterfaceTarget* g_delegate_interface_targets = nullptr;
@@ -8281,9 +8256,9 @@ void dn2cpp_set_patch_virtual_method_resolver(Dn2CppPatchVirtualMethodResolver r
     g_patch_virtual_method_resolver.store(resolver, std::memory_order_release);
 }
 
-// The method a reflection-bound delegate reports. A closed instance binding of a
-// virtual row names the body its receiver's slot runs; an open binding names the
-// row, as .NET's Delegate.Method does.
+// The row of the body a closed instance binding runs on its receiver: the override
+// the receiver's slot selects for a virtual row, else the row the binding was given.
+// Patch-declared rows never arrive here; their callers ask the patch resolver.
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_reflbind_method(const Dn2CppReflBind* bind)
 {
     const Dn2CppMetadataHandle<Dn2CppMethodInfo> mi = bind->method;
@@ -8326,13 +8301,6 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_reflbind_method(const Dn2Cp
         const Dn2CppDelegateMethodIdentity identity{ owner, decl.metadataToken, 0, nullptr, true, 0, nullptr };
         hit = dn2cpp_delegate_interface_target(receiver, owner, decl, &identity,
             const_cast<void*>(slots[decl.vtableSlot]));
-    }
-    else if ((owner->flags & DN2CPP_TF_PATCH) != 0)
-    {
-        const auto resolver = g_patch_virtual_method_resolver.load(std::memory_order_acquire);
-        if (resolver == nullptr)
-            dn2cpp_throw_platform_not_supported("Delegate.Method: patch virtual method identity is not available");
-        hit = resolver(receiver, decl.vtableSlot, true);
     }
     else if ((owner->flags & DN2CPP_TF_VALUETYPE) == 0)
         hit = dn2cpp_delegate_class_virtual_target(receiver, owner, decl.vtableSlot);
@@ -8504,7 +8472,7 @@ bool dn2cpp_reflbind_selected_key(const Dn2CppReflBind* bind,
                 const auto resolver = g_patch_virtual_method_resolver.load(std::memory_order_acquire);
                 if (resolver == nullptr)
                     return false;
-                selected = resolver(receiver, row.vtableSlot, false);
+                selected = resolver(receiver, row.vtableSlot);
             }
             else
             {
@@ -8519,6 +8487,20 @@ bool dn2cpp_reflbind_selected_key(const Dn2CppReflBind* bind,
         }
     }
     return owner != nullptr && token != 0;
+}
+
+// The row a binding was given, which Delegate.Method names, as the key
+// dn2cpp_delegate_selected_key answers for a compiled binding of that row.
+bool dn2cpp_reflbind_row_key(const Dn2CppReflBind* bind,
+    const Dn2CppTypeInfo*& owner, int32_t& token, int32_t& genericArgCount,
+    const Dn2CppTypeInfo* const*& genericArgs)
+{
+    const Dn2CppMethodInfo row = *bind->method;
+    owner = dn2cpp_invoke_declaring(row.declaringType, bind->declaring);
+    token = row.metadataToken;
+    genericArgCount = row.genericParamCount;
+    genericArgs = row.genericArgs;
+    return owner != nullptr && token != 0 && (genericArgCount == 0 || genericArgs != nullptr);
 }
 
 // .NET binds a virtual row to its receiver's override, so a binding through the
@@ -8583,7 +8565,9 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
         if (bind->mode == DN2CPP_DGBIND_CLOSED_INSTANCE && bind->target == nullptr
             && dn2cpp_type_is_generic_type(bind->declaring) != 0)
             dn2cpp_throw_null_reference();
-        const auto bound = dn2cpp_reflbind_method(bind);
+        // .NET names the row the binding was given, never the override its receiver
+        // runs, so the answer reads no table of the receiver.
+        const auto bound = bind->method;
         if (!bound)
             return nullptr;
         if (std::strcmp(bound->name, ".ctor") == 0 || std::strcmp(bound->name, ".cctor") == 0)
@@ -8594,16 +8578,13 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
         }
         // Declaring-normalized: .NET's delegate.Method is the declaring-typed
         // instance even when the delegate was created from a derived-reflected row. A
-        // template row's declaring type is the clone level the binding runs on, which
-        // a closed binding's receiver instantiates for every row it can name.
-        const Dn2CppTypeInfo* through = bind->mode == DN2CPP_DGBIND_CLOSED_INSTANCE && bind->target != nullptr
-            ? bind->target->type
-            : bind->declaring;
+        // template row's declaring type is the clone level the binding runs on.
         return reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(bound,
-            dn2cpp_invoke_declaring(bound->declaringType, through)));
+            dn2cpp_invoke_declaring(bound->declaringType, bind->declaring)));
     }
     auto* dg = reinterpret_cast<Dn2CppDelegate*>(d);
-    // Runtime-created and interpreted delegates carry no static identity.
+    // A runtime-created delegate, and an interpreted one over a patch method or an
+    // intrinsic-table binding, carries no static identity.
     const auto* identity = dg->identity;
     if (identity == nullptr || identity->declaringType == nullptr)
         return nullptr;

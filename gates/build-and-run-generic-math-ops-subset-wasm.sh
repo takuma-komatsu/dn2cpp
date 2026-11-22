@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Native-integer endian reads and parsing execute through C# -> C++ -> wasm32.
+# Native-integer endian reads, parsing and atomics execute through C# -> C++ -> wasm32.
 # The same generic fixtures run as CLR int/uint and Wasm nint/nuint: a host's
 # native integer width must never choose the expected wasm32 range or storage.
 # Pass --no-ildiet to exercise the original assembly instead of its rewritten copy.
@@ -37,7 +37,8 @@ for observation in native clr; do
         'signed parsing values native32 end' 'unsigned parsing values native32 end' \
         'signed parsing provider/null native32 end' 'unsigned parsing provider/null native32 end' \
         'signed parsing utf8 native32 end' 'unsigned parsing utf8 native32 end' \
-        'signed parsing native32 end' 'unsigned parsing native32 end' 'generic native32 end'
+        'signed parsing native32 end' 'unsigned parsing native32 end' 'generic native32 end' \
+        'signed atomics native32 end' 'unsigned atomics native32 end'
 done
 cat "$_CG_OUT/native.stdout"
 gate_cache_commit

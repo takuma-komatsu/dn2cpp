@@ -866,10 +866,11 @@ namespace ReflectDelegateIdentitySubset
             var textRow = typeof(object).GetMethod("ToString", Type.EmptyTypes);
             var hashRow = typeof(object).GetMethod("GetHashCode", Type.EmptyTypes);
             var equalsRow = typeof(object).GetMethod("Equals", new[] { typeof(object) });
+            // A reflection binding names the Object row it was given.
             Console.WriteLine("runtime-object-reflected-" + receiver.GetType().Name + "="
-                + RuntimeBinding(textRow.CreateDelegate(typeof(Func<string>), receiver), owner, "ToString", root, receiver, null, text()) + "|"
-                + RuntimeBinding(hashRow.CreateDelegate(typeof(Func<int>), receiver), owner, "GetHashCode", root, receiver, null, hash()) + "|"
-                + RuntimeBinding(equalsRow.CreateDelegate(typeof(Func<object, bool>), receiver), owner, "Equals", root, receiver, new[] { receiver }, true));
+                + RuntimeBinding(textRow.CreateDelegate(typeof(Func<string>), receiver), root, "ToString", root, receiver, null, text()) + "|"
+                + RuntimeBinding(hashRow.CreateDelegate(typeof(Func<int>), receiver), root, "GetHashCode", root, receiver, null, hash()) + "|"
+                + RuntimeBinding(equalsRow.CreateDelegate(typeof(Func<object, bool>), receiver), root, "Equals", root, receiver, new[] { receiver }, true));
         }
 
         static string ArrayHelperBinding(Delegate binding, object receiver)
@@ -883,6 +884,14 @@ namespace ReflectDelegateIdentitySubset
             string create;
             try { method.CreateDelegate(binding.GetType(), receiver); create = "accepted"; }
             catch (ArgumentException) { create = "target"; }
+            // A reflection binding names the interface row it was given, which is not
+            // generic and takes the array as its receiver.
+            if (!method.IsGenericMethod)
+                return "row/" + (method.DeclaringType == typeof(System.Collections.Generic.IEnumerable<int>))
+                    + "/" + (method.ReflectedType == method.DeclaringType)
+                    + "/" + method.IsVirtual + "/" + (invoke == "accepted") + "/" + (create == "accepted")
+                    + "/" + (int)method.Attributes + "/" + (int)method.GetMethodImplementationFlags()
+                    + "/" + method.MetadataToken + "/" + method;
             var definition = method.GetGenericMethodDefinition();
             return (method.DeclaringType.FullName == "System.SZArrayHelper")
                 + "/" + (method.ReflectedType == method.DeclaringType)
@@ -942,13 +951,13 @@ namespace ReflectDelegateIdentitySubset
             var compareBound = typeof(IComparable).GetMethod("CompareTo").CreateDelegate(typeof(Func<object, int>), comparable);
             Console.WriteLine("runtime-interface-number="
                 + RuntimeBinding(compare, "System.Int32", "CompareTo", "System.Int32", comparable, new object[] { 7 }, 0) + "|"
-                + RuntimeBinding(compareBound, "System.Int32", "CompareTo", "System.Int32", comparable, new object[] { 7 }, 0));
+                + RuntimeBinding(compareBound, "System.IComparable", "CompareTo", "System.IComparable", comparable, new object[] { 7 }, 0));
             IComparable stringComparable = "text";
             Func<object, int> stringCompare = stringComparable.CompareTo;
             var stringBound = typeof(IComparable).GetMethod("CompareTo").CreateDelegate(typeof(Func<object, int>), stringComparable);
             Console.WriteLine("runtime-interface-string="
                 + RuntimeBinding(stringCompare, "System.String", "CompareTo", "System.String", stringComparable, new object[] { "text" }, 0) + "|"
-                + RuntimeBinding(stringBound, "System.String", "CompareTo", "System.String", stringComparable, new object[] { "text" }, 0));
+                + RuntimeBinding(stringBound, "System.IComparable", "CompareTo", "System.IComparable", stringComparable, new object[] { "text" }, 0));
             int[] array = { 3, 4 };
             Func<System.Collections.Generic.IEnumerator<int>> enumerate = ((System.Collections.Generic.IEnumerable<int>)array).GetEnumerator;
             var enumerateBound = typeof(System.Collections.Generic.IEnumerable<int>).GetMethod("GetEnumerator")
@@ -977,13 +986,14 @@ namespace ReflectDelegateIdentitySubset
                 + RuntimeBinding(numberPick, typeof(ClosedPicks).FullName, "ReflectDelegateIdentitySubset.Program.IClosedPick<System.Int32>.Pick", typeof(ClosedPicks).FullName, picks, null, 31));
             Console.WriteLine("runtime-interface-closed-values=" + numberPick() + "/" + textPick()
                 + "/" + numberBound.DynamicInvoke() + "/" + textBound.DynamicInvoke()
-                + "/" + (numberPick.Method == numberBound.Method) + "/" + (textPick.Method == textBound.Method)
+                + "/" + (numberBound.Method == typeof(IClosedPick<int>).GetMethod("Pick"))
+                + "/" + (textBound.Method == typeof(IClosedPick<string>).GetMethod("Pick"))
                 + "/" + (numberPick.Method != textPick.Method));
             IBaseDefault boxed = (IBaseDefault)Activator.CreateInstance(typeof(StructDerivedDefault));
             Func<string> defaultPick = boxed.Pick;
             var defaultBound = typeof(IBaseDefault).GetMethod("Pick").CreateDelegate(typeof(Func<string>), boxed);
             Console.WriteLine("runtime-interface-value-default=" + (defaultPick.Method.DeclaringType == typeof(IDerivedDefault))
-                + "/" + (defaultBound.Method.DeclaringType == typeof(IDerivedDefault))
+                + "/" + (defaultBound.Method.DeclaringType == typeof(IBaseDefault))
                 + "/" + defaultPick() + "/" + defaultBound.DynamicInvoke()
                 + "/" + defaultPick.Method.Invoke(boxed, null));
             Console.WriteLine("runtime delegate method identities end");
@@ -1036,6 +1046,17 @@ namespace ReflectDelegateIdentitySubset
                 + "/" + ((Func<string>)remainingVirtual[0])() + "/" + ReferenceEquals(remainingBase[0], directBase)
                 + "/" + ((Func<string>)remainingBase[0])());
             Console.WriteLine("Object virtual delegate equality end");
+        }
+
+        // A base call and a reflection binding of Object's row report one method, so
+        // they hash alike.
+        public static void RunBaseHash()
+        {
+            var receiver = new ObjectVirtualEqualityCase();
+            Func<string> directBase = receiver.DirectBase();
+            var reflected = (Func<string>)typeof(object).GetMethod("ToString", Type.EmptyTypes)
+                .CreateDelegate(typeof(Func<string>), receiver);
+            Console.WriteLine("object-virtual-equality-base-hash=" + (directBase.GetHashCode() == reflected.GetHashCode()));
         }
 
         public static void RunInherited()

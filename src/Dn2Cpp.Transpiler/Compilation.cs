@@ -3958,11 +3958,18 @@ internal sealed partial class Compilation
     }
 
     internal MethodInfo ReachIntrinsicStaticMethod(string ownerName, string name,
+        Func<MethodInfo, bool> matches) =>
+        ReachIntrinsicMethod(ownerName, name, m => m.IsStatic && matches(m));
+
+    /// <summary>Reaches the real body of the member of an intrinsic-mapped type that
+    /// <paramref name="matches"/> selects among its <paramref name="name"/> overloads,
+    /// for the intercepted call site to call.</summary>
+    internal MethodInfo ReachIntrinsicMethod(string ownerName, string name,
         Func<MethodInfo, bool> matches)
     {
         var owner = FindClassByFullName(ownerName)
             ?? throw new NotSupportedException($"{ownerName} is not loaded");
-        var method = owner.EnsureMembers().Methods.FirstOrDefault(m => m.IsStatic && m.Rva != 0
+        var method = owner.EnsureMembers().Methods.FirstOrDefault(m => m.Rva != 0
             && m.Name == name && matches(m))
             ?? throw new NotSupportedException($"{ownerName}.{name} has no matching managed body");
         ReachIntrinsicTypeMethod(method);

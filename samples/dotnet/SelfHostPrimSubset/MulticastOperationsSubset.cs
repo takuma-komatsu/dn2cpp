@@ -19,21 +19,17 @@ internal static class Program
 
     private static Delegate Combine(Delegate source, Delegate value)
     {
-        if (Driver.Route == 1) return Routes.CallCombine((MulticastDelegate)source, value);
-        if (Driver.Route == 2) return Routes.CalliCombine((MulticastDelegate)source, value);
-        if (Driver.Route == 3) return Routes.CallvirtCombine((MulticastDelegate)source, value);
-        if (Driver.Route == 4) return Routes.VirtCalliCombine((MulticastDelegate)source, value);
-        MethodInfo method = typeof(MulticastDelegate).GetMethod("CombineImpl",
+        if (Driver.Route == 1 || Driver.Route == 3) return Routes.CallCombine((MulticastDelegate)source, value);
+        if (Driver.Route == 2 || Driver.Route == 4) return Routes.CalliCombine((MulticastDelegate)source, value);
+        MethodInfo method = typeof(Delegate).GetMethod("CombineImpl",
             BindingFlags.Instance | BindingFlags.NonPublic, null, new[] { typeof(Delegate) }, null);
         return (Delegate)method.Invoke(source, new object[] { value });
     }
     private static Delegate Remove(Delegate source, Delegate value)
     {
-        if (Driver.Route == 1) return Routes.CallRemove((MulticastDelegate)source, value);
-        if (Driver.Route == 2) return Routes.CalliRemove((MulticastDelegate)source, value);
-        if (Driver.Route == 3) return Routes.CallvirtRemove((MulticastDelegate)source, value);
-        if (Driver.Route == 4) return Routes.VirtCalliRemove((MulticastDelegate)source, value);
-        MethodInfo method = typeof(MulticastDelegate).GetMethod("RemoveImpl",
+        if (Driver.Route == 1 || Driver.Route == 3) return Routes.CallRemove((MulticastDelegate)source, value);
+        if (Driver.Route == 2 || Driver.Route == 4) return Routes.CalliRemove((MulticastDelegate)source, value);
+        MethodInfo method = typeof(Delegate).GetMethod("RemoveImpl",
             BindingFlags.Instance | BindingFlags.NonPublic, null, new[] { typeof(Delegate) }, null);
         return (Delegate)method.Invoke(source, new object[] { value });
     }

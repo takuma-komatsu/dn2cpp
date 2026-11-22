@@ -143,8 +143,6 @@ internal sealed partial class Compilation
             {
                 _predTrace.TryAdd(m, _currentScan);
                 m.EnsureSignature();
-                var virtualTarget = DelegateCallableVirtualTarget(m);
-                if (virtualTarget != m) Reach(virtualTarget);
                 if (m.Name == ".ctor")
                 {
                     NoteReflectionDelegateBind(m.Module, named: true);

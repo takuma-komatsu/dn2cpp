@@ -11,11 +11,11 @@ internal static class DelegateSignaturesDeclarations
     // Keep the oracle independent of IsName, so narrowing the production catalog
     // cannot silently remove a control from this fixture.
     internal static bool IsName(string owner, string name) =>
-        owner is "System.Delegate" or "System.MulticastDelegate" && (name is ".ctor" or "Equals" or "GetHashCode"
-            || owner == "System.MulticastDelegate" && name is "NewMulticastDelegate" or "CombineImpl" or "RemoveImpl"
-                or "GetTarget" or "GetMethodImpl" or "GetInvocationList" or "get_HasSingleTarget" or "TryGetAt"
-                or "CtorClosed" or "CtorClosedStatic" or "CtorRTClosed" or "CtorOpened" or "CtorVirtualDispatch"
-                or "CtorCollectibleClosedStatic" or "CtorCollectibleOpened" or "CtorCollectibleVirtualDispatch");
+        owner is "System.Delegate" or "System.MulticastDelegate" && (name == ".ctor"
+            || owner == "System.Delegate" && name is "Equals" or "GetHashCode" or "NewMulticastDelegate" or "CombineImpl"
+                or "RemoveImpl" or "get_Target" or "GetMethodImpl" or "GetInvocationList" or "get_HasSingleTarget" or "TryGetAt"
+                or "CtorClosed" or "CtorClosedStatic" or "CtorRTClosed" or "CtorOpen" or "CtorVirtualDispatch"
+                or "CtorCollectibleClosedStatic" or "CtorCollectibleOpen" or "CtorCollectibleVirtualDispatch");
 
     internal static Target[] Candidates(MetadataReader reader)
     {
@@ -31,7 +31,7 @@ internal static class DelegateSignaturesDeclarations
                 if (IsName(owner, name)) result.Add(new Target(methodHandle, owner, name));
             }
         }
-        DelegateSignaturesMetadata.Require(result.Count == 25, "CoreLib delegate callable declaration catalog changed");
+        DelegateSignaturesMetadata.Require(result.Count == 22, "CoreLib delegate callable declaration catalog changed");
         return result.ToArray();
     }
 
@@ -48,7 +48,7 @@ internal static class DelegateSignaturesDeclarations
             Console.WriteLine("delegate-declaration-control:" + item.Owner + "." + item.Name + ":"
                 + Convert.ToHexString(reader.GetBlobBytes(reader.GetMethodDefinition(item.Handle).Signature)));
         }
-        var target = candidates.Single(item => item.Owner == "System.MulticastDelegate" && item.Name == "GetHashCode");
+        var target = candidates.Single(item => item.Owner == "System.Delegate" && item.Name == "GetHashCode");
         var method = reader.GetMethodDefinition(target.Handle);
         var ownerHandle = method.GetDeclaringType();
         var owner = reader.GetTypeDefinition(ownerHandle);
@@ -74,10 +74,10 @@ internal static class DelegateSignaturesDeclarations
             (r, m) => r.GetBlobBytes(m.Signature).SequenceEqual(new byte[] { 0x20, 0, 2 }));
         Test("sealed-owner", bytes => BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(typeRow), (int)(owner.Attributes | TypeAttributes.Sealed)),
             (r, m) => (r.GetTypeDefinition(m.GetDeclaringType()).Attributes & TypeAttributes.Sealed) != 0);
-        var objectHandle = reader.TypeDefinitions.Single(handle =>
+        var wrongBase = reader.TypeDefinitions.Single(handle =>
         {
             var type = reader.GetTypeDefinition(handle);
-            return reader.StringComparer.Equals(type.Namespace, "System") && reader.StringComparer.Equals(type.Name, "Object");
+            return reader.StringComparer.Equals(type.Namespace, "System") && reader.StringComparer.Equals(type.Name, "ValueType");
         });
         int stringWidth = reader.GetHeapSize(HeapIndex.String) > ushort.MaxValue ? 4 : 2;
         // TypeDefOrRef is wide if any participating table needs more than 14 bits.
@@ -86,10 +86,10 @@ internal static class DelegateSignaturesDeclarations
         Test("wrong-base", bytes =>
         {
             int offset = typeRow + 4 + 2 * stringWidth;
-            int coded = CodedIndex.TypeDefOrRef(objectHandle);
+            int coded = CodedIndex.TypeDefOrRef(wrongBase);
             if (wideBase) BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(offset), coded);
             else U16(bytes, offset, coded);
-        }, (r, m) => r.GetTypeDefinition(m.GetDeclaringType()).BaseType == objectHandle);
+        }, (r, m) => r.GetTypeDefinition(m.GetDeclaringType()).BaseType == wrongBase);
         Console.WriteLine("delegate-declaration-contract:ok");
 
         void Test(string label, Action<byte[]> mutate, Func<MetadataReader, MethodDefinition, bool> check)

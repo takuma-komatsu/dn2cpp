@@ -141,7 +141,6 @@ internal static class BclMessages
         "Task_Delay_InvalidMillisecondsDelay",
         "TaskT_ConfigureAwait_InvalidOptions",
         "Task_InvalidTimerTimeSpan",
-        "ArgumentOutOfRange_NeedNonNegOrNegative1",
         "ThreadState_NotStarted",
         "ThreadState_AlreadyStarted",
         "InvalidOperation_ThreadWrongThreadStart",

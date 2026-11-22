@@ -284,6 +284,11 @@ internal static partial class CoreIntrinsics
         // Bound at the LibraryImport WRAPPER, never at its `<LogInternal>g____PInvoke|N_0`
         // stub — that ordinal is a Roslyn artifact and moves with a CoreLib update.
         [("System.Diagnostics.Debugger", "LogInternal")] = BoundedVerdict.Silent,
+        // AppContext.GetData asks the host for a runtime property the data store does
+        // not hold. A transpiled image has no host, so "not found" is the true answer
+        // and GetData returns null, as it does when a host declines the name. Bound at
+        // the LibraryImport wrapper for the same reason as LogInternal.
+        [("System.AppContext", "TryGetHostPropertyValue")] = BoundedVerdict.Silent,
         // ComWrappers' COM-vftbl builders — three bodyless QCall externs reached only
         // through ComWrappers..cctor, which TypeDescriptor.GetConverter drags in. With no
         // COM RCW ever created, TryGetComInstance answers false (a true answer: no COM
@@ -708,6 +713,11 @@ internal static partial class CoreIntrinsics
         // Utilities.GetMemoryPressure -> Low. Its real body reads GC.GetGCMemoryInfo — native GC
         // accounting dn2cpp does not model.
         "System.Buffers.Utilities" => name == "GetMemoryPressure",
+        // ManagedThreadId's getters -> the runtime thread's managed id. Their real bodies
+        // read a [ThreadStatic] that only CoreCLR's native thread setup writes, so the
+        // transpiled read would answer 0 on every thread. Environment.CurrentManagedThreadId
+        // forwards here and keeps its real IL.
+        "System.Threading.ManagedThreadId" => name is "get_Current" or "get_CurrentManagedThreadIdUnchecked",
         // Gen2GcCallback remains a whole-class cut: Register preserves the existing
         // no-notification policy for ArrayPool/ThreadPool. Exact retained constructors
         // and Finalize refuse; the type has a permanent preallocation capability fence.

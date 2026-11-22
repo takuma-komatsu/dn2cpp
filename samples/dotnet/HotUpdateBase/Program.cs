@@ -100,6 +100,8 @@ public class Counter
     public static Describer? AggregateProbe;
     public static Describer? InitializerProbe;
     public static Describer? TypeGetterSignatureProbe;
+    // Printed last, so the transcript before it stays a prefix.
+    public static Describer? BindingIdentityProbe;
     // A patch-constructed receiver below GlassShelf, which Main reflects over.
     public static Shelf? PatchShelf;
     // A patch-constructed receiver below Plaque, which Main reflects over.
@@ -145,6 +147,12 @@ public class Counter
             throw new InvalidOperationException("counter underflow");
         _count -= amount;
         return _count;
+    }
+
+    public static string SameAddBinding(Counter c, IntTransform bound)
+    {
+        IntTransform compiled = c.Add;
+        return bound.Equals(compiled) + "/" + (bound.GetHashCode() == compiled.GetHashCode());
     }
 
     public virtual string Describe()
@@ -1306,6 +1314,8 @@ internal static class Program
             return;
         if (Counter.TypeGetterSignatureProbe is not null)
             Console.WriteLine(Counter.TypeGetterSignatureProbe());
+        if (Counter.BindingIdentityProbe is not null)
+            Console.WriteLine(Counter.BindingIdentityProbe());
     }
 
     private static string Describe(MethodInfo method)
@@ -1313,8 +1323,9 @@ internal static class Program
         return method.DeclaringType!.Name + "." + method.Name + "[" + method.GetGenericArguments()[0].Name + "]";
     }
 
-    // A patch receiver runs its nearest AOT ancestor's generic virtual override,
-    // so a delegate over it reports that override and equals a binding of it.
+    // A patch receiver runs its nearest AOT ancestor's generic virtual override.
+    // A method group over it reports that override; a reflection binding reports
+    // the row it was given and equals a binding of the override.
     private static void PatchReceiverReflection(Shelf frost)
     {
         Console.WriteLine("== generic virtual reflection over a patch receiver ==");
@@ -1336,9 +1347,9 @@ internal static class Program
         return method is null ? "null" : method.DeclaringType + "." + method.Name;
     }
 
-    // A patch type runs its nearest AOT ancestor's Object virtuals, so a delegate
-    // over a patch receiver bound to one by reflection reports that ancestor's
-    // override, the row a by-name lookup on the patch type finds.
+    // A patch type runs its nearest AOT ancestor's Object virtuals. A delegate
+    // over a patch receiver bound to one by reflection reports the Object row it
+    // was given; a by-name lookup on the patch type finds the ancestor's override.
     private static void PatchReceiverObjectVirtuals(object plaque)
     {
         Console.WriteLine("== object virtuals over a patch receiver ==");

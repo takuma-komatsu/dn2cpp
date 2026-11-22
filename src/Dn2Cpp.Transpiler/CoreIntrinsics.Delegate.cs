@@ -6,10 +6,16 @@ internal static partial class CoreIntrinsics
 {
     internal static void ValidateDelegateCallableBody(MethodInfo method)
     {
-        if (DelegateCallableBodyContract.IsName(method.DeclaringClass.FullName, method.Name)
-            && !IsDelegateCallableBody(method))
+        if (IsDelegateStorage(method.DeclaringClass))
+            throw new NotSupportedException("Delegate invocation-list storage is CoreCLR-owned and has no native body");
+        if (DelegateCallableBodyContract.IsName(method.DeclaringClass.FullName, method.Name) && !IsDelegateCallableBody(method))
             throw new NotSupportedException("Delegate callable member requires its exact CoreLib declaration");
     }
+
+    private static bool IsDelegateStorage(ClassInfo cls) =>
+        cls.Name == "Wrapper" && cls.IsValueType && !cls.Handle.IsNil && cls.GenericArity == 0
+        && cls.Module.AssemblyName == "System.Private.CoreLib"
+        && DelegateCallableBodyContract.IsInvocationStorage(cls.Module.Reader, cls.Handle);
 
     internal static bool IsDelegateCallableBody(MethodInfo method)
     {
@@ -36,6 +42,11 @@ internal static partial class CoreIntrinsics
     private static bool DelegatePrimitive(TypeDesc type, PrimitiveTypeCode code) =>
         type is { Kind: TypeKind.Primitive, IsCanonPlaceholder: false } && type.Primitive == code;
 
+    private static bool DelegateStorage(TypeDesc type, Module module) =>
+        type is { Kind: TypeKind.Class, IsCanonPlaceholder: false, Class: { } cls }
+        && cls.Module == module && IsDelegateStorage(cls)
+        && cls.Context.TypeArgs.Length == 0 && cls.Context.MethodArgs.Length == 0;
+
     private static bool IsDelegateCallableSignature(MethodInfo method, MethodSignature<TypeDesc> signature)
     {
         if (signature.Header.RawValue != 0x20 || signature.GenericParameterCount != 0
@@ -54,12 +65,12 @@ internal static partial class CoreIntrinsics
             case "GetHashCode":
                 return DelegatePrimitive(r, PrimitiveTypeCode.Int32) && p.Length == 0;
             case "NewMulticastDelegate":
-                return DelegateClass(r, module, "System.MulticastDelegate") && p.Length is 2 or 3
-                    && p[0] is { Kind: TypeKind.SZArray, Element: { } element } && DelegatePrimitive(element, PrimitiveTypeCode.Object)
-                    && DelegatePrimitive(p[1], PrimitiveTypeCode.Int32) && (p.Length == 2 || DelegatePrimitive(p[2], PrimitiveTypeCode.Boolean));
+                return DelegateClass(r, module, "System.Delegate") && p.Length == 3
+                    && p[0] is { Kind: TypeKind.SZArray, Element: { } element } && DelegateStorage(element, module)
+                    && DelegatePrimitive(p[1], PrimitiveTypeCode.Int32) && DelegatePrimitive(p[2], PrimitiveTypeCode.Boolean);
             case "CombineImpl" or "RemoveImpl":
                 return DelegateClass(r, module, "System.Delegate") && p.Length == 1 && DelegateClass(p[0], module, "System.Delegate");
-            case "GetTarget":
+            case "get_Target":
                 return DelegatePrimitive(r, PrimitiveTypeCode.Object) && p.Length == 0;
             case "GetMethodImpl":
                 return DelegateClass(r, module, "System.Reflection.MethodInfo") && p.Length == 0;
@@ -68,7 +79,7 @@ internal static partial class CoreIntrinsics
             case "get_HasSingleTarget":
                 return DelegatePrimitive(r, PrimitiveTypeCode.Boolean) && p.Length == 0;
             case "TryGetAt":
-                return DelegatePrimitive(r, PrimitiveTypeCode.Object) && p.Length == 1 && DelegatePrimitive(p[0], PrimitiveTypeCode.Int32);
+                return DelegateClass(r, module, "System.Delegate") && p.Length == 1 && DelegatePrimitive(p[0], PrimitiveTypeCode.Int32);
             default:
                 if (p.Length != DelegateCallableBodyContract.VmConstructorArity(method.Name) || p.Length < 2
                     || !DelegatePrimitive(r, PrimitiveTypeCode.Void) || !DelegatePrimitive(p[0], PrimitiveTypeCode.Object)) return false;

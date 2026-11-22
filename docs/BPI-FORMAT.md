@@ -215,11 +215,12 @@ record declarations in `dn2cpp_interp.h` define the fixed layout.
 The loader validates identities, descriptor extents, declaring-type ownership,
 frame signatures and implemented interface signatures before publication. Each
 replaced interface slot retains its selected method row, including the true
-patch declaring type. `Delegate.Method` and a reflective interface binding use
-that identity; their returned MethodInfo invokes the interpreted body and can
-roundtrip through `CreateDelegate`. These rows are private dispatch metadata and
-do not add patch members to type member enumeration. Rebinding a virtual row to
-an override without private MethodMetadata refuses `Delegate.Method`; equality
+patch declaring type. `Delegate.Method` of a method group over the slot uses
+that identity; its returned MethodInfo invokes the interpreted body and can
+roundtrip through `CreateDelegate`. A reflective binding reports the row it was
+given, whatever body its receiver runs, so it reads no patch metadata. These rows
+are private dispatch metadata and do not add patch members to type member
+enumeration. Equality
 can return a conservative false without requesting missing metadata. Method and parameter custom
 attributes, parameter default values and signature custom modifiers are not
 recorded; queries needing those values refuse explicitly.
@@ -1046,9 +1047,10 @@ dispatcher. A `callvirt` of the import enters the
 dispatcher whether a class or an interface declares the method, and a `call`
 runs the row's own body, an interface's default one included.
 A patch receiver below an AOT override runs its nearest AOT
-ancestor's case, and a delegate over it that binds the row, by reflection or
-`ldvirtftn`, reports that case as `Delegate.Method` and compares equal to a
-binding of it. An instantiation the base never reaches has no bindable row, so
+ancestor's case. A delegate over it that binds the row by `ldvirtftn` reports
+that case as `Delegate.Method`; one that binds it by reflection reports the row
+it was given. Both compare equal to a binding of that case. An instantiation
+the base never reaches has no bindable row, so
 its import fails the bind as an *unresolved method import* (the boundary below),
 and the failed load publishes nothing. The loader refuses an import a `callvirt`
 names when its row's dispatcher is missing or stripping, with *no call-site
@@ -1134,8 +1136,11 @@ prev, identity, entry, invocationCache }`. `prev` is the multicast chain;
 `entry` retains a copied list node's original delegate, and `invocationCache`
 is an atomic reference to the invocation-list cache. An interpreter-built
 delegate is single-target and initializes these fields to zero. `identity`
-is the emitter's static method identity, also left null by the interpreter,
-so its `Delegate.Method` is null. An `Invoke` calls
+is the emitter's static method identity. The interpreter stamps the one a
+compiled binding carries when the delegate binds a compiled method that has
+a metadata row, so the delegate equals, hashes with and reports the `Method`
+of its compiled twin; a delegate over a patch method or an intrinsic-table
+binding has none, and its `Delegate.Method` is null. An `Invoke` calls
 `method(target, args…)` with the delegate's Invoke C++ ABI (the target is
 always the first argument; an instance method's real address takes it as
 `this`, a static one goes through an adapter that drops it). A patch method
@@ -1532,11 +1537,12 @@ surface — see also the carve-out list below.
   reflection answers as if it declared no members: `GetMethods`, `GetFields`,
   `GetProperties` and the by-name lookups see only what its AOT ancestors
   declare (nothing under `DeclaredOnly`), `GetMethod` of a method the patch
-  overrides returns the AOT row, and a delegate over a patch receiver bound to
+  overrides returns the AOT row, and a method group over a patch receiver of
   a plain virtual method, an Object virtual included, reports as
-  `Delegate.Method` the nearest AOT ancestor's override, or the bound method
-  itself, never the patch override. Interface bindings instead retain their selected
-  interpreted implementation's private MethodMetadata row.
+  `Delegate.Method` the nearest AOT ancestor's override, never the patch
+  override. Interface method groups instead retain their selected interpreted
+  implementation's private MethodMetadata row. A reflection-bound delegate
+  reports the row it was given, as on an AOT receiver.
 - **Bad-IL timing**: .NET raises `BadImageFormatException` for a `call` of an
   abstract method when the JIT compiles the calling method, before that method
   runs. The interpreter raises it when the call executes, so the calling

@@ -25,8 +25,8 @@
 # Monitor and Lock have independent ownership, checked exits and synchronized epilogues.
 # Registration object equality names its type-info without a box or typeof site.
 # Lock's runtime header preserves its CLR identity through typed and shared casts.
-# SynchronizationContext.Wait reaches the CoreCLR WaitHandle QCall, which natively
-# refuses at the call instead of binding.
+# SynchronizationContext.Wait reaches the CoreCLR raw wait over IntPtr handles, which
+# natively refuses at the call instead of binding.
 source "$(dirname "$0")/_common.sh"
 registration_app="gates/fixtures/registration-object-equality/bin/$CONFIG/$TFM/RegistrationObjectEquality.dll"
 build_gate_proj gates/fixtures/registration-object-equality/RegistrationObjectEquality.csproj

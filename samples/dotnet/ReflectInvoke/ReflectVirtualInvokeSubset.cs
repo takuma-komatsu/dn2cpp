@@ -15,7 +15,7 @@ using System.Reflection;
 // framework overrides of abstract rows, framework overrides only reflection
 // reaches, which a string literal after typeof names, and interface rows whose
 // declaration has a default body. An abstract row checks its receiver and
-// arguments first, and a closed CreateDelegate binding reports the body it runs;
+// arguments first, and a closed CreateDelegate binding reports the row it was given;
 // a boxed value binds as a receiver or a first argument and runs on its box. An
 // application interface's static, non-virtual and private members that nothing
 // calls run as themselves, and its static virtual and abstract members answer as
@@ -295,9 +295,9 @@ struct NamedTally : ICounter
     public string Label() => "named:" + N;
 }
 
-// Invoke runs a static virtual member's default body and faults a static abstract
-// one as bad IL; a delegate binds either only open and finds no entry point when
-// called.
+// Invoke and a delegate run a static virtual member's default body and fault a
+// static abstract one as bad IL; a delegate over a first argument whose type does
+// not implement the interface finds no entry point.
 interface IFactory
 {
     static virtual string Virt() => "virt";
@@ -1024,7 +1024,7 @@ static class Program
 
         // Delegate equality compares the method a binding resolves to on its receiver:
         // bindings through a declaration and through the override it resolves to are
-        // equal delegates with equal hashes.
+        // equal delegates, while each hashes by the row it was given.
         Try("boxed struct delegate equality across rows", () =>
         {
             var viaInterface = Delegate.CreateDelegate(typeof(Func<int>), tally, counterGet);

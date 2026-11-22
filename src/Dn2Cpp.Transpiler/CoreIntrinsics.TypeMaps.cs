@@ -649,8 +649,8 @@ internal static class CoreIntrinsicTypeMaps
     /// plain managed code. System.Array's: ThrowHelper argument checks, element reads, a
     /// delegate invoke, a List&lt;T&gt; or ReadOnlyCollection&lt;T&gt;, and calls to each
     /// other. System.Delegate's EnumerateInvocationList: the InvocationListEnumerator
-    /// construction, whose MoveNext reaches the chain through
-    /// <c>MulticastDelegate.TryGetAt</c>, a retained native-chain body. Their call
+    /// construction, whose MoveNext reaches the chain through the delegate base's
+    /// <c>TryGetAt</c>, a retained native-chain body. Their call
     /// sites stay intercepted with the rest of the intrinsic type, but the lowering and an
     /// address-taken use both name the real transpiled body, so .NET's argument order and
     /// messages hold by construction.</summary>
