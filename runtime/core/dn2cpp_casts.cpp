@@ -1485,9 +1485,7 @@ Dn2CppObject* dn2cpp_castclass(Dn2CppObject* obj, const Dn2CppTypeInfo* ti)
 // would pun the raw pointer and every object-generic consumer would read a 256-entry
 // bitmap's first bytes as a type header — silently, not as a crash. So fail, and
 // catchably: a wrap would have to invent the private per-shape subclass identity .NET
-// reports, i.e. answer differently wrong rather than not at all. Assembly/Module have
-// a FIXED private identity, so they take the interned-wrapper treatment instead
-// (dn2cpp_asm_wrap).
+// reports.
 Dn2CppObject* dn2cpp_headerless_escape(const char* managedTypeName)
 {
     char buf[512];

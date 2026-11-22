@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace ReflectRuntimeTypeParitySubset;
 
@@ -189,6 +190,33 @@ static class Program
     {
         public string Run() => "escaped target";
         public string Unselected() => "unselected escaped target";
+    }
+
+    private sealed class DerivedAssembly : Assembly { }
+
+    internal static void RunAssemblyReferences()
+    {
+        static bool MatchesModule(in Module value, Module expected) =>
+            ReferenceEquals(value, expected) && value.Name == expected.Name;
+        static bool SameAssembly(Assembly first, Assembly second) => ReferenceEquals(first, second);
+        static bool Same<T>(ref T left, T right) where T : class => ReferenceEquals(left, right);
+        static DerivedAssembly NewAssembly() =>
+            (DerivedAssembly)RuntimeHelpers.GetUninitializedObject(typeof(DerivedAssembly));
+
+        Type observed = new ApplicationException().GetType();
+        Type declared = typeof(Exception);
+        Module module = declared.Module;
+        object boxedModule = module;
+        Module[] modules = declared.Assembly.GetModules();
+        Console.WriteLine("assembly reference=" + ReferenceEquals(observed.Assembly, declared.Assembly)
+            + " module reference=" + (ReferenceEquals(observed.Module, module) ? "same" : "different")
+            + " assembly/module=" + ReferenceEquals(declared.Assembly, module)
+            + " derived assemblies=" + SameAssembly(NewAssembly(), NewAssembly()));
+        Console.WriteLine("module cast/as=" + ReferenceEquals((Module)boxedModule, module)
+            + "/" + ReferenceEquals(boxedModule as Module, module)
+            + " enumerated=" + ReferenceEquals(modules[0], module)
+            + " byref=" + MatchesModule(in modules[0], module)
+            + " generic ref=" + Same(ref module, module));
     }
 
     internal static void RunArrayObjectTypes()

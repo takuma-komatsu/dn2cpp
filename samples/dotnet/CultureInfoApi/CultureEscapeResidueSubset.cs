@@ -26,11 +26,8 @@ namespace CultureEscapeResidueSubset
     //   (e) reflection Invoke, whose thunk shape collapsed every pointer
     //       parameter and return onto one letter.
     //
-    // The tail covers the OTHER headerless representations. Assembly/Module
-    // (`const char*`) take the interned-wrapper treatment — the identity .NET reports for
-    // them is the FIXED RuntimeAssembly/RuntimeModule pair, which a hand-written runtime
-    // type-info can carry — so f-asm/f-mod print .NET's "ok" (the deep asserts live in the
-    // ReflectTypes bucket's AssemblyIdentitySubset). SearchValues<T> cannot be wrapped
+    // The tail checks managed RuntimeAssembly/RuntimeModule identity (covered in
+    // depth by ReflectTypes' AssemblyIdentitySubset). SearchValues<T> cannot be wrapped
     // (its .NET identity is a private PER-SHAPE subclass this model cannot enumerate) and
     // still traps loudly; that one line is a DELIBERATE divergence, and it is why this
     // bucket is a frozen-snapshot gate rather than a live diff.

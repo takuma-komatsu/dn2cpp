@@ -1630,23 +1630,6 @@ internal sealed partial class MethodCompiler
                         $"dn2cpp_object_tostring_virtual({NfiWrapExpr(o)})");
                     return true;
                 }
-                // An Assembly/Module receiver rides as the raw simple-name handle
-                // (const char*, no object header — the vtable dispatch below would
-                // read garbage). Roslyn binds x.ToString() to Object::ToString even
-                // though Assembly/Module override it, so the receiver's static type
-                // picks the .NET answer: Module.ToString() is the module file name,
-                // Assembly.ToString() the display FullName (the default when the
-                // static type is unknown — Assembly handles are the common case).
-                if (o.CppType == "const char*")
-                {
-                    bool isModule = o.StaticType is
-                        { Kind: TypeKind.Class, Class.FullName: "System.Reflection.Module" }
-                        or { Kind: TypeKind.External, ExternalName: "System.Reflection.Module" };
-                    Push(StackKind.Ref, "Dn2CppString*", isModule
-                        ? $"dn2cpp_module_name({o.Expr})"
-                        : $"dn2cpp_assembly_full_name({o.Expr})");
-                    return true;
-                }
                 // Headerless intrinsic representations cannot use object dispatch.
                 // A declared override keeps its own intrinsic lowering.
                 if (o.StaticType is { Kind: TypeKind.Class,
@@ -1687,7 +1670,7 @@ internal sealed partial class MethodCompiler
                     : $"dn2cpp_object_hashcode({Cast(o, "Dn2CppObject*")})");
                 return true;
             }
-            case ("System.Object", "Equals") when sig.ParameterTypes is [{ IsObject: true }]:
+            case ("System.Object" or "System.Reflection.Assembly" or "System.Reflection.Module", "Equals") when sig.ParameterTypes is [{ IsObject: true }]:
             {
                 var other = Pop();
                 var o = Pop();
@@ -1745,14 +1728,19 @@ internal sealed partial class MethodCompiler
                     $"(({that}) != nullptr && ({that})->type == ({self})->type && {walkCall} ? 1 : 0)");
                 return true;
             }
-            // Static Object.Equals(objA, objB): no receiver, two boxed args. The
-            // runtime helper already implements the exact static semantics — reference/both-
-            // null equal, exactly-one-null unequal, else the runtime type's virtual Equals.
+            // Static equality checks null and identity before consulting the left
+            // operand's override. A known null makes this a direct reference test.
             case ("System.Object", "Equals") when sig.ParameterTypes is [{ IsObject: true }, { IsObject: true }]:
+            case ("System.Reflection.Assembly" or "System.Reflection.Module", "op_Equality" or "op_Inequality")
+                when sig.ParameterTypes.Length == 2:
             {
                 var b = Pop();
                 var a = Pop();
-                Push(StackKind.I4, "int32_t", $"dn2cpp_object_equals({Cast(a, "Dn2CppObject*")}, {Cast(b, "Dn2CppObject*")})");
+                string left = Cast(a, "Dn2CppObject*");
+                string right = Cast(b, "Dn2CppObject*");
+                string equal = a.KnownNull || b.KnownNull
+                    ? $"({left} == {right})" : $"dn2cpp_object_equals({left}, {right})";
+                Push(StackKind.I4, "int32_t", name == "op_Inequality" ? $"(!{equal})" : equal);
                 return true;
             }
             // Static Object.ReferenceEquals(objA, objB): pointer identity. Roslyn

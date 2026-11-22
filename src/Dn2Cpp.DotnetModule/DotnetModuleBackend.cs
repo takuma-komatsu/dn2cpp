@@ -780,9 +780,9 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         sb.AppendLine($"            reinterpret_cast<void (*)()>((uintptr_t)((const void**)out_managed_callbacks)[{shutdownSlot}]));");
         sb.AppendLine($"        ((const void**)out_managed_callbacks)[{shutdownSlot}] = (const void*)&dn2cpp_dm_shutdown_callback;");
         sb.AppendLine("        dn2cpp_dm_trace(\"managed callbacks written\");");
-        sb.AppendLine("        // Register the game assembly's script classes. An Assembly is modeled");
-        sb.AppendLine("        // as its simple-name handle (see CppTypes: System.Reflection.Assembly).");
-        sb.AppendLine($"        {Entered(lookup, $"{lookupSym}(\"{_appAssemblyName}\");")}");
+        sb.AppendLine("        // Register the script classes of the managed game assembly.");
+        string gameAssembly = $"dn2cpp_asm_wrap(\"{_appAssemblyName}\", DN2CPP_ASM_KIND_ASSEMBLY)";
+        sb.AppendLine($"        {Entered(lookup, $"{lookupSym}({gameAssembly});")}");
         sb.AppendLine("        // Run the module initializers on the first engine frame — the");
         sb.AppendLine("        // engine-side callback cache is not live until this entry returns.");
         sb.AppendLine("        dn2cpp_dm_set_deferred_cctor_pass(&dn2cpp_dm_run_startup_cctors);");

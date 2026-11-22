@@ -172,13 +172,13 @@ internal readonly record struct BoundedImport(
 /// lands in an argument slot typed as a pointer.</para></summary>
 /// <para><see cref="NfiErased"/> marks a third shape, and it answers a different question:
 /// not what the target slot means but what <c>f_method</c>'s ABI IS. A wrappable HEADERLESS
-/// intrinsic position (the NFI trio's <c>const Dn2CppNumberFormatInfo*</c>, Assembly/Module's
-/// <c>const char*</c>) is a pointer that is not an object, so the assumption behind the raw
+/// intrinsic position (CultureInfo, NumberFormatInfo or TextInfo) carries a
+/// <c>const Dn2CppNumberFormatInfo*</c> payload, so the assumption behind the raw
 /// function pointer — "the variance a delegate binding permits is reference-to-reference,
 /// which renders to a pointer on either side" — is false there. Variance makes it unfixable
 /// at the invoke site, since one delegate instance can be invoked through two delegate types
 /// (a <c>Func&lt;CultureInfo&gt;</c> assigned to a <c>Func&lt;object&gt;</c> emits no IL at
-/// all). So <c>f_method</c> is given ONE canonical ABI: every headerless position erases to
+/// all). So <c>f_method</c> is given ONE canonical ABI: each such position erases to
 /// <c>Dn2CppObject*</c>. This adapter converts the target's real signature to that ABI and
 /// the delegate invoker converts back; the two sides derive the erasure independently and
 /// cannot disagree, since the only spellings that can differ both erase to the same thing.

@@ -164,8 +164,7 @@ internal sealed partial class MethodCompiler
     }
 
     /// <summary>A reference equality compare mixing a headerless-typed operand
-    /// (the NFI trio's `const Dn2CppNumberFormatInfo*`, Assembly/Module's
-    /// `const char*`) with an object-typed one: the object side holds the
+    /// (the NFI trio's `const Dn2CppNumberFormatInfo*`) with an object-typed one: the object side holds the
     /// interned wrapper the escape minted (<see cref="Cast"/>), so a raw pointer
     /// compare would answer false for the very same instance. Wrap the headerless
     /// side — interning makes the wrap stable, so identity is preserved. The
@@ -174,10 +173,10 @@ internal sealed partial class MethodCompiler
     /// pointless allocation probe).</summary>
     private static void NfiCompareFixup(ref StackEntry a, ref StackEntry b)
     {
-        if (IsHeaderlessWrapCpp(a.CppType)
+        if (IsNfiCppType(a.CppType)
             && b.Kind == StackKind.Ref && !b.KnownNull && IsManagedReferenceCpp(b.CppType))
             a = a with { Expr = Cast(a, "Dn2CppObject*"), CppType = "Dn2CppObject*" };
-        else if (IsHeaderlessWrapCpp(b.CppType)
+        else if (IsNfiCppType(b.CppType)
             && a.Kind == StackKind.Ref && !a.KnownNull && IsManagedReferenceCpp(a.CppType))
             b = b with { Expr = Cast(b, "Dn2CppObject*"), CppType = "Dn2CppObject*" };
     }
@@ -1885,12 +1884,12 @@ internal sealed partial class MethodCompiler
             case ArrRep.Ref:
             {
                 string ct = CppTypes.Of(element);
-                // A headerless element (CultureInfo[], Assembly[], …): the ref-array
+                // A headerless element (CultureInfo[], NumberFormatInfo[], …): the ref-array
                 // slot holds the interned wrapper the stelem's object conversion
                 // minted, so the typed read unwraps (tolerantly — a raw pointer
                 // stored through an erased context passes through unchanged).
-                Push(StackKind.Ref, ct, IsHeaderlessWrapCpp(ct)
-                    ? HeaderlessUnwrapExpr(LdelemRef(arr, idx), ct)
+                Push(StackKind.Ref, ct, IsNfiCppType(ct)
+                    ? NfiUnwrapExpr(LdelemRef(arr, idx), ct)
                     : $"({ct}){LdelemRef(arr, idx)}");
                 break;
             }
@@ -2057,7 +2056,7 @@ internal sealed partial class MethodCompiler
         if (p.CppType.EndsWith("**", StringComparison.Ordinal))
         {
             string slot = p.CppType[..^1];
-            if (IsHeaderlessWrapCpp(slot))
+            if (IsNfiCppType(slot))
                 return slot;
         }
         return "Dn2CppObject*";
@@ -2093,8 +2092,7 @@ internal sealed partial class MethodCompiler
     }
 
     /// <summary>The canonical <c>f_method</c> spelling of one delegate position: a
-    /// wrappable HEADERLESS intrinsic (the NFI trio, Assembly/Module's
-    /// <c>const char*</c>) erases to <c>Dn2CppObject*</c>, everything else keeps its
+    /// wrappable headerless intrinsic (the NFI trio) erases to <c>Dn2CppObject*</c>, everything else keeps its
     /// own type. Both ends of the function pointer apply this to their OWN spelling of
     /// the position — the adapter to the target method's, the invoker to the delegate
     /// type's — and they cannot disagree, because the only way the two spellings
@@ -2104,7 +2102,7 @@ internal sealed partial class MethodCompiler
     /// <see cref="DelegateAdapter"/>). The reflection-bind trampolines
     /// (<c>dgrefl_*</c>) spell their signatures through this same function, which is
     /// what puts them under the unified ABI.</summary>
-    internal static string NfiErasedAbi(string cpp) => IsHeaderlessWrapCpp(cpp) ? "Dn2CppObject*" : cpp;
+    internal static string NfiErasedAbi(string cpp) => IsNfiCppType(cpp) ? "Dn2CppObject*" : cpp;
 
     /// <summary>Whether a method group bound to a delegate needs the erasing
     /// adapter: its own signature spells a wrappable headerless intrinsic somewhere the
@@ -2116,10 +2114,10 @@ internal sealed partial class MethodCompiler
     private static bool NeedsNfiErasedAdapter(MethodInfo target)
     {
         if (!target.Signature.ReturnType.IsVoid
-            && IsHeaderlessWrapCpp(CppTypes.Of(target.Signature.ReturnType)))
+            && IsNfiCppType(CppTypes.Of(target.Signature.ReturnType)))
             return true;
         foreach (var p in target.Signature.ParameterTypes)
-            if (IsHeaderlessWrapCpp(CppTypes.Of(p)))
+            if (IsNfiCppType(CppTypes.Of(p)))
                 return true;
         return false;
     }

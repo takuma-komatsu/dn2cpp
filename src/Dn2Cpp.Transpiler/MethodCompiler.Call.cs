@@ -5359,15 +5359,15 @@ internal sealed partial class MethodCompiler
         var er = erased.Signature.ParameterTypes;
         int off = args.Count - real.Length;
         for (int i = 0; i < real.Length && i < er.Length; i++)
-            if (IsHeaderlessWrapCpp(CppTypes.Of(real[i])) && CppTypes.Of(er[i]) == "Dn2CppObject*")
+            if (IsNfiCppType(CppTypes.Of(real[i])) && CppTypes.Of(er[i]) == "Dn2CppObject*")
                 // The trailing cast re-spells the wrapper at the concrete headerless
-                // parameter type (NFI, or Assembly/Module's const char*): the
+                // parameter type (the NFI trio): the
                 // dispatch expression's function-pointer cast (FnPtrType) is built
                 // from the CONCRETE signature, while the bound body reads the slot
                 // as Dn2CppObject* — pointer-identical, so only the C++ spelling
                 // needs to agree.
                 args[off + i] = $"(({CppTypes.Of(real[i])})(void*)"
-                    + $"{HeaderlessWrapExpr(args[off + i], CppTypes.Of(real[i]), real[i])})";
+                    + $"{NfiWrapExpr(args[off + i], real[i])})";
     }
 
     private void EmitCallResult(MethodInfo callee, string call)
@@ -5386,11 +5386,9 @@ internal sealed partial class MethodCompiler
         // unwrap it. The unwrap is tolerant (a raw pointer from a body whose
         // declared return type is NFI passes through unchanged), so this one
         // arm covers every dispatch shape without knowing which body answers.
-        if (IsHeaderlessWrapCpp(retC))
+        if (IsNfiCppType(retC))
         {
-            // Assembly/Module returns (`const char*`) take the same tolerant unwrap
-            // through their own funnel (dn2cpp_asm_unwrap), for the same reason.
-            call = HeaderlessUnwrapExpr(call, retC);
+            call = NfiUnwrapExpr(call, retC);
         }
         else
         {

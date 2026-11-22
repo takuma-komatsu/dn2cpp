@@ -430,7 +430,8 @@ assert_noalloc_reject "$virt_app" "a dynamic dispatch" \
     "HotPath(NoAlloc)" "CountSides" "dispatches dynamically" \
     "EqualTyped" "dn2cpp_object_equals_" \
     "EqualErased" "dn2cpp_resolve_interface(" \
-    "SearchFirst" "SearchLast" "dn2cpp_array_search_equals("
+    "SearchFirst" "SearchLast" "dn2cpp_array_search_equals(" \
+    "EqualAssemblies dispatches dynamically: HotPathNoAllocVirtBad.Program::EqualAssemblies emits dn2cpp_object_equals("
 # Directly-emitted allocation helpers, one marked method per token family —
 # ToString on object, string concat, Substring, multi-dimensional array,
 # invocation-list enumeration. None lowers to dn2cpp_alloc/dn2cpp_newarr_, so

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace Dn2Cpp.Runtime
 {
@@ -43,6 +45,17 @@ namespace HotPathNoAllocVirtBad
         }
     }
 
+    internal sealed class AllocatingAssembly : Assembly
+    {
+        public override bool Equals(object? other)
+        {
+            Key.Retained = new object();
+            return ReferenceEquals(this, other);
+        }
+
+        public override int GetHashCode() => 0;
+    }
+
     /// <summary>A [HotPath(NoAlloc = true)] method that dispatches dynamically:
     /// <c>s.Sides()</c> is a virtual (here abstract) call resolved through the
     /// receiver's vtable, whose target is not statically provable. Transpiling
@@ -71,6 +84,9 @@ namespace HotPathNoAllocVirtBad
         [HotPath(NoAlloc = true)]
         private static int SearchLast(Array values, object value) => Array.LastIndexOf(values, value);
 
+        [HotPath(NoAlloc = true)]
+        private static bool EqualAssemblies(Assembly left, Assembly right) => left == right;
+
         private static void Main(string[] args)
         {
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -81,6 +97,8 @@ namespace HotPathNoAllocVirtBad
             Console.WriteLine(EqualErased(new Key(), new Key()));
             Console.WriteLine(SearchFirst(new object[] { new Key() }, new Key()));
             Console.WriteLine(SearchLast(new object[] { new Key() }, new Key()));
+            var assembly = (AllocatingAssembly)RuntimeHelpers.GetUninitializedObject(typeof(AllocatingAssembly));
+            Console.WriteLine(EqualAssemblies(assembly, typeof(Program).Assembly));
         }
     }
 }

@@ -425,7 +425,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             {
                 string s = CppTypes.Of(shared[i]);
                 if (s.EndsWith("*", StringComparison.Ordinal) && s != CppTypes.Of(real[i]))
-                    // A headerless argument (the NFI trio, Assembly/Module) does
+                    // A headerless argument (the NFI trio) does
                     // not pun into the erased Dn2CppObject* parameter: the canonical
                     // body treats it as a real managed object (equality, ToString,
                     // stores into erased slots), so it gets the interned wrapper —
@@ -2424,10 +2424,6 @@ internal sealed partial class MethodCompiler : IEvalStack
                 return $"(({targetType}){NfiWrapExpr(e)})";
             if (IsNfiCppType(targetType) && IsManagedReferenceCpp(e.CppType))
                 return $"(({targetType})dn2cpp_nfi_unwrap((Dn2CppObject*){e.Expr}))";
-            if (IsManagedReferenceCpp(targetType) && IsAsmCppType(e.CppType))
-                return $"(({targetType}){AsmWrapExpr(e)})";
-            if (IsAsmCppType(targetType) && IsManagedReferenceCpp(e.CppType))
-                return $"(({targetType})dn2cpp_asm_unwrap((Dn2CppObject*){e.Expr}))";
             if (targetType == "Dn2CppObject*" && UnwrappableHeaderlessCpp(e.CppType) is { } opaque)
                 return $"dn2cpp_headerless_escape(\"{opaque}\")";
         }
@@ -2468,11 +2464,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// there is not "less wrong" than throwing, it is differently wrong with no
     /// diagnostic, so the escape traps loudly instead (<c>dn2cpp_headerless_escape</c>).
     /// The REVERSE direction stays a plain cast: an object-typed value flowing back into
-    /// this position is a raw handle that never escaped, exactly as before.
-    /// <para>Assembly/Module (<c>const char*</c>) do NOT trap here: their private
-    /// identity is a FIXED pair (RuntimeAssembly/RuntimeModule), which is exactly what a
-    /// hand-written runtime type-info can carry, so they take the interned-wrapper arms
-    /// above (<see cref="AsmWrapExpr"/>) instead.</para></summary>
+    /// this position is a raw handle that never escaped, exactly as before.</summary>
     private static string? UnwrappableHeaderlessCpp(string cpp) => cpp switch
     {
         "Dn2CppSearchValues*" => "System.Buffers.SearchValues<T>",
@@ -2508,54 +2500,10 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// <summary>The interned-wrapper allocation for an NFI-typed value escaping
     /// into an `object` context (see <see cref="Cast"/>).</summary>
     internal static string NfiWrapExpr(StackEntry e) =>
-        $"dn2cpp_nfi_wrap({e.Expr}, {NfiKindOf(e.StaticType)})";
+        NfiWrapExpr(e.Expr, e.StaticType);
 
-    /// <summary>True when a C++ type string is the headerless intrinsic
-    /// representation of Assembly/Module — the defining assembly's simple-name
-    /// <c>const char*</c> (see the asm arms in <see cref="Cast"/>).
-    /// <c>const char*</c> is unambiguous on the eval stack: every producer of that
-    /// spelling is an Assembly/Module reflection intrinsic
-    /// (<c>MethodCompiler.EmitIntrinsic.Reflection.cs</c>); the interop decoders
-    /// build their <c>const char*</c> as a local temp and push a
-    /// <c>Dn2CppString*</c>.</summary>
-    internal static bool IsAsmCppType(string? t) => t is "const char*";
-
-    /// <summary>The DN2CPP_ASM_KIND_* macro the escape site's static managed type
-    /// resolves to; ASSEMBLY when the static type was lost — the same default the
-    /// Object::ToString arm on a <c>const char*</c> receiver uses (Assembly handles
-    /// are the overwhelmingly common case; a Module handle's producers all stamp
-    /// the Module static type on the pushed entry).</summary>
-    internal static string AsmKindOf(TypeDesc? t) => t is
-            { Kind: TypeKind.Class, Class.FullName: "System.Reflection.Module" or "System.Reflection.RuntimeModule" }
-            or { Kind: TypeKind.External, ExternalName: "System.Reflection.Module" }
-        ? "DN2CPP_ASM_KIND_MODULE"
-        : "DN2CPP_ASM_KIND_ASSEMBLY";
-
-    /// <summary>The interned-wrapper allocation for an Assembly/Module handle
-    /// escaping into an `object` context (see <see cref="Cast"/>).</summary>
-    internal static string AsmWrapExpr(StackEntry e) =>
-        $"dn2cpp_asm_wrap({e.Expr}, {AsmKindOf(e.StaticType)})";
-
-    /// <summary>True when a C++ type string is a headerless intrinsic representation
-    /// that has a managed WRAPPER (the NFI trio's <c>const Dn2CppNumberFormatInfo*</c>,
-    /// Assembly/Module's <c>const char*</c>) — i.e. the spellings the erased-ABI
-    /// boundaries convert instead of C-casting. SearchValues is deliberately not here:
-    /// its escape traps (<see cref="UnwrappableHeaderlessCpp"/>), so an erased boundary
-    /// keeps the plain cast and the trap stays at the object conversion that means
-    /// it.</summary>
-    internal static bool IsHeaderlessWrapCpp(string? t) => IsNfiCppType(t) || IsAsmCppType(t);
-
-    /// <summary>The wrap expression carrying <paramref name="expr"/> (spelled
-    /// <paramref name="realCpp"/>, its headerless C++ type) into a
-    /// <c>Dn2CppObject*</c> position — the emitter-side twin of the <see cref="Cast"/>
-    /// wrap arms, for mouths that hold an expression string rather than a
-    /// <see cref="StackEntry"/>. <paramref name="realType"/> decides the wrapper's
-    /// identity kind. Only valid when <see cref="IsHeaderlessWrapCpp"/> holds for
-    /// <paramref name="realCpp"/>.</summary>
-    internal static string HeaderlessWrapExpr(string expr, string realCpp, TypeDesc? realType) =>
-        IsNfiCppType(realCpp)
-            ? $"dn2cpp_nfi_wrap({expr}, {NfiKindOf(realType)})"
-            : $"dn2cpp_asm_wrap({expr}, {AsmKindOf(realType)})";
+    internal static string NfiWrapExpr(string expr, TypeDesc? type) =>
+        $"dn2cpp_nfi_wrap({expr}, {NfiKindOf(type)})";
 
     /// <summary>The ONE conversion an expression takes when its spelling crosses an
     /// erased-signature boundary — a real signature's position against a shared
@@ -2571,14 +2519,8 @@ internal sealed partial class MethodCompiler : IEvalStack
     internal static string ErasedBoundaryCast(string expr, string fromCpp, TypeDesc? staticType, string toCpp) =>
         Cast(new StackEntry(expr, StackKind.Ref, fromCpp, StaticType: staticType), toCpp);
 
-    /// <summary>The tolerant unwrap expression recovering a headerless spelling
-    /// <paramref name="realCpp"/> from an object-typed <paramref name="expr"/> — the
-    /// emitter-side twin of the <see cref="Cast"/> unwrap arms. Only valid when
-    /// <see cref="IsHeaderlessWrapCpp"/> holds for <paramref name="realCpp"/>.</summary>
-    internal static string HeaderlessUnwrapExpr(string expr, string realCpp) =>
-        IsNfiCppType(realCpp)
-            ? $"(({realCpp})dn2cpp_nfi_unwrap((Dn2CppObject*)({expr})))"
-            : $"(({realCpp})dn2cpp_asm_unwrap((Dn2CppObject*)({expr})))";
+    internal static string NfiUnwrapExpr(string expr, string cpp) =>
+        $"(({cpp})dn2cpp_nfi_unwrap((Dn2CppObject*)({expr})))";
 
     // Only the pointer-width int qualifies: reconciling a Ptr into an I4 slot
     // would truncate the pointer to 32 bits on a 64-bit target.
@@ -3551,7 +3493,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     break;
                 }
                 Push(CppTypes.KindOf(t), ct,
-                    CppTypes.KindOf(t) == StackKind.Ref && !IsHeaderlessWrapCpp(ct)
+                    CppTypes.KindOf(t) == StackKind.Ref && !IsNfiCppType(ct)
                         ? $"({ct})dn2cpp_byref_load_ref((const void*)({p.Expr}))"
                         : mt == ct ? $"*(({ct}*)({p.Expr}))" : $"({ct})(*(({mt}*)({p.Expr})))");
                 break;
@@ -3880,31 +3822,10 @@ internal sealed partial class MethodCompiler : IEvalStack
                         $"(({nct})dn2cpp_nfi_castclass({Cast(obj, "Dn2CppObject*")}, {NfiKindOf(target)}, {nti ?? "nullptr"}))");
                     break;
                 }
-                // An Assembly/Module target (the headerless `const char*` lowering):
-                // same wrapper-aware split as the NFI arm — an object-typed source may
-                // hold the interned wrapper an escape minted, so the cast must verify
-                // AND unwrap (dn2cpp_asm_castclass). An asm-typed source stays the
-                // erased identity cast it always was.
-                if (target.Kind != TypeKind.External && IsAsmCppType(CppTypes.Of(target)))
-                {
-                    if (IsAsmCppType(obj.CppType))
-                    {
-                        Push(StackKind.Ref, "const char*", Cast(obj, "const char*"));
-                        break;
-                    }
-                    string? ati = CastTargetTypeInfoExpr(target, insn.Token);
-                    Push(StackKind.Ref, "const char*",
-                        $"dn2cpp_asm_castclass({Cast(obj, "Dn2CppObject*")}, {AsmKindOf(target)}, {ati ?? "nullptr"})");
-                    break;
-                }
                 // An External reference target (a runtime-canonical exception handle, or
                 // a ref type with no loaded definition) has no emitted C++ struct — the
                 // verified reference is typed as the generic object pointer.
-                // The OPERAND goes through Cast, not a C cast: `x is T` over a
-                // headerless intrinsic source is an object boundary the IL does not
-                // spell — Roslyn elides the `object` local, so `object o = asm; return
-                // o is Assembly;` arrives here as an isinst straight off the
-                // const char* — and dn2cpp_isinst reads a type header off it.
+                // Cast wraps a headerless operand before checking its managed type.
                 string cppType = target.Kind == TypeKind.External ? "Dn2CppObject*" : CppTypes.Of(target);
                 string? ti = CastTargetTypeInfoExpr(target, insn.Token);
                 Push(StackKind.Ref, cppType, ti is null
@@ -3938,22 +3859,6 @@ internal sealed partial class MethodCompiler : IEvalStack
                     string? nti = CastTargetTypeInfoExpr(target, insn.Token);
                     Push(StackKind.Ref, nct,
                         $"(({nct})dn2cpp_nfi_isinst({Cast(obj, "Dn2CppObject*")}, {NfiKindOf(target)}, {nti ?? "nullptr"}))");
-                    break;
-                }
-                // Assembly/Module target: same wrapper-aware split as the Castclass
-                // arm above (verify and unwrap; an asm-typed source keeps the erased
-                // identity — non-null iff the reference is, which is what the
-                // pattern's null test reads).
-                if (target.Kind != TypeKind.External && IsAsmCppType(CppTypes.Of(target)))
-                {
-                    if (IsAsmCppType(obj.CppType))
-                    {
-                        Push(StackKind.Ref, "const char*", Cast(obj, "const char*"));
-                        break;
-                    }
-                    string? ati = CastTargetTypeInfoExpr(target, insn.Token);
-                    Push(StackKind.Ref, "const char*",
-                        $"dn2cpp_asm_isinst({Cast(obj, "Dn2CppObject*")}, {AsmKindOf(target)}, {ati ?? "nullptr"})");
                     break;
                 }
                 if (CastTargetTypeInfoExpr(target, insn.Token) is not { } ti)

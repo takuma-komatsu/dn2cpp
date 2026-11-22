@@ -966,10 +966,11 @@ Type safety guard, not a claimed CoreCLR private-call exception contract. This
 does not extend custom Type dispatch or the separate raw index/contains helpers.
 
 The exact managed `RuntimeTypeHandle.GetAssembly(RuntimeType)` helper returns
-an interned native RuntimeAssembly object; public Assembly boundaries retain their
-headerless identity conversion. The retained sealed public getter keeps its IL;
-its raw address keeps that ABI, while delegate construction erases it through the
-managed-wrapper adapter. Its standalone delegate metadata row does not add named
+the same interned RuntimeAssembly object as the public Assembly getter.
+Managed fields, byrefs, delegates and reflection invocation pass that reference
+directly. RuntimeModule is interned separately for the same defining assembly.
+The retained sealed public getter keeps its IL and its address uses the same
+managed-reference ABI. Its standalone delegate metadata row does not add named
 lookup to the runtime-owned RuntimeType catalog. Helper null arguments use
 CoreLib's invalid-handle ArgumentNullException; public virtual receiver checks
 still raise NullReferenceException. Private assembly-cache
@@ -1250,9 +1251,9 @@ the real body be reachable — never approximate it.
 
 #### Headerless managed references
 
-Culture, number-format, text, assembly and module typed values use raw runtime
-payloads. Every conversion to an object or interface acquires an interned managed
-wrapper with the source CLR identity. `IFormatProvider` uses the managed reference
+Culture, number-format and text typed values use raw runtime payloads. Every
+conversion to an object or interface acquires an interned managed wrapper with
+the source CLR identity. `IFormatProvider` uses the managed reference
 ABI; numeric intrinsics extract a known provider's number-format payload only when
 formatting or parsing consumes it. Composite formatting defers extraction until
 a numeric hole needs provider data, including empty and default formats.

@@ -26,8 +26,8 @@ using Microsoft.Win32.SafeHandles;
 // An interface whose members no dispatch map serves on these objects
 // (ICustomAttributeProvider, IReflect, ISerializable, IAsyncResult, ICloneable,
 // IDeserializationCallback) is tested and passed, never
-// called. Assembly, Module and the culture wrappers are headerless handles until
-// they escape to object, so every test reaches them through object.
+// called. Each relation is tested through object so the emitted check observes
+// the actual managed type, including runtime assemblies, modules and culture wrappers.
 namespace RuntimeHandleRelationSubset;
 
 class Holder

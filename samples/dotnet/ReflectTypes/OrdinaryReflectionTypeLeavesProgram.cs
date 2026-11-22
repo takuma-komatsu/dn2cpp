@@ -46,5 +46,6 @@ static class Program
         if (args.Length > 0 && args[0] == "before-collectibility")
             return;
         CollectibilitySubset.Program.Run();
+        ReflectRuntimeTypeParitySubset.Program.RunAssemblyReferences();
     }
 }

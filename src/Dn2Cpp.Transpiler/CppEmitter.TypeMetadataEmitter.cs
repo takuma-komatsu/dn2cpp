@@ -3626,14 +3626,13 @@ internal sealed partial class CppEmitter
                                     cls.Module.AssemblyName, Compilation.PreservationTypeName(cls),
                                     new List<string> { ".cctor" }, "method"));
                     }
-                    // A headerless-typed field (the NFI trio, Assembly/Module — the
-                    // headerless intrinsic pointers): a reflected GetValue is an
+                    // A headerless field (the NFI trio): a reflected GetValue is an
                     // escape into `object`, so it wraps like every other escape
                     // (MethodCompiler.Cast), and SetValue unwraps symmetrically.
                     // Keyed on the DECLARED member spelling: a shared-layout field
                     // (memberT erased to Dn2CppObject*) already holds the
                     // managed-object form, so it takes the plain reference path.
-                    bool isHeaderless = MethodCompiler.IsHeaderlessWrapCpp(memberT);
+                    bool isHeaderless = MethodCompiler.IsNfiCppType(memberT);
                     // A struct no box allocated would dispatch into traps once boxed.
                     var unboxed = !isRef && !isPointer && !isHeaderless ? _e.FieldBoxBlocker(cls, f) : null;
                     // The refusal names the getter so a SetValue that runs the getter only
@@ -3645,7 +3644,7 @@ internal sealed partial class CppEmitter
                         : ensure + (isPointer
                         ? $"return dn2cpp_invoke_box_pointer((void*)({access}), {pointee}, {pointerDepth});"
                         : isHeaderless
-                        ? $"return {MethodCompiler.HeaderlessWrapExpr(access, memberT, f.Type)};"
+                        ? $"return {MethodCompiler.NfiWrapExpr(access, f.Type)};"
                         : isRef
                         ? $"return (Dn2CppObject*)({access});"
                         : $"{memberT} v = {access}; return dn2cpp_box({ftInfo}, &v, sizeof({memberT}));");
@@ -3653,7 +3652,7 @@ internal sealed partial class CppEmitter
                     // through the row's field type, which reads Object for a value type
                     // the image emits no type-info for.
                     string setBody = ensure + (isHeaderless
-                        ? $"{access} = {MethodCompiler.HeaderlessUnwrapExpr("val", memberT)};"
+                        ? $"{access} = {MethodCompiler.NfiUnwrapExpr("val", memberT)};"
                         : isRef
                         ? $"{access} = ({memberT})val;"
                         : $"{access} = val == nullptr ? {memberT}{{}} : *({memberT}*)((char*)val + sizeof(Dn2CppObject));");
