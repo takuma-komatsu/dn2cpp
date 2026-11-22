@@ -27,6 +27,7 @@ namespace DateTimeOps
             if (args.Length > 0 && args[0] == "daylight-only")
             {
                 DateTimeDaylightSubset.Program.Run();
+                DateTimeOffsetSubset.Program.RunLocalTimeOverlap();
                 return;
             }
             if (args.Length > 0 && args[0] == "binary-only")
@@ -81,6 +82,9 @@ namespace DateTimeOps
                 return;
             DateTimeFormatInfoSubset.Program.RunTimeSpanPatterns();
             DateTimeOffsetSubset.Program.RunUtcNormalization();
+            if (args.Length > 0 && args[0] == "before-dto-local-time")
+                return;
+            DateTimeOffsetSubset.Program.RunLocalTime();
         }
     }
 }

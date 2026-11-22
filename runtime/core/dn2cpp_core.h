@@ -8608,11 +8608,8 @@ inline Dn2CppDateTime dn2cpp_datetime_pack(int64_t ticks, int32_t kind)
         dn2cpp_throw_argument_out_of_range();
     return dn2cpp_dt_word(ticks, kind);
 }
-// The clamping constructor, for the two conversions real .NET clamps rather than
-// throws: DateTime.ToLocalTime/ToUniversalTime saturate at MinValue/MaxValue
-// (measured: MinValue.ToUniversalTime() answers 0, MaxValue.ToLocalTime() answers
-// MaxValue.Ticks). Use it ONLY there — everywhere else a wrong answer is worse
-// than the exception .NET raises.
+// Use only for time-zone conversions whose managed contract clamps the clock
+// at MinValue/MaxValue rather than throwing.
 inline Dn2CppDateTime dn2cpp_datetime_pack_clamped(int64_t ticks, int32_t kind)
 {
     if (ticks < 0) ticks = 0;
@@ -8902,6 +8899,7 @@ Dn2CppDateTimeOffset dn2cpp_datetimeoffset_from_parts(int32_t y, int32_t mo, int
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_from_datetime(Dn2CppDateTime dt);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_from_dt_offset(Dn2CppDateTime dt, Dn2CppTimeSpan offset);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_to_offset(Dn2CppDateTimeOffset d, Dn2CppTimeSpan offset);
+Dn2CppDateTimeOffset dn2cpp_datetimeoffset_to_local(Dn2CppDateTimeOffset d);
 Dn2CppDateTime dn2cpp_datetimeoffset_clock(Dn2CppDateTimeOffset d);   // DateTime property (Kind=Unspecified)
 Dn2CppDateTime dn2cpp_datetimeoffset_utc(Dn2CppDateTimeOffset d);     // UtcDateTime property (Kind=Utc)
 Dn2CppTimeSpan dn2cpp_datetimeoffset_offset(Dn2CppDateTimeOffset d);  // Offset property

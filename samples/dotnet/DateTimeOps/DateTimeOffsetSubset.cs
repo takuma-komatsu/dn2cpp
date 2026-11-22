@@ -171,4 +171,26 @@ static class Program
             + "/" + (repeated.Ticks == utc.Ticks && repeated.Offset == utc.Offset)
             + "/" + (throughDelegate.Ticks == utc.Ticks && throughDelegate.Offset == utc.Offset));
     }
+
+    internal static void RunLocalTime()
+    {
+        Console.WriteLine("-- DateTimeOffset.ToLocalTime --");
+        DateTimeOffset source = DateTimeOffset.FromUnixTimeSeconds(1_700_000_000)
+            .AddTicks(11).ToOffset(TimeSpan.FromMinutes(345));
+        DateTimeOffset local = source.ToLocalTime();
+        Console.WriteLine("dto local UTC/offset: " + (local.UtcTicks == source.UtcTicks)
+            + "/" + (local.Offset.Ticks == source.LocalDateTime.Ticks - source.UtcTicks));
+    }
+
+    internal static void RunLocalTimeOverlap()
+    {
+        ShowLocalTime(new DateTimeOffset(2024, 11, 3, 5, 30, 0, TimeSpan.Zero));
+        ShowLocalTime(new DateTimeOffset(2024, 11, 3, 6, 30, 0, TimeSpan.Zero));
+    }
+
+    private static void ShowLocalTime(DateTimeOffset source)
+    {
+        DateTimeOffset local = source.ToLocalTime();
+        Console.WriteLine("dto local overlap: " + local.Ticks + "/" + local.Offset.Ticks + "/" + local.UtcTicks);
+    }
 }

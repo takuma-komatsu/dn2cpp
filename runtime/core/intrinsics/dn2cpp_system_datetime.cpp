@@ -387,14 +387,6 @@ Dn2CppDateTime dn2cpp_datetime_today()
 // both of which fold in the host zone's offset and DST automatically. Only whole-
 // second offsets are applied; the sub-second tick fraction passes through intact.
 
-// ToLocalTime: Utc/Unspecified are treated as UTC and projected onto the local
-// wall clock (Kind=Local). An already-Local value is returned unchanged.
-//
-// These two SATURATE rather than throw, which is why they are the only callers of
-// dn2cpp_datetime_pack_clamped: real .NET's ToLocalTime/ToUniversalTime run through
-// TimeZoneInfo, which clamps the shifted instant to MinValue/MaxValue instead of
-// raising. Routing them through the checked pack would turn a value real .NET
-// answers into an exception.
 #if defined(_WIN32)
 static int64_t dn2cpp_dt_windows_binary_offset(int64_t ticks, bool utc, bool daylight,
                                                bool* ambiguousDaylight);
@@ -405,36 +397,43 @@ static int64_t dn2cpp_dt_binary_zone_offset(int64_t offset);
 #endif
 static int64_t dn2cpp_dt_binary_local_ticks(Dn2CppDateTime value);
 
-Dn2CppDateTime dn2cpp_datetime_to_local(Dn2CppDateTime a)
+// Select the offset before projecting the clock: two UTC instants in a
+// fall-back overlap can have the same local clock with different offsets.
+static int64_t dn2cpp_dt_local_offset_from_utc(int64_t utcTicks, bool* ambiguousDaylight)
 {
-    if (a.kind() == 2) return a; // already Local
-    bool ambiguousDaylight = false;
 #if defined(_WIN32)
-    int64_t ticks = a.ticks() + dn2cpp_dt_windows_binary_offset(a.ticks(), true, false, &ambiguousDaylight);
-    if (ticks < 0) return dn2cpp_datetime_pack(0, 2);
-    if (ticks > DN2CPP_DT_MAX_TICKS) return dn2cpp_datetime_pack(DN2CPP_DT_MAX_TICKS, 2);
-    return dn2cpp_dt_word(ticks, ambiguousDaylight ? 3 : 2);
+    bool unused;
+    return dn2cpp_dt_windows_binary_offset(utcTicks, true, false,
+        ambiguousDaylight != nullptr ? ambiguousDaylight : &unused);
 #else
-    int64_t frac = a.ticks() % DN2CPP_TPS;                       // sub-second remainder
-    int64_t whole = a.ticks() - frac;                            // whole-second UTC instant
+    int64_t whole = utcTicks - utcTicks % DN2CPP_TPS;
     std::time_t secs = (std::time_t)((whole - DN2CPP_UNIX_EPOCH_TICKS) / DN2CPP_TPS);
     std::tm lt{};
     dn2cpp_pal_localtime((int64_t)secs, &lt);
     int64_t offset = dn2cpp_dt_binary_zone_offset(dn2cpp_dt_tm_ticks(lt) - whole);
-    int64_t ticks = a.ticks() + offset;
-    if (ticks < 0) return dn2cpp_datetime_pack(0, 2);
-    if (ticks > DN2CPP_DT_MAX_TICKS) return dn2cpp_datetime_pack(DN2CPP_DT_MAX_TICKS, 2);
-    if (lt.tm_isdst > 0)
+    int64_t ticks = utcTicks + offset;
+    if (ambiguousDaylight != nullptr && lt.tm_isdst > 0 && ticks >= 0 && ticks <= DN2CPP_DT_MAX_TICKS)
     {
         auto standard = lt;
         standard.tm_isdst = 0;
         int64_t otherSeconds = dn2cpp_pal_mktime_local(&standard);
         std::tm otherClock{};
         dn2cpp_pal_localtime(otherSeconds, &otherClock);
-        ambiguousDaylight = otherSeconds != secs && dn2cpp_dt_same_clock(lt, otherClock);
+        *ambiguousDaylight = otherSeconds != secs && dn2cpp_dt_same_clock(lt, otherClock);
     }
-    return dn2cpp_dt_word(ticks, ambiguousDaylight ? 3 : 2);
+    return offset;
 #endif
+}
+
+// Utc/Unspecified project onto the local wall clock; an already-Local value is unchanged.
+Dn2CppDateTime dn2cpp_datetime_to_local(Dn2CppDateTime a)
+{
+    if (a.kind() == 2) return a;
+    bool ambiguousDaylight = false;
+    int64_t ticks = a.ticks() + dn2cpp_dt_local_offset_from_utc(a.ticks(), &ambiguousDaylight);
+    if (ticks < 0 || ticks > DN2CPP_DT_MAX_TICKS)
+        return dn2cpp_datetime_pack_clamped(ticks, 2);
+    return dn2cpp_dt_word(ticks, ambiguousDaylight ? 3 : 2);
 }
 // ToUniversalTime: Local/Unspecified are treated as local wall clock and folded
 // back to the UTC instant (Kind=Utc). An already-Utc value is returned unchanged.
@@ -753,6 +752,14 @@ Dn2CppDateTimeOffset dn2cpp_datetimeoffset_to_offset(Dn2CppDateTimeOffset d, Dn2
     Dn2CppDateTime clock = dn2cpp_datetime_add_ticks(dn2cpp_datetime_pack(utc, 0), offset.ticks, "t");
     int32_t newOff = dn2cpp_datetimeoffset_validate_offset(offset);
     return dn2cpp_dto_validate_date(clock.ticks(), newOff);
+}
+Dn2CppDateTimeOffset dn2cpp_datetimeoffset_to_local(Dn2CppDateTimeOffset d)
+{
+    int64_t utc = dn2cpp_datetimeoffset_utc_ticks(d);
+    int64_t offset = dn2cpp_dt_local_offset_from_utc(utc, nullptr);
+    // Clamp the clock, not the instant or offset, before validating the pair.
+    Dn2CppDateTime clock = dn2cpp_datetime_pack_clamped(utc + offset, 0);
+    return dn2cpp_datetimeoffset_from_ticks(clock.ticks(), Dn2CppTimeSpan{offset});
 }
 Dn2CppDateTime dn2cpp_datetimeoffset_clock(Dn2CppDateTimeOffset d) { return dn2cpp_datetime_pack(d.ticks, 0); }
 Dn2CppDateTime dn2cpp_datetimeoffset_utc(Dn2CppDateTimeOffset d)
