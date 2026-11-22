@@ -71,6 +71,22 @@ public static class Program
         public object? GetFormat(Type? type) => throw new InvalidOperationException("unused provider body");
     }
 
+    internal static void RunFloatingStringConversions()
+    {
+        var german = new CultureInfo("de-DE", false);
+        Console.WriteLine("Convert double de-DE=" + Convert.ToDouble("1.234,5", german));
+        var provider = new CountingProvider();
+        foreach (var text in new string?[] { "minus12,5", null })
+            Console.WriteLine("Convert single provider=" + Convert.ToSingle(text, provider) + "/" + provider.Calls);
+        using (CultureScope.Use(german))
+        {
+            Console.WriteLine("Convert current culture=" + (Convert.ToDouble("1,5") == 1.5)
+                + "/" + (Convert.ToSingle("1,5") == 1.5f));
+        }
+        try { Console.WriteLine("Convert hex float=" + Convert.ToDouble("0x1p0", CultureInfo.InvariantCulture)); }
+        catch (FormatException) { Console.WriteLine("Convert hex float=FormatException"); }
+    }
+
     private static void ProviderCase(string label, object value, Type target, TypeCode code, CountingProvider provider)
     {
         provider.Calls = 0;

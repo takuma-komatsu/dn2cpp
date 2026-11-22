@@ -1834,11 +1834,13 @@ internal sealed partial class MethodCompiler
         return (count, opts);
     }
 
+    private const string DefaultFloatingParseStyles = "231"; // NumberStyles.Float | NumberStyles.AllowThousands
+
     /// <summary>Consolidated numeric Parse/TryParse lowering onto the runtime NumberStyles
     /// engine: the eight integer widths (bit-width/signedness parameterized) plus
     /// Double/Single, in the plain / (NumberStyles) / (IFormatProvider) / (NumberStyles,
     /// IFormatProvider) shapes and their TryParse out-forms. A null/absent provider parses
-    /// invariant; the defaulted styles are .NET's (Integer for the integers,
+    /// with the current culture; the defaulted styles are .NET's (Integer for the integers,
     /// Float|AllowThousands for the floats). Unrecognized shapes return false and stay a
     /// loud failure.
     ///
@@ -1902,7 +1904,7 @@ internal sealed partial class MethodCompiler
         string nfiExpr = hasProvider ? CastNumberFormatProvider(Pop()) : "nullptr";
         string stylesExpr = hasStyles
             ? $"(int32_t)({Pop().Expr})"
-            : isFloat ? "231" /* Float | AllowThousands */ : "7" /* Integer */;
+            : isFloat ? DefaultFloatingParseStyles : "7" /* Integer */;
         string args, suffix;
         if (isString)
         {
