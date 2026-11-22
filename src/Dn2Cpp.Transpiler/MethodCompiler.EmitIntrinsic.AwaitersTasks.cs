@@ -137,6 +137,13 @@ internal sealed partial class MethodCompiler
                     Push(StackKind.Struct, "Dn2CppConfiguredTaskAwaiter",
                         $"dn2cpp_task_configure_await((Dn2CppTask*)({t.Expr}), {bits}, {(generic ? "true" : "false")})");
                 }
+                // The bool overload selects only the continuation's context: no options.
+                Top = Top with
+                {
+                    AwaitOptions = sig.ParameterTypes[0] is { Kind: TypeKind.Class, Class.FullName: "System.Threading.Tasks.ConfigureAwaitOptions" }
+                        ? ConstIntOf(options) ?? AwaitOptionsNotLiteral
+                        : 0,
+                };
                 return true;
             }
             case ("System.Runtime.CompilerServices.ConfiguredTaskAwaitable", "GetAwaiter"):

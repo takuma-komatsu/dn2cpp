@@ -694,6 +694,8 @@ internal static class PatchConverter
     private static void FenceMethod(Compilation compilation, MethodInfo m)
     {
         string full = $"{m.DeclaringClass.FullName}.{m.Name}";
+        if (m.IsRuntimeAsync)
+            throw new NotSupportedException($"emit-patch: {full} — runtime-async methods are not supported");
         if (compilation.EntryPoint == m)
         {
             if (!m.IsStatic || m.Signature.ParameterTypes.Length != 0 || !m.Signature.ReturnType.IsVoid)

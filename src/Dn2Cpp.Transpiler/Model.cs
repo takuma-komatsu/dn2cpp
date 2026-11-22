@@ -492,7 +492,8 @@ internal sealed class MethodInfo
     /// (RAII monitor guard around the body), <c>NoInlining</c>
     /// (<c>[[gnu::noinline]]</c>), <c>AggressiveInlining</c> (the body is
     /// emitted <c>inline</c> into the shared header so cross-TU call sites can
-    /// inline it). Ignored: <c>InternalCall</c> (already modeled as
+    /// inline it), <c>Async</c> (the body follows the runtime-async contract —
+    /// see <see cref="IsRuntimeAsync"/>). Ignored: <c>InternalCall</c> (already modeled as
     /// <see cref="Rva"/> == 0 → intrinsic mapping or the unmapped-extern error),
     /// <c>ForwardRef</c>, <c>PreserveSig</c>, <c>NoOptimization</c>,
     /// <c>AggressiveOptimization</c>.</summary>
@@ -724,6 +725,12 @@ internal sealed class MethodInfo
     public bool IsAbstract => (Attributes & MethodAttributes.Abstract) != 0;
 
     public bool IsSynchronized => (ImplAttributes & MethodImplAttributes.Synchronized) != 0;
+
+    /// <summary><c>MethodImplAttributes.Async</c>: the signature returns a Task or ValueTask
+    /// type, but the IL returns the unwrapped result (nothing for the non-generic forms) and
+    /// suspends through <c>System.Runtime.CompilerServices.AsyncHelpers</c> calls. Such a body
+    /// cannot compile as ordinary IL: its <c>ret</c> does not carry the declared return type.</summary>
+    public bool IsRuntimeAsync => (ImplAttributes & MethodImplAttributes.Async) != 0;
     public bool HasObfuscateAttribute => HasMethodAttribute("Dn2Cpp.Runtime.ObfuscateAttribute");
 
     public bool ObfuscationHasIlBody;

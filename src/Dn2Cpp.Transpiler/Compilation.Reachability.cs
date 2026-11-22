@@ -6192,6 +6192,10 @@ internal sealed partial class Compilation
                 + "ILDiet's retained set must contain every body reachability admits");
         try
         {
+            // The lowered body's completion catch registers OperationCanceledException;
+            // unreached, a canceled body would settle its task faulted.
+            if (m.IsRuntimeAsync)
+                ReachCancellationException();
             ReachArraySortFactory(m);
             var insns = ILDecoder.Decode(body.GetILBytes()!.ToImmutableArrayCompat());
             NoteMediumBodyTypes(m, body);

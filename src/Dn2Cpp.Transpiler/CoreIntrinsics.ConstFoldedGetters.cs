@@ -48,7 +48,14 @@ internal static partial class CoreIntrinsics
     /// transpiled binary has no VM to log into. BranchLiveness prunes
     /// DebugProvider.WriteToDebugger's then-arm (Debugger.Log, whose leaf is the
     /// bodyless QCall LogInternal) and leaves Interop.Sys.SysLog the live sink,
-    /// where NativeAOT's Trace/Debug output goes on Unix.</summary>
+    /// where NativeAOT's Trace/Debug output goes on Unix.
+    ///
+    /// RuntimeHelpers.IsRuntimeAsync: constant-false, which is also what its IL
+    /// body returns. CoreLib's Task-returning wrappers ask it to choose between a
+    /// runtime-async helper and the classic path that records the pending task
+    /// (StreamWriter.FlushAsync). A transpiled method is only ever entered through
+    /// its Task-returning signature, so the classic arm is the live one and
+    /// BranchLiveness prunes the other.</summary>
     private static readonly Dictionary<(string Type, string Method), bool> s_constFoldedGetters = new()
     {
         [("System.Globalization.GlobalizationMode", "get_Invariant")] = true,
@@ -58,6 +65,7 @@ internal static partial class CoreIntrinsics
         [("System.Runtime.CompilerServices.RuntimeHelpers", "TryEnsureSufficientExecutionStack")] = true,
         [("System.Threading.StackHelper", "TryEnsureSufficientExecutionStack")] = true,
         [("System.Diagnostics.Debugger", "IsLogging")] = false,
+        [("System.Runtime.CompilerServices.RuntimeHelpers", "IsRuntimeAsync")] = false,
     };
 
     /// <summary>Method names appearing in <see cref="s_constFoldedGetters"/> —

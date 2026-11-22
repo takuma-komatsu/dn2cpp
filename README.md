@@ -763,6 +763,22 @@ Full ECMA-335 IL coverage. What that means concretely:
 - **Static abstract interface members** — dispatched through `constrained.`,
   including a generic static abstract method on a generic interface and an
   implementation the interface carries itself.
+- **Runtime-async methods** (`MethodImplAttributes.Async`) — the BCL's
+  bodies and user methods that opt in lower to resumable native
+  functions behind the method's unchanged signature, completing through
+  the same native tasks as state-machine `async`. Refused with
+  `NotSupportedException`: a suspension inside a `catch`, `finally`,
+  fault or filter handler; an address or method pointer on the
+  evaluation stack across a suspension; `ConfigureAwaitOptions` that is
+  not a literal, or a configured task awaitable that does not directly
+  follow its `ConfigureAwait` call; a suspending value-type instance
+  method unless it opens by storing a copy of its whole receiver in a
+  local and never uses the receiver again; an await on a custom
+  awaiter; `Synchronized` or `[HotPath(NoAlias = true)]` on such a
+  method; a return type other than `Task`, `Task<T>`, `ValueTask` or
+  `ValueTask<T>`; and obfuscating or hot-update patching such a method.
+  Byref and byref-like arguments and locals do not survive a suspension.
+  See `gates/build-and-run-async-combinators.sh`.
 - **`MethodImplOptions` honored** — `Synchronized` (RAII monitor guard,
   static sharing the monitor with `lock(typeof(X))`),
   `AggressiveInlining`, `NoInlining`.

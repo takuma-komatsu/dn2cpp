@@ -82,6 +82,11 @@
 # Directly queueing a cold task dispatches its body off the calling thread.
 # Stored Task faults remain pending until the body finishes and keep their order and identity.
 # Task and cancellation aggregate construction leaves virtual inner Messages unread.
+# RuntimeAsyncSubset.cs asserts runtime-async method bodies (MethodImplAttributes.Async,
+# opted in per method): AsyncHelpers.Await over Task and ValueTask, UnsafeAwaitAwaiter
+# over Task.Yield, a value-type instance method, a generic method, awaits inside
+# try regions, and configured awaits that resume without the captured context
+# during a timed wait.
 source "$(dirname "$0")/_common.sh"
 gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for task call fixtures"
 call_app="gates/fixtures/task-call-validation/bin/$CONFIG/$TFM/TaskCallValidation.dll"
@@ -98,6 +103,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-scheduler-in
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-scheduler-queue"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-task-add-exception"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-task-finish|prefix:before-scheduler-ids|prefix:before-synchronization-context|prefix:before-configured-options"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-runtime-async"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|shared-binary:native-delay-deadlines|shared-binary:fresh-cancellation-filters"
 
 # The exception text is platform-owned; its record prefix is the boundary.
@@ -194,6 +200,18 @@ gate_extra_asserts() {
         'configured options state: True/True/True/True' 'configured options callbacks: True/True/True' \
         'configured options after thread exit: True/True' \
         --policy crlf || return 1
+    before="$out/before-runtime-async.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-runtime-async
+    gate_output prefix "$native" "$before" --before '== runtime async ==' --policy crlf || return 1
+    for line in '== runtime async ==' 'tasks: 21/40 settled: True/2' 'struct: 5/1' \
+        'try: False/45' 'runtime async end' 'runtime async configured contexts: task=True value task=True'; do
+        gate_output byte-witness "$native" "$line" --policy crlf || return 1
+    done
+    # The block's methods are lowered as resumable bodies, not as state machines.
+    if ! grep -qE 'struct Program_AwaitTasks_m[0-9]+__AsyncFrame' "$out"/generated*.cpp; then
+        echo 'FAIL: RuntimeAsyncSubset.Program.AwaitTasks is not a runtime-async body' >&2
+        return 1
+    fi
     before="$out/before-semaphore-waiters.stdout"
     gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-semaphore-waiters
     gate_output prefix "$native" "$before" --before '== semaphore waiter helpers ==' --policy crlf
@@ -395,8 +413,9 @@ gate_extra_asserts() {
                 return 1 ;;
         esac
         gate_output compare "$child" "$dotnet_child"
-        # The default run is unchanged; only the rejected registration follows.
-        gate_output prefix "$child" "$native" \
+        # The default run up to the runtime-async block is unchanged; only the
+        # rejected registration follows.
+        gate_output prefix "$child" "$out/before-runtime-async.stdout" \
             --before "== builder suspension rejection: ${mode%%:*} ==" --policy crlf
         printf '%s\n' "${mode#*:}" > "$out/suspension.expected"
         gate_output suffix "$child" "$out/suspension.expected" \

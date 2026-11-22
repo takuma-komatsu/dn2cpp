@@ -10,6 +10,7 @@ internal sealed partial class CppEmitter
     {
         string? reason = method.HasMethodAttribute("System.Runtime.CompilerServices.AsyncStateMachineAttribute")
             || method.HasMethodAttribute("System.Runtime.CompilerServices.AsyncIteratorStateMachineAttribute")
+            || method.IsRuntimeAsync
             ? "async methods are not supported"
             : method.HasMethodAttribute("System.Runtime.CompilerServices.IteratorStateMachineAttribute")
             ? "iterator methods are not supported"
