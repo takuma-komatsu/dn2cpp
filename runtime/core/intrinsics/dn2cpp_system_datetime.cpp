@@ -1464,17 +1464,27 @@ Dn2CppTimeSpan dn2cpp_timespan_parse_exact(Dn2CppString* s, Dn2CppString* fmt)
     return r;
 }
 
-// DateTime custom-format parse (inverse of dn2cpp_dt_format_custom). A format with no
-// date part leaves the default 0001-01-01 (no clock; carve-out). For DateTime
+// The other DateTimeStyles bits remain outside the invariant parser subset.
+static constexpr int32_t DN2CPP_DT_NO_CURRENT_DATE_DEFAULT = 0x08;
+enum class Dn2CppDateDefaults { Current, MinimumForTimeOnly, LegacyMinimum };
+
+static Dn2CppDateDefaults dn2cpp_date_defaults(int32_t styles)
+{
+    return (styles & DN2CPP_DT_NO_CURRENT_DATE_DEFAULT)
+        ? Dn2CppDateDefaults::MinimumForTimeOnly : Dn2CppDateDefaults::Current;
+}
+
+// DateTime custom-format parse (inverse of dn2cpp_dt_format_custom). For DateTime
 // (offOut == nullptr) a z/K offset is consumed but not applied (only 'Z' sets Kind=Utc);
 // for DateTimeOffset (offOut != nullptr) a z/K offset is captured into *offOut and
 // *hasOffOut, and a missing/malformed offset there fails the parse.
 static bool dn2cpp_dt_parse_custom(const char16_t* p, int pn, const char16_t* in, int inLen,
-    Dn2CppDateTime* out, int32_t* offOut, bool* hasOffOut)
+    Dn2CppDateTime* out, Dn2CppDateDefaults defaults, int32_t* offOut, bool* hasOffOut,
+    bool* incompleteWithOffset = nullptr)
 {
     int fi = 0, ii = 0, c;
     int y = 1, mo = 1, d = 1, h = 0, mi = 0, ss = 0, frac = 0, kind = 0;
-    bool h12 = false, pm = false;
+    bool h12 = false, pm = false, hasYear = false, hasMonthOrDay = false;
     while (fi < pn)
     {
         char16_t ch = p[fi];
@@ -1484,14 +1494,15 @@ static bool dn2cpp_dt_parse_custom(const char16_t* p, int pn, const char16_t* in
         int cnt = 1; while (fi + cnt < pn && p[fi + cnt] == ch) cnt++;
         switch (ch)
         {
-            case u'y': { int md = cnt >= 3 ? cnt : (cnt == 2 ? 2 : 4); y = (int)dn2cpp_parse_digits(in, inLen, ii, md, c); if (c == 0) return false; break; }
+            case u'y': { int md = cnt >= 3 ? cnt : (cnt == 2 ? 2 : 4); y = (int)dn2cpp_parse_digits(in, inLen, ii, md, c); if (c == 0) return false; hasYear = true; break; }
             case u'M':
                 if (cnt >= 3) { int m = dn2cpp_match_month(in, inLen, ii, cnt >= 4); if (m == 0) return false; mo = m; }
                 else { mo = (int)dn2cpp_parse_digits(in, inLen, ii, 2, c); if (c == 0) return false; }
+                hasMonthOrDay = true;
                 break;
             case u'd':
                 if (cnt >= 3) { if (dn2cpp_match_day(in, inLen, ii, cnt >= 4) < 0) return false; } // weekday name: consume, no validation
-                else { d = (int)dn2cpp_parse_digits(in, inLen, ii, 2, c); if (c == 0) return false; }
+                else { d = (int)dn2cpp_parse_digits(in, inLen, ii, 2, c); if (c == 0) return false; hasMonthOrDay = true; }
                 break;
             case u'H': h = (int)dn2cpp_parse_digits(in, inLen, ii, 2, c); if (c == 0) return false; break;
             case u'h': h = (int)dn2cpp_parse_digits(in, inLen, ii, 2, c); if (c == 0) return false; h12 = true; break;
@@ -1550,6 +1561,25 @@ static bool dn2cpp_dt_parse_custom(const char16_t* p, int pn, const char16_t* in
     }
     if (ii != inLen) return false;
     if (h12) { if (pm) { if (h != 12) h += 12; } else if (h == 12) h = 0; }
+    if (!hasYear && defaults != Dn2CppDateDefaults::LegacyMinimum)
+    {
+        const bool hasOffset = hasOffOut && *hasOffOut;
+        // A captured offset with a partial date requires an explicit year.
+        if (hasMonthOrDay && hasOffset)
+        {
+            if (incompleteWithOffset) *incompleteWithOffset = true;
+            return false;
+        }
+        if (hasMonthOrDay || defaults == Dn2CppDateDefaults::Current)
+        {
+            // Time-only DateTimeOffset uses today's date at the parsed offset, not
+            // at the host's local offset. Partial dates fill only the year.
+            int64_t now = hasOffset
+                ? dn2cpp_datetime_utc_now().ticks() + static_cast<int64_t>(*offOut) * DN2CPP_TPM
+                : dn2cpp_datetime_now().ticks();
+            dn2cpp_dt_datepart(now, &y, hasMonthOrDay ? nullptr : &mo, hasMonthOrDay ? nullptr : &d, nullptr);
+        }
+    }
     if (mo < 1 || mo > 12 || h > 23 || mi > 59 || ss > 59 || y < 1 || y > 9999) return false;
     if (d < 1 || d > dn2cpp_datetime_days_in_month(y, mo)) return false;
     *out = dn2cpp_datetime_pack(
@@ -1557,7 +1587,8 @@ static bool dn2cpp_dt_parse_custom(const char16_t* p, int pn, const char16_t* in
     return true;
 }
 
-bool dn2cpp_datetime_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, Dn2CppDateTime* out)
+static bool dn2cpp_datetime_try_parse_exact_core(Dn2CppString* s, Dn2CppString* fmt,
+    Dn2CppDateTime* out, Dn2CppDateDefaults defaults)
 {
     *out = Dn2CppDateTime{0};
     if (s == nullptr || s->length == 0 || fmt == nullptr || fmt->length == 0) return false;
@@ -1570,15 +1601,43 @@ bool dn2cpp_datetime_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, Dn2CppD
         pat = patbuf; plen = j;
     }
     else { pat = fmt->chars; plen = fmt->length; }
-    return dn2cpp_dt_parse_custom(pat, plen, s->chars, s->length, out, nullptr, nullptr);
+    return dn2cpp_dt_parse_custom(pat, plen, s->chars, s->length, out, defaults, nullptr, nullptr);
 }
 
-// DateTime general invariant parse over an already-trimmed range p[i..e): ISO
+bool dn2cpp_datetime_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, Dn2CppDateTime* out, int32_t styles)
+{ return dn2cpp_datetime_try_parse_exact_core(s, fmt, out, dn2cpp_date_defaults(styles)); }
+
+// Numeric HH:mm[:ss[.fffffff]] shared by date-and-time and bare-time input.
+static bool dn2cpp_dt_parse_clock(const char16_t* p, int k, int e, int64_t* ticksOut)
+{
+    int c, ss = 0, frac = 0;
+    int h = (int)dn2cpp_parse_digits(p, e, k, 2, c); if (c == 0) return false;
+    if (k >= e || p[k] != u':') return false; k++;
+    int mi = (int)dn2cpp_parse_digits(p, e, k, 2, c); if (c == 0) return false;
+    if (k < e && p[k] == u':')
+    {
+        k++;
+        ss = (int)dn2cpp_parse_digits(p, e, k, 2, c); if (c == 0) return false;
+        if (k < e && p[k] == u'.')
+        {
+            k++;
+            int fc; int64_t fv = dn2cpp_parse_digits(p, e, k, 7, fc); if (fc == 0) return false;
+            for (int z = fc; z < 7; z++) fv *= 10;
+            frac = (int)fv;
+        }
+    }
+    if (k != e || h > 23 || mi > 59 || ss > 59) return false;
+    *ticksOut = dn2cpp_dt_time_to_ticks(h, mi, ss, 0) + frac;
+    return true;
+}
+
+// DateTime general invariant parse over range p[i..e): ISO
 // yyyy-MM-dd[(T| )HH:mm[:ss[.fffffff]]] and the US-invariant M/d/yyyy[ HH:mm[:ss[.fffffff]]].
-// Date separator picks the field order ('-' = y-M-d, '/' = M/d/y). A bare time (no date) is
-// unsupported (no clock). On success sets *ticksOut. Shared by DateTime.Parse and
-// DateTimeOffset.Parse (the latter strips a trailing offset first).
-static bool dn2cpp_dt_parse_general_range(const char16_t* p, int i, int e, int64_t* ticksOut)
+// Date separator picks the field order ('-' = y-M-d, '/' = M/d/y). Only the
+// DateTime entry points allow a bare time; DateOnly and DateTimeOffset general parsing
+// retain the dated range they used before.
+static bool dn2cpp_dt_parse_general_range(const char16_t* p, int i, int e, int64_t* ticksOut,
+    Dn2CppDateDefaults defaults = Dn2CppDateDefaults::LegacyMinimum)
 {
     int c;
     while (i < e && (p[i] == u' ' || p[i] == u'\t')) i++;
@@ -1592,7 +1651,14 @@ static bool dn2cpp_dt_parse_general_range(const char16_t* p, int i, int e, int64
     // Date field separator.
     char16_t sep = 0;
     for (int k = i; k < dateEnd; k++) { if (p[k] == u'-') { sep = u'-'; break; } if (p[k] == u'/') { sep = u'/'; break; } }
-    if (sep == 0) return false;
+    if (sep == 0)
+    {
+        if (defaults == Dn2CppDateDefaults::LegacyMinimum || !dn2cpp_dt_parse_clock(p, i, e, ticksOut))
+            return false;
+        if (defaults == Dn2CppDateDefaults::Current)
+            *ticksOut += dn2cpp_datetime_today().ticks();
+        return true;
+    }
     int parts[3] = { 0, 0, 0 }, np = 0, k = i;
     while (k < dateEnd && np < 3)
     {
@@ -1606,60 +1672,40 @@ static bool dn2cpp_dt_parse_general_range(const char16_t* p, int i, int e, int64
     int y, mo, d;
     if (sep == u'-') { y = parts[0]; mo = parts[1]; d = parts[2]; }
     else { mo = parts[0]; d = parts[1]; y = parts[2]; }
-    int h = 0, mi = 0, ss = 0, frac = 0;
-    if (timeStart < e)
-    {
-        k = timeStart;
-        h = (int)dn2cpp_parse_digits(p, e, k, 2, c); if (c == 0) return false;
-        if (k >= e || p[k] != u':') return false; k++;
-        mi = (int)dn2cpp_parse_digits(p, e, k, 2, c); if (c == 0) return false;
-        if (k < e && p[k] == u':')
-        {
-            k++;
-            ss = (int)dn2cpp_parse_digits(p, e, k, 2, c); if (c == 0) return false;
-            if (k < e && p[k] == u'.')
-            {
-                k++;
-                int fc; int64_t fv = dn2cpp_parse_digits(p, e, k, 7, fc); if (fc == 0) return false;
-                for (int z = fc; z < 7; z++) fv *= 10;
-                frac = (int)fv;
-            }
-        }
-        if (k != e) return false;
-        if (h > 23 || mi > 59 || ss > 59) return false;
-    }
+    int64_t timeTicks = 0;
+    if (timeStart < e && !dn2cpp_dt_parse_clock(p, timeStart, e, &timeTicks)) return false;
     if (y < 1 || y > 9999 || mo < 1 || mo > 12) return false;
     if (d < 1 || d > dn2cpp_datetime_days_in_month(y, mo)) return false;
-    *ticksOut = dn2cpp_dt_date_to_ticks(y, mo, d) + dn2cpp_dt_time_to_ticks(h, mi, ss, 0) + frac;
+    *ticksOut = dn2cpp_dt_date_to_ticks(y, mo, d) + timeTicks;
     return true;
 }
 
-bool dn2cpp_datetime_try_parse(Dn2CppString* s, Dn2CppDateTime* out)
+bool dn2cpp_datetime_try_parse(Dn2CppString* s, Dn2CppDateTime* out, int32_t styles)
 {
     *out = Dn2CppDateTime{0};
     if (s == nullptr) return false;
     int64_t ticks;
-    if (!dn2cpp_dt_parse_general_range(s->chars, 0, s->length, &ticks)) return false;
+    if (!dn2cpp_dt_parse_general_range(s->chars, 0, s->length, &ticks, dn2cpp_date_defaults(styles))) return false;
     *out = dn2cpp_datetime_pack(ticks, 0);
     return true;
 }
 
-Dn2CppDateTime dn2cpp_datetime_parse(Dn2CppString* s)
+Dn2CppDateTime dn2cpp_datetime_parse(Dn2CppString* s, int32_t styles)
 {
     if (s == nullptr) dn2cpp_throw_argument_null_param("s");
     Dn2CppDateTime r;
-    if (!dn2cpp_datetime_try_parse(s, &r))
+    if (!dn2cpp_datetime_try_parse(s, &r, styles))
         dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_DATETIME, s);
     return r;
 }
-Dn2CppDateTime dn2cpp_datetime_parse_exact(Dn2CppString* s, Dn2CppString* fmt)
+Dn2CppDateTime dn2cpp_datetime_parse_exact(Dn2CppString* s, Dn2CppString* fmt, int32_t styles)
 {
     if (s == nullptr) dn2cpp_throw_argument_null_param("s");
     if (fmt == nullptr) dn2cpp_throw_argument_null_param("format");
     if (s->length != 0 && fmt->length == 0)
         dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_FORMAT_SPECIFIER, fmt);
     Dn2CppDateTime r;
-    if (!dn2cpp_datetime_try_parse_exact(s, fmt, &r))
+    if (!dn2cpp_datetime_try_parse_exact(s, fmt, &r, styles))
         dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_DATETIME, s);
     return r;
 }
@@ -1738,18 +1784,35 @@ static bool dn2cpp_datetimeoffset_try_parse_exact_core(Dn2CppString* s, Dn2CppSt
     }
     else { pat = fmt->chars; plen = fmt->length; }
     Dn2CppDateTime dt; int32_t off = 0; bool hasOff = false;
-    if (!dn2cpp_dt_parse_custom(pat, plen, s->chars, s->length, &dt, &off, &hasOff)) return false;
+    bool incompleteWithOffset = false;
+    if (!dn2cpp_dt_parse_custom(pat, plen, s->chars, s->length, &dt, Dn2CppDateDefaults::Current,
+        &off, &hasOff, &incompleteWithOffset))
+    {
+        if (failure && incompleteWithOffset) *failure = 3;
+        return false;
+    }
     if (!hasOff) off = dn2cpp_local_offset_minutes(dt); // no offset in the pattern -> host local
     if (!dn2cpp_dto_parsed_valid(dt.ticks(), off, failure)) return false;
     out->ticks = dt.ticks(); out->offsetMinutes = off;
     return true;
 }
-bool dn2cpp_datetimeoffset_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, Dn2CppDateTimeOffset* out)
-{ return dn2cpp_datetimeoffset_try_parse_exact_core(s, fmt, out, nullptr); }
+static void dn2cpp_datetimeoffset_validate_parse_styles(int32_t styles)
+{
+    if (styles & DN2CPP_DT_NO_CURRENT_DATE_DEFAULT)
+        dn2cpp_throw_argument_param(DN2CPP_SR_DATE_TIME_OFFSET_INVALID_STYLES, "styles");
+}
+bool dn2cpp_datetimeoffset_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt,
+    Dn2CppDateTimeOffset* out, int32_t styles)
+{
+    dn2cpp_datetimeoffset_validate_parse_styles(styles);
+    return dn2cpp_datetimeoffset_try_parse_exact_core(s, fmt, out, nullptr);
+}
 // TryParseExact(input, string[] formats, ...): try each format in turn, first match wins —
 // the multi-format shape HttpDateParser.TryParse uses (RFC1123 / RFC850 / asctime).
-bool dn2cpp_datetimeoffset_try_parse_exact_multi(Dn2CppString* s, Dn2CppArrayRef* formats, Dn2CppDateTimeOffset* out)
+bool dn2cpp_datetimeoffset_try_parse_exact_multi(Dn2CppString* s, Dn2CppArrayRef* formats,
+    Dn2CppDateTimeOffset* out, int32_t styles)
 {
+    dn2cpp_datetimeoffset_validate_parse_styles(styles);
     if (out) *out = Dn2CppDateTimeOffset{ 0, 0 };
     if (formats == nullptr) return false;
     for (int32_t i = 0; i < formats->length; i++)
@@ -1757,7 +1820,7 @@ bool dn2cpp_datetimeoffset_try_parse_exact_multi(Dn2CppString* s, Dn2CppArrayRef
         auto* fmt = reinterpret_cast<Dn2CppString*>(formats->data[i]);
         if (fmt == nullptr || fmt->length == 0)
             return false;
-        if (dn2cpp_datetimeoffset_try_parse_exact(s, fmt, out))
+        if (dn2cpp_datetimeoffset_try_parse_exact_core(s, fmt, out, nullptr))
             return true;
     }
     return false;
@@ -1777,8 +1840,9 @@ Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse(Dn2CppString* s)
     }
     return r;
 }
-Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse_exact(Dn2CppString* s, Dn2CppString* fmt)
+Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse_exact(Dn2CppString* s, Dn2CppString* fmt, int32_t styles)
 {
+    dn2cpp_datetimeoffset_validate_parse_styles(styles);
     if (s == nullptr) dn2cpp_throw_argument_null_param("input");
     if (fmt == nullptr) dn2cpp_throw_argument_null_param("format");
     if (s->length == 0)
@@ -1793,6 +1857,8 @@ Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse_exact(Dn2CppString* s, Dn2CppSt
             dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_FORMAT_UTC_OUT_OF_RANGE, s);
         if (failure == 2)
             dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_FORMAT_OFFSET_OUT_OF_RANGE, s);
+        if (failure == 3)
+            dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_FORMAT_MISSING_INCOMPLETE_DATE, s);
         dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_DATETIME, s);
     }
     return r;
@@ -1930,15 +1996,15 @@ Dn2CppString* dn2cpp_dateonly_format(Dn2CppDateOnly dd, Dn2CppString* fmt)
 // a carve-out vs .NET, which throws FormatException on a time in DateOnly.Parse).
 bool dn2cpp_dateonly_try_parse(Dn2CppString* s, Dn2CppDateOnly* out)
 {
-    Dn2CppDateTime dt;
-    if (!dn2cpp_datetime_try_parse(s, &dt)) { out->dayNumber = 0; return false; }
-    out->dayNumber = (int32_t)(dt.ticks() / DN2CPP_TPD);
+    int64_t ticks;
+    if (!s || !dn2cpp_dt_parse_general_range(s->chars, 0, s->length, &ticks)) { out->dayNumber = 0; return false; }
+    out->dayNumber = (int32_t)(ticks / DN2CPP_TPD);
     return true;
 }
 bool dn2cpp_dateonly_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, Dn2CppDateOnly* out)
 {
     Dn2CppDateTime dt;
-    if (!dn2cpp_datetime_try_parse_exact(s, fmt, &dt)) { out->dayNumber = 0; return false; }
+    if (!dn2cpp_datetime_try_parse_exact_core(s, fmt, &dt, Dn2CppDateDefaults::LegacyMinimum)) { out->dayNumber = 0; return false; }
     out->dayNumber = (int32_t)(dt.ticks() / DN2CPP_TPD);
     return true;
 }
@@ -2105,7 +2171,7 @@ bool dn2cpp_timeonly_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, Dn2CppT
     if (s->length > 60) return false;
     for (int z = 0; z < s->length; z++) inb[il++] = s->chars[z];
     Dn2CppDateTime dt;
-    if (!dn2cpp_dt_parse_custom(pat, pl, inb, il, &dt, nullptr, nullptr)) return false;
+    if (!dn2cpp_dt_parse_custom(pat, pl, inb, il, &dt, Dn2CppDateDefaults::LegacyMinimum, nullptr, nullptr)) return false;
     out->ticks = dt.ticks() % DN2CPP_TPD;
     return true;
 }
