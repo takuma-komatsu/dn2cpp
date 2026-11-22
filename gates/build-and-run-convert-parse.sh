@@ -103,9 +103,9 @@ gate_extra_asserts() {
         'try null string:4:4 type=NullReferenceException' \
         'empty base64 array=True' \
         'empty from hex=True' \
-        'empty from base64 string=False' \
+        'empty from base64 string=True' \
         'empty from base64 chars=True' \
-        'white from base64 chars=False' \
+        'white from base64 chars=True' \
         'conversion after GC:0 type=FormatException' \
         'conversion after GC:3 type=OverflowException' \
         'Conversion validation fields end'; do
@@ -236,6 +236,7 @@ gate_extra_asserts() {
         'currency signed en-US = -1234/-1234.5' 'currency suffix separators = 1234.50' \
         'currency suffix number fallback = 1234.50' 'currency prefix no number fallback ! FormatException' \
         'currency duplicate = False:0' 'currency disallowed = False:0' --count 1 --policy crlf
+    gate_output byte-witness "$native" 'HexFloat parse=3/3' --count 1 --policy crlf
 
     numeric_signature_regressions checked
 }

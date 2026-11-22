@@ -190,12 +190,9 @@ internal static partial class Program
             provider = new Provider(true);
             threw = false;
             value = before;
-            bool ok = true;
-            try { ok = TryParse(route, null, null, NumberStyles.Integer, provider, out value); }
+            try { TryParse(route, null, null, NumberStyles.Integer, provider, out value); }
             catch (ProviderFailure) { threw = true; }
-            Check(key + ".null-input-priority", route >= 4
-                ? !threw && !ok && value == T.Zero && provider.Calls == 0
-                : threw && value == before && provider.Calls == 1);
+            Check(key + ".null-input-priority", threw && value == before && provider.Calls == 1);
             provider = new Provider(true);
             threw = false;
             bool nullArgument = false;
@@ -211,9 +208,7 @@ internal static partial class Program
             try { TryParse(route, null, null, NumberStyles.Integer, provider, out Unsafe.NullRef<T>()); }
             catch (NullReferenceException) { nullOutput = true; }
             catch (ProviderFailure) { threw = true; }
-            Check(key + ".null-input-output-priority", route >= 4
-                ? nullOutput && !threw && provider.Calls == 0
-                : !nullOutput && threw && provider.Calls == 1);
+            Check(key + ".null-input-output-priority", !nullOutput && threw && provider.Calls == 1);
         }
         Console.WriteLine(label + " parsing provider/null native32 end");
         return;

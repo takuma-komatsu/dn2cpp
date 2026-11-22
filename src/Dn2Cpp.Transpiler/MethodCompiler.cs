@@ -2877,7 +2877,9 @@ internal sealed partial class MethodCompiler : IEvalStack
             case ILOpCode.Conv_ovf_u4: case ILOpCode.Conv_ovf_u4_un: CheckedConv("int32_t", StackKind.I4, "uint32_t", "0", "4294967295"); break;
             case ILOpCode.Conv_ovf_i8: case ILOpCode.Conv_ovf_i8_un:
             case ILOpCode.Conv_ovf_i: case ILOpCode.Conv_ovf_i_un:
-                Convert("int64_t", StackKind.I8, "(int64_t)"); break;
+                if (!TryCheckedFloatConv("int64_t", StackKind.I8, "int64_t"))
+                    Convert("int64_t", StackKind.I8, "(int64_t)");
+                break;
             case ILOpCode.Conv_ovf_u8: case ILOpCode.Conv_ovf_u8_un:
             case ILOpCode.Conv_ovf_u: case ILOpCode.Conv_ovf_u_un:
                 CheckedConv("int64_t", StackKind.I8, "uint64_t", "0", "9223372036854775807"); break;

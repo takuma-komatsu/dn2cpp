@@ -436,7 +436,11 @@ static Dn2CppString* dn2cpp_format_section(const char16_t* fmt, int length, Dn2C
         if (group && digPos > 1 && index >= 0 && index < groupedDigits && sepAfter[index])
             put(nfi->numberGroup);
     };
-    if (negative && section == 0 && mag.scale != 0) put(nfi->negativeSign);
+    // A negative value formats with the first section only when it rounded to
+    // zero or has no section of its own. A dedicated negative section owns the
+    // sign, so the fallback must not add one ("+0.00;-0.00" gives "+0.00").
+    const bool signFirstSection = negative && section == 0 && dn2cpp_custom_section(fmt, length, 1) == 0;
+    if (signFirstSection && mag.scale != 0) put(nfi->negativeSign);
     int curIndex = 0;
     bool decimalWritten = false;
     for (int i = section; i < length && fmt[i] != u';'; i++)
@@ -518,7 +522,7 @@ static Dn2CppString* dn2cpp_format_section(const char16_t* fmt, int length, Dn2C
         }
         out.push_back(c);
     }
-    if (negative && section == 0 && mag.scale == 0 && !out.empty() && nfi->negativeSign != nullptr)
+    if (signFirstSection && mag.scale == 0 && !out.empty() && nfi->negativeSign != nullptr)
         out.insert(0, nfi->negativeSign->chars, static_cast<size_t>(nfi->negativeSign->length));
     if (out.size() > INT32_MAX) dn2cpp_throw_out_of_memory();
     return dn2cpp_string_from_chars(out.data(), static_cast<int32_t>(out.size()));

@@ -80,6 +80,7 @@ namespace ConvertParse
             if (args.Length > 0 && args[0] == "before-currency-symbol")
                 return;
             NumberStylesSubset.Program.RunCurrencySymbol();
+            NumberStylesSubset.Program.RunHexFloat();
         }
     }
 }

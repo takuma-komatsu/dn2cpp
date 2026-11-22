@@ -442,13 +442,26 @@ internal sealed partial class MethodCompiler
                 string args, suffix;
                 if (ps[0].IsString)
                 {
-                    args = $"{Cast(Pop(), "Dn2CppString*")}, {stylesExpr}, {nfiExpr}";
+                    string text = Cast(Pop(), "Dn2CppString*");
+                    if (hasProvider)
+                    {
+                        // The provider is queried only after Parse has rejected a
+                        // null string and the style has been validated.
+                        string value = NewTemp("Dn2CppString*");
+                        Emit($"{value} = {text};");
+                        text = value;
+                        if (!isTry) Emit($"if ({value} == nullptr) dn2cpp_throw_argument_null_param(\"s\");");
+                        if (hasStyles) Emit($"dn2cpp_parse_validate_decimal_styles({stylesExpr});");
+                    }
+                    args = $"{text}, {stylesExpr}, {nfiExpr}";
                     suffix = "str";
                 }
                 else
                 {
                     string sp = SpanValue(Pop(), CppTypes.Of(ps[0]));
                     bool utf8 = IsReadOnlyByteSpan(ps[0]);
+                    if (hasStyles && hasProvider)
+                        Emit($"dn2cpp_parse_validate_decimal_styles({stylesExpr});");
                     args = $"(const {(utf8 ? "char" : "char16_t")}*){sp}.f__reference, {sp}.f__length, {stylesExpr}, {nfiExpr}";
                     suffix = utf8 ? "utf8" : "chars";
                 }

@@ -102,6 +102,7 @@ namespace DateTimeOps
             if (args.Length > 0 && args[0] == "before-exact-offset-parse")
                 return;
             DateTimeParse.Program.RunExactOffsets(showClocks: false);
+            ParseExactDotElision.Program.RunMissingOffset();
         }
     }
 }

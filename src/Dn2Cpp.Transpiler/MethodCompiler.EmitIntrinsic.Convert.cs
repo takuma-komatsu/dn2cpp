@@ -249,7 +249,7 @@ internal sealed partial class MethodCompiler
                 return true;
             case ("System.Convert", "ToSingle") when sig.ParameterTypes is [{ IsObject: true }, ..]:
                 if (sig.ParameterTypes.Length == 2) Pop();
-                Push(StackKind.R8, "float", $"(float)dn2cpp_convert_obj_to_f64({Cast(Pop(), "Dn2CppObject*")})");
+                Push(StackKind.R8, "float", $"dn2cpp_convert_obj_to_f32({Cast(Pop(), "Dn2CppObject*")})");
                 return true;
             case ("System.Convert", "ToDouble") when sig.ParameterTypes is [{ IsObject: true }, ..]:
                 if (sig.ParameterTypes.Length == 2) Pop();

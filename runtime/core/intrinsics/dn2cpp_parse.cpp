@@ -2,24 +2,33 @@
 //
 // A port of System.Number's TryParseNumber state machine over the modeled
 // Dn2CppNumberFormatInfo, plus the conversions on top of it: every integer width
-// (including the hex/binary specifier scanners), double/single (rebuilt to an
-// invariant ASCII form and handed to strtod/strtof for the correctly rounded
-// binary conversion), and the shared digit/scale/sign buffer System.Decimal's
-// styles parser consumes.
+// (including the hex/binary specifier scanners), double/single (decimal text
+// rebuilt to an invariant ASCII form and handed to strtod/strtof for the
+// correctly rounded binary conversion; hexadecimal text rounded here), and the
+// shared digit/scale/sign buffer System.Decimal's styles parser consumes.
 //
 // Semantics matching real .NET, each easy to get wrong:
 //   - the parser trims only ASCII whitespace (0x20, 0x09..0x0D);
 //   - group separators need a preceding digit but are otherwise free-form
 //     (.NET does not validate group sizes: "1,2,3" and "123," parse);
-//   - a group separator of U+00A0/U+202F also matches a plain space;
+//   - in UTF-16 input U+00A0, U+202F and U+0020 match each other in a sign,
+//     a currency symbol and a separator of decimal text (a hexadecimal float's
+//     separator matches exactly), whichever side carries which; UTF-8 input
+//     matches only the identical text;
+//   - when both signs match, the longer one wins and a tie is positive;
 //   - AllowDecimalPoint on an integer accepts an all-zero fraction and
 //     reports a non-zero fraction as *overflow*, not format;
-//   - AllowHexSpecifier/AllowBinarySpecifier combine only with the whitespace
-//     bits (anything else, both together, or an undefined bit is an
-//     ArgumentException — thrown from TryParse as well);
+//   - on an integer AllowHexSpecifier/AllowBinarySpecifier combine only with
+//     the whitespace bits (anything else, both together, or an undefined bit
+//     is an ArgumentException — thrown from TryParse as well); a float takes
+//     the hex specifier only with AllowExponent and within HexFloat, never the
+//     binary one, and a decimal takes neither;
 //   - unsigned targets overflow on any negative parse except a bare "-0";
 //   - the float path falls back to the culture's Infinity/NaN symbols with a
-//     full-Unicode trim and case-insensitive compare, ignoring the styles;
+//     full-Unicode trim and case-insensitive compare, ignoring the styles; an
+//     empty symbol matches nothing;
+//   - TryParse reads a null string as the empty span, so the provider is
+//     resolved for it too;
 //   - currency parsing permits one symbol in the leading or trailing affix;
 //     ordinary separators are a fallback only before a symbol has been read.
 #include "dn2cpp_core.h"
@@ -42,6 +51,7 @@ static constexpr int32_t NS_EXPONENT = 0x80;
 static constexpr int32_t NS_CURRENCY = 0x100;
 static constexpr int32_t NS_HEX = 0x200;
 static constexpr int32_t NS_BINARY = 0x400;
+static constexpr int32_t NS_HEXFLOAT = NS_LEADWHITE | NS_TRAILWHITE | NS_LEADSIGN | NS_DECIMAL | NS_EXPONENT | NS_HEX;
 
 static bool ns_is_white(char16_t c) { return c == 0x20 || (c >= 0x09 && c <= 0x0D); }
 static bool ns_is_digit(char16_t c) { return c >= u'0' && c <= u'9'; }
@@ -63,10 +73,26 @@ void dn2cpp_parse_validate_integer_styles(int32_t styles)
     }
 }
 
-// ValidateParseStyleFloatingPoint: undefined bits or any hex/binary specifier
-// throw ArgumentException. Shared with the decimal styles parser.
+// ValidateParseStyleFloatingPoint: the hex specifier is legal only with
+// AllowExponent and only among HexFloat's bits; the binary specifier never is.
+// An undefined bit is reported first, then the binary specifier.
 // AllowCurrencySymbol is a valid style here too (handled at parse time).
 void dn2cpp_parse_validate_fp_styles(int32_t styles)
+{
+    if ((styles & (~0x7FF | NS_HEX | NS_BINARY)) == 0)
+        return;
+    if ((styles & ~NS_HEXFLOAT) == 0 && ((styles & NS_HEX) == 0 || (styles & NS_EXPONENT) != 0))
+        return;
+    dn2cpp_throw_argument_param(
+        (styles & ~0x7FF) != 0 ? DN2CPP_SR_INVALID_NUMBER_STYLES
+        : (styles & NS_BINARY) != 0 ? DN2CPP_SR_BINARY_STYLE_NOT_SUPPORTED
+        : DN2CPP_SR_INVALID_HEX_FLOAT_STYLE,
+        "style");
+}
+
+// ValidateParseStyleDecimal: undefined bits or any hex/binary specifier throw
+// ArgumentException.
+void dn2cpp_parse_validate_decimal_styles(int32_t styles)
 {
     if ((styles & ~0x7FF) != 0)
         dn2cpp_throw_argument_param(DN2CPP_SR_INVALID_NUMBER_STYLES, "style");
@@ -74,21 +100,47 @@ void dn2cpp_parse_validate_fp_styles(int32_t styles)
         dn2cpp_throw_argument_param(DN2CPP_SR_HEX_BINARY_STYLES_NOT_SUPPORTED, "style");
 }
 
-// MatchChars: the separator/sign string `t` (non-empty) matched at p[i..],
-// with .NET's space-replacing rule — a U+00A0/U+202F separator code unit also
-// matches a plain U+0020 in the input. Returns the index just past the match,
+static char16_t ns_fold_space(char16_t c) { return c == 0x00A0 || c == 0x202F ? u' ' : c; }
+
+// MatchChars: the separator, sign or symbol `t` (non-empty) matched at p[i..].
+// U+00A0, U+202F and U+0020 are interchangeable on either side unless `exact`,
+// which is the rule for UTF-8 input. Returns the index just past the match,
 // or -1.
-static int32_t ns_match_str(const char16_t* p, int32_t n, int32_t i, Dn2CppString* t)
+static int32_t ns_match_str(const char16_t* p, int32_t n, int32_t i, Dn2CppString* t, bool exact)
 {
     if (t == nullptr || t->length == 0 || i + t->length > n)
         return -1;
     for (int32_t k = 0; k < t->length; k++)
     {
         char16_t want = t->chars[k], have = p[i + k];
-        if (have != want && !((want == 0x00A0 || want == 0x202F) && have == 0x20))
+        if (have != want && (exact || ns_fold_space(have) != ns_fold_space(want)))
             return -1;
     }
     return i + t->length;
+}
+
+// MatchSignChars: the index just past a sign at p[i..], or -1. A sign that is
+// a prefix of the other must not shadow it, so the longer match wins and a tie
+// is positive. A one-character dash-like NegativeSign also accepts U+002D.
+static int32_t ns_match_sign(const char16_t* p, int32_t n, int32_t i,
+                             const Dn2CppNumberFormatInfo* nfi, bool exact, bool* negative)
+{
+    Dn2CppString* neg = nfi->negativeSign;
+    int32_t posEnd = ns_match_str(p, n, i, nfi->positiveSign, exact);
+    int32_t negEnd = ns_match_str(p, n, i, neg, exact);
+    if (negEnd < 0 && i < n && p[i] == u'-' && neg != nullptr && neg->length == 1)
+    {
+        switch (neg->chars[0])
+        {
+            case 0x2012: case 0x207B: case 0x208B: case 0x2212: case 0x2796: case 0xFE63: case 0xFF0D:
+                negEnd = i + 1;
+                break;
+            default:
+                break;
+        }
+    }
+    *negative = negEnd > posEnd;
+    return *negative ? negEnd : posEnd;
 }
 
 // The TryParseNumber state machine. kind: 0 = Integer (trailing zeros are not
@@ -96,17 +148,17 @@ static int32_t ns_match_str(const char16_t* p, int32_t n, int32_t i, Dn2CppStrin
 // the significant digits, the scale (digits left of the decimal point, with
 // any exponent folded in), the sign, and the truncated-nonzero-tail flag.
 // Returns 1 when the number grammar matched AND consumed the entire input.
+// `utf8` marks text widened from UTF-8 input.
 int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
                                    const Dn2CppNumberFormatInfo* nfi, int32_t kind,
-                                   Dn2CppNumberParse* num)
+                                   int32_t utf8, Dn2CppNumberParse* num)
 {
     nfi = dn2cpp_nfi_or_current(nfi);
+    const bool exact = utf8 != 0;
     const bool currencyStyle = (styles & NS_CURRENCY) != 0;
     Dn2CppString* currencySymbol = currencyStyle ? nfi->currencySymbol : nullptr;
     Dn2CppString* decSep = currencyStyle ? nfi->currencyDecimal : nfi->numberDecimal;
     Dn2CppString* grpSep = currencyStyle ? nfi->currencyGroup : nfi->numberGroup;
-    Dn2CppString* negSign = nfi->negativeSign;
-    Dn2CppString* posSign = nfi->positiveSign;
     bool currencySeen = false;
 
     num->count = 0;
@@ -130,21 +182,14 @@ int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
             continue;
         }
         int32_t next;
-        if ((styles & NS_LEADSIGN) != 0 && (state & ST_SIGN) == 0)
+        bool negative;
+        if ((styles & NS_LEADSIGN) != 0 && (state & ST_SIGN) == 0
+            && (next = ns_match_sign(p, n, i, nfi, exact, &negative)) >= 0)
         {
-            if ((next = ns_match_str(p, n, i, posSign)) >= 0)
-            {
-                state |= ST_SIGN;
-                i = next;
-                continue;
-            }
-            if ((next = ns_match_str(p, n, i, negSign)) >= 0)
-            {
-                state |= ST_SIGN;
-                num->negative = 1;
-                i = next;
-                continue;
-            }
+            state |= ST_SIGN;
+            num->negative = negative ? 1 : 0;
+            i = next;
+            continue;
         }
         if (ch == u'(' && (styles & NS_PARENS) != 0 && (state & ST_SIGN) == 0)
         {
@@ -153,7 +198,7 @@ int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
             i++;
             continue;
         }
-        if (!currencySeen && currencySymbol != nullptr && (next = ns_match_str(p, n, i, currencySymbol)) >= 0)
+        if (!currencySeen && currencySymbol != nullptr && (next = ns_match_str(p, n, i, currencySymbol, exact)) >= 0)
         {
             currencySeen = true;
             i = next;
@@ -203,16 +248,16 @@ int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
         }
         int32_t next;
         if ((styles & NS_DECIMAL) != 0 && (state & ST_DECIMAL) == 0
-            && ((next = ns_match_str(p, n, i, decSep)) >= 0
-                || (numberSeparatorFallback && (next = ns_match_str(p, n, i, nfi->numberDecimal)) >= 0)))
+            && ((next = ns_match_str(p, n, i, decSep, exact)) >= 0
+                || (numberSeparatorFallback && (next = ns_match_str(p, n, i, nfi->numberDecimal, exact)) >= 0)))
         {
             state |= ST_DECIMAL;
             i = next;
             continue;
         }
         if ((styles & NS_THOUSANDS) != 0 && (state & ST_DIGITS) != 0 && (state & ST_DECIMAL) == 0
-            && ((next = ns_match_str(p, n, i, grpSep)) >= 0
-                || (numberSeparatorFallback && (next = ns_match_str(p, n, i, nfi->numberGroup)) >= 0)))
+            && ((next = ns_match_str(p, n, i, grpSep, exact)) >= 0
+                || (numberSeparatorFallback && (next = ns_match_str(p, n, i, nfi->numberGroup, exact)) >= 0)))
         {
             i = next;
             continue;
@@ -232,13 +277,8 @@ int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
             bool negExp = false;
             int32_t next;
             i++;
-            if ((next = ns_match_str(p, n, i, posSign)) >= 0)
+            if ((next = ns_match_sign(p, n, i, nfi, exact, &negExp)) >= 0)
                 i = next;
-            else if ((next = ns_match_str(p, n, i, negSign)) >= 0)
-            {
-                i = next;
-                negExp = true;
-            }
             if (i < n && ns_is_digit(p[i]))
             {
                 int64_t exp = 0;
@@ -267,21 +307,14 @@ int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
                 continue;
             }
             int32_t next;
-            if ((styles & NS_TRAILSIGN) != 0 && (state & ST_SIGN) == 0)
+            bool negative;
+            if ((styles & NS_TRAILSIGN) != 0 && (state & ST_SIGN) == 0
+                && (next = ns_match_sign(p, n, i, nfi, exact, &negative)) >= 0)
             {
-                if ((next = ns_match_str(p, n, i, posSign)) >= 0)
-                {
-                    state |= ST_SIGN;
-                    i = next;
-                    continue;
-                }
-                if ((next = ns_match_str(p, n, i, negSign)) >= 0)
-                {
-                    state |= ST_SIGN;
-                    num->negative = 1;
-                    i = next;
-                    continue;
-                }
+                state |= ST_SIGN;
+                num->negative = negative ? 1 : 0;
+                i = next;
+                continue;
             }
             if (ch == u')' && (state & ST_PARENS) != 0)
             {
@@ -289,7 +322,7 @@ int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
                 i++;
                 continue;
             }
-            if (!currencySeen && currencySymbol != nullptr && (next = ns_match_str(p, n, i, currencySymbol)) >= 0)
+            if (!currencySeen && currencySymbol != nullptr && (next = ns_match_str(p, n, i, currencySymbol, exact)) >= 0)
             {
                 currencySeen = true;
                 i = next;
@@ -433,7 +466,7 @@ static int32_t ns_hexbin_from_chars(const char16_t* p, int32_t n, int32_t styles
 // errors throw inside the styles validation).
 static int32_t ns_integer_core(const char16_t* p, int32_t n, int32_t styles,
                                const Dn2CppNumberFormatInfo* nfi, int32_t bitWidth,
-                               int32_t isSigned, int64_t* out)
+                               int32_t isSigned, bool utf8, int64_t* out)
 {
     dn2cpp_parse_validate_integer_styles(styles);
     *out = 0;
@@ -443,7 +476,7 @@ static int32_t ns_integer_core(const char16_t* p, int32_t n, int32_t styles,
     if ((styles & NS_BINARY) != 0)
         return ns_hexbin_from_chars(p, n, styles, bitWidth, isSigned, false, out);
     Dn2CppNumberParse num;
-    if (!dn2cpp_parse_number_styles(p, n, styles, nfi, 0, &num))
+    if (!dn2cpp_parse_number_styles(p, n, styles, nfi, 0, utf8, &num))
         return 1;
     return ns_int_from_number(&num, bitWidth, isSigned, out);
 }
@@ -452,7 +485,7 @@ int32_t dn2cpp_integer_tryparse_chars(const char16_t* p, int32_t n, int32_t styl
                                       const Dn2CppNumberFormatInfo* nfi, int32_t bitWidth,
                                       int32_t isSigned, int64_t* out)
 {
-    return ns_integer_core(p, n, styles, nfi, bitWidth, isSigned, out) == 0 ? 1 : 0;
+    return ns_integer_core(p, n, styles, nfi, bitWidth, isSigned, false, out) == 0 ? 1 : 0;
 }
 
 int32_t dn2cpp_integer_tryparse_str(Dn2CppString* s, int32_t styles,
@@ -460,12 +493,7 @@ int32_t dn2cpp_integer_tryparse_str(Dn2CppString* s, int32_t styles,
                                     int32_t isSigned, int64_t* out)
 {
     if (s == nullptr)
-    {
-        // Styles are validated (and may throw) before the null check, like .NET.
-        dn2cpp_parse_validate_integer_styles(styles);
-        *out = 0;
-        return 0;
-    }
+        return dn2cpp_integer_tryparse_chars(u"", 0, styles, nfi, bitWidth, isSigned, out);
     return dn2cpp_integer_tryparse_chars(s->chars, s->length, styles, nfi, bitWidth, isSigned, out);
 }
 
@@ -477,18 +505,25 @@ int32_t dn2cpp_integer_tryparse_str(Dn2CppString* s, int32_t styles,
     dn2cpp_throw_format_value(dn2cpp_string_from_chars(p, n));
 }
 
-int64_t dn2cpp_integer_parse_chars(const char16_t* p, int32_t n, int32_t styles,
-                                   const Dn2CppNumberFormatInfo* nfi, int32_t bitWidth,
-                                   int32_t isSigned)
+static int64_t ns_integer_parse(const char16_t* p, int32_t n, int32_t styles,
+                                const Dn2CppNumberFormatInfo* nfi, int32_t bitWidth,
+                                int32_t isSigned, bool utf8)
 {
     int64_t v;
-    switch (ns_integer_core(p, n, styles, nfi, bitWidth, isSigned, &v))
+    switch (ns_integer_core(p, n, styles, nfi, bitWidth, isSigned, utf8, &v))
     {
         case 1: ns_throw_format_value(p, n);
         case 2: dn2cpp_integer_overflow(bitWidth, isSigned);
         default: break;
     }
     return v;
+}
+
+int64_t dn2cpp_integer_parse_chars(const char16_t* p, int32_t n, int32_t styles,
+                                   const Dn2CppNumberFormatInfo* nfi, int32_t bitWidth,
+                                   int32_t isSigned)
+{
+    return ns_integer_parse(p, n, styles, nfi, bitWidth, isSigned, false);
 }
 
 int64_t dn2cpp_integer_parse_str(Dn2CppString* s, int32_t styles,
@@ -503,53 +538,212 @@ int64_t dn2cpp_integer_parse_str(Dn2CppString* s, int32_t styles,
 
 // ---- floating point ---------------------------------------------------------
 
-// Case-insensitive (ASCII fold; the symbols are ASCII or caseless like U+221E)
-// match of a char16 run against a symbol string.
-static bool ns_eq_icase(const char16_t* p, int32_t n, Dn2CppString* t)
+// Whether `t` is a prefix of p[i..n) once each UTF-16 code unit is folded by
+// dn2cpp_ordinal_upper: OrdinalIgnoreCase over the BMP, while surrogate pairs
+// compare exactly. An empty `t` is.
+static bool ns_starts_icase(const char16_t* p, int32_t n, int32_t i, Dn2CppString* t)
 {
-    if (t == nullptr || t->length != n)
+    int32_t length = t != nullptr ? t->length : 0;
+    if (length > n - i)
         return false;
-    for (int32_t k = 0; k < n; k++)
+    for (int32_t k = 0; k < length; k++)
     {
-        char16_t a = p[k], b = t->chars[k];
-        if (a >= u'A' && a <= u'Z') a = (char16_t)(a + 32);
-        if (b >= u'A' && b <= u'Z') b = (char16_t)(b + 32);
-        if (a != b)
+        if (dn2cpp_ordinal_upper(p[i + k]) != dn2cpp_ordinal_upper(t->chars[k]))
             return false;
     }
     return true;
 }
 
+// TryMatchSpecialValueSymbol: `t` as an ns_starts_icase prefix of p[i..n)
+// with nothing but white space behind it. An empty symbol matches nothing.
+static bool ns_match_special(const char16_t* p, int32_t n, int32_t i, Dn2CppString* t)
+{
+    if (t == nullptr || t->length == 0 || !ns_starts_icase(p, n, i, t))
+        return false;
+    i += t->length;
+    while (i < n && dn2cpp_char_is_whitespace(p[i]))
+        i++;
+    return i == n;
+}
+
+// double.NaN's own bit pattern: quiet, with the sign bit set.
+static double ns_nan()
+{
+    const uint64_t bits = 0xFFF8000000000000ULL;
+    double value;
+    memcpy(&value, &bits, sizeof value);
+    return value;
+}
+
 // The Infinity/NaN symbol fallback .NET applies when the number grammar
-// fails: a full-Unicode trim (unlike the parser's ASCII whitespace) and a
-// case-insensitive compare against the culture symbols, with an optional
-// leading +/negative sign — all ignoring the styles bits entirely.
+// fails, ignoring the styles bits entirely. White space is the full Unicode
+// set, unlike the parser's ASCII one. A symbol stands alone or behind a sign;
+// the negative sign introduces only NaN. PositiveSign is tried first and ends
+// the search when it matches, which an empty one always does.
 static bool ns_fp_special(const char16_t* p, int32_t n, const Dn2CppNumberFormatInfo* nfi, double* out)
 {
-    int32_t a = 0, b = n;
-    while (a < b && dn2cpp_char_is_whitespace(p[a]))
+    int32_t a = 0;
+    while (a < n && dn2cpp_char_is_whitespace(p[a]))
         a++;
-    while (b > a && dn2cpp_char_is_whitespace(p[b - 1]))
-        b--;
-    const char16_t* q = p + a;
-    int32_t m = b - a;
-    if (ns_eq_icase(q, m, nfi->posInf)) { *out = INFINITY; return true; }
-    if (ns_eq_icase(q, m, nfi->negInf)) { *out = -INFINITY; return true; }
-    if (ns_eq_icase(q, m, nfi->nan)) { *out = NAN; return true; }
-    int32_t positiveEnd = ns_match_str(q, m, 0, nfi->positiveSign);
-    if (positiveEnd > 0)
+    if (ns_match_special(p, n, a, nfi->posInf)) { *out = INFINITY; return true; }
+    if (ns_match_special(p, n, a, nfi->negInf)) { *out = -INFINITY; return true; }
+    if (ns_match_special(p, n, a, nfi->nan)) { *out = ns_nan(); return true; }
+    if (ns_starts_icase(p, n, a, nfi->positiveSign))
     {
-        if (ns_eq_icase(q + positiveEnd, m - positiveEnd, nfi->posInf)) { *out = INFINITY; return true; }
-        if (ns_eq_icase(q + positiveEnd, m - positiveEnd, nfi->nan)) { *out = NAN; return true; }
+        int32_t i = a + (nfi->positiveSign != nullptr ? nfi->positiveSign->length : 0);
+        if (ns_match_special(p, n, i, nfi->posInf)) { *out = INFINITY; return true; }
+        if (ns_match_special(p, n, i, nfi->nan)) { *out = ns_nan(); return true; }
         return false;
     }
-    int32_t next = ns_match_str(q, m, 0, nfi->negativeSign);
-    if (next > 0)
+    if (ns_starts_icase(p, n, a, nfi->negativeSign))
     {
-        if (ns_eq_icase(q + next, m - next, nfi->posInf)) { *out = -INFINITY; return true; }
-        if (ns_eq_icase(q + next, m - next, nfi->nan)) { *out = NAN; return true; }
+        int32_t i = a + (nfi->negativeSign != nullptr ? nfi->negativeSign->length : 0);
+        if (ns_match_special(p, n, i, nfi->nan)) { *out = ns_nan(); return true; }
     }
     return false;
+}
+
+static int32_t ns_hex_digit(char16_t c)
+{
+    if (c >= u'0' && c <= u'9') return c - u'0';
+    if (c >= u'a' && c <= u'f') return c - u'a' + 10;
+    if (c >= u'A' && c <= u'F') return c - u'A' + 10;
+    return -1;
+}
+
+// TryParseHexFloatingPoint: [ws] [sign] 0x hex [. hex] p [sign] dec [ws] [NULs]
+// with at least one hex digit and a mandatory exponent. The significand keeps
+// 16 significant hex digits; a dropped integer digit scales the exponent and a
+// dropped non-zero digit is sticky. The value is rounded to nearest-even ONCE,
+// at the target width, so a float never takes a second rounding from double.
+// The decimal separator matches exactly; the signs go through the sign matcher,
+// the exponent's regardless of AllowLeadingSign.
+static bool ns_fp_hex(const char16_t* p, int32_t n, int32_t styles,
+                      const Dn2CppNumberFormatInfo* nfi, int32_t isSingle, bool exact, double* out)
+{
+    int32_t i = 0;
+    if ((styles & NS_LEADWHITE) != 0)
+        while (i < n && ns_is_white(p[i]))
+            i++;
+    bool negative = false;
+    int32_t next;
+    if ((styles & NS_LEADSIGN) != 0 && i < n && (next = ns_match_sign(p, n, i, nfi, exact, &negative)) >= 0)
+        i = next;
+    if (i + 1 >= n || p[i] != u'0' || (p[i + 1] | 0x20) != u'x')
+        return false;
+    i += 2;
+
+    uint64_t sig = 0;
+    int32_t sigDigits = 0;
+    int64_t droppedIntDigits = 0, fracDigits = 0;
+    bool sticky = false, anyDigit = false;
+    int32_t d;
+    for (; i < n && (d = ns_hex_digit(p[i])) >= 0; i++)
+    {
+        anyDigit = true;
+        if (sigDigits < 16)
+        {
+            if (sig != 0 || d != 0)
+            {
+                sig = (sig << 4) | (uint64_t)d;
+                sigDigits++;
+            }
+        }
+        else
+        {
+            droppedIntDigits++;
+            sticky |= d != 0;
+        }
+    }
+    if ((styles & NS_DECIMAL) != 0 && (next = ns_match_str(p, n, i, nfi->numberDecimal, true)) >= 0)
+    {
+        for (i = next; i < n && (d = ns_hex_digit(p[i])) >= 0; i++)
+        {
+            anyDigit = true;
+            if (sigDigits < 16)
+            {
+                if (sig != 0 || d != 0)
+                {
+                    sig = (sig << 4) | (uint64_t)d;
+                    sigDigits++;
+                }
+                fracDigits++;
+            }
+            else
+                sticky |= d != 0;
+        }
+    }
+    if (!anyDigit || i >= n || (p[i] | 0x20) != u'p')
+        return false;
+    i++;
+    bool negExp = false;
+    if (i < n && (next = ns_match_sign(p, n, i, nfi, exact, &negExp)) >= 0)
+        i = next;
+    if (i >= n || !ns_is_digit(p[i]))
+        return false;
+    int64_t bexp = 0;
+    for (; i < n && ns_is_digit(p[i]); i++)
+    {
+        const int32_t digit = p[i] - u'0';
+        bexp = bexp <= (INT32_MAX - digit) / 10 ? bexp * 10 + digit : INT32_MAX;
+    }
+    if (negExp)
+        bexp = -bexp;
+    if ((styles & NS_TRAILWHITE) != 0)
+        while (i < n && ns_is_white(p[i]))
+            i++;
+    while (i < n && p[i] == 0)
+        i++;
+    if (i != n)
+        return false;
+
+    const int32_t mantBits = isSingle ? 23 : 52;
+    const int64_t bias = isSingle ? 127 : 1023;
+    uint64_t bits = 0;
+    if (sig != 0)
+    {
+        int32_t lz = 0;
+        for (; (sig >> 63) == 0; sig <<= 1)
+            lz++;
+        // sig is now 1.xxx with the unit bit at bit 63.
+        const int64_t binExp = bexp - 4 * fracDigits + 4 * droppedIntDigits - lz + 63;
+        if (binExp > bias)
+            bits = (uint64_t)(2 * bias + 1) << mantBits;
+        else
+        {
+            int64_t biased = binExp + bias;
+            int64_t shift = 63 - mantBits;
+            if (biased <= 0)
+            {
+                shift += 1 - biased;
+                biased = 0;
+            }
+            // Past 64 the value is below half the smallest subnormal: zero.
+            if (shift <= 64)
+            {
+                const uint64_t kept = shift == 64 ? 0 : sig >> shift;
+                const uint64_t half = 1ULL << (shift - 1);
+                // A carry out of the fraction lands in the exponent field: the
+                // next binade, or infinity, with a zero fraction.
+                bits = ((uint64_t)biased << mantBits) + (kept & ((1ULL << mantBits) - 1));
+                if ((sig & half) != 0 && ((sig & (half - 1)) != 0 || sticky || (kept & 1) != 0))
+                    bits++;
+            }
+        }
+    }
+    if (isSingle)
+    {
+        const uint32_t single = (uint32_t)bits | (negative ? 0x80000000u : 0u);
+        float f;
+        memcpy(&f, &single, sizeof f);
+        *out = (double)f;
+    }
+    else
+    {
+        bits |= negative ? 0x8000000000000000ULL : 0ULL;
+        memcpy(out, &bits, sizeof bits);
+    }
+    return true;
 }
 
 // The float/double engine core. Status: 0 ok, 1 format. Overflow saturates to
@@ -557,15 +751,18 @@ static bool ns_fp_special(const char16_t* p, int32_t n, const Dn2CppNumberFormat
 // The digits are rebuilt as an invariant ASCII "0.<digits>e<scale>" string so
 // strtod/strtof perform the correctly rounded binary conversion; a truncated
 // non-zero tail appends a sentinel '1' to stay on the correct side of a
-// halfway case, mirroring NumberBuffer.HasNonZeroTail.
+// halfway case, mirroring NumberBuffer.HasNonZeroTail. AllowHexSpecifier
+// selects the hexadecimal grammar instead; either falls back to the symbols.
 static int32_t ns_fp_core(const char16_t* p, int32_t n, int32_t styles,
-                          const Dn2CppNumberFormatInfo* nfi, int32_t isSingle, double* out)
+                          const Dn2CppNumberFormatInfo* nfi, int32_t isSingle, bool utf8, double* out)
 {
     dn2cpp_parse_validate_fp_styles(styles);
     nfi = dn2cpp_nfi_or_current(nfi);
     *out = 0.0;
+    if ((styles & NS_HEX) != 0)
+        return ns_fp_hex(p, n, styles, nfi, isSingle, utf8, out) || ns_fp_special(p, n, nfi, out) ? 0 : 1;
     Dn2CppNumberParse num;
-    if (!dn2cpp_parse_number_styles(p, n, styles, nfi, 1, &num))
+    if (!dn2cpp_parse_number_styles(p, n, styles, nfi, 1, utf8, &num))
         return ns_fp_special(p, n, nfi, out) ? 0 : 1;
     char buf[DN2CPP_PARSE_MAX_DIGITS + 32];
     int32_t o = 0;
@@ -588,28 +785,30 @@ static int32_t ns_fp_core(const char16_t* p, int32_t n, int32_t styles,
 int32_t dn2cpp_fp_tryparse_chars(const char16_t* p, int32_t n, int32_t styles,
                                  const Dn2CppNumberFormatInfo* nfi, int32_t isSingle, double* out)
 {
-    return ns_fp_core(p, n, styles, nfi, isSingle, out) == 0 ? 1 : 0;
+    return ns_fp_core(p, n, styles, nfi, isSingle, false, out) == 0 ? 1 : 0;
 }
 
 int32_t dn2cpp_fp_tryparse_str(Dn2CppString* s, int32_t styles,
                                const Dn2CppNumberFormatInfo* nfi, int32_t isSingle, double* out)
 {
     if (s == nullptr)
-    {
-        dn2cpp_parse_validate_fp_styles(styles);
-        *out = 0.0;
-        return 0;
-    }
+        return dn2cpp_fp_tryparse_chars(u"", 0, styles, nfi, isSingle, out);
     return dn2cpp_fp_tryparse_chars(s->chars, s->length, styles, nfi, isSingle, out);
+}
+
+static double ns_fp_parse(const char16_t* p, int32_t n, int32_t styles,
+                          const Dn2CppNumberFormatInfo* nfi, int32_t isSingle, bool utf8)
+{
+    double v;
+    if (ns_fp_core(p, n, styles, nfi, isSingle, utf8, &v) != 0)
+        ns_throw_format_value(p, n);
+    return v;
 }
 
 double dn2cpp_fp_parse_chars(const char16_t* p, int32_t n, int32_t styles,
                              const Dn2CppNumberFormatInfo* nfi, int32_t isSingle)
 {
-    double v;
-    if (ns_fp_core(p, n, styles, nfi, isSingle, &v) != 0)
-        ns_throw_format_value(p, n);
-    return v;
+    return ns_fp_parse(p, n, styles, nfi, isSingle, false);
 }
 
 double dn2cpp_fp_parse_str(Dn2CppString* s, int32_t styles,
@@ -628,7 +827,8 @@ double dn2cpp_fp_parse_str(Dn2CppString* s, int32_t styles,
 // not pure ASCII — the decimal point, group separator and negative sign are UTF-16
 // strings off the NumberFormatInfo, and real cultures supply non-ASCII ones (U+00A0 /
 // U+202F, U+2212) — so a byte-wise scanner would have to transcode them anyway, in a
-// second place that can drift from the first.
+// second place that can drift from the first. The engine is told the text came from
+// UTF-8: a byte comparison has no space-replacing rule.
 //
 // The decoder replaces malformed input. Integer parsing must reject those bytes
 // first: U+FFFD itself can be a legitimate NumberFormatInfo sign or separator.
@@ -676,7 +876,7 @@ int32_t dn2cpp_integer_tryparse_utf8(const char* p, int32_t n, int32_t styles,
     dn2cpp_parse_validate_integer_styles(styles);
     if (!ns_integer_utf8_valid(p, n)) { *out = 0; return 0; }
     Dn2CppString* s = ns_utf8_widen(p, n);
-    return dn2cpp_integer_tryparse_chars(s->chars, s->length, styles, nfi, bitWidth, isSigned, out);
+    return ns_integer_core(s->chars, s->length, styles, nfi, bitWidth, isSigned, true, out) == 0 ? 1 : 0;
 }
 
 int64_t dn2cpp_integer_parse_utf8(const char* p, int32_t n, int32_t styles,
@@ -687,39 +887,21 @@ int64_t dn2cpp_integer_parse_utf8(const char* p, int32_t n, int32_t styles,
     if (!ns_integer_utf8_valid(p, n))
         dn2cpp_throw_sr0(&dn2cpp_format_exception_type, DN2CPP_SR_FORMAT_INVALID_STRING);
     Dn2CppString* s = ns_utf8_widen(p, n);
-    return dn2cpp_integer_parse_chars(s->chars, s->length, styles, nfi, bitWidth, isSigned);
+    return ns_integer_parse(s->chars, s->length, styles, nfi, bitWidth, isSigned, true);
 }
 
-// .NET's UTF-8 floating/decimal entry points validate integer styles, then
-// run the decimal scanner; hex/binary flags do not select a radix here.
 int32_t dn2cpp_fp_tryparse_utf8(const char* p, int32_t n, int32_t styles,
                                 const Dn2CppNumberFormatInfo* nfi, int32_t isSingle, double* out)
 {
-    dn2cpp_parse_validate_integer_styles(styles);
+    dn2cpp_parse_validate_fp_styles(styles);
     Dn2CppString* s = ns_utf8_widen(p, n);
-    return dn2cpp_fp_tryparse_chars(s->chars, s->length, styles & ~(NS_HEX | NS_BINARY), nfi, isSingle, out);
+    return ns_fp_core(s->chars, s->length, styles, nfi, isSingle, true, out) == 0 ? 1 : 0;
 }
 
 double dn2cpp_fp_parse_utf8(const char* p, int32_t n, int32_t styles,
                             const Dn2CppNumberFormatInfo* nfi, int32_t isSingle)
 {
-    dn2cpp_parse_validate_integer_styles(styles);
+    dn2cpp_parse_validate_fp_styles(styles);
     Dn2CppString* s = ns_utf8_widen(p, n);
-    return dn2cpp_fp_parse_chars(s->chars, s->length, styles & ~(NS_HEX | NS_BINARY), nfi, isSingle);
-}
-
-int32_t dn2cpp_decimal_tryparse_styles_utf8(const char* p, int32_t n, int32_t styles,
-                                          const Dn2CppNumberFormatInfo* nfi, Dn2CppDecimal* out)
-{
-    dn2cpp_parse_validate_integer_styles(styles);
-    Dn2CppString* s = ns_utf8_widen(p, n);
-    return dn2cpp_decimal_tryparse_styles_chars(s->chars, s->length, styles & ~(NS_HEX | NS_BINARY), nfi, out);
-}
-
-Dn2CppDecimal dn2cpp_decimal_parse_styles_utf8(const char* p, int32_t n, int32_t styles,
-                                             const Dn2CppNumberFormatInfo* nfi)
-{
-    dn2cpp_parse_validate_integer_styles(styles);
-    Dn2CppString* s = ns_utf8_widen(p, n);
-    return dn2cpp_decimal_parse_styles_chars(s->chars, s->length, styles & ~(NS_HEX | NS_BINARY), nfi);
+    return ns_fp_parse(s->chars, s->length, styles, nfi, isSingle, true);
 }

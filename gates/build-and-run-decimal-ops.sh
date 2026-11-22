@@ -77,6 +77,13 @@ gate_extra_asserts() {
     gate_output compare "$out/assert-prefix-divmod.stdout" "$out/assert-before-divmod.stdout" || return 1
     gate_output byte-witness "$native" 'decimal coefficient divmod end' --count 1 --policy crlf \
         || { echo 'FAIL: decimal divmod section did not run' >&2; return 1; }
+    gate_capture_ok "$out/assert-before-float" run_bounded dotnet "$_CG_APP" before-decimal-float || return 1
+    gate_output select "$native" "$out/assert-prefix-float.stdout" --before '== decimal exact float conversions ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-float.stdout" "$out/assert-before-float.stdout" || return 1
+    gate_output byte-witness "$native" 'decimal exact float conversions end' --count 1 --policy crlf \
+        || { echo 'FAIL: decimal float conversion section did not run' >&2; return 1; }
+    gate_output byte-witness "$native" 'Math.Round delegate=2.12' --count 1 --policy crlf \
+        || { echo 'FAIL: Math.Round delegate row did not run' >&2; return 1; }
 
     # A DecDivMod1E9 MemberRef whose return type differs from CoreLib's is refused.
     local fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" root

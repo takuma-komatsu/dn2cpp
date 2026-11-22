@@ -131,14 +131,12 @@ static class Program
         Console.WriteLine(MathF.Round(-1.5f, MidpointRounding.ToNegativeInfinity)); // -2
         Console.WriteLine(MathF.Round(1.5f, MidpointRounding.ToPositiveInfinity));  // 2
 
-        // Round(x, digits) divergence traps — the scaled product rounds
-        // differently in float than in double: 2.675f * 100f is exactly
-        // 267.5f (double says 267.4999...), 0.045f * 100f is exactly 4.5f
-        // (double says 4.4999...). A double-routed arm would print 2.67 /
-        // -2.67 / 0.05 / 0.04 here.
-        Console.WriteLine(MathF.Round(2.675f, 2));    // 2.68
-        Console.WriteLine(MathF.Round(-2.675f, 2));   // -2.68
-        Console.WriteLine(MathF.Round(0.045f, 2));    // 0.04 (4.5f ties to even)
+        // Round(x, digits) rounds the value's exact decimal expansion:
+        // 2.675f is 2.67499995... and 0.045f is 0.0450000018..., so neither
+        // is a tie, as scaling by 100 in float would make them.
+        Console.WriteLine(MathF.Round(2.675f, 2));    // 2.67
+        Console.WriteLine(MathF.Round(-2.675f, 2));   // -2.67
+        Console.WriteLine(MathF.Round(0.045f, 2));    // 0.05
         Console.WriteLine(MathF.Round(0.045f, 2, MidpointRounding.AwayFromZero));  // 0.05
 
         // IEEERemainder — the sign-of-zero rule and the special operands
