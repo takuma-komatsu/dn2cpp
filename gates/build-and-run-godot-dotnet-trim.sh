@@ -26,9 +26,9 @@ godot_dotnet_transpile() {
     dotnet build "$GODOT_DOTNET_SAMPLE_DIR/DotnetSample.csproj" -c ExportRelease --nologo -v q
     local app="$GODOT_DOTNET_SAMPLE_DIR/.godot/mono/temp/bin/ExportRelease/DotnetSample.dll"
     [ -f "$app" ] || { echo "error: not built: $app" >&2; return 1; }
-    echo "-- Transpiling (--dotnet-module --trim-reflection --trim-godot-classes, real GodotSharp + net10 CoreLib)"
+    echo "-- Transpiling (--dotnet-module --trim-reflection --trim-godot-classes, real GodotSharp + pinned CoreLib)"
     build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
-    local corelib; corelib=$(resolve_net10_corelib)
+    local corelib; corelib=$(resolve_pinned_corelib)
     rm -rf "$out"
     mkdir -p "$out"   # tee opens its file before the CLI creates the dir
     local diet_args=(--auto-ref)

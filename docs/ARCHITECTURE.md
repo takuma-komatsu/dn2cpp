@@ -65,7 +65,7 @@ a previous selection. Non-MSVC compilers retain their existing options.
 adds a queue of intentionally used types in both the definition graph and the
 transpiler; decoding a type or enumerating the loaded class model never adds a
 queue entry on its own. Verified BCL assemblies of the selected target pack use
-High's member-level retention in Medium. Installed .NET 10 packs use their
+High's member-level retention in Medium. Installed .NET 11 packs use their
 runtime catalogue and managed identity/version. A packaged ref directory carries
 `dn2cpp-bcl-v1.tsv`, binding member basenames to SHA-256 hashes; classification
 starts with the selected CoreLib and checks each original loaded member. A

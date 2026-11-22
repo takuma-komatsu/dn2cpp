@@ -74,7 +74,7 @@ ildiet_stage_native() (
     local destination="$1" corelib out key compiler name notice
     # The companion always executes on the build host, including cross exports.
     unset WASM IOS_DEV IOS_SIM ANDROID
-    corelib="$(resolve_net10_corelib)"
+    corelib="$(resolve_pinned_corelib)"
     [ "$DN2CPP_OS" != windows ] || corelib="$(cygpath -u "$corelib")"
     out="artifacts/ildiet-native-$CONFIG-$DN2CPP_OS-$(uname -m)"
     compiler="$(command -v "${CMAKE_CXX_COMPILER:-${CXX:-c++}}")"

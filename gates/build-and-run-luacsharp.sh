@@ -56,7 +56,7 @@ gate_extra_asserts() {
         || { echo "FAIL: Lua-CSharp must emit an empty gap report: $measure/s0-gaps.tsv" >&2; return 1; }
 }
 
-_CG_CORELIB_IN=$(resolve_net10_corelib)
+_CG_CORELIB_IN=$(resolve_pinned_corelib)
 DN2CPP_GATE_EXTRA_INPUTS="$pin $markers"
 DN2CPP_GATE_EXTRA_CONTEXT="luacsharp|cli:$(_gate_cli_hash)"
 corelib_diff_split_gate "$project" "${package_refs[@]}" --auto-ref

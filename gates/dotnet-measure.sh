@@ -10,7 +10,7 @@
 # It builds samples/godot-dotnet/DotnetSample (a real-style Godot C# project
 # restored from the local nuget feed) and transpiles it in `--measure` mode
 # (enumerates every reachable gap instead of stopping at the first, emits no
-# C++) against the real net10.0 CoreLib + the real GodotSharp.dll, with
+# C++) against the real pinned CoreLib + the real GodotSharp.dll, with
 # --auto-ref pulling the transitive shared-framework closure.
 #
 # Requires the artifacts of gates/setup-godot-dotnet.sh, resolved through
@@ -64,13 +64,13 @@ fi
 APP="$SAMPLE_DIR/.godot/mono/temp/bin/ExportRelease/DotnetSample.dll"
 [ -f "$APP" ] || { echo "error: not built: $APP" >&2; exit 1; }
 
-echo "== 3/5 Building the dn2cpp CLI + locating the net10.0 CoreLib =="
+echo "== 3/5 Building the dn2cpp CLI + locating the pinned CoreLib =="
 build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
 CLI="src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll"
 [ -f "$CLI" ] || { echo "error: not built: $CLI" >&2; exit 1; }
-# Pin net10.0 (the JSON gates' rule): the highest installed runtime can be an
-# 11.0 preview whose CoreLib shape skews the transpile spuriously.
-corelib=$(resolve_net10_corelib)
+# Pinned CoreLib (the JSON gates' rule): a newer major or a prerelease runtime
+# installed side by side skews the transpile spuriously.
+corelib=$(resolve_pinned_corelib)
 echo "corelib:    $corelib"
 echo "godotsharp: $GODOTSHARP"
 

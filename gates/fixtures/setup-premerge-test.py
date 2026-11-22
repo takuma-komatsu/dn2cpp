@@ -188,7 +188,7 @@ premerge_setup_init macos
         self.assertFalse((self.root / 'dn2cpp-premerge-tools-12-3').exists())
 
     def test_windows_native_cross_metadata_preserves_hash_and_isolates_corelib(self):
-        runtime = '10.0.14'
+        runtime = '11.0.0'
         digest = 'ab' * 64
         (self.root / 'cross-runtime-input.txt').write_bytes(
             f'{runtime}\thttps://example.invalid/runtime.tar.gz\t{digest}\r\n'.encode('ascii'))
@@ -214,7 +214,7 @@ tar() {
         self.assertNotIn('DOTNET_ROOT=', exports)
 
     def test_cross_runtime_metadata_selects_runtime_after_apphost(self):
-        version = '10.0.14'
+        version = '11.0.0'
         files = [
             {'rid': 'linux-x64', 'name': 'dotnet-apphost-pack-linux-x64.tar.gz',
              'url': 'https://example.invalid/apphost.tar.gz', 'hash': 'a' * 128},
@@ -223,7 +223,7 @@ tar() {
         ]
         metadata = {'releases': [{'runtime': {'version': version, 'files': files}}]}
         output = io.StringIO()
-        with patch('runpy.run_path', return_value={'PROFILES': {'ci': ('10.0.403', version)}}), \
+        with patch('runpy.run_path', return_value={'PROFILES': {'ci': ('11.0.100', version)}}), \
                 patch('urllib.request.urlopen', return_value=io.BytesIO(json.dumps(metadata).encode('utf-8'))), \
                 patch.object(sys, 'argv', ['metadata', str(self.root)]), patch.object(sys, 'stdout', output):
             exec(compile(CROSS_METADATA, 'windows-cross-runtime-metadata', 'exec'), {})

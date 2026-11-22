@@ -30,6 +30,11 @@ def windows_rid(rid):
     return re.match(r"win(?:[0-9]+(?:\.[0-9]+)*)?(?:-|$)", rid) is not None
 
 
+def posix_only(rid):
+    return ValueError("ref-posix cannot use the " + rid + " runtime; point DN2CPP_CORELIB_CROSS at "
+                      "a .NET 11 " + CROSS_RID + " CoreLib or unset the override")
+
+
 def admit_rid(rid, kind):
     if kind == "host" or rid == CROSS_RID:
         return True
@@ -37,17 +42,29 @@ def admit_rid(rid, kind):
     # evidence of a Windows runtime invalidates a custom selection.
     if kind == "override" and not windows_rid(rid):
         return False
-    raise ValueError("ref-posix cannot use the " + rid + " runtime; point DN2CPP_CORELIB_CROSS at "
-                     "a .NET 10 " + CROSS_RID + " CoreLib or unset the override")
+    raise posix_only(rid)
+
+
+def evident_rids(src):
+    """Runtime identifiers the directory names; no version or pack shape is validated."""
+    if len(src.parts) >= 4 and src.parts[-4] == "runtimes" and src.parts[-2] == "lib":
+        yield src.parts[-3]
+    try:
+        with (src / (FRAMEWORK + ".deps.json")).open(encoding="utf-8-sig") as reader:
+            target = json.load(reader)["runtimeTarget"]["name"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return
+    if isinstance(target, str) and "/" in target:
+        yield target.rpartition("/")[2]
 
 
 def deps_assets(path, version):
     with path.open(encoding="utf-8-sig") as reader:
         deps = json.load(reader, object_pairs_hook=unique_object)
     target = deps["runtimeTarget"]["name"]
-    match = re.fullmatch(r"\.NETCoreApp,Version=v10\.0/([a-z0-9.-]+)", target)
+    match = re.fullmatch(r"\.NETCoreApp,Version=v11\.0/([a-z0-9.-]+)", target)
     if not match:
-        raise ValueError("invalid net10 runtime target: " + target)
+        raise ValueError("invalid net11 runtime target: " + target)
     rid = match.group(1)
     key = FRAMEWORK + ".Runtime." + rid + "/" + version
     assets = deps["targets"][target][key]["runtime"]
@@ -67,7 +84,7 @@ def nuget_assets(root, package, version, rid):
     listing = ET.parse(root / "data" / "RuntimeList.xml").getroot()
     if (listing.tag != "FileList" or listing.get("FrameworkName", FRAMEWORK) != FRAMEWORK
             or listing.get("TargetFrameworkIdentifier", ".NETCoreApp") != ".NETCoreApp"
-            or listing.get("TargetFrameworkVersion", "10.0") not in ("10.0", "v10.0")
+            or listing.get("TargetFrameworkVersion", "11.0") not in ("11.0", "v11.0")
             or listing.get("RuntimeIdentifier", rid) != rid):
         raise ValueError("not a runtime file list for " + package)
     names = []
@@ -77,20 +94,26 @@ def nuget_assets(root, package, version, rid):
         parts = file.attrib["Path"].replace("\\", "/").split("/")
         if any(part in ("", ".", "..") or ":" in part for part in parts):
             raise ValueError("invalid NuGet managed asset path: " + file.attrib["Path"])
-        if parts[:-1] == ["runtimes", rid, "lib", "net10.0"]:
+        if parts[:-1] == ["runtimes", rid, "lib", "net11.0"]:
             names.append(parts[-1])
     return names
 
 
 def selected_assets(corelib, kind):
     src = corelib.parent
+    # A framework left unverified below is still shipped, so the Windows
+    # refusal precedes every test of its name, layout and version.
+    if kind != "host":
+        for rid in evident_rids(src):
+            if windows_rid(rid):
+                raise posix_only(rid)
     if corelib.name != CORELIB:
         return None
     if src.parent.name == FRAMEWORK and src.parent.parent.name == "shared":
         version = src.name
         layout = "shared"
     elif (kind != "host" and len(src.parts) >= 6 and src.parts[-4] == "runtimes"
-          and src.parts[-2:] == ("lib", "net10.0")):
+          and src.parts[-2:] == ("lib", "net11.0")):
         runtime_rid = src.parts[-3]
         if runtime_rid != CROSS_RID and not windows_rid(runtime_rid):
             return None
@@ -102,7 +125,7 @@ def selected_assets(corelib, kind):
         layout = "nuget"
     else:
         return None
-    if not re.fullmatch(r"10\.0\.[0-9]+(?:[-+][a-zA-Z0-9.+-]+)?", version):
+    if not re.fullmatch(r"11\.0\.[0-9]+(?:[-+][a-zA-Z0-9.+-]+)?", version):
         return None
     deps = src / (FRAMEWORK + ".deps.json")
     if deps.is_file():

@@ -55,7 +55,7 @@ section = preserve[section_start:section_end]
 check(section_start < preserve.index("    exit 0", section_start), "basic Medium must run before the short-profile return")
 stubs = r'''
 set -euo pipefail
-CONFIG=Debug TFM=net10.0 ILD_DLL=ildiet CLI_BIN=cli CLI_DLL=cli/dn2cpp.dll EXE_EXT=
+CONFIG=Debug TFM=net11.0 ILD_DLL=ildiet CLI_BIN=cli CLI_DLL=cli/dn2cpp.dll EXE_EXT=
 build_gate_proj() { :; }
 gate_python() { printf 'DRIVER:%s\n' "$*"; }
 compile_console() { printf 'NATIVE:%s\n' "$1"; mkdir -p "$1"; }
@@ -116,7 +116,7 @@ with tempfile.TemporaryDirectory(prefix="dn2cpp-emit-profile-test-") as temp:
     (Path(temp) / "System.Collections.dll").touch()
     emit_stubs = r'''
 set -euo pipefail
-CONFIG=Debug TFM=net10.0 OUT=artifacts/emit-test corelib=corelib bcl="$PWD"
+CONFIG=Debug TFM=net11.0 OUT=artifacts/emit-test corelib=corelib bcl="$PWD"
 build_proj() { :; }
 _gate_cli_hash() { printf cli; }
 gate_cache_check() { return 1; }

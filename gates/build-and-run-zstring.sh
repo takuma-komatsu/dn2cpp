@@ -12,8 +12,8 @@ ZSTRING_SHA_EXPECTED=gates/expected/zstring-dll.sha256
 # rows may change when ILDiet rewrites the hash-pinned input assembly.
 MARKERS_EXPECTED=gates/expected/zstring-markers.txt
 
-echo "== 1/7 Locating the real net10 CoreLib =="
-corelib=$(resolve_net10_corelib)
+echo "== 1/7 Locating the real pinned CoreLib =="
+corelib=$(resolve_pinned_corelib)
 echo "corelib: $corelib"
 
 echo "== 2/7 Building the driver against the real NuGet ZString =="

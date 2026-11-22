@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Dn2Cpp.Cli</RootNamespace>
@@ -23,7 +23,7 @@
     <PackageReadmeFile>NUGET-README.md</PackageReadmeFile>
     <PackageProjectUrl>https://github.com/takuma-komatsu/dn2cpp</PackageProjectUrl>
     <RepositoryUrl>https://github.com/takuma-komatsu/dn2cpp.git</RepositoryUrl>
-    <Description>.NET IL -> C++ transpiler + native runtime (a Unity-IL2CPP-equivalent for .NET). Transpile a net10.0 assembly to C++ and build it against the bundled CMake runtime.</Description>
+    <Description>.NET IL -> C++ transpiler + native runtime (a Unity-IL2CPP-equivalent for .NET). Transpile a net11.0 assembly to C++ and build it against the bundled CMake runtime.</Description>
     <PackageTags>transpiler;cpp;aot;il2cpp;native;godot</PackageTags>
   </PropertyGroup>
 
@@ -95,9 +95,9 @@
          Pack="false" means "do not grow a NuGet DEPENDENCY node for this project", NOT
          "do not ship the DLL". The file still travels: OutputItemType="Content" +
          CopyToOutputDirectory puts it in the publish output, and PackAsTool packs that
-         output into tools/net10.0/any/. Measured, not assumed —
+         output into tools/net11.0/any/. Measured, not assumed —
          artifacts/nuget-smoke/feed/dn2cpp.0.1.0.nupkg carries Dn2Cpp.Runtime.dll under
-         tools/net10.0/any/ with exactly these attributes. Do not "fix" the apparent
+         tools/net11.0/any/ with exactly these attributes. Do not "fix" the apparent
          contradiction by removing Pack="false": that adds a dependency node for a
          project that has no package, and the DLL was never travelling through it. -->
     <ProjectReference Include="../../internal/DnZlib/src/DnZlib/DnZlib.csproj"

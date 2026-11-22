@@ -61,13 +61,13 @@
 #   section 14): GET /echo over a real ALPN-negotiated h2 connection, verified against
 #   a throwaway CA minted at run time.
 #
-# net10.0-pinned (resolve_net10_corelib): matches every other System.Net.Http gate —
-# the samples build net10.0, and a newer preview CoreLib carries a different
-# System.Net.Http surface.
+# Pinned CoreLib (resolve_pinned_corelib): matches every other System.Net.Http
+# gate — the samples build the supported TFM, and another major's CoreLib
+# carries a different System.Net.Http surface.
 source "$(dirname "$0")/_common.sh"
 
-echo "== 1/5 Locating the real net10 CoreLib + System.Net.Http, and the h2 oracle =="
-corelib=$(resolve_net10_corelib)
+echo "== 1/5 Locating the real pinned CoreLib + System.Net.Http, and the h2 oracle =="
+corelib=$(resolve_pinned_corelib)
 bcl=$(dirname "$corelib")
 nethttp="$bcl/System.Net.Http.dll"
 [ -f "$nethttp" ] || { echo "error: System.Net.Http.dll not found: $nethttp" >&2; exit 1; }

@@ -33,7 +33,7 @@ godot_dotnet_shutdown_gate() {
         cmp "$root/input/$assembly.dll" "$root/clr/$data/$assembly.dll"
     done
     # The CLR uses the sample's net8 self-contained runtime. Native emission
-    # uses the net10 CoreLib selected by godot_dotnet_transpile.
+    # uses the pinned CoreLib selected by godot_dotnet_transpile.
     gate_python - "$root" "$data" <<'PY'
 import hashlib, json, sys
 from pathlib import Path

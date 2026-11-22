@@ -37,8 +37,8 @@ BIN="src/Dn2Cpp.Cli/bin/$CONFIG/$TFM"
 CLI="$BIN/dn2cpp.dll"
 [ -f "$CLI" ]  || { echo "error: CLI not built: $CLI"   >&2; exit 1; }
 
-echo "== 2/6 Locating the real net10.0 CoreLib + BCL + System.Text.Json =="
-corelib=$(resolve_net10_corelib)
+echo "== 2/6 Locating the real pinned CoreLib + BCL + System.Text.Json =="
+corelib=$(resolve_pinned_corelib)
 bcl=$(dirname "$corelib")
 echo "corelib: $corelib"
 

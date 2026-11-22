@@ -50,7 +50,7 @@ md_readonly_byrefs_gate() {
     export DN2CPP_NO_GC DN2CPP_GC_BACKEND WASM
     local _CG_CORELIB_IN
     if [ "$axis" = wasm ]; then
-        _CG_CORELIB_IN=$(locate_corelib_cross_posix net10)
+        _CG_CORELIB_IN=$(locate_corelib_cross_posix pinned)
     fi
     _corelib_gate_core MdReadonlyByrefs "$out" System.Collections
     md_readonly_pending_asserts "$out"

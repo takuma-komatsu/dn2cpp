@@ -15,6 +15,9 @@ internal static class TargetFrameworkAssets
     private const ulong CoreLibKey = 0x7cec85d7bea7798eUL;
     private const string CoreLib = "System.Private.CoreLib.dll";
     private const string PackageInventory = "dn2cpp-bcl-v1.tsv";
+    // An installed pack is recognized for this framework version alone; its
+    // catalogue schema and signing identities are the ones the readers below know.
+    private const string FrameworkVersion = "11.0";
     private static StringComparison PathComparison => Path.DirectorySeparatorChar == '\\'
         ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
@@ -53,14 +56,15 @@ internal static class TargetFrameworkAssets
         if (!string.Equals(Path.GetFileName(parent), "Microsoft.NETCore.App", PathComparison)
             || !string.Equals(Path.GetFileName(Path.GetDirectoryName(parent)), "shared", PathComparison)) return;
         string release = Path.GetFileName(root);
-        if (release.Length < 6 || !release.StartsWith("10.0.", StringComparison.Ordinal)
-            || release.Length > 6 && release[5] == '0') return;
-        for (int i = 5; i < release.Length; i++)
+        const string stable = FrameworkVersion + ".";
+        if (release.Length <= stable.Length || !release.StartsWith(stable, StringComparison.Ordinal)
+            || release.Length > stable.Length + 1 && release[stable.Length] == '0') return;
+        for (int i = stable.Length; i < release.Length; i++)
             if (release[i] is < '0' or > '9') return;
         string sidecar = Path.Combine(root, "Microsoft.NETCore.App.deps.json");
         if (!SizedCatalogue(sidecar)) return;
         var manifest = new ManifestReader(File.ReadAllText(sidecar)).Read();
-        const string prefix = ".NETCoreApp,Version=v10.0/";
+        const string prefix = ".NETCoreApp,Version=v" + FrameworkVersion + "/";
         string? target = manifest.Object("runtimeTarget")?.String("name");
         if (target is null || !target.StartsWith(prefix, StringComparison.Ordinal)) return;
         string rid = target[prefix.Length..];
@@ -150,7 +154,7 @@ internal static class TargetFrameworkAssets
             || (definition.Flags & AssemblyFlags.PublicKey) == 0) return false;
         byte[] key = reader.GetBlobBytes(definition.PublicKey);
         if (key.Length == 0) return false;
-        // These are the signing identities used by the .NET 10 runtime pack.
+        // These are the signing identities used by the FrameworkVersion runtime pack.
         // A token is an assembly identity check; not signature authentication.
         byte[] hash = SHA1.HashData(key);
         ulong token = 0;
@@ -158,7 +162,8 @@ internal static class TargetFrameworkAssets
             token = (token << 8) | hash[i];
         if (file == CoreLib ? token != CoreLibKey
                 : token is not (0xb03f5f7f11d50a3aUL or 0xcc7b13ffcd2ddd51UL
-                    or 0xb77a5c561934e089UL or 0x31bf3856ad364e35UL)) return false;
+                    or 0xb77a5c561934e089UL or 0x31bf3856ad364e35UL
+                    or 0xadb9793829ddae60UL)) return false;
         return asset is null
             || FileVersion(reader, definition) is { } version && version == asset.String("fileVersion");
     }
@@ -206,8 +211,9 @@ internal static class TargetFrameworkAssets
             Fields.TryGetValue(name, out var value) && value is bool flag ? flag : null;
     }
 
-    // Read just the installed .NET 10 catalogue schema, not a new JSON runtime
-    // dependency in the compiler. String arrays are other RIDs' fallback lists.
+    // Read just the installed FrameworkVersion catalogue schema, not a new
+    // JSON runtime dependency in the compiler. String arrays are other RIDs'
+    // fallback lists.
     private sealed class ManifestReader(string text)
     {
         private int _at;
@@ -319,6 +325,6 @@ internal static class TargetFrameworkAssets
             return true;
         }
 
-        private static FormatException Invalid() => new("Not a .NET 10 runtime catalogue");
+        private static FormatException Invalid() => new("Not a .NET " + FrameworkVersion + " runtime catalogue");
     }
 }

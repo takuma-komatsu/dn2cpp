@@ -125,9 +125,9 @@ echo "GDTask.dll: $gdtask_sha (pinned 3.1.0)"
 
 echo "== 3/7 Transpiling for real (tier 2, NO cuts) =="
 build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
-# Pin net10.0: the highest installed runtime can be an 11.0 preview whose CoreLib
-# shape skews the transpile spuriously.
-CORELIB="$(resolve_net10_corelib)"
+# Pinned CoreLib: a newer major or a prerelease runtime installed side by side
+# skews the transpile spuriously.
+CORELIB="$(resolve_pinned_corelib)"
 REFS=(-r "$CORELIB" -r "$GODOT_DOTNET_GODOTSHARP" -r "$GDTASK")
 rm -rf "$OUT"
 # No --cut and no --no-adopt-async. That IS the assertion: this command line is the

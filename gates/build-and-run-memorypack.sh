@@ -26,8 +26,8 @@ MEMORYPACK_SHA_EXPECTED=gates/expected/memorypack-dll.sha256
 # rows may change when ILDiet rewrites the hash-pinned input assembly.
 MARKERS_EXPECTED=gates/expected/memorypack-markers.txt
 
-echo "== 1/7 Locating the real net10 CoreLib =="
-corelib=$(resolve_net10_corelib)
+echo "== 1/7 Locating the real pinned CoreLib =="
+corelib=$(resolve_pinned_corelib)
 echo "corelib: $corelib"
 
 echo "== 2/7 Building the driver against the real NuGet MemoryPack =="
@@ -48,8 +48,8 @@ memorypack="samples/dotnet/$project/bin/$CONFIG/$TFM/MemoryPack.Core.dll"
 
 memorypack_sha="$(shasum -a 256 "$memorypack" | awk '{print $1}')"
 if [ "$memorypack_sha" != "$(cat "$MEMORYPACK_SHA_EXPECTED")" ]; then
-    # `MemoryPack` is a meta package; net8.0 is its highest lib, so that is what a
-    # net10.0 app restores. MemoryPack.Core is its only runtime assembly.
+    # `MemoryPack` is a meta package; net8.0 is its highest lib, so that is what the
+    # sample app restores. MemoryPack.Core is its only runtime assembly.
     echo "FAIL: MemoryPack.Core.dll is not the pinned 1.21.4 net8.0 build" >&2
     echo "      expected: $(cat "$MEMORYPACK_SHA_EXPECTED")  ($MEMORYPACK_SHA_EXPECTED)" >&2
     echo "      actual:   $memorypack_sha" >&2

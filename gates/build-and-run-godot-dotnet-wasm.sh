@@ -94,9 +94,9 @@ dotnet build "$GODOT_DOTNET_SAMPLE_DIR/DotnetSample.csproj" -c ExportRelease --n
 APP="$GODOT_DOTNET_SAMPLE_DIR/.godot/mono/temp/bin/ExportRelease/DotnetSample.dll"
 [ -f "$APP" ] || { echo "error: not built: $APP" >&2; exit 1; }
 
-echo "== 2/7 Transpiling (--dotnet-module --trim-reflection, real GodotSharp + net10 CoreLib) =="
+echo "== 2/7 Transpiling (--dotnet-module --trim-reflection, real GodotSharp + pinned CoreLib) =="
 build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
-CORELIB=$(resolve_net10_corelib)
+CORELIB=$(resolve_pinned_corelib)
 rm -rf "$OUT"
 invoke_cli "$APP" --dotnet-module -r "$CORELIB" -r "$GODOT_DOTNET_GODOTSHARP" \
     --auto-ref --trim-reflection --direct-pinvoke '*' -o "$OUT"

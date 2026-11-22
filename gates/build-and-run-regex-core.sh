@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Consolidated Regex gate: the real net10 System.Text.RegularExpressions.dll
+# Consolidated Regex gate: the real pinned System.Text.RegularExpressions.dll
 # transpiled and run on both engines — the backtracking interpreter and the
 # RegexOptions.NonBacktracking symbolic DFA (BDD construction, minterm
 # classification, SymbolicRegexMatcher) — match basics, groups/captures,
@@ -20,4 +20,4 @@
 # selected via CultureInfo.CurrentCulture). Diffed exactly vs real .NET.
 source "$(dirname "$0")/_common.sh"
 
-net10_bcl_diff_gate RegexCore System.Text.RegularExpressions
+bcl_diff_gate RegexCore System.Text.RegularExpressions

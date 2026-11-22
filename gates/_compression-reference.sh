@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# CompressionCore contains a malformed Brotli stream that requires a patched oracle.
+# CompressionCore contains a malformed Brotli stream that only a patched oracle
+# rejects; every stable runtime of the supported major carries the patch.
 compression_require_brotli_reference() {
     local corelib runtime_dir version
-    corelib=$(resolve_net10_corelib) || return 1
+    corelib=$(resolve_pinned_corelib) || return 1
     runtime_dir=${corelib%/*}
     version=${runtime_dir##*/}
-    if [[ ! "$version" =~ ^10\.0\.([0-9]+)$ ]] \
-            || (( 10#${BASH_REMATCH[1]} < 14 )); then
-        echo "FAIL: Brotli security regression requires .NET 10.0.14 or a newer stable 10.0 patch; found $version." >&2
-        echo "      Install a patched runtime and select its dotnet before running this gate." >&2
+    if [[ ! "$version" =~ ^${DN2CPP_BCL_MAJOR}\.0\.[0-9]+$ ]]; then
+        echo "FAIL: Brotli security regression requires a stable .NET $DN2CPP_BCL_MAJOR.0 runtime; found $version." >&2
+        echo "      Install one and select its dotnet before running this gate." >&2
         return 1
     fi
     return 0

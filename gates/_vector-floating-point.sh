@@ -71,7 +71,7 @@ vector_fma_branches() {
 
 vector_floating_wasm_gate() {
     local mode out sections _CG_CORELIB_IN DN2CPP_WASM_SIMD=
-    _CG_CORELIB_IN=$(locate_corelib_cross_posix net10)
+    _CG_CORELIB_IN=$(locate_corelib_cross_posix pinned)
     export DN2CPP_WASM_SIMD
     for mode in default simd; do
         out="artifacts/vectorprobe-wasm-$mode${DN2CPP_OUT_SUFFIX:-}"

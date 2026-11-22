@@ -7,12 +7,19 @@ namespace InterlockedAndOrRead;
 
 internal static class Program
 {
+    // The int and long results return through these: the Tier-0 JIT of CLR 11.0.0 on
+    // x64 Unix miscompiles an atomic And/Or whose result is passed straight to a call.
+    private static int Or(ref int location, int value) => Interlocked.Or(ref location, value);
+    private static int And(ref int location, int value) => Interlocked.And(ref location, value);
+    private static long Or(ref long location, long value) => Interlocked.Or(ref location, value);
+    private static long And(ref long location, long value) => Interlocked.And(ref location, value);
+
     internal static void __GateEntry()
     {
         // ---- And/Or, int ----
         int i = 0b1100;
-        Console.WriteLine(Interlocked.Or(ref i, 0b0011));    // 12 (original)
-        Console.WriteLine(Interlocked.And(ref i, 0b1010));   // 15 (original)
+        Console.WriteLine(Or(ref i, 0b0011));                 // 12 (original)
+        Console.WriteLine(And(ref i, 0b1010));                // 15 (original)
         Console.WriteLine(i);                                 // 10
 
         // ---- And/Or, uint (high bit set to prove unsigned handling) ----
@@ -23,8 +30,8 @@ internal static class Program
 
         // ---- And/Or, long ----
         long l = 0x1_0000_000FL;
-        Console.WriteLine(Interlocked.Or(ref l, 0xF0L));      // 4294967311
-        Console.WriteLine(Interlocked.And(ref l, 0xFFL));     // 4294967551
+        Console.WriteLine(Or(ref l, 0xF0L));                  // 4294967311
+        Console.WriteLine(And(ref l, 0xFFL));                 // 4294967551
         Console.WriteLine(l);                                  // 255
 
         // ---- And/Or, ulong ----

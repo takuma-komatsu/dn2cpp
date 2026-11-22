@@ -6,7 +6,7 @@
 # file-backed helpers (CreateEntryFromFile / ExtractToFile incl. every
 # overwrite shape), and the error paths (missing archive / missing source /
 # existing destination / duplicate extraction, printed as exception TYPE
-# names only) -- transpiled once against the tree-shaken real net10.0 CoreLib
+# names only) -- transpiled once against the tree-shaken real pinned CoreLib
 # + real System.IO.Compression + real System.IO.Compression.ZipFile, and
 # diffed exactly against real .NET. This is also the end-to-end exercise of
 # the directory-PAL surface (readdir/mkdir/rmdir/utimens/chmod) through
@@ -18,7 +18,7 @@
 # prints timestamps (DOS-time restore is second-granular) or compressed sizes
 # (real .NET links zlib-ng, the native binary classic zlib).
 #
-# Pinned to net10.0 (resolve_net10_corelib, not locate_corelib) for the same
+# Pinned CoreLib (resolve_pinned_corelib, not locate_corelib) for the same
 # reason the compression-core/zip-core gates are: this host has multiple
 # side-by-side shared runtimes and the System.IO.Compression native surface
 # can shift shape across them.
@@ -34,7 +34,7 @@
 # without the flag that shim rides in for nothing.
 source "$(dirname "$0")/_common.sh"
 
-net10_bcl_diff_gate \
+bcl_diff_gate \
     --cli-arg --no-default-ref --cli-arg DnZlib \
     --cli-arg --no-default-ref --cli-arg DnBrotli \
     ZipFileCore System.IO.Compression System.IO.Compression.ZipFile

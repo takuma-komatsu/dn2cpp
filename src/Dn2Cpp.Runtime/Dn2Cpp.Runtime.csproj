@@ -7,7 +7,7 @@
     Dn2Cpp.Scripting.PreserveAttribute; tree-shaking removes unused helpers.
   -->
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>net8.0;net11.0</TargetFrameworks>
     <AssemblyName>Dn2Cpp.Runtime</AssemblyName>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>

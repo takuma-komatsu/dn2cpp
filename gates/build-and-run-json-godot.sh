@@ -10,8 +10,8 @@
 # source-gen surface under permanent regression. JsonGodotProbe splits into more
 # TUs than JsonProbe, so this gate is heavier.
 #
-# The flow (net10.0-pinned to avoid an 11.0 CoreLib shape skew) lives in
-# net10_json_diff_gate; see _common.sh for why net10.0 is pinned here.
+# The flow (on the pinned CoreLib) lives in json_diff_gate; see
+# resolve_pinned_corelib in _common.sh for why it is pinned.
 source "$(dirname "$0")/_common.sh"
 
-net10_json_diff_gate JsonGodotProbe
+json_diff_gate JsonGodotProbe

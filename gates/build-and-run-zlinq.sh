@@ -11,8 +11,8 @@ measure="artifacts/zlinq-measure"
 ZLINQ_SHA_EXPECTED=gates/expected/zlinq-dll.sha256
 MARKERS_EXPECTED=gates/expected/zlinq-markers.txt
 
-echo "== 1/7 Locating the real net10 CoreLib =="
-corelib=$(resolve_net10_corelib)
+echo "== 1/7 Locating the real pinned CoreLib =="
+corelib=$(resolve_pinned_corelib)
 echo "corelib: $corelib"
 
 echo "== 2/7 Building the driver against the real NuGet ZLinq =="
@@ -29,7 +29,7 @@ zlinq="samples/dotnet/$project/bin/$CONFIG/$TFM/ZLinq.dll"
 
 zlinq_sha="$(shasum -a 256 "$zlinq" | awk '{print $1}')"
 if [ "$zlinq_sha" != "$(cat "$ZLINQ_SHA_EXPECTED")" ]; then
-    # The package ships a net10.0 lib, so that is what a net10.0 app restores.
+    # The package ships a net10.0 lib, so that is what the sample app restores.
     echo "FAIL: ZLinq.dll is not the pinned 1.5.6 net10.0 build" >&2
     echo "      expected: $(cat "$ZLINQ_SHA_EXPECTED")  ($ZLINQ_SHA_EXPECTED)" >&2
     echo "      actual:   $zlinq_sha" >&2

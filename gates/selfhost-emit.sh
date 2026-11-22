@@ -21,10 +21,10 @@
 # (no Godot) and build-and-run-godot-bindgen.sh proves the binding-gen subtree's
 # runtime byte-match, this closes the loop on the entire transpiler.
 #
-# Pins net10.0 and references the real System.Text.Json with --auto-ref, exactly
-# like selfhost-measure.sh / build-and-run-godot-bindgen.sh: the STJ source-gen
-# JsonTypeInfo<T> graph otherwise resolves as external generics and aborts, and
-# the 11.0-preview CoreLib shape skews the transpile.
+# Pins the CoreLib and references the real System.Text.Json with --auto-ref,
+# exactly like selfhost-measure.sh / build-and-run-godot-bindgen.sh: the STJ
+# source-gen JsonTypeInfo<T> graph otherwise resolves as external generics and
+# aborts, and another major's CoreLib shape skews the transpile.
 #
 # Dn2Cpp.Runtime.dll is deliberately NOT passed with -r: each side must find its
 # own sibling copy through the auto-reference (AppContext.BaseDirectory), which is
@@ -66,8 +66,8 @@ BIN="src/Dn2Cpp.Cli/bin/$CONFIG/$TFM"
 CLI="$BIN/dn2cpp.dll"
 [ -f "$CLI" ]  || { echo "error: CLI not built: $CLI"   >&2; exit 1; }
 
-echo "== 2/5 Locating the real net10.0 CoreLib + BCL + System.Text.Json =="
-corelib=$(resolve_net10_corelib)
+echo "== 2/5 Locating the real pinned CoreLib + BCL + System.Text.Json =="
+corelib=$(resolve_pinned_corelib)
 bcl=$(dirname "$corelib")
 echo "corelib: $corelib"
 echo "bcl dir: $bcl"

@@ -10,7 +10,7 @@
 # Lightweight (CoreLib + System.Text.Json only, no Godot / extension_api.json) so it
 # always runs, giving the transcode fix permanent coverage where build-and-run-godot-
 # bindgen.sh (the full binding-gen self-host) skips for lack of the engine API dump.
-# Pins net10.0 like the other JSON gates (resolve_net10_corelib in _common.sh).
+# Pins the CoreLib like the other JSON gates (resolve_pinned_corelib in _common.sh).
 source "$(dirname "$0")/_common.sh"
 
-net10_json_diff_gate Utf8JsonProbe
+json_diff_gate Utf8JsonProbe

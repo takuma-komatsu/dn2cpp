@@ -72,6 +72,10 @@ for sib in Dn2Cpp.Runtime DnZlib DnBrotli DnHttp; do
     [ -f "$BUNDLE/bin/$sib.dll" ] || {
         echo "error: bundle bin/ is missing $sib.dll" >&2; exit 1; }
 done
+# Game projects compile against this file, so it must be the net8.0 build: a
+# project on a framework older than the build's cannot reference it (CS1705).
+LC_ALL=C grep -q -a -F '.NETCoreApp,Version=v8.0' "$BUNDLE/bin/Dn2Cpp.Runtime.dll" || {
+    echo "error: bundle bin/Dn2Cpp.Runtime.dll is not the net8.0 build" >&2; exit 1; }
 ildiet_assert_native "$BUNDLE/bin/ildiet"
 # The prebuilt runtime degrades to a from-source build when it is absent, so its
 # absence costs export time and nothing else — which is precisely why it needs an

@@ -66,11 +66,10 @@ unset DN2CPP_BEFORE_IO_VALIDATION
 project=FileReal
 out="artifacts/$(printf '%s' "$project" | tr '[:upper:]' '[:lower:]')"
 
-echo "== 1/7 Locating the real CoreLib (net10 pin) =="
-# Pin net10.0: the samples build net10.0, and a newer preview CoreLib carries a
-# different Interop.Sys surface (e.g. net11's SystemNative_FileSystemSupportsLocking)
-# than the SystemNative_* PAL shims the runtime implements.
-corelib=$(resolve_net10_corelib)
+echo "== 1/7 Locating the real CoreLib (pinned) =="
+# Pinned: the SystemNative_* PAL shims the runtime implements match the
+# supported major's Interop.Sys surface, which differs across majors.
+corelib=$(resolve_pinned_corelib)
 echo "corlib: $corelib"
 
 echo "== 2/7 Building app assembly =="
@@ -138,9 +137,9 @@ invoke_cli "$app" -r "$corelib" \
 # CoreLib byte reaches the key through.
 #
 # What only this gate can name, hence the CONTEXT terms:
-#   - the RESOLVED CoreLib path. resolve_net10_corelib pins net10 and picks the
-#     highest 10.0.* installed; a second one appearing moves the oracle and the
-#     PAL surface together, and the path is where that shows.
+#   - the RESOLVED CoreLib path. resolve_pinned_corelib picks the highest
+#     stable runtime of the supported major; a second one appearing moves the
+#     oracle and the PAL surface together, and the path is where that shows.
 #   - the two extra `-r` assemblies. They are not decoration: without Primitives
 #     the transpile fails, and the step-5 SystemNative_Kill assert is also the
 #     check that the Process reference survived. Name them so a future edit to

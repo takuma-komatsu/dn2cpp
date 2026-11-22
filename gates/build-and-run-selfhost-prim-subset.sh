@@ -196,7 +196,7 @@ source "$(dirname "$0")/_delegate-signatures.sh"
 delegate_signature_regressions
 
 fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll"
-corelib=$(resolve_net10_corelib)
+corelib=$(resolve_pinned_corelib)
 prim_bin="samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM"
 routes="artifacts/selfhost-prim-routes-$CONFIG"
 mkdir -p "$routes"

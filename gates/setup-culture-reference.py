@@ -10,11 +10,11 @@ import sys
 import tempfile
 import urllib.request
 
-SDK = '10.0.403'
-RUNTIME = '10.0.14'
+SDK = '11.0.100'
+RUNTIME = '11.0.0'
 # Bundled SDK/runtime pairs from Microsoft's release metadata:
-# https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json
-PROFILES = {'ci': (SDK, RUNTIME), 'culture': ('10.0.402', '10.0.13')}
+# https://builds.dotnet.microsoft.com/dotnet/release-metadata/11.0/releases.json
+PROFILES = {'ci': (SDK, RUNTIME), 'culture': ('11.0.100', '11.0.0')}
 INSTALLER_COMMIT = 'e5cf1dd2d1540ed05ac84f8eb8c5cdec2807621e'
 INSTALLER_HASHES = {
     'sh': '082f7685e156738a1b2e2ed8381a621870d4ce8e8c59278034556f05c186eb2e',
@@ -53,6 +53,10 @@ def install_reference(environment, profile='ci'):
     # Apphosts prefer architecture-specific ROOT variables over DOTNET_ROOT.
     for architecture in ('X64', 'ARM64', 'X86'):
         selected[f'DOTNET_ROOT_{architecture}'] = str(install)
+    if windows:
+        # The installer unpacks a tarball with the first tar on PATH; Git Bash
+        # supplies GNU tar, which reads a drive-letter path as a remote host.
+        selected['DOTNET_INSTALL_SKIP_TAR'] = '1'
     subprocess.run(installer_command(script, install, windows, sdk_version), env=selected, check=True)
     dotnet = install / ('dotnet.exe' if windows else 'dotnet')
     sdk = subprocess.check_output([str(dotnet), '--version'], env=selected).strip()

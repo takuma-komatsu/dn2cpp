@@ -32,8 +32,8 @@ BIN="src/Dn2Cpp.Cli/bin/$CONFIG/$TFM"
 CLI="$BIN/dn2cpp.dll"
 [ -f "$CLI" ] || { echo "error: CLI not built: $CLI" >&2; exit 1; }
 
-echo "== 2/3 Locating the net10 CoreLib and self-host references =="
-corelib=$(resolve_net10_corelib)
+echo "== 2/3 Locating the pinned CoreLib and self-host references =="
+corelib=$(resolve_pinned_corelib)
 bcl=$(dirname "$corelib")
 refs=()
 add_ref() { [ -f "$1" ] && refs+=(-r "$1"); return 0; }

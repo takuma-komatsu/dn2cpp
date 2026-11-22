@@ -124,7 +124,7 @@ APP="samples/dotnet/HelloWorld/bin/$CONFIG/$TFM/HelloWorld.dll"
 
 echo "== 5/8 native build against the packed runtime only =="
 # The HOST's cmake, deliberately: the tool payload carries none and will not. It
-# is one RID-neutral directory (tools/net10.0/any/), so three hosts' binaries
+# is one RID-neutral directory (tools/$TFM/any/), so three hosts' binaries
 # would triple the package for every user while a RID-specific one breaks
 # `dotnet tool install -g` — and a `dotnet tool` consumer runs
 # `cmake -S "$(dn2cpp --print-runtime-dir)"` by hand. The toolchain bundle ships
