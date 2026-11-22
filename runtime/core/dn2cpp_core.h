@@ -3357,6 +3357,18 @@ T& dn2cpp_never_destroyed()
 
 using Dn2CppCpuFeaturesInit = uint64_t (*)();
 void dn2cpp_runtime_init(Dn2CppCpuFeaturesInit initCpuFeatures = nullptr);
+
+// A shared-library main returns to its host, which may keep the OS thread idle.
+struct Dn2CppTaskEntryScope
+{
+    Dn2CppTaskEntryScope();
+    ~Dn2CppTaskEntryScope();
+    Dn2CppTaskEntryScope(const Dn2CppTaskEntryScope&) = delete;
+    Dn2CppTaskEntryScope& operator=(const Dn2CppTaskEntryScope&) = delete;
+    Dn2CppTaskEntryScope* next = nullptr;
+    const void* waitingOn = nullptr;
+    bool notified = false;
+};
 // Stop and join the background threads the runtime owns — the Task.Run pool
 // workers and (when it runs at all) the finalizer thread — so a host can
 // safely dlclose the library: dn2cpp_never_destroyed keeps the data those

@@ -12,6 +12,7 @@
 // `new`-ed control block that holds NO managed pointers, so the GC need not scan it;
 // it is never freed (a small bounded per-collection leak, like the monitor table).
 #include "dn2cpp_core.h"
+#include "dn2cpp_wait_condition.h"
 
 #include <chrono>
 #include <condition_variable>
@@ -25,8 +26,8 @@
 struct Dn2CppBlockingControl
 {
     std::mutex mtx;                    // guards every field below + the node list
-    std::condition_variable notEmpty; // signaled on Add / CompleteAdding
-    std::condition_variable notFull;  // signaled on Take (bounded only)
+    Dn2CppWaitCondition notEmpty; // signaled on Add / CompleteAdding
+    Dn2CppWaitCondition notFull;  // signaled on Take (bounded only)
     int32_t boundedCapacity;          // 0 => unbounded
     int32_t count;                    // current element count
     bool addingCompleted;             // CompleteAdding() has been called

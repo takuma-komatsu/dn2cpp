@@ -4,6 +4,7 @@
 // static-constructor guards, quiesce, the finalizer thread, and GCHandle.
 
 #include "dn2cpp_core.h"
+#include "dn2cpp_wait_condition.h"
 #include <algorithm>
 #include <chrono>  // DateTime.Now/UtcNow wall clock
 #include <ctime>   // localtime_r for DateTime.Now local components
@@ -748,7 +749,7 @@ struct Dn2CppCctorRun
     Dn2CppCctorRun* next;
 };
 static std::mutex& g_cctor_mtx = dn2cpp_never_destroyed<std::mutex>();
-static std::condition_variable& g_cctor_cv = dn2cpp_never_destroyed<std::condition_variable>();
+static Dn2CppWaitCondition& g_cctor_cv = dn2cpp_never_destroyed<Dn2CppWaitCondition>();
 static Dn2CppCctorRun* g_cctor_running = nullptr; // guarded by g_cctor_mtx
 
 // A thread parked on another thread's in-flight run, linked from its own stack.
@@ -2076,6 +2077,7 @@ void dn2cpp_finalizer_thread_main()
             {
                 dn2cpp_run_finalizer_body(spilled);
                 g_finalizer_spill_drained.fetch_add(1, std::memory_order_release);
+                dn2cpp_entry_poll_changed();
                 ranSinceIdle = true;
                 continue;
             }
@@ -2109,6 +2111,7 @@ void dn2cpp_finalizer_thread_main()
         ranSinceIdle = true;
         tail++;
         g_finalizer_tail.store(tail, std::memory_order_release);
+        dn2cpp_entry_poll_changed();
     }
     g_finalizer_exited.store(1, std::memory_order_release);
 }
@@ -2530,9 +2533,16 @@ void dn2cpp_gc_wait_for_pending_finalizers()
     // counts are still 0 and this returns immediately.
     uint64_t target = g_finalizer_head.load(std::memory_order_acquire);
     uint64_t spillTarget = g_finalizer_spill_enqueued.load(std::memory_order_acquire);
-    while (g_finalizer_tail.load(std::memory_order_acquire) < target
-        || g_finalizer_spill_drained.load(std::memory_order_acquire) < spillTarget)
+    Dn2CppEntryPollingWait entry(true);
+    for (;;)
+    {
+        uint64_t sample = entry.sample();
+        if (g_finalizer_tail.load(std::memory_order_acquire) >= target
+            && g_finalizer_spill_drained.load(std::memory_order_acquire) >= spillTarget)
+            break;
+        entry.park_if_unchanged(sample);
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
 #endif
 }
 

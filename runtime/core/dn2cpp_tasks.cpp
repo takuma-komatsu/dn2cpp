@@ -5,6 +5,7 @@
 // cold tasks, ContinueWith, and the IValueTaskSource-backed ValueTask bridge.
 
 #include "dn2cpp_core.h"
+#include "dn2cpp_wait_condition.h"
 #include <algorithm>
 #include <chrono>  // DateTime.Now/UtcNow wall clock
 #include <ctime>   // localtime_r for DateTime.Now local components
@@ -106,7 +107,7 @@ static int32_t dn2cpp_task_next_id()
 static void dn2cpp_vts_arm(Dn2CppTask* t);
 
 static std::mutex& g_task_mtx = dn2cpp_never_destroyed<std::mutex>();
-static std::condition_variable& g_task_completed = dn2cpp_never_destroyed<std::condition_variable>();
+static Dn2CppWaitCondition& g_task_completed = dn2cpp_never_destroyed<Dn2CppWaitCondition>();
 static uint32_t g_task_completion_waiters; // protected by g_task_mtx
 
 // Generated thunks keep the holder's real list, capture, and observation
@@ -687,7 +688,7 @@ struct Dn2CppScheduler
     bool pool_worker = false;                 // fixed before the worker runs managed code
     std::atomic<bool> pool_local_principal{false}; // transitions under mtx; read by pool wait
     std::mutex mtx;                      // guards continuation and timer lists
-    std::condition_variable cv;          // task_block waits here
+    Dn2CppWaitCondition cv;              // task_block waits here
 };
 
 // A scheduler outlives the thread that owns it. Its address is published to other
@@ -726,12 +727,9 @@ static Dn2CppScheduler* dn2cpp_sched_self()
     return t_sched_ptr;
 }
 
-// Wake every blocked drain so it re-evaluates the principal set. Called ONLY on the
-// transition of a principal counter to zero, so the cost is paid once per emptying, never
-// per completion. Each scheduler's mutex is taken (and immediately released) before its
-// notify: a waiter evaluates the predicate under that mutex, so without the handshake a
-// notify sent between its check and its wait would be lost and the wait would never end.
-static void dn2cpp_sched_wake_all()
+// Synchronize with each drain's predicate check before asking it to reconsider.
+// A change in potential settlers does not enqueue work on the entry scheduler.
+static void dn2cpp_sched_wake_all(Dn2CppScheduler* except = nullptr)
 {
     std::vector<Dn2CppScheduler*> snapshot;
     {
@@ -740,9 +738,159 @@ static void dn2cpp_sched_wake_all()
     }
     for (Dn2CppScheduler* s : snapshot)
     {
+        if (s == except)
+            continue;
         { std::lock_guard<std::mutex> lk(s->mtx); }
-        s->cv.notify_all();
+        s->cv.recheck();
     }
+}
+
+static std::mutex& g_entry_mtx = dn2cpp_never_destroyed<std::mutex>();
+static std::condition_variable& g_entry_cv = dn2cpp_never_destroyed<std::condition_variable>();
+static Dn2CppTaskEntryScope* g_entries;
+static thread_local Dn2CppTaskEntryScope* t_entry = nullptr;
+static std::atomic<int> g_parked_entries{0};
+static std::atomic<int> g_entry_pollers{0};
+static uint64_t g_entry_poll_generation;
+
+Dn2CppTaskEntryScope::Dn2CppTaskEntryScope()
+{
+    if (t_entry != nullptr)
+        return;
+    std::lock_guard<std::mutex> lock(g_entry_mtx);
+    next = g_entries;
+    g_entries = this;
+    t_entry = this;
+}
+
+Dn2CppTaskEntryScope::~Dn2CppTaskEntryScope()
+{
+    if (t_entry != this)
+        return;
+    {
+        std::lock_guard<std::mutex> lock(g_entry_mtx);
+        auto** entry = &g_entries;
+        while (*entry != this)
+            entry = &(*entry)->next;
+        *entry = next;
+        t_entry = nullptr;
+    }
+    dn2cpp_sched_wake_all(t_sched_ptr);
+}
+
+bool dn2cpp_on_entry_thread()
+{
+    return t_entry != nullptr;
+}
+
+void dn2cpp_entry_wait(const void* condition, std::unique_lock<std::mutex>& resource)
+{
+    std::unique_lock<std::mutex> lock(g_entry_mtx);
+    bool newlyParked = t_entry->waitingOn == nullptr;
+    if (newlyParked)
+        g_parked_entries.fetch_add(1, std::memory_order_release);
+    t_entry->waitingOn = condition;
+    t_entry->notified = false;
+    // Publish the wait before releasing the predicate lock. Never hold either
+    // lock across the scheduler broadcast, which takes other scheduler locks.
+    resource.unlock();
+    if (newlyParked)
+    {
+        lock.unlock();
+        dn2cpp_sched_wake_all(t_sched_ptr);
+        lock.lock();
+    }
+    g_entry_cv.wait(lock, [] { return t_entry->notified; });
+    lock.unlock();
+    resource.lock();
+}
+
+void dn2cpp_entry_resume()
+{
+    std::lock_guard<std::mutex> lock(g_entry_mtx);
+    if (t_entry->waitingOn != nullptr)
+    {
+        t_entry->waitingOn = nullptr;
+        g_parked_entries.fetch_sub(1, std::memory_order_release);
+    }
+}
+
+void dn2cpp_entry_notify(const void* condition, bool runnable)
+{
+    bool polling = runnable && g_entry_pollers.load(std::memory_order_acquire) != 0;
+    if (!polling && g_parked_entries.load(std::memory_order_acquire) == 0)
+        return;
+    std::lock_guard<std::mutex> lock(g_entry_mtx);
+    if (polling)
+        ++g_entry_poll_generation;
+    for (auto* entry = g_entries; entry != nullptr; entry = entry->next)
+    {
+        if (entry->waitingOn != condition && !(polling && entry->waitingOn == &g_entry_poll_generation))
+            continue;
+        if (runnable)
+        {
+            entry->waitingOn = nullptr;
+            g_parked_entries.fetch_sub(1, std::memory_order_release);
+        }
+        entry->notified = true;
+        g_entry_cv.notify_all();
+    }
+}
+
+Dn2CppEntryPollingWait::Dn2CppEntryPollingWait(bool indefinite)
+    : observing(indefinite && dn2cpp_on_entry_thread())
+{
+    if (observing)
+        g_entry_pollers.fetch_add(1, std::memory_order_acq_rel);
+}
+
+Dn2CppEntryPollingWait::~Dn2CppEntryPollingWait()
+{
+    if (observing)
+    {
+        dn2cpp_entry_resume();
+        g_entry_pollers.fetch_sub(1, std::memory_order_acq_rel);
+    }
+}
+
+uint64_t Dn2CppEntryPollingWait::sample() const
+{
+    if (!observing)
+        return 0;
+    std::lock_guard<std::mutex> lock(g_entry_mtx);
+    return g_entry_poll_generation;
+}
+
+void Dn2CppEntryPollingWait::park_if_unchanged(uint64_t sample) const
+{
+    if (!observing)
+        return;
+    {
+        std::lock_guard<std::mutex> lock(g_entry_mtx);
+        if (t_entry->waitingOn != nullptr || sample != g_entry_poll_generation)
+            return;
+        t_entry->waitingOn = &g_entry_poll_generation;
+        g_parked_entries.fetch_add(1, std::memory_order_release);
+    }
+    dn2cpp_sched_wake_all(t_sched_ptr);
+}
+
+void Dn2CppEntryPollingWait::resume() const
+{
+    if (observing)
+        dn2cpp_entry_resume();
+}
+
+void dn2cpp_entry_poll_changed()
+{
+    dn2cpp_entry_notify(&g_entry_poll_generation, true);
+}
+
+bool dn2cpp_scheduler_has_work()
+{
+    Dn2CppScheduler* s = dn2cpp_sched_self();
+    std::lock_guard<std::mutex> lock(s->mtx);
+    return s->head != nullptr || s->timers != nullptr;
 }
 
 // Number of pool principals that may still complete a Task some cooperative thread is
@@ -801,6 +949,12 @@ static thread_local bool t_on_timer_thread = false;
 // TimerCallback in flight).
 static bool dn2cpp_task_settler_exists()
 {
+    // A thread started by the entry can take over before it parks. Conversely,
+    // a settling thread can wake the entry and immediately leave its counter.
+    std::lock_guard<std::mutex> lock(g_entry_mtx);
+    for (auto* entry = g_entries; entry != nullptr; entry = entry->next)
+        if (entry != t_entry && entry->waitingOn == nullptr)
+            return true;
     if (g_inflight_async_tasks.load(std::memory_order_acquire) != 0)
         return true;
     int live = g_live_user_threads.load(std::memory_order_acquire);
@@ -814,14 +968,12 @@ static bool dn2cpp_task_settler_exists()
     return timers > 0;
 }
 
-// A principal leaving the set. The wake is only needed on the transition to EMPTY — that
-// is the only moment a blocked drain's verdict can change — so fetch_sub's previous value
-// is the test. Every decrement of either counter goes through here; a site that decrements
-// raw would leave a defeated wait asleep forever, which is the one failure this whole
-// mechanism must not have.
+// A user or timer waiter discounts itself. Its last peer can therefore leave
+// that counter at one while still removing the last possible settler.
 static void dn2cpp_principal_left(std::atomic<int>& counter)
 {
-    if (counter.fetch_sub(1, std::memory_order_acq_rel) == 1)
+    int previous = counter.fetch_sub(1, std::memory_order_acq_rel);
+    if (previous == 1 || (previous == 2 && &counter != &g_inflight_async_tasks))
         dn2cpp_sched_wake_all();
 }
 
@@ -2761,9 +2913,8 @@ static int64_t dn2cpp_steady_now_ns()
 // return, the fire, an unwind). Declared BEFORE the root below so it is destroyed AFTER it:
 // the departure must be the last thing this thread does, because until the cancel and the
 // root release are both behind it, a callback it is still running could settle a task
-// somebody is blocked on. Going through dn2cpp_principal_left is what makes that departure
-// DELIVERED rather than noticed — a drain that parked because of this thread sleeps in an
-// untimed wait, and only the wake on the counter's transition to zero ends it.
+// somebody is blocked on. Wake any drain for which the departing timer was
+// the last other settler.
 struct Dn2CppCtsTimerPrincipal
 {
     ~Dn2CppCtsTimerPrincipal() { dn2cpp_principal_left(g_live_timer_threads); }
@@ -3124,14 +3275,8 @@ static void dn2cpp_task_drain(Dn2CppTask* t)
 // nothing named. The throw is catchable (InvalidOperationException, the closest real
 // type for "this wait can never complete") so a host boundary can log and degrade
 // instead of taking the process with it, and it carries the full diagnosis: what was
-// missing and what to do about it. What it must NEVER become is a silent hang: the
-// verdict is only reached with no principal alive, and the wait it follows is an untimed
-// `s->cv.wait(lk, pred)` whose predicate carries the principal set — so the last
-// principal's exit cannot leave that wait asleep forever, not because anybody re-tests on
-// a timer but because dn2cpp_principal_left wakes every scheduler in the registry
-// (dn2cpp_sched_wake_all) on the counter's transition to zero. The exactness is the point:
-// no blocked wait in any program pays a periodic re-test for a case that is detectable
-// precisely when it happens.
+// missing and what to do about it. A parked drain rechecks when another possible
+// settler departs or the entry thread becomes blocked.
 [[noreturn]] static void dn2cpp_task_throw_deadlock()
 {
     dn2cpp_report_defeated_wait(); // the exception may be swallowed; the line is not
@@ -3359,7 +3504,7 @@ const Dn2CppType dn2cpp_thread_type_obj = { { &dn2cpp_type_type }, &dn2cpp_threa
 struct Dn2CppThreadSync
 {
     std::mutex m;
-    std::condition_variable cv;
+    Dn2CppWaitCondition cv;
     bool done = false;
 };
 
@@ -3426,15 +3571,7 @@ static void dn2cpp_thread_trampoline(Dn2CppThread* t)
     }
     t->alive = 0;
     dn2cpp_thread_signal_done(t);
-    // Leave the settler set LAST: until this returns, the body could still have
-    // completed a task some other thread is blocked on. A blocked drain sleeps in an
-    // untimed `s->cv.wait(lk, pred)` whose predicate carries the principal set, so the
-    // departure has to be DELIVERED rather than noticed — which is exactly what going
-    // through dn2cpp_principal_left buys: on the counter's transition to zero it calls
-    // dn2cpp_sched_wake_all, notifying every scheduler in the registry so each blocked
-    // drain re-evaluates. That is why the last user thread leaving is what lets a
-    // genuinely defeated wait report instead of hang, and why a raw fetch_sub here would
-    // strand it asleep forever with nobody ever coming back to look.
+    // Publish the Join handoff before this thread leaves the settler set.
     dn2cpp_principal_left(g_live_user_threads);
 }
 
@@ -3605,8 +3742,11 @@ void dn2cpp_thread_sleep(int32_t ms)
     dn2cpp_timeout_require_ms(ms);
     if (ms == -1)
     {
-        for (;;) // Timeout.Infinite: the thread never wakes
-            std::this_thread::sleep_for(std::chrono::hours(24));
+        std::mutex mutex;
+        std::unique_lock<std::mutex> lock(mutex);
+        Dn2CppWaitCondition never;
+        never.wait(lock, [] { return false; });
+        return;
     }
     if (ms > 0)
         std::this_thread::sleep_for(std::chrono::milliseconds(ms));

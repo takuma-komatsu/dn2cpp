@@ -1680,6 +1680,13 @@ their scheduling phase; unwrapping promises do not inherit the delegate's phase.
 A settled status takes precedence over WaitingToRun or Running. Ordinary await
 resumptions remain on their owning scheduler, without acquiring a Task start claim.
 
+A blocking task wait counts a running console entry on another thread as a
+possible settler. A timed `Thread.Join` can return control to the entry, so
+it still counts. An indefinite managed wait withdraws the entry while parked,
+and the thread that signals the wait restores it before returning to managed
+code. A task wait can still run its entry scheduler's queued work before
+parking. Returning from a shared-library `main` ends its participation.
+
 The default scheduler and generated scheduler subclasses share a native identity
 field. CoreLib's `TaskScheduler.Id` getter assigns it lazily from its own counter,
 independent of task IDs. The default pool claims its ID when the scheduler statics

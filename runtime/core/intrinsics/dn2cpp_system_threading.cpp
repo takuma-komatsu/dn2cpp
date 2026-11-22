@@ -6,6 +6,7 @@
 // transpiler intercepts the corresponding BCL calls and binds them here. One
 // per-namespace intrinsic unit (see runtime/core/intrinsics/).
 #include "dn2cpp_core.h"
+#include "dn2cpp_wait_condition.h"
 #include "platform/dn2cpp_pal.h" // dn2cpp_pal_membarrier_processwide
 
 #include <atomic>
@@ -293,7 +294,7 @@ int64_t dn2cpp_interlocked_and_i8(int64_t* loc, int64_t value)
 // consume a notification issued to the earlier wait set.
 struct Dn2CppMonitorWaiter
 {
-    std::condition_variable cv;
+    Dn2CppWaitCondition cv;
     Dn2CppMonitorWaiter* prev = nullptr;
     Dn2CppMonitorWaiter* next = nullptr;
     bool released = false;
@@ -302,7 +303,7 @@ struct Dn2CppMonitorWaiter
 struct Dn2CppMonitor
 {
     std::mutex mtx;                   // guards the fields below + serializes enter/exit
-    std::condition_variable lock_cv; // signaled when the lock becomes free (enter-waiters)
+    Dn2CppWaitCondition lock_cv; // signaled when the lock becomes free (enter-waiters)
     std::thread::id owner;
     bool has_owner = false;
     uint32_t count = 0;              // recursion depth

@@ -217,4 +217,24 @@ static class Program
         ex.Stop();
         Console.WriteLine("executor stopped");
     }
+
+    internal static void WaitForEntryThread()
+    {
+        var source = new TaskCompletionSource<int>();
+        var ready = new ManualResetEventSlim();
+        int result = 0;
+        var worker = new Thread(() =>
+        {
+            ready.Set();
+            result = source.Task.Result;
+        });
+        worker.Start();
+        ready.Wait();
+        // The entry thread can complete the promise when its finite join expires.
+        worker.Join(100);
+        source.SetResult(7);
+        worker.Join();
+        ready.Dispose();
+        Console.WriteLine("task result from entry thread: " + result);
+    }
 }
