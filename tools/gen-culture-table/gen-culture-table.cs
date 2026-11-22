@@ -3,7 +3,7 @@
 //
 //   Run from the repository root:  dotnet run tools/gen-culture-table/gen-culture-table.cs
 //
-// A .NET 10 file-based program on purpose: it is a manual aid, not a build step and not
+// A file-based program on purpose: it is a manual aid, not a build step and not
 // a gate, so it must not add a csproj to the tree, must not be referenced by anything the
 // CLI ships, and must not be transpiled by the self-host. Nothing in the suite runs it.
 //

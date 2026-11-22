@@ -4,8 +4,8 @@ using System.Runtime.CompilerServices;
 namespace FinalizerReentrantWaitSubset
 {
     // GC.WaitForPendingFinalizers called from inside a finalizer body returns
-    // immediately instead of deadlocking (verified against real .NET,
-    // net10.0). A naive wait would sleep on the finalizer's own completion:
+    // immediately instead of deadlocking (verified against real
+    // .NET). A naive wait would sleep on the finalizer's own completion:
     // the in-flight item is only accounted as drained after its body returns.
     internal sealed class WaitsInFinalizer
     {

@@ -1715,7 +1715,7 @@ Dn2CppObject* dn2cpp_delegate_try_get_at(Dn2CppObject* d, int32_t index);
 Dn2CppObject* dn2cpp_delegate_dynamic_invoke(Dn2CppObject* d, Dn2CppArrayRef* args);
 // Virtual delegate value equality/hash: two delegates are equal iff they are the same
 // delegate type and their invocation chains match pairwise on target, code
-// address and method identity (MulticastDelegate override semantics).
+// address and method identity (Delegate.Equals semantics).
 // A null identity matches any, and a virtual binding compares only
 // generic arguments, since different declarations can bind one override. The
 // hash folds the delegate type and each entry's target and the method
@@ -5393,7 +5393,7 @@ Dn2CppString* dn2cpp_string_format1_c(Dn2CppObject* provider, Dn2CppString* fmt,
 Dn2CppString* dn2cpp_string_format2_c(Dn2CppObject* provider, Dn2CppString* fmt, Dn2CppObject* a0, Dn2CppObject* a1);
 Dn2CppString* dn2cpp_string_format3_c(Dn2CppObject* provider, Dn2CppString* fmt, Dn2CppObject* a0, Dn2CppObject* a1, Dn2CppObject* a2);
 Dn2CppString* dn2cpp_string_format_arr_c(Dn2CppObject* provider, Dn2CppString* fmt, Dn2CppArrayRef* args);
-// The params ReadOnlySpan<object> overloads (net10; Roslyn prefers them for 4+
+// The params ReadOnlySpan<object> overloads (Roslyn prefers them for 4+
 // loose args): the span lowers to its data pointer + length.
 Dn2CppString* dn2cpp_string_format_spanobjs(Dn2CppString* fmt, Dn2CppObject* const* args, int32_t n);
 Dn2CppString* dn2cpp_string_format_spanobjs_c(Dn2CppObject* provider, Dn2CppString* fmt,

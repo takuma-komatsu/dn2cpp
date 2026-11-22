@@ -541,7 +541,7 @@ empty because the editor loads GodotTools from a stream.
   **whole**; they are already curated subsets. Packaging derives the required
   set from the shipped `runtime/CMakeLists.txt` and fails if the copy list has
   fallen behind.
-- `ref/` — the **whole pinned net10 shared-framework closure** (every `*.dll`
+- `ref/` — the **whole pinned shared-framework closure** (every `*.dll`
   beside `System.Private.CoreLib.dll`), not CoreLib alone, because `--auto-ref`
   resolves the game's BCL references from the directory holding CoreLib.
 - `ref-posix/` — the same closure in the **POSIX flavour**, staged **only by a

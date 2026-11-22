@@ -768,7 +768,7 @@ internal sealed partial class Compilation
                 // The SAME predicate names the member set at the emit route, and at the
                 // constrained static-virtual dispatch and its reach twin. Unlike Path/File
                 // these deliberately do NOT fall through — the fall-through IS the cascade the
-                // cut exists to avoid — so the emit table covers the whole .NET 10 surface and
+                // cut exists to avoid — so the emit table covers CoreLib's whole surface and
                 // an overload beyond it fails loudly, naming the shape.
                 if (CoreIntrinsics.MrInlinePrimitive.Matches(mrParent, mrName, Sig))
                     return null;

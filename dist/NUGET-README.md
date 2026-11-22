@@ -1,14 +1,14 @@
 # dn2cpp
 
 **.NET IL → C++ transpiler + native runtime** — a Unity-IL2CPP-equivalent for
-.NET. Transpile any net10.0 assembly to C++ and build it into a self-contained
+.NET. Transpile any net11.0 assembly to C++ and build it into a self-contained
 native executable (or a Godot GDExtension / mono-module drop-in) with the
 bundled CMake runtime. No .NET runtime is needed on the machine that runs the
 produced binary.
 
 ## Prerequisites
 
-- .NET 10 runtime (runs the tool; also provides the BCL IL that `--auto-ref`
+- .NET 11 runtime (runs the tool; also provides the BCL IL that `--auto-ref`
   transpiles)
 - `clang++` (C++17), `cmake` ≥ 3.20, `ninja` (build the generated C++)
 

@@ -6,7 +6,7 @@ namespace FinalizerCtorThrowSubset
     // An object is finalizable from the moment it is allocated, not from the
     // end of its constructor: a ctor that throws still leaves the partially
     // constructed object to be finalized, with whatever fields it managed to
-    // assign before throwing (verified against real .NET, net10.0).
+    // assign before throwing (verified against real .NET).
     internal sealed class ThrowingCtor
     {
         private readonly int _progress;

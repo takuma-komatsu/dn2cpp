@@ -142,7 +142,7 @@ internal static class ResourceStrings
 
     /// <summary>Parses one runtime <c>.resources</c> blob, adding its string entries
     /// (ResourceTypeCode.String, code 1) to <paramref name="into"/>. Validated against
-    /// the real net10 CoreLib blob (magic 0xBEEFCACE, RuntimeResourceSet v2).</summary>
+    /// the real CoreLib blob (magic 0xBEEFCACE, RuntimeResourceSet v2).</summary>
     private static void ParseResourceSet(BlobReader r, Dictionary<string, string> into)
     {
         int origin = r.Offset; // all "relative to blob start" offsets are from here

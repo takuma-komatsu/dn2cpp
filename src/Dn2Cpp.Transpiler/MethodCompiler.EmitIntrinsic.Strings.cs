@@ -42,7 +42,7 @@ internal sealed partial class MethodCompiler
                 return true;
             // Composite-format overloads: build the string via the string.Format
             // helpers, then write it. The params ReadOnlySpan<object> overload (4+
-            // loose args, net10) formats over the span's data pointer + length.
+            // loose args) formats over the span's data pointer + length.
             case ("System.Console", "WriteLine") when IsConsoleFormatOverload(sig):
             {
                 string fmt = BuildConsoleFormatExpr(sig);
@@ -141,7 +141,7 @@ internal sealed partial class MethodCompiler
             // String.Concat(ReadOnlySpan<char>...) — the overload Roslyn lowers a
             // char-in-concat to (e.g. `c.ToString + s` builds a 1-char span over the char
             // and span-wraps the strings). Lift each operand's {ptr,len} and concatenate in
-            // the runtime; net10 added the 5-span overload.
+            // the runtime; the 5-span overload is CoreLib-internal.
             case ("System.String", "Concat") when sig.ParameterTypes.Length is >= 2 and <= 5
                                                   && sig.ParameterTypes.All(IsCharSpan):
             {
@@ -191,7 +191,7 @@ internal sealed partial class MethodCompiler
                 return true;
             }
             // string.Join(string|char, params ReadOnlySpan<object|string>) — the
-            // net10 params-span overloads (Roslyn prefers them over the array
+            // params-span overloads (Roslyn prefers them over the array
             // forms for loose args). Elements via Object.ToString over the span's
             // data pointer + length.
             case ("System.String", "Join")
@@ -206,7 +206,7 @@ internal sealed partial class MethodCompiler
                     $"dn2cpp_string_join_objs({sepStr}, (Dn2CppObject* const*){sp}.f__reference, {sp}.f__length)");
                 return true;
             }
-            // string.Concat(params ReadOnlySpan<object|string>) — the net10
+            // string.Concat(params ReadOnlySpan<object|string>) — the
             // params-span overloads; concat of the elements' ToString.
             case ("System.String", "Concat")
                 when sig.ParameterTypes is [var csp] && (IsObjectSpan(csp) || IsStringSpan(csp)):
@@ -571,7 +571,7 @@ internal sealed partial class MethodCompiler
             // FastAllocateString(length): an uninitialized (zeroed here, matching
             // .NET's GC-cleared memory) writable string the caller fills through
             // GetRawStringData — the Guid.ToString / TryFormatCore shape. The
-            // net10 overload takes nint; the classic one int32.
+            // CoreLib overload takes nint; an int32 length is accepted as well.
             case ("System.String", "FastAllocateString")
                 when sig.ParameterTypes is [{ Primitive: PrimitiveTypeCode.Int32 or PrimitiveTypeCode.IntPtr }]:
                 Push(StackKind.Ref, "Dn2CppString*",
@@ -1360,7 +1360,7 @@ internal sealed partial class MethodCompiler
                     $"dn2cpp_str_trim_set({Cast(s, "Dn2CppString*")}, {at} != nullptr ? (const char16_t*)({at}->data) : nullptr, {at} != nullptr ? {at}->length : 0, {mode2})");
                 return true;
             }
-            // String.CreateFromChar(c) is the net10 internal behind char.ToString()
+            // String.CreateFromChar(c) is the CoreLib internal behind char.ToString()
             // and Rune.ToString() for a BMP scalar — a one-char string.
             case ("System.String", "CreateFromChar") when sig.ParameterTypes.Length == 1:
                 Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_char_to_string((char16_t)({Pop().Expr}))");
@@ -1431,7 +1431,7 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppString*", BuildStringFormatExprC(sig));
                 return true;
             // Format(format, params ReadOnlySpan<object>) (+ provider variant) — the
-            // net10 params-span overloads Roslyn prefers for 4+ loose args (or an
+            // params-span overloads Roslyn prefers for 4+ loose args (or an
             // explicit span argument); same formatting core over the span's
             // data pointer + length.
             case ("System.String", "Format") when IsSpanFormatOverload(sig):
@@ -1845,7 +1845,7 @@ internal sealed partial class MethodCompiler
     /// loud failure.
     ///
     /// <para>The input may be a string, a ReadOnlySpan&lt;char&gt; (ISpanParsable) or a
-    /// ReadOnlySpan&lt;byte&gt; of UTF-8 (IUtf8SpanParsable) — .NET 10 declares all three for
+    /// ReadOnlySpan&lt;byte&gt; of UTF-8 (IUtf8SpanParsable) — CoreLib declares all three for
     /// every one of these types, sub-word included, and a call site binds whichever it was
     /// handed. They differ only in how the runtime reaches the characters; ONE engine
     /// decides what a number is.</para></summary>
@@ -1998,7 +1998,7 @@ internal sealed partial class MethodCompiler
 
     /// <summary>ReadOnlySpan&lt;byte&gt; — the IUtf8SpanParsable input form, UTF-8 text.
     /// Distinguished from the char span by its ELEMENT type: the two are otherwise the same
-    /// <c>{ pointer, length }</c> shape at the same arity, and .NET 10 declares both for
+    /// <c>{ pointer, length }</c> shape at the same arity, and CoreLib declares both for
     /// every integer and float width.</summary>
     private bool IsReadOnlyByteSpan(TypeDesc t) =>
         t is { Kind: TypeKind.Class, Class: { } c }

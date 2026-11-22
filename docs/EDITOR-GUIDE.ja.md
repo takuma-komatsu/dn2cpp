@@ -74,11 +74,11 @@ Godot-dn2cpp.console.exe
 
 ### エクスポート先ごとに必要なもの
 
-表中の ● は必要、— は不要を表します。**.NET 10 SDK** がどのエクスポート先でも必要なのは、エクスポートがまずプロジェクトの IL をビルドするためです。dn2cpp が .NET ランタイムを取り除くのは*ゲーム*からであって、*エクスポートを実行するマシン*からではありません。テンプレートの入手方法は[エクスポートテンプレート](#エクスポートテンプレート)を、NDK と JDK の指定方法は[Android へのエクスポート](#android-へのエクスポート)を参照してください。
+表中の ● は必要、— は不要を表します。**.NET SDK** がどのエクスポート先でも必要なのは、エクスポートがまずプロジェクトの IL をビルドするためです。このリリースのビルドと検証には .NET 11 SDK を使っています。dn2cpp が .NET ランタイムを取り除くのは*ゲーム*からであって、*エクスポートを実行するマシン*からではありません。テンプレートの入手方法は[エクスポートテンプレート](#エクスポートテンプレート)を、NDK と JDK の指定方法は[Android へのエクスポート](#android-へのエクスポート)を参照してください。
 
 **macOS（Apple Silicon）ホスト**
 
-| エクスポート先 | .NET 10 SDK | Xcode Command Line Tools | Xcode（full） | Python 3.10 以降 | Android NDK・JDK | エクスポートテンプレート |
+| エクスポート先 | .NET SDK | Xcode Command Line Tools | Xcode（full） | Python 3.10 以降 | Android NDK・JDK | エクスポートテンプレート |
 |---|:-:|:-:|:-:|:-:|:-:|---|
 | macOS | ● | ● | — | — | — | 本リリース同梱 |
 | iOS | ● | ● | ● | — | — | Godot 公式 |
@@ -91,7 +91,7 @@ Node.js の列が無いのは、`emcc` がリンクのたびに起動する **No
 
 **Windows（x86_64）ホスト**
 
-| エクスポート先 | .NET 10 SDK | Visual Studio の C++ ワークロード | Android NDK・JDK | エクスポートテンプレート |
+| エクスポート先 | .NET SDK | Visual Studio の C++ ワークロード | Android NDK・JDK | エクスポートテンプレート |
 |---|:-:|:-:|:-:|---|
 | Windows | ● | ●※ | — | Godot 公式 |
 | Web | ● | — | — | 本リリース同梱 |
@@ -124,7 +124,7 @@ Node.js の列が無いのは、`emcc` がリンクのたびに起動する **No
 
 **Visual Studio が必要なのは、Windows ゲームをエクスポートするときだけです。** Ninja を使うと cmake は `cl.exe` を選びますが、`cl.exe` はマシンの `PATH` には無く、`INCLUDE` / `LIB` / `LIBPATH` も `vcvarsall` を実行済みのシェルの中にしか存在しません。そこでエディタは、起動時ではなくエクスポート時に `vswhere` で Visual Studio を探して `vcvarsall` を実行し、その環境をビルドの子プロセスにだけ渡します。Explorer から起動した `Godot-dn2cpp.exe` でそのままエクスポートできます。すでにビルド環境が入っているシェルから起動した場合は、そのまま何もせずそれを使います。
 
-**Web と Android へのエクスポートは Visual Studio 自体を必要としません。** どちらも MSVC ではなく、Emscripten と Android NDK でビルドするからです。ビルドを駆動する cmake と ninja もエディタが同梱しているため、Android へのエクスポートに別途用意するものは .NET 10 SDK と NDK・JDK だけです。Web も同様に、必要なのは .NET 10 SDK だけです。
+**Web と Android へのエクスポートは Visual Studio 自体を必要としません。** どちらも MSVC ではなく、Emscripten と Android NDK でビルドするからです。ビルドを駆動する cmake と ninja もエディタが同梱しているため、Android へのエクスポートに別途用意するものは .NET SDK と NDK・JDK だけです。Web も同様に、必要なのは .NET SDK だけです。
 
 ## dn2cpp バックエンドの使い方
 

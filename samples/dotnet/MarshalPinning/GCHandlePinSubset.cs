@@ -160,7 +160,7 @@ unsafe class Program
         //     was called on zeroes itself; the OTHER copy still reads IsAllocated=true
         //     (its word is non-zero, like real .NET's stale _handle), but its Target is
         //     null without throwing and its Free is a no-op; re-Free of the zeroed copy
-        //     throws. All measured on real .NET (net10.0).
+        //     throws. All measured on real .NET.
         object cobj = new int[3] { 11, 12, 13 };
         GCHandle ch = GCHandle.Alloc(cobj);
         GCHandle ch2 = ch; // struct copy of the live handle

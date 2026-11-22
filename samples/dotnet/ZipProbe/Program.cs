@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 // A --measure probe, NOT a gate: it enumerates the transpile gap surface of the
 // whole Zip API face — in-memory create, fixed-blob read, update mode, the
-// ZipFile filesystem face and the net10 async face — in one pass. Each section
+// ZipFile filesystem face and the async face — in one pass. Each section
 // prints a round-trip bool, all True on real .NET.
 
 namespace ZipProbe;

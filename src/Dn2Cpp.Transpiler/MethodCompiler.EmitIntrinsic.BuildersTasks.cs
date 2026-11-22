@@ -353,7 +353,7 @@ internal sealed partial class MethodCompiler
                 return true;
             }
             // AppendFormat([IFormatProvider,] format, params ReadOnlySpan<object>) —
-            // the net10 params-span overloads (4+ loose args); same composition over
+            // the params-span overloads (4+ loose args); same composition over
             // the span's data pointer + length.
             case ("System.Text.StringBuilder", "AppendFormat") when IsSpanFormatOverload(sig):
             {

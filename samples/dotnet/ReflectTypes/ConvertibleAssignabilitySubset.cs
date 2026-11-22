@@ -12,7 +12,7 @@ using System.Globalization;
 // conversion guard, so a Thrive `long -> Stage` JSON integer fell past the
 // (intercepted, working) Enum.ToObject branch into TypeDescriptor and threw
 // ("Could not cast or convert from System.Int64 to Stage", organelles.json
-// RestrictedToStages). This section pins the oracle-measured (net10.0) fallback
+// RestrictedToStages). This section pins the oracle-measured fallback
 // table on both surfaces of the one rule — IsAssignableFrom on the Type pair and
 // `is` on a boxed value — including the shapes that keep the table honest:
 //   - bool and string implement IConvertible+IComparable but NOT IFormattable;

@@ -784,7 +784,7 @@ internal sealed partial class MethodCompiler
             // Every other manifest-resource shape has no model: the resource table is
             // keyed by assembly and carries embedded resources only. Loud and catchable
             // rather than a null, which in real .NET means "no such resource" and would
-            // be a wrong answer. The three arms above are the whole net10 surface —
+            // be a wrong answer. The three arms above are the whole surface —
             // `Assembly` declares exactly GetManifestResourceInfo(string),
             // GetManifestResourceNames(), GetManifestResourceStream(string) and
             // (Type, string), and `System.Reflection.Module` declares no resource API at
