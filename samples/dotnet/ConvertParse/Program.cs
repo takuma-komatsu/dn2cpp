@@ -71,6 +71,7 @@ namespace ConvertParse
                 return;
             Int128CheckedSubset.Program.__GateEntry();
             UInt128CheckedSubset.Program.__GateEntry();
+            ConvertChangeTypeSubset.Program.RunFloatingStringConversions();
         }
     }
 }

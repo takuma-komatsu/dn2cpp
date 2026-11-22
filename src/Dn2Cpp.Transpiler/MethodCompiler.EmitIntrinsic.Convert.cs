@@ -141,12 +141,21 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I8, "int64_t", $"(int64_t)({Cast(Pop(), "int64_t")})");
                 return true;
 
-            // ToDouble: string -> parse; numeric -> widen to double.
-            case ("System.Convert", "ToDouble") when sig.ParameterTypes is [{ IsString: true }]
-                or [{ IsString: true }, { Kind: TypeKind.Class }]:
-                if (sig.ParameterTypes.Length == 2) Pop();
-                Push(StackKind.R8, "double", $"dn2cpp_double_parse({Cast(Pop(), "Dn2CppString*")})");
+            case ("System.Convert", "ToDouble" or "ToSingle")
+                when sig.ParameterTypes is [{ IsString: true }]
+                    || sig.ParameterTypes is [{ IsString: true }, var fp] && IsFormatProvider(fp):
+            {
+                var provider = sig.ParameterTypes.Length == 2 ? Pop() : null;
+                var value = Pop();
+                // Convert returns zero for null without asking the provider for its format.
+                string nfi = provider is null || value.KnownNull ? "nullptr" : CastNumberFormatProvider(provider);
+                string text = NewTemp("Dn2CppString*");
+                Emit($"{text} = {Cast(value, "Dn2CppString*")};");
+                int single = name == "ToSingle" ? 1 : 0;
+                Push(StackKind.R8, "double", $"{text} == nullptr ? 0.0 : "
+                    + $"dn2cpp_fp_parse_str({text}, {DefaultFloatingParseStyles}, {nfi}, {single})");
                 return true;
+            }
             // The unsigned 32/64-bit sources widen from their own width — Cast()ing the
             // signed slot to double turns uint.MaxValue into -1 rather than 4294967295.
             case ("System.Convert", "ToDouble")
@@ -181,13 +190,7 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", $"(({Pop().Expr}) != 0 ? 1 : 0)");
                 return true;
 
-            // ToSingle: string -> parse; numeric -> narrow/widen to float (rides
-            // the R8 stack slot as the F type, like Single.Parse above).
-            case ("System.Convert", "ToSingle") when sig.ParameterTypes is [{ IsString: true }]
-                or [{ IsString: true }, { Kind: TypeKind.Class }]:
-                if (sig.ParameterTypes.Length == 2) Pop();
-                Push(StackKind.R8, "double", $"(double)dn2cpp_float_parse({Cast(Pop(), "Dn2CppString*")})");
-                return true;
+            // ToSingle widens the rounded float into the R8 stack slot.
             case ("System.Convert", "ToSingle")
                 when sig.ParameterTypes is [{ Primitive: PrimitiveTypeCode.UInt32 }]:
                 Push(StackKind.R8, "double", $"(double)(float)(uint32_t)({Pop().Expr})");
