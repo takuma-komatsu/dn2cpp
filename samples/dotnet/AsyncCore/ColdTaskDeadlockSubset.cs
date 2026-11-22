@@ -158,10 +158,21 @@ namespace ColdTaskDeadlockSubset
             // to be inside the body: an exception escaping a thread body terminates the
             // process, as in .NET.
             string onThread = "NOT RUN";
+            string onEvent = "NOT RUN";
+            var done = new System.Threading.ManualResetEventSlim();
+            var pending = new TaskCompletionSource<int>().Task;
             var lone = new System.Threading.Thread(() =>
-                onThread = Defeated(() => new TaskCompletionSource<int>().Task.Wait()));
+            {
+                onEvent = Defeated(() => pending.Wait());
+                done.Set();
+                onThread = Defeated(() => pending.Wait());
+            });
             lone.Start();
+            done.Wait();
             lone.Join();
+            done.Dispose();
+            if (onEvent != onThread)
+                throw new Exception("Task wait while the entry thread waits on an event: " + onEvent);
             Console.WriteLine("onthread: " + onThread);
 
             // Catchable means catchable: the runtime is still usable after the report.

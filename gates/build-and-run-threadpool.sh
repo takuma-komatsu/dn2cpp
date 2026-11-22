@@ -17,7 +17,8 @@
 # A live user thread has to count as a principal that can still settle a task, or a
 # blocked wait reads the empty in-flight count as proof of deadlock; that section, plus
 # Task.WaitAll/WaitAny over the same hand-off, is diffed exact vs real .NET. Its
-# unsatisfiable counterpart is the frozen ColdTaskDeadlock section of the async-core gate
+# reverse hand-off has the entry thread complete a lone worker's promise after a finite
+# Join. The unsatisfiable counterpart is the frozen ColdTaskDeadlock section of the async-core gate
 # (real .NET hangs on it, so it cannot be diffed).
 #
 # The FfSettler section covers the two settlers that are neither a pool Task nor a live
@@ -93,6 +94,7 @@ gate_extra_asserts() {
         gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: ThreadPoolQueue validation witness missing: $line" >&2; exit 1; }
     done
+    gate_output witness "$native" 'task result from entry thread: 7' --policy crlf
 }
 
 corelib_diff_gate ThreadPoolQueue System.Threading

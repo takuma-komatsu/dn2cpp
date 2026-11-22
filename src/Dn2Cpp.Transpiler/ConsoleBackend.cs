@@ -52,6 +52,7 @@ internal sealed class ConsoleBackend : IEmitBackend
             : "DN2CPP_RT_EXPORT int main()");
         sb.AppendLine("#endif");
         sb.AppendLine("{");
+        sb.AppendLine("    Dn2CppTaskEntryScope __entryScope;");
         emitter.EmitInitCalls(sb, Array.Empty<MethodInfo>());
         sb.AppendLine("    try {");
         emitter.EmitModuleInitializerCalls(sb, cctors, propagateFailure: true);

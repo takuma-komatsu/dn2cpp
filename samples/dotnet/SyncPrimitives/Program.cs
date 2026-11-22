@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
+using System.Threading.Tasks;
 
 // The blocking synchronization primitives — SemaphoreSlim, ManualResetEventSlim,
 // AutoResetEvent, CountdownEvent, Barrier, ReaderWriterLockSlim and Monitor condition
@@ -425,5 +426,27 @@ static class Program
         if (args.Length > 0 && args[0] == "before-null-receivers")
             return;
         NullReceivers.Program.__GateEntry();
+        ReadPhaseWhileCallbackWaits();
+    }
+
+    static void ReadPhaseWhileCallbackWaits()
+    {
+        var entered = new ManualResetEventSlim();
+        var source = new TaskCompletionSource<int>();
+        int result = 0;
+        var barrier = new Barrier(1, _ =>
+        {
+            entered.Set();
+            result = source.Task.Result;
+        });
+        var worker = new Thread(() => barrier.SignalAndWait());
+        worker.Start();
+        entered.Wait();
+        long phase = barrier.CurrentPhaseNumber;
+        source.SetResult(7);
+        worker.Join();
+        barrier.Dispose();
+        entered.Dispose();
+        Console.WriteLine("barrier callback wait: phase=" + phase + " result=" + result);
     }
 }

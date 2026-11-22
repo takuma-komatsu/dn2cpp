@@ -69,5 +69,6 @@ static class Program
         if (args.Length != 0 && args[0] == "before-argument-fields")
             return;
         ThreadPoolValidationSubset.__GateEntry();
+        UserThreadTask.Program.WaitForEntryThread();
     }
 }

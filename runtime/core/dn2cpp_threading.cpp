@@ -5,6 +5,7 @@
 // ReaderWriterLockSlim, and System.Threading.Timer.
 
 #include "dn2cpp_core.h"
+#include "dn2cpp_wait_condition.h"
 #include <algorithm>
 #include <chrono>  // DateTime.Now/UtcNow wall clock
 #include <ctime>   // localtime_r for DateTime.Now local components
@@ -338,6 +339,9 @@ static void dn2cpp_parallel_run(int64_t count, void* ctx, void (*fn)(void*, int6
     int64_t rem = count % nthreads;
     std::vector<std::thread> workers;
     workers.reserve(static_cast<size_t>(nthreads - 1));
+    std::mutex finishedMutex;
+    Dn2CppWaitCondition finished;
+    int64_t remaining = nthreads - 1;
     int64_t cursor = 0, lastLo = 0, lastHi = 0;
     for (int64_t t = 0; t < nthreads; t++)
     {
@@ -350,13 +354,20 @@ static void dn2cpp_parallel_run(int64_t count, void* ctx, void (*fn)(void*, int6
         }
         else
         {
-            workers.emplace_back([&runChunk, lo, hi] {
+            workers.emplace_back([&, lo, hi] {
                 Dn2CppGCThread guard; // a spawned worker must register with the GC
                 runChunk(lo, hi);
+                std::lock_guard<std::mutex> lock(finishedMutex);
+                if (--remaining == 0)
+                    finished.notify_all();
             });
         }
     }
     runChunk(lastLo, lastHi);
+    {
+        std::unique_lock<std::mutex> lock(finishedMutex);
+        finished.wait(lock, [&] { return remaining == 0; });
+    }
     for (auto& w : workers)
         w.join();
 
@@ -748,7 +759,7 @@ const Dn2CppType dn2cpp_safewaithandle_type_obj = { { &dn2cpp_type_type }, &dn2c
 struct Dn2CppSemaphore : Dn2CppObject
 {
     std::mutex m;
-    std::condition_variable cv;
+    Dn2CppWaitCondition cv;
     int count;
     int maxCount;
     int waiters = 0;
@@ -761,7 +772,7 @@ struct Dn2CppSemaphore : Dn2CppObject
 struct Dn2CppEvent : Dn2CppWaitHandle
 {
     std::mutex m;
-    std::condition_variable cv;
+    Dn2CppWaitCondition cv;
     bool signaled;
     bool manualReset;
     bool closed;
@@ -1332,13 +1343,19 @@ void dn2cpp_event_reset(Dn2CppObject* o)
 // Only task-owned events drive that scheduler; a zero timeout remains a pure probe.
 static bool dn2cpp_task_event_wait(Dn2CppEvent* event, std::unique_lock<std::mutex>& lock, int32_t ms)
 {
+    Dn2CppEntryPollingWait entry(ms < 0);
     auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms < 0 ? 0 : ms);
     while (!event->signaled && !event->closed)
     {
         if (ms == 0 || (ms > 0 && std::chrono::steady_clock::now() >= deadline))
             return false;
+        uint64_t sample = entry.sample();
         lock.unlock();
+        if (entry.observing && dn2cpp_scheduler_has_work())
+            entry.resume();
         dn2cpp_sched_pump();
+        if (entry.observing && !dn2cpp_scheduler_has_work())
+            entry.park_if_unchanged(sample);
         lock.lock();
         if (!event->signaled && !event->closed)
             event->cv.wait_for(lock, std::chrono::milliseconds(1));
@@ -1406,12 +1423,16 @@ int32_t dn2cpp_event_is_set(Dn2CppObject* o)
     return e->signaled ? 1 : 0;
 }
 
-static int32_t dn2cpp_event_try_wait(Dn2CppObject* o)
+static int32_t dn2cpp_event_try_wait(Dn2CppObject* o, bool& externalProgress, bool& pumps)
 {
     Dn2CppSafeWaitHandle* external = nullptr;
     auto* e = dn2cpp_event_from_operand(o, &external);
     if (external != nullptr)
+    {
+        externalProgress = true;
         return dn2cpp_external_wait(external, 0);
+    }
+    pumps |= e->pumpsTaskScheduler;
     std::lock_guard<std::mutex> lk(e->m);
     if (e->closed)
         dn2cpp_throw_object_disposed();
@@ -1446,23 +1467,27 @@ int32_t dn2cpp_event_wait_any(Dn2CppArrayRef* handles)
             dn2cpp_throw_argument_text(&dn2cpp_argument_null_exception_type,
                 dn2cpp_sr_text(DN2CPP_SR_ARGUMENT_NULL_ARRAY_ELEMENT), name);
         }
+    Dn2CppEntryPollingWait entry(true);
     for (;;)
     {
+        uint64_t sample = entry.sample();
+        bool externalProgress = false;
+        bool pumps = false;
         for (int32_t i = 0; i < handles->length; i++)
         {
-            if (dn2cpp_event_try_wait(handles->data[i]))
+            if (dn2cpp_event_try_wait(handles->data[i], externalProgress, pumps))
                 return i;
         }
-        for (int32_t i = 0; i < handles->length; i++)
+        if (pumps)
         {
-            Dn2CppSafeWaitHandle* external = nullptr;
-            auto* event = dn2cpp_event_from_operand(handles->data[i], &external);
-            if (external == nullptr && event->pumpsTaskScheduler)
-            {
-                dn2cpp_sched_pump();
-                break;
-            }
+            if (entry.observing && dn2cpp_scheduler_has_work())
+                entry.resume();
+            dn2cpp_sched_pump();
         }
+        if (externalProgress || (pumps && entry.observing && dn2cpp_scheduler_has_work()))
+            entry.resume();
+        else
+            entry.park_if_unchanged(sample);
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }
@@ -1489,7 +1514,7 @@ const Dn2CppType dn2cpp_barrier_type_obj = { { &dn2cpp_type_type }, &dn2cpp_barr
 struct Dn2CppCountdown : Dn2CppObject
 {
     std::mutex m;
-    std::condition_variable cv;
+    Dn2CppWaitCondition cv;
     int count;
     int initial;
 };
@@ -1605,14 +1630,62 @@ int32_t dn2cpp_countdown_is_set(Dn2CppObject* o)
     return c->count == 0 ? 1 : 0;
 }
 
+struct Dn2CppBarrierArrival;
+
 struct Dn2CppBarrier : Dn2CppObject
 {
     std::mutex m;
-    std::condition_variable cv;
+    Dn2CppWaitCondition cv;
     int total;
     int waiting;
     int64_t phase;
     Dn2CppObject* postPhase;
+    std::thread::id postCaller;
+    Dn2CppBarrierArrival* postWaiters = nullptr;
+};
+
+// Each pending participant's registered stack roots its own callback exception,
+// even if another phase finishes before the participant reacquires the mutex.
+struct Dn2CppBarrierArrival
+{
+    Dn2CppBarrier& barrier;
+    std::unique_lock<std::mutex>& lock;
+    const int64_t phase;
+    Dn2CppObject* exception = nullptr;
+    Dn2CppBarrierArrival* previous = nullptr;
+    Dn2CppBarrierArrival* next = nullptr;
+
+    Dn2CppBarrierArrival(Dn2CppBarrier& b, std::unique_lock<std::mutex>& lk)
+        : barrier(b), lock(lk), phase(b.phase)
+    {
+        ++b.waiting;
+        if (b.postPhase != nullptr)
+        {
+            next = b.postWaiters;
+            if (next != nullptr)
+                next->previous = this;
+            b.postWaiters = this;
+        }
+    }
+
+    ~Dn2CppBarrierArrival()
+    {
+        if (!lock.owns_lock())
+            lock.lock();
+        if (barrier.phase != phase)
+            return; // phase completion detached all of its stack slots
+        if (barrier.postCaller == std::thread::id{})
+            --barrier.waiting;
+        if (barrier.postPhase != nullptr)
+        {
+            if (previous != nullptr)
+                previous->next = next;
+            else
+                barrier.postWaiters = next;
+            if (next != nullptr)
+                next->previous = previous;
+        }
+    }
 };
 
 Dn2CppObject* dn2cpp_barrier_new(int32_t participantCount, Dn2CppObject* postPhaseAction)
@@ -1627,40 +1700,47 @@ Dn2CppObject* dn2cpp_barrier_new(int32_t participantCount, Dn2CppObject* postPha
     return b;
 }
 
-// Invoke the post-phase Action<Barrier> (and its multicast chain), passing the barrier as
-// the single argument, mirroring dn2cpp_paramthread_invoke. Run by the last arriving thread
-// while it holds the barrier mutex (so the action must NOT re-enter the same barrier).
-static void dn2cpp_barrier_run_post(Dn2CppObject* del, Dn2CppObject* barrier)
+static void dn2cpp_barrier_check_post_caller(Dn2CppBarrier* b)
 {
-    if (del == nullptr)
-        return;
-    auto* dg = reinterpret_cast<Dn2CppDelegate*>(del);
-    if (dg->prev != nullptr)
-        dn2cpp_barrier_run_post(dg->prev, barrier);
-    reinterpret_cast<void (*)(Dn2CppObject*, Dn2CppObject*)>(dg->method)(dg->target, barrier);
+    if (b->postCaller == std::this_thread::get_id())
+        dn2cpp_throw_invalid_operation_msg("This method may not be called from within the postPhaseAction.");
 }
 
-// Barrier.SignalAndWait(): the calling thread arrives at the current phase and blocks until
-// every participant has arrived. The last arriver runs the post-phase action, advances the
-// phase, and releases the rest. Always returns 1.
-int32_t dn2cpp_barrier_signal_and_wait(Dn2CppObject* o)
+static void dn2cpp_barrier_finish_phase(Dn2CppBarrier* b, std::unique_lock<std::mutex>& lock)
 {
-    auto* b = static_cast<Dn2CppBarrier*>(o);
-    std::unique_lock<std::mutex> lk(b->m);
-    int64_t myPhase = b->phase;
-    b->waiting++;
-    if (b->waiting == b->total)
+    // Arrivals are committed before the callback. Getters can observe the next
+    // participant counts while the phase number still names this callback.
+    b->waiting = 0;
+    struct AdvancePhase
     {
-        dn2cpp_barrier_run_post(b->postPhase, o); // last arriver, lock held
-        b->phase++;
-        b->waiting = 0;
-        b->cv.notify_all();
-    }
-    else
+        Dn2CppBarrier* barrier;
+        std::unique_lock<std::mutex>& lock;
+        ~AdvancePhase()
+        {
+            if (!lock.owns_lock())
+                lock.lock();
+            barrier->postCaller = {};
+            barrier->postWaiters = nullptr;
+            ++barrier->phase;
+            barrier->cv.notify_all();
+        }
+    } advance{b, lock};
+    if (b->postPhase == nullptr)
+        return;
+    b->postCaller = std::this_thread::get_id();
+    b->cv.notify_all(); // committed timed arrivals now wait for the callback
+    lock.unlock();
+    try
     {
-        b->cv.wait(lk, [b, myPhase] { return b->phase != myPhase; });
+        dn2cpp_paramthread_invoke(b->postPhase, b);
     }
-    return 1;
+    catch (const Dn2CppException& e)
+    {
+        lock.lock();
+        for (auto* waiter = b->postWaiters; waiter != nullptr; waiter = waiter->next)
+            waiter->exception = e.obj;
+        throw;
+    }
 }
 
 // Real .NET's text for Barrier's timeout rejection. It lives in System.Threading's
@@ -1686,26 +1766,37 @@ int32_t dn2cpp_barrier_signal_and_wait_timeout(Dn2CppObject* o, int32_t ms)
     if (ms < -1)
         dn2cpp_throw_argument_out_of_range_actual(kBarrierTimeout, "millisecondsTimeout",
             dn2cpp_box(&dn2cpp_int32_type, &ms, sizeof(ms)), dn2cpp_format_int(ms, 4, nullptr));
-    if (ms < 0)
-        return dn2cpp_barrier_signal_and_wait(o);
     auto* b = static_cast<Dn2CppBarrier*>(o);
     std::unique_lock<std::mutex> lk(b->m);
-    int64_t myPhase = b->phase;
-    b->waiting++;
-    if (b->waiting == b->total)
+    dn2cpp_barrier_check_post_caller(b);
+    if (b->postCaller != std::thread::id{})
+        dn2cpp_throw_invalid_operation_msg("The number of threads using the barrier exceeded the total number of registered participants.");
+    if (b->waiting + 1 == b->total)
     {
-        dn2cpp_barrier_run_post(b->postPhase, o); // last arriver, lock held
-        b->phase++;
-        b->waiting = 0;
-        b->cv.notify_all();
+        dn2cpp_barrier_finish_phase(b, lk);
         return 1;
     }
-    if (!b->cv.wait_for(lk, std::chrono::milliseconds(ms), [b, myPhase] { return b->phase != myPhase; }))
+    Dn2CppObject* exception;
     {
-        b->waiting--; // roll back the signal on timeout
-        return 0;
+        Dn2CppBarrierArrival arrival(*b, lk);
+        if (ms >= 0 && !b->cv.wait_for(lk, std::chrono::milliseconds(ms), [&] {
+                return b->phase != arrival.phase || b->postCaller != std::thread::id{};
+            }))
+            return 0;
+        b->cv.wait(lk, [&] { return b->phase != arrival.phase; });
+        exception = arrival.exception;
+    }
+    if (exception != nullptr)
+    {
+        lk.unlock();
+        dn2cpp_rethrow(exception);
     }
     return 1;
+}
+
+int32_t dn2cpp_barrier_signal_and_wait(Dn2CppObject* o)
+{
+    return dn2cpp_barrier_signal_and_wait_timeout(o, -1);
 }
 
 // Barrier.AddParticipant(s): grow the participant count; returns the phase the new
@@ -1713,9 +1804,16 @@ int32_t dn2cpp_barrier_signal_and_wait_timeout(Dn2CppObject* o, int32_t ms)
 int64_t dn2cpp_barrier_add(Dn2CppObject* o, int32_t n)
 {
     auto* b = static_cast<Dn2CppBarrier*>(o);
-    std::lock_guard<std::mutex> lk(b->m);
+    std::unique_lock<std::mutex> lk(b->m);
+    dn2cpp_barrier_check_post_caller(b);
     b->total += n;
-    return b->phase;
+    int64_t firstPhase = b->phase;
+    if (b->postCaller != std::thread::id{})
+    {
+        ++firstPhase;
+        b->cv.wait(lk, [b, firstPhase] { return b->phase >= firstPhase; });
+    }
+    return firstPhase;
 }
 
 // Barrier.RemoveParticipant(s): shrink the participant count. Lowering the count can satisfy
@@ -1723,15 +1821,11 @@ int64_t dn2cpp_barrier_add(Dn2CppObject* o, int32_t n)
 void dn2cpp_barrier_remove(Dn2CppObject* o, int32_t n)
 {
     auto* b = static_cast<Dn2CppBarrier*>(o);
-    std::lock_guard<std::mutex> lk(b->m);
+    std::unique_lock<std::mutex> lk(b->m);
+    dn2cpp_barrier_check_post_caller(b);
     b->total -= n;
     if (b->total > 0 && b->waiting >= b->total)
-    {
-        dn2cpp_barrier_run_post(b->postPhase, o);
-        b->phase++;
-        b->waiting = 0;
-        b->cv.notify_all();
-    }
+        dn2cpp_barrier_finish_phase(b, lk);
 }
 
 int32_t dn2cpp_barrier_participant_count(Dn2CppObject* o)
@@ -1804,8 +1898,8 @@ struct Dn2CppRwReadHold
 struct Dn2CppRwLock : Dn2CppObject
 {
     std::mutex m;
-    std::condition_variable readersCv;   // waiting readers + upgradeable acquirers
-    std::condition_variable writersCv;   // waiting writers
+    Dn2CppWaitCondition readersCv;   // waiting readers + upgradeable acquirers
+    Dn2CppWaitCondition writersCv;   // waiting writers
     std::vector<Dn2CppRwReadHold> readHolds; // per-thread read holds (size == reader threads)
     bool writer;                         // a write lock is held
     int writeCount;                      // its recursion depth (SupportsRecursion)
@@ -2203,7 +2297,7 @@ struct Dn2CppManagedTimer : Dn2CppObject
     Dn2CppObject* callback;   // TimerCallback delegate (possibly a multicast chain)
     Dn2CppObject* state;      // the object threaded to TimerCallback(state); may be null
     std::mutex m;
-    std::condition_variable cv;
+    Dn2CppWaitCondition cv;
     int64_t dueMs;            // ms until the next fire; < 0 => idle (Timeout.Infinite)
     int64_t periodMs;         // <= 0 (or Infinite, -1) => one-shot (no re-arm)
     bool disposed;
@@ -2287,6 +2381,8 @@ static void dn2cpp_timer_thread(Dn2CppManagedTimer* t)
         }
         lk.lock();
         t->inCallback = false;
+        if (t->disposed)
+            t->cv.notify_all();
         if (!t->disposed)
         {
             if (t->generation != gen)
@@ -2477,7 +2573,7 @@ int32_t dn2cpp_timer_dispose(Dn2CppObject* o)
     std::thread* th;
     std::thread::id tid;
     {
-        std::lock_guard<std::mutex> lk(t->m);
+        std::unique_lock<std::mutex> lk(t->m);
         t->disposed = true;
         dn2cpp_timer_sync_principal(t);
         // Read under t->m: this is the only edge ordering the ctor's publish of
@@ -2486,8 +2582,10 @@ int32_t dn2cpp_timer_dispose(Dn2CppObject* o)
         th = static_cast<std::thread*>(t->handle);
         t->handle = nullptr;
         tid = t->threadId;
+        t->cv.notify_one();
+        if (th != nullptr && tid != std::this_thread::get_id())
+            t->cv.wait(lk, [t] { return !t->inCallback; });
     }
-    t->cv.notify_one();
     // The join stays OUTSIDE t->m — the timer thread holds it around every wait.
     if (th != nullptr)
     {
