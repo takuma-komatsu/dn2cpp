@@ -22,6 +22,7 @@
 # Context-free configured awaits, default-scheduler continuations and yields
 # under the base SynchronizationContext can complete during a finite wait.
 # Yield and pending Task await continuations post to a derived context's pump.
+# Configured Task awaiters preserve options through direct use and state machines.
 # BlockingWaitArgsSubset.cs asserts the argument contracts of the BLOCKING waits
 # (Task.WaitAny/WaitAll) and of Task.WhenAll — the entry-point validation that keeps
 # the C++ runtime's remaining aborts unreachable. WaitAny's contract is deliberately
@@ -96,7 +97,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-derived-task
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-scheduler-inline"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-scheduler-queue"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-task-add-exception"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-task-finish|prefix:before-scheduler-ids|prefix:before-synchronization-context"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-task-finish|prefix:before-scheduler-ids|prefix:before-synchronization-context|prefix:before-configured-options"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|shared-binary:native-delay-deadlines|shared-binary:fresh-cancellation-filters"
 
 # The exception text is platform-owned; its record prefix is the boundary.
@@ -183,6 +184,16 @@ gate_extra_asserts() {
     gate_output byte-witness "$native" 'context yield: True/True/True' \
         'context task: True/True/True/True' 'context post nested join: True/True' \
         'context post source joined: True' --policy crlf || return 1
+    before="$out/before-configured-options.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-configured-options || return 1
+    gate_output select "$native" "$out/before-configured-options.native.stdout" \
+        --before-prefix 'configured options ready: ' --policy crlf || return 1
+    gate_output compare "$out/before-configured-options.native.stdout" "$before" --policy crlf || return 1
+    gate_output byte-witness "$native" 'configured options ready: True/False/False/17' \
+        'configured options result: ok/ok/InvalidOperationException/TaskCanceledException' \
+        'configured options state: True/True/True/True' 'configured options callbacks: True/True/True' \
+        'configured options after thread exit: True/True' \
+        --policy crlf || return 1
     before="$out/before-semaphore-waiters.stdout"
     gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-semaphore-waiters
     gate_output prefix "$native" "$before" --before '== semaphore waiter helpers ==' --policy crlf

@@ -2175,6 +2175,7 @@ inline constexpr const char* DN2CPP_SR_RANGE = "ArgumentOutOfRange_Range";
 inline constexpr const char* DN2CPP_SR_UTC_OUT_OF_RANGE = "Argument_UTCOutOfRange";
 inline constexpr const char* DN2CPP_SR_YEAR = "ArgumentOutOfRange_Year";
 inline constexpr const char* DN2CPP_SR_ARGUMENT_OUT_OF_RANGE = "Arg_ArgumentOutOfRangeException";
+inline constexpr const char* DN2CPP_SR_TASK_GENERIC_AWAIT_OPTIONS = "TaskT_ConfigureAwait_InvalidOptions";
 inline constexpr const char* DN2CPP_SR_CANCELLATION_SOURCE_DISPOSED = "CancellationTokenSource_Disposed";
 inline constexpr const char* DN2CPP_SR_MUST_BE_NON_ZERO = "ArgumentOutOfRange_Generic_MustBeNonZero";
 inline constexpr const char* DN2CPP_SR_EMPTY_WAITHANDLE_ARRAY = "Argument_EmptyWaithandleArray";
@@ -7804,11 +7805,31 @@ struct Dn2CppTaskAwaiter
     Dn2CppTask* task;
 };
 
+enum : uint32_t
+{
+    DN2CPP_AWAIT_CONTINUE_ON_CONTEXT = 1,
+    DN2CPP_AWAIT_SUPPRESS_THROWING = 2,
+    DN2CPP_AWAIT_FORCE_YIELDING = 4,
+};
+
 struct Dn2CppConfiguredTaskAwaiter
 {
     Dn2CppTask* task;
-    bool captureContext;
+    uint32_t options;
+
+    bool captures_context() const { return (options & DN2CPP_AWAIT_CONTINUE_ON_CONTEXT) != 0; }
+    bool forces_yield() const { return (options & DN2CPP_AWAIT_FORCE_YIELDING) != 0; }
+    bool is_completed() const
+    {
+        return !forces_yield() && dn2cpp_null_check(task)->status != DN2CPP_TASK_PENDING;
+    }
 };
+
+Dn2CppConfiguredTaskAwaiter dn2cpp_task_configure_await(Dn2CppTask* task,
+    uint32_t options, bool isGeneric);
+void dn2cpp_configured_task_get_result(const Dn2CppConfiguredTaskAwaiter* awaiter);
+void dn2cpp_configured_task_on_completed(const Dn2CppConfiguredTaskAwaiter* awaiter,
+    Dn2CppObject* continuation);
 
 // default(ValueTask) / default(ValueTask<T>) carries a NULL task pointer — the
 // BCL encodes "completed successfully with default(T)" as `_obj == null` (e.g.
@@ -7977,15 +7998,16 @@ void dn2cpp_task_set_exception(Dn2CppTask* t, Dn2CppObject* exception);
 // preserving the thrown object for await.
 void dn2cpp_task_set_exception_or_canceled(Dn2CppTask* t, Dn2CppObject* exception);
 // Register a resumption to run when `t` completes (the suspension path). If `t`
-// is already complete the resumption is posted immediately.
+// is already complete the resumption is posted immediately. A forced configured
+// await can request the pool instead of the owner queue when it has no context.
 void dn2cpp_task_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state,
-    bool captureContext = true, bool postToContext = false);
+    bool captureContext = true, bool postToContext = false, bool poolIfReady = false);
 // A BCL builder's suspension: dn2cpp_task_on_completed, except that a throw from the
 // registration goes to dn2cpp_async_await_rejected, which re-raises it through
 // Task.ThrowAsync instead of into the suspended method. An explicit awaiter.OnCompleted
 // call keeps the synchronous throw.
 void dn2cpp_async_await_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state,
-    bool captureContext = true, bool postToContext = false);
+    bool captureContext = true, bool postToContext = false, bool poolIfReady = false);
 void dn2cpp_async_await_rejected(Dn2CppObject* exc);
 // Invoke a no-arg System.Action delegate (and its multicast chain) generically, via
 // the uniform delegate layout.

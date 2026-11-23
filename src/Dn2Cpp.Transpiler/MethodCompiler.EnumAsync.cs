@@ -794,15 +794,15 @@ internal sealed partial class MethodCompiler
                 // Task and ValueTask share native layouts, not context policy.
                 bool postToContext = awaiter is { Module.AssemblyName: "System.Private.CoreLib" }
                     && _c.GenericDefFullName(awaiter) is "System.Runtime.CompilerServices.TaskAwaiter" or "ConfiguredTaskAwaiter";
+                string configured = $"((Dn2CppConfiguredTaskAwaiter*)({awaiterRef.Expr}))";
                 string resume = awaiter?.IntrinsicCppName switch
                 {
                     "Dn2CppTaskAwaiter" =>
                         $"{subscribe}(((Dn2CppTaskAwaiter*)({awaiterRef.Expr}))->task, " +
                         $"(void (*)(void*))&{mn.Emittable.CppName}, __sm{(postToContext ? ", true, true" : "")});",
                     "Dn2CppConfiguredTaskAwaiter" =>
-                        $"{subscribe}(((Dn2CppConfiguredTaskAwaiter*)({awaiterRef.Expr}))->task, " +
-                        $"(void (*)(void*))&{mn.Emittable.CppName}, __sm, " +
-                        $"((Dn2CppConfiguredTaskAwaiter*)({awaiterRef.Expr}))->captureContext{(postToContext ? ", true" : "")});",
+                        $"{subscribe}({configured}->task, (void (*)(void*))&{mn.Emittable.CppName}, __sm, " +
+                        $"{configured}->captures_context(){(postToContext ? $", true, {configured}->forces_yield()" : "")});",
                     "Dn2CppYieldAwaiter" =>
                         $"dn2cpp_async_yield_on_completed((void (*)(void*))&{mn.Emittable.CppName}, __sm, {(reraise ? "true" : "false")});",
                     // A custom (non-Task/Yield) awaiter that genuinely suspends:

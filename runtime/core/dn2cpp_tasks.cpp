@@ -1135,6 +1135,30 @@ static void dn2cpp_sched_invoke_cont(Dn2CppCont* c)
     dn2cpp_sched_invoke(c->fn, c->state, c->wallTimers);
 }
 
+static bool dn2cpp_sched_can_dispatch_pool()
+{
+#ifdef __EMSCRIPTEN__
+    return false;
+#else
+    // Host callbacks stay on their own scheduler. User threads and pool
+    // workers have a scoped guard even in an engine-hosted process.
+    return Dn2CppGCThread::active || !dn2cpp_boundary_sink_installed();
+#endif
+}
+
+static void dn2cpp_sched_pool_cont(Dn2CppObject*, Dn2CppObject* state)
+{
+    dn2cpp_sched_invoke_cont(reinterpret_cast<Dn2CppCont*>(state));
+}
+
+static void dn2cpp_sched_queue_pool_cont(Dn2CppCont* c)
+{
+    static Dn2CppDelegate runner{{&dn2cpp_object_type}, nullptr,
+        reinterpret_cast<void*>(&dn2cpp_sched_pool_cont), nullptr, nullptr, nullptr, nullptr, false};
+    // The pool roots the continuation and its state before a worker can run it.
+    dn2cpp_threadpool_queue(&runner, reinterpret_cast<Dn2CppObject*>(c));
+}
+
 // A real Object is the Post state. Keep the context and suspended machine
 // reachable through the task until publication, then through the pump's queue.
 struct Dn2CppPostedAwait : Dn2CppObject
@@ -1614,14 +1638,22 @@ static Dn2CppCont* dn2cpp_task_register_cont(Dn2CppTask* t, void (*fn)(void*), v
     return nullptr;
 }
 
-static void dn2cpp_task_queue_cont(Dn2CppTask* t, void (*fn)(void*), void* state, bool needsOwner)
+static void dn2cpp_task_queue_cont(Dn2CppTask* t, void (*fn)(void*), void* state,
+    bool needsOwner, bool poolIfReady = false)
 {
     if (auto* ready = dn2cpp_task_register_cont(t, fn, state, false, needsOwner))
-        dn2cpp_fire_conts(ready);
+    {
+        // A ready forced await cannot rely on an ordinary owner's pump.
+        // Pool workers can drain their own queue while unwrapping Task.Run.
+        if (poolIfReady && !needsOwner && !ready->owner->pool_worker && dn2cpp_sched_can_dispatch_pool())
+            dn2cpp_sched_queue_pool_cont(ready);
+        else
+            dn2cpp_fire_conts(ready);
+    }
 }
 
 void dn2cpp_task_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state,
-    bool captureContext, bool postToContext)
+    bool captureContext, bool postToContext, bool poolIfReady)
 {
     if (captureContext && postToContext)
     {
@@ -1632,7 +1664,7 @@ void dn2cpp_task_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state,
             return;
         }
     }
-    dn2cpp_task_queue_cont(t, fn, state, captureContext && dn2cpp_has_custom_sync_context());
+    dn2cpp_task_queue_cont(t, fn, state, captureContext && dn2cpp_has_custom_sync_context(), poolIfReady);
 }
 
 // .NET's builders hand a throwing continuation registration to Task.ThrowAsync, so the
@@ -1647,7 +1679,7 @@ void dn2cpp_async_await_rejected(Dn2CppObject* exc)
 // A source-backed task may run its source's OnCompleted while registering.
 // A rejected registration registers nothing, so the method stays suspended.
 void dn2cpp_async_await_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state,
-    bool captureContext, bool postToContext)
+    bool captureContext, bool postToContext, bool poolIfReady)
 {
     if (t->vtsBridge != nullptr)
     {
@@ -1661,7 +1693,7 @@ void dn2cpp_async_await_on_completed(Dn2CppTask* t, void (*fn)(void*), void* sta
             return;
         }
     }
-    dn2cpp_task_on_completed(t, fn, state, captureContext, postToContext);
+    dn2cpp_task_on_completed(t, fn, state, captureContext, postToContext, poolIfReady);
 }
 
 // Internal join notifications run outside g_task_mtx, both for settled inputs and
@@ -1707,6 +1739,15 @@ void dn2cpp_action_invoke(Dn2CppObject* action)
 static void dn2cpp_action_continuation(void* state)
 {
     dn2cpp_action_invoke(static_cast<Dn2CppObject*>(state));
+}
+
+void dn2cpp_configured_task_on_completed(const Dn2CppConfiguredTaskAwaiter* awaiter,
+    Dn2CppObject* continuation)
+{
+    if (continuation == nullptr)
+        dn2cpp_throw_argument_null_param("continuation");
+    dn2cpp_task_on_completed(dn2cpp_null_check(awaiter->task), &dn2cpp_action_continuation,
+        continuation, awaiter->captures_context(), true, awaiter->forces_yield());
 }
 
 // Register a System.Action to run when the task completes — the runtime side of a
@@ -3720,6 +3761,39 @@ Dn2CppTask* dn2cpp_task_block(Dn2CppTask* t)
     return t;
 }
 
+Dn2CppConfiguredTaskAwaiter dn2cpp_task_configure_await(Dn2CppTask* task,
+    uint32_t options, bool isGeneric)
+{
+    constexpr uint32_t allowed = DN2CPP_AWAIT_CONTINUE_ON_CONTEXT
+        | DN2CPP_AWAIT_SUPPRESS_THROWING | DN2CPP_AWAIT_FORCE_YIELDING;
+    if (isGeneric && (options & DN2CPP_AWAIT_SUPPRESS_THROWING) != 0)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_TASK_GENERIC_AWAIT_OPTIONS, "options");
+    if ((options & ~allowed) != 0)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ARGUMENT_OUT_OF_RANGE, "options");
+    return {task, options};
+}
+
+void dn2cpp_configured_task_get_result(const Dn2CppConfiguredTaskAwaiter* awaiter)
+{
+    auto* task = dn2cpp_null_check(awaiter->task);
+    if ((awaiter->options & DN2CPP_AWAIT_SUPPRESS_THROWING) == 0)
+    {
+        dn2cpp_task_block(task);
+        return;
+    }
+    if (!dn2cpp_task_drain_settle(task))
+        dn2cpp_task_throw_deadlock();
+    // Suppression observes a fault without clearing it or raising its EDI.
+    if (task->status == DN2CPP_TASK_FAULTED)
+    {
+        if (auto* holder = dn2cpp_task_holder_for_observation(task))
+        {
+            Dn2CppMonitorGuard guard(holder);
+            g_task_holder_observe(holder);
+        }
+    }
+}
+
 // The BLOCKING-WAIT funnel: Task.Wait()/Wait(timeout)/Task<T>.Result.
 // Real .NET wraps a fault or cancellation in a fresh AggregateException here —
 // the wrap is the contract of the blocking wait, not of the task, so this is the
@@ -3739,13 +3813,6 @@ Dn2CppTask* dn2cpp_task_block_wait(Dn2CppTask* t)
         dn2cpp_throw(dn2cpp_aggregate_exception_new(dn2cpp_task_fault_snapshot(t)));
     }
     return t;
-}
-
-// A positive wait cannot run arbitrary managed code on its caller. Context-free
-// resumptions can run on the pool; a captured context keeps its queue position.
-static void dn2cpp_sched_pool_cont(Dn2CppObject*, Dn2CppObject* state)
-{
-    dn2cpp_sched_invoke_cont(reinterpret_cast<Dn2CppCont*>(state));
 }
 
 static Dn2CppCont* dn2cpp_sched_take_unbound_locked(Dn2CppScheduler* s)
@@ -3810,11 +3877,7 @@ static bool dn2cpp_task_drain_timed(Dn2CppTask* t, int32_t ms)
 {
     auto* s = dn2cpp_sched_self();
     Dn2CppTimedTaskWait wait(t, s, ms);
-#ifdef __EMSCRIPTEN__
-    bool canDispatch = false;
-#else
-    bool canDispatch = Dn2CppGCThread::active || !dn2cpp_boundary_sink_installed();
-#endif
+    const bool canDispatch = dn2cpp_sched_can_dispatch_pool();
     if (t->vtsBridge != nullptr)
         dn2cpp_vts_arm(t);
     while (t->status == DN2CPP_TASK_PENDING)
@@ -3829,14 +3892,14 @@ static bool dn2cpp_task_drain_timed(Dn2CppTask* t, int32_t ms)
         std::unique_lock<std::mutex> lock(s->mtx);
         if (t->status != DN2CPP_TASK_PENDING)
             break;
+        // A positive wait cannot run arbitrary managed code on its caller.
+        // Context-free resumptions may move to the pool; captured ones stay put.
         if (auto* c = canDispatch ? dn2cpp_sched_take_unbound_locked(s) : nullptr)
         {
             lock.unlock();
             dn2cpp_pending_cont_unlink(c);
             c->wallTimers = true;
-            static Dn2CppDelegate runner{{&dn2cpp_object_type}, nullptr,
-                reinterpret_cast<void*>(&dn2cpp_sched_pool_cont), nullptr, nullptr, nullptr, nullptr, false};
-            dn2cpp_threadpool_queue(&runner, reinterpret_cast<Dn2CppObject*>(c));
+            dn2cpp_sched_queue_pool_cont(c);
         }
         else
         {
