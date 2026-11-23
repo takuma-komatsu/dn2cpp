@@ -779,9 +779,8 @@ internal sealed partial class MethodCompiler
             // ---- Task.Yield ----
             // Task.Yield returns a YieldAwaitable; GetAwaiter a YieldAwaiter.
             // Both are the stateless Dn2CppYieldAwaiter. IsCompleted is always
-            // false, so awaiting always takes the suspend path, which posts the
-            // resumption onto the run queue (TranslateAsyncGenericIntrinsic) — i.e.
-            // the method yields its turn and resumes on the scheduler's next pass.
+            // false, so a state-machine await always posts a resumption to the
+            // captured context or to the run queue (TranslateAsyncGenericIntrinsic).
             case ("System.Threading.Tasks.Task", "Yield"):
                 Push(StackKind.Struct, "Dn2CppYieldAwaiter", "Dn2CppYieldAwaiter{}");
                 return true;

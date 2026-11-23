@@ -13,6 +13,7 @@ namespace CustomAsyncTaskType
             CustomTaskGenericSubset.Program.__GateEntry();
             CustomTaskLocalSubset.Program.__GateEntry();
             CustomTaskValueTaskSubset.Program.__GateEntry();
+            CustomTaskLocalSubset.Program.RunPostRejection();
         }
     }
 }

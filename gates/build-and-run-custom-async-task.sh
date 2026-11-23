@@ -31,6 +31,7 @@
 #   1. CORRECTNESS. Exact diff vs real .NET. A correct adoption SHOULD match, so the program
 #      is its own oracle. Every await is sequential: completion order must be a property of
 #      the program, never of the clock.
+#      A synchronous Post rejection faults an adopted app task rather than aborting.
 #
 #   2. THE LIBRARY'S IL IS GONE. Its pool / runner / promise / scheduler must have no
 #      emitted bodies or instance layouts. Identity-only reflection metadata may name them.
@@ -405,6 +406,8 @@ gate_output status "$(cat "$out/native.status")" "$(cat "$out/oracle.status")"
 gate_capture "$out-real/native" run_bounded "./$out-real/$project$EXE_EXT"
 gate_output compare "$out-real/native.stdout" "$out/oracle.stdout"
 gate_output status "$(cat "$out-real/native.status")" "$(cat "$out/oracle.status")"
+gate_output byte-witness "$out/native.stdout" 'local: caught local-post-rejection' --policy crlf
+gate_output byte-witness "$out-real/native.stdout" 'local: caught local-post-rejection' --policy crlf
 gate_capture "$out-exceed/oracle" run_bounded dotnet "$app_exceed"
 gate_capture "$out-exceed/native" run_bounded "./$out-exceed/$project_exceed$EXE_EXT"
 gate_output compare "$out-exceed/native.stdout" "$out-exceed/oracle.stdout"

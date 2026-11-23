@@ -706,13 +706,20 @@ void dn2cpp_threadstatic_release()
 // thread_local is not scanned on every platform. The thread_local here only
 // caches the slot's address. Reads before any install stay allocation-free.
 static thread_local Dn2CppObject** t_sync_ctx_slot = nullptr;
+static thread_local Dn2CppSyncContextPost t_sync_ctx_post{}; // image data and code, not GC references
 
 Dn2CppObject* dn2cpp_sync_ctx_get()
 {
     return t_sync_ctx_slot != nullptr ? *t_sync_ctx_slot : nullptr;
 }
 
-void dn2cpp_sync_ctx_set(Dn2CppObject* ctx)
+Dn2CppSyncContextPost dn2cpp_sync_ctx_get_post()
+{
+    return t_sync_ctx_post;
+}
+
+void dn2cpp_sync_ctx_set(Dn2CppObject* ctx, const Dn2CppTypeInfo* baseType,
+    const Dn2CppTypeInfo* callbackType, int32_t postSlot)
 {
     if (t_sync_ctx_slot == nullptr)
     {
@@ -721,6 +728,10 @@ void dn2cpp_sync_ctx_set(Dn2CppObject* ctx)
         t_sync_ctx_slot = static_cast<Dn2CppObject**>(dn2cpp_alloc_pinned(sizeof(Dn2CppObject*)));
     }
     dn2cpp_gc_store_ref(t_sync_ctx_slot, ctx);
+    // Native hosts that own their own pump install only Current.
+    t_sync_ctx_post = ctx != nullptr && baseType != nullptr && ctx->type != baseType
+        ? Dn2CppSyncContextPost{ctx->type->vtable[postSlot], callbackType}
+        : Dn2CppSyncContextPost{};
 }
 
 // Thread exit: drop the slot with the thread, like the thread-static block —
@@ -731,6 +742,7 @@ void dn2cpp_sync_ctx_release()
     {
         dn2cpp_free_pinned(t_sync_ctx_slot);
         t_sync_ctx_slot = nullptr;
+        t_sync_ctx_post = {};
     }
 }
 

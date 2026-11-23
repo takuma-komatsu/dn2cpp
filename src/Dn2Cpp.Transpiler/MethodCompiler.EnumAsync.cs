@@ -777,7 +777,7 @@ internal sealed partial class MethodCompiler
                         $"{_method.DeclaringClass.FullName}.{_method.Name}: state machine {sm.FullName} has no AsyncTaskMethodBuilder field");
                 // The resumption differs by awaiter: a Task-backed await registers
                 // MoveNext as a continuation on the awaited task; Task.Yield posts
-                // it straight onto the run queue to resume on the next turn.
+                // it immediately, without an antecedent task.
                 // Every arm plants MoveNext's address as the continuation — the custom
                 // one through CustomAwaiterResume, which notes it itself — so this
                 // suspension needs MoveNext's body no less than a direct call would.
@@ -790,17 +790,21 @@ internal sealed partial class MethodCompiler
                 // MoveNext.
                 bool reraise = _c.AdoptedAsyncKey(builderField.Type.Class!) is null;
                 string subscribe = reraise ? "dn2cpp_async_await_on_completed" : "dn2cpp_task_on_completed";
-                string resume = methodArgs[0].Class?.IntrinsicCppName switch
+                var awaiter = methodArgs[0].Class;
+                // Task and ValueTask share native layouts, not context policy.
+                bool postToContext = awaiter is { Module.AssemblyName: "System.Private.CoreLib" }
+                    && _c.GenericDefFullName(awaiter) is "System.Runtime.CompilerServices.TaskAwaiter" or "ConfiguredTaskAwaiter";
+                string resume = awaiter?.IntrinsicCppName switch
                 {
                     "Dn2CppTaskAwaiter" =>
                         $"{subscribe}(((Dn2CppTaskAwaiter*)({awaiterRef.Expr}))->task, " +
-                        $"(void (*)(void*))&{mn.Emittable.CppName}, __sm);",
+                        $"(void (*)(void*))&{mn.Emittable.CppName}, __sm{(postToContext ? ", true, true" : "")});",
                     "Dn2CppConfiguredTaskAwaiter" =>
                         $"{subscribe}(((Dn2CppConfiguredTaskAwaiter*)({awaiterRef.Expr}))->task, " +
                         $"(void (*)(void*))&{mn.Emittable.CppName}, __sm, " +
-                        $"((Dn2CppConfiguredTaskAwaiter*)({awaiterRef.Expr}))->captureContext);",
+                        $"((Dn2CppConfiguredTaskAwaiter*)({awaiterRef.Expr}))->captureContext{(postToContext ? ", true" : "")});",
                     "Dn2CppYieldAwaiter" =>
-                        $"dn2cpp_sched_post((void (*)(void*))&{mn.Emittable.CppName}, __sm);",
+                        $"dn2cpp_async_yield_on_completed((void (*)(void*))&{mn.Emittable.CppName}, __sm, {(reraise ? "true" : "false")});",
                     // A custom (non-Task/Yield) awaiter that genuinely suspends:
                     // synthesize a System.Action wrapping the boxed SM's MoveNext and
                     // hand it to the awaiter's INotifyCompletion.OnCompleted (or the

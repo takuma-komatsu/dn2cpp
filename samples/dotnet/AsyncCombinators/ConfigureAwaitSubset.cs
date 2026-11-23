@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -39,10 +40,36 @@ namespace ConfigureAwaitSubset
 
         private sealed class RecordingContext : SynchronizationContext
         {
+            private readonly Queue<(SendOrPostCallback Callback, object? State)> _pending = new();
             private int _posts;
             public int Posts => Volatile.Read(ref _posts);
+            public bool NestedJoinCompleted { get; private set; }
+            public Task? SourceJoin { private get; set; }
+            public bool SourceJoinCompleted { get; private set; }
+
             public override void Post(SendOrPostCallback callback, object? state)
-                => Interlocked.Increment(ref _posts);
+            {
+                // Post may synchronously finish an independent join before returning.
+                var nested = new TaskCompletionSource<int>();
+                Task<int[]> joined = Task.WhenAll<int>(nested.Task);
+                nested.SetResult(1);
+                NestedJoinCompleted = joined.IsCompletedSuccessfully;
+                SourceJoinCompleted = SourceJoin?.IsCompletedSuccessfully == true;
+
+                lock (_pending)
+                    _pending.Enqueue((callback, state));
+                Interlocked.Increment(ref _posts);
+            }
+
+            public bool PumpOne()
+            {
+                (SendOrPostCallback Callback, object? State) work;
+                lock (_pending)
+                    if (!_pending.TryDequeue(out work))
+                        return false;
+                work.Callback(work.State);
+                return true;
+            }
         }
 
         private static async Task<bool> ResumeWithoutContext(Task input)
@@ -55,6 +82,51 @@ namespace ConfigureAwaitSubset
         {
             await Task.Yield();
             return SynchronizationContext.Current is null;
+        }
+
+        private static async Task<bool> YieldUnderContext(SynchronizationContext expected)
+        {
+            await Task.Yield();
+            return ReferenceEquals(SynchronizationContext.Current, expected);
+        }
+
+        private static async Task<bool> AwaitUnderContext(Task<int> input, SynchronizationContext expected)
+        {
+            int result = await input;
+            return result == 42 && ReferenceEquals(SynchronizationContext.Current, expected);
+        }
+
+        internal static void RunPumpedContext()
+        {
+            var recording = new RecordingContext();
+            SynchronizationContext? previous = SynchronizationContext.Current;
+            try
+            {
+                SynchronizationContext.SetSynchronizationContext(recording);
+                Task<bool> yielded = YieldUnderContext(recording);
+                bool yieldPending = !yielded.IsCompleted;
+                bool yieldPumped = recording.PumpOne();
+                Console.WriteLine($"context yield: {yieldPending}/{yieldPumped}/{yielded.IsCompletedSuccessfully && yielded.Result}");
+
+                var source = new TaskCompletionSource<int>();
+                Task<int[]> outerJoin = Task.WhenAll<int>(source.Task);
+                recording.SourceJoin = outerJoin;
+                Task<bool> awaited = AwaitUnderContext(source.Task, recording);
+                bool awaitPending = !awaited.IsCompleted;
+                SynchronizationContext.SetSynchronizationContext(null);
+                source.SetResult(42);
+                bool onlyPumped = !awaited.IsCompleted;
+                SynchronizationContext.SetSynchronizationContext(recording);
+                bool taskPumped = recording.PumpOne();
+                Console.WriteLine($"context task: {awaitPending}/{onlyPumped}/{taskPumped}/{awaited.IsCompletedSuccessfully && awaited.Result}");
+                bool outerSettled = outerJoin.IsCompletedSuccessfully && outerJoin.Result[0] == 42;
+                Console.WriteLine($"context post nested join: {recording.NestedJoinCompleted}/{outerSettled}");
+                Console.WriteLine($"context post source joined: {recording.SourceJoinCompleted}");
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(previous);
+            }
         }
 
         internal static void RunTimedWaitContexts()
