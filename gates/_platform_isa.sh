@@ -1011,10 +1011,10 @@ platform_isa_native_gate() {
         plan_rows=$(platform_isa_output plan-values "$out/coverage-plan.lf" row) || return 1
         plan_exercises=$(platform_isa_output plan-values "$out/coverage-plan.lf" exercise) || return 1
         plan_invalid=$(platform_isa_output plan-values "$out/coverage-plan.lf" invalid) || return 1
-        misplaced=$(comm -23 <(printf '%s\n' "$plan_exercises") <(printf '%s\n' "$plan_rows"))
+        misplaced=$(LC_ALL=C comm -23 <(printf '%s\n' "$plan_exercises") <(printf '%s\n' "$plan_rows"))
         [ -z "$misplaced" ] \
             || { echo "FAIL: $shard registers exercises outside its table: $misplaced" >&2; return 1; }
-        misplaced=$(comm -23 <(printf '%s\n' "$plan_invalid") <(printf '%s\n' "$plan_rows"))
+        misplaced=$(LC_ALL=C comm -23 <(printf '%s\n' "$plan_invalid") <(printf '%s\n' "$plan_rows"))
         [ -z "$misplaced" ] \
             || { echo "FAIL: $shard registers invalid-immediate witnesses outside its table: $misplaced" >&2; return 1; }
         expected_body_markers=""
