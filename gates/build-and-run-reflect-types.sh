@@ -1339,7 +1339,8 @@ unset -f gate_extra_asserts
 
 # Unknown generic arguments retain no executable target. Independent static calls,
 # finite constraint proofs and bodyless runtime-template identity remain usable.
-# Freeze catchable refusals and exact site diagnostics in both sharing modes.
+# Freeze missing-code refusals and site diagnostics in both sharing modes.
+# Invalid arguments must be rejected before looking for AOT code.
 closed_generic_asserts() {
     local out="$1" project="$2" report="$1-report" native oracle line kind assembly method offset api reason fix type prefix before
     native="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-native-50.stdout"
@@ -1360,7 +1361,6 @@ closed_generic_asserts() {
     fi
     oracle="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-oracle-51.stdout"
     gate_capture_ok "${oracle%.stdout}" run_bounded dotnet "$_CG_APP" || return $?
-    gate_output view "$oracle" "$oracle.records" --policy crlf
     for line in 'constraint interface control: dispose:Disposable' 'constraint invariant control: tag:RightTag' \
         'constraint template body control: List`1' 'constraint template method control: Int32'; do
         gate_output witness "$native" "$line" --count any --policy crlf && gate_output witness "$oracle" "$line" --count any --policy crlf \
@@ -1380,8 +1380,11 @@ closed_generic_asserts() {
             || { echo "FAIL: a proved constraint tuple was not instantiated: $type" >&2; return 1; }
     done
     for kind in array invariant "template body" "template method"; do
-        grep -q "^constraint $kind rejected: ArgumentException " "$oracle.records" \
-            || { echo "FAIL: the CLR did not reject the invalid $kind constraint" >&2; return 1; }
+        line="constraint $kind rejected: ArgumentException .+"
+        gate_output match-record "$native" "$line" --count 1 --policy crlf \
+            || { echo "FAIL: native did not throw ArgumentException for the invalid $kind constraint" >&2; return 1; }
+        gate_output match-record "$oracle" "$line" --count 1 --policy crlf \
+            || { echo "FAIL: the CLR did not throw ArgumentException for the invalid $kind constraint" >&2; return 1; }
     done
     before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-52.stdout"
     gate_capture_ok "${before%.stdout}" run_bounded "$out/$project$EXE_EXT" before-template-constraint-fallbacks || return $?
