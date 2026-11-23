@@ -198,6 +198,19 @@ static class Program
     {
         static bool MatchesModule(in Module value, Module expected) =>
             ReferenceEquals(value, expected) && value.Name == expected.Name;
+        static void Assign(ref Module target, Module value) => target = value;
+        static bool RejectsWritableAddress(Module[] array, Module value)
+        {
+            try
+            {
+                Assign(ref array[0], value);
+                return false;
+            }
+            catch (ArrayTypeMismatchException)
+            {
+                return true;
+            }
+        }
         static bool SameAssembly(Assembly first, Assembly second) => ReferenceEquals(first, second);
         static bool Same<T>(ref T left, T right) where T : class => ReferenceEquals(left, right);
         static DerivedAssembly NewAssembly() =>
@@ -217,6 +230,18 @@ static class Program
             + " enumerated=" + ReferenceEquals(modules[0], module)
             + " byref=" + MatchesModule(in modules[0], module)
             + " generic ref=" + Same(ref module, module));
+
+        Module[] withResources = declared.Assembly.GetModules(getResourceModules: true);
+        Type arrayType = modules.GetType();
+        Console.WriteLine("module array type=" + arrayType.FullName + "/" + arrayType.GetElementType()!.FullName);
+        Console.WriteLine("module array overload=" + (withResources.GetType() == arrayType)
+            + ":" + ReferenceEquals(withResources[0], module) + "/" + MatchesModule(in withResources[0], module));
+
+        Module replacement = typeof(Program).Module;
+        Module[] exact = { module };
+        Assign(ref exact[0], replacement);
+        Console.WriteLine("module writable address=" + RejectsWritableAddress(modules, replacement)
+            + "/" + RejectsWritableAddress(withResources, replacement) + " exact=" + ReferenceEquals(exact[0], replacement));
     }
 
     internal static void RunArrayObjectTypes()
