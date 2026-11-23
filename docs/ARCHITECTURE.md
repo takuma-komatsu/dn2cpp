@@ -1876,8 +1876,12 @@ its CoreCLR continuation machinery is transpiled.
   suspending activation reads nothing but its return value afterwards.
 - **Awaits lower over tasks and `Task.Yield`.** An await on a `Task`, a
   `ValueTask` or a configured form of either registers the resumption on the
-  native task, and `Task.Yield` posts it to the run queue. A body that awaits a
-  custom awaiter is refused with `NotSupportedException`.
+  native task, and `Task.Yield` posts it to the run queue. Plain and configured
+  Task awaitables use the state-machine context routing. A literal
+  `ForceYielding` can dispatch an already-ready Task without the submitting
+  thread pumping its scheduler, and non-generic `SuppressThrowing` observes a
+  fault without raising it. ValueTask keeps its separate source bridge. A body
+  that awaits a custom awaiter is refused with `NotSupportedException`.
 - **A shared generic body is not lowered.** The frame layout and the
   trampoline are spelled per closed body, so a runtime-async generic method
   compiles per instantiation.

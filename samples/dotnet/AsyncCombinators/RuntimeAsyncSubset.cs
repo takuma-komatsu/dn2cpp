@@ -7,7 +7,8 @@
 // method; and awaits inside a try with catch and finally handlers, one of them with
 // a value on the evaluation stack. A configured Task or ValueTask await that declines
 // the captured context resumes while its caller blocks with a timeout under a derived
-// synchronization context.
+// synchronization context. Task capture posts to a derived context; a forced
+// await of a ready Task can finish after its submitting thread exits.
 
 using System;
 using System.Runtime.CompilerServices;
@@ -130,6 +131,64 @@ namespace RuntimeAsyncSubset
             return SynchronizationContext.Current is null;
         }
 
+        private sealed class PumpContext(ManualResetEventSlim posted) : SynchronizationContext
+        {
+            private SendOrPostCallback callback;
+            private object state;
+
+            public override void Post(SendOrPostCallback callback, object state)
+            {
+                this.state = state;
+                this.callback = callback;
+                posted.Set();
+            }
+
+            public bool PumpOne(TimeSpan timeout)
+            {
+                if (!posted.Wait(timeout))
+                    return false;
+                callback(state);
+                return true;
+            }
+        }
+
+        [RuntimeAsyncMethodGeneration(true)]
+        private static async Task<int> AwaitPlainTask(Task<int> task) => await task;
+
+        [RuntimeAsyncMethodGeneration(true)]
+        private static async Task<int> AwaitCapturedTask(Task<int> task) =>
+            await task.ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext);
+
+        [RuntimeAsyncMethodGeneration(true)]
+        private static async Task<int> AwaitForcedReady()
+        {
+            await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+            return 17;
+        }
+
+        private static bool PostsToContext(bool configured, TimeSpan timeout)
+        {
+            using var posted = new ManualResetEventSlim();
+            var context = new PumpContext(posted);
+            var source = new TaskCompletionSource<int>();
+            SynchronizationContext previous = SynchronizationContext.Current;
+            try
+            {
+                SynchronizationContext.SetSynchronizationContext(context);
+                Task<int> continuation = configured ? AwaitCapturedTask(source.Task) : AwaitPlainTask(source.Task);
+                bool pending = !continuation.IsCompleted;
+                SynchronizationContext.SetSynchronizationContext(null);
+                source.SetResult(23);
+                SynchronizationContext.SetSynchronizationContext(context);
+                return pending && !continuation.IsCompleted && context.PumpOne(timeout)
+                    && continuation.IsCompletedSuccessfully && continuation.Result == 23;
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(previous);
+            }
+        }
+
         internal static void RunConfiguredContexts()
         {
             var timeout = TimeSpan.FromSeconds(8);
@@ -148,6 +207,13 @@ namespace RuntimeAsyncSubset
             {
                 SynchronizationContext.SetSynchronizationContext(previous);
             }
+
+            Task<int> forced = null;
+            var worker = new Thread(() => forced = AwaitForcedReady());
+            worker.Start();
+            worker.Join();
+            Console.WriteLine("runtime async force after thread exit: " + (forced.Wait(timeout) && forced.Result == 17));
+            Console.WriteLine("runtime async task Post: " + PostsToContext(false, timeout) + "/" + PostsToContext(true, timeout));
         }
     }
 }

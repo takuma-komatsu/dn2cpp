@@ -474,11 +474,8 @@ internal sealed partial class MethodCompiler
         string? awaitedDef = awaited is { Kind: TypeKind.Class, Class: { } awaitedClass }
             ? Comp.GenericDefFullName(awaitedClass) : null;
         string resume = _method.CppName + "__resume";
-        string registration = $"dn2cpp_async_await_on_completed(__aw, &{resume}, __af);";
-        // A configured awaitable carries its context bit. The suspending activation
-        // registers before it returns, while the awaitable's temp still holds it.
-        if (awaited.Class?.IntrinsicCppName == "Dn2CppConfiguredTaskAwaiter")
-            registration = $"dn2cpp_async_await_on_completed(__aw, &{resume}, __af, ({awaitable.Expr}).captures_context());";
+        string register = $"dn2cpp_async_await_on_completed(__aw, &{resume}, __af";
+        string registration = register + ");";
         // Null: the site suspends unconditionally.
         string? pending = "__aw->status == DN2CPP_TASK_PENDING";
         bool throws = true;
@@ -490,6 +487,7 @@ internal sealed partial class MethodCompiler
                 Emit($"__aw = (Dn2CppTask*)({awaitable.Expr});");
                 if (!awaitable.NonNull)
                     Emit("(void)dn2cpp_null_check((Dn2CppObject*)__aw);");
+                registration = register + ", true, true);";
                 break;
             case ("Await", "System.Runtime.CompilerServices.ConfiguredTaskAwaitable"):
             {
@@ -509,8 +507,11 @@ internal sealed partial class MethodCompiler
                         $"{site}: ConfigureAwaitOptions value {options} is not valid for this runtime-async await");
                 Emit($"__aw = ({awaitable.Expr}).task;");
                 Emit("(void)dn2cpp_null_check((Dn2CppObject*)__aw);");
-                // A settled task still suspends: its registration queues the resumption.
-                if ((options & AwaitForceYielding) != 0)
+                // Match the state-machine Task route: capture managed Post, and
+                // queue forced ready work without requiring an ordinary owner's pump.
+                bool forceYielding = (options & AwaitForceYielding) != 0;
+                registration = $"{register}, ({awaitable.Expr}).captures_context(), true, {(forceYielding ? "true" : "false")});";
+                if (forceYielding)
                     pending = null;
                 throws = (options & AwaitSuppressThrowing) == 0;
                 break;
@@ -518,6 +519,8 @@ internal sealed partial class MethodCompiler
             case ("Await", "System.Threading.Tasks.ValueTask"):
             case ("Await", "System.Runtime.CompilerServices.ConfiguredValueTaskAwaitable"):
                 Emit($"__aw = dn2cpp_vtask(({awaitable.Expr}).task);");
+                if (awaitedDef == "System.Runtime.CompilerServices.ConfiguredValueTaskAwaitable")
+                    registration = $"{register}, ({awaitable.Expr}).captures_context());";
                 pending = "dn2cpp_vtask_status(__aw) == DN2CPP_TASK_PENDING";
                 valueTask = true;
                 break;
@@ -551,6 +554,9 @@ internal sealed partial class MethodCompiler
         }
         if (throws)
             Emit("dn2cpp_task_throw_if_faulted(__aw);");
+        else
+            Emit("{ const Dn2CppConfiguredTaskAwaiter __suppressed{__aw, DN2CPP_AWAIT_SUPPRESS_THROWING}; "
+                + "dn2cpp_configured_task_get_result(&__suppressed); }");
         if (!sig.ReturnType.IsVoid)
             PushTaskResult("__aw", sig.ReturnType);
     }

@@ -204,7 +204,8 @@ gate_extra_asserts() {
     gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-runtime-async
     gate_output prefix "$native" "$before" --before '== runtime async ==' --policy crlf || return 1
     for line in '== runtime async ==' 'tasks: 21/40 settled: True/2' 'struct: 5/1' \
-        'try: False/45' 'runtime async end' 'runtime async configured contexts: task=True value task=True'; do
+        'try: False/45' 'runtime async end' 'runtime async configured contexts: task=True value task=True' \
+        'runtime async force after thread exit: True' 'runtime async task Post: True/True'; do
         gate_output byte-witness "$native" "$line" --policy crlf || return 1
     done
     # The block's methods are lowered as resumable bodies, not as state machines.
