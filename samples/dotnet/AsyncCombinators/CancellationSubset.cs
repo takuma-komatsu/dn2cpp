@@ -5,20 +5,21 @@ using System.Threading.Tasks;
 
 namespace CancellationSubset
 {
-    // CancellationToken / cancellation modeling. A CancellationTokenSource holds
-    // a canceled flag and the pending Task.Delay()s bound to its token; Cancel()
-    // transitions them to the (now real) CANCELED task state. Awaiting a canceled task
-    // — or ThrowIfCancellationRequested on a requested token — throws an
-    // OperationCanceledException catchable by a typed clause (the runtime is handed the
-    // real type-info). CancellationToken.None never cancels. The virtual clock makes
-    // the cancel-vs-completion ordering deterministic.
+    // The cancellable delay cannot expire before cancellation. The workload's
+    // checkpoint orders cancellation before its next token check on both runtimes.
     internal static class Program
     {
-        private static async Task<int> Workload(CancellationToken ct)
+        private static async Task<int> Workload(CancellationToken ct,
+            TaskCompletionSource<bool>? ready = null, Task? release = null)
         {
             for (int i = 0; i < 5; i++)
             {
                 await Task.Delay(10);
+                if (i == 2 && ready is not null)
+                {
+                    ready.SetResult(true);
+                    await release!;
+                }
                 ct.ThrowIfCancellationRequested();
             }
             return 99;
@@ -30,7 +31,7 @@ namespace CancellationSubset
             CancellationToken tok = cts.Token;
             bool req0 = tok.IsCancellationRequested;          // False
 
-            Task delayed = Task.Delay(1000, tok);             // cancellable long delay
+            Task delayed = Task.Delay(Timeout.Infinite, tok);
             await Task.Delay(10);
             cts.Cancel();
             bool req1 = tok.IsCancellationRequested;          // True
@@ -43,9 +44,12 @@ namespace CancellationSubset
             int normal = await Workload(CancellationToken.None); // never cancels -> 99
 
             var cts2 = new CancellationTokenSource();
-            Task<int> w = Workload(cts2.Token);
-            await Task.Delay(25);
-            cts2.Cancel();                                    // cancel mid-loop
+            var ready = new TaskCompletionSource<bool>();
+            var release = new TaskCompletionSource<bool>();
+            Task<int> w = Workload(cts2.Token, ready, release.Task);
+            await ready.Task;
+            cts2.Cancel();
+            release.SetResult(true);
             string loop = "?";
             try { await w; }
             catch (OperationCanceledException) { loop = "canceled"; }
