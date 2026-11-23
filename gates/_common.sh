@@ -4192,7 +4192,8 @@ stage_editor_toolchain() {
     # function of the LOAD SET, so the gate would assert against a DIFFERENT
     # program. Hard FAIL, not gate_skip: the bundle came from this tree above,
     # so a missing file means broken packaging, not an under-provisioned box.
-    [ -x "$dest/bin/ildiet/ILDiet$EXE_EXT" ] && [ -f "$dest/bin/ildiet/Mono.Cecil.dll" ] || {
+    source "$_DN2CPP_GATE_ROOT/gates/_ildiet.sh"
+    ildiet_assert_native "$dest/bin/ildiet" || {
         echo "FAIL: the staged toolchain is missing its ILDiet companion: $dest/bin/ildiet" >&2
         echo "      Re-package the toolchain with dist/package-toolchain.sh." >&2
         exit 1; }

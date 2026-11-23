@@ -6,7 +6,7 @@
 #
 # The bundle carries everything the exporter's transpile + native build need:
 #   bin/dn2cpp        self-hosted native CLI (gates/selfhost-emit.sh; no .NET dep)
-#   bin/ildiet/       self-contained host ILDiet and its DLL rewrite dependency
+#   bin/ildiet/       native ILDiet, linked Cecil/BCL code and redistribution notices
 #   bin/Dn2Cpp.Runtime.dll
 #                     the managed support shim holding the types the transpiler
 #                     synthesizes — notably SZArrayEnumerable<T>, which backs
@@ -106,7 +106,7 @@
 #     -h | --help
 #
 # Sourcing _common.sh cd's to the repo root and provides resolve_net10_corelib +
-# DN2CPP_OS. The SDK builds the self-host binary, publishes the host ILDiet
+# DN2CPP_OS. The SDK builds the self-host binary and native ILDiet
 # companion and supplies the reference framework used while assembling the bundle.
 source "$(dirname "$0")/../gates/_common.sh"
 source "$PWD/gates/_ildiet.sh"

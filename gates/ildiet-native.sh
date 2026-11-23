@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Opt-in native ILDiet companion build and managed/native stripping validation.
+# Build the distributed native ILDiet and compare its stripping with managed ILDiet.
 source "$(dirname "$0")/_common.sh"
+source "$PWD/gates/_ildiet.sh"
 
 stage="${1:-build}"
 case "$stage" in
@@ -13,29 +14,26 @@ fi
 
 mkdir -p artifacts
 OUT="$(mktemp -d "artifacts/ildiet-native-$CONFIG.XXXXXX")"
-echo "ILDiet native probe artifacts: $OUT"
+echo "ILDiet native artifacts: $OUT"
 
-build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj 2>&1 | tee "$OUT/managed-build.log"
-BIN="src/Dn2Cpp.Cli/bin/$CONFIG/$TFM"
 DIET="src/ILDiet/bin/$CONFIG/$TFM"
 corelib="$(resolve_net10_corelib)"
 
-# Use original IL. ILDiet supplies no signing key and never re-signs outputs;
-# Cecil's signing branches are unreachable, while deterministic MVID hashing runs.
-dotnet exec "$BIN/dn2cpp.dll" "$DIET/ILDiet.dll" \
-    -r "$DIET/Mono.Cecil.dll" -r "$corelib" \
-    --cut 'Mono.Cecil.CryptoService::GetPublicKey' \
-    --cut 'Mono.Cecil.CryptoService::StrongName' \
-    --auto-ref --no-ildiet -o "$OUT" 2>&1 | tee "$OUT/emit.log"
-[ -f "$OUT/generated.cpp" ] || { echo "error: no generated.cpp" >&2; exit 1; }
-[ "$stage" != emit ] || exit 0
+if [ "$stage" = emit ]; then
+    ildiet_emit_native "$OUT" "$corelib"
+    exit 0
+fi
 
-compile_console "$OUT" ILDiet 2>&1 | tee "$OUT/native-build.log"
+ildiet_stage_native "$OUT/relocated tool/ildiet"
+# The native artifact may be reused after the managed build outputs were removed.
+[ -f "$DIET/ILDiet.dll" ] || build_proj src/ILDiet/ILDiet.csproj 2>&1 | tee "$OUT/managed-build.log"
 dotnet exec "$DIET/ILDiet.dll" --help > "$OUT/managed-help.txt" 2> "$OUT/managed-help.stderr.log"
-"$OUT/ILDiet" --help > "$OUT/native-help.txt" 2> "$OUT/native-help.stderr.log"
+PATH= DOTNET_ROOT= DOTNET_ROOT_X64= DOTNET_ROOT_ARM64= DOTNET_MULTILEVEL_LOOKUP=0 \
+    "$OUT/relocated tool/ildiet/ILDiet$EXE_EXT" --help \
+    > "$OUT/native-help.txt" 2> "$OUT/native-help.stderr.log"
 diff -u "$OUT/managed-help.txt" "$OUT/native-help.txt"
 if [ "$stage" = build ]; then
-    echo "OK: native ILDiet starts and reproduces managed help; stripping parity remains unproven"
+    echo "OK: distributed native ILDiet starts without dotnet and reproduces managed help; stripping parity remains unproven"
     exit 0
 fi
 
@@ -44,7 +42,7 @@ build_gate_proj gates/fixtures/preserve-control/MetadataProbe.csproj 2>&1 | tee 
 build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csproj \
     2>&1 | tee "$OUT/metadata-validation-build.log"
 APP="samples/dotnet/ILDietControl/bin/$CONFIG/$TFM"
-gate_python gates/fixtures/ildiet-native/check.py "$DIET/ILDiet.dll" "$OUT/ILDiet" \
+gate_python gates/fixtures/ildiet-native/check.py "$DIET/ILDiet.dll" "$OUT/relocated tool/ildiet/ILDiet$EXE_EXT" \
     "gates/fixtures/preserve-control/bin/$CONFIG/$TFM/MetadataProbe.dll" \
     "$APP/ILDietControl.dll" "$APP/ILDietControlLib.dll" "$APP/Dn2Cpp.Runtime.dll" \
     "$corelib" "$OUT/parity" \
