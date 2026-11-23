@@ -591,8 +591,14 @@ internal sealed partial class MethodCompiler
                 if (sig.ParameterTypes.Length == 1)
                     Pop(); // getResourceModules — no resource modules exist
                 var asm = Pop();
+                // The signature is Module[], but the allocation is RuntimeModule[].
+                const string runtimeModuleName = "System.Reflection.RuntimeModule";
+                var runtimeModule = Comp.FindClassByFullName(runtimeModuleName) is { } cls
+                    ? TypeDesc.MakeClass(cls)
+                    : TypeDesc.MakeExternal(runtimeModuleName);
                 PushReflectionMemberArray(
-                    $"dn2cpp_assembly_get_modules({AssemblyNameOf(asm)})", sig.ReturnType);
+                    $"dn2cpp_assembly_get_modules({AssemblyNameOf(asm)})", TypeDesc.MakeSZArray(runtimeModule));
+                Top = Top with { StaticType = sig.ReturnType };
                 return true;
             }
             case ("System.Reflection.Assembly", "get_ManifestModule"):

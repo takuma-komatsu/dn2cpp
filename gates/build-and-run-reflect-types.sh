@@ -958,7 +958,10 @@ gate_extra_asserts() {
     gate_output byte-witness "$out/native.stdout" --count 1 --policy crlf \
         'noncollectible reflection types end' \
         'assembly reference=True module reference=same assembly/module=False derived assemblies=False' \
-        'module cast/as=True/True enumerated=True byref=True generic ref=True' || return $?
+        'module cast/as=True/True enumerated=True byref=True generic ref=True' \
+        'module array type=System.Reflection.RuntimeModule[]/System.Reflection.RuntimeModule' \
+        'module array overload=True:True/True' \
+        'module writable address=True/True exact=True' || return $?
 }
 # Helpers that read a Type parameter's attributes or construct a Type an attribute
 # carries are preserved explicitly; their callers' typeof arguments select nothing.
