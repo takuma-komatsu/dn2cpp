@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import xml.etree.ElementTree as ET
@@ -42,7 +43,15 @@ def run(command, log):
     command = list(map(str, command))
     log.parent.mkdir(parents=True, exist_ok=True)
     log.with_suffix(".command.json").write_text(json.dumps(command, indent=2) + "\n")
-    result = subprocess.run(command, capture_output=True)
+    environment = None
+    if command[0] == str(args.native):
+        environment = os.environ.copy()
+        for name in list(environment):
+            if name.upper() == "PATH" or name.upper().startswith("DOTNET_ROOT"):
+                environment.pop(name)
+        environment.update(PATH="", DOTNET_ROOT=str(args.directory / "no-dotnet"),
+                           DOTNET_MULTILEVEL_LOOKUP="0")
+    result = subprocess.run(command, capture_output=True, env=environment)
     log.with_suffix(".stdout.log").write_bytes(result.stdout)
     log.with_suffix(".stderr.log").write_bytes(result.stderr)
     assert result.returncode == 0, f"exit {result.returncode}; see {log}.stderr.log"
@@ -189,4 +198,4 @@ for mode in ("direct", "request"):
 if args.managed_only:
     print("OK: managed oracle verified; native stripping parity remains unproven")
 else:
-    print("OK: native ILDiet matches managed stripping, preservation and ordered protocol")
+    print("OK: distributed native ILDiet without dotnet matches managed stripping, preservation and ordered protocol")

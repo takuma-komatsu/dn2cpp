@@ -143,8 +143,10 @@ and leaves the inputs untouched. `ildiet-result.xml` atomically selects the curr
 generation and records ordered paths, hashes and preservation rules.
 Framework assemblies and dn2cpp support shims remain intact. The source build
 and NuGet tool carry a framework-dependent ILDiet companion; native toolchain
-and editor bundles carry a host-specific self-contained companion. Use
-`--ildiet-output <dir>` to choose another intermediate directory, or
+and editor bundles carry ILDiet compiled to native code by dn2cpp, including
+Mono.Cecil and the BCL code it uses. Transpiling and native-building existing IL
+needs no installed .NET; compiling C# source to that IL still requires the SDK.
+Use `--ildiet-output <dir>` to choose another intermediate directory, or
 `--no-ildiet` to transpile the original DLLs. Exhausting ILDiet's deterministic
 work budget copies the complete original load set and reports fallback; invalid
 input and broken invariants stop the build. Repeat `--ildiet-skip-assembly <name>`

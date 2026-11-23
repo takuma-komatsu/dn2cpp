@@ -899,6 +899,12 @@ manual_terms=$(git ls-files 'gates/*.sh' \
         if [ "$f" = gates/_common.sh ] || [ "$f" = gates/build-and-run-doc-claims.sh ]; then
             continue
         fi
+        # ILDiet keys a distributed native build independently of gate results.
+        # The exemption ends if that helper starts using the shared gate cache.
+        if [ "$f" = gates/_ildiet.sh ] && ! sed '/^[[:space:]]*#/d' "$f" \
+                | grep -E '(^|[^[:alnum:]_])(gate_cache_check|_corelib_gate_check)([^[:alnum:]_]|$)' >/dev/null; then
+            continue
+        fi
         sed '/^[[:space:]]*#/d' "$f" \
             | grep -nE '(^|[^[:alnum:]_])_gate_transpiler_env_term([^[:alnum:]_]|$)' \
             | sed "s|^|$f:|" || true

@@ -32,6 +32,7 @@
 #   assembled on demand (reusing a prebuilt artifacts/selfhost-fullcli/dn2cpp).
 source "$(dirname "$0")/../gates/_common.sh"        # repo-root cd, bundled_cmake, lib_name, DN2CPP_OS
 source "$(dirname "$0")/../gates/_godot_dotnet.sh"  # GODOT_DOTNET_*, godot_dotnet_root_ok
+source "$PWD/gates/_ildiet.sh"
 
 # 1. Opt out (exit 77) when the DM cache the sample build needs is absent.
 godot_dotnet_root_ok \
@@ -71,10 +72,7 @@ for sib in Dn2Cpp.Runtime DnZlib DnBrotli DnHttp; do
     [ -f "$BUNDLE/bin/$sib.dll" ] || {
         echo "error: bundle bin/ is missing $sib.dll" >&2; exit 1; }
 done
-[ -x "$BUNDLE/bin/ildiet/ILDiet$EXE_EXT" ] || {
-    echo "error: bundle is missing the self-contained ILDiet companion" >&2; exit 1; }
-[ -f "$BUNDLE/bin/ildiet/Mono.Cecil.dll" ] || {
-    echo "error: bundle is missing ILDiet's Mono.Cecil dependency" >&2; exit 1; }
+ildiet_assert_native "$BUNDLE/bin/ildiet"
 # The prebuilt runtime degrades to a from-source build when it is absent, so its
 # absence costs export time and nothing else — which is precisely why it needs an
 # assertion somewhere, or a packaging that quietly stopped shipping it would never
@@ -140,11 +138,12 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 GEN="$WORK/gen"; mkdir -p "$GEN"
 # Moving both executables and clearing PATH proves that ILDiet resolves beside
-# the native CLI and carries its own runtime after the SDK-built input is ready.
+# the native CLI and requires no CLR after the SDK-built input is ready.
 mkdir -p "$WORK/relocated tool/bin"
 cp -R "$BUNDLE/bin/." "$WORK/relocated tool/bin/"
 echo "-- transpiling with relocated native dn2cpp and no dotnet on PATH"
-PATH= "$WORK/relocated tool/bin/dn2cpp" "$APP" --dotnet-module \
+PATH= DOTNET_ROOT= DOTNET_ROOT_X64= DOTNET_ROOT_ARM64= DOTNET_MULTILEVEL_LOOKUP=0 \
+    "$WORK/relocated tool/bin/dn2cpp$EXE_EXT" "$APP" --dotnet-module \
     -r "$BUNDLE/ref/System.Private.CoreLib.dll" \
     -r "$GODOT_DOTNET_GODOTSHARP" \
     -r "$BUNDLE/bin/Dn2Cpp.Runtime.dll" \
