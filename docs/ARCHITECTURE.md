@@ -1705,8 +1705,12 @@ State-machine `Task.Yield` and pending `Task` awaits that request capture use
 the managed derived `SynchronizationContext` installed at suspension. They
 dispatch its virtual `Post` outside the task lock. A task completion drains
 its native joins before calling managed `Post`. Null, base and native
-host-installed contexts keep the scheduler path, as does `ConfigureAwait(false)`.
-This does not change direct awaiter or `IValueTaskSource` registration.
+host-installed contexts keep the scheduler path, as do ordinary uncaptured awaits.
+A configured Task awaiter's direct registration follows its capture option as
+well. `ForceYielding` makes an already-complete task suspend and, without a
+captured or host context on a threaded target, queues its resumption on the
+pool. Non-generic `SuppressThrowing` observes a failure without raising it.
+Other direct awaiter and `IValueTaskSource` registrations are unchanged.
 
 The default scheduler and generated scheduler subclasses share a native identity
 field. CoreLib's `TaskScheduler.Id` getter assigns it lazily from its own counter,

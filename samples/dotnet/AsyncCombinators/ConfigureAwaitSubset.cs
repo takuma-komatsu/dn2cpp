@@ -129,6 +129,129 @@ namespace ConfigureAwaitSubset
             }
         }
 
+        private static string ConfiguredResult(Task input, ConfigureAwaitOptions options)
+        {
+            try
+            {
+                input.ConfigureAwait(options).GetAwaiter().GetResult();
+                return "ok";
+            }
+            catch (Exception e)
+            {
+                return e.GetType().Name;
+            }
+        }
+
+        private static string RejectedOptions(Action configure)
+        {
+            try
+            {
+                configure();
+                return "accepted";
+            }
+            catch (ArgumentOutOfRangeException e)
+            {
+                return e.ParamName + ": " + e.Message;
+            }
+        }
+
+        private static async Task<bool> AwaitOptions(Task input, ConfigureAwaitOptions options, SynchronizationContext? expected)
+        {
+            await input.ConfigureAwait(options);
+            return ReferenceEquals(SynchronizationContext.Current, expected);
+        }
+
+        private static bool PumpConfiguredCallback(RecordingContext context, bool unsafeRegistration)
+        {
+            bool called = false;
+            var source = new TaskCompletionSource<int>();
+            var awaiter = source.Task.ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext).GetAwaiter();
+            if (unsafeRegistration)
+                awaiter.UnsafeOnCompleted(() => called = true);
+            else
+                awaiter.OnCompleted(() => called = true);
+            SynchronizationContext.SetSynchronizationContext(null);
+            source.SetResult(17);
+            SynchronizationContext.SetSynchronizationContext(context);
+            return !called && context.PumpOne() && called;
+        }
+
+        private static async Task<bool> AwaitForcedReady(int submitter)
+        {
+            int value = await Task.FromResult(17).ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+            return value == 17 && Environment.CurrentManagedThreadId != submitter;
+        }
+
+        private static void RunOptionsAfterThreadExit()
+        {
+            var direct = new TaskCompletionSource<bool>();
+            Task<bool>? awaited = null;
+            var worker = new Thread(() =>
+            {
+                int submitter = Environment.CurrentManagedThreadId;
+                Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding).GetAwaiter()
+                    .UnsafeOnCompleted(() => direct.SetResult(Environment.CurrentManagedThreadId != submitter));
+                awaited = AwaitForcedReady(submitter);
+            });
+            worker.Start();
+            worker.Join();
+
+            // No one pumps the submitting thread's scheduler after it exits.
+            var state = awaited!;
+            Task.WhenAll((Task)direct.Task, state).Wait(TimeSpan.FromSeconds(8));
+            Console.WriteLine("configured options after thread exit: "
+                + (direct.Task.IsCompletedSuccessfully && direct.Task.Result) + "/"
+                + (state.IsCompletedSuccessfully && state.Result));
+        }
+
+        internal static void RunOptions()
+        {
+            const ConfigureAwaitOptions force = ConfigureAwaitOptions.ForceYielding;
+            const ConfigureAwaitOptions suppress = ConfigureAwaitOptions.SuppressThrowing;
+            const ConfigureAwaitOptions capture = ConfigureAwaitOptions.ContinueOnCapturedContext;
+            Task faulted = Task.FromException<int>(new InvalidOperationException("configured fault"));
+            Task canceled = Task.FromCanceled(new CancellationToken(true));
+            var normal = Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.None).GetAwaiter();
+            var forced = Task.CompletedTask.ConfigureAwait(force).GetAwaiter();
+            var typed = Task.FromResult(17).ConfigureAwait(force | capture).GetAwaiter();
+            Console.WriteLine($"configured options ready: {normal.IsCompleted}/{forced.IsCompleted}/{typed.IsCompleted}/{typed.GetResult()}");
+            Console.WriteLine($"configured options result: {ConfiguredResult(faulted, suppress)}/{ConfiguredResult(canceled, suppress)}"
+                + $"/{ConfiguredResult(faulted, ConfigureAwaitOptions.None)}/{ConfiguredResult(canceled, ConfigureAwaitOptions.None)}");
+            Console.WriteLine("configured options invalid: " + RejectedOptions(() => Task.CompletedTask.ConfigureAwait((ConfigureAwaitOptions)8)));
+#pragma warning disable CA2261 // Prove the generic overload rejects the option.
+            Console.WriteLine("configured options generic invalid: " + RejectedOptions(() => Task.FromResult(17).ConfigureAwait(suppress | force)));
+#pragma warning restore CA2261
+
+            var context = new RecordingContext();
+            var previous = SynchronizationContext.Current;
+            try
+            {
+                SynchronizationContext.SetSynchronizationContext(context);
+                var forcedState = AwaitOptions(faulted, force | suppress | capture, context);
+                bool suspended = !forcedState.IsCompleted;
+                bool pumped = context.PumpOne();
+                bool resumed = forcedState.IsCompletedSuccessfully && forcedState.Result;
+                var source = new TaskCompletionSource<bool>();
+                var bypassState = AwaitOptions(source.Task, ConfigureAwaitOptions.None, null);
+                source.SetResult(true);
+                bool bypassed = bypassState.Wait(TimeSpan.FromSeconds(8)) && bypassState.Result;
+                Console.WriteLine($"configured options state: {suspended}/{pumped}/{resumed}/{bypassed}");
+
+                var completion = new TaskCompletionSource<bool>();
+                Task.CompletedTask.ConfigureAwait(force).GetAwaiter().UnsafeOnCompleted(
+                    () => completion.SetResult(SynchronizationContext.Current is null));
+                bool directBypass = completion.Task.Wait(TimeSpan.FromSeconds(8)) && completion.Task.Result;
+                bool safe = PumpConfiguredCallback(context, unsafeRegistration: false);
+                bool unsafeCall = PumpConfiguredCallback(context, unsafeRegistration: true);
+                Console.WriteLine($"configured options callbacks: {safe}/{unsafeCall}/{directBypass}");
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(previous);
+            }
+            RunOptionsAfterThreadExit();
+        }
+
         internal static void RunTimedWaitContexts()
         {
             var timeout = TimeSpan.FromSeconds(8);

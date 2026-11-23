@@ -123,10 +123,20 @@ internal sealed partial class MethodCompiler
 
             case ("System.Threading.Tasks.Task", "ConfigureAwait"):
             {
-                var options = Pop(); // ContinueOnCapturedContext is bit zero in ConfigureAwaitOptions.
+                var options = Pop();
                 var t = Pop();
-                Push(StackKind.Struct, "Dn2CppConfiguredTaskAwaiter",
-                    $"Dn2CppConfiguredTaskAwaiter{{ (Dn2CppTask*)({t.Expr}), (({Cast(options, "int32_t")}) & 1) != 0 }}");
+                string bits = Cast(options, "int32_t");
+                if (sig.ParameterTypes[0] is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean })
+                    Push(StackKind.Struct, "Dn2CppConfiguredTaskAwaiter",
+                        $"Dn2CppConfiguredTaskAwaiter{{ (Dn2CppTask*)({t.Expr}), ({bits}) & DN2CPP_AWAIT_CONTINUE_ON_CONTEXT }}");
+                else
+                {
+                    // A Task<T> cast to Task uses the non-generic API, even if
+                    // the runtime object still carries a result type.
+                    bool generic = sig.ReturnType.Class is { Context.TypeArgs.Length: > 0 };
+                    Push(StackKind.Struct, "Dn2CppConfiguredTaskAwaiter",
+                        $"dn2cpp_task_configure_await((Dn2CppTask*)({t.Expr}), {bits}, {(generic ? "true" : "false")})");
+                }
                 return true;
             }
             case ("System.Runtime.CompilerServices.ConfiguredTaskAwaitable", "GetAwaiter"):
@@ -140,19 +150,16 @@ internal sealed partial class MethodCompiler
             {
                 var a = Pop();
                 Push(StackKind.I4, "int32_t",
-                    $"(((Dn2CppConfiguredTaskAwaiter*)({a.Expr}))->task->status != DN2CPP_TASK_PENDING ? 1 : 0)");
+                    $"(((Dn2CppConfiguredTaskAwaiter*)({a.Expr}))->is_completed() ? 1 : 0)");
                 return true;
             }
             case ("ConfiguredTaskAwaiter", "GetResult"):
             {
                 var a = Pop();
-                // Blocks on a still-pending task, exactly like TaskAwaiter.GetResult
-                // above — `t.ConfigureAwait(false).GetAwaiter().GetResult()` is the same
-                // sync-over-async idiom.
-                Emit($"dn2cpp_task_block(((Dn2CppConfiguredTaskAwaiter*)({a.Expr}))->task);");
-                Emit($"dn2cpp_task_throw_if_faulted(((Dn2CppConfiguredTaskAwaiter*)({a.Expr}))->task);");
+                string awaiter = $"((Dn2CppConfiguredTaskAwaiter*)({a.Expr}))";
+                Emit($"dn2cpp_configured_task_get_result({awaiter});");
                 if (!sig.ReturnType.IsVoid) // ConfiguredTaskAwaiter<T>.GetResult
-                    PushTaskResult($"(((Dn2CppConfiguredTaskAwaiter*)({a.Expr}))->task)", sig.ReturnType);
+                    PushTaskResult($"{awaiter}->task", sig.ReturnType);
                 return true;
             }
             // Same delegate-continuation form as TaskAwaiter above: a custom
@@ -164,8 +171,7 @@ internal sealed partial class MethodCompiler
                 var cont = Pop(); // Action continuation
                 var a = Pop();
                 string awaiter = $"((Dn2CppConfiguredTaskAwaiter*)({a.Expr}))";
-                Emit($"dn2cpp_task_on_completed_action({awaiter}->task, {Cast(cont, "Dn2CppObject*")}, " +
-                    $"{awaiter}->captureContext);");
+                Emit($"dn2cpp_configured_task_on_completed({awaiter}, {Cast(cont, "Dn2CppObject*")});");
                 return true;
             }
 
@@ -205,7 +211,7 @@ internal sealed partial class MethodCompiler
                 var a = Pop();
                 string awaiter = $"((Dn2CppConfiguredTaskAwaiter*)({a.Expr}))";
                 Emit($"dn2cpp_task_on_completed_action(dn2cpp_vtask({awaiter}->task), {Cast(cont, "Dn2CppObject*")}, " +
-                    $"{awaiter}->captureContext);");
+                    $"{awaiter}->captures_context());");
                 return true;
             }
 

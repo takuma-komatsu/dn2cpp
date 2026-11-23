@@ -12,6 +12,11 @@ namespace AsyncCombinators
         {
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+            if (args.Length == 1 && args[0] == "configured-options-only")
+            {
+                ConfigureAwaitSubset.Program.RunOptions();
+                return;
+            }
             if (args.Length == 1 && (args[0] == "fresh-cancellation-filter"
                 || args[0] == "fresh-cancellation-filter-generic"))
             {
@@ -121,6 +126,9 @@ namespace AsyncCombinators
             if (args.Length == 1 && args[0] == "before-synchronization-context")
                 return;
             ConfigureAwaitSubset.Program.RunPumpedContext();
+            if (args.Length == 1 && args[0] == "before-configured-options")
+                return;
+            ConfigureAwaitSubset.Program.RunOptions();
             // Ends the process: a builder suspension's rejected registration is re-raised
             // as an unhandled ThreadPool exception.
             if (args.Length == 2 && args[0] == "suspension-rejection")
