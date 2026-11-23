@@ -118,6 +118,9 @@ namespace AsyncCombinators
             BlockingWaitWrapSubset.Program.RunTimedWaits();
             ConfigureAwaitSubset.Program.RunTimedWaitContexts();
             BlockingWaitWrapSubset.Program.RunDelayDeadlines();
+            if (args.Length == 1 && args[0] == "before-synchronization-context")
+                return;
+            ConfigureAwaitSubset.Program.RunPumpedContext();
             // Ends the process: a builder suspension's rejected registration is re-raised
             // as an unhandled ThreadPool exception.
             if (args.Length == 2 && args[0] == "suspension-rejection")

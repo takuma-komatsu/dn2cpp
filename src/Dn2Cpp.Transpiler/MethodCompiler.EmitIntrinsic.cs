@@ -760,7 +760,17 @@ internal sealed partial class MethodCompiler
             case "SetSynchronizationContext" when sig.ParameterTypes.Length == 1:
             {
                 var ctx = Pop();
-                Emit($"dn2cpp_sync_ctx_set({Cast(ctx, "Dn2CppObject*")});");
+                string value = Cast(ctx, "Dn2CppObject*");
+                if (Comp.SynchronizationContextPost is { } post && sig.ParameterTypes[0].Class == post.DeclaringClass)
+                {
+                    string contextType = TypeInfoExpr(sig.ParameterTypes[0])
+                        ?? throw new InvalidOperationException("SynchronizationContext has no runtime type info");
+                    string callbackType = TypeInfoExpr(post.Signature.ParameterTypes[0])
+                        ?? throw new InvalidOperationException("SendOrPostCallback has no runtime type info");
+                    Emit($"dn2cpp_sync_ctx_set({value}, {contextType}, {callbackType}, {post.VtableSlot});");
+                }
+                else
+                    Emit($"dn2cpp_sync_ctx_set({value});");
                 return true;
             }
             default:

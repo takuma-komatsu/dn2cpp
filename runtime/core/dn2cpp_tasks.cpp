@@ -1119,15 +1119,52 @@ static bool dn2cpp_has_custom_sync_context()
     return context != nullptr && context->type->base != &dn2cpp_object_type;
 }
 
-static void dn2cpp_sched_invoke_cont(Dn2CppCont* c)
+static void dn2cpp_sched_invoke(void (*fn)(void*), void* state, bool wallTimers)
 {
     struct TimerScope
     {
         bool previous = t_wall_timers;
         ~TimerScope() { t_wall_timers = previous; }
     } scope;
-    t_wall_timers = c->wallTimers;
-    dn2cpp_task_invoke_as(nullptr, [&] { c->fn(c->state); });
+    t_wall_timers = wallTimers;
+    dn2cpp_task_invoke_as(nullptr, [&] { fn(state); });
+}
+
+static void dn2cpp_sched_invoke_cont(Dn2CppCont* c)
+{
+    dn2cpp_sched_invoke(c->fn, c->state, c->wallTimers);
+}
+
+// A real Object is the Post state. Keep the context and suspended machine
+// reachable through the task until publication, then through the pump's queue.
+struct Dn2CppPostedAwait : Dn2CppObject
+{
+    Dn2CppObject* context;
+    Dn2CppSyncContextPost post;
+    void (*resume)(void*);
+    void* state;
+    bool wallTimers;
+};
+
+static Dn2CppPostedAwait* dn2cpp_capture_posted_await(void (*fn)(void*), void* state)
+{
+    auto post = dn2cpp_sync_ctx_get_post();
+    if (post.fn == nullptr)
+        return nullptr;
+    auto* work = static_cast<Dn2CppPostedAwait*>(dn2cpp_alloc(sizeof(Dn2CppPostedAwait)));
+    work->type = &dn2cpp_object_type;
+    dn2cpp_gc_store_ref(&work->context, dn2cpp_sync_ctx_get());
+    dn2cpp_gc_store_ref(&work->state, state);
+    work->post = post;
+    work->resume = fn;
+    work->wallTimers = t_wall_timers;
+    return work;
+}
+
+static void dn2cpp_resume_posted_await(Dn2CppObject*, Dn2CppObject* state)
+{
+    auto* work = static_cast<Dn2CppPostedAwait*>(state);
+    dn2cpp_sched_invoke(work->resume, work->state, work->wallTimers);
 }
 
 // Append `c` (already populated, incl. its owner) onto scheduler `s`'s run queue and
@@ -1202,13 +1239,40 @@ static bool dn2cpp_sched_run_one()
     return true;
 }
 
-// The active drain's list lives on a scanned stack frame; TLS holds only its address.
-// Nested joins append here instead of recursing through their completion callbacks.
+// The active drain's queue heads live on a scanned stack frame; TLS holds
+// only the frame's address, including when a nested completion appends work.
 struct Dn2CppJoinDrain
 {
+    struct Queue
+    {
+        Dn2CppCont* head = nullptr;
+        Dn2CppCont* tail = nullptr;
+
+        void append(Dn2CppCont* c)
+        {
+            dn2cpp_gc_store_ref(&c->next, static_cast<Dn2CppCont*>(nullptr));
+            if (tail != nullptr)
+                dn2cpp_gc_store_ref(&tail->next, c);
+            else
+                head = c;
+            tail = c;
+        }
+
+        Dn2CppCont* pop()
+        {
+            auto* c = head;
+            if (c == nullptr)
+                return nullptr;
+            head = c->next;
+            if (head == nullptr)
+                tail = nullptr;
+            return c;
+        }
+    };
+
     static thread_local Dn2CppJoinDrain* active;
-    Dn2CppCont* head = nullptr;
-    Dn2CppCont* tail = nullptr;
+    Queue joins;
+    Queue posts;
     bool owns = active == nullptr;
 
     Dn2CppJoinDrain()
@@ -1223,39 +1287,70 @@ struct Dn2CppJoinDrain
             active = nullptr;
     }
 
-    void append(Dn2CppCont* c)
-    {
-        dn2cpp_gc_store_ref(&c->next, static_cast<Dn2CppCont*>(nullptr));
-        if (tail != nullptr)
-            dn2cpp_gc_store_ref(&tail->next, c);
-        else
-            head = c;
-        tail = c;
-    }
-
     void run()
     {
         if (!owns)
             return;
-        while (head != nullptr)
-        {
-            Dn2CppCont* c = head;
-            head = c->next;
-            if (head == nullptr)
-                tail = nullptr;
+        // Nested completions append their joins to the same iterative drain.
+        while (auto* c = joins.pop())
             dn2cpp_task_invoke_as(nullptr, [&] { c->fn(c->state); });
-        }
+
+        // Managed Post can depend on the joined result and can settle another
+        // task itself. Release the drain only after publishing its joins.
+        active = nullptr;
+        while (auto* c = posts.pop())
+            c->fn(c->state);
     }
 };
 
 thread_local Dn2CppJoinDrain* Dn2CppJoinDrain::active = nullptr;
 
+static void dn2cpp_invoke_posted_await(Dn2CppPostedAwait* work, bool reraise)
+{
+    auto* callback = static_cast<Dn2CppDelegate*>(dn2cpp_alloc(sizeof(Dn2CppDelegate)));
+    callback->type = work->post.callbackType;
+    callback->method = reinterpret_cast<void*>(&dn2cpp_resume_posted_await);
+    try
+    {
+        // An independent join started by managed Post must finish before its
+        // producer returns, not append to the drain paused at this call.
+        struct PauseJoinDrain
+        {
+            Dn2CppJoinDrain* previous = Dn2CppJoinDrain::active;
+            PauseJoinDrain() { Dn2CppJoinDrain::active = nullptr; }
+            ~PauseJoinDrain() { Dn2CppJoinDrain::active = previous; }
+        } pause;
+        using Post = void (*)(Dn2CppObject*, Dn2CppObject*, Dn2CppObject*);
+        reinterpret_cast<Post>(const_cast<void*>(work->post.fn))(work->context, callback, work);
+    }
+    catch (const Dn2CppException& e)
+    {
+        if (!reraise)
+            throw;
+        dn2cpp_async_await_rejected(e.obj);
+    }
+}
+
+static void dn2cpp_post_await(void* state)
+{
+    // A rejected Post must not escape into the task's completing thread.
+    dn2cpp_invoke_posted_await(static_cast<Dn2CppPostedAwait*>(state), true);
+}
+
+void dn2cpp_async_yield_on_completed(void (*fn)(void*), void* state, bool reraise)
+{
+    if (auto* work = dn2cpp_capture_posted_await(fn, state))
+        dn2cpp_invoke_posted_await(work, reraise);
+    else
+        dn2cpp_sched_post(fn, state);
+}
+
 static void dn2cpp_cont_with_run(void* state);
 static bool dn2cpp_cont_with_prepare(Dn2CppCont* node);
 static void dn2cpp_task_release_action_locked(Dn2CppTask* task);
 
-// Join notifications finish before the outer completion returns. Ordinary await
-// continuations still go to their owner scheduler, in registration order.
+// Join notifications finish before the outer completion returns. Await
+// continuations go to their captured managed context or owner scheduler.
 static void dn2cpp_fire_conts(Dn2CppCont* conts)
 {
     Dn2CppJoinDrain drain;
@@ -1271,11 +1366,13 @@ static void dn2cpp_fire_conts(Dn2CppCont* conts)
     for (Dn2CppCont* c = prev; c != nullptr;)
     {
         Dn2CppCont* next = c->next; // save before the node is relinked
+        if (c->fn == &dn2cpp_post_await)
+            Dn2CppJoinDrain::active->posts.append(c);
         // Only a ContinueWith node schedules another Task; await resumptions do not.
-        if (c->fn != &dn2cpp_cont_with_run || dn2cpp_cont_with_prepare(c))
+        else if (c->fn != &dn2cpp_cont_with_run || dn2cpp_cont_with_prepare(c))
         {
             if (c->owner == nullptr)
-                Dn2CppJoinDrain::active->append(c);
+                Dn2CppJoinDrain::active->joins.append(c);
             else
                 dn2cpp_sched_enqueue(c->owner, c);
         }
@@ -1523,8 +1620,18 @@ static void dn2cpp_task_queue_cont(Dn2CppTask* t, void (*fn)(void*), void* state
         dn2cpp_fire_conts(ready);
 }
 
-void dn2cpp_task_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state, bool captureContext)
+void dn2cpp_task_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state,
+    bool captureContext, bool postToContext)
 {
+    if (captureContext && postToContext)
+    {
+        if (auto* work = dn2cpp_capture_posted_await(fn, state))
+        {
+            if (auto* ready = dn2cpp_task_register_cont(t, &dn2cpp_post_await, work, true, false))
+                dn2cpp_fire_conts(ready);
+            return;
+        }
+    }
     dn2cpp_task_queue_cont(t, fn, state, captureContext && dn2cpp_has_custom_sync_context());
 }
 
@@ -1537,9 +1644,10 @@ void dn2cpp_async_await_rejected(Dn2CppObject* exc)
     dn2cpp_exc_inflight_pop(exc);
 }
 
-// Only a source-backed task runs foreign code while registering: its source's OnCompleted.
+// A source-backed task may run its source's OnCompleted while registering.
 // A rejected registration registers nothing, so the method stays suspended.
-void dn2cpp_async_await_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state, bool captureContext)
+void dn2cpp_async_await_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state,
+    bool captureContext, bool postToContext)
 {
     if (t->vtsBridge != nullptr)
     {
@@ -1553,7 +1661,7 @@ void dn2cpp_async_await_on_completed(Dn2CppTask* t, void (*fn)(void*), void* sta
             return;
         }
     }
-    dn2cpp_task_on_completed(t, fn, state, captureContext);
+    dn2cpp_task_on_completed(t, fn, state, captureContext, postToContext);
 }
 
 // Internal join notifications run outside g_task_mtx, both for settled inputs and

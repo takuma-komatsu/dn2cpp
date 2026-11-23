@@ -1678,8 +1678,8 @@ state: cancellation or a previous start prevents it, but successful or faulted
 promises need not have been scheduled. The claim alone neither queues nor invokes
 a delegate. Cold starts, queued delegate work and eligible continuations publish
 their scheduling phase; unwrapping promises do not inherit the delegate's phase.
-A settled status takes precedence over WaitingToRun or Running. Ordinary awaits
-queue to their owning scheduler without acquiring a Task start claim.
+A settled status takes precedence over WaitingToRun or Running. Await resumptions
+do not acquire a Task start claim.
 
 A blocking task wait counts another thread executing a console entry, a native
 callback or an engine callback as a possible settler. Nested callbacks share
@@ -1697,10 +1697,16 @@ wall-deadline order, with registration order breaking ties.
 A positive wait drives owner-local delays against its steady-clock deadline.
 On a threaded target it lets the pool run context-free continuations, so a
 callback blocking on the caller cannot prevent the timeout. Delays created by
-those resumptions retain their wall deadlines. A derived synchronization context
-owns awaits that request capture. `ConfigureAwait(false)` and continuations on
-the default task scheduler can run on the pool. Host-thread callbacks stay on
-their owner.
+those resumptions retain their wall deadlines. `ConfigureAwait(false)` and
+continuations on the default task scheduler can run on the pool. Host-thread
+callbacks stay on their owner.
+
+State-machine `Task.Yield` and pending `Task` awaits that request capture use
+the managed derived `SynchronizationContext` installed at suspension. They
+dispatch its virtual `Post` outside the task lock. A task completion drains
+its native joins before calling managed `Post`. Null, base and native
+host-installed contexts keep the scheduler path, as does `ConfigureAwait(false)`.
+This does not change direct awaiter or `IValueTaskSource` registration.
 
 The default scheduler and generated scheduler subclasses share a native identity
 field. CoreLib's `TaskScheduler.Id` getter assigns it lazily from its own counter,
@@ -1814,8 +1820,8 @@ in place, preserving the allocating subtype's identity and trailing fields.
 Generic promise constructors retain their CoreLib forwarding IL; the non-generic
 constructors and `TrySetResult` enter the native task lifecycle. Only those
 method declarations are modeled on the otherwise opaque generic task owner.
-The state object is retained, completion is exactly once, and ordinary await
-continuations use the existing scheduler queue. Private promise construction
+The state object is retained, and completion and await dispatch use the same
+rules as other native tasks. Private promise construction
 rejects `AttachedToParent` because the runtime does not track a current parent
 task. Public delegate constructors and completion-source options keep their
 independent contracts. Stripping levels change retention, not this layout.

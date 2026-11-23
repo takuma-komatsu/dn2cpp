@@ -13,6 +13,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace CustomTaskLocalSubset;
@@ -197,6 +198,30 @@ internal static class Program
         }
 
         Console.WriteLine("local: done");
+    }
+
+    private sealed class RejectingContext : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback callback, object state) =>
+            throw new InvalidOperationException("local-post-rejection");
+    }
+
+    internal static void RunPostRejection()
+    {
+        var previous = SynchronizationContext.Current;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(new RejectingContext());
+            ThrowLocal("local-yield-resumed").GetAwaiter().GetResult();
+        }
+        catch (InvalidOperationException e)
+        {
+            Console.WriteLine($"local: caught {e.Message}");
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
     }
 
     internal static void __GateEntry()

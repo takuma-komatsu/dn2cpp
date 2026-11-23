@@ -21,6 +21,7 @@
 # mode leaves timers overdue until the poll, checking its WhenAny winner and WhenAll.
 # Context-free configured awaits, default-scheduler continuations and yields
 # under the base SynchronizationContext can complete during a finite wait.
+# Yield and pending Task await continuations post to a derived context's pump.
 # BlockingWaitArgsSubset.cs asserts the argument contracts of the BLOCKING waits
 # (Task.WaitAny/WaitAll) and of Task.WhenAll — the entry-point validation that keeps
 # the C++ runtime's remaining aborts unreachable. WaitAny's contract is deliberately
@@ -95,7 +96,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-derived-task
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-scheduler-inline"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-scheduler-queue"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-task-add-exception"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-task-finish|prefix:before-scheduler-ids"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-task-finish|prefix:before-scheduler-ids|prefix:before-synchronization-context"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|shared-binary:native-delay-deadlines|shared-binary:fresh-cancellation-filters"
 
 # The exception text is platform-owned; its record prefix is the boundary.
@@ -173,7 +174,15 @@ gate_extra_asserts() {
         'parked owner delay: completed=True owner released=True' \
         'overdue WhenAll poll: True' \
         'parked owner race: completed=True earlier timeout=True' > "$out/scheduler-ids-and-timed-waits.expected"
-    gate_output suffix "$native" "$out/scheduler-ids-and-timed-waits.expected" --after '== scheduler ids ==' --policy crlf || return 1
+    before="$out/before-synchronization-context.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-synchronization-context || return 1
+    gate_output select "$native" "$out/before-synchronization-context.native.stdout" \
+        --before-prefix 'context yield: ' --policy crlf || return 1
+    gate_output compare "$out/before-synchronization-context.native.stdout" "$before" --policy crlf || return 1
+    gate_output suffix "$before" "$out/scheduler-ids-and-timed-waits.expected" --after '== scheduler ids ==' --policy crlf || return 1
+    gate_output byte-witness "$native" 'context yield: True/True/True' \
+        'context task: True/True/True/True' 'context post nested join: True/True' \
+        'context post source joined: True' --policy crlf || return 1
     before="$out/before-semaphore-waiters.stdout"
     gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-semaphore-waiters
     gate_output prefix "$native" "$before" --before '== semaphore waiter helpers ==' --policy crlf

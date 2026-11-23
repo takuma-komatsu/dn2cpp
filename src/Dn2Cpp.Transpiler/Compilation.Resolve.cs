@@ -3344,6 +3344,42 @@ internal sealed partial class Compilation
         }
     }
 
+    internal MethodInfo? SynchronizationContextPost { get; private set; }
+
+    // An installed managed context can receive await callbacks without an IL
+    // callvirt or a newobj for its delegate at the suspension site.
+    private void ReachSynchronizationContextPost(Module module, EntityHandle handle)
+    {
+        if (SynchronizationContextPost is not null
+            || CallTargetMethodName(module, handle) != "SetSynchronizationContext"
+            || CallTargetTypeName(module, handle) != "System.Threading.SynchronizationContext")
+            return;
+        ClassInfo? context = null;
+        if (handle.Kind == HandleKind.MemberReference)
+        {
+            var reference = module.Reader.GetMemberReference((MemberReferenceHandle)handle);
+            if (reference.Parent.Kind == HandleKind.TypeReference)
+                context = ResolveTypeRef(module, (TypeReferenceHandle)reference.Parent)?.Class;
+        }
+        else if (module.MethodMap.TryGetValue((MethodDefinitionHandle)handle, out var setter))
+            context = setter.DeclaringClass;
+        if (context is not { Module.AssemblyName: "System.Private.CoreLib" })
+            return;
+        var post = context.Methods.FirstOrDefault(m => m.Name == "Post" && m.IsVirtual && m.VtableSlot >= 0
+            && m.Signature.ReturnType.IsVoid && m.Signature.ParameterTypes is
+            [{ Kind: TypeKind.Class, Class: { IsDelegate: true, FullName: "System.Threading.SendOrPostCallback" } },
+             { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }]);
+        if (post is null)
+            return;
+        SynchronizationContextPost = post;
+        var callback = post.Signature.ParameterTypes[0].Class!;
+        ReachUsedVirtual(post);
+        NoteReferencedType(context);
+        ReachAllocatedType(callback);
+        if (callback.Methods.FirstOrDefault(m => m.Name == "Invoke") is { } invoke)
+            Reach(invoke);
+    }
+
     /// <summary>For a call to <c>ThreadPool.UnsafeQueueUserWorkItem(IThreadPoolWorkItem,
     /// bool)</c> — a MethodDef intra-corelib (ThreadPoolValueTaskSource.QueueToThreadPool)
     /// or a MemberRef from another assembly — mark the interface's <c>Execute</c> slot

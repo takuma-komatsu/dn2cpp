@@ -7978,12 +7978,14 @@ void dn2cpp_task_set_exception(Dn2CppTask* t, Dn2CppObject* exception);
 void dn2cpp_task_set_exception_or_canceled(Dn2CppTask* t, Dn2CppObject* exception);
 // Register a resumption to run when `t` completes (the suspension path). If `t`
 // is already complete the resumption is posted immediately.
-void dn2cpp_task_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state, bool captureContext = true);
+void dn2cpp_task_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state,
+    bool captureContext = true, bool postToContext = false);
 // A BCL builder's suspension: dn2cpp_task_on_completed, except that a throw from the
 // registration goes to dn2cpp_async_await_rejected, which re-raises it through
 // Task.ThrowAsync instead of into the suspended method. An explicit awaiter.OnCompleted
 // call keeps the synchronous throw.
-void dn2cpp_async_await_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state, bool captureContext = true);
+void dn2cpp_async_await_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state,
+    bool captureContext = true, bool postToContext = false);
 void dn2cpp_async_await_rejected(Dn2CppObject* exc);
 // Invoke a no-arg System.Action delegate (and its multicast chain) generically, via
 // the uniform delegate layout.
@@ -8070,6 +8072,8 @@ int32_t dn2cpp_tcs_try_set_exception(Dn2CppTask* t, Dn2CppObject* exception);
 int32_t dn2cpp_tcs_try_set_canceled(Dn2CppTask* t, Dn2CppCancelSource* source = nullptr);
 // Enqueue a resumption on the cooperative run queue.
 void dn2cpp_sched_post(void (*fn)(void*), void* state);
+// State-machine Task.Yield posts immediately to its captured context, when any.
+void dn2cpp_async_yield_on_completed(void (*fn)(void*), void* state, bool reraise);
 // Action form of dn2cpp_sched_post: enqueue a System.Action (and its multicast
 // chain) on this thread's run queue. Backs YieldAwaiter.OnCompleted(Action).
 void dn2cpp_sched_post_action(Dn2CppObject* action);
@@ -8078,8 +8082,15 @@ void dn2cpp_sched_post_action(Dn2CppObject* action);
 // real .NET default). Backs SynchronizationContext.Current /
 // SetSynchronizationContext; a host lane installing its own context (e.g. the
 // Godot main-thread context) goes through the same slot.
+struct Dn2CppSyncContextPost
+{
+    const void* fn;
+    const Dn2CppTypeInfo* callbackType;
+};
 Dn2CppObject* dn2cpp_sync_ctx_get();
-void dn2cpp_sync_ctx_set(Dn2CppObject* ctx);
+Dn2CppSyncContextPost dn2cpp_sync_ctx_get_post();
+void dn2cpp_sync_ctx_set(Dn2CppObject* ctx, const Dn2CppTypeInfo* baseType = nullptr,
+    const Dn2CppTypeInfo* callbackType = nullptr, int32_t postSlot = -1);
 // Non-blocking frame pump for THIS thread's scheduler: complete the Task.Delay
 // timers whose due falls within the real time elapsed since the previous pump,
 // then run the continuations queued at entry (one stolen snapshot — work posted

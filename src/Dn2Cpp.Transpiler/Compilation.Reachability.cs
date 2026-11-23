@@ -6695,7 +6695,10 @@ internal sealed partial class Compilation
                         // used here (ThreadPool is intrinsic; ResolveCallTarget
                         // returned null above).
                         if (handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition)
+                        {
                             ReachThreadPoolWorkItemExecute(module, handle, m.Context);
+                            ReachSynchronizationContextPost(module, handle);
+                        }
                         // A dispatch through (I)EqualityComparer<T> — the GetHashCode/
                         // Equals a Dictionary/HashSet runs on its key — devirtualizes at
                         // emit to the key's type-specialized op. For a
