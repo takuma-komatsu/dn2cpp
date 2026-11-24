@@ -1427,7 +1427,7 @@ internal sealed partial class Compilation
         List<DecodedAttribute> rows;
         try
         {
-            rows = DecodeCustomAttributes(module, handles, reachedCtorsOnly: false);
+            rows = DecodeCustomAttributes(module, handles);
         }
         catch (NotSupportedException e) when (!IsMustEscape(e))
         {

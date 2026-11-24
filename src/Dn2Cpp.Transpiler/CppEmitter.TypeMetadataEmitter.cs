@@ -1616,6 +1616,7 @@ internal sealed partial class CppEmitter
             // precise ti_arr_ or enum ti_ is declared and emitted like a body-noted one.
             NoteConstraintMetadata();
             NoteReflectedMemberTypes();
+            _c.NoteNullableContextEnclosureHandles();
 
             // The note pass also discovers custom-modifier types. Unlike member
             // parameter types, those are erased by the main TypeDesc signature and
@@ -3545,7 +3546,8 @@ internal sealed partial class CppEmitter
                 return;
             // Tokens cover every module; attribute factories also cover framework
             // types whose complete surface Medium retains.
-            bool userFldCls = _c.KeepsTypeAttributeMetadata(cls) && !_e.IsOpaque(cls);
+            bool opaque = _e.IsOpaque(cls);
+            bool fieldAttributes = _c.KeepsTypeAttributeMetadata(cls) && (!opaque || _c.FieldNullabilityDataUsed);
             var fieldHandles = new Dictionary<string, FieldDefinitionHandle>();
             try
             {
@@ -3701,9 +3703,10 @@ internal sealed partial class CppEmitter
                 int fldToken = 0;
                 if (fieldHandles.TryGetValue(f.Name, out var fdh))
                 {
-                    if (userFldCls)
+                    if (fieldAttributes)
                         ca = _e.BuildAttrTable(_sb, $"{cls.CppName}_fld{rows.Count}", cls.Module,
-                            cls.Module.Reader.GetFieldDefinition(fdh).GetCustomAttributes());
+                            cls.Module.Reader.GetFieldDefinition(fdh).GetCustomAttributes(),
+                            opaque ? Compilation.AttributeRows.FieldNullability : Compilation.AttributeRows.All);
                     fldToken = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(fdh);
                 }
                 rows.Add(new MetadataRow(new[] {
@@ -4738,11 +4741,13 @@ internal sealed partial class CppEmitter
             var (propsExpr, propCount) = _propTabs.TryGetValue(cls, out var ptv) ? (ptv.Expr, ptv.Count) : ("nullptr", 0);
             var (eventsExpr, eventCount) = _eventTabs.TryGetValue(cls, out var etv) ? (etv.Expr, etv.Count) : ("nullptr", 0);
             (string Expr, int Count) typeAttrs = ("nullptr", 0);
-            if (_c.KeepsTypeAttributeMetadata(cls) && !_e.IsOpaque(cls))
+            bool opaque = _e.IsOpaque(cls);
+            if (_c.KeepsTypeAttributeMetadata(cls) && (!opaque || _c.FieldNullabilityDataUsed))
                 try
                 {
                     var td = cls.Module.Reader.GetTypeDefinition(cls.Handle);
-                    typeAttrs = _e.BuildAttrTable(_sb, cls.CppName, cls.Module, td.GetCustomAttributes());
+                    typeAttrs = _e.BuildAttrTable(_sb, cls.CppName, cls.Module, td.GetCustomAttributes(),
+                        opaque ? Compilation.AttributeRows.FieldNullability : Compilation.AttributeRows.All);
                 }
                 catch (Exception e) when (!Compilation.IsMustEscape(e))
                 { /* no decodable type metadata -> no attributes */ }

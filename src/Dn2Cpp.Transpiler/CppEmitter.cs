@@ -5100,10 +5100,11 @@ internal sealed partial class CppEmitter
     /// when that is what is missing, instead of answering a set without it
     /// (Compilation.ReachAttributesOf notes its type for the row). Other rows are dropped
     /// (the IL2CPP-stripping bound).</summary>
-    private (string Expr, int Count) BuildAttrTable(StringBuilder sb, string key, Module module, CustomAttributeHandleCollection handles)
+    private (string Expr, int Count) BuildAttrTable(StringBuilder sb, string key, Module module, CustomAttributeHandleCollection handles,
+        Compilation.AttributeRows filter = Compilation.AttributeRows.All)
     {
         var rows = new List<MetadataRow>();
-        foreach (var da in _c.DecodeCustomAttributes(module, handles))
+        foreach (var da in _c.DecodeCustomAttributes(module, handles, filter))
         {
             string? create = RenderAttrCreate(sb, da, out var setter) is { } createName ? "&" + createName
                 : (setter is not null ? TypeInfoSymbolDefined(setter.DeclaringClass.CppTypeInfoName)

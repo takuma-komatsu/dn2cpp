@@ -2426,8 +2426,7 @@ void dn2cpp_fieldref_set_value(Dn2CppFieldRef* f, Dn2CppObject* obj, Dn2CppObjec
 }
 
 // MemberInfo.Name / DeclaringType: shared by FieldInfo and Type, so dispatch on the
-// managed object header. Formal parameters retain their typical declaring type;
-// nested-type enclosures are not modeled.
+// managed object header. Nested-type tables hold definitions even on constructed owners.
 Dn2CppString* dn2cpp_memberinfo_name(Dn2CppObject* m)
 {
     dn2cpp_memberref_require(m);
@@ -2474,14 +2473,17 @@ Dn2CppType* dn2cpp_memberinfo_declaring_type(Dn2CppObject* m)
         if ((ti->flags & DN2CPP_TF_GENERICPARAM) != 0)
             return dn2cpp_get_type_from_handle(dn2cpp_type_generic_parameter_declaring_type(ti));
         if ((ti->flags & DN2CPP_TF_NESTED) != 0)
+        {
+            const auto* definition = ti->genericDef != nullptr ? ti->genericDef : ti;
             for (int32_t i = 0; i < dn2cpp_type_registry_count; i++)
             {
                 const auto* owner = dn2cpp_type_registry[i].type;
                 const auto reflection = owner->reflection();
                 for (int32_t j = 0; j < reflection.nestedCount; j++)
-                    if (reflection.nestedTypes[j] == ti)
+                    if (reflection.nestedTypes[j] == definition)
                         return dn2cpp_get_type_from_handle(owner->genericDef != nullptr ? owner->genericDef : owner);
             }
+        }
     }
     return nullptr;
 }
@@ -3767,10 +3769,18 @@ static std::vector<const Dn2CppTypeInfo*> dn2cpp_formal_type_arguments(const Dn2
     const auto* descriptor = owner->reflection().genericMetadata;
     if (parameters.empty() && descriptor != nullptr && descriptor->parameterCount > 0)
     {
+        const auto* customAttributes = descriptor->hasParameterCustomAttributes
+            ? static_cast<const Dn2CppAnnotatedGenericTypeMetadata*>(descriptor)->parameterCustomAttributes : nullptr;
         for (int32_t i = 0; i < descriptor->parameterCount; i++)
         {
             auto* parameter = dn2cpp_formal_skeleton(owner, &descriptor->parameters[i]);
             parameter->constraintsAvailable = descriptor->parameterMetadataAvailable;
+            if (customAttributes != nullptr)
+            {
+                const auto& attributes = customAttributes[i];
+                parameter->reflection.customAttrs = attributes.rows;
+                parameter->reflection.customAttrCount = attributes.count;
+            }
             parameters.push_back(parameter);
         }
         std::vector<const Dn2CppTypeInfo*> arguments;

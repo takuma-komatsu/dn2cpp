@@ -85,10 +85,26 @@ internal sealed partial class CppEmitter
         private TypeMetadata GenericDefinitionMembers(TypeMetadata data)
         {
             string key = data.DefinitionKey ?? data.Name;
+            var owner = _constraintDefinitions.GetValueOrDefault("generic:" + key);
             if (_c.OpenGenericDefHandleByName(key) is { } nestedOwner)
+            {
                 (data.NestedTypes, data.NestedCount) = NestedTypeTable(nestedOwner.Module, nestedOwner.Handle,
                     "gendef_" + CppNaming.GenericDefinitionStem(key));
-            if (!_constraintDefinitions.TryGetValue("generic:" + key, out var owner))
+                if (_c.IsNullableContextEnclosure(key) && (owner is null || _e._strippedGenericMetadata.Contains(key)))
+                {
+                    var type = nestedOwner.Module.Reader.GetTypeDefinition(nestedOwner.Handle);
+                    bool native = _e._metadataNativeRows;
+                    _e._metadataNativeRows = data.Native;
+                    (data.CustomAttrs, data.CustomAttrCount) = _e.BuildAttrTable(_sb, "context_" + CppNaming.GenericDefinitionStem(key),
+                        nestedOwner.Module, type.GetCustomAttributes(), Compilation.AttributeRows.NullableContext);
+                    _e._metadataNativeRows = native;
+                    data.IlAttrs = (uint)type.Attributes;
+                    data.MetadataToken = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(nestedOwner.Handle);
+                    if (owner is null && _c.TrimsReflection)
+                        _e._strippedGenericMetadata.Add(key);
+                }
+            }
+            if (owner is null)
                 return data;
             var reader = owner.Module.Reader;
             var definition = reader.GetTypeDefinition(owner.Handle);

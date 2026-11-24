@@ -1084,6 +1084,12 @@ struct Dn2CppMethodGenericParameter
     int32_t constraintCount = 0;
 };
 
+struct Dn2CppGenericParameterCustomAttributes
+{
+    Dn2CppMetadataTable<Dn2CppAttrInfo> rows;
+    int32_t count;
+};
+
 struct Dn2CppGenericTypeMetadata
 {
     const Dn2CppMethodGenericParameter* parameters;
@@ -1093,6 +1099,13 @@ struct Dn2CppGenericTypeMetadata
     int32_t interfaceCount;
     bool parameterMetadataAvailable;
     bool publicDefaultConstructor = false;
+    bool hasParameterCustomAttributes = false;
+};
+
+// Only a definition with retained attributes needs the table for its formal types.
+struct Dn2CppAnnotatedGenericTypeMetadata : Dn2CppGenericTypeMetadata
+{
+    const Dn2CppGenericParameterCustomAttributes* parameterCustomAttributes;
 };
 
 // Reflection method metadata. One entry per declared method in a type's
