@@ -304,7 +304,8 @@ binding.
 An assembly enumeration with a known assembly keeps that assembly's type rows.
 `InvokeMember` retention follows possible binding-flag operations, with default
 visibility and storage flags matching admission. A possible construction ignores
-the member name. Symbolic owners forward the corresponding constructor, member
+the member name; an empty or `[DISPID=0]` name selects the type's default member,
+or `ToString` when none is declared. Symbolic owners forward the corresponding constructor, member
 and boxing demands conservatively. Boxed nullable object types normalize to
 their underlying payload before member lookup, including generic payloads and
 symbolic bindings.

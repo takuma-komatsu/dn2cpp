@@ -1105,6 +1105,7 @@ static int32_t dn2cpp_exception_default_hresult(const Dn2CppTypeInfo* ti)
         { &dn2cpp_target_exception_type, 0x80131603u },
         { &dn2cpp_target_parameter_count_exception_type, 0x8002000Eu },
         { &dn2cpp_missing_method_exception_type, 0x80131513u },
+        { &dn2cpp_missing_field_exception_type, 0x80131511u },
         { &dn2cpp_member_access_exception_type, 0x8013151Au },
         { &dn2cpp_field_access_exception_type, 0x80131507u },
         { &dn2cpp_bad_image_format_exception_type, 0x8007000Bu },

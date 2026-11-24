@@ -2822,7 +2822,7 @@ using Dn2CppMethodCandidates = Dn2CppWalkList<Dn2CppMetadataHandle<Dn2CppMethodI
 
 static bool dn2cpp_meta_family_name(const Dn2CppMethodInfo& row);
 static int32_t dn2cpp_meta_collect_family(const Dn2CppTypeInfo* type, int32_t flags,
-    Dn2CppMethodCandidates& emitted, Dn2CppObject** out, Dn2CppString* name);
+    Dn2CppMethodCandidates& emitted, Dn2CppObject** out, Dn2CppString* name, bool pattern = false);
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_meta_object_base(
     Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, const Dn2CppMethodInfo& row);
 
@@ -2832,9 +2832,10 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_meta_object_base(
 // override: once a slot is seen walking derived→base, the inherited definition at the
 // same slot is skipped, and a generic virtual row is hidden by Dn2CppGvmHiding.
 // Non-virtual methods (slot -1, includes `new` hiding and overloads) are all kept.
+// `pattern` lets a trailing '*' in `name` match every name it starts.
 // With out==nullptr only counts; otherwise fills out[].
 static int32_t dn2cpp_collect_methods(const Dn2CppTypeInfo* type, int32_t flags,
-    Dn2CppObject** out, Dn2CppString* name = nullptr)
+    Dn2CppObject** out, Dn2CppString* name = nullptr, bool pattern = false)
 {
     int32_t n = 0;
     Dn2CppSeenSlots seen;
@@ -2866,7 +2867,7 @@ static int32_t dn2cpp_collect_methods(const Dn2CppTypeInfo* type, int32_t flags,
                 continue;
             if (dn2cpp_meta_family_name(*row.operator->()))
                 family.push_back(mi);
-            if (name != nullptr && !dn2cpp_member_name_matches(row->name, name, flags, false))
+            if (name != nullptr && !dn2cpp_member_name_matches(row->name, name, flags, pattern))
                 continue;
             if (out != nullptr)
                 dn2cpp_gc_store_ref(&out[n],
@@ -2878,7 +2879,7 @@ static int32_t dn2cpp_collect_methods(const Dn2CppTypeInfo* type, int32_t flags,
             break;
         gvm.next_type();
     }
-    return n + dn2cpp_meta_collect_family(type, flags, family, out != nullptr ? out + n : nullptr, name);
+    return n + dn2cpp_meta_collect_family(type, flags, family, out != nullptr ? out + n : nullptr, name, pattern);
 }
 
 Dn2CppArrayRef* dn2cpp_type_get_methods(Dn2CppType* t, int32_t bindingFlags)
@@ -4474,7 +4475,7 @@ static bool dn2cpp_meta_family_name(const Dn2CppMethodInfo& row)
 
 // Overrides replace their Object slot; new slots and nonvirtual names keep both rows.
 static int32_t dn2cpp_meta_collect_family(const Dn2CppTypeInfo* type, int32_t flags,
-    Dn2CppMethodCandidates& emitted, Dn2CppObject** out, Dn2CppString* name)
+    Dn2CppMethodCandidates& emitted, Dn2CppObject** out, Dn2CppString* name, bool pattern)
 {
     int32_t n = 0;
     bool gatedOpen = true;
@@ -4486,7 +4487,7 @@ static int32_t dn2cpp_meta_collect_family(const Dn2CppTypeInfo* type, int32_t fl
             const Dn2CppMetaMember* d = &g_meta_members[k];
             if (!dn2cpp_meta_family(d) || (d->gated && !gatedOpen) || !dn2cpp_meta_declares(ti, d)
                 || !dn2cpp_member_matches(d->attrs, flags, ti != type)
-                || (name != nullptr && !dn2cpp_member_name_matches(d->methodName, name, flags, false)))
+                || (name != nullptr && !dn2cpp_member_name_matches(d->methodName, name, flags, pattern)))
                 continue;
             bool present = false;
             const Dn2CppMetaMember* root = (d->ilAttrs & DN2CPP_MA_VIRTUAL) != 0
@@ -9501,8 +9502,9 @@ static Dn2CppEventRef* dn2cpp_make_eventref(Dn2CppMetadataHandle<Dn2CppEventInfo
 }
 
 // A member name against a lookup's: ordinal, or folded to invariant upper case under
-// BindingFlags.IgnoreCase. With `pattern` (GetMember, GetDefaultMembers), one trailing
-// '*' matches every name it starts. A null name matches everything (GetMembers).
+// BindingFlags.IgnoreCase. With `pattern` (GetMember, GetDefaultMembers, InvokeMember),
+// one trailing '*' matches every name it starts. A null name matches everything
+// (GetMembers).
 static bool dn2cpp_member_name_matches(const char* candidate, Dn2CppString* name, int32_t flags, bool pattern)
 {
     if (name == nullptr)
@@ -13145,26 +13147,21 @@ static bool dn2cpp_binder_arg_matches(Dn2CppObject* a, const Dn2CppTypeInfo* p)
     return ac >= 0 && dn2cpp_binder_prim_widens(ac, pc);
 }
 
-// Whether parameter type `a` is at least as specific as `b` — the ordering the
-// DefaultBinder resolves multi-candidate matches with: reference types by
-// assignability (string beats object), primitives by the widening matrix (int
-// beats long for a short argument); a value/reference mix is incomparable.
+// Whether parameter type `a` is at least as specific as `b`, as
+// DefaultBinder.FindMostSpecificType ranks a pair: two primitives by the
+// CanChangePrimitive widening (int beats long), any other pair by `b` being
+// assignable from `a` (string beats object; int beats object, ValueType and
+// IComparable).
 static bool dn2cpp_binder_param_at_least_as_specific(const Dn2CppTypeInfo* a, const Dn2CppTypeInfo* b)
 {
     if (a == b)
         return true;
-    bool aVal = (a->flags & DN2CPP_TF_VALUETYPE) != 0;
-    bool bVal = (b->flags & DN2CPP_TF_VALUETYPE) != 0;
-    if (!aVal && !bVal)
-        return dn2cpp_type_is_assignable_from(dn2cpp_get_type_from_handle(b),
-                                              dn2cpp_get_type_from_handle(a)) != 0;
-    if (aVal && bVal)
-    {
-        int32_t ac = dn2cpp_prim_code(a);
-        int32_t bc = dn2cpp_prim_code(b);
-        return ac >= 0 && bc >= 0 && dn2cpp_binder_prim_widens(ac, bc);
-    }
-    return false;
+    int32_t ac = dn2cpp_prim_code(a);
+    int32_t bc = dn2cpp_prim_code(b);
+    if (ac >= 0 && bc >= 0)
+        return dn2cpp_binder_prim_widens(ac, bc);
+    return dn2cpp_type_is_assignable_from(dn2cpp_get_type_from_handle(b),
+                                          dn2cpp_get_type_from_handle(a)) != 0;
 }
 
 // The type the DefaultBinder matches a parameter against: a by-ref parameter's
@@ -13183,22 +13180,105 @@ static bool dn2cpp_binder_param_matches(Dn2CppObject* a, const Dn2CppParamInfo& 
     return dn2cpp_binder_arg_matches(a, dn2cpp_binder_param_type(p));
 }
 
-// Whether candidate `x`'s whole parameter list is at least as specific as `y`'s and
-// strictly more specific somewhere.
-static bool dn2cpp_binder_dominates(Dn2CppMetadataHandle<Dn2CppMethodInfo> x,
-    Dn2CppMetadataHandle<Dn2CppMethodInfo> y, int32_t argc)
+// Counts the levels the candidates were collected along, which continue past a null
+// native base (Exception to Object, a value type to ValueType).
+static int32_t dn2cpp_binder_depth(const Dn2CppTypeInfo* ti)
 {
-    bool gtAny = false;
+    int32_t depth = 0;
+    for (; ti != nullptr; ti = dn2cpp_meta_next_level(ti))
+        depth++;
+    return depth;
+}
+
+// Whether two parameters have the same type, by-ref-ness included.
+static bool dn2cpp_binder_same_param(const Dn2CppParamInfo& a, const Dn2CppParamInfo& b)
+{
+    return dn2cpp_binder_param_type(a) == dn2cpp_binder_param_type(b)
+        && (a.passKind & DN2CPP_PASS_BYREF) == (b.passKind & DN2CPP_PASS_BYREF);
+}
+
+// DefaultBinder.FindMostSpecificType for two differing parameters bound to `arg`:
+// 1 when `a` is more specific, 2 when `b` is, 0 when the position is ambiguous. A
+// by-value parameter of the argument's exact type wins first (a null argument has
+// none), then a by-value parameter over a by-ref one of the same referent; other
+// pairs rank their referents by dn2cpp_binder_param_at_least_as_specific, where
+// ranking both ways or neither way is ambiguous.
+static int32_t dn2cpp_binder_more_specific(const Dn2CppParamInfo& a, const Dn2CppParamInfo& b,
+    Dn2CppObject* arg)
+{
+    const Dn2CppTypeInfo* ta = dn2cpp_binder_param_type(a);
+    const Dn2CppTypeInfo* tb = dn2cpp_binder_param_type(b);
+    const bool aByRef = (a.passKind & DN2CPP_PASS_BYREF) != 0;
+    const bool bByRef = (b.passKind & DN2CPP_PASS_BYREF) != 0;
+    if (arg != nullptr && !aByRef && ta == arg->type)
+        return 1;
+    if (arg != nullptr && !bByRef && tb == arg->type)
+        return 2;
+    if (ta == tb)
+        return aByRef ? 2 : 1;
+    const bool aFirst = dn2cpp_binder_param_at_least_as_specific(ta, tb);
+    if (aFirst == dn2cpp_binder_param_at_least_as_specific(tb, ta))
+        return 0;
+    return aFirst ? 1 : 2;
+}
+
+// Whether candidate `x` is more specific than `y` for the bound `args`, as
+// DefaultBinder.FindMostSpecific ranks a pair: `x` wins at some argument and `y`
+// at none, and no argument is ambiguous. Candidates that no argument tells apart
+// and whose signatures are identical rank by declaring type, the most derived
+// first.
+static bool dn2cpp_binder_dominates(Dn2CppMetadataHandle<Dn2CppMethodInfo> x,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> y, Dn2CppArrayRef* args, int32_t argc)
+{
+    bool xWins = false;
+    bool yWins = false;
     for (int32_t j = 0; j < argc; j++)
     {
-        const Dn2CppTypeInfo* px = dn2cpp_binder_param_type(*x->parameters[j]);
-        const Dn2CppTypeInfo* py = dn2cpp_binder_param_type(*y->parameters[j]);
-        if (!dn2cpp_binder_param_at_least_as_specific(px, py))
+        const Dn2CppParamInfo& a = *x->parameters[j];
+        const Dn2CppParamInfo& b = *y->parameters[j];
+        if (dn2cpp_binder_same_param(a, b))
+            continue;
+        const int32_t winner = dn2cpp_binder_more_specific(a, b, args->data[j]);
+        if (winner == 0)
             return false;
-        if (px != py)
-            gtAny = true;
+        if (winner == 1)
+            xWins = true;
+        else
+            yWins = true;
     }
-    return gtAny;
+    if (xWins || yWins)
+        return xWins && !yWins;
+    if (x->paramCount != y->paramCount)
+        return false;
+    for (int32_t j = 0; j < x->paramCount; j++)
+        if (!dn2cpp_binder_same_param(*x->parameters[j], *y->parameters[j]))
+            return false;
+    return dn2cpp_binder_depth(x->declaringType) > dn2cpp_binder_depth(y->declaringType);
+}
+
+// The index of the candidate the DefaultBinder selects among `n` that all bind
+// `args`. As BindToMethod does, each candidate in order is ranked only against
+// the running best: one that dominates it replaces it and clears any tie, and one
+// that neither dominates it nor is dominated by it ties. A tie left at the end
+// throws AmbiguousMatchException naming the running best.
+static int32_t dn2cpp_binder_most_specific(const Dn2CppMetadataHandle<Dn2CppMethodInfo>* cands,
+    int32_t n, Dn2CppArrayRef* args, int32_t argc, const Dn2CppTypeInfo* reflected)
+{
+    int32_t best = 0;
+    bool tied = false;
+    for (int32_t i = 1; i < n; i++)
+    {
+        if (dn2cpp_binder_dominates(cands[i], cands[best], args, argc))
+        {
+            best = i;
+            tied = false;
+        }
+        else if (!dn2cpp_binder_dominates(cands[best], cands[i], args, argc))
+            tied = true;
+    }
+    if (tied)
+        dn2cpp_throw_ambiguous_member(reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(cands[best], reflected)));
+    return best;
 }
 
 // Adapt one bound argument to the invoker thunk's parameter representation: a
@@ -13310,8 +13390,8 @@ static Dn2CppObject* dn2cpp_binder_adapt_arg(Dn2CppObject* a, const Dn2CppTypeIn
 // Activator.CreateInstance(Type, object[] args[, BindingFlags, Binder,
 // activationAttributes]): DefaultBinder-style constructor resolution matching real
 // .NET — candidates filter on BindingFlags + arity + per-argument admissibility;
-// several candidates resolve to the unique most-specific one (AmbiguousMatchException
-// when none dominates, e.g. a null argument against (int) and (string) ctors); no
+// several candidates resolve by dn2cpp_binder_most_specific (AmbiguousMatchException
+// on a tie, e.g. a null argument against (int) and (string) ctors); no
 // candidate is MissingMethodException. A non-null Binder is the AOT
 // PlatformNotSupportedException (the shared member-lookup posture); non-empty
 // activation attributes throw PlatformNotSupportedException like real .NET. Flags
@@ -13358,32 +13438,7 @@ Dn2CppObject* dn2cpp_activator_create_instance_args(Dn2CppType* t, Dn2CppArrayRe
     const int32_t n = cands.size();
     if (n == 0)
         dn2cpp_throw_missing_constructor(ti, arityMatched);
-    Dn2CppMetadataHandle<Dn2CppMethodInfo> best = nullptr;
-    if (n == 1)
-        best = cands[0];
-    else
-    {
-        // The unique candidate that dominates every rival.
-        for (int32_t x = 0; x < n && best == nullptr; x++)
-        {
-            bool dominates = true;
-            for (int32_t y = 0; y < n && dominates; y++)
-                if (x != y)
-                    dominates = dn2cpp_binder_dominates(cands[x], cands[y], argc);
-            if (dominates)
-                best = cands[x];
-        }
-        // The message names the candidate .NET's pairwise walk ends on: the first,
-        // replaced by each later one that dominates it.
-        if (best == nullptr)
-        {
-            int32_t named = 0;
-            for (int32_t y = 1; y < n; y++)
-                if (dn2cpp_binder_dominates(cands[y], cands[named], argc))
-                    named = y;
-            dn2cpp_throw_ambiguous_member(reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(cands[named], ti)));
-        }
-    }
+    const Dn2CppMetadataHandle<Dn2CppMethodInfo> best = cands[dn2cpp_binder_most_specific(cands.data(), n, args, argc, ti)];
     // A parameter with DN2CPP_PASS_* bits takes its argument unconverted, since
     // the constructor call checks it, and a by-ref argument's copy is written back
     // into `args`.
@@ -13412,4 +13467,225 @@ Dn2CppObject* dn2cpp_assembly_create_instance(const char* asmName, Dn2CppString*
     if (t == nullptr)
         return nullptr;
     return dn2cpp_activator_create_instance_args(t, args, bindingFlags, binder, activationAttrs);
+}
+
+// ---- reflection: Type.InvokeMember ----
+
+// MissingMethodException(className, memberName) and MissingFieldException
+// (className, memberName): the message formats the type's FullName and the name.
+[[noreturn]] static void dn2cpp_throw_missing_member(const Dn2CppTypeInfo* exceptionType,
+    const char* key, const Dn2CppTypeInfo* ti, Dn2CppString* name)
+{
+    Dn2CppString* names[2] = { dn2cpp_type_fullname(ti), name };
+    if (names[0] == nullptr)
+    {
+        const char* fallback = ti->name != nullptr ? ti->name : "?";
+        names[0] = dn2cpp_string_from_utf8(fallback, static_cast<int32_t>(std::strlen(fallback)));
+    }
+    dn2cpp_throw(dn2cpp_exception_new(exceptionType, dn2cpp_sr_message(key, names, 2), nullptr));
+}
+
+static bool dn2cpp_invoke_member_is_dispid0(Dn2CppString* name)
+{
+    static constexpr char16_t dispid[] = u"[DISPID=0]";
+    constexpr int32_t length = static_cast<int32_t>(sizeof dispid / sizeof dispid[0]) - 1;
+    return name->length == length
+        && std::memcmp(name->chars, dispid, sizeof(char16_t) * static_cast<size_t>(length)) == 0;
+}
+
+// FilterApplyMethodBase's arity rule without ParamArray metadata: the argument
+// count is the parameter count, or OptionalParamBinding leaves out trailing
+// parameters from an optional one on.
+static bool dn2cpp_invoke_member_arity(Dn2CppMetadataHandle<Dn2CppMethodInfo> m, int32_t argc,
+    bool optional)
+{
+    if (m->paramCount == argc)
+        return true;
+    return optional && argc < m->paramCount && (m->parameters[argc]->ilAttrs & 0x10) != 0;
+}
+
+// DefaultBinder.BindToMethod's per-candidate test: every left-out parameter has a
+// default value, and each argument binds to its parameter; under
+// OptionalParamBinding a Type.Missing argument binds to any parameter.
+static bool dn2cpp_invoke_member_binds(Dn2CppMetadataHandle<Dn2CppMethodInfo> m,
+    Dn2CppArrayRef* args, int32_t argc, bool optional)
+{
+    for (int32_t j = argc; j < m->paramCount; j++)
+    {
+        const Dn2CppParamInfo& p = *m->parameters[j];
+        if ((p.ilAttrs & 0x1010) == 0 && p.defaultValue == nullptr)
+            return false;
+    }
+    for (int32_t j = 0; j < argc; j++)
+    {
+        Dn2CppObject* a = args->data[j];
+        if (optional && dn2cpp_invoke_is_missing(a))
+            continue;
+        if (!dn2cpp_binder_param_matches(a, *m->parameters[j]))
+            return false;
+    }
+    return true;
+}
+
+// Type.InvokeMember in RuntimeType.InvokeMember's order. Fields bind to the most
+// derived declaration; methods and property accessors filter by arity and bind by
+// the activation binder's rules. A custom Type receiver, a custom Binder, named
+// parameters and indexing an array field are AOT PlatformNotSupportedExceptions;
+// without ParamArray metadata a `params` method binds only to an argument list
+// that matches its parameters.
+Dn2CppObject* dn2cpp_type_invoke_member(Dn2CppType* t, Dn2CppString* name, int32_t flags,
+    Dn2CppObject* binder, Dn2CppObject* target, Dn2CppArrayRef* args, Dn2CppArrayRef* named)
+{
+    constexpr int32_t invokeMethod = 0x100, createInstance = 0x200, getField = 0x400,
+        setField = 0x800, getProperty = 0x1000, setProperty = 0x2000, putDisp = 0xC000,
+        optionalParamBinding = 0x40000, nonFieldAccess = 0x00FFF300;
+    if (t == nullptr)
+        dn2cpp_throw_null_reference();
+    // A Type subclass carries no native Type payload to read.
+    if (t->type != &dn2cpp_type_type)
+        dn2cpp_throw_platform_not_supported("Type.InvokeMember: custom Type is not supported");
+    const Dn2CppTypeInfo* ti = dn2cpp_type_require(t);
+    if ((ti->flags & DN2CPP_TF_GENERICPARAM) != 0)
+        dn2cpp_throw_sr0(&dn2cpp_invalid_operation_exception_type, DN2CPP_SR_GENERIC_PARAMETER);
+    if ((flags & 0xFF00) == 0)
+        dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_NO_ACCESS_SPEC, "bindingFlags", nullptr, 0);
+    if ((flags & 0xFF) == 0)
+        flags |= DN2CPP_BF_PUBLIC | DN2CPP_BF_INSTANCE | ((flags & createInstance) == 0 ? DN2CPP_BF_STATIC : 0);
+    const int32_t argc = args != nullptr ? args->length : 0;
+    if (named != nullptr)
+    {
+        if (named->length > argc)
+            dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_NAMED_PARAM_TOO_BIG, "namedParams", nullptr, 0);
+        for (int32_t i = 0; i < named->length; i++)
+            if (named->data[i] == nullptr)
+                dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_NAMED_PARAM_NULL, "namedParams", nullptr, 0);
+    }
+    dn2cpp_reflection_check_binder(binder);
+    if (named != nullptr && named->length > 0)
+        dn2cpp_throw_platform_not_supported(
+            "Type.InvokeMember: named parameters are not supported in AOT-compiled code");
+    if ((flags & createInstance) != 0)
+    {
+        if ((flags & (invokeMethod | getField | setField | getProperty | setProperty)) != 0)
+            dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_CREATE_INSTANCE_ACCESS, "bindingFlags", nullptr, 0);
+        return dn2cpp_activator_create_instance_args(t, args, flags, nullptr, nullptr);
+    }
+    if ((flags & putDisp) != 0)
+        flags |= setProperty;
+    if (name == nullptr)
+        dn2cpp_throw_argument_null_param("name");
+    if (name->length == 0 || dn2cpp_invoke_member_is_dispid0(name))
+    {
+        const char* member = nullptr;
+        for (const Dn2CppTypeInfo* level = ti; level != nullptr && member == nullptr; level = dn2cpp_reflection_base(level))
+            member = level->reflection().defaultMemberName;
+        if (member == nullptr)
+            member = "ToString";
+        name = dn2cpp_string_from_utf8(member, static_cast<int32_t>(std::strlen(member)));
+    }
+    const bool isGetField = (flags & getField) != 0;
+    const bool isSetField = (flags & setField) != 0;
+    if (isGetField || isSetField)
+    {
+        if (isGetField)
+        {
+            if (isSetField)
+                dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_FIELD_SET_GET, "bindingFlags", nullptr, 0);
+            if ((flags & setProperty) != 0)
+                dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_FIELD_GET_PROPERTY_SET, "bindingFlags", nullptr, 0);
+        }
+        else
+        {
+            if (args == nullptr)
+                dn2cpp_throw_argument_null_param("providedArgs");
+            if ((flags & getProperty) != 0)
+                dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_FIELD_SET_PROPERTY_GET, "bindingFlags", nullptr, 0);
+            if ((flags & invokeMethod) != 0)
+                dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_FIELD_SET_INVOKE, "bindingFlags", nullptr, 0);
+        }
+        int32_t n = dn2cpp_collect_member_matches(ti, name, DN2CPP_MT_FIELD, flags, nullptr);
+        if (n > 0)
+        {
+            Dn2CppArrayRef* fields = dn2cpp_newarr_ref(n);
+            dn2cpp_collect_member_matches(ti, name, DN2CPP_MT_FIELD, flags, fields->data);
+            // The walk lists the most derived declaration first.
+            auto* field = reinterpret_cast<Dn2CppFieldRef*>(fields->data[0]);
+            if (dn2cpp_type_is_array(dn2cpp_fieldref_require(field)->fieldType) && (isGetField ? argc : argc - 1) > 0)
+                dn2cpp_throw_platform_not_supported(
+                    "Type.InvokeMember: indexing an array field is not supported in AOT-compiled code");
+            if (isGetField)
+            {
+                if (argc != 0)
+                    dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_FIELD_GET_ARGUMENTS, "bindingFlags", nullptr, 0);
+                return dn2cpp_fieldref_get_value(field, target);
+            }
+            if (argc != 1)
+                dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_FIELD_SET_ARGUMENTS, "bindingFlags", nullptr, 0);
+            dn2cpp_fieldref_set_value(field, target, args->data[0]);
+            return nullptr;
+        }
+        if ((flags & nonFieldAccess) == 0)
+            dn2cpp_throw_missing_member(&dn2cpp_missing_field_exception_type, DN2CPP_SR_MISSING_FIELD_NAME, ti, name);
+    }
+    const bool isGetProperty = (flags & getProperty) != 0;
+    const bool isSetProperty = (flags & setProperty) != 0;
+    if (isGetProperty && isSetProperty)
+        dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_PROPERTY_SET_GET, "bindingFlags", nullptr, 0);
+    if (isSetProperty && (flags & invokeMethod) != 0)
+        dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_PROPERTY_SET_INVOKE, "bindingFlags", nullptr, 0);
+    const bool optional = (flags & optionalParamBinding) != 0;
+    Dn2CppMethodCandidates finalists;
+    if ((flags & invokeMethod) != 0)
+    {
+        // GetMethods' set, so Object's methods bind without an override. It reports
+        // a generic method as its definition, which is left out: the row's
+        // parameter types are a compiled instantiation's, not the definition's.
+        int32_t n = dn2cpp_collect_methods(ti, flags, nullptr, name, true);
+        Dn2CppArrayRef* methods = dn2cpp_newarr_ref(n);
+        dn2cpp_collect_methods(ti, flags, methods->data, name, true);
+        for (int32_t i = 0; i < n; i++)
+        {
+            const auto m = reinterpret_cast<Dn2CppMethodRef*>(methods->data[i])->method;
+            if ((m->attrs & DN2CPP_MTHA_GENERIC) == 0 && dn2cpp_invoke_member_arity(m, argc, optional))
+                finalists.push_back(m);
+        }
+    }
+    // Accessors are found with nonPublic and then filtered by their own
+    // visibility, as RuntimeType filters GetGetMethod(true).
+    if ((finalists.size() == 0 && isGetProperty) || isSetProperty)
+    {
+        int32_t n = dn2cpp_collect_member_matches(ti, name, DN2CPP_MT_PROPERTY, flags, nullptr);
+        Dn2CppArrayRef* props = dn2cpp_newarr_ref(n);
+        dn2cpp_collect_member_matches(ti, name, DN2CPP_MT_PROPERTY, flags, props->data);
+        for (int32_t i = 0; i < n; i++)
+        {
+            auto* p = reinterpret_cast<Dn2CppPropRef*>(props->data[i]);
+            Dn2CppMethodRef* accessor = dn2cpp_propref_accessor(p, isSetProperty ? 1 : 0, 1);
+            if (accessor == nullptr)
+                continue;
+            const auto m = accessor->method;
+            const bool inherited = dn2cpp_invoke_declaring(m->declaringType, ti) != ti;
+            if (dn2cpp_member_matches(m->attrs, flags, inherited) && dn2cpp_invoke_member_arity(m, argc, optional))
+                finalists.push_back(m);
+        }
+    }
+    Dn2CppMethodCandidates cands;
+    for (int32_t i = 0; i < finalists.size(); i++)
+        if (dn2cpp_invoke_member_binds(finalists[i], args, argc, optional))
+            cands.push_back(finalists[i]);
+    if (cands.size() == 0)
+        dn2cpp_throw_missing_member(&dn2cpp_missing_method_exception_type, DN2CPP_SR_MISSING_METHOD_NAME, ti, name);
+    const auto best = cands[dn2cpp_binder_most_specific(cands.data(), cands.size(), args, argc, ti)];
+    Dn2CppMethodRef* method = dn2cpp_make_methodref(best, ti);
+    Dn2CppArrayRef* bound = args;
+    if (best->paramCount > argc)
+    {
+        // A left-out parameter takes its default, as Invoke substitutes for Type.Missing.
+        Dn2CppObject* missing = g_missing_value_factory != nullptr ? g_missing_value_factory() : nullptr;
+        bound = dn2cpp_newarr_ref(best->paramCount);
+        for (int32_t j = 0; j < best->paramCount; j++)
+            dn2cpp_gc_store_ref(&bound->data[j], j < argc ? args->data[j]
+                : dn2cpp_invoke_default(*best->parameters[j], missing, j, best->paramCount, nullptr));
+    }
+    return dn2cpp_methodref_invoke(method, target, bound, (flags & DN2CPP_BF_DO_NOT_WRAP_EXCEPTIONS) == 0);
 }
