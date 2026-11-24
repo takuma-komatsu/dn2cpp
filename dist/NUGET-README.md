@@ -8,8 +8,8 @@ produced binary.
 
 ## Prerequisites
 
-- .NET 11 runtime (runs the tool; also provides the BCL IL that `--auto-ref`
-  transpiles)
+- .NET 11 SDK for `dotnet tool install`. The included runtime executes dn2cpp
+  and provides the BCL IL that `--auto-ref` transpiles.
 - `clang++` (C++17), `cmake` ≥ 3.20, `ninja` (build the generated C++)
 
 ## Quick start

@@ -67,20 +67,13 @@
 source "$(dirname "$0")/_common.sh"
 
 echo "== 1/5 Locating the real pinned CoreLib + System.Net.Http, and the h2 oracle =="
+require_aspnetcore_runtime
 corelib=$(resolve_pinned_corelib)
 bcl=$(dirname "$corelib")
 nethttp="$bcl/System.Net.Http.dll"
 [ -f "$nethttp" ] || { echo "error: System.Net.Http.dll not found: $nethttp" >&2; exit 1; }
 echo "corlib:   $corelib"
 echo "net.http: $nethttp"
-# The oracle server is Kestrel — Microsoft.AspNetCore.App's shared framework, not a
-# NuGet package — which a bare console-only SDK install does not carry. Captured
-# first, then grepped from a here-string (never `dotnet ... | grep -q`, which is the
-# banned pipeline-into-an-early-exiting-consumer shape gates/_common.sh documents
-# beside `set -o pipefail`).
-runtimes="$(dotnet --list-runtimes)"
-grep -q '^Microsoft.AspNetCore.App ' <<<"$runtimes" \
-    || gate_skip "ASP.NET Core shared framework absent — the h2 oracle server is Kestrel"
 echo "OK: ASP.NET Core shared framework present"
 
 echo "== 2/5 Building the DnHttp shim + the samples =="

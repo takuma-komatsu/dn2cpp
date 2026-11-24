@@ -1631,15 +1631,15 @@ capability contract, not a set of independent constants:
   re-derives both rules from the csv and the header.
 - **Every Lowered helper is exercised.** `Exercises.g.cs` in the probe, written
   by the same generator, calls each mapped method with fixed inputs and prints
-  the bytes. The native gate compiles the probe in bounded reachability shards:
-  each managed variant omits the other families' table and exercise roots, so
-  their helper headers and immediate dispatches cannot enter that native image.
-  The gate proves the shards assign every row, top-level exercise and invalid
-  immediate witness exactly once, and that each generated image contains only
-  its assigned exercise bodies. It then concatenates their output and diffs it
-  against the identically sharded real-.NET runs. A wrong lowering therefore
-  fails on the machine that has the instruction rather than in a user's
-  program, without one compiler or process owning the full ISA surface.
+  the bytes. By default the native gate builds a shared X86 and Arm image
+  (`native`) and runs each architecture's contract separately. It reports the
+  independent reachability checks as skipped. `DN2CPP_PLATFORM_ISA_FULL=1`
+  builds separate shards for the X86 family groups and for Arm, each with its
+  own table and exercise roots. Both profiles check that every native row,
+  top-level exercise and invalid-immediate witness is assigned exactly once,
+  and that each image contains only its assigned exercise bodies. For each
+  architecture the gate compares the combined contract output and exit status
+  with the corresponding .NET runs on the same host.
   `Wasm.PackedSimd` has no such oracle (no host .NET answers true for it), so
   its run is frozen in `gates/expected/platform-isa-wasm-simd.txt` and every
   row with a portable equivalent carries a `@ref` cross-check against the

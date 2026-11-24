@@ -67,16 +67,12 @@
 source "$(dirname "$0")/_common.sh"
 
 echo "== 1/6 Locating the real pinned CoreLib + the gRPC oracle prerequisites =="
+require_aspnetcore_runtime
 corelib=$(resolve_pinned_corelib)
 bcl=$(dirname "$corelib")
 nethttp="$bcl/System.Net.Http.dll"
 [ -f "$nethttp" ] || { echo "error: System.Net.Http.dll not found: $nethttp" >&2; exit 1; }
 echo "corlib:   $corelib"
-# Captured then grepped from a here-string — never `dotnet ... | grep -q` (the
-# banned pipeline-into-an-early-exiting-consumer shape; see _common.sh).
-runtimes="$(dotnet --list-runtimes)"
-grep -q '^Microsoft.AspNetCore.App ' <<<"$runtimes" \
-    || gate_skip "ASP.NET Core shared framework absent — the gRPC oracle server is Kestrel"
 echo "OK: ASP.NET Core shared framework present"
 
 echo "== 2/6 Building the DnHttp shim + the client + the oracle server =="
@@ -117,7 +113,7 @@ while read -r want name; do
     fi
     grpc_refs+=(-r "$dll")
 done < "$GRPC_SHA_EXPECTED"
-echo "OK: ${#grpc_refs[@]} pinned assemblies verified against $GRPC_SHA_EXPECTED"
+echo "OK: $(( ${#grpc_refs[@]} / 2 )) pinned assemblies verified against $GRPC_SHA_EXPECTED"
 refs=(-r "$corelib" -r "$nethttp" -r "$dnhttp" "${grpc_refs[@]}")
 preservation=samples/dotnet/GrpcUnary/link.xml
 

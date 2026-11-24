@@ -15,9 +15,7 @@ MEASURE=artifacts/magiconion-yaha-measure
 YAHA_CACHE=artifacts/magiconion-yaha-cache
 YAHA_MODULE=Cysharp.Net.Http.YetAnotherHttpHandler.Native
 
-runtimes=$(dotnet --list-runtimes)
-grep -q '^Microsoft.AspNetCore.App ' <<<"$runtimes" \
-    || gate_skip "ASP.NET Core shared framework absent — the MagicOnion h2c oracle is Kestrel"
+require_aspnetcore_runtime
 nuget_packages=$(nuget_global_packages_root)
 if { [ ! -d "$nuget_packages/magiconion.client/7.10.2" ] \
         || [ ! -d "$nuget_packages/magiconion.serialization.messagepack/7.10.2" ] \

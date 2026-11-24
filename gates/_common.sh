@@ -281,6 +281,13 @@ resolve_pinned_corelib() {
     printf '%s\n' "$best_path"
 }
 
+require_aspnetcore_runtime() {
+    local runtimes
+    runtimes=$(dotnet --list-runtimes) || return
+    grep -q "^Microsoft[.]AspNetCore[.]App $DN2CPP_BCL_MAJOR[.]" <<<"$runtimes" \
+        || gate_skip "the Kestrel oracle for $TFM requires Microsoft.AspNetCore.App $DN2CPP_BCL_MAJOR.x"
+}
+
 # gate_shared_framework_assembly APPBIN NAME — path of NAME in the pinned shared
 # framework, for a `shared-framework` row of a package pin list. The SDK prunes a
 # package whose assembly the framework owns and real .NET loads the framework's
