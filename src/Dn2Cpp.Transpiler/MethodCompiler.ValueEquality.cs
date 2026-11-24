@@ -62,6 +62,11 @@ internal sealed partial class MethodCompiler
     private string SynthesizedValueEqualsBody()
     {
         var cls = Method.DeclaringClass;
+        if (cls.InlineArrayLength > 0)
+        {
+            Emit("dn2cpp_throw_not_supported_msg(\"Calling built-in Equals() or GetHashCode() on type marked as InlineArray is invalid.\");");
+            return RenderWrapperBody("built-in inline array equality");
+        }
         string ct = cls.CppStructName;
         var recv = new StackEntry("a0", StackKind.Ptr, ct + "*");
         var other = new StackEntry("a1", StackKind.Struct, ct);

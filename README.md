@@ -1303,9 +1303,11 @@ it does not come back as a ticket.
   precision** go through `double` (15–17 digits).
 - **Structural equality/hash is *synthesized* for a struct that overrides
   neither `Equals` nor `GetHashCode`** (`ValueType.Equals` is a QCall
-  extern, so a field walk is the only road). The synthesis declines —
+  extern, so a field walk is the only road). When a comparison reaches
+  the built-in `Equals` of an `[InlineArray(N)]` value, it throws
+  `NotSupportedException`. The synthesis declines —
   loudly, at the use site — explicit layout (overlapping fields are a
-  union a walk would double-count), `[InlineArray(N)]` and
+  union a walk would double-count), hashing `[InlineArray(N)]` values and
   `[MarshalAs(ByValArray)]` fields, pointer / function-pointer /
   `TypedReference` fields, and a field typed `System.Enum`. A hot-update
   patch likewise cannot demand a *new* structural equality on a

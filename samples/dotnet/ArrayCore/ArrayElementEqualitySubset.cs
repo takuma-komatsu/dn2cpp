@@ -1,5 +1,7 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 // Array.IndexOf<T> / Array.LastIndexOf<T> over EVERY element type, not just the
 // int/string/reference-equatable ones the intrinsic used to accept: the element
@@ -87,6 +89,22 @@ internal class Derived : Item
 
 internal class Program
 {
+    [InlineArray(2)]
+    private struct Bytes
+    {
+        private byte _first;
+    }
+
+    internal static void RunNullableInlineArraySearch()
+    {
+        KeyValuePair<int, Bytes?>[] values = [new(1, null), new(2, default(Bytes))];
+        Console.WriteLine("nullable inline array search=" + Array.IndexOf(values, new(1, null))
+            + "/" + Array.IndexOf(values, new(2, null))
+            + "/" + Array.IndexOf(values, new(3, default(Bytes))));
+        try { Console.WriteLine("inline array value match=" + Array.IndexOf(values, values[1])); }
+        catch (NotSupportedException) { Console.WriteLine("inline array value match=NotSupportedException"); }
+    }
+
     internal static void Run()
     {
         // --- element widths the old intrinsic rejected outright ---
