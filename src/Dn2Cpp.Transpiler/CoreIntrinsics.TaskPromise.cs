@@ -57,8 +57,8 @@ internal static partial class CoreIntrinsics
 
     internal static void ValidateTaskLifecycle(MethodInfo method)
     {
-        if (IsTaskSchedulerOperationName(method.DeclaringClass.FullName, method.Name)
-            && !IsTaskSchedulerOperation(method))
+        if (IsTaskSchedulerMemberName(method.DeclaringClass.FullName, method.Name)
+            && !IsTaskSchedulerMember(method))
             throw new NotSupportedException("TaskScheduler operation requires its exact CoreLib declaration");
         if (IsTaskLifecycleOwner(method.DeclaringClass) && !method.Handle.IsNil
             && IsTaskLifecycleCandidate(method.Name, method.Module.Reader.GetBlobReader(
@@ -133,7 +133,7 @@ internal static partial class CoreIntrinsics
         && method.Module.Reader.GetBlobReader(method.Module.Reader.GetMethodDefinition(method.Handle).Signature).Length == 4;
 
     internal static bool IsTaskManagedForwarder(MethodInfo method) =>
-        IsManagedTaskEvent(method) || IsTaskSchedulerId(method) ||
+        IsManagedTaskEvent(method) || IsTaskSchedulerId(method) || IsTaskSchedulerDequeue(method) ||
         method.Name == ".ctor" && method.DeclaringClass.GenericArity == 1 && IsTaskLifecycle(method)
         || IsTaskAddExceptionForwarder(method);
 

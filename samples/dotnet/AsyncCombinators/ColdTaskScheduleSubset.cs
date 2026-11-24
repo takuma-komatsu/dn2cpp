@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,11 +23,30 @@ internal static class Program
         }
     }
 
-    private sealed class IdentityOnlyScheduler : TaskScheduler
+    private sealed class ProbeScheduler : TaskScheduler
     {
+        internal Task Pending;
+        internal bool BaseDequeue(Task task) => base.TryDequeue(task);
+        internal bool Dequeue(Task task) => TryDequeue(task);
+        protected override bool TryDequeue(Task task)
+        {
+            if (Pending is null || Pending != task) return false;
+            Pending = null;
+            return true;
+        }
         protected override IEnumerable<Task> GetScheduledTasks() => Array.Empty<Task>();
         protected override void QueueTask(Task task) => throw new NotSupportedException();
         protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued) => false;
+    }
+
+    internal static void RunSchedulerDequeue()
+    {
+        var task = new Task(() => { });
+        var scheduler = new ProbeScheduler { Pending = task };
+        var method = typeof(TaskScheduler).GetMethod("TryDequeue", BindingFlags.Instance | BindingFlags.NonPublic);
+        var closedNull = (Func<Task, bool>)method.CreateDelegate(typeof(Func<Task, bool>), null);
+        Console.WriteLine("scheduler dequeue: " + scheduler.BaseDequeue(task) + "/"
+            + scheduler.Dequeue(task) + "/" + scheduler.Dequeue(task) + " closed-null=" + closedNull(task));
     }
 
     internal static void RunSchedulerIds()
@@ -39,15 +59,15 @@ internal static class Program
             (defaultScheduler.Id == defaultId) + "/" + (TaskScheduler.Current.Id == defaultId) + "/" +
             ((int)property.GetValue(defaultScheduler) == defaultId));
 
-        TaskScheduler first = new IdentityOnlyScheduler();
-        TaskScheduler second = new IdentityOnlyScheduler();
+        TaskScheduler first = new ProbeScheduler();
+        TaskScheduler second = new ProbeScheduler();
         int secondId = second.Id;
         int taskId = new Task(() => { }).Id;
         int firstId = first.Id;
         Console.WriteLine("read order and independent task counter: " + (secondId > defaultId) + "/" +
             (firstId == secondId + 1) + "/" + (taskId > 0) + "/" + (first.Id == firstId));
 
-        var shared = (TaskScheduler)RuntimeHelpers.GetUninitializedObject(typeof(IdentityOnlyScheduler));
+        var shared = (TaskScheduler)RuntimeHelpers.GetUninitializedObject(typeof(ProbeScheduler));
         using var start = new ManualResetEventSlim();
         int left = 0;
         int right = 0;

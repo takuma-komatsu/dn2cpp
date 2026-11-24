@@ -89,6 +89,11 @@ Dn2CppObject* dn2cpp_taskscheduler_default()
     return &dn2cpp_taskscheduler_statics().pool;
 }
 
+int32_t dn2cpp_taskscheduler_default_try_dequeue(Dn2CppObject*, Dn2CppTask*)
+{
+    dn2cpp_throw_platform_not_supported("TaskScheduler.TryDequeue on the default scheduler requires a worker-local queue");
+}
+
 int32_t* dn2cpp_taskscheduler_id_counter()
 {
     return &dn2cpp_taskscheduler_statics().counter;

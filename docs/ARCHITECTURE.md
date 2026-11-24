@@ -1766,6 +1766,11 @@ instance's ID unassigned. Its CoreLib debugger registration is inactive under
 dn2cpp, where `Debugger.IsAttached` is false. Task dispatch uses the native
 scheduler independently of construction.
 
+A direct call to `TaskScheduler.TryDequeue(Task)` runs the CoreLib base body and
+returns false. Virtual calls on generated schedulers use the receiver's override.
+The native default scheduler throws `PlatformNotSupportedException` for this
+operation because its worker pool does not expose a worker-local queue.
+
 The retained CoreLib `TaskScheduler.TryRunInline` helper rejects native promises,
 actionless precompleted tasks, unassigned cold tasks and continuations, invoked
 delegates, and canceled tasks without running work. A protected start alone does

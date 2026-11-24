@@ -1838,6 +1838,9 @@ internal sealed partial class MethodCompiler
         return true;
     }
 
+    private static string TaskSchedulerDequeueAddress(string receiver, MethodInfo method) =>
+        $"dn2cpp_runtime_virtual_address((Dn2CppObject*)({receiver}), {method.VtableSlot}, &dn2cpp_taskscheduler_type, (void*)&dn2cpp_taskscheduler_default_try_dequeue)";
+
     private void EmitManagedCall(MethodInfo callee, bool isCallvirt)
     {
         if (CoreIntrinsics.IsVectorManagedCountCandidate(callee.DeclaringClass, callee.Name)
@@ -2765,7 +2768,9 @@ internal sealed partial class MethodCompiler
             NfiWrapErasedCallArgs(callee, args);
             string fnPtrType = FnPtrType(callee);
             string receiver = args[0];
-            call = $"(({fnPtrType})(((Dn2CppObject*){receiver})->type->vtable[{callee.VtableSlot}]))({string.Join(", ", args)})";
+            string address = CoreIntrinsics.IsTaskSchedulerDequeue(callee) ? TaskSchedulerDequeueAddress(receiver, callee)
+                : $"((Dn2CppObject*){receiver})->type->vtable[{callee.VtableSlot}]";
+            call = $"(({fnPtrType})({address}))({string.Join(", ", args)})";
         }
         else
         {

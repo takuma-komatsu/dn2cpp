@@ -137,6 +137,7 @@ namespace AsyncCombinators
                 return;
             RuntimeAsyncSubset.Program.Run();
             RuntimeAsyncSubset.Program.RunConfiguredContexts();
+            ColdTaskScheduleSubset.Program.RunSchedulerDequeue();
         }
     }
 }

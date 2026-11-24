@@ -1246,8 +1246,9 @@ void* dn2cpp_runtime_virtual_address(Dn2CppObject* receiver, int32_t slot,
         if (target != nullptr && !dn2cpp_is_vcall_trap(target))
             return const_cast<void*>(target);
     }
-    dn2cpp_throw_platform_not_supported(runtimeType == &dn2cpp_type_type
-        ? "Nullable type query has no retained virtual implementation"
+    dn2cpp_throw_platform_not_supported(runtimeType == &dn2cpp_taskscheduler_type
+        ? "TaskScheduler.TryDequeue has no retained virtual implementation"
+        : runtimeType == &dn2cpp_type_type ? "Nullable type query has no retained virtual implementation"
         : "Module attribute data has no retained virtual implementation");
 }
 

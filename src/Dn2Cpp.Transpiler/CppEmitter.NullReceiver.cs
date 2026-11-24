@@ -378,7 +378,8 @@ internal sealed partial class CppEmitter
         // Delegate wrappers guard their own field reads and retain early returns
         // such as Equals(null) before touching this. A closed-null binding must
         // enter that body, not be rejected before its argument-dependent branch.
-        if (CoreIntrinsics.IsTaskSchedulerInline(m) || CoreIntrinsics.BrDelegateCallable.Matches(m)
+        if (CoreIntrinsics.IsTaskSchedulerInline(m) || CoreIntrinsics.IsTaskSchedulerDequeue(m)
+            || CoreIntrinsics.BrDelegateCallable.Matches(m)
             || CoreIntrinsics.BrEnumInstanceFormat.Matches(m) || IsNullTolerantObjectMember(cls, m))
             return NullOnlyScan;
         if (HasReplacedBody(cls, m) || _backend.ShouldSkipMethodBody(cls, m))

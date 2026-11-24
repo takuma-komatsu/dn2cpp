@@ -2304,12 +2304,13 @@ internal sealed partial class CppEmitter
             foreach (var cls in _c.Classes.ToList())
             {
                 if (cls.FullName is not ("System.Type" or "System.RuntimeType" or "System.Reflection.Module" or "System.Reflection.RuntimeModule"
-                    or "System.Reflection.CustomAttributeData" or "System.Reflection.RuntimeCustomAttributeData"))
+                    or "System.Reflection.CustomAttributeData" or "System.Reflection.RuntimeCustomAttributeData" or "System.Threading.Tasks.TaskScheduler"))
                     continue;
                 foreach (var method in cls.Methods)
                 {
                     bool instance = method.Name == "GetNullableUnderlyingType" && CoreIntrinsics.IsNullableTypeQuery(method)
-                        || method.Name is "GetCustomAttributesData" or "get_ConstructorArguments" && CoreIntrinsics.IsReflectionManagedBody(method);
+                        || method.Name is "GetCustomAttributesData" or "get_ConstructorArguments" && CoreIntrinsics.IsReflectionManagedBody(method)
+                        || CoreIntrinsics.IsTaskSchedulerDequeue(method);
                     if (!(instance && _c.KeepsUnreachedRow(method) || CoreIntrinsics.IsMemberNotFoundExceptionFactory(method))
                         || !IsRetainedOpaqueMemberRow(method))
                         continue;
@@ -3995,15 +3996,17 @@ internal sealed partial class CppEmitter
                 // runtime override, whose native handle has no generated vtable.
                 if (fnPtr != "nullptr" && invoker != "nullptr"
                     && (CoreIntrinsics.IsNullableTypeQueryBase(m) || CoreIntrinsics.IsModuleAttributeDataSlot(m)
-                        || CoreIntrinsics.IsAttributeArgumentsSlot(m)))
+                        || CoreIntrinsics.IsAttributeArgumentsSlot(m) || CoreIntrinsics.IsTaskSchedulerDequeue(m)))
                 {
                     var target = _c.ReflectionManagedVirtualFallback(m);
                     bool nullable = CoreIntrinsics.IsNullableTypeQueryBase(m);
-                    if (nullable || target != m)
+                    bool scheduler = CoreIntrinsics.IsTaskSchedulerDequeue(m);
+                    if (nullable || scheduler || target != m)
                     {
-                        string runtimeType = nullable ? "&dn2cpp_type_type" : CoreIntrinsics.IsModuleAttributeDataSlot(m)
+                        string runtimeType = scheduler ? "&dn2cpp_taskscheduler_type" : nullable ? "&dn2cpp_type_type" : CoreIntrinsics.IsModuleAttributeDataSlot(m)
                             ? "&dn2cpp_runtime_module_type" : "&dn2cpp_customattributedata_type";
-                        string runtimeTarget = nullable ? CoreIntrinsics.NullableTypeQueryHelper(m) : target.Emittable.CppName;
+                        string runtimeTarget = scheduler ? "dn2cpp_taskscheduler_default_try_dequeue"
+                            : nullable ? CoreIntrinsics.NullableTypeQueryHelper(m) : target.Emittable.CppName;
                         string thunk = invoker.Substring("(void*)&".Length);
                         invoker = $"(void*)&dn2cpp_runtime_virtual_invoker<{m.VtableSlot}, {runtimeType}, {runtimeTarget}, {thunk}>";
                     }
