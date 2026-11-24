@@ -2211,6 +2211,8 @@ inline constexpr const char* DN2CPP_SR_ARGUMENT_OUT_OF_RANGE = "Arg_ArgumentOutO
 inline constexpr const char* DN2CPP_SR_TASK_GENERIC_AWAIT_OPTIONS = "TaskT_ConfigureAwait_InvalidOptions";
 inline constexpr const char* DN2CPP_SR_CANCELLATION_SOURCE_DISPOSED = "CancellationTokenSource_Disposed";
 inline constexpr const char* DN2CPP_SR_MUST_BE_NON_ZERO = "ArgumentOutOfRange_Generic_MustBeNonZero";
+inline constexpr const char* DN2CPP_SR_DUPLICATE_WAIT_OBJECT = "Arg_DuplicateWaitObjectException";
+inline constexpr const char* DN2CPP_SR_MAX_WAITHANDLES = "NotSupported_MaxWaitHandles";
 inline constexpr const char* DN2CPP_SR_EMPTY_WAITHANDLE_ARRAY = "Argument_EmptyWaithandleArray";
 inline constexpr const char* DN2CPP_SR_ARGUMENT_NULL_ARRAY_ELEMENT = "ArgumentNull_ArrayElement";
 inline constexpr const char* DN2CPP_SR_ARGUMENT_NULL = "ArgumentNull_Generic";
@@ -3244,6 +3246,7 @@ extern const Dn2CppTypeInfo dn2cpp_exception_type;
 extern Dn2CppTypeInfo dn2cpp_overflow_exception_type;
 extern Dn2CppTypeInfo dn2cpp_index_out_of_range_exception_type;
 extern Dn2CppTypeInfo dn2cpp_argument_exception_type;
+extern Dn2CppTypeInfo dn2cpp_duplicate_wait_object_exception_type;
 extern Dn2CppTypeInfo dn2cpp_culture_not_found_exception_type;
 // System.Runtime.InteropServices.COMException. Marshal.GetExceptionForHR uses
 // this for HRESULT failures that have no more specific managed exception.
@@ -6250,7 +6253,8 @@ int32_t dn2cpp_event_wait(Dn2CppObject* e);                  // WaitOne()/Wait()
 int32_t dn2cpp_event_wait_timeout(Dn2CppObject* e, int32_t ms); // WaitOne/Wait(int/TimeSpan): 1=signaled, 0=timeout
 int32_t dn2cpp_event_wait_timeout_receiver_first(Dn2CppObject* e, int32_t ms);
 int32_t dn2cpp_event_is_set(Dn2CppObject* e);               // ManualResetEventSlim.IsSet
-int32_t dn2cpp_event_wait_any(Dn2CppArrayRef* handles);     // WaitHandle.WaitAny(WaitHandle[]): index of first signaled
+int32_t dn2cpp_event_wait_any(Dn2CppArrayRef* handles, int32_t ms); // first index, or WaitTimeout
+int32_t dn2cpp_event_wait_all(Dn2CppArrayRef* handles, int32_t ms); // 1 on success, 0 on timeout
 
 // ---- CountdownEvent / Barrier (counter-based sync) ----
 // Native-allocated reference objects (like the semaphore/event above); the helpers cast

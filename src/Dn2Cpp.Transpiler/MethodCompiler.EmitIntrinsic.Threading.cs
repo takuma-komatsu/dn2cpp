@@ -450,14 +450,20 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", $"dn2cpp_event_is_set((Dn2CppObject*)({o.Expr}))");
                 return true;
             }
-            // WaitHandle.WaitAny(WaitHandle[]) -> int: block until any handle in the array is
-            // signaled, returning its index. Only the single-array overload is mapped — the
-            // timed WaitAny(WaitHandle[], int/TimeSpan [, bool]) overloads DECLINE here (fall
-            // through to the default), so a differently-shaped call is never popped as this one.
-            case ("System.Threading.WaitHandle", "WaitAny") when sig.ParameterTypes.Length == 1:
+            case ("System.Threading.WaitHandle", "WaitAny" or "WaitAll")
+                when !sig.Header.IsInstance && sig.GenericParameterCount == 0
+                    && sig.ParameterTypes is [{ Kind: TypeKind.SZArray, Element: { } handleType }, ..]
+                    && (handleType.Class?.FullName ?? handleType.ExternalName) == "System.Threading.WaitHandle"
+                    && (sig.ParameterTypes.Length == 1
+                        || (sig.ParameterTypes.Length == 2 || sig.ParameterTypes is [_, _, { Primitive: PrimitiveTypeCode.Boolean }])
+                            && IsTimeoutParam(sig.ParameterTypes[1])):
             {
-                var arr = Pop(); // WaitHandle[]
-                Push(StackKind.I4, "int32_t", $"dn2cpp_event_wait_any((Dn2CppArrayRef*)({arr.Expr}))");
+                if (sig.ParameterTypes.Length == 3)
+                    Pop(); // exitContext has no effect on .NET Core
+                string ms = sig.ParameterTypes.Length == 1 ? "-1" : TimeoutMs(Pop(), sig.ParameterTypes[1]);
+                var handles = Pop();
+                string wait = name == "WaitAll" ? "dn2cpp_event_wait_all" : "dn2cpp_event_wait_any";
+                Push(StackKind.I4, "int32_t", $"{wait}((Dn2CppArrayRef*)({handles.Expr}), {ms})");
                 return true;
             }
             // The raw wait over IntPtr handles has no native counterpart: this runtime's wait

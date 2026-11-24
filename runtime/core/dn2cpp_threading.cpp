@@ -7,6 +7,7 @@
 #include "dn2cpp_core.h"
 #include "dn2cpp_wait_condition.h"
 #include <algorithm>
+#include <functional> // std::less orders unrelated event pointers
 #include <chrono>  // DateTime.Now/UtcNow wall clock
 #include <ctime>   // localtime_r for DateTime.Now local components
 #include <string>  // Path/File/Environment helpers
@@ -1058,17 +1059,26 @@ static void dn2cpp_waithandle_store_safe(Dn2CppWaitHandle* waitHandle,
     dn2cpp_gc_write_barrier_if_heap(&waitHandle->safeHandle);
 }
 
-Dn2CppObject* dn2cpp_waithandle_get_safe(Dn2CppObject* waitHandle)
+static Dn2CppSafeWaitHandle* dn2cpp_waithandle_safe(Dn2CppObject* waitHandle, bool forWait)
 {
     if (waitHandle == nullptr)
         dn2cpp_throw_null_reference();
     auto* wh = static_cast<Dn2CppWaitHandle*>(waitHandle);
     std::lock_guard<std::mutex> lk(g_wait_handle_mutex);
     if (wh->safeHandle == nullptr)
-        dn2cpp_waithandle_store_safe(wh, dn2cpp_is_runtime_event(waitHandle)
-            ? dn2cpp_managed_event_safe(waitHandle)
+    {
+        bool event = dn2cpp_is_runtime_event(waitHandle);
+        if (forWait && !event)
+            dn2cpp_throw_object_disposed();
+        dn2cpp_waithandle_store_safe(wh, event ? dn2cpp_managed_event_safe(waitHandle)
             : dn2cpp_safewaithandle_new(0, 0));
-    return wh->safeHandle;
+    }
+    return static_cast<Dn2CppSafeWaitHandle*>(wh->safeHandle);
+}
+
+Dn2CppObject* dn2cpp_waithandle_get_safe(Dn2CppObject* waitHandle)
+{
+    return dn2cpp_waithandle_safe(waitHandle, false);
 }
 
 void dn2cpp_waithandle_set_safe(Dn2CppObject* waitHandle, Dn2CppObject* safeHandle)
@@ -1423,73 +1433,211 @@ int32_t dn2cpp_event_is_set(Dn2CppObject* o)
     return e->signaled ? 1 : 0;
 }
 
-static int32_t dn2cpp_event_try_wait(Dn2CppObject* o, bool& externalProgress, bool& pumps)
+namespace
 {
-    Dn2CppSafeWaitHandle* external = nullptr;
-    auto* e = dn2cpp_event_from_operand(o, &external);
-    if (external != nullptr)
-    {
-        externalProgress = true;
-        return dn2cpp_external_wait(external, 0);
-    }
-    pumps |= e->pumpsTaskScheduler;
-    std::lock_guard<std::mutex> lk(e->m);
-    if (e->closed)
-        dn2cpp_throw_object_disposed();
-    if (!e->signaled)
-        return 0;
-    if (!e->manualReset)
-        e->signaled = false;
-    return 1;
+constexpr int32_t MaxWaitHandles = 64;
+constexpr int32_t WaitTimeout = 258;
+
+[[noreturn]] void dn2cpp_throw_wait_handle_argument(const Dn2CppTypeInfo* type, const char* key, int32_t index)
+{
+    char name[32];
+    std::snprintf(name, sizeof(name), "waitHandles[%d]", static_cast<int>(index));
+    dn2cpp_throw_argument_text(type, dn2cpp_sr_text(key), name);
 }
 
-// WaitHandle.WaitAny(WaitHandle[]): block until ANY handle is signaled, returning its
-// index. A round-robin non-blocking scan resolves each operand through the same
-// SafeWaitHandle mapping as WaitOne, then consumes an auto-reset signal exactly once.
-// Windows OS handles use WaitForSingleObject(0); runtime events use their mutex. When
-// none is ready the loop sleeps briefly and retries (there is no shared condition
-// variable across the heterogeneous set).
-// Argument checks match real .NET: a null array or a null element throws
-// ArgumentNullException, an empty array throws ArgumentException. The timed
-// WaitAny(..., int/TimeSpan) overloads stay unmapped.
-int32_t dn2cpp_event_wait_any(Dn2CppArrayRef* handles)
+// Resolve the array once and hold every SafeWaitHandle until the wait ends. A
+// callback can replace an array element, swap a wrapper or dispose it mid-wait.
+struct MultiWait
+{
+    Dn2CppSafeWaitHandle* held[MaxWaitHandles];
+    Dn2CppEvent* events[MaxWaitHandles];
+    Dn2CppEvent* ordered[MaxWaitHandles];
+    int32_t externalIndex[MaxWaitHandles];
+#ifdef _WIN32
+    HANDLE external[MaxWaitHandles];
+#endif
+    int32_t count = 0, eventCount = 0, externalCount = 0;
+    bool pumps = false;
+
+    ~MultiWait()
+    {
+        for (int32_t i = 0; i < count; ++i)
+            dn2cpp_safewaithandle_release(held[i]);
+    }
+
+    void prepare(Dn2CppArrayRef* handles, bool all)
+    {
+        int32_t duplicate = -1;
+        for (int32_t i = 0; i < handles->length; ++i)
+        {
+            auto* handle = handles->data[i];
+            if (handle == nullptr)
+                dn2cpp_throw_wait_handle_argument(&dn2cpp_argument_null_exception_type,
+                    DN2CPP_SR_ARGUMENT_NULL_ARRAY_ELEMENT, i);
+
+            auto* safe = dn2cpp_waithandle_safe(handle, true);
+            std::lock_guard<std::mutex> lock(safe->m);
+            if (safe->closed)
+                dn2cpp_throw_object_disposed();
+            ++safe->dangerousRefs;
+            held[count++] = safe;
+            auto* event = safe->managedEvent ? reinterpret_cast<Dn2CppEvent*>(safe->handle) : nullptr;
+            events[i] = event;
+            if (event != nullptr)
+            {
+                auto* end = ordered + eventCount;
+                if (all && duplicate < 0 && std::find(ordered, end, event) != end)
+                    duplicate = i;
+                ordered[eventCount++] = event;
+                pumps |= event->pumpsTaskScheduler;
+            }
+            else
+            {
+#ifdef _WIN32
+                auto raw = reinterpret_cast<HANDLE>(safe->handle);
+                if (std::find(external, external + externalCount, raw) != external + externalCount)
+                {
+                    if (all && duplicate < 0)
+                        duplicate = i;
+                    continue; // WaitAny uses the first index and passes each HANDLE only once
+                }
+                external[externalCount] = raw;
+#endif
+                externalIndex[externalCount++] = i;
+            }
+        }
+        // Complete element validation and retention before reporting a duplicate.
+        if (duplicate >= 0)
+            dn2cpp_throw_wait_handle_argument(&dn2cpp_duplicate_wait_object_exception_type,
+                DN2CPP_SR_DUPLICATE_WAIT_OBJECT, duplicate);
+        std::sort(ordered, ordered + eventCount, std::less<Dn2CppEvent*>{});
+        eventCount = static_cast<int32_t>(std::unique(ordered, ordered + eventCount) - ordered);
+#ifndef _WIN32
+        if (all && externalCount != 0)
+            dn2cpp_throw_platform_not_supported("OS-backed WaitHandle is only available on Windows");
+#endif
+    }
+
+    int32_t poll(bool all) const
+    {
+        // Lock each distinct event in the same order for overlapping wait sets.
+        // A zero-duration kernel wait can then commit the external subset while
+        // no WaitOne, Set or Reset can change the managed subset.
+        std::unique_lock<std::mutex> locks[MaxWaitHandles];
+        for (int32_t i = 0; i < eventCount; ++i)
+            locks[i] = std::unique_lock<std::mutex>(ordered[i]->m);
+
+        int32_t ready = count;
+        for (int32_t i = 0; i < count; ++i)
+        {
+            auto* event = events[i];
+            if (event == nullptr)
+                continue;
+            if (event->closed)
+                dn2cpp_throw_object_disposed();
+            if (all && !event->signaled)
+                return WaitTimeout;
+            if (!all && event->signaled)
+            {
+                ready = i;
+                break;
+            }
+        }
+
+        // For WaitAny, a later native auto-reset signal must not be consumed
+        // when an earlier managed event would win.
+        auto n = std::lower_bound(externalIndex, externalIndex + externalCount, ready) - externalIndex;
+#ifdef _WIN32
+        bool abandoned = false;
+#endif
+        if (n != 0)
+        {
+#ifdef _WIN32
+            DWORD result = ::WaitForMultipleObjects(static_cast<DWORD>(n), external, all, 0);
+            if (result == WAIT_TIMEOUT)
+            {
+                if (all)
+                    return WaitTimeout;
+            }
+            else if (result < WAIT_OBJECT_0 + static_cast<DWORD>(n))
+            {
+                if (!all)
+                    return externalIndex[result - WAIT_OBJECT_0];
+            }
+            else if (all && result >= WAIT_ABANDONED_0 && result < WAIT_ABANDONED_0 + static_cast<DWORD>(n))
+                abandoned = true;
+            else
+                dn2cpp_throw_invalid_operation();
+#else
+            dn2cpp_throw_platform_not_supported("OS-backed WaitHandle is only available on Windows");
+#endif
+        }
+        if (all)
+        {
+            for (int32_t i = 0; i < eventCount; ++i)
+                if (!ordered[i]->manualReset)
+                    ordered[i]->signaled = false;
+#ifdef _WIN32
+            // Win32 acquired the entire set even when a mutex was abandoned.
+            if (abandoned)
+                dn2cpp_throw_invalid_operation();
+#endif
+            return 0;
+        }
+        if (ready == count)
+            return WaitTimeout;
+        if (!events[ready]->manualReset)
+            events[ready]->signaled = false;
+        return ready;
+    }
+};
+}
+
+static int32_t dn2cpp_event_wait_multiple(Dn2CppArrayRef* handles, int32_t ms, bool all)
 {
     if (handles == nullptr)
         dn2cpp_throw_argument_null_param("waitHandles");
     if (handles->length == 0)
         dn2cpp_throw_argument_message(
             dn2cpp_sr_message(DN2CPP_SR_EMPTY_WAITHANDLE_ARRAY, nullptr, 0), "waitHandles");
-    for (int32_t i = 0; i < handles->length; i++)
-        if (handles->data[i] == nullptr)
-        {
-            char name[32];
-            std::snprintf(name, sizeof(name), "waitHandles[%d]", static_cast<int>(i));
-            dn2cpp_throw_argument_text(&dn2cpp_argument_null_exception_type,
-                dn2cpp_sr_text(DN2CPP_SR_ARGUMENT_NULL_ARRAY_ELEMENT), name);
-        }
-    Dn2CppEntryPollingWait entry(true);
+    if (handles->length > MaxWaitHandles)
+        dn2cpp_throw_sr0(&dn2cpp_not_supported_exception_type, DN2CPP_SR_MAX_WAITHANDLES);
+    dn2cpp_timeout_require_ms(ms);
+
+    MultiWait wait;
+    wait.prepare(handles, all);
+    Dn2CppEntryPollingWait entry(ms < 0);
+    using Clock = std::chrono::steady_clock;
+    auto deadline = Clock::now() + std::chrono::milliseconds(ms);
     for (;;)
     {
         uint64_t sample = entry.sample();
-        bool externalProgress = false;
-        bool pumps = false;
-        for (int32_t i = 0; i < handles->length; i++)
-        {
-            if (dn2cpp_event_try_wait(handles->data[i], externalProgress, pumps))
-                return i;
-        }
-        if (pumps)
+        int32_t result = wait.poll(all);
+        if (result != WaitTimeout || ms == 0 || (ms > 0 && Clock::now() >= deadline))
+            return result;
+        if (wait.pumps)
         {
             if (entry.observing && dn2cpp_scheduler_has_work())
                 entry.resume();
             dn2cpp_sched_pump();
         }
-        if (externalProgress || (pumps && entry.observing && dn2cpp_scheduler_has_work()))
+        if (wait.externalCount != 0 || (wait.pumps && entry.observing && dn2cpp_scheduler_has_work()))
             entry.resume();
         else
             entry.park_if_unchanged(sample);
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        auto next = Clock::now() + std::chrono::milliseconds(1);
+        std::this_thread::sleep_until(ms < 0 ? next : std::min(next, deadline));
     }
+}
+
+int32_t dn2cpp_event_wait_any(Dn2CppArrayRef* handles, int32_t ms)
+{
+    return dn2cpp_event_wait_multiple(handles, ms, false);
+}
+
+int32_t dn2cpp_event_wait_all(Dn2CppArrayRef* handles, int32_t ms)
+{
+    return dn2cpp_event_wait_multiple(handles, ms, true) != WaitTimeout;
 }
 
 // ===== CountdownEvent / Barrier =============================================

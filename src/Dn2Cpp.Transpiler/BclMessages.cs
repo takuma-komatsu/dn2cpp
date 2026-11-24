@@ -210,6 +210,8 @@ internal static class BclMessages
         "ArgumentOutOfRange_Generic_MustBeNonNegativeNonZero",
         "ArgumentOutOfRange_Generic_MustBeNonZero",
         "Argument_EmptyWaithandleArray",
+        "Arg_DuplicateWaitObjectException",
+        "NotSupported_MaxWaitHandles",
         "ArgumentNull_ArrayElement",
         "ArgumentOutOfRange_Generic_MustBeGreaterOrEqual",
         "ArgumentOutOfRange_Generic_MustBeLessOrEqual",
