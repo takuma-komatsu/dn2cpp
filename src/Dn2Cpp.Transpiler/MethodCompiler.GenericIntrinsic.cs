@@ -1614,7 +1614,12 @@ internal sealed partial class MethodCompiler
         {
             var tsig = DecodeGenericCallSignature(msh, methodArgs);
             var v = Pop();
-            PushStampedTask($"dn2cpp_task_from_result({EmitTaskResultStore(v)}, {TaskCachedResultDisposal(v, methodArgs[0])})", tsig.ReturnType);
+            string result = EmitTaskResultStore(v);
+            var (cached, usesDefaultField) = TaskResultCacheCondition(v, methodArgs[0]);
+            string task = StampTask($"dn2cpp_task_from_result({result}, {(usesDefaultField ? "false" : cached)})", tsig.ReturnType);
+            if (usesDefaultField)
+                task = $"({cached} ? *dn2cpp_task_default_result_field({TaskTypeInfo(tsig.ReturnType)}) : {task})";
+            Push(StackKind.Ref, "Dn2CppTask*", task);
             return;
         }
 

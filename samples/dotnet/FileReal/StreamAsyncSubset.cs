@@ -105,6 +105,19 @@ namespace StreamAsyncSubset
     {
         internal static void __GateEntry(string dir) => RunAsync(dir).GetAwaiter().GetResult();
 
+        internal static void RunNullStreamBeginRead()
+        {
+            var stream = Stream.Null;
+            byte[] buffer = Array.Empty<byte>();
+            var first = stream.BeginRead(buffer, 0, 0, null, null);
+            var second = stream.BeginRead(buffer, 0, 0, null, null);
+            var task = TaskToAsyncResult.Unwrap<int>(first);
+            Console.WriteLine("null stream EndRead=" + stream.EndRead(first)
+                + ", same task=" + ReferenceEquals(task, TaskToAsyncResult.Unwrap<int>(second))
+                + ", same FromResult=" + ReferenceEquals(task, Task.FromResult(0))
+                + ", null result reused=" + ReferenceEquals(Task.FromResult<string>(null), Task.FromResult<string>(null)));
+        }
+
         internal static void RunCapturedCancellation()
         {
             using var live = new CancellationTokenSource();
