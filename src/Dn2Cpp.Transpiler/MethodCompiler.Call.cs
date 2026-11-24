@@ -15,6 +15,15 @@ internal sealed partial class MethodCompiler
 
     // ---- calls ----
 
+    private string NullableTypeQueryReceiver(StackEntry receiver)
+    {
+        // CanonAny loads a real runtime handle except for unsupported compound shapes.
+        if (SharedTrial && receiver.TypeToken is { } token && Compilation.ContainsCanonPlaceholder(token)
+            && (!Compilation.ContainsCanonAny(token) || token.Kind is TypeKind.MDArray or TypeKind.ByRef or TypeKind.Pointer))
+            ThrowSharedTaint("type-identity", $"Type query on {token}");
+        return _constrained is null ? Cast(receiver, "Dn2CppObject*") : $"*((Dn2CppObject**)({receiver.Expr}))";
+    }
+
     /// <summary>Match-and-route for one MethodDefinition-arm descriptor row
     /// (<see cref="MethodDefIntercept"/>): false when the row does not match and
     /// the chain continues; true when the row's emit arm has lowered the call.
@@ -593,6 +602,7 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.IsCancellationInvoke(callee)
                     || CoreIntrinsics.IsKnownConstant(callee)
                     || CoreIntrinsics.IsMemberNotFoundExceptionFactory(callee)
+                    || CoreIntrinsics.IsNullableTypeQuery(callee)
                     || CoreIntrinsics.IsMemberMetadataDefinitionBase(callee)
                     || CoreIntrinsics.IsCustomAttributeDataConstructorBase(callee)
                     || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(callee)
@@ -1052,6 +1062,11 @@ internal sealed partial class MethodCompiler
                     EmitManagedCall(delegateBody, isCallvirt);
                     return;
                 }
+                if (_c.TryResolveNullableTypeQuery(_module, (MemberReferenceHandle)handle, _method.Context) is { } query)
+                {
+                    EmitManagedCall(query, isCallvirt);
+                    return;
+                }
                 _c.ValidateNumericMemberRefOwner(_module, (MemberReferenceHandle)handle, _method.Context);
                 if (_c.TryResolveScalarNumericLeafReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } scalarNumericLeaf)
                 {
@@ -1076,6 +1091,12 @@ internal sealed partial class MethodCompiler
                 _c.RejectBareVectorAsReference(_module, (MemberReferenceHandle)handle, _method.Context);
                 var mr = _reader.GetMemberReference((MemberReferenceHandle)handle);
                 string mrName = _reader.GetString(mr.Name);
+                if (isCallvirt && CoreIntrinsics.IsExternalNullableTypeQuery(_module, mr)
+                    && _c.ResolveTypeRef(_module, (TypeReferenceHandle)mr.Parent) is null)
+                {
+                    Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_runtime_type_nullable_underlying({NullableTypeQueryReceiver(Pop())})");
+                    return;
+                }
                 if (_c.TryResolveVectorEstimateReference(_module, (MemberReferenceHandle)handle, _method.Context) is { } vectorEstimate)
                 {
                     EmitVectorFloatingPointTernary(vectorEstimate);
@@ -1214,10 +1235,6 @@ internal sealed partial class MethodCompiler
                 // the per-enum runtime table; the generic Enum.*<T> forms are a
                 // MethodSpecification. The arm decodes in the NULL context (see the row).
                 if (TryEmitMemberRefIntercept(CoreIntrinsics.MrEnumStatics, mr, mrParent, mrName, Sig))
-                    return;
-                // Nullable.GetUnderlyingType(Type): the real body reflects; the runtime
-                // helper reads the synthesized Nullable<U> type-info (NULL-context decode).
-                if (TryEmitMemberRefIntercept(CoreIntrinsics.MrNullableGetUnderlyingType, mr, mrParent, mrName, Sig))
                     return;
                 // SynchronizationContext.get_Current / SetSynchronizationContext — the
                 // per-thread runtime slot, same as the MethodDef intercept above.
@@ -1896,6 +1913,13 @@ internal sealed partial class MethodCompiler
         // refusal; the core emitter itself has no target knowledge.
         if (_intrinsics is not null && _intrinsics.TryEmitCall(this, callee, isCallvirt))
             return;
+
+        if (isCallvirt && CoreIntrinsics.IsNullableTypeQueryBase(callee))
+        {
+            string helper = CoreIntrinsics.NullableTypeQueryHelper(callee);
+            EmitCallResult(callee, $"({CppTypes.Of(callee.Signature.ReturnType)})dn2cpp_nullable_type_virtual<{callee.VtableSlot}, {helper}>({NullableTypeQueryReceiver(Pop())})");
+            return;
+        }
 
         if (isCallvirt && CoreIntrinsics.IsCustomAttributeDataConstructorBase(callee))
         {
@@ -2714,7 +2738,7 @@ internal sealed partial class MethodCompiler
             // here.
             call = DirectCall(callee, args);
         }
-        else if (isCallvirt && ((CoreIntrinsics.IsRuntimeTypeArrayRank(callee) || CoreIntrinsics.IsRuntimeTypeEnumName(callee) || CoreIntrinsics.IsRuntimeTypeEnumDefined(callee) || CoreIntrinsics.IsRuntimeTypeAssignableFrom(callee) || CoreIntrinsics.IsRuntimeTypeTypeCode(callee)) || CoreIntrinsics.IsRuntimeTypeMakeCompound(callee) || CoreIntrinsics.IsRuntimeTypeMakeArray(callee)
+        else if (isCallvirt && ((CoreIntrinsics.IsRuntimeNullableTypeQuery(callee) || CoreIntrinsics.IsRuntimeTypeArrayRank(callee) || CoreIntrinsics.IsRuntimeTypeEnumName(callee) || CoreIntrinsics.IsRuntimeTypeEnumDefined(callee) || CoreIntrinsics.IsRuntimeTypeAssignableFrom(callee) || CoreIntrinsics.IsRuntimeTypeTypeCode(callee)) || CoreIntrinsics.IsRuntimeTypeMakeCompound(callee) || CoreIntrinsics.IsRuntimeTypeMakeArray(callee)
             || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(callee) || (CoreIntrinsics.IsRuntimeTypeAssemblyGetter(callee) || CoreIntrinsics.IsRuntimeTypeModuleGetter(callee))
             || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(callee) || CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(callee) || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(callee) || CoreIntrinsics.IsRuntimeTypeHasElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsArrayOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsByRefOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsPrimitiveOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsPointerOverride(callee) || CoreIntrinsics.IsRuntimeTypeElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(callee)))
         {
@@ -3774,7 +3798,7 @@ internal sealed partial class MethodCompiler
         for (int i = 0; i < rawArgs.Length; i++)
             args2.Add(Cast(rawArgs[i], CppTypes.Of(ps[i])));
         // Nonvirtual and selected sealed native-Type calls enter their own bodies.
-        if (!callee.IsVirtual || (CoreIntrinsics.IsRuntimeTypeArrayRank(callee) || CoreIntrinsics.IsRuntimeTypeEnumName(callee) || CoreIntrinsics.IsRuntimeTypeEnumDefined(callee) || CoreIntrinsics.IsRuntimeTypeAssignableFrom(callee) || CoreIntrinsics.IsRuntimeTypeTypeCode(callee)) || CoreIntrinsics.IsRuntimeTypeMakeCompound(callee) || CoreIntrinsics.IsRuntimeTypeMakeArray(callee)
+        if (!callee.IsVirtual || (CoreIntrinsics.IsRuntimeNullableTypeQuery(callee) || CoreIntrinsics.IsRuntimeTypeArrayRank(callee) || CoreIntrinsics.IsRuntimeTypeEnumName(callee) || CoreIntrinsics.IsRuntimeTypeEnumDefined(callee) || CoreIntrinsics.IsRuntimeTypeAssignableFrom(callee) || CoreIntrinsics.IsRuntimeTypeTypeCode(callee)) || CoreIntrinsics.IsRuntimeTypeMakeCompound(callee) || CoreIntrinsics.IsRuntimeTypeMakeArray(callee)
             || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(callee) || (CoreIntrinsics.IsRuntimeTypeAssemblyGetter(callee) || CoreIntrinsics.IsRuntimeTypeModuleGetter(callee))
             || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(callee) || CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(callee) || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(callee) || CoreIntrinsics.IsRuntimeTypeHasElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsArrayOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsByRefOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsPrimitiveOverride(callee) || CoreIntrinsics.IsRuntimeTypeIsPointerOverride(callee) || CoreIntrinsics.IsRuntimeTypeElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(callee))
         {

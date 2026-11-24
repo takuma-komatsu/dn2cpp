@@ -178,6 +178,23 @@ internal sealed partial class AssemblyDiet
             method.Parameters.Count > 1 ? CoreType(method.Parameters[1].ParameterType) : null);
     }
 
+    private static bool IsCopiedNullableTypeQuery(MethodDefinition method, string owner)
+    {
+        if (owner is not ("System.Type" or "System.RuntimeType")
+            || method.Name is not ("GetNullableUnderlyingType" or "get_IsGenericTypeDefinition")
+            || method.Module.Assembly?.Name.Name != "System.Private.CoreLib" || !method.HasBody
+            || !method.IsIL || !method.IsManaged || method.IsInternalCall || method.IsPInvokeImpl
+            || !method.HasThis || method.ExplicitThis || method.HasGenericParameters || method.HasParameters
+            || method.CallingConvention != MethodCallingConvention.Default)
+            return false;
+        var attributes = MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.HideBySig;
+        if (owner == "System.Type") attributes |= MethodAttributes.NewSlot;
+        if (method.Name == "get_IsGenericTypeDefinition") attributes |= MethodAttributes.SpecialName;
+        return method.Attributes == attributes && (method.Name == "get_IsGenericTypeDefinition"
+            ? method.ReturnType.MetadataType == MetadataType.Boolean
+            : method.ReturnType is TypeDefinition { FullName: "System.Type" } type && type.Module == method.Module);
+    }
+
     private static bool IsCopiedMemberMetadataDefinition(MethodDefinition method, string owner)
     {
         if (!CoreIntrinsicTypeMaps.IsMemberMetadataDefinitionOwner(owner)
@@ -517,6 +534,8 @@ internal sealed partial class AssemblyDiet
             traverse = false;
         else if (IsCopiedStringPrivateEntryPoint(method, owner))
             traverse = method.Name == "wcslen";
+        else if (IsCopiedNullableTypeQuery(method, owner))
+            traverse = owner == "System.Type";
         else if (IsCopiedMemberMetadataDefinition(method, owner))
             traverse = owner == "System.Reflection.MemberInfo";
         else if (IsCopiedCultureInfoNameValidator(method, owner)

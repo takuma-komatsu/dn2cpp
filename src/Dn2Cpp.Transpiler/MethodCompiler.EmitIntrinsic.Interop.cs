@@ -802,6 +802,12 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsRuntimeNullableTypeQuery(callee))
+        {
+            string helper = CoreIntrinsics.NullableTypeQueryHelper(callee);
+            EmitCallResult(callee, $"({CppTypes.Of(callee.Signature.ReturnType)}){helper}({Cast(Pop(), "Dn2CppObject*")})");
+            return;
+        }
         if (CoreIntrinsics.IsMemberMetadataDefinitionOverride(callee))
         {
             var other = Pop();

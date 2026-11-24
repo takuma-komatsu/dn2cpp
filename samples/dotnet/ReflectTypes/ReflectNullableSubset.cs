@@ -9,6 +9,7 @@
 // locals, lifted operators, the special box/unbox) are pinned separately by
 // NullableValueSubset. Diffed exact vs real.NET.
 using System;
+using System.Reflection;
 
 namespace ReflectNullableSubset;
 
@@ -33,5 +34,54 @@ public static class Program
         Type prop = typeof(int?);
         Type effective = Nullable.GetUnderlyingType(prop) ?? prop;
         Console.WriteLine("effective=" + effective.Name);
+    }
+
+    sealed class StructConstraint<T> where T : struct { }
+
+    sealed class NullableOverride : TypeDelegator
+    {
+        readonly bool _definition;
+        internal NullableOverride(bool definition = false) : base(typeof(int?)) { _definition = definition; }
+        public override bool IsGenericTypeDefinition => _definition;
+        internal Type FromBase() => base.GetNullableUnderlyingType();
+        public override Type GetNullableUnderlyingType() => typeof(byte);
+    }
+
+    static Type Underlying(Type type) => type.GetNullableUnderlyingType();
+
+    internal static void RunTypeQuery()
+    {
+        Console.WriteLine("== Type.GetNullableUnderlyingType ==");
+        Type definition = typeof(Nullable<>);
+        Type formal = definition.GetGenericArguments()[0];
+        Console.WriteLine("closed=" + (Underlying(typeof(int?)) == typeof(int))
+            + " plain=" + (Underlying(typeof(int)) == null)
+            + " reference=" + (Underlying(typeof(string)) == null));
+        Console.WriteLine("open formal=" + ReferenceEquals(Underlying(definition), formal)
+            + " static=" + (Nullable.GetUnderlyingType(definition) == null));
+        Type otherFormal = typeof(StructConstraint<>).GetGenericArguments()[0];
+        Type partial = definition.MakeGenericType(otherFormal);
+        Console.WriteLine("open constructed=" + ReferenceEquals(Underlying(partial), otherFormal));
+        Type delegator = new TypeDelegator(typeof(long?));
+        var custom = new NullableOverride();
+        Func<Type> bound = custom.GetNullableUnderlyingType;
+        Console.WriteLine("delegator=" + (Underlying(delegator) == typeof(long))
+            + " override=" + (bound() == typeof(byte))
+            + " base=" + (custom.FromBase() == typeof(int))
+            + " static=" + (Nullable.GetUnderlyingType(custom) == typeof(byte))
+            + " skip definition=" + (Nullable.GetUnderlyingType(new NullableOverride(true)) == null));
+        const string name = nameof(Type.GetNullableUnderlyingType);
+        var method = typeof(Type).GetMethod(name);
+        Type runtime = Type.GetType("System.RuntimeType", true);
+        Func<Type> native = typeof(int?).GetNullableUnderlyingType;
+        var declared = runtime.GetMethod(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+        Console.WriteLine("reflected=" + ((Type)method.Invoke(typeof(long?), null) == typeof(long))
+            + "/" + ((Type)method.Invoke(custom, null) == typeof(byte))
+            + " runtime=" + (runtime.GetMethod(name)?.DeclaringType == runtime)
+            + "/" + (declared?.DeclaringType == runtime) + "/" + (native.Method.DeclaringType == runtime));
+        try { Nullable.GetUnderlyingType(null); }
+        catch (ArgumentNullException e) { Console.WriteLine("static null=" + e.GetType().Name + "/" + e.ParamName); }
+        try { Underlying(null); }
+        catch (NullReferenceException) { Console.WriteLine("null receiver=NullReferenceException"); }
     }
 }

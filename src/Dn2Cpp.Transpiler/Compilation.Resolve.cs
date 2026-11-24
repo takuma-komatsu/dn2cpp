@@ -43,7 +43,7 @@ internal sealed partial class Compilation
         string name = reader.GetString(member.Name);
         if (name is not ("ToString" or "Equals" or "GetHashCode")
             || member.Parent.Kind != HandleKind.TypeReference
-            || !IsRuntimeObjectTypeReference(module, (TypeReferenceHandle)member.Parent)
+            || !IsRuntimeSystemTypeReference(module, (TypeReferenceHandle)member.Parent, "Object")
             || ResolveTypeRef(module, (TypeReferenceHandle)member.Parent) is not null)
             return null;
         var blob = reader.GetBlobReader(member.Signature);
@@ -155,6 +155,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.IsCancellationInvoke(mi)
                     || CoreIntrinsics.IsKnownConstant(mi)
                     || CoreIntrinsics.IsMemberNotFoundExceptionFactory(mi)
+                    || CoreIntrinsics.IsNullableTypeQuery(mi)
                     || CoreIntrinsics.IsMemberMetadataDefinitionBase(mi)
                     || CoreIntrinsics.IsCustomAttributeDataConstructorBase(mi)
                     || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(mi)
@@ -519,6 +520,7 @@ internal sealed partial class Compilation
             {
                 if (TryResolveTaskLifecycleReference(module, (MemberReferenceHandle)handle, ctx) is { } taskPromise) return taskPromise;
                 if (TryResolveDelegateCallableReference(module, (MemberReferenceHandle)handle, ctx) is { } delegateBody) return delegateBody;
+                if (TryResolveNullableTypeQuery(module, (MemberReferenceHandle)handle, ctx) is { } query) return query;
                 ValidateNumericMemberRefOwner(module, (MemberReferenceHandle)handle, ctx);
                 if (TryResolveScalarNumericLeafReference(module, (MemberReferenceHandle)handle, ctx) is { } scalarNumericLeaf) return scalarNumericLeaf;
                 if (TryResolveUnsupportedAlignedReference(module, (MemberReferenceHandle)handle, ctx) is { } unsupportedAligned) return unsupportedAligned;
@@ -646,9 +648,6 @@ internal sealed partial class Compilation
                 // the per-enum runtime table; the generic Enum.*<T> forms are cut in the
                 // MethodSpecification case above. ONE predicate, shared with the emit route.
                 if (CoreIntrinsics.MrEnumStatics.Matches(mrParent, mrName, Sig))
-                    return null;
-                // Nullable.GetUnderlyingType(Type): the real reflection body is not an edge.
-                if (CoreIntrinsics.MrNullableGetUnderlyingType.Matches(mrParent, mrName, Sig))
                     return null;
                 // SynchronizationContext.get_Current / SetSynchronizationContext — the
                 // per-thread runtime slot; instance members (Post/Send) transpile.
@@ -1510,6 +1509,18 @@ internal sealed partial class Compilation
         throw new NotSupportedException($"Same-module MemberRef parent '{name}' could not be resolved");
     }
 
+    internal MethodInfo? TryResolveNullableTypeQuery(Module module, MemberReferenceHandle handle, GenericContext context)
+    {
+        var reader = module.Reader;
+        var member = reader.GetMemberReference(handle);
+        if (!CoreIntrinsics.IsNullableTypeQueryName(reader.GetString(member.Name))
+            || MemberRefParentTypeName(module, handle) is not ("System.Type" or "System.RuntimeType")
+            || member.Parent.Kind == HandleKind.TypeReference && ResolveTypeRef(module, (TypeReferenceHandle)member.Parent)?.Class is null)
+            return null;
+        var method = ResolveMemberRefMethod(module, handle, context);
+        return CoreIntrinsics.IsNullableTypeQuery(method) ? method : null;
+    }
+
     /// <summary>Resolves a MemberRef on a closed generic instance, a loaded external
     /// type, or a same-module non-generic definition.</summary>
     public MethodInfo ResolveMemberRefMethod(Module module, MemberReferenceHandle handle, GenericContext callerCtx)
@@ -1816,6 +1827,10 @@ internal sealed partial class Compilation
                 || blob.ReadByte() != (byte)SignatureTypeCode.Boolean || blob.ReadByte() != (byte)SignatureTypeCode.Object)
                 throw new NotSupportedException("RuntimeType enum defined query requires its exact MemberRef signature");
         }
+        if (CoreIntrinsics.IsNullableTypeQuery(resolved)
+            && (sig.Header.RawValue != 0x20 || sig.GenericParameterCount != 0 || sig.ParameterTypes.Length != 0
+                || !SameTypeArg(sig.ReturnType, resolved.Signature.ReturnType)))
+            throw new NotSupportedException("Nullable type query requires its declared instance signature");
         if (name == "get_Constructor" && candidates.Any(CoreIntrinsics.IsCustomAttributeDataConstructorBase))
         {
             if (!CoreIntrinsics.IsCustomAttributeDataConstructorSignature(reader.GetBlobReader(mr.Signature))
@@ -2394,6 +2409,7 @@ internal sealed partial class Compilation
                 || CoreIntrinsics.IsDateTimeLeapSecondSupport(method))
                 return method;
         }
+        if (TryResolveNullableTypeQuery(module, handle, callerCtx) is { } query) return query;
         if (full == "System.Reflection.CustomAttributeData" && reader.StringComparer.Equals(mr.Name, "get_Constructor"))
         {
             var constructor = ResolveMemberRefMethod(module, handle, callerCtx);

@@ -785,6 +785,7 @@ internal sealed partial class Compilation
         // time and box its result and each by-ref write-back; attribute reads run the
         // attribute constructors. In both tables.
         "dn2cpp_methodref_invoke(",
+        "dn2cpp_nullable_type_virtual<",
         "dn2cpp_attrdata_constructor_virtual", // may dispatch an arbitrary retained override
         "dn2cpp_delegate_dynamic_invoke(",
         "dn2cpp_ctorref_invoke(",
@@ -815,6 +816,7 @@ internal sealed partial class Compilation
         "dn2cpp_array_search_equals(",  // runtime array-element equality-slot dispatch
         "dn2cpp_default_equality_comparer_equals_nongeneric",
         "dn2cpp_methodref_invoke(",     // MethodInfo.Invoke: the row's body or the receiver's override
+        "dn2cpp_nullable_type_virtual<",
         "dn2cpp_attrdata_constructor_virtual", // may dispatch an arbitrary retained override
         "dn2cpp_memberinfo_has_same_metadata(", // may dispatch an arbitrary retained override
         "dn2cpp_delegate_dynamic_invoke(", // Delegate.DynamicInvoke: every entry of the chain

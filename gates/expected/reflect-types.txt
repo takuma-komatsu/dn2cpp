@@ -1586,3 +1586,11 @@ opaque valid=True:True
 library constructor=ArrayList:True
 runtime constructor=Exception:True
 closed generic constraints end
+== Type.GetNullableUnderlyingType ==
+closed=True plain=True reference=True
+open formal=True static=True
+open constructed=True
+delegator=True override=True base=True static=True skip definition=True
+reflected=True/True runtime=True/True/True
+static null=ArgumentNullException/nullableType
+null receiver=NullReferenceException

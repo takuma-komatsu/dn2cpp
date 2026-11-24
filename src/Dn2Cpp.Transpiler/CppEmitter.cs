@@ -2166,6 +2166,7 @@ internal sealed partial class CppEmitter
             && !CoreIntrinsics.IsGuardedVectorAs(m)
             && !CoreIntrinsics.IsVectorManagedForwarder(m)
             && !CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
+            && !CoreIntrinsics.IsNullableTypeQueryBase(m)
             && !CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
             && !CoreIntrinsics.IsCustomAttributeDataConstructorBase(m);
 
@@ -2321,6 +2322,7 @@ internal sealed partial class CppEmitter
             // because the noted-array / cast-target sets keep growing as bodies compile.
             _c.ExpandArrayEnumerableMaps();
             _c.PrepareArrayDelegateMetadata();
+            _c.PrepareNullableDelegateMetadata();
             _c.PrepareRuntimeDelegateInterfaceMetadata();
             _c.PrepareRuntimeInterfaces();
             // Reflection support for the delegates the bodies just compiled allocate or
@@ -2805,6 +2807,7 @@ internal sealed partial class CppEmitter
                                 && !CoreIntrinsics.IsGuardedVectorAs(m)
                                 && !CoreIntrinsics.IsVectorManagedForwarder(m)
                                 && !CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
+                                && !CoreIntrinsics.IsNullableTypeQueryBase(m)
                                 && !CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
                                 && !CoreIntrinsics.IsCustomAttributeDataConstructorBase(m))
                             {
@@ -3229,6 +3232,8 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    dn2cpp_set_resourcemanager_default_type_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({resourceManagerRow}));");
         if (_dateOnlyDeconstructRow is { } dateOnlyRow)
             sb.AppendLine($"    dn2cpp_set_dateonly_deconstruct_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({dateOnlyRow}));");
+        if (_nullableUnderlyingRow is not null || _runtimeNullableUnderlyingRow is not null)
+            sb.AppendLine($"    dn2cpp_set_nullable_underlying_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_nullableUnderlyingRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_runtimeNullableUnderlyingRow ?? "nullptr"}));");
         if (_memberNotFoundFactoryRow is { } factoryRow)
             sb.AppendLine($"    dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({factoryRow}));");
         if (_objectVirtualInheritance is { } objectVirtuals)
@@ -3998,6 +4003,8 @@ internal sealed partial class CppEmitter
     private (string Sym, int Count)? _objectVirtualInheritance;
     private (string Sym, int Count)? _delegateMethodCatalog;
     private string? _memberNotFoundFactoryRow;
+    private string? _nullableUnderlyingRow;
+    private string? _runtimeNullableUnderlyingRow;
     private string? _dateOnlyDeconstructRow;
     private string? _resourceManagerDefaultTypeRow;
     private string? _cultureCompareInfoRow;

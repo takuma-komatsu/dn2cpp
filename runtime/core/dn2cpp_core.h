@@ -1411,7 +1411,9 @@ struct Dn2CppDelegateMethodCatalog
     int32_t methodCount;
 };
 void dn2cpp_set_delegate_method_catalog(const Dn2CppDelegateMethodCatalog* rows, int32_t count);
-// A retained managed Type factory is named-only metadata; its runtime type handle stays immutable.
+// Selected named rows leave the runtime-owned Type handle immutable.
+void dn2cpp_set_nullable_underlying_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> declaration,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> runtimeOverride);
 void dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 // Exact retained CultureInfo getter; no general intrinsic-type metadata mutation.
 void dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
@@ -1912,6 +1914,28 @@ Dn2CppObject* dn2cpp_type_get_enum_values(Dn2CppType* t);
 Dn2CppObject* dn2cpp_enum_get_values_underlying(Dn2CppType* t);
 // Nullable.GetUnderlyingType(Type): U for a closed Nullable<U>, else null.
 Dn2CppType* dn2cpp_nullable_get_underlying(Dn2CppType* t);
+Dn2CppType* dn2cpp_runtime_type_nullable_underlying(Dn2CppObject* receiver);
+int32_t dn2cpp_runtime_type_is_generic_definition(Dn2CppObject* receiver);
+void* dn2cpp_nullable_type_address(Dn2CppObject* receiver, int32_t slot, void* runtimeTarget);
+template<int32_t Slot, auto RuntimeTarget>
+auto dn2cpp_nullable_type_virtual(Dn2CppObject* receiver)
+{
+    using Target = decltype(RuntimeTarget(receiver)) (*)(Dn2CppObject*);
+    auto target = reinterpret_cast<Target>(
+        dn2cpp_nullable_type_address(receiver, Slot, reinterpret_cast<void*>(RuntimeTarget)));
+    return target(receiver);
+}
+
+template<int32_t Slot, auto RuntimeTarget, auto Invoke>
+Dn2CppObject* dn2cpp_nullable_type_invoker(void* fn, Dn2CppObject* receiver,
+    Dn2CppObject** args, const Dn2CppTypeInfo* result)
+{
+    // A delegate closed over null enters the base body. MethodInfo.Invoke checks its receiver first.
+    if (receiver != nullptr)
+        fn = dn2cpp_nullable_type_address(receiver, Slot, reinterpret_cast<void*>(RuntimeTarget));
+    return Invoke(fn, receiver, args, result);
+}
+
 // The value arrives BOXED: the enum type is chosen at run time at these call sites, so
 // only this side can read the payload at the enum's own model width.
 Dn2CppString* dn2cpp_enum_get_name(Dn2CppType* t, Dn2CppObject* value);

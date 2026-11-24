@@ -707,6 +707,12 @@ Members, signatures and field types are decoded **on demand**; read
 4. Add a minimal case to `samples/dotnet/HelloWorld`; green
    `./gates/build-and-run-sample.sh`.
 
+The virtual `Type.GetNullableUnderlyingType()` returns the underlying argument on
+a runtime Nullable type, including its interned formal on the open definition.
+Managed Type subclasses use their own virtual slot. The CoreLib static
+`Nullable.GetUnderlyingType(Type)` first checks the virtual
+`Type.IsGenericTypeDefinition` and returns null for a generic definition.
+
 The retained internal `Activator.CreateInstance(Type, bool, bool)` factory shares
 parameterless constructor selection with the public native factory. Its booleans
 remain `nonPublic` and `wrapExceptions`; constructor discovery does not depend on

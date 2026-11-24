@@ -11,6 +11,31 @@ internal sealed partial class Compilation
     internal readonly List<(ClassInfo Receiver, MethodInfo Declaration, MethodInfo Target)> RuntimeDelegateInterfaceTargets = new();
     private readonly HashSet<(ClassInfo, MethodInfo)> _runtimeDelegateInterfacePairs = new();
 
+    internal MethodInfo? NullableDelegateRuntimeOverride { get; private set; }
+
+    internal void PrepareNullableDelegateMetadata()
+    {
+        if (NullableDelegateRuntimeOverride is not null || !ReadsDelegateMethod)
+            return;
+        foreach (var (declaration, isVirtual) in _delegateIdentities.Values)
+        {
+            if (!isVirtual || declaration.Name != "GetNullableUnderlyingType" || !CoreIntrinsics.IsNullableTypeQueryBase(declaration))
+                continue;
+            // typeof produces a runtime-owned receiver that is absent from managed allocations.
+            var owner = FindClassByFullName("System.RuntimeType");
+            int slot = declaration.VtableSlot;
+            if (owner is not null && slot >= 0 && slot < owner.Vtable.Count
+                && owner.Vtable[slot] is { } target && CoreIntrinsics.IsRuntimeNullableTypeQuery(target))
+            {
+                NullableDelegateRuntimeOverride = target;
+                _delegateIdentityTargets.Add(target.CppName);
+                NoteReferencedType(owner);
+                Reach(target);
+            }
+            return;
+        }
+    }
+
     internal void PrepareRuntimeDelegateInterfaceMetadata()
     {
         if (!ReadsDelegateMethod)

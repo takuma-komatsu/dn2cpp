@@ -1190,19 +1190,62 @@ Dn2CppObject* dn2cpp_enum_get_values_underlying(Dn2CppType* t)
     return obj;
 }
 
-// Nullable.GetUnderlyingType(Type): U for a closed Nullable<U>, else null. A
-// synthesized Nullable<U> type-info carries genericDef=Nullable`1 + a single genericArg U;
-// a non-Nullable (or null) type returns null, matching .NET.
+static bool dn2cpp_is_nullable_definition(const Dn2CppTypeInfo* ti)
+{
+    return ti != nullptr && ti->name != nullptr && std::strcmp(ti->name, "System.Nullable`1") == 0
+        && std::strcmp(dn2cpp_ti_assembly_name(ti), "System.Private.CoreLib") == 0;
+}
+
+// Only a RuntimeType facade carries native TypeInfo after the object header.
+static const Dn2CppTypeInfo* dn2cpp_nullable_receiver_info(Dn2CppType* type)
+{
+    dn2cpp_null_check(type);
+    if (type->type != &dn2cpp_type_type)
+        dn2cpp_throw_not_supported();
+    return dn2cpp_type_require(type);
+}
+
+// Without CoreLib IL the static Nullable API still excludes the generic definition.
 Dn2CppType* dn2cpp_nullable_get_underlying(Dn2CppType* t)
 {
     if (t == nullptr)
-        return nullptr;
-    const Dn2CppTypeInfo* ti = t->typeInfo;
-    if (ti->genericArgCount == 1 && ti->genericDef != nullptr && ti->genericArgs != nullptr
-        && ti->genericDef->name != nullptr
-        && std::strcmp(ti->genericDef->name, "System.Nullable`1") == 0)
-        return dn2cpp_get_type_from_handle(ti->genericArgs[0]);
-    return nullptr;
+        dn2cpp_throw_argument_null_param("nullableType");
+    const auto* underlying = dn2cpp_nullable_underlying_ti(dn2cpp_nullable_receiver_info(t));
+    return underlying == nullptr ? nullptr : dn2cpp_get_type_from_handle(underlying);
+}
+
+Dn2CppType* dn2cpp_runtime_type_nullable_underlying(Dn2CppObject* receiver)
+{
+    const auto* ti = dn2cpp_nullable_receiver_info(static_cast<Dn2CppType*>(receiver));
+    if ((ti->flags & DN2CPP_TF_GENERICDEF) != 0)
+    {
+        if (!dn2cpp_is_nullable_definition(ti))
+            return nullptr;
+        // The open definition returns the same interned T as GetGenericArguments.
+        auto formals = dn2cpp_formal_type_arguments(ti);
+        return formals.empty() ? nullptr : dn2cpp_get_type_from_handle(formals[0]);
+    }
+    const auto* underlying = dn2cpp_nullable_underlying_ti(ti);
+    return underlying == nullptr ? nullptr : dn2cpp_get_type_from_handle(underlying);
+}
+
+int32_t dn2cpp_runtime_type_is_generic_definition(Dn2CppObject* receiver)
+{
+    return dn2cpp_type_is_generic_type_definition(dn2cpp_nullable_receiver_info(static_cast<Dn2CppType*>(receiver)));
+}
+
+void* dn2cpp_nullable_type_address(Dn2CppObject* receiver, int32_t slot, void* runtimeTarget)
+{
+    dn2cpp_null_check(receiver);
+    if (receiver->type == &dn2cpp_type_type)
+        return runtimeTarget;
+    if (slot >= 0 && receiver->type->vtable != nullptr)
+    {
+        const void* target = receiver->type->vtable[slot];
+        if (target != nullptr && !dn2cpp_is_vcall_trap(target))
+            return const_cast<void*>(target);
+    }
+    dn2cpp_throw_platform_not_supported("Nullable type query has no retained virtual implementation");
 }
 
 // The private RuntimeType/UInt64 overload consumes the source bits before narrowing.
@@ -4454,12 +4497,18 @@ static int32_t dn2cpp_meta_collect_family(const Dn2CppTypeInfo* type, int32_t fl
     return n;
 }
 
-// The image installs this exact managed row before startup; ordinary invocation owns its body.
-static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_member_not_found_factory_row;
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_named_type_methods[3];
 
 void dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method)
 {
-    g_member_not_found_factory_row = method;
+    g_named_type_methods[0] = method;
+}
+
+void dn2cpp_set_nullable_underlying_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> declaration,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> runtimeOverride)
+{
+    g_named_type_methods[1] = declaration;
+    g_named_type_methods[2] = runtimeOverride;
 }
 
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_culture_compare_info_row;
@@ -4567,9 +4616,10 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     int32_t genericParamCount, Dn2CppArrayRef* paramTypes, int32_t bindingFlags,
     Dn2CppMethodCandidates& cands)
 {
-    const auto factory = g_member_not_found_factory_row;
-    const bool factoryNamed = factory != nullptr
-        && dn2cpp_member_name_matches(factory->name, name, bindingFlags, false);
+    Dn2CppMethodCandidates namedTypeMethods;
+    for (auto method : g_named_type_methods)
+        if (method != nullptr && dn2cpp_member_name_matches(method->name, name, bindingFlags, false))
+            namedTypeMethods.push_back(method);
     const auto dateOnly = g_dateonly_deconstruct_row;
     const bool dateOnlyNamed = dateOnly != nullptr
         && dn2cpp_member_name_matches(dateOnly->name, name, bindingFlags, false);
@@ -4590,7 +4640,7 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     for (int32_t i = 0; i < 2; i++)
         taskSchedulerNamed[i] = g_task_scheduler_rows[i] != nullptr
             && dn2cpp_member_name_matches(g_task_scheduler_rows[i]->name, name, bindingFlags, false);
-    bool named = factoryNamed || dateOnlyNamed || cultureCompareInfoNamed || cultureNameValidatorNamed
+    bool named = namedTypeMethods.size() != 0 || dateOnlyNamed || cultureCompareInfoNamed || cultureNameValidatorNamed
         || resourceManagerNamed || taskPrivateNamed[0] || taskPrivateNamed[1] || taskPrivateNamed[2] || taskPrivateNamed[3]
         || taskSchedulerNamed[0] || taskSchedulerNamed[1];
     for (int32_t i = 0; i < 2 && !named; i++)
@@ -4707,13 +4757,14 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
                 && (paramTypes == nullptr || dn2cpp_params_match_types(dateOnly, paramTypes, queried)))
                 cands.push_back(dateOnly);
         }
-        if (factoryNamed)
+        for (int32_t i = 0; i < namedTypeMethods.size(); i++)
         {
-            const auto row = factory.operator->();
+            const auto namedTypeMethod = namedTypeMethods[i];
+            const auto row = namedTypeMethod.operator->();
             if (row->declaringType == ti && dn2cpp_member_matches(row->attrs, bindingFlags, inherited)
                 && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
-                && (paramTypes == nullptr || dn2cpp_params_match_types(factory, paramTypes, queried)))
-                cands.push_back(factory);
+                && (paramTypes == nullptr || dn2cpp_params_match_types(namedTypeMethod, paramTypes, queried)))
+                cands.push_back(namedTypeMethod);
         }
         for (int32_t k = 0; k < g_meta_member_count; k++)
         {
@@ -12400,9 +12451,8 @@ static void dn2cpp_write_prim(void* dst, int32_t dstCode, int32_t srcCode, int64
 // The same detection as Nullable.GetUnderlyingType.
 const Dn2CppTypeInfo* dn2cpp_nullable_underlying_ti(const Dn2CppTypeInfo* ti)
 {
-    if (ti != nullptr && ti->genericArgCount == 1 && ti->genericDef != nullptr
-        && ti->genericArgs != nullptr && ti->genericDef->name != nullptr
-        && std::strcmp(ti->genericDef->name, "System.Nullable`1") == 0)
+    if (ti != nullptr && ti->genericArgCount == 1 && ti->genericArgs != nullptr
+        && dn2cpp_is_nullable_definition(ti->genericDef))
         return ti->genericArgs[0];
     return nullptr;
 }

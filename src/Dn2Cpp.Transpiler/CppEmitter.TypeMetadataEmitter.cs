@@ -2029,7 +2029,7 @@ internal sealed partial class CppEmitter
                     _slotStubs.Add(entry.Key, entry.Value);
             }
             EmitDelegateMethodCatalog();
-            EmitMemberNotFoundFactoryRow();
+            EmitNamedTypeMethodRows();
             EmitDateOnlyDeconstructRow();
             EmitResourceManagerDefaultTypeRow();
             EmitCultureCompareInfoRow();
@@ -2296,25 +2296,28 @@ internal sealed partial class CppEmitter
             }
         }
 
-        private void EmitMemberNotFoundFactoryRow()
+        private void EmitNamedTypeMethodRows()
         {
-            foreach (var cls in _e.TopoOrder())
+            foreach (var cls in _c.Classes.ToList())
             {
-                if (cls.FullName != "System.Type")
+                if (cls.FullName is not ("System.Type" or "System.RuntimeType"))
                     continue;
                 foreach (var method in cls.Methods)
                 {
-                    if (!CoreIntrinsics.IsMemberNotFoundExceptionFactory(method) || !IsRetainedOpaqueMemberRow(method))
+                    bool nullable = method.Name == "GetNullableUnderlyingType" && CoreIntrinsics.IsNullableTypeQuery(method)
+                        && _c.KeepsUnreachedRow(method);
+                    if ((!nullable && !CoreIntrinsics.IsMemberNotFoundExceptionFactory(method)) || !IsRetainedOpaqueMemberRow(method))
                         continue;
                     // Delegate.Method and named lookup must hand out the same physical row.
                     if (!_memberAddr.TryGetValue(method, out var address))
                     {
-                        BuildMemberTable(cls, new List<MethodInfo> { method }, "namedfactorytab");
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, nullable ? "namednullabletab" : "namedfactorytab");
                         if (!_memberAddr.TryGetValue(method, out address))
-                            throw new InvalidOperationException("Retained member-not-found factory has no metadata row.");
+                            throw new InvalidOperationException($"Retained Type.{method.Name} has no metadata row.");
                     }
-                    _e._memberNotFoundFactoryRow = address;
-                    return;
+                    if (!nullable) _e._memberNotFoundFactoryRow = address;
+                    else if (cls.FullName == "System.RuntimeType") _e._runtimeNullableUnderlyingRow = address;
+                    else _e._nullableUnderlyingRow = address;
                 }
             }
         }
@@ -2500,6 +2503,9 @@ internal sealed partial class CppEmitter
                     // runtime template receiver, independently of its member rows.
                     var targets = new List<(ClassInfo? Receiver, MethodInfo Target, bool Family)>();
                     var receivers = _c.DelegateCloneReceiverTypes.ToList();
+                    if (m.Name == "GetNullableUnderlyingType" && CoreIntrinsics.IsNullableTypeQueryBase(m)
+                        && _c.NullableDelegateRuntimeOverride is { } runtimeOverride && !receivers.Contains(runtimeOverride.DeclaringClass))
+                        receivers.Add(runtimeOverride.DeclaringClass);
                     if (_c.StringInterfaces is { } stringInterfaces)
                         receivers.Add(stringInterfaces.StringClass);
                     foreach (var receiver in receivers)
@@ -3942,6 +3948,11 @@ internal sealed partial class CppEmitter
                 }
                 // An address-taken base body is nonvirtual. Reflection invokes the
                 // runtime override, whose native handle has no generated vtable.
+                if (CoreIntrinsics.IsNullableTypeQueryBase(m) && fnPtr != "nullptr" && invoker != "nullptr")
+                {
+                    string thunk = invoker.Substring("(void*)&".Length);
+                    invoker = $"(void*)&dn2cpp_nullable_type_invoker<{m.VtableSlot}, {CoreIntrinsics.NullableTypeQueryHelper(m)}, {thunk}>";
+                }
                 if (CoreIntrinsics.IsMemberMetadataDefinitionBase(m))
                     invoker = "nullptr";
                 if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(m) && fnPtr != "nullptr")
@@ -4259,6 +4270,7 @@ internal sealed partial class CppEmitter
                 || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(method)
                 || CoreIntrinsics.IsCoreClrTypeMaterialization(method)
                 || CoreIntrinsics.BrNullableReboxing.Matches(method)
+                || CoreIntrinsics.IsNullableTypeQuery(method)
                 || CoreIntrinsics.IsCustomAttributeDataConstructorBase(method)
                 || CoreIntrinsics.BrCustomAttributeDataMember.Matches(method)
                 || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(method)
