@@ -807,6 +807,13 @@ primitive as the value, and an encoded array exposes a read-only list of its
 elements. Reading the list does not invoke the attribute constructor.
 `NamedArguments` remains unsupported on native rows.
 
+A reachable CoreLib `NullabilityInfoContext.Create(FieldInfo)` reads the
+compiler's nullability annotations on fields, declaring types and type
+parameters, the module's public-only policy, and the field's null-analysis
+attributes. An enclosing type that supplies the nullable context retains its
+identity. The CoreLib method computes the read and write states from the
+encoded attribute data.
+
 The retained CustomAttributeData.Constructor base body remains ordinary managed IL:
 nonvirtual calls and addresses return null without reading the receiver. Virtual calls
 and virtual addresses use a bounded slot selector: ldvirtftn fixes the selected

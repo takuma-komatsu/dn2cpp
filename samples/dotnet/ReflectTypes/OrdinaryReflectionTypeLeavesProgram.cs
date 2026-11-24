@@ -1,8 +1,17 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using System.Reflection;
 namespace OrdinaryReflectionTypeLeaves;
 static class Program
 {
+    private sealed class AnnotatedFields<T, U> where T : class where U : class?
+    {
+        public string? Optional = null;
+        [AllowNull] public T Required = default!;
+        public U Loose = default!;
+    }
+
     private static void Main(string[] args)
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -48,5 +57,11 @@ static class Program
         CollectibilitySubset.Program.Run();
         ReflectRuntimeTypeParitySubset.Program.RunAssemblyReferences();
         ReflectAttrBoxedSubset.Program.RunConstructorArguments();
+        var context = new NullabilityInfoContext();
+        var fields = typeof(AnnotatedFields<string, string>);
+        var optional = context.Create(fields.GetField(nameof(AnnotatedFields<string, string>.Optional))!);
+        var required = context.Create(fields.GetField(nameof(AnnotatedFields<string, string>.Required))!);
+        var loose = context.Create(fields.GetField(nameof(AnnotatedFields<string, string>.Loose))!);
+        Console.WriteLine("field nullability=" + optional.WriteState + "/" + required.ReadState + "/" + required.WriteState + "/" + loose.WriteState);
     }
 }

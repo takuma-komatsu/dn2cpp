@@ -743,7 +743,7 @@ gate_extra_asserts() {
         'chain second=1' 'chain third=1' 'chain last=ChainFourth`1' \
         'chained attribute Type roots end' 'constructor arguments=True/True/3/True/y' \
         'argument arrays=True/0/True/True/True' 'constructor arguments read-only' \
-        'throwing attribute data=0' 'custom constructor arguments=0/True'; do
+        'throwing attribute data=0' 'custom constructor arguments=0/True' 'field nullability=Nullable/NotNull/Nullable/Nullable'; do
         gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: ordinary type witness missing: $line" >&2; return 1; }
     done

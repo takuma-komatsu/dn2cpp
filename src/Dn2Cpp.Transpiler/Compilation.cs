@@ -5671,6 +5671,10 @@ internal sealed partial class Compilation
     private void NoteUnwalkedAttributeRows()
     {
         ReachAssemblyAttributes(reach: false);
+        if (FieldNullabilityDataUsed)
+            foreach (string name in _typeofOpenGenericDefNames.Concat(TypeofOpenGenericDefs.Keys).Distinct().ToList())
+                if (OpenGenericDefHandleByName(name) is { } owner && IsUserModule(owner.Module))
+                    NoteFieldNullabilityDefinition(owner.Module, owner.Handle);
         do
         {
             for (; _unwalkedAttributeCursor < Classes.Count; _unwalkedAttributeCursor++)
@@ -5708,18 +5712,22 @@ internal sealed partial class Compilation
         {
             var reader = cls.Module.Reader;
             var td = reader.GetTypeDefinition(cls.Handle);
-            ReachAttributesOf(cls.Module, td.GetCustomAttributes(), reach, unretained);
+            // A library type used only through reflection can expose fields without a reachable method.
+            if (FieldNullabilityDataUsed && (unretained || ReferencedTypes.Contains(cls) || _reflectionMetadataOwnersSeen.Contains(cls)))
+                NoteFieldNullabilityDefinition(cls.Module, cls.Handle);
+            var rows = unretained ? AttributeRows.All : AttributeRows.ReachedConstructors;
+            ReachAttributesOf(cls.Module, td.GetCustomAttributes(), reach, rows);
             foreach (var fh in td.GetFields())
-                ReachAttributesOf(cls.Module, reader.GetFieldDefinition(fh).GetCustomAttributes(), reach, unretained);
+                ReachAttributesOf(cls.Module, reader.GetFieldDefinition(fh).GetCustomAttributes(), reach, rows);
             foreach (var mh in td.GetMethods())
             {
                 var md = reader.GetMethodDefinition(mh);
-                ReachAttributesOf(cls.Module, md.GetCustomAttributes(), reach, unretained);
+                ReachAttributesOf(cls.Module, md.GetCustomAttributes(), reach, rows);
                 foreach (var pph in md.GetParameters())
-                    ReachAttributesOf(cls.Module, reader.GetParameter(pph).GetCustomAttributes(), reach, unretained);
+                    ReachAttributesOf(cls.Module, reader.GetParameter(pph).GetCustomAttributes(), reach, rows);
             }
             foreach (var ph in td.GetProperties())
-                ReachAttributesOf(cls.Module, reader.GetPropertyDefinition(ph).GetCustomAttributes(), reach, unretained);
+                ReachAttributesOf(cls.Module, reader.GetPropertyDefinition(ph).GetCustomAttributes(), reach, rows);
         }
         catch (Exception e) when (!IsMustEscape(e))
         {
@@ -5770,16 +5778,16 @@ internal sealed partial class Compilation
     /// renderable. With <paramref name="reach"/> it also reaches the attribute's ctor,
     /// named-property setters and allocated type; without, it notes only the rows the emit
     /// side renders: those whose ctor something else reached, and the unretained rows
-    /// (<see cref="KeepsUnretainedAttributeRow"/>) when <paramref name="unretained"/>, whose
+    /// (<see cref="KeepsUnretainedAttributeRow"/>) admitted by <paramref name="rows"/>, whose
     /// row names the attribute's type-info.</summary>
     private void ReachAttributesOf(Module module, CustomAttributeHandleCollection handles, bool reach,
-        bool unretained = true, bool identityOnlyStateMachines = false)
+        AttributeRows rows = AttributeRows.All, bool identityOnlyStateMachines = false)
     {
         // A row only another route rendered is read by nothing unless attributes are read.
         bool keep = reach || _reflectionAttrUsed;
-        foreach (var da in DecodeCustomAttributes(module, handles, reachedCtorsOnly: !reach && !unretained))
+        foreach (var da in DecodeCustomAttributes(module, handles, rows))
         {
-            if (!reach && unretained && KeepsUnretainedAttributeRow(da))
+            if (!reach && rows != AttributeRows.ReachedConstructors && KeepsUnretainedAttributeRow(da))
             {
                 EnsureCompleted(da.AttrClass);
                 NoteTypeIdentityClosure(TypeDesc.MakeClass(da.AttrClass), keepSeed: false);

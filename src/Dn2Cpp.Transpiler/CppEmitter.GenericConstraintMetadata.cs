@@ -216,6 +216,25 @@ internal sealed partial class CppEmitter
             return symbol;
         }
 
+        private string? RenderTypeParameterAttributes(Module module, GenericParameterHandleCollection handles, string symbol)
+        {
+            string[]? entries = null;
+            foreach (var handle in handles)
+            {
+                var parameter = module.Reader.GetGenericParameter(handle);
+                var attributes = _e.BuildAttrTable(_sb, symbol + "_" + parameter.Index, module,
+                    parameter.GetCustomAttributes(), Compilation.AttributeRows.FieldNullability);
+                if (attributes.Count == 0)
+                    continue;
+                entries ??= Enumerable.Repeat("{}", handles.Count).ToArray();
+                entries[parameter.Index] = $"{{ {attributes.Expr}, {attributes.Count} }}";
+            }
+            if (entries is null)
+                return null;
+            _sb.AppendLine($"static const Dn2CppGenericParameterCustomAttributes {symbol}[] = {{ {string.Join(", ", entries)} }};");
+            return symbol;
+        }
+
         private string RenderMethodDefinitionSignature(MethodInfo method)
         {
             if (method.Handle.IsNil)
@@ -252,9 +271,20 @@ internal sealed partial class CppEmitter
                         && (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask) == System.Reflection.MethodAttributes.Public
                         && method.DecodeSignature(new ConstraintProvider(_c), null).ParameterTypes.Length == 0;
                 });
-                _e._metadataHeader.AppendLine($"extern const Dn2CppGenericTypeMetadata {symbol};");
-                _sb.AppendLine($"extern const Dn2CppGenericTypeMetadata {symbol} = {{ {parameters}, {handles.Count}, {baseType}, {interfaces}, {definition.Interfaces.Length}, {(available ? "true" : "false")}, {(defaultConstructor ? "true" : "false")} }};");
-                _e._genericMetadata[pair.Key] = "&" + symbol;
+                string? attributes = available && _c.HasFieldNullabilityDefinition(definition.Module, definition.Handle)
+                    ? RenderTypeParameterAttributes(definition.Module, handles, symbol + "_attributes") : null;
+                string metadataType = "Dn2CppGenericTypeMetadata";
+                string members = $"{parameters}, {handles.Count}, {baseType}, {interfaces}, {definition.Interfaces.Length}, {(available ? "true" : "false")}, {(defaultConstructor ? "true" : "false")}";
+                string metadata = "&" + symbol;
+                if (attributes is not null)
+                {
+                    metadataType = "Dn2CppAnnotatedGenericTypeMetadata";
+                    members = "{ " + members + ", true }, " + attributes;
+                    metadata = $"static_cast<const Dn2CppGenericTypeMetadata*>(&{symbol})";
+                }
+                _e._metadataHeader.AppendLine($"extern const {metadataType} {symbol};");
+                _sb.AppendLine($"extern const {metadataType} {symbol} = {{ {members} }};");
+                _e._genericMetadata[pair.Key] = metadata;
             }
         }
     }

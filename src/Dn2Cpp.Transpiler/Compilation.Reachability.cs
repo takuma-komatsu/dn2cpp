@@ -5225,8 +5225,8 @@ internal sealed partial class Compilation
     /// attribute class + constructor and its decoded positional/named arguments. Only
     /// attribute types built into the program are produced: defined in a loaded
     /// non-framework module (the app module or a user library pulled in with -r), or
-    /// framework-declared but named by a reachable user-module typeof
-    /// (<see cref="IsUserTypeofNamedFrameworkType"/>).</summary>
+    /// framework-declared and requested by a user type token or CoreLib's field
+    /// nullability reader.</summary>
     internal sealed class DecodedAttribute
     {
         public required ClassInfo AttrClass;
@@ -5242,37 +5242,42 @@ internal sealed partial class Compilation
     /// carrying a library-defined attribute) is a MemberReference resolved against the
     /// loaded modules. A BCL/compiler attribute (its class lives in a framework assembly)
     /// is skipped either way, matching the IL2CPP-managed-stripping bound: only
-    /// attributes built into the program are reflectable — with ONE bounded widening.
+    /// attributes built into the program are reflectable, with bounded metadata demands.
     /// A framework-declared attribute type that a reachable USER-module body names with
     /// typeof (<see cref="IsUserTypeofNamedFrameworkType"/>) is kept too: the typeof is
     /// the statically visible evidence that the program reflects over that BCL attribute
     /// (`GetCustomAttributes(typeof(DescriptionAttribute), false)` — Thrive's EnumHelper
     /// over [Description] enum fields), and the naming is what bounds the keep — an
     /// indiscriminate framework keep would decode + reach every Nullable/CompilerGenerated
-    /// row on every reflected element. A framework attribute NOT so named stays dropped
+    /// row on every reflected element. CoreLib's field nullability reader also admits
+    /// its annotation rows by provider and name. Other framework attributes stay dropped
     /// (its element reflects an empty set where real .NET reports the row — the same
     /// managed-stripping divergence as before, asserted by the reflect-types gate's
-    /// framework-attribute section). <paramref name="reachedCtorsOnly"/> also skips an
-    /// attribute, of any module, whose ctor is not reached before its blob decodes, so
+    /// framework-attribute section). The row filter runs before decoding the blob so
     /// decoding mints no instantiation or type-info for a row that never renders.</summary>
     internal List<DecodedAttribute> DecodeCustomAttributes(Module module, CustomAttributeHandleCollection handles,
-        bool reachedCtorsOnly = false)
+        AttributeRows filter = AttributeRows.All)
     {
         var result = new List<DecodedAttribute>();
         foreach (var cah in handles)
-            if (DecodeCustomAttribute(module, cah, reachedCtorsOnly) is { } attribute)
+            if (DecodeCustomAttribute(module, cah, filter) is { } attribute)
                 result.Add(attribute);
         return result;
     }
 
-    private DecodedAttribute? DecodeCustomAttribute(Module module, CustomAttributeHandle handle, bool reachedCtorsOnly)
+    private DecodedAttribute? DecodeCustomAttribute(Module module, CustomAttributeHandle handle, AttributeRows filter)
     {
         var ca = module.Reader.GetCustomAttribute(handle);
-        MethodInfo? ctor = ResolveAttributeConstructor(module, ca.Constructor);
+        bool fieldNullability = ReadsFieldNullabilityRow(module, ca);
+        if (filter == AttributeRows.FieldNullability && !fieldNullability
+            || filter == AttributeRows.NullableContext && (!fieldNullability || ca.Parent.Kind != HandleKind.TypeDefinition
+                || AttributeTypeName(module.Reader, ca) != NullableContextAttributeName))
+            return null;
+        MethodInfo? ctor = ResolveAttributeConstructor(module, ca.Constructor, fieldNullability);
         if (ctor is null
             || (IsFrameworkAssemblyName(ctor.DeclaringClass.Module.AssemblyName)
-                && !IsUserTypeofNamedFrameworkType(ctor.DeclaringClass.FullName))
-            || (reachedCtorsOnly && !Reachable.Contains(ctor)))
+                && !fieldNullability && !IsUserTypeofNamedFrameworkType(ctor.DeclaringClass.FullName))
+            || filter == AttributeRows.ReachedConstructors && !Reachable.Contains(ctor))
             return null;
         CustomAttributeValue<TypeDesc> val;
         try { val = ca.DecodeValue(AttrProvider); }
@@ -5286,10 +5291,10 @@ internal sealed partial class Compilation
         };
     }
 
-    private MethodInfo? ResolveAttributeConstructor(Module module, EntityHandle handle) => handle.Kind switch
+    private MethodInfo? ResolveAttributeConstructor(Module module, EntityHandle handle, bool fieldNullability = false) => handle.Kind switch
     {
         HandleKind.MethodDefinition => module.MethodMap.GetValueOrDefault((MethodDefinitionHandle)handle),
-        HandleKind.MemberReference => ResolveAttrCtorRef(module, (MemberReferenceHandle)handle),
+        HandleKind.MemberReference => ResolveAttrCtorRef(module, (MemberReferenceHandle)handle, fieldNullability),
         _ => null,
     };
 
@@ -5306,7 +5311,7 @@ internal sealed partial class Compilation
     /// the runtime's pointer-identity match works unchanged). The ctor is then picked by
     /// decoded parameter arity + type shape. Null when the class isn't loaded or no overload
     /// matches.</summary>
-    private MethodInfo? ResolveAttrCtorRef(Module module, MemberReferenceHandle handle)
+    private MethodInfo? ResolveAttrCtorRef(Module module, MemberReferenceHandle handle, bool fieldNullability)
     {
         ClassInfo cls;
         MethodSignature<TypeDesc> sig;
@@ -5332,11 +5337,10 @@ internal sealed partial class Compilation
             {
                 // Early-out on the resolution scope: a BCL/compiler attribute (the
                 // overwhelmingly common MemberReference case — Nullable/CompilerGenerated/…)
-                // is skipped by name before the linear class lookup below — unless a
-                // reachable user-module typeof named it (the DecodeCustomAttributes
-                // widening), in which case it must resolve like a user attribute.
+                // is skipped before resolving its declaring type unless observed by
+                // a user type token or the field nullability reader.
                 var tref = reader.GetTypeReference((TypeReferenceHandle)mr.Parent);
-                if (tref.ResolutionScope.Kind == HandleKind.AssemblyReference
+                if (!fieldNullability && tref.ResolutionScope.Kind == HandleKind.AssemblyReference
                     && IsFrameworkAssemblyName(reader.GetString(
                         reader.GetAssemblyReference((AssemblyReferenceHandle)tref.ResolutionScope).Name))
                     // The name-set probe is behind the emptiness test so the common
@@ -5346,8 +5350,8 @@ internal sealed partial class Compilation
                             TypeRefFullName(reader, (TypeReferenceHandle)mr.Parent))))
                     return null;
                 string full = TypeRefFullName(reader, (TypeReferenceHandle)mr.Parent);
-                // The proxy constructor's assembly is part of its retention contract.
-                var found = _strippingLevel.UsesTypeWideRetention() && full == DebuggerProxyRetention.AttributeName
+                // Keep the recorded assembly identity across forwarding facades.
+                var found = fieldNullability || _strippingLevel.UsesTypeWideRetention() && full == DebuggerProxyRetention.AttributeName
                     ? ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class : FindClassByFullName(full);
                 if (found is null)
                     return null;
@@ -6173,6 +6177,8 @@ internal sealed partial class Compilation
     private void ScanBodyForGenerics(MethodInfo m)
     {
         _currentScan = m;
+        if (!FieldNullabilityDataUsed && ReadsFieldNullability(m))
+            FieldNullabilityDataUsed = true;
         // --trim-godot-classes: whether this body is a USER naming site — anything
         // outside the registry's own module. GodotSharp-internal mentions of engine
         // wrappers never release (counting them cascades back to the full set).
