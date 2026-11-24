@@ -54,7 +54,7 @@ public static class TranspileDriver
     /// CoreLib diff clean. A method whose parameter shape the helper-name contract cannot
     /// spell is reported, not skipped: its fourth column is <c>!</c> followed by the
     /// reason, so the report stays total over the surface and the gap is visible.</summary>
-    private static void WriteIsaSurface(Compilation compilation, IReadOnlyList<string> loadSet, string path)
+    private static void WriteIsaSurface(Compilation compilation, string? coreLibPath, string path)
     {
         var lines = new List<string>();
         foreach (var module in compilation.Modules)
@@ -97,9 +97,7 @@ public static class TranspileDriver
             }
         }
         lines.Sort(StringComparer.Ordinal);
-        string corelib = loadSet.FirstOrDefault(p =>
-            Path.GetFileName(p).Equals("System.Private.CoreLib.dll", StringComparison.OrdinalIgnoreCase)) ?? "";
-        lines.Insert(0, "corelib\t" + corelib);
+        lines.Insert(0, "corelib\t" + coreLibPath);
         File.WriteAllText(path, string.Concat(lines.Select(l => l + "\n")));
     }
 
@@ -192,22 +190,9 @@ public static class TranspileDriver
                 && !paths.Any(p =>
                     Path.GetFileName(p).Equals("Dn2Cpp.Runtime.dll", StringComparison.OrdinalIgnoreCase)))
                 paths.Add(runtimeShim);
-            // --auto-ref with no CoreLib passed: default to the live shared framework's
-            // implementation CoreLib, so an installed CLI transpiles real-BCL programs
-            // with no -r at all (LoadReferenceClosure then resolves the BCL closure from
-            // its directory). Under the self-hosted native CLI, Assembly.Location is null
-            // by design (the intrinsic's documented divergence), so the default never
-            // fires there and the export toolchain stays on its explicit ref/ closure.
-            if (options.AutoRef && !paths.Any(p =>
-                    Path.GetFileName(p).Equals("System.Private.CoreLib.dll", StringComparison.OrdinalIgnoreCase)))
-            {
-                string corelib = typeof(object).Assembly.Location;
-                if (!string.IsNullOrEmpty(corelib) && File.Exists(corelib))
-                    paths.Add(corelib);
-            }
             options = options with { DefaultRefDir = AppContext.BaseDirectory };
             Timing.Mark("setup");
-            var loadSet = AssemblyLoadSet.Resolve(paths, options);
+            var loadSet = AssemblyLoadSet.Resolve(paths, options, allowHostCoreLib: true);
             paths = loadSet.Paths;
             options = options with
             {
@@ -236,7 +221,7 @@ public static class TranspileDriver
             {
                 // Build stopped before reachability (Compilation.StopBeforeReachability);
                 // the model holds every loaded TypeDef, which is all the surface needs.
-                WriteIsaSurface(compilation, paths, isaDump);
+                WriteIsaSurface(compilation, loadSet.CoreLibPath, isaDump);
                 Console.WriteLine($"dn2cpp: platform-ISA surface -> {isaDump}");
                 return 0;
             }

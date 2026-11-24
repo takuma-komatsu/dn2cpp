@@ -783,9 +783,16 @@ for platform in ("posix", "windows"):
               capture)
 
 cli_stubs = r'''
+: > runtime/System.Runtime.dll
+gate_capture() {
+    local prefix="$1" status=0
+    shift
+    "$@" > "$prefix.stdout" 2> "$prefix.stderr" || status=$?
+    printf '%s\n' "$status" > "$prefix.status"
+}
 fake_frontend() {
     local frontend="$1" args dir= jobs= no_metadata=0 rejected= token fp=strict
-    local ildiet=1 ildiet_args=()
+    local ildiet=1 ildiet_args=() auto_ref=0
     shift
     args="$*"
     while [ "$#" -gt 0 ]; do
@@ -810,6 +817,7 @@ fake_frontend() {
                 [ "$1" = DnZlib ] || rejected="$1"
                 shift ;;
             --no-metadata-compression) no_metadata=1 ;;
+            --auto-ref) auto_ref=1 ;;
             --no-ildiet) ildiet=0 ;;
             --ildiet-output) shift ;;
             --ildiet-arg)
@@ -863,6 +871,10 @@ fake_frontend() {
     else
         echo 'md_native_subject[] = {};' > "$dir/generated.cpp"
     fi
+    if [ "$auto_ref" = 1 ]; then
+        echo 'const Dn2CppAssemblyRegEntry dn2cpp_assembly_registry[] = { {"HelloWorld"}, {"System.Private.CoreLib"}, {"Dn2Cpp.Runtime"}, {"System.Runtime"} };' >> "$dir/generated.cpp"
+        echo 'dn2cpp: 4 assemblies, mock'
+    fi
 }
 _gate_surface_lines() { cat "$1/generated-fp-mode.txt"; }
 invoke_cli() { prepare_cli; fake_frontend full "$@"; }
@@ -888,6 +900,9 @@ for frontend in ("full", "console"):
     for token in ("--jobs", "0", "-2", "many", "--fp-mode", "fast", "presice"):
         check("REJECT:" + frontend + ":" + token in rejected, (frontend, token, rejected))
 check(any("--no-default-ref DnZlib" in line for line in accepted), accepted)
+closure = [line for line in accepted if "--auto-ref" in line]
+check(len(closure) == 1 and "/shadow/HelloWorld.dll" in closure[0]
+      and "/selected framework/Target.Core.dll" in closure[0] and "--no-ildiet" in closure[0], closure)
 for token in ("--bogus-flag", "--tirm-reflection", "extra.dll", "DnBogus"):
     check("REJECT:full:" + token in rejected, (token, rejected))
 check(any("combined-acceptance" in line for line in calls if line.startswith("CACHE:")), calls)
