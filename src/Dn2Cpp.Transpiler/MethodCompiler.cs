@@ -4400,6 +4400,10 @@ internal sealed partial class MethodCompiler : IEvalStack
                     expr = $"({receiver}->type->vtable != nullptr ? (void*){receiver}->type->vtable[{m.VtableSlot}]"
                         + $" : (void*)&{m.Emittable.CppName})";
                 }
+                else if (CoreIntrinsics.IsTaskSchedulerDequeue(m))
+                {
+                    expr = TaskSchedulerDequeueAddress(obj.Expr, m);
+                }
                 else if (m.IsVirtual && CoreIntrinsics.IsReflectionManagedBody(m))
                 {
                     var fallback = _c.ReflectionManagedVirtualFallback(m).Emittable;

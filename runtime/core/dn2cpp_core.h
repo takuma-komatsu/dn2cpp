@@ -7946,6 +7946,7 @@ extern const Dn2CppTypeInfo dn2cpp_taskscheduler_type;
 // when allocated without running their constructor.
 struct Dn2CppTaskScheduler : Dn2CppObject { int32_t id; };
 Dn2CppObject* dn2cpp_taskscheduler_default();
+int32_t dn2cpp_taskscheduler_default_try_dequeue(Dn2CppObject*, Dn2CppTask*);
 int32_t* dn2cpp_taskscheduler_id_counter();
 void dn2cpp_set_taskscheduler_identity_metadata(Dn2CppMetadataTable<Dn2CppMethodInfo> methods,
     Dn2CppMetadataTable<Dn2CppPropInfo> props, int32_t propertyCount);

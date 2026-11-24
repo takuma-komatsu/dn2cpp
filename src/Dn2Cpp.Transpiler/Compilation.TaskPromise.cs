@@ -38,7 +38,7 @@ internal sealed partial class Compilation
             var definition = reader.GetMethodDefinition(handle);
             string name = reader.GetString(definition.Name);
             if (owner.FullName == "System.Threading.Tasks.TaskScheduler"
-                ? !(CoreIntrinsics.IsTaskSchedulerOperationName(owner.FullName, name) || CoreIntrinsics.IsManagedTaskEventName(name))
+                ? !(CoreIntrinsics.IsTaskSchedulerMemberName(owner.FullName, name) || CoreIntrinsics.IsManagedTaskEventName(name))
                 : !CoreIntrinsics.IsTaskLifecycleCandidate(name, reader.GetBlobReader(definition.Signature))) continue;
             var method = new MethodInfo
             {
@@ -95,17 +95,17 @@ internal sealed partial class Compilation
                 return target;
             }
         }
-        if (name is ("TryRunInline" or "InternalQueueTask" or "get_Id") && reference.Parent.Kind == HandleKind.TypeSpecification)
+        if (name is ("TryRunInline" or "InternalQueueTask" or "get_Id" or "TryDequeue") && reference.Parent.Kind == HandleKind.TypeSpecification)
         {
             var schedulerOwner = reader.GetTypeSpecification((TypeSpecificationHandle)reference.Parent)
                 .DecodeSignature(SigProvider, context).Class;
-            if (CoreIntrinsics.IsTaskSchedulerOperationName(schedulerOwner?.FullName, name))
+            if (CoreIntrinsics.IsTaskSchedulerMemberName(schedulerOwner?.FullName, name))
                 throw new NotSupportedException("TaskScheduler operation requires an unmodified CoreLib owner");
         }
-        if (CoreIntrinsics.IsTaskSchedulerOperationName(MemberRefParentTypeName(module, handle), name))
+        if (CoreIntrinsics.IsTaskSchedulerMemberName(MemberRefParentTypeName(module, handle), name))
         {
             var target = ResolveMemberRefMethod(module, handle, context);
-            if (!CoreIntrinsics.IsTaskSchedulerOperation(target)
+            if (!CoreIntrinsics.IsTaskSchedulerMember(target)
                 || !CoreIntrinsics.IsTaskSchedulerOperationSignature(name, reader.GetBlobReader(reference.Signature))
                 || !CoreIntrinsics.IsTaskSchedulerOperationDecodedSignature(target,
                     reference.DecodeMethodSignature(SigProvider, target.DeclaringClass.Context)))
