@@ -1509,7 +1509,6 @@ internal sealed partial class Compilation
     /// <list type="bullet">
     /// <item>explicit layout — only fixed-width integral fields have a supported
     /// field walk; overlapping aliases contribute redundant but consistent values;</item>
-    /// <item><c>[InlineArray(N)]</c> — the one declared field stands for N elements;</item>
     /// <item>ref struct — never boxed, and never a key;</item>
     /// <item>intrinsic-mapped (BOTH tests: the name table misses a closed generic
     /// intrinsic like Vector128&lt;T&gt;, which only <see cref="ClassInfo.IntrinsicCppName"/>
@@ -1520,7 +1519,6 @@ internal sealed partial class Compilation
     /// </list></summary>
     private static bool SynthesizableShape(ClassInfo c) =>
         c.IsValueType && !c.IsEnum && !c.IsByRefLike
-        && c.InlineArrayLength == 0
         && !CoreIntrinsics.IsIntrinsicType(c.FullName) && c.IntrinsicCppName is null
         && !ContainsCanonPlaceholder(c)
         && (!c.IsExplicitLayout || HasIntegralExplicitFields(c));
@@ -1575,6 +1573,10 @@ internal sealed partial class Compilation
     {
         if (!SynthesizableShape(c))
             return false;
+        // Its built-in Equals throws when called, even when its element has no
+        // structural comparison. A containing field walk can short-circuit first.
+        if (c.InlineArrayLength > 0)
+            return !hash;
         if (!visiting.Add(c))
             return true;
         try
@@ -1752,8 +1754,7 @@ internal sealed partial class Compilation
             return;
         bool hash = name == "GetHashCode";
         if (BaseValueBody(c, hash) is { } b && AddReachable(b))
-            foreach (var f in StructuralFields(c))
-                ReachStructuralField(f.Type, hash);
+            ReachStructuralFields(c, hash);
     }
 
     private MethodInfo MintValueBody(ClassInfo c, string name, string suffix,
@@ -1785,11 +1786,16 @@ internal sealed partial class Compilation
     private void ReachSynthesizedValueEquality(ClassInfo c, bool includeHash, bool includeEquals = true)
     {
         if (includeEquals && SynthesizedValueEquals(c) is { } eq && AddReachable(eq))
-            foreach (var f in StructuralFields(c))
-                ReachStructuralField(f.Type, hash: false);
+            ReachStructuralFields(c, hash: false);
         if (includeHash && SynthesizedValueHash(c) is { } gh && AddReachable(gh))
-            foreach (var f in StructuralFields(c))
-                ReachStructuralField(f.Type, hash: true);
+            ReachStructuralFields(c, hash: true);
+    }
+
+    private void ReachStructuralFields(ClassInfo owner, bool hash)
+    {
+        if (owner.InlineArrayLength > 0) return;
+        foreach (var field in StructuralFields(owner))
+            ReachStructuralField(field.Type, hash);
     }
 
     /// <summary>Reaches what one field of a structural walk calls. Only a struct field is
@@ -1890,17 +1896,15 @@ internal sealed partial class Compilation
             if (CoreIntrinsics.IsIntrinsicType(c.FullName) || c.IntrinsicCppName is not null
                 || CoreIntrinsics.RuntimeOwnsTypeInfo(c))
                 continue;
-            if (ContainsCanonPlaceholder(c) || ContainsGenericVar(c)
-                || (!IsUserModule(c.Module) && HoldsUncomparableIntrinsic(c)))
+            if (ContainsCanonPlaceholder(c) || ContainsGenericVar(c))
                 continue;
-            MethodInfo? eq = EffectiveEquals(c);
+            var eq = EffectiveEquals(c);
+            if (!IsUserModule(c.Module) && HoldsUncomparableIntrinsic(c, skipInlineArrayElements: eq is null))
+                continue;
             if (eq is not null)
                 ReachEntered(eq);
             else
-            {
                 ReachSynthesizedValueEquality(c, includeHash: false);
-                eq = ReachedSynthesizedValueEquals(c);
-            }
             // Conservative candidates need not occur at a search site. A value
             // without an emitted body is rejected by the runtime search guard.
         }
@@ -1912,9 +1916,12 @@ internal sealed partial class Compilation
     /// built over (the SIMD vectors): not an <see cref="MethodCompiler.IntrinsicValueTypeFn"/>
     /// type, CancellationToken or a pointer-modeled handle. A reference-type argument
     /// compares by its own Equals whatever its type arguments are, so the walk stops there.
+    /// A synthesized Equals also stops at an inline array without comparing its elements.
     /// </summary>
-    private static bool HoldsUncomparableIntrinsic(ClassInfo c)
+    private bool HoldsUncomparableIntrinsic(ClassInfo c, bool skipInlineArrayElements = false)
     {
+        if (skipInlineArrayElements && c.InlineArrayLength > 0)
+            return false;
         foreach (var t in c.Context.TypeArgs)
         {
             if (t is not { Kind: TypeKind.Class, Class: { IsValueType: true } arg })
@@ -1924,7 +1931,13 @@ internal sealed partial class Compilation
                 && !MethodCompiler.IsCancellationTokenValue(t)
                 && MethodCompiler.IntrinsicPointerValueType(t) is null)
                 return true;
-            if (HoldsUncomparableIntrinsic(arg))
+            if (arg.Context.TypeArgs.Length == 0)
+                continue;
+            // A structural field boxes Nullable<U> as U. A real Equals(object)
+            // override can inspect its storage, including an inline array's elements.
+            bool structural = skipInlineArrayElements
+                && (NullableUnderlying(t) is not null || EffectiveEquals(arg) is null);
+            if (HoldsUncomparableIntrinsic(arg, structural))
                 return true;
         }
         return false;

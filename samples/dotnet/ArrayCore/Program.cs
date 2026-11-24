@@ -136,6 +136,7 @@ namespace ArrayCore
             if (args.Length > 0 && args[0] == "before-native-length")
                 return;
             ArrayNativeLengthSubset.Program.Run();
+            ArrayElementEqualitySubset.Program.RunNullableInlineArraySearch();
 #endif
         }
     }
