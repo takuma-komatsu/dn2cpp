@@ -5,6 +5,10 @@ namespace Dn2Cpp;
 
 internal static partial class CoreIntrinsics
 {
+    internal static bool IsModuleAttributeDataSlot(MethodInfo method) =>
+        method.Name == "GetCustomAttributesData" && method.DeclaringClass.FullName == "System.Reflection.Module"
+        && IsReflectionManagedBody(method);
+
     internal static bool IsReflectionManagedBody(MethodInfo method) =>
         ReflectionManagedBodyContract.IsName(method.DeclaringClass.FullName, method.Name)
         && method.DeclaringClass.Module == method.Module

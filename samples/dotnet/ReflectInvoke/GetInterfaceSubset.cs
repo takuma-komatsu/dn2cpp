@@ -17,6 +17,7 @@ using System.Reflection;
 
 [assembly: GetInterfaceSubset.BaseAttr]
 [assembly: GetInterfaceSubset.DerivedAttr]
+[module: GetInterfaceSubset.DerivedAttr]
 
 namespace GetInterfaceSubset.NsA
 {
@@ -52,7 +53,11 @@ namespace GetInterfaceSubset
     class TwoNs : NsA.IFoo, NsB.IFoo { }
 
     public class BaseAttr : Attribute { }
-    public class DerivedAttr : BaseAttr { }
+    public class DerivedAttr : BaseAttr
+    {
+        public static int Constructions;
+        public DerivedAttr() => Constructions++;
+    }
 
     class Attributed
     {
@@ -147,6 +152,60 @@ namespace GetInterfaceSubset
             {
                 Console.WriteLine($"{label}: {e.GetType().Name}");
             }
+        }
+
+        private sealed class CustomModule : Module
+        {
+            internal int Calls;
+            public override IList<CustomAttributeData> GetCustomAttributesData()
+            {
+                Calls++;
+                return Array.Empty<CustomAttributeData>();
+            }
+
+            internal IList<CustomAttributeData> BaseData() => base.GetCustomAttributesData();
+        }
+
+        private static int Markers(IEnumerable<CustomAttributeData> rows)
+        {
+            int mask = 0;
+            foreach (var row in rows)
+            {
+                if (row.AttributeType == typeof(BaseAttr)) mask |= 1;
+                if (row.AttributeType == typeof(DerivedAttr)) mask |= 2;
+            }
+            return mask;
+        }
+
+        internal static void RunModuleData()
+        {
+            var module = typeof(Program).Module;
+            int before = DerivedAttr.Constructions;
+            var data = module.GetCustomAttributesData();
+            Console.WriteLine("module attribute masks=" + Markers(data) + "/" + Markers(module.CustomAttributes)
+                + "/" + Markers(CustomAttributeData.GetCustomAttributes(module)) + "/"
+                + Markers(typeof(Program).Assembly.GetCustomAttributesData()) + " constructed="
+                + (DerivedAttr.Constructions - before));
+            try { data[0] = data[0]; }
+            catch (NotSupportedException) { Console.WriteLine("module attribute data read-only"); }
+
+            var custom = new CustomModule();
+            Module owner = custom;
+            _ = owner.CustomAttributes;
+            _ = CustomAttributeData.GetCustomAttributes(owner);
+            try { custom.BaseData(); }
+            catch (NotImplementedException) { Console.WriteLine("custom module overrides=" + custom.Calls + " base=NotImplementedException"); }
+            try { ((Module)null!).GetCustomAttributesData(); }
+            catch (NullReferenceException) { Console.WriteLine("null module=NullReferenceException"); }
+            try { CustomAttributeData.GetCustomAttributes((Module)null!); }
+            catch (ArgumentNullException e) { Console.WriteLine("null module argument=" + e.ParamName); }
+
+            Func<IList<CustomAttributeData>> bound = module.GetCustomAttributesData;
+            var method = typeof(Module).GetMethod(nameof(Module.GetCustomAttributesData))!;
+            Console.WriteLine("module method=" + (bound.Method.DeclaringType == module.GetType()) + "/"
+                + (method.DeclaringType == typeof(Module)) + "/"
+                + Markers((IList<CustomAttributeData>)bound.Method.Invoke(module, null)!) + "/"
+                + Markers((IList<CustomAttributeData>)method.Invoke(module, null)!));
         }
     }
 }

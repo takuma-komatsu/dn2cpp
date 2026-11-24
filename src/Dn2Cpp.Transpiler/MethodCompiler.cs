@@ -1481,7 +1481,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(_method)
             || CoreIntrinsics.IsCoreClrTypeMaterialization(_method) && _method.Rva == 0)
             return CompileInterceptWrapper();
-        if (CoreIntrinsics.BrCustomAttributeDataMember.Matches(_method))
+        if (CoreIntrinsics.BrCustomAttributeDataMember.Matches(_method) || CoreIntrinsics.BrModuleAttributeData.Matches(_method))
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
             {
                 var elem = CustomAttributeDataElem(_method.Signature.ReturnType);
@@ -1493,8 +1493,10 @@ internal sealed partial class MethodCompiler : IEvalStack
                     ps => ps.Length == 1 && ps[0] == _method.Signature.ReturnType, allocates: true)
                     ?? throw new NotSupportedException("CustomAttributeData requires ReadOnlyCollection<T>(IList<T>)");
                 var member = Pop();
+                string reader = CoreIntrinsics.BrModuleAttributeData.Matches(_method)
+                    ? "dn2cpp_member_custom_attributes_data" : "dn2cpp_custom_attribute_data_get_custom_attributes";
                 PushReflectionMemberArray(
-                    $"dn2cpp_custom_attribute_data_get_custom_attributes({Cast(member, "Dn2CppObject*")})",
+                    $"{reader}({Cast(member, "Dn2CppObject*")})",
                     TypeDesc.MakeSZArray(elem));
                 var array = Pop();
                 // CoreLib exposes its empty array; nonempty data is a read-only collection.
@@ -1506,7 +1508,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 PushEntry(new StackEntry(result, StackKind.Ref, collection.CppStructName + "*",
                     StaticType: TypeDesc.MakeClass(collection)));
                 return true;
-            }, "canonical MemberInfo attribute data");
+            }, "runtime custom attribute data");
         if (CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(_method))
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
             {
@@ -4393,11 +4395,12 @@ internal sealed partial class MethodCompiler : IEvalStack
                 }
                 else if (m.IsVirtual && CoreIntrinsics.IsReflectionManagedBody(m))
                 {
-                    NoteFtnTargetBody(m.Emittable);
-                    _c.NoteNamedBodySymbol(_method, m.Emittable);
+                    var fallback = _c.ReflectionManagedVirtualFallback(m).Emittable;
+                    NoteFtnTargetBody(fallback);
+                    _c.NoteNamedBodySymbol(_method, fallback);
                     string receiver = NewTemp("Dn2CppObject*");
                     Emit($"{receiver} = (Dn2CppObject*)dn2cpp_null_check({obj.Expr});");
-                    expr = $"({receiver}->type->vtable == nullptr ? (void*)&{m.Emittable.CppName}"
+                    expr = $"({receiver}->type->vtable == nullptr ? (void*)&{fallback.CppName}"
                         + $" : (void*){receiver}->type->vtable[{m.VtableSlot}])";
                 }
                 else if (m.IsVirtual && !m.DeclaringClass.IsInterface

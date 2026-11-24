@@ -7,27 +7,70 @@ internal static class ReflectionManagedBodyContract
 {
     internal static bool IsName(string? owner, string name) =>
         owner == "System.Reflection.MemberInfo" && name == ".ctor"
-        || owner == "System.Type" && name is "get_IsGenericTypeParameter" or "get_IsGenericMethodParameter";
+        || owner == "System.Type" && name is "get_IsGenericTypeParameter" or "get_IsGenericMethodParameter"
+        || owner == "System.Reflection.Module" && name is ".ctor" or "GetCustomAttributesData" or "get_CustomAttributes"
+        || owner == "System.Reflection.RuntimeModule" && name == "GetCustomAttributesData"
+        || owner == "System.Reflection.CustomAttributeData" && name == "GetCustomAttributes";
+
+    internal static bool IsModuleDataReaderName(string? owner, string name) =>
+        owner == "System.Reflection.RuntimeCustomAttributeData" && name == "GetCustomAttributesInternal";
+
+    private static bool ReadClass(MetadataReader reader, ref BlobReader signature, string ns, string name)
+    {
+        if (signature.RemainingBytes < 2 || signature.ReadByte() != 0x12
+            || !signature.TryReadCompressedInteger(out int token) || (token & 3) != 0
+            || token >> 2 == 0 || token >> 2 > reader.TypeDefinitions.Count)
+            return false;
+        var type = reader.GetTypeDefinition(System.Reflection.Metadata.Ecma335.MetadataTokens.TypeDefinitionHandle(token >> 2));
+        return type.GetDeclaringType().IsNil && reader.StringComparer.Equals(type.Namespace, ns)
+            && reader.StringComparer.Equals(type.Name, name);
+    }
 
     internal static bool IsDefinition(MetadataReader reader, MethodDefinitionHandle handle, string owner, string name)
     {
-        if (!IsName(owner, name) || handle.IsNil || !reader.IsAssembly
+        if ((!IsName(owner, name) && !IsModuleDataReaderName(owner, name)) || handle.IsNil || !reader.IsAssembly
             || !reader.StringComparer.Equals(reader.GetAssemblyDefinition().Name, "System.Private.CoreLib"))
             return false;
         var method = reader.GetMethodDefinition(handle);
         var type = reader.GetTypeDefinition(method.GetDeclaringType());
-        bool constructor = name == ".ctor";
-        var attributes = MethodAttributes.HideBySig | MethodAttributes.SpecialName
-            | (constructor ? MethodAttributes.Family | MethodAttributes.RTSpecialName
-                : MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.NewSlot);
+        bool typePredicate = owner == "System.Type";
+        string typeName = owner switch
+        {
+            "System.Type" => "Type",
+            "System.Reflection.MemberInfo" => "MemberInfo",
+            "System.Reflection.Module" => "Module",
+            "System.Reflection.RuntimeModule" => "RuntimeModule",
+            "System.Reflection.CustomAttributeData" => "CustomAttributeData",
+            _ => "RuntimeCustomAttributeData",
+        };
+        if (!type.GetDeclaringType().IsNil || type.GetGenericParameters().Count != 0
+            || !reader.StringComparer.Equals(type.Namespace, typePredicate ? "System" : "System.Reflection")
+            || !reader.StringComparer.Equals(type.Name, typeName) || !reader.StringComparer.Equals(method.Name, name)
+            || method.GetGenericParameters().Count != 0 || method.RelativeVirtualAddress == 0
+            || method.ImplAttributes != MethodImplAttributes.IL)
+            return false;
         var signature = reader.GetBlobReader(method.Signature);
-        return type.GetDeclaringType().IsNil && type.GetGenericParameters().Count == 0
-            && reader.StringComparer.Equals(type.Namespace, constructor ? "System.Reflection" : "System")
-            && reader.StringComparer.Equals(type.Name, constructor ? "MemberInfo" : "Type")
-            && reader.StringComparer.Equals(method.Name, name) && method.GetGenericParameters().Count == 0
-            && method.RelativeVirtualAddress != 0 && method.ImplAttributes == MethodImplAttributes.IL
-            && method.Attributes == attributes && signature.RemainingBytes == 3
-            && signature.ReadByte() == 0x20 && signature.ReadByte() == 0
-            && signature.ReadByte() == (constructor ? 0x01 : 0x02);
+        const MethodAttributes newVirtual = MethodAttributes.Public | MethodAttributes.Virtual
+            | MethodAttributes.NewSlot | MethodAttributes.HideBySig;
+        if (name == ".ctor" || typePredicate)
+            return method.Attributes == (typePredicate ? newVirtual | MethodAttributes.SpecialName
+                    : MethodAttributes.Family | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName)
+                && signature.RemainingBytes == 3 && signature.ReadByte() == 0x20 && signature.ReadByte() == 0
+                && signature.ReadByte() == (typePredicate ? 0x02 : 0x01);
+        bool readerLeaf = IsModuleDataReaderName(owner, name);
+        bool forwarding = owner == "System.Reflection.CustomAttributeData";
+        bool property = name == "get_CustomAttributes";
+        var attributes = readerLeaf || forwarding
+            ? MethodAttributes.Static | MethodAttributes.HideBySig | (readerLeaf ? MethodAttributes.Assembly : MethodAttributes.Public)
+            : (owner == "System.Reflection.RuntimeModule" ? newVirtual & ~MethodAttributes.NewSlot : newVirtual)
+                | (property ? MethodAttributes.SpecialName : 0);
+        return method.Attributes == attributes && signature.RemainingBytes >= 7
+            && signature.ReadByte() == (readerLeaf || forwarding ? 0 : 0x20)
+            && signature.ReadByte() == (readerLeaf || forwarding ? 1 : 0) && signature.ReadByte() == 0x15
+            && ReadClass(reader, ref signature, "System.Collections.Generic", property ? "IEnumerable`1" : "IList`1")
+            && signature.RemainingBytes >= 3 && signature.ReadByte() == 1
+            && ReadClass(reader, ref signature, "System.Reflection", "CustomAttributeData")
+            && (!readerLeaf && !forwarding || ReadClass(reader, ref signature, "System.Reflection", readerLeaf ? "RuntimeModule" : "Module"))
+            && signature.RemainingBytes == 0;
     }
 }

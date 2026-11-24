@@ -416,6 +416,7 @@ namespace ReflectInvoke
             return;
         ReflectionSignatureTypesSubset.Program.RunPublicPredicates();
         ReflectMemberIdentitySubset.Program.RunCustomMember();
+        GetInterfaceSubset.Program.RunModuleData();
         }
     }
 }

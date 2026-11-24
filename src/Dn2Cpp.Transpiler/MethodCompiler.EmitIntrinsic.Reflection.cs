@@ -102,7 +102,10 @@ internal sealed partial class MethodCompiler
         string receiver = args[0];
         string result = CppTypes.Of(method.Signature.ReturnType);
         string receiverType = ReceiverCppType(method.DeclaringClass);
-        return $"(((Dn2CppObject*){receiver})->type->vtable == nullptr ? {DirectCall(method, args)} : "
+        var fallback = Comp.ReflectionManagedVirtualFallback(method);
+        string direct = fallback == method ? DirectCall(method, args)
+            : DirectCall(fallback, new[] { $"({ReceiverCppType(fallback.DeclaringClass)}){receiver}" });
+        return $"(((Dn2CppObject*){receiver})->type->vtable == nullptr ? {direct} : "
             + $"(({result} (*)({receiverType}))((Dn2CppObject*){receiver})->type->vtable[{method.VtableSlot}])({receiver}))";
     }
 
@@ -151,7 +154,7 @@ internal sealed partial class MethodCompiler
             {
                 if (method.Name != name || !CoreIntrinsics.MdMemberInfoProperty.Matches(method)) continue;
                 string receiver = NewTemp("Dn2CppObject*");
-                Emit($"{receiver} = dn2cpp_null_check({Cast(Pop(), "Dn2CppObject*")});");
+                Emit($"{receiver} = dn2cpp_null_check<Dn2CppObject>({Cast(Pop(), "Dn2CppObject*")});");
                 string native = name switch
                 {
                     "get_Name" => "dn2cpp_memberinfo_name",
@@ -159,7 +162,9 @@ internal sealed partial class MethodCompiler
                     "get_ReflectedType" => "dn2cpp_memberinfo_reflected_type",
                     _ => "dn2cpp_memberinfo_member_type",
                 };
-                string result = CppTypes.Of(sig.ReturnType);
+                // These handles can be returned even when no managed System.Type layout is emitted.
+                string result = name is "get_DeclaringType" or "get_ReflectedType"
+                    ? "Dn2CppType*" : CppTypes.Of(sig.ReturnType);
                 Push(CppTypes.KindOf(sig.ReturnType), result,
                     $"({receiver}->type->vtable == nullptr ? ({result}){native}({receiver}) : "
                     + $"(({result} (*)(Dn2CppObject*)){receiver}->type->vtable[{method.VtableSlot}])({receiver}))");
