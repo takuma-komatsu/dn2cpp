@@ -3670,6 +3670,29 @@ internal sealed partial class Compilation
         return factory;
     }
 
+    internal MethodInfo SingleJoinHelper()
+    {
+        const string missing = "Joining Single values requires Dn2Cpp.Runtime.StringJoin.Single from the matching Dn2Cpp.Runtime.dll.";
+        if (!TypeIndex().TryGetValue(("Dn2Cpp.Runtime", "StringJoin"), out var candidates))
+            throw new NotSupportedException(missing);
+        foreach (var (module, handle) in candidates)
+        {
+            if (module.AssemblyName != "Dn2Cpp.Runtime" || !module.ClassMap.TryGetValue(handle, out var owner))
+                continue;
+            var join = owner.EnsureMembers().Methods.FirstOrDefault(m => m.Name == "Single" && m.IsStatic && m.Rva != 0
+                && m.Signature.ReturnType.IsString && m.Signature.ParameterTypes is [{ IsString: true }, { Class: { } values }]
+                && values.Context.TypeArgs is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Single }]
+                && GenericDefFullName(values) == "System.Collections.Generic.IEnumerable");
+            if (join is not null)
+            {
+                Reach(join);
+                DrainReachability();
+                return join;
+            }
+        }
+        throw new NotSupportedException(missing);
+    }
+
     /// <summary>The closed <c>Dn2Cpp.Runtime.SZArrayEnumerable&lt;elem&gt;</c> wrapper
     /// and its <c>(elem[])</c> constructor, instantiated, completed, allocated and
     /// fully reached (so its interface-dispatch tables are emitted). The emit-time

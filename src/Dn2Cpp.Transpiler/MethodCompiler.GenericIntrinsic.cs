@@ -15,6 +15,15 @@ internal sealed partial class MethodCompiler
     /// <c>Array.Empty&lt;T&gt;</c>).</summary>
     private bool TryTokenFreeGenericIntrinsic(string declType, string name, TypeDesc[] methodArgs, MethodSpecificationHandle specification = default)
     {
+        if (specification.IsNil && declType == "System.String" && name is "Join" or "Concat"
+            && methodArgs is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Single }])
+        {
+            if (name == "Join")
+                EmitStringJoinGeneric(methodArgs[0]);
+            else
+                EmitSequenceJoin(methodArgs[0], Pop(), null);
+            return true;
+        }
         if (declType == "System.Numerics.Vector" && (name == "As" || CoreIntrinsics.VectorAliasElementCode(name) != 0))
         {
             var target = specification.IsNil ? _method : Comp.ResolveMethodSpec(Module, specification, Method.Context);
@@ -2521,6 +2530,13 @@ internal sealed partial class MethodCompiler
             return;
         }
         arr = arr with { Expr = values };
+        if (t is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Single })
+        {
+            Push(StackKind.Ref, "Dn2CppString*", sepStr ?? "nullptr");
+            PushEntry(arr);
+            EmitManagedCall(Comp.SingleJoinHelper(), isCallvirt: false);
+            return;
+        }
         string? call;
         if (arr.CppType.StartsWith("Dn2CppArray"))
             call = ArrayJoinCall(t, arr, sepStr);

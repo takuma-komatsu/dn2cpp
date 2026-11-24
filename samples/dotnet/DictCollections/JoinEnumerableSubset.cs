@@ -1,6 +1,7 @@
 #nullable disable
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace JoinEnumerableSubset
 {
@@ -27,6 +28,36 @@ namespace JoinEnumerableSubset
             Console.WriteLine("byte join=" + string.Join(", ", new byte[] { 0, 128, 255 })
                 + "/" + JoinList(new Bytes { 1 }));
             Console.WriteLine("ushort join=" + string.Join('|', new ushort[] { 1, 32768, 65535 }));
+        }
+
+        private static IEnumerable<float> ChangeCulture(CultureInfo captured, CultureInfo original)
+        {
+            yield return -1.5f;
+            CultureInfo.CurrentCulture = captured;
+            yield return -2.5f;
+            CultureInfo.CurrentCulture = original;
+            yield return -3.5f;
+        }
+
+        internal static void RunSingleJoins()
+        {
+            var original = CultureInfo.CurrentCulture;
+            var captured = (CultureInfo)original.Clone();
+            captured.NumberFormat.NegativeSign = "~";
+            var symbol = new string('?', 3);
+            captured.NumberFormat.NaNSymbol = symbol;
+            try
+            {
+                Console.WriteLine("float join=" + string.Join('|', ChangeCulture(captured, original)));
+                CultureInfo.CurrentCulture = captured;
+                Console.WriteLine("float singleton=" + ReferenceEquals(symbol, string.Concat(new[] { float.NaN })));
+                captured.NumberFormat.NaNSymbol = string.Empty;
+                Console.WriteLine("float empty=" + ReferenceEquals(string.Empty, string.Concat(new[] { float.NaN, float.NaN })));
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = original;
+            }
         }
 
         internal static void __GateEntry()
