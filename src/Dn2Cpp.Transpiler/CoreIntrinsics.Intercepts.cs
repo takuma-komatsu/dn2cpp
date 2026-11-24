@@ -200,8 +200,7 @@ internal enum InterceptEmitArm
     /// one arm serves them all.</summary>
     IntrinsicUnderDeclType,
     /// <summary><c>EmitIntrinsic(declType, name, mr.DecodeMethodSignature(
-    /// SigProvider, null))</c> — the Enum reflection statics and
-    /// Nullable.GetUnderlyingType, which decode their signature in the NULL
+    /// SigProvider, null))</c> — the Enum reflection statics decode their signature in the NULL
     /// generic context (not the caller's memoized thunk), exactly as the
     /// pre-descriptor call sites did.</summary>
     IntrinsicUnderDeclTypeNullCtx,
@@ -695,12 +694,61 @@ internal static partial class CoreIntrinsics
             || IsCoreClrVirtualSlotCount(mi)
             || IsCoreClrMethodSlotLookup(mi)
             || IsMethodGenericParameterCount(mi)
+            || IsRuntimeNullableTypeQuery(mi)
             || IsMemberMetadataDefinitionOverride(mi)
             || IsCoreClrConstraintCheck(mi)
             || IsRuntimeTypeDeclaringMethod(mi)
             || IsCoreClrDeclaringMethodBridge(mi)
             || IsCoreClrSignatureBlobParser(mi)
             || IsCoreClrTypeMaterialization(mi) && mi.Rva == 0);
+
+    // Nullable.GetUnderlyingType first asks the virtual IsGenericTypeDefinition property.
+    internal static bool IsNullableTypeQueryName(string name) => name is "GetNullableUnderlyingType" or "get_IsGenericTypeDefinition";
+
+    internal static bool IsNullableTypeQueryBase(MethodInfo method) =>
+        method.DeclaringClass.FullName == "System.Type" && IsNullableTypeQuery(method);
+
+    internal static bool IsRuntimeNullableTypeQuery(MethodInfo method) =>
+        method.DeclaringClass.FullName == "System.RuntimeType" && IsNullableTypeQuery(method);
+
+    internal static string NullableTypeQueryHelper(MethodInfo method) => method.Name == "GetNullableUnderlyingType"
+        ? "dn2cpp_runtime_type_nullable_underlying" : "dn2cpp_runtime_type_is_generic_definition";
+
+    internal static bool IsNullableTypeQuery(MethodInfo method)
+    {
+        if (!IsNullableTypeQueryName(method.Name)
+            || method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName is not ("System.Type" or "System.RuntimeType")
+            || method.Rva == 0 || method.PInvoke is not null)
+            return false;
+        var attributes = System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+            | System.Reflection.MethodAttributes.HideBySig;
+        if (method.DeclaringClass.FullName == "System.Type") attributes |= System.Reflection.MethodAttributes.NewSlot;
+        if (method.Name == "get_IsGenericTypeDefinition") attributes |= System.Reflection.MethodAttributes.SpecialName;
+        if (method.Attributes != attributes || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && (method.Name == "get_IsGenericTypeDefinition"
+                ? signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+                : signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Type" } result }
+                    && result.Module == method.Module);
+    }
+
+    // A facade-only program can still query native typeof handles without loading Type's vtable.
+    internal static bool IsExternalNullableTypeQuery(Module module, MemberReference member)
+    {
+        var reader = module.Reader;
+        if (!reader.StringComparer.Equals(member.Name, "GetNullableUnderlyingType")
+            || member.Parent.Kind != HandleKind.TypeReference
+            || !Compilation.IsRuntimeSystemTypeReference(module, (TypeReferenceHandle)member.Parent, "Type"))
+            return false;
+        var signature = reader.GetBlobReader(member.Signature);
+        return signature.RemainingBytes >= 4 && signature.ReadByte() == 0x20 && signature.ReadCompressedInteger() == 0
+            && signature.ReadByte() == 0x12 && signature.ReadTypeHandle() == member.Parent && signature.RemainingBytes == 0;
+    }
 
     internal static bool IsMemberMetadataDefinition(MethodInfo method)
     {
@@ -3368,13 +3416,6 @@ internal static partial class CoreIntrinsics
             or "GetValuesAsUnderlyingType" or "ToObject"
             || n == "GetName" && IsEnumPublicGetNameSignature(sig()));
 
-    /// <summary>Nullable.GetUnderlyingType(Type) — the real reflection body is not
-    /// an edge; lowered to the runtime helper (NULL-context decode, like
-    /// <see cref="MrEnumStatics"/>).</summary>
-    public static readonly MemberRefIntercept MrNullableGetUnderlyingType = new(
-        InterceptCutKind.Cut, InterceptEmitArm.IntrinsicUnderDeclTypeNullCtx,
-        typeGate: "System.Nullable", nameGate: "GetUnderlyingType");
-
     /// <summary>SynchronizationContext.get_Current / SetSynchronizationContext —
     /// the per-thread runtime slot (dn2cpp_sync_ctx_get/set). Instance members
     /// (Post/Send) transpile.</summary>
@@ -3546,7 +3587,6 @@ internal static partial class CoreIntrinsics
         MrWideIntTryFormat,
         MrConstFoldedGetter,
         MrEnumStatics,
-        MrNullableGetUnderlyingType,
         MrSyncContextSlot,
         MrExecutionContextCapture,
         MrExecutionContextRun,

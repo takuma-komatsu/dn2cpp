@@ -237,6 +237,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsRuntimeTypeHandleConstructor(m)
             || CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(m)
             || CoreIntrinsics.IsRuntimeTypeInterfaceCheck(m)
+            || CoreIntrinsics.IsRuntimeNullableTypeQuery(m)
             || CoreIntrinsics.IsMemberMetadataDefinitionOverride(m)
             || CoreIntrinsics.IsCoreClrVirtualSlotCount(m)
             || CoreIntrinsics.IsCoreClrMethodSlotLookup(m)
@@ -298,6 +299,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsKnownConstant(m)
             || CoreIntrinsics.IsVectorManagedThrowHelper(m)
             || CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
+            || CoreIntrinsics.IsNullableTypeQueryBase(m)
             || CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
             || CoreIntrinsics.IsCustomAttributeDataConstructorBase(m))
             _intrinsicTypeTranspiled.Add(m);

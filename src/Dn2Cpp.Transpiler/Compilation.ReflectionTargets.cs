@@ -997,6 +997,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsSearchValuesShuffle(target)
             || CoreIntrinsics.IsWaitHandleRawWaitWrapper(target)
             || CoreIntrinsics.IsCancellationInvoke(target)
+            || CoreIntrinsics.IsNullableTypeQuery(target)
             || CoreIntrinsics.IsKnownConstant(target)
             || CoreIntrinsics.IsVectorManagedThrowHelper(target)
             || CoreIntrinsics.IsGenericVectorEstimate(target)
@@ -1005,7 +1006,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsMemberNotFoundExceptionFactory(target)
             || target.Rva != 0 && cls.IntrinsicCppName is null)
             Reach(target);
-        if (target.IsVirtual && !target.IsStatic && CarriesReflectedSlots(cls))
+        if (target.IsVirtual && !target.IsStatic && (CarriesReflectedSlots(cls) || CoreIntrinsics.IsNullableTypeQueryBase(target)))
         {
             if (IsGvmCall(target))
                 ReachReflectedGvm(cls, target, strips: false);

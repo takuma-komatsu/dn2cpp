@@ -25,6 +25,7 @@ namespace ReflectTypes
             if (args.Length > 0 && args[0] == "closed-constraints")
             {
                 ReflectGenericSubset.Program.RunClosedConstraints();
+                ReflectNullableSubset.Program.RunTypeQuery();
                 return;
             }
 
@@ -118,6 +119,7 @@ namespace ReflectTypes
             ReflectNestedSubset.Program.RunMetadata();
             ReflectGenericSubset.Program.RunOpenInterfaces();
             ReflectGenericSubset.Program.RunClosedConstraints();
+            ReflectNullableSubset.Program.RunTypeQuery();
         }
     }
 }

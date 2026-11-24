@@ -1474,6 +1474,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsCoreClrVirtualSlotCount(_method)
             || CoreIntrinsics.IsCoreClrMethodSlotLookup(_method)
             || CoreIntrinsics.IsMethodGenericParameterCount(_method)
+            || CoreIntrinsics.IsRuntimeNullableTypeQuery(_method)
             || CoreIntrinsics.IsMemberMetadataDefinitionOverride(_method)
             || CoreIntrinsics.IsCoreClrConstraintCheck(_method)
             || CoreIntrinsics.IsRuntimeTypeDeclaringMethod(_method)
@@ -4259,7 +4260,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                         + $"(void*)+[](Dn2CppObject* receiver, Dn2CppObject* other) -> int32_t "
                         + $"{{ return {impl.CppName}(({virtualTarget.DeclaringClass.CppStructName}*)(receiver + 1), other); }})";
                 }
-                else if ((CoreIntrinsics.IsRuntimeTypeArrayRank(m) || CoreIntrinsics.IsRuntimeTypeEnumName(m) || CoreIntrinsics.IsRuntimeTypeEnumDefined(m) || CoreIntrinsics.IsRuntimeTypeAssignableFrom(m) || CoreIntrinsics.IsRuntimeTypeTypeCode(m)) || CoreIntrinsics.IsRuntimeTypeDeclaringMethod(m) || CoreIntrinsics.IsRuntimeTypeMakeGenericType(m)
+                else if ((CoreIntrinsics.IsRuntimeNullableTypeQuery(m) || CoreIntrinsics.IsRuntimeTypeArrayRank(m) || CoreIntrinsics.IsRuntimeTypeEnumName(m) || CoreIntrinsics.IsRuntimeTypeEnumDefined(m) || CoreIntrinsics.IsRuntimeTypeAssignableFrom(m) || CoreIntrinsics.IsRuntimeTypeTypeCode(m)) || CoreIntrinsics.IsRuntimeTypeDeclaringMethod(m) || CoreIntrinsics.IsRuntimeTypeMakeGenericType(m)
                     || CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(m) || CoreIntrinsics.IsRuntimeTypeMakeCompound(m)
                     || CoreIntrinsics.IsRuntimeTypeMakeArray(m) || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(m)
                     || CoreIntrinsics.IsRuntimeTypeAssemblyGetter(m) || CoreIntrinsics.IsRuntimeTypeModuleGetter(m) || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(m) || CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(m) || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(m) || CoreIntrinsics.IsRuntimeTypeHasElementTypeOverride(m) || CoreIntrinsics.IsRuntimeTypeIsArrayOverride(m) || CoreIntrinsics.IsRuntimeTypeIsByRefOverride(m) || CoreIntrinsics.IsRuntimeTypeIsPrimitiveOverride(m) || CoreIntrinsics.IsRuntimeTypeIsPointerOverride(m) || CoreIntrinsics.IsRuntimeTypeElementTypeOverride(m) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(m))
@@ -4275,6 +4276,10 @@ internal sealed partial class MethodCompiler : IEvalStack
                         _ftnOrigins[insn.Offset + 1] = (m, false, true);
                         delegateAddressReady = false;
                     }
+                }
+                else if (CoreIntrinsics.IsNullableTypeQueryBase(m))
+                {
+                    expr = $"dn2cpp_nullable_type_address({Cast(obj, "Dn2CppObject*")}, {m.VtableSlot}, (void*)&{CoreIntrinsics.NullableTypeQueryHelper(m)})";
                 }
                 else if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(m))
                 {

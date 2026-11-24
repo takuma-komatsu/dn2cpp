@@ -1684,14 +1684,14 @@ internal sealed partial class Compilation
     {
         var handle = cls.Module.Reader.GetTypeDefinition(cls.Handle).BaseType;
         return handle.Kind == HandleKind.TypeReference
-            && IsRuntimeObjectTypeReference(cls.Module, (TypeReferenceHandle)handle);
+            && IsRuntimeSystemTypeReference(cls.Module, (TypeReferenceHandle)handle, "Object");
     }
 
-    internal static bool IsRuntimeObjectTypeReference(Module module, TypeReferenceHandle handle)
+    internal static bool IsRuntimeSystemTypeReference(Module module, TypeReferenceHandle handle, string name)
     {
         var reader = module.Reader;
         var type = reader.GetTypeReference(handle);
-        if (!reader.StringComparer.Equals(type.Namespace, "System") || !reader.StringComparer.Equals(type.Name, "Object")
+        if (!reader.StringComparer.Equals(type.Namespace, "System") || !reader.StringComparer.Equals(type.Name, name)
             || type.ResolutionScope.Kind != HandleKind.AssemblyReference)
             return false;
         var reference = reader.GetAssemblyReference((AssemblyReferenceHandle)type.ResolutionScope);
@@ -4157,7 +4157,7 @@ internal sealed partial class Compilation
         }
         if (CoreIntrinsics.BrLifetimeDispose.Matches(m.DeclaringClass.FullName, m.Name))
             Reach(m);
-        if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(m))
+        if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(m) || CoreIntrinsics.IsNullableTypeQueryBase(m))
         {
             // A nonvirtual address can expose a MethodInfo whose Invoke is virtual.
             // Retain only this slot on allocated subclasses, even if Method is unused.

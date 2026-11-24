@@ -195,6 +195,12 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppObject*", "nullptr"); // unreachable; stack typing only
                 return true;
             }
+            // The protected Type constructor only chains through MemberInfo to Object.
+            // Managed Type subclasses own their fields and never allocate a native Type payload.
+            case ("System.Type", ".ctor") when sig.Header.RawValue == 0x20 && sig.GenericParameterCount == 0
+                && sig.ReturnType.IsVoid && sig.ParameterTypes.Length == 0:
+                Pop();
+                return true;
             case ("System.Type", "GetTypeFromHandle") when sig.ParameterTypes.Length == 1:
             {
                 var arg = Pop();
