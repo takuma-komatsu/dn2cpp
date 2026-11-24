@@ -51,6 +51,7 @@ namespace DictCollections
                 return;
             IntegralUnionSubset.Program.__GateEntry();
             JoinEnumerableSubset.Program.RunUnsignedJoins();
+            JoinEnumerableSubset.Program.RunSingleJoins();
         }
     }
 }
