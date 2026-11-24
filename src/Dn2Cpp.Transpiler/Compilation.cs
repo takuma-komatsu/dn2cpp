@@ -3924,6 +3924,20 @@ internal sealed partial class Compilation
         return m;
     }
 
+    // JoinCore enumerates non-span-formattable structs through constrained Object.ToString.
+    // Its span-formattable branch instead uses an interpolated handler with a captured provider.
+    internal bool UsesRealBodyGeneric(string owner, string name, TypeDesc[] arguments)
+    {
+        if (!CoreIntrinsicTypeMaps.IsStringSequenceJoin(owner, name))
+            return CoreIntrinsics.IsRealBodyGeneric(owner, name);
+        if (arguments is not [{ Kind: TypeKind.Class, Class: { } value }]
+            || !EnsureShape(value).IsValueType || value.IsEnum || EffectiveToString(value) is null)
+            return false;
+        var spanFormattable = FindClassByFullName("System.ISpanFormattable");
+        return spanFormattable is { Module.AssemblyName: "System.Private.CoreLib" or "mscorlib" }
+            && !ImplementsInterface(value, spanFormattable);
+    }
+
     /// <summary>The generic counterpart of <see cref="ReachStringStaticMethod"/>: resolves
     /// the closed instantiation a MethodSpec names on an intrinsic-mapped type
     /// (<see cref="CoreIntrinsics.IsRealBodyGeneric"/>) and reaches its real body for
@@ -4202,7 +4216,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsVectorManagedForwarder(m)
             || CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
             || CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
-            || CoreIntrinsics.IsRealBodyGeneric(m.DeclaringClass.FullName, m.Name)
+            || UsesRealBodyGeneric(m.DeclaringClass.FullName, m.Name, m.Context.MethodArgs)
             || CoreIntrinsics.IsArrayRealBodyMember(m.DeclaringClass.FullName, m.Name, m.Signature))
         {
             ReachIntrinsicTypeMethod(m);

@@ -820,7 +820,8 @@ internal sealed partial class Compilation
                 return false;
         if (CoreIntrinsics.IsIntrinsicType(fullName)
             || CoreIntrinsicTypeMaps.IntrinsicGenericCppType(fullName, primitiveElement: false) is not null)
-            return CoreIntrinsicTypeMaps.IsRealBodyGeneric(fullName, name);
+            return CoreIntrinsicTypeMaps.IsRealBodyGeneric(fullName, name)
+                || CoreIntrinsicTypeMaps.IsStringSequenceJoin(fullName, name) && method.GetGenericParameters().Count == 1;
         return true;
     }
 

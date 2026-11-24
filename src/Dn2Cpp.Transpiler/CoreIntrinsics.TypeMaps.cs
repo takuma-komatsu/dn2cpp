@@ -661,6 +661,9 @@ internal static class CoreIntrinsicTypeMaps
         _ => false,
     };
 
+    public static bool IsStringSequenceJoin(string declType, string name) =>
+        declType == "System.String" && name is "Join" or "Concat" or "JoinCore";
+
     public static bool IsArrayRealBodyMember(string declType, string name, bool hasInt64Parameter) =>
         declType == "System.Array"
         && (name is "get_IsFixedSize" or "get_IsReadOnly" or "get_IsSynchronized" or "get_SyncRoot" or "GetLongLength"

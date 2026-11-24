@@ -559,6 +559,8 @@ internal sealed partial class AssemblyDiet
             || IsCopiedCancellationInvoke(method, owner)
             || IsCopiedKnownConstant(method, owner) || IsCopiedVectorManagedThrowHelper(method, owner))
             traverse = true;
+        else if (CoreIntrinsicTypeMaps.IsStringSequenceJoin(owner, method.Name) && method.GenericParameters.Count == 1)
+            traverse = true;
         else if (owner is "System.Array" or "System.Delegate")
             traverse = CoreIntrinsicTypeMaps.IsRealBodyGeneric(owner, method.Name) || CopiedArrayRealBodyMember(method);
         else

@@ -1580,7 +1580,8 @@ internal sealed partial class MethodCompiler
         // Array's Find/FindAll/FindIndex/Exists/ConvertAll/ForEach/AsReadOnly and kin, and
         // Delegate.EnumerateInvocationList: call the real transpiled body. The Array
         // members' nested calls to each other land back here.
-        if (CoreIntrinsics.IsRealBodyGeneric(declType, name))
+        if (!(declType == "System.String" && name is "Join" or "Concat" && Peek(1).KnownNull)
+            && Comp.UsesRealBodyGeneric(declType, name, methodArgs))
         {
             // Only a closed instantiation is reached as a real body: Reach cuts the
             // canonical counterpart of an intrinsic type's member, so a shared caller
