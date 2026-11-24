@@ -21,27 +21,32 @@ internal sealed partial class MethodCompiler
         return $"dn2cpp_task_default_result_bits(nullptr, sizeof({CppTypes.Of(resultType)}))";
     }
 
-    private string TaskCachedResultDisposal(StackEntry value, TypeDesc type)
+    private string TaskCachedResultDisposal(StackEntry value, TypeDesc type) =>
+        TaskResultCacheCondition(value, type).Condition;
+
+    // Boolean and Int32 use their own caches. Only nulls and eligible zero
+    // values come from Task<TResult>.s_defaultResultTask in Task.FromResult.
+    private (string Condition, bool UsesDefaultField) TaskResultCacheCondition(StackEntry value, TypeDesc type)
     {
         if (value.Kind == StackKind.Ref)
-            return $"({value.Expr} == nullptr)";
+            return ($"({value.Expr} == nullptr)", true);
         TaintIfCanonical(type, "task-result-cache");
         if (type is { Kind: TypeKind.Class, Class: { } cls }
             && Comp.GenericDefFullName(cls) == "System.Nullable")
         {
             var nullable = NullableLayout(type)
                 ?? throw new InvalidOperationException("Nullable result has no layout");
-            return $"!(({StructLValue(value)}).{nullable.HasValueField})";
+            return ($"!(({StructLValue(value)}).{nullable.HasValueField})", true);
         }
         var primitive = type.Kind == TypeKind.Class
             ? Compilation.WellKnownPrimitive(type.Class!.FullName) ?? type
             : type;
         if (primitive is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean })
-            return "true";
+            return ("true", false);
         if (primitive is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 })
-            return $"((uint32_t)({value.Expr}) + 1u < 10u)";
+            return ($"((uint32_t)({value.Expr}) + 1u < 10u)", false);
         if (!TaskResultCacheLayoutAllowed(type))
-            return "false";
+            return ("false", false);
         string storage = NewTemp(CppTypes.Of(primitive));
         Emit($"{storage} = {Cast(value, CppTypes.Of(primitive))};");
         string bits = NewTemp("Dn2CppTaskResultCacheBits");
@@ -52,7 +57,7 @@ internal sealed partial class MethodCompiler
         CopyTaskResultCacheFields(primitive, storage, storage, bits);
         Emit($"{cache} = dn2cpp_task_default_result_bits({bits}.bytes, sizeof({storage}));");
         Emit("}");
-        return cache;
+        return (cache, true);
     }
 
     private bool TaskResultCacheLayoutAllowed(TypeDesc type)

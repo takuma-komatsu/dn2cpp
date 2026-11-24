@@ -42,12 +42,17 @@ internal sealed partial class MethodCompiler
         var cls = _method.DeclaringClass.GenericArity > 0 && _method.DeclaringClass.Handle == declType
             ? _method.DeclaringClass
             : _c.GetClass(_module, declType);
-        var fld = cls.Fields.First(f => f.Name == fname);
+        var fld = Compilation.ResolveTaskDefaultResultField(cls, fname) ?? cls.Fields.First(f => f.Name == fname);
+        if (CoreIntrinsics.IsTaskDefaultResultField(cls, fname) && fld.Handle != (FieldDefinitionHandle)handle)
+            throw new NotSupportedException($"field '{fname}' does not match its declaration on {cls.FullName}");
         return Validate((cls, fld));
 
         (ClassInfo, FieldInfo) Validate((ClassInfo Owner, FieldInfo Field) resolved)
         {
             CoreIntrinsics.ValidateResourceManagerField(resolved.Field);
+            if (CoreIntrinsics.IsTaskDefaultResultField(resolved.Owner, resolved.Field.Name)
+                && operation is not (ILOpCode.Ldsfld or ILOpCode.Ldsflda))
+                throw new NotSupportedException($"Task<TResult>.s_defaultResultTask is a readonly static field; found {operation}");
             if (resolved.Owner.FullName == "System.Resources.ResourceManager" && operation != ILOpCode.Ldsfld)
                 throw new NotSupportedException($"{_method.DeclaringClass.FullName}.{_method.Name}: "
                     + $"ResourceManager header fields support readonly value loads only; {resolved.Field.Name} uses {operation} "

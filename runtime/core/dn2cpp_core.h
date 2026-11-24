@@ -7963,6 +7963,7 @@ Dn2CppTask* dn2cpp_task_completed();
 // A completed Task<T> carrying a result (behind Task.FromResult). The raw slot
 // is reinterpreted by T at the get_Result/GetResult intrinsics.
 Dn2CppTask* dn2cpp_task_from_result(uint64_t result, bool doNotDispose = false);
+Dn2CppTask** dn2cpp_task_default_result_field(const Dn2CppTypeInfo* taskType);
 // BCL Task.FromResult caches reference-free default values of these widths.
 struct Dn2CppTaskResultCacheBits
 {

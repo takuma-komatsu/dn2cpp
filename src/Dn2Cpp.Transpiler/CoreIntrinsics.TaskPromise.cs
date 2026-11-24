@@ -5,6 +5,32 @@ namespace Dn2Cpp;
 
 internal static partial class CoreIntrinsics
 {
+    internal static bool IsTaskDefaultResultField(ClassInfo owner, string name)
+    {
+        if (name != "s_defaultResultTask" || owner.IntrinsicCppName != "Dn2CppTask*"
+            || owner.Module.AssemblyName != "System.Private.CoreLib"
+            || owner.GenericArity != 1 || owner.Handle.IsNil)
+            return false;
+        var reader = owner.Module.Reader;
+        var definition = reader.GetTypeDefinition(owner.Handle);
+        return definition.GetDeclaringType().IsNil && definition.GetGenericParameters().Count == 1
+            && reader.StringComparer.Equals(definition.Namespace, "System.Threading.Tasks")
+            && reader.StringComparer.Equals(definition.Name, "Task`1");
+    }
+
+    // FIELD CLASS Task<!0>. A MemberRef may refer to the same Task definition
+    // through a TypeRef; its resolved field type must also match the closed owner.
+    internal static bool IsTaskDefaultResultSignature(BlobReader blob, EntityHandle definition = default)
+    {
+        if (blob.RemainingBytes < 7 || blob.ReadByte() != 0x06
+            || blob.ReadByte() != (byte)SignatureTypeCode.GenericTypeInstance || blob.ReadByte() != 0x12)
+            return false;
+        var type = blob.ReadTypeHandle();
+        return !type.IsNil && (definition.IsNil || type == definition)
+            && blob.RemainingBytes == 3 && blob.ReadByte() == 1
+            && blob.ReadByte() == (byte)SignatureTypeCode.GenericTypeParameter && blob.ReadByte() == 0;
+    }
+
     internal static bool IsTaskLifecycleOwner(ClassInfo owner)
     {
         if (owner.Handle.IsNil) return false;

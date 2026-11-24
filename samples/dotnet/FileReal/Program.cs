@@ -40,6 +40,7 @@ namespace FileReal
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_IO_VALIDATION") == "1") return 0;
             IoErrorSubset.Program.Run(dir);
             StreamAsyncSubset.Program.RunCapturedCancellation();
+            StreamAsyncSubset.Program.RunNullStreamBeginRead();
             return 0;
         }
     }

@@ -493,6 +493,24 @@ Dn2CppTask* dn2cpp_task_stamp(Dn2CppTask* task, const Dn2CppTypeInfo* type)
     return task;
 }
 
+Dn2CppTask** dn2cpp_task_default_result_field(const Dn2CppTypeInfo* taskType)
+{
+    // Task<TResult>.s_defaultResultTask has one GC-rooted slot per closed
+    // type, independent of the small-integer and Boolean FromResult caches.
+    struct Entry { const Dn2CppTypeInfo* type; Dn2CppTask* task; Entry* next; };
+    static DN2CPP_GC_STATIC_ROOT Entry* entries = nullptr;
+    std::lock_guard<std::mutex> lock(g_task_mtx);
+    for (auto* entry = entries; entry != nullptr; entry = entry->next)
+        if (entry->type == taskType)
+            return &entry->task;
+    auto* entry = static_cast<Entry*>(dn2cpp_alloc(sizeof(Entry)));
+    entry->type = taskType;
+    dn2cpp_gc_store_ref(&entry->task, dn2cpp_task_stamp(dn2cpp_task_from_result(0, true), taskType));
+    dn2cpp_gc_store_ref(&entry->next, entries);
+    dn2cpp_gc_store_ref(&entries, entry);
+    return &entry->task;
+}
+
 static Dn2CppString* dn2cpp_task_result_tostring(Dn2CppTask* task,
                                                   const Dn2CppTypeInfo* resultType)
 {

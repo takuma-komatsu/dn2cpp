@@ -713,6 +713,21 @@ internal sealed partial class MethodCompiler
             PushI4Const(fld.Name == "MagicNumber" ? unchecked((int)0xBEEFCACEu) : 1);
             return true;
         }
+        if (CoreIntrinsics.IsTaskDefaultResultField(fld.DeclaringClass, fld.Name))
+        {
+            string slot = $"dn2cpp_task_default_result_field({TaskTypeInfo(fld.Type, token)})";
+            if (wantAddress)
+            {
+                Push(StackKind.Ptr, "Dn2CppTask**", slot);
+                Top = Top with { StaticType = TypeDesc.MakeByRef(fld.Type) };
+            }
+            else
+            {
+                Push(StackKind.Ref, "Dn2CppTask*", "*" + slot);
+                Top = Top with { StaticType = fld.Type };
+            }
+            return true;
+        }
         string cppType;
         string expr;
         // A custom async task-role type adopted as Task/ValueTask has no emitted static

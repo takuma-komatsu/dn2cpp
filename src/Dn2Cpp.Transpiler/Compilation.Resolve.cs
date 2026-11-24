@@ -1477,7 +1477,11 @@ internal sealed partial class Compilation
         if (cls.GenericArity > 0)
             CompleteShape(cls);
         string name = reader.GetString(mr.Name);
-        var fld = cls.Fields.FirstOrDefault(f => f.Name == name);
+        var fld = cls.Fields.FirstOrDefault(f => f.Name == name) ?? ResolveTaskDefaultResultField(cls, name);
+        if (fld is not null && CoreIntrinsics.IsTaskDefaultResultField(cls, name)
+            && (!CoreIntrinsics.IsTaskDefaultResultSignature(reader.GetBlobReader(mr.Signature))
+                || mr.DecodeFieldSignature(SigProvider, cls.Context).Class != cls))
+            throw new NotSupportedException("Task<TResult>.s_defaultResultTask requires its self-typed CoreLib field signature");
         // Adopted task-role types are intrinsic memberless shells. Their contract admits
         // one self-typed static CompletedTask; builders and awaiters admit no fields.
         if (fld is null && name == "CompletedTask"
@@ -1512,6 +1516,25 @@ internal sealed partial class Compilation
                 throw new NotSupportedException("ResourceManager field access requires its unmodified named CoreLib owner and Int32 field signature");
         }
         return (cls, fld);
+    }
+
+    // The native Task layout omits the TPL fields. Bind this static from its
+    // real definition only when a body reads it, keeping unrelated shells empty.
+    internal static FieldInfo? ResolveTaskDefaultResultField(ClassInfo owner, string name)
+    {
+        if (!CoreIntrinsics.IsTaskDefaultResultField(owner, name)) return null;
+        var reader = owner.Module.Reader;
+        foreach (var handle in reader.GetTypeDefinition(owner.Handle).GetFields())
+        {
+            var field = reader.GetFieldDefinition(handle);
+            if (reader.StringComparer.Equals(field.Name, name)
+                && field.Attributes == (FieldAttributes.Assembly | FieldAttributes.Static | FieldAttributes.InitOnly)
+                && !HasThreadStatic(reader, field)
+                && CoreIntrinsics.IsTaskDefaultResultSignature(reader.GetBlobReader(field.Signature), owner.Handle))
+                return new FieldInfo { DeclaringClass = owner, Name = name, Handle = handle,
+                    Attributes = field.Attributes, IsStatic = true, Type = TypeDesc.MakeClass(owner) };
+        }
+        return null;
     }
 
     private static ClassInfo ResolveTypeDefMemberRefClass(Module module, TypeDefinitionHandle handle)
