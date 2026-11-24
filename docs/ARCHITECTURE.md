@@ -347,8 +347,11 @@ prefix, as .NET does, and `GetMember` keeps only the member kinds its
 and enumerations keep the rows they list, generic method definitions included,
 however their result is consumed, and they, attribute-data reads and type
 identity select metadata and record their owner for the `--trim-reflection`
-keep-set. A property or event found on a base of the reflected type associates
-none of its private accessors, as `RuntimeType` does. A resolved constant
+keep-set. `InvokeMember` keeps the rows it selects and records each owner for
+that keep-set, since its runtime binder searches the owner's metadata; an empty
+or `[DISPID=0]` name selects the owner's `[DefaultMember]` name, or `ToString`
+when none is declared. A property or event found on a base of the reflected
+type associates none of its private accessors, as `RuntimeType` does. A resolved constant
 `Type.GetType` or `Assembly.GetType` name emits the type's identity and
 metadata, never its bodies or initializer, and a closed generic name forms as
 `MakeGenericType` does. A nested generic argument name served by a runtime

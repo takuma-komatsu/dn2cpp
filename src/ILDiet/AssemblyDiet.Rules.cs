@@ -1354,6 +1354,14 @@ internal sealed partial class AssemblyDiet
                 selectedNames = new SummaryValue();
                 selectedNames.Strings.Add(defaultName);
             }
+            // InvokeMember reads "" and "[DISPID=0]" as the default member, else ToString.
+            if (op == ReflectionOp.InvokeMember && names.Strings.Any(name => name is "" or "[DISPID=0]"))
+            {
+                string defaultName = DefaultMemberName(type) ?? "ToString";
+                selectedNames = new SummaryValue { Unknown = names.Unknown };
+                foreach (string name in names.Strings)
+                    selectedNames.Strings.Add(name is "" or "[DISPID=0]" ? defaultName : name);
+            }
             if (op == ReflectionOp.CreateDelegateNamed)
             {
                 // Named binding searches methods of every visibility across the

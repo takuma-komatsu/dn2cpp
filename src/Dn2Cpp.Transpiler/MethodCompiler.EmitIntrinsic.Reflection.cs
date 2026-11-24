@@ -1453,6 +1453,35 @@ internal sealed partial class MethodCompiler
                     sig.ReturnType);
                 return true;
             }
+            // Type.InvokeMember(name, flags, binder, target, args[, culture]) and the
+            // (..., modifiers, culture, namedParameters) form share one runtime
+            // binder. Culture and modifiers are evaluated and ignored, as the
+            // DefaultBinder ignores them outside COM.
+            case ("System.Type", "InvokeMember") when sig.ParameterTypes.Length is 5 or 6 or 8
+                && sig.ParameterTypes[0].IsString:
+            {
+                NoteValueTypeRows();
+                string named = "nullptr";
+                if (sig.ParameterTypes.Length == 8)
+                {
+                    named = Cast(Pop(), "Dn2CppArrayRef*");
+                    Pop(); // CultureInfo
+                    Pop(); // ParameterModifier[]
+                }
+                else if (sig.ParameterTypes.Length == 6)
+                {
+                    Pop(); // CultureInfo
+                }
+                var args = Pop();
+                var target = Pop();
+                var binder = Pop();
+                var flags = Pop();
+                var n = Pop();
+                var t = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*",
+                    $"dn2cpp_type_invoke_member({Cast(t, "Dn2CppType*")}, {Cast(n, "Dn2CppString*")}, {Cast(flags, "int32_t")}, {Cast(binder, "Dn2CppObject*")}, {Cast(target, "Dn2CppObject*")}, {Cast(args, "Dn2CppArrayRef*")}, {named})");
+                return true;
+            }
             case ("System.Type", "GetMembers") when sig.ParameterTypes.Length is 0 or 1:
             {
                 NoteValueTypeRows();

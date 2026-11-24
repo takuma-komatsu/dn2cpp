@@ -902,6 +902,10 @@ extern const Dn2CppType dn2cpp_missing_method_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_missing_method_exception_type =
     dn2cpp_ti_with_typeobject({ "System.MissingMethodException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_missing_method_exception_type_obj);
 const Dn2CppType dn2cpp_missing_method_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_missing_method_exception_type };
+extern const Dn2CppType dn2cpp_missing_field_exception_type_obj;
+Dn2CppTypeInfo dn2cpp_missing_field_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.MissingFieldException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_missing_field_exception_type_obj);
+const Dn2CppType dn2cpp_missing_field_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_missing_field_exception_type };
 // FieldInfo.SetValue on a constant or a static read-only field, matching .NET's
 // FieldAccessException.
 extern const Dn2CppType dn2cpp_field_access_exception_type_obj;

@@ -2260,6 +2260,21 @@ inline constexpr const char* DN2CPP_SR_FIELD_TARGET_REQUIRED = "RFLCT_Targ_StatF
 inline constexpr const char* DN2CPP_SR_FIELD_TARGET_MISMATCH = "Arg_FieldDeclTarget";
 inline constexpr const char* DN2CPP_SR_FIELD_CONSTANT = "Acc_ReadOnly";
 inline constexpr const char* DN2CPP_SR_FIELD_INITONLY_STATIC = "RFLCT_CannotSetInitonlyStaticField";
+inline constexpr const char* DN2CPP_SR_GENERIC_PARAMETER = "Arg_GenericParameter";
+inline constexpr const char* DN2CPP_SR_NO_ACCESS_SPEC = "Arg_NoAccessSpec";
+inline constexpr const char* DN2CPP_SR_NAMED_PARAM_TOO_BIG = "Arg_NamedParamTooBig";
+inline constexpr const char* DN2CPP_SR_NAMED_PARAM_NULL = "Arg_NamedParamNull";
+inline constexpr const char* DN2CPP_SR_CREATE_INSTANCE_ACCESS = "Arg_CreatInstAccess";
+inline constexpr const char* DN2CPP_SR_FIELD_SET_GET = "Arg_FldSetGet";
+inline constexpr const char* DN2CPP_SR_FIELD_GET_PROPERTY_SET = "Arg_FldGetPropSet";
+inline constexpr const char* DN2CPP_SR_FIELD_SET_PROPERTY_GET = "Arg_FldSetPropGet";
+inline constexpr const char* DN2CPP_SR_FIELD_SET_INVOKE = "Arg_FldSetInvoke";
+inline constexpr const char* DN2CPP_SR_FIELD_GET_ARGUMENTS = "Arg_FldGetArgErr";
+inline constexpr const char* DN2CPP_SR_FIELD_SET_ARGUMENTS = "Arg_FldSetArgErr";
+inline constexpr const char* DN2CPP_SR_PROPERTY_SET_GET = "Arg_PropSetGet";
+inline constexpr const char* DN2CPP_SR_PROPERTY_SET_INVOKE = "Arg_PropSetInvoke";
+inline constexpr const char* DN2CPP_SR_MISSING_METHOD_NAME = "MissingMethod_Name";
+inline constexpr const char* DN2CPP_SR_MISSING_FIELD_NAME = "MissingField_Name";
 inline constexpr const char* DN2CPP_SR_PARAMETER_COUNT = "Arg_ParmCnt";
 inline constexpr const char* DN2CPP_SR_UNBOUND_GENERIC = "Arg_UnboundGenParam";
 inline constexpr const char* DN2CPP_SR_DELEGATE_BIND = "Arg_DlgtTargMeth";
@@ -2572,8 +2587,8 @@ void dn2cpp_runtime_type_call_default_struct_constructor(Dn2CppType* t, uint8_t*
 // activationAttributes]): DefaultBinder-style ctor resolution — filter on
 // flags + arity + boxed-argument admissibility (null matches everything,
 // reference widening, the CLR primitive-widening matrix, enum-as-underlying
-// sources), resolve multiple candidates to the unique most-specific one
-// (AmbiguousMatchException when none dominates), adapt the bound arguments
+// sources), resolve multiple candidates by the DefaultBinder's in-order walk
+// (AmbiguousMatchException when it ends on a tie), adapt the bound arguments
 // (re-box widened primitives, default(T) for null against a value type), and
 // invoke. No candidate throws MissingMethodException; a non-null Binder the
 // AOT PlatformNotSupportedException; non-empty activation attributes the
@@ -2581,6 +2596,15 @@ void dn2cpp_runtime_type_call_default_struct_constructor(Dn2CppType* t, uint8_t*
 Dn2CppObject* dn2cpp_activator_create_instance_args(Dn2CppType* t, Dn2CppArrayRef* args,
                                                     int32_t bindingFlags, Dn2CppObject* binder,
                                                     Dn2CppArrayRef* activationAttrs);
+// Type.InvokeMember (every public overload): RuntimeType.InvokeMember's flag
+// validation and dispatch. CreateInstance runs the activator above; fields bind to
+// the most derived declaration; methods and property accessors filter by arity
+// (OptionalParamBinding admits trailing defaults) and bind by the activator's
+// argument rules. A non-null Binder, non-empty named parameters and indexing an
+// array field throw PlatformNotSupportedException.
+Dn2CppObject* dn2cpp_type_invoke_member(Dn2CppType* t, Dn2CppString* name, int32_t flags,
+                                        Dn2CppObject* binder, Dn2CppObject* target,
+                                        Dn2CppArrayRef* args, Dn2CppArrayRef* named);
 
 // Reflection property enumeration + access. Type.GetProperties(flags) returns a
 // PropertyInfo[] (base-chain-walked, filtered by flags); Type.GetProperty(name, flags)
@@ -3304,6 +3328,9 @@ extern Dn2CppTypeInfo dn2cpp_application_exception_type;
 // System.MissingMethodException: raised by the Activator/ConstructorInfo
 // helpers when constructor resolution finds no invokable match.
 extern Dn2CppTypeInfo dn2cpp_missing_method_exception_type;
+// System.MissingFieldException: raised by Type.InvokeMember when a field access
+// finds no field and no other access applies.
+extern Dn2CppTypeInfo dn2cpp_missing_field_exception_type;
 extern Dn2CppTypeInfo dn2cpp_member_access_exception_type;
 // System.FieldAccessException: raised by FieldInfo.SetValue on a constant or a
 // static read-only field.

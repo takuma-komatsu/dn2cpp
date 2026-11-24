@@ -250,6 +250,12 @@ back, and its exception reaches the caller wrapped in
 `TargetInvocationException` unless the caller passed
 `BindingFlags.DoNotWrapExceptions`.
 
+`Type.InvokeMember` follows `RuntimeType`'s flag validation and dispatch and
+binds arguments by the activation binder's rules; a `params` parameter binds
+only an array argument, and generic method definitions are not candidates. A
+custom `Type` receiver, a non-null `Binder`, named parameters and indexing an
+array field refuse with `PlatformNotSupportedException` before any member runs.
+
 An unmanaged pointer result, read through a by-reference result as well, returns
 as a `System.Reflection.Pointer` of its pointer type, and a function pointer
 result as an `IntPtr`. The compiler keeps the `Pointer` class only when a

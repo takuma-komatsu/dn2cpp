@@ -792,6 +792,7 @@ internal sealed partial class Compilation
         "dn2cpp_activator_create_instance", // + _args/_nonpublic
         "dn2cpp_runtime_type_create_generic_instance_", // generic construction: argument array and selected ctor
         "dn2cpp_assembly_create_instance(",
+        "dn2cpp_type_invoke_member(", // Type.InvokeMember: lookup arrays, boxes, the selected member
         "dn2cpp_propref_get_value", // + _indexed
         "dn2cpp_eventref_handler(",       // EventInfo.Add/RemoveEventHandler: the selected accessor
         "dn2cpp_propref_set_value", // + _indexed
@@ -825,6 +826,7 @@ internal sealed partial class Compilation
         "dn2cpp_activator_create_instance", // Activator.CreateInstance: a constructor chosen at run time
         "dn2cpp_runtime_type_create_generic_instance_", // generic construction: a constructor chosen at run time
         "dn2cpp_assembly_create_instance(", // Assembly.CreateInstance, likewise
+        "dn2cpp_type_invoke_member(",   // Type.InvokeMember: a member chosen at run time
         "dn2cpp_propref_get_value",     // PropertyInfo.GetValue: the getter's body or override
         "dn2cpp_eventref_handler(",       // EventInfo.Add/RemoveEventHandler: the selected accessor
         "dn2cpp_propref_set_value",     // PropertyInfo.SetValue: the setter's body or override

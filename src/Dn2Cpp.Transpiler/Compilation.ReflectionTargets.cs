@@ -823,6 +823,9 @@ internal sealed partial class Compilation
                 var owners = target;
                 var names = KnownStrings(Operand(app, site, api.Name), out bool namesComplete);
                 var flagSet = FlagAlternatives(Operand(app, site, api.Flags), api.DefaultFlags, out bool flagsKnown);
+                // The runtime binder looks the members up through the owners' metadata.
+                foreach (var cls in ClassesOf(owners))
+                    NoteReflectionMetadataOwner(cls);
                 // Known flags that select one member kind by exact name let a remedy name
                 // that member; a field access may also run an initializer, so it preserves
                 // the owner.
@@ -838,9 +841,10 @@ internal sealed partial class Compilation
                     {
                         if (e.Kind != REntityKind.Template)
                             continue;
-                        if (names is not null)
+                        if (names is not null && e.Assembly is { } module)
                             foreach (string name in names)
-                                SelectTemplateMember(e, new TemplateLookup(null, name, flags, null, -1, AllowPrefix: true),
+                                SelectTemplateMember(e, new TemplateLookup(null, !IsDefaultMemberAlias(name) ? name
+                                        : DeclaredDefaultMemberName(module, e.Definition) ?? "ToString", flags, null, -1, AllowPrefix: true),
                                     ReflectionAccessor.All, construct: false, -1, app);
                         if ((flags & 0x200) != 0)
                             SelectTemplateMember(e, new TemplateLookup(LookupMemberKind.Constructor, null, flags, null, -1),
@@ -850,7 +854,8 @@ internal sealed partial class Compilation
                     {
                         if (names is not null)
                             foreach (string name in names)
-                                foreach (var e in SelectMembers(cls, null, name, flags, null, -1, allowPrefix: true))
+                                foreach (var e in NoteListedRows(SelectMembers(cls, null, !IsDefaultMemberAlias(name) ? name
+                                             : DefaultMemberName(cls) ?? "ToString", flags, null, -1, allowPrefix: true)))
                                     InvokeSelected(e, app, ReflectionAccessor.All);
                         // CreateInstance ignores the name.
                         if ((flags & 0x200) != 0)
@@ -5123,41 +5128,48 @@ internal sealed partial class Compilation
         }
     }
 
+    /// <summary>Whether an InvokeMember name selects the type's default member, or
+    /// ToString when none is declared.</summary>
+    private static bool IsDefaultMemberAlias(string name) => name is "" or "[DISPID=0]";
+
     /// <summary>The member name the nearest [DefaultMember] up <paramref name="cls"/>'s base
     /// chain declares, which GetDefaultMembers looks up; null when none declares one.</summary>
     private string? DefaultMemberName(ClassInfo cls)
     {
         foreach (var c in BaseChain(cls))
+            if (!c.Handle.IsNil && DeclaredDefaultMemberName(c.Module, c.Handle) is { } name)
+                return name;
+        return null;
+    }
+
+    private static string? DeclaredDefaultMemberName(Module module, TypeDefinitionHandle type)
+    {
+        var reader = module.Reader;
+        foreach (var handle in reader.GetTypeDefinition(type).GetCustomAttributes())
         {
-            if (c.Handle.IsNil)
-                continue;
-            var reader = c.Module.Reader;
-            foreach (var handle in reader.GetTypeDefinition(c.Handle).GetCustomAttributes())
+            var attribute = reader.GetCustomAttribute(handle);
+            EntityHandle parent = default;
+            if (attribute.Constructor.Kind == HandleKind.MemberReference)
+                parent = reader.GetMemberReference((MemberReferenceHandle)attribute.Constructor).Parent;
+            else if (attribute.Constructor.Kind == HandleKind.MethodDefinition)
+                parent = reader.GetMethodDefinition((MethodDefinitionHandle)attribute.Constructor).GetDeclaringType();
+            string? parentName = parent.Kind switch
             {
-                var attribute = reader.GetCustomAttribute(handle);
-                EntityHandle parent = default;
-                if (attribute.Constructor.Kind == HandleKind.MemberReference)
-                    parent = reader.GetMemberReference((MemberReferenceHandle)attribute.Constructor).Parent;
-                else if (attribute.Constructor.Kind == HandleKind.MethodDefinition)
-                    parent = reader.GetMethodDefinition((MethodDefinitionHandle)attribute.Constructor).GetDeclaringType();
-                string? parentName = parent.Kind switch
-                {
-                    HandleKind.TypeReference => RawSignatureProvider.TypeReferenceName(reader, (TypeReferenceHandle)parent),
-                    HandleKind.TypeDefinition => RawSignatureProvider.TypeDefinitionName(reader, (TypeDefinitionHandle)parent),
-                    _ => null,
-                };
-                if (parentName != "System.Reflection.DefaultMemberAttribute")
-                    continue;
-                try
-                {
-                    var blob = reader.GetBlobReader(attribute.Value);
-                    if (blob.RemainingBytes >= 2 && blob.ReadUInt16() == 1)
-                        return blob.ReadSerializedString();
-                }
-                catch (BadImageFormatException)
-                {
-                    // A malformed blob names no member.
-                }
+                HandleKind.TypeReference => RawSignatureProvider.TypeReferenceName(reader, (TypeReferenceHandle)parent),
+                HandleKind.TypeDefinition => RawSignatureProvider.TypeDefinitionName(reader, (TypeDefinitionHandle)parent),
+                _ => null,
+            };
+            if (parentName != "System.Reflection.DefaultMemberAttribute")
+                continue;
+            try
+            {
+                var blob = reader.GetBlobReader(attribute.Value);
+                if (blob.RemainingBytes >= 2 && blob.ReadUInt16() == 1)
+                    return blob.ReadSerializedString();
+            }
+            catch (BadImageFormatException)
+            {
+                // A malformed blob names no member.
             }
         }
         return null;
