@@ -16,6 +16,7 @@
 #
 # Accepted flags share the worker-count runs; rejections remain isolated.
 # Floating-point mode selection must survive re-emission without a stale opt-in.
+# Auto references follow the explicitly selected CoreLib, not app-local copies.
 # ILDiet arguments stay literal, preserve protocol ownership and are inert when disabled.
 # Assertions:
 #   1. Baseline — the same input with correct flags transpiles and exits 0. The
@@ -61,8 +62,8 @@ echo "corelib: $CORELIB"
 # make this gate permanently uncacheable since it clears OUT on every run.
 OUT=artifacts/cli-args-baseline
 rm -rf "$OUT"; mkdir -p "$OUT"
-if gate_cache_check "$OUT" "cli-args|combined-acceptance|ildiet-arg:literal-budget-request|cli:$(_gate_cli_hash)|$CORELIB" \
-        "$APP" "$CONSOLE_CLI"; then
+if gate_cache_check "$OUT" "cli-args|combined-acceptance|ildiet-arg:literal-budget-request|auto-ref:selected-corelib|cli:$(_gate_cli_hash)" \
+        "$APP" "$CONSOLE_CLI" "$CORELIB" "$(dirname "$CORELIB")/System.Runtime.dll"; then
     gate_cache_hit_msg
     exit 0
 fi
@@ -255,8 +256,29 @@ for frontend in full console; do
     assert_rejected "$frontend FP mode fast" 'fast' "$frontend" "$APP" --fp-mode fast
     assert_rejected "$frontend FP mode typo" 'presice' "$frontend" "$APP" --fp-mode presice
 done
-assert_accepted 'full explicit strict FP without ILDiet' full "$APP" -r "$CORELIB" -o "$OUT" --fp-mode strict \
+# Do not let a file named CoreLib next to the app select the BCL directory,
+# or let a renamed but explicitly loaded CoreLib trigger a host fallback.
+shadow="$OUT/shadow"
+selected="$OUT/selected framework"
+mkdir -p "$shadow" "$selected"
+cp "$APP" "$shadow/$PROJECT.dll"
+: > "$shadow/System.Private.CoreLib.dll"
+: > "$shadow/System.Runtime.dll"
+cp "$CORELIB" "$selected/Target.Core.dll"
+cp "$(dirname "$CORELIB")/System.Runtime.dll" "$selected/System.Runtime.dll"
+gate_capture_ok "$OUT/selected-closure" run_frontend full "$shadow/$PROJECT.dll" \
+    -r "$selected/Target.Core.dll" --auto-ref -o "$OUT" --fp-mode strict \
     --no-ildiet --ildiet-output "$OUT/disabled-full" --ildiet-arg --bogus-ildiet-option
+registry=$(grep -hF 'const Dn2CppAssemblyRegEntry dn2cpp_assembly_registry[] =' "$OUT"/generated*.cpp)
+if ! grep -qwF '"System.Runtime"' <<< "$registry" ||
+    ! grep -qwF '"System.Private.CoreLib"' <<< "$registry" ||
+    grep -qwF '"System.Console"' <<< "$registry" ||
+    ! grep -q '^dn2cpp: 4 assemblies,' "$OUT/selected-closure.stdout"; then
+    echo "FAIL: --auto-ref must use the selected CoreLib's siblings without loading the host CoreLib" >&2
+    printf '%s\n' "$registry" >&2
+    cat "$OUT/selected-closure.stdout" >&2
+    exit 1
+fi
 gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-strict.expected"
 assert_accepted 'console precise FP before reset' console "$APP" -r "$CORELIB" -o "$OUT" --fp-mode precise
 gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-precise.expected"

@@ -468,8 +468,9 @@ cmake --build out/build
 ./out/build/MyApp
 ```
 
-`--auto-ref` with no `-r` defaults the CoreLib to the running shared
-framework's copy and resolves the rest of the closure beside it.
+`--auto-ref` resolves framework references beside the selected CoreLib.
+An explicit `-r` CoreLib takes precedence over the managed CLI's running
+framework. Other explicit `-r` references keep their precedence.
 
 Once published, the same thing without a checkout will read
 `dotnet tool install -g dn2cpp`, then `dn2cpp MyApp.dll -o out --auto-ref`

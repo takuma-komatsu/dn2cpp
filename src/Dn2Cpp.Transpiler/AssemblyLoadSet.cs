@@ -8,6 +8,7 @@ namespace Dn2Cpp;
 internal sealed class AssemblyLoadSet
 {
     internal readonly List<string> Paths = new();
+    internal string? CoreLibPath { get; private set; }
     internal HashSet<int> TargetFrameworkIndexes { get; private set; } = new();
     internal readonly Dictionary<string, Compilation.DefaultRefOutcome> DefaultRefStatus =
         new(StringComparer.OrdinalIgnoreCase);
@@ -36,21 +37,38 @@ internal sealed class AssemblyLoadSet
             assembly.References.Add(DefaultPrincipalContract.TargetAssembly);
         Paths.Add(path);
         _assemblies.Add(assembly);
+        if (assembly.Name == "System.Private.CoreLib")
+            CoreLibPath ??= path;
         return assembly;
     }
 
-    internal static AssemblyLoadSet Resolve(IReadOnlyList<string> paths, TranspileOptions options)
+    internal static AssemblyLoadSet Resolve(IReadOnlyList<string> paths, TranspileOptions options,
+        bool allowHostCoreLib = false)
     {
         var result = new AssemblyLoadSet();
         foreach (string path in paths)
             result.Add(path);
+        string? frameworkDirectory = null;
         if (options.AutoRef)
-            result.LoadReferenceClosure(paths);
+        {
+            if (allowHostCoreLib && result.CoreLibPath is null)
+            {
+                // Assembly.Location is empty in the native CLI. Packaged
+                // toolchains still supply their target CoreLib explicitly.
+                string hostCoreLib = typeof(object).Assembly.Location;
+                if (!string.IsNullOrEmpty(hostCoreLib) && File.Exists(hostCoreLib))
+                    result.Add(hostCoreLib);
+            }
+            if (result.CoreLibPath is { } coreLib)
+                frameworkDirectory = Path.GetDirectoryName(Path.GetFullPath(coreLib));
+        }
+        if (frameworkDirectory is not null)
+            result.LoadReferenceClosure(frameworkDirectory);
         if (options.DefaultRefDir is { } dir)
         {
             bool injected = result.InjectDefaultRefs(dir, options.NoDefaultRefs ?? Array.Empty<string>());
-            if (injected && options.AutoRef)
-                result.LoadReferenceClosure(paths);
+            if (injected && frameworkDirectory is not null)
+                result.LoadReferenceClosure(frameworkDirectory);
         }
         if (options.StrippingLevel.UsesTypeWideRetention())
             result.TargetFrameworkIndexes = TargetFrameworkAssets.Classify(result.Paths);
@@ -59,20 +77,8 @@ internal sealed class AssemblyLoadSet
 
     /// <summary>Only implementation assemblies beside the original CoreLib can join
     /// the closure; explicit references keep their existing module positions.</summary>
-    private void LoadReferenceClosure(IReadOnlyList<string> initialPaths)
+    private void LoadReferenceClosure(string frameworkDirectory)
     {
-        string? frameworkDirectory = null;
-        foreach (string path in initialPaths)
-        {
-            string? dir = Path.GetDirectoryName(Path.GetFullPath(path));
-            if (dir is not null && File.Exists(Path.Combine(dir, "System.Private.CoreLib.dll")))
-            {
-                frameworkDirectory = dir;
-                break;
-            }
-        }
-        if (frameworkDirectory is null)
-            return;
         var loaded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var assembly in _assemblies)
             loaded.Add(assembly.Name);
