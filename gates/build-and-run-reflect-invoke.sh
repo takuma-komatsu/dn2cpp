@@ -60,6 +60,9 @@
 # A class first named by an abstract slot's signature retains callable attribute constructors.
 # Return-parameter attributes retain metadata without bodies, and construct
 # selected attributes with named arguments on native and packed definition rows.
+# Type.InvokeMember binds methods, accessors, fields, default members and
+# constructors with .NET's flag checks and exceptions; a custom Binder, named
+# arguments, array-field indexing and a non-constant name refuse catchably.
 # Consolidated reflection-invocation gate. Merges the former reflect dynamic-use
 # subset gates into one multi-section program, transpiled once against the
 # tree-shaken real CoreLib and diffed exactly against real .NET. Covers:
@@ -314,6 +317,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|metadata-projections-prefi
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|selection-filters-prefix-argv:before-selection-filters"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-alternatives-prefix-argv:before-reflection-alternatives"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|public-type-predicates-prefix-argv:before-public-type-predicates|memberinfo-managed-constructor|module-attribute-data"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|invoke-member-prefix-argv:before-invoke-member|invoke-member-boundary-argv:invoke-member-boundaries"
 
 gate_python -c 'pass' >/dev/null
 source gates/_reflect-invoke-inputs.sh
@@ -2337,6 +2341,54 @@ for axis in native dotnet; do
         'null module=NullReferenceException' 'null module argument=target' \
         'module method=True/True/2/2' --count 1 --policy crlf
 done
+for axis in native dotnet; do
+    if [ "$axis" = native ]; then
+        gate_capture_ok "$_CG_OUT/invoke-member-before.$axis" run_bounded "$_CG_OUT/ReflectInvoke$EXE_EXT" before-invoke-member
+        gate_capture_ok "$_CG_OUT/invoke-member-boundaries.$axis" run_bounded "$_CG_OUT/ReflectInvoke$EXE_EXT" \
+            invoke-member-boundaries OnlyDynamic
+    else
+        gate_capture_ok "$_CG_OUT/invoke-member-before.$axis" reflection_oracle "$_CG_APP" before-invoke-member
+        gate_capture_ok "$_CG_OUT/invoke-member-boundaries.$axis" reflection_oracle "$_CG_APP" \
+            invoke-member-boundaries OnlyDynamic
+    fi
+    gate_output select "$_CG_OUT/gate.$axis.stdout" "$_CG_OUT/invoke-member-prefix.$axis.stdout" \
+        --before '== Type.InvokeMember ==' --policy crlf
+    gate_output compare "$_CG_OUT/invoke-member-prefix.$axis.stdout" "$_CG_OUT/invoke-member-before.$axis.stdout"
+    # The exact diff pins every result; these prove the success paths ran.
+    gate_output byte-witness "$_CG_OUT/gate.$axis.stdout" --count 1 --policy crlf \
+        '== Type.InvokeMember ==' 'Type.InvokeMember end' \
+        'invoke int = 2' 'invoke string = s:x' 'default flags static = 8' 'widen int to long = 3' \
+        'value over object = int' 'by-ref sibling = int' 'exact array = uint[]' 'generic sibling = object' \
+        'widening past ambiguity = int' 'ignore case = 2' 'prefix one = 9' 'optional binding = 6' \
+        'hide by signature = 2' 'exception get type = System.ArgumentException' \
+        'default binder = 2' 'culture overload = 5' 'named overload = 7' \
+        'empty name = Target!' 'empty name inherited = InvokeMemberSubset.Plain' \
+        'default member = pick4' 'inherited default member = pick5' 'default indexer = 2' \
+        'get static field default flags = 3' 'set field widen = 8' 'field falls to property = 5' \
+        'field falls to method = 2' 'set property = 11' 'put dispatch property = 12' 'set indexer = 9' \
+        'create = Target!' 'create with arguments = 33'
+done
+gate_assert_text "$_CG_OUT/invoke-member-boundaries.dotnet.stdout" "$(printf '%s\n' \
+    '== Type.InvokeMember AOT boundaries ==' \
+    'custom binder ! NotImplementedException: The method or operation is not implemented.' \
+    'named arguments = 2/b' 'array field get = 20' 'array field set = 99' 'non-constant name = 300' \
+    'Type.InvokeMember AOT boundaries end')"
+gate_assert_text "$_CG_OUT/invoke-member-boundaries.native.stdout" "$(printf '%s\n' \
+    '== Type.InvokeMember AOT boundaries ==' \
+    'custom binder ! PlatformNotSupportedException: a custom reflection Binder is not supported in AOT-compiled code (pass null / Type.DefaultBinder)' \
+    'named arguments ! PlatformNotSupportedException: Type.InvokeMember: named parameters are not supported in AOT-compiled code' \
+    'array field get ! PlatformNotSupportedException: Type.InvokeMember: indexing an array field is not supported in AOT-compiled code' \
+    'array field set ! PlatformNotSupportedException: Type.InvokeMember: indexing an array field is not supported in AOT-compiled code' \
+    'non-constant name ! PlatformNotSupportedException: InvokeMemberSubset.OnlyDynamicHost::Int32 OnlyDynamic(Int32) in ReflectInvoke: reflection found this member but its body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="ReflectInvoke"><type fullname="InvokeMemberSubset.OnlyDynamicHost"><method name="OnlyDynamic" /></type></assembly>' \
+    'Type.InvokeMember AOT boundaries end')"
+# The non-constant name reports its site with the owner's remedy instead of retaining a body.
+awk -F '\t' 'index($3, "InvokeMemberSubset.Program+") == 1 && index($5, "System.Type.InvokeMember(") == 1 &&
+        index($7, "<type fullname=\"InvokeMemberSubset.OnlyDynamicHost\" preserve=\"all\" />") {
+            count++
+            if ($6 != "member comes from a name not known statically") bad = 1
+        }
+    END { exit bad || count != 1 }' "$_CG_OUT/reflection-unrecognized.tsv" \
+    || { echo 'FAIL: the non-constant InvokeMember name has no unrecognized-site row naming its owner' >&2; exit 1; }
 if ! reflection_full_profile; then
     exit 0
 fi

@@ -97,6 +97,20 @@ internal static class Program
         if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_RETURN_PARAMETER_ATTRIBUTES") == "1")
             return;
         ReflectInvoke.ReturnParameterAttributesSubset.Program.Run();
+        if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_INVOKE_MEMBER") == "1")
+            return;
+        // No IL calls these members: only InvokeMember's constant names select them.
+        Console.WriteLine("== constant-name InvokeMember ==");
+        var invoked = new Invoked();
+        Report("invoke-method",
+            () => typeof(Invoked).InvokeMember("Triple", BindingFlags.InvokeMethod, null, null, new object[] { 7 }));
+        Report("invoke-property",
+            () => typeof(Invoked).InvokeMember("Size", BindingFlags.GetProperty, null, invoked, null));
+        Report("invoke-field",
+            () => typeof(Invoked).InvokeMember("Total", BindingFlags.GetField, null, invoked, null));
+        Report("invoke-default",
+            () => typeof(Invoked).InvokeMember("", BindingFlags.InvokeMethod, null, invoked, new object[] { 2 }));
+        Console.WriteLine("constant-name InvokeMember end");
     }
 
     private static int RunStatic<T>(int value) where T : IStatic<T> => T.Evaluate(value);
@@ -133,6 +147,23 @@ internal sealed class Named
         get => _label;
         set => _label = value;
     }
+}
+
+// The empty name selects the default member; Quadruple and Extent stay unselected.
+[DefaultMember("Pick")]
+internal sealed class Invoked
+{
+    public int Total = 6;
+
+    public static int Triple(int value) => value * 3;
+
+    public static int Quadruple(int value) => value * 4;
+
+    public int Size => 8;
+
+    public int Extent => 9;
+
+    public string Pick(int value) => "pick:" + value;
 }
 
 internal sealed class NamedBuilt : Shape
