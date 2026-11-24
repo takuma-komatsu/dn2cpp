@@ -320,8 +320,12 @@ internal sealed partial class MethodCompiler
     /// inline interface-enumeration loop, or null (emitting nothing) when the element
     /// type is unsupported. <paramref name="sepStr"/> is the lowered separator, or null
     /// for <c>Concat</c>.</summary>
-    private string? EnumerationJoin(StackEntry src, TypeDesc elem, string? sepStr) =>
-        EmitEnumerationToSb(src, elem, sepStr) is { } sb ? $"dn2cpp_sb_tostring({sb})" : null;
+    private string? EnumerationJoin(StackEntry src, TypeDesc elem, string? sepStr)
+    {
+        if (IsUnsignedSubword(elem))
+            return _c.EnumerationDispatch(elem) is { } ed ? JoinUnsignedSubwords(src, elem, sepStr, ed) : null;
+        return EmitEnumerationToSb(src, elem, sepStr) is { } sb ? $"dn2cpp_sb_tostring({sb})" : null;
+    }
 
     /// <summary>The join of an operand that could be a raw array or a managed collection
     /// at run time (<see cref="MayBeArray"/>): an array takes the array helper, anything
@@ -337,11 +341,11 @@ internal sealed partial class MethodCompiler
         // collection carries its own class type-info, never an array one — so the flag
         // test discriminates "array vs managed collection" regardless of which handle.
         Emit($"if ((((Dn2CppObject*)({src.Expr}))->type->flags & DN2CPP_TF_ARRAY) != 0) {{");
-        string arrayJoin = ArrayJoinCall(elem, src.Expr, null, sepStr)!;
+        string arrayJoin = ArrayJoinCall(elem, src, sepStr)!;
         Emit($"    {result} = {arrayJoin};");
         Emit("} else {");
-        string sb = EmitEnumerationToSb(src, elem, sepStr)!;
-        Emit($"    {result} = dn2cpp_sb_tostring({sb});");
+        string enumerated = EnumerationJoin(src, elem, sepStr)!;
+        Emit($"    {result} = {enumerated};");
         Emit("}");
         return result;
     }
@@ -414,10 +418,46 @@ internal sealed partial class MethodCompiler
             + $"(({mth.DeclaringClass.CppStructName}*){recvExpr})";
     }
 
-    /// <summary>Whether <see cref="ArrayJoinCall"/> formats an array of
-    /// <paramref name="t"/>.</summary>
+    /// <summary>Whether an array of <paramref name="t"/> supports Join and Concat.</summary>
     private static bool CanJoinArray(TypeDesc t) =>
-        t is { Kind: TypeKind.Class, Class.IsEnum: true } || ArrayJoinHelper(t) is not null;
+        IsUnsignedSubword(t) || t is { Kind: TypeKind.Class, Class.IsEnum: true } || ArrayJoinHelper(t) is not null;
+
+    private static bool IsUnsignedSubword(TypeDesc t) =>
+        t is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte or PrimitiveTypeCode.UInt16 };
+
+    private string JoinUnsignedSubwords(StackEntry source, TypeDesc elem, string? separator,
+        Compilation.EnumerationMethods? enumeration)
+    {
+        string first = NewTemp("Dn2CppString*");
+        string builder = NewTemp("Dn2CppStringBuilder*");
+        Emit($"{first} = dn2cpp_string_literal(u\"\", 0);");
+        Emit($"{builder} = nullptr;");
+        void Append(string value)
+        {
+            // Unsigned decimal text is nonempty and independent of the iterator's culture.
+            // Return a single element's own string; only a second element needs a builder.
+            string formatted = NewTemp("Dn2CppString*");
+            Emit($"{formatted} = {PrimitiveToStringExpr(elem, value)};");
+            Emit($"if ({first}->length == 0) {{ {first} = {formatted}; }} else {{");
+            Emit($"    if ({builder} == nullptr) {builder} = dn2cpp_sb_new_str({first});");
+            if (separator is not null)
+                Emit($"    dn2cpp_sb_append_str({builder}, {separator});");
+            Emit($"    dn2cpp_sb_append_str({builder}, {formatted});");
+            Emit("}");
+        }
+        if (enumeration is { } ed)
+            EmitForEach(source, ed, elem, Append);
+        else
+        {
+            string array = NewTemp("Dn2CppArrayN*");
+            string index = NewTemp("int32_t");
+            Emit($"{array} = {Cast(source, "Dn2CppArrayN*")};");
+            Emit($"for ({index} = 0; {index} < {array}->length; ++{index}) {{");
+            Append(ArrayElemLoad(elem, array, index));
+            Emit("}");
+        }
+        return $"({builder} == nullptr ? {first} : dn2cpp_sb_tostring({builder}))";
+    }
 
     /// <summary>The runtime call joining the <paramref name="t"/>[] at
     /// <paramref name="arrExpr"/> — its first <paramref name="count"/> elements, or all
@@ -445,6 +485,10 @@ internal sealed partial class MethodCompiler
             ? $"{h.Helper}({sep}, ({h.ArrayType})({arrExpr}))"
             : $"{h.Helper}_n({sep}, ({h.ArrayType})({arrExpr}), {count})";
     }
+
+    private string? ArrayJoinCall(TypeDesc t, StackEntry array, string? separator) =>
+        IsUnsignedSubword(t) ? JoinUnsignedSubwords(array, t, separator, null)
+            : ArrayJoinCall(t, array.Expr, null, separator);
 
     /// <summary>The runtime helper joining an array of the non-enum
     /// <paramref name="t"/>, and the array representation it reads, or null.</summary>

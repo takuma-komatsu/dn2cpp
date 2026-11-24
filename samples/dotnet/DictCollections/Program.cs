@@ -50,6 +50,7 @@ namespace DictCollections
             if (args.Length > 0 && args[0] == "before-integral-union")
                 return;
             IntegralUnionSubset.Program.__GateEntry();
+            JoinEnumerableSubset.Program.RunUnsignedJoins();
         }
     }
 }
