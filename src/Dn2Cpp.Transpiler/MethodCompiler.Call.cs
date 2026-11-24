@@ -574,6 +574,7 @@ internal sealed partial class MethodCompiler
                 }
                 if (CoreIntrinsics.IsWaitHandleTimeoutConversion(callee)
                     || CoreIntrinsics.IsDateTimeCultureManagedBody(callee)
+                    || CoreIntrinsics.IsReflectionManagedBody(callee)
                     || (CoreIntrinsics.IsRuntimeTypeHandleCopy(callee) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(callee))
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(callee)
                     || CoreIntrinsics.IsTaskManagedForwarder(callee)
@@ -2721,6 +2722,10 @@ internal sealed partial class MethodCompiler
             // The selected sealed native receiver has no CoreCLR virtual slots.
             call = DirectCall(callee, args);
         }
+        else if (isCallvirt && callee.IsVirtual && CoreIntrinsics.IsReflectionManagedBody(callee))
+        {
+            call = ReflectionManagedVirtualCall(callee, args);
+        }
         else if (isCallvirt && callee.IsVirtual)
         {
             // The receiver is cast to the declaring class's struct pointer in FnPtrType,
@@ -3769,6 +3774,12 @@ internal sealed partial class MethodCompiler
         // exactly as for a plain callvirt, so the guard wraps the loaded pointer
         // rather than the byref.
         string obj = $"dn2cpp_null_check(*((Dn2CppObject**)({receiver.Expr})))";
+        if (callee.IsVirtual && CoreIntrinsics.IsReflectionManagedBody(callee))
+        {
+            string mapped = $"(({ReceiverCppType(callee.DeclaringClass)}){obj})";
+            EmitCallResult(callee, ReflectionManagedVirtualCall(callee, new List<string> { mapped }));
+            return;
+        }
         string typedObj = $"(({callee.DeclaringClass.CppStructName}*){obj})";
         var args2 = new List<string> { typedObj };
         for (int i = 0; i < rawArgs.Length; i++)

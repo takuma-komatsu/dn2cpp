@@ -652,6 +652,7 @@ internal sealed partial class MethodCompiler
             string receiverType = CoreIntrinsics.IsScalarNumericLeaf(callee)
                 || CoreIntrinsics.IsTaskLifecycle(callee)
                 || CoreIntrinsics.IsDateTimeCultureManagedBody(callee)
+                || CoreIntrinsics.IsReflectionManagedBody(callee)
                 || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(callee)
                 || CoreIntrinsics.BrStringRawByteReference.Matches(callee)
                 ? ReceiverCppType(callee.DeclaringClass)

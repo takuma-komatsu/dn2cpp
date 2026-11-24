@@ -313,6 +313,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|library-bindings-prefix-ar
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|metadata-projections-prefix-argv:before-metadata-projections|written-generic-arguments-prefix-argv:before-written-generic-arguments"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|selection-filters-prefix-argv:before-selection-filters"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-alternatives-prefix-argv:before-reflection-alternatives"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|public-type-predicates-prefix-argv:before-public-type-predicates|memberinfo-managed-constructor"
 
 gate_python -c 'pass' >/dev/null
 source gates/_reflect-invoke-inputs.sh
@@ -2317,6 +2318,22 @@ grep -qE '^extern const Dn2CppMethodInfo md_native_methtab_.*NativeReturnRows\[\
     || { echo 'FAIL: native return attribute method rows were not exercised' >&2; exit 1; }
 grep -qE '^alignas\(2\) static const uint8_t md_record_definition_.*PackedReturnRows.*_methods\[\]' "$_CG_OUT"/generated*.cpp \
     || { echo 'FAIL: packed return attribute definition rows were not exercised' >&2; exit 1; }
+for axis in native dotnet; do
+    if [ "$axis" = native ]; then
+        gate_capture_ok "$_CG_OUT/public-type-before.$axis" run_bounded "$_CG_OUT/ReflectInvoke$EXE_EXT" before-public-type-predicates
+    else
+        gate_capture_ok "$_CG_OUT/public-type-before.$axis" reflection_oracle "$_CG_APP" before-public-type-predicates
+    fi
+    gate_output select "$_CG_OUT/gate.$axis.stdout" "$_CG_OUT/public-type-prefix.$axis.stdout" \
+        --before '== public type predicates ==' --policy crlf
+    gate_output compare "$_CG_OUT/public-type-prefix.$axis.stdout" "$_CG_OUT/public-type-before.$axis.stdout"
+    gate_output byte-witness "$_CG_OUT/gate.$axis.stdout" '== public type predicates ==' \
+        'type predicates Int32=True/False/False' 'type predicates List`1=True/False/False' \
+        'type predicates List`1=False/False/False' 'type predicates Int32[]=False/False/False' \
+        'type predicates T=False/True/False' 'type predicates T=False/False/True' 'public type predicates end' \
+        '== custom MemberInfo construction ==' 'custom member=custom-name/Custom/True' \
+        'custom MemberInfo construction end' --count 1 --policy crlf
+done
 if ! reflection_full_profile; then
     exit 0
 fi

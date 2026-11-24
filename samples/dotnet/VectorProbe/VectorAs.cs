@@ -39,4 +39,15 @@ internal static partial class Program
         VectorUnsupportedRecord("as.forwarded-decimal", () => Vector.AsVectorInt32(VectorUnsupportedOperand<decimal>("A")));
         Console.WriteLine("-- vector as end --");
     }
+
+    private static void VectorAsCallableSection()
+    {
+        Console.WriteLine("-- vector as callable --");
+        var bytes = new byte[Vector<byte>.Count];
+        for (int i = 0; i < bytes.Length; i++) bytes[i] = (byte)(i * 37 + 5);
+        var source = new Vector<byte>(bytes);
+        Func<Vector<byte>, Vector<ulong>> reinterpret = Vector.As<byte, ulong>;
+        Console.WriteLine("as callable roundtrip=" + (Vector.As<ulong, byte>(reinterpret(source)) == source));
+        Console.WriteLine("-- vector as callable end --");
+    }
 }

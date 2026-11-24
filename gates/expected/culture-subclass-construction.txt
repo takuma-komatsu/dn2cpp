@@ -1,0 +1,6 @@
+== culture subclass construction ==
+culture subclass string=PlatformNotSupportedException:CultureInfo subclass construction is not supported by the native culture representation
+culture subclass string/bool=PlatformNotSupportedException:CultureInfo subclass construction is not supported by the native culture representation
+culture subclass int=PlatformNotSupportedException:CultureInfo subclass construction is not supported by the native culture representation
+culture subclass int/bool=PlatformNotSupportedException:CultureInfo subclass construction is not supported by the native culture representation
+culture subclass construction end

@@ -14,14 +14,13 @@ internal static partial class CoreIntrinsics
     // These operations share one exact binary signature, but not their managed guard proofs.
     internal static bool IsVectorSelectionName(string name) => IsVectorMagnitudeName(name) || IsVectorNumberName(name);
 
-    internal static bool IsVectorMagnitudeElement(TypeDesc element) => element is
-        { Kind: TypeKind.Primitive, IsCanonPlaceholder: false, Primitive: PrimitiveTypeCode.Single or PrimitiveTypeCode.Double };
+    internal static bool IsVectorMagnitudeElement(TypeDesc element) => IsVectorNumericElement(element);
 
     internal static void ValidateVectorMagnitude(MethodInfo method)
     {
         if (IsVectorSelectionName(method.Name) && IsVectorEstimateOwnerName(method.DeclaringClass.FullName)
             && !IsVectorMagnitude(method) && !IsVectorMagnitudeManagedGuard(method))
-            throw new NotSupportedException($"Vector {method.Name} requires an exact floating-point generic CoreLib declaration");
+            throw new NotSupportedException($"Vector {method.Name} requires an exact numeric generic CoreLib declaration");
     }
 
     internal static bool IsVectorMagnitudeDefinition(ClassInfo owner, Module module, MethodDefinitionHandle handle)

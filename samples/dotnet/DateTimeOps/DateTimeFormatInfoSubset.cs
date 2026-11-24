@@ -93,6 +93,15 @@ internal static class Program
         Console.WriteLine("DateTimeFormatInfo names end");
     }
 
+    public static void RunPublicNameArrays()
+    {
+        Console.WriteLine("== DateTimeFormatInfo public name arrays ==");
+        NameArray("DayNames", info => info.DayNames);
+        NameArray("MonthNames", info => info.MonthNames);
+        NameArray("MonthGenitiveNames", info => info.MonthGenitiveNames);
+        Console.WriteLine("DateTimeFormatInfo public name arrays end");
+    }
+
     private static void Patterns()
     {
         var info = DateTimeFormatInfo.InvariantInfo;

@@ -25,6 +25,12 @@ namespace CultureInfoApi
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+            if (args.Length > 0 && args[0] == "culture-subclass-construction")
+            {
+                CultureSubclassConstruction.Run();
+                return;
+            }
+
             if (args.Length > 0 && args[0] == "culture-iso-language")
             {
                 RunIsoLanguage();

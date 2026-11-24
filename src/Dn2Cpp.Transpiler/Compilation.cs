@@ -4118,6 +4118,8 @@ internal sealed partial class Compilation
 
     public void NoteIntrinsicFtnTarget(MethodInfo m)
     {
+        if (CoreIntrinsics.MdMemberInfoProperty.Matches(m))
+            ReachUsedVirtual(m);
         CoreIntrinsics.ValidateTaskLifecycle(m);
         CoreIntrinsics.ValidateThreadingPrivate(m);
         CoreIntrinsics.ValidateVectorFloatingPointTernary(m);
@@ -4174,6 +4176,7 @@ internal sealed partial class Compilation
         // Its calls already delegate to the real body, which serves the address too.
         if (CoreIntrinsics.IsWaitHandleTimeoutConversion(m)
             || CoreIntrinsics.IsDateTimeCultureManagedBody(m)
+            || CoreIntrinsics.IsReflectionManagedBody(m)
             || (CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(m))
             || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
             || CoreIntrinsics.IsTaskManagedForwarder(m)
@@ -4224,6 +4227,8 @@ internal sealed partial class Compilation
 
     public void NoteInterceptFtnTarget(MethodInfo m)
     {
+        if (CoreIntrinsics.MdMemberInfoProperty.Matches(m))
+            ReachUsedVirtual(m);
         if (InterceptFtnTargets.Add(m))
             AddReachable(m.EnsureSignature()); // reached => decoded, as in Reach
     }

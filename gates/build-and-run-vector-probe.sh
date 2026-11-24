@@ -111,7 +111,7 @@ element|Concrete vector element access requires its exact CoreLib reference
 estimate|Vector MultiplyAddEstimate requires its exact floating-point CoreLib reference
 log|Vector Log requires its exact floating-point CoreLib reference
 lerp|Vector Lerp requires a nongeneric floating-point declaration
-magnitude|Vector magnitude selection requires an exact floating-point generic CoreLib declaration and method specification
+magnitude|Vector magnitude selection requires an exact numeric generic CoreLib declaration and method specification
 unsupported-alignment-char-parent|Unsupported aligned defaults require their exact closed CoreLib declaration and signature
 unsupported-alignment-wide-context|Unsupported aligned defaults require their exact closed CoreLib declaration and signature
 unsupported-alignment-methodspec|Unsupported aligned defaults require their exact closed CoreLib declaration and signature

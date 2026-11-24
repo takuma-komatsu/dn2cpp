@@ -436,6 +436,12 @@ internal sealed partial class MethodCompiler
     /// runtime plumbing, so there is nothing worth falling through to.</para></summary>
     private void EmitRuntimePrimitive(MethodInfo callee)
     {
+        if (CoreIntrinsics.IsCultureInfoBaseConstructor(callee))
+        {
+            for (int i = 0; i <= callee.Signature.ParameterTypes.Length; i++) Pop();
+            Emit("dn2cpp_throw_platform_not_supported(\"CultureInfo subclass construction is not supported by the native culture representation\");");
+            return;
+        }
         if (CoreIntrinsics.IsTaskLifecycleNative(callee))
         {
             if (CoreIntrinsics.IsTaskSchedulerInline(callee))

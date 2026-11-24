@@ -4051,6 +4051,22 @@ inline T dn2cpp_math_max(T x, T y)
     return std::signbit(y) ? x : y;
 }
 
+template <typename T, bool Magnitude, bool Maximum>
+inline T dn2cpp_integer_select(T x, T y)
+{
+    static_assert(std::is_integral_v<T>);
+    if constexpr (Magnitude && std::is_signed_v<T>)
+    {
+        using U = std::make_unsigned_t<T>;
+        // Unsigned subtraction also represents the magnitude of the signed minimum.
+        U ax = x < 0 ? U(U(0) - U(x)) : U(x);
+        U ay = y < 0 ? U(U(0) - U(y)) : U(y);
+        if (ax != ay)
+            return (Maximum ? ax > ay : ax < ay) ? x : y;
+    }
+    return (Maximum ? x > y : x < y) ? x : y;
+}
+
 // Math.MaxMagnitude/MinMagnitude (IEEE 754:2019 maximumMagnitude /
 // minimumMagnitude), mirroring the BCL's exact algorithm: a NaN operand
 // propagates; on equal magnitudes Max prefers the positive operand and Min

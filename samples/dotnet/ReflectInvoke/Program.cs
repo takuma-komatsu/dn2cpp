@@ -412,6 +412,10 @@ namespace ReflectInvoke
             return;
         ReturnParameterAttributesSubset.Program.Run();
         ReflectDelegateIdentitySubset.ObjectVirtualEqualityProgram.RunBaseHash();
+        if (args.Length > 0 && args[0] == "before-public-type-predicates")
+            return;
+        ReflectionSignatureTypesSubset.Program.RunPublicPredicates();
+        ReflectMemberIdentitySubset.Program.RunCustomMember();
         }
     }
 }

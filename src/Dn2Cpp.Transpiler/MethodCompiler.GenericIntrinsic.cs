@@ -15,6 +15,15 @@ internal sealed partial class MethodCompiler
     /// <c>Array.Empty&lt;T&gt;</c>).</summary>
     private bool TryTokenFreeGenericIntrinsic(string declType, string name, TypeDesc[] methodArgs, MethodSpecificationHandle specification = default)
     {
+        if (declType == "System.Numerics.Vector" && (name == "As" || CoreIntrinsics.VectorAliasElementCode(name) != 0))
+        {
+            var target = specification.IsNil ? _method : Comp.ResolveMethodSpec(Module, specification, Method.Context);
+            if (!CoreIntrinsics.IsVectorAsFamilyCallable(target) || CoreIntrinsics.IsGuardedVectorAs(target)
+                || !TryVectorPrimary(target.Signature, out var cpp, out var width, out var element)
+                || !TryEmitVectorOp(cpp, width, element, name, target.Signature, methodArgs))
+                throw new NotSupportedException("Vector.As callable requires an exact numeric CoreLib declaration");
+            return true;
+        }
         if (declType == "System.UInt128" && name == "CreateChecked")
         {
             var target = specification.IsNil ? _method : Comp.ResolveMethodSpec(Module, specification, Method.Context);

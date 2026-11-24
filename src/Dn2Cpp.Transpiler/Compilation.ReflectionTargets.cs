@@ -962,6 +962,8 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsThreadingPrivate(target)
             || CoreIntrinsics.IsWaitHandleTimeoutConversion(target)
             || CoreIntrinsics.IsDateTimeCultureManagedBody(target)
+            || CoreIntrinsics.IsCultureInfoBaseConstructor(target)
+            || CoreIntrinsics.IsReflectionManagedBody(target)
             || CoreIntrinsics.IsScalarNumericLeaf(target)
             || CoreIntrinsics.IsInvariantCompareInfoGetter(target)
             || CoreIntrinsics.IsDefaultPrincipalAccessor(target)

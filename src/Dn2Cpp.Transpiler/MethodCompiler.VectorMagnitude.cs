@@ -5,7 +5,7 @@ internal sealed partial class MethodCompiler
     private void EmitVectorMagnitude(MethodInfo method)
     {
         if (!CoreIntrinsics.IsVectorMagnitude(method))
-            throw new NotSupportedException($"Vector {method.Name} requires its exact floating-point CoreLib declaration");
+            throw new NotSupportedException($"Vector {method.Name} requires its exact numeric CoreLib declaration");
         var type = method.Signature.ReturnType;
         string cpp = CppTypes.StorageOf(type);
         string element = CppTypes.StorageOf(type.Class!.Context.TypeArgs[0]);
@@ -24,9 +24,12 @@ internal sealed partial class MethodCompiler
             "MaxNumber" => "maxnum", "MinNumber" => "minnum",
             _ => throw new InvalidOperationException("Unexpected vector selection operation"),
         };
-        // Return the selected operand, preserving floating-point ties and NaN rules.
+        string helper = type.Class.Context.TypeArgs[0].Primitive is System.Reflection.Metadata.PrimitiveTypeCode.Single
+            or System.Reflection.Metadata.PrimitiveTypeCode.Double
+            ? $"dn2cpp_math_{operation}<{element}>"
+            : $"dn2cpp_integer_select<{element}, {(CoreIntrinsics.IsVectorMagnitudeName(method.Name) ? "true" : "false")}, {(method.Name.StartsWith("Max", StringComparison.Ordinal) ? "true" : "false")}>";
         Emit($"for ({lane} = 0; {lane} < {width} / sizeof({element}); ++{lane}) {{");
-        Emit($"    dn2cpp_vec_set<{element}>({result}, {lane}, dn2cpp_math_{operation}<{element}>(dn2cpp_vec_get<{element}>({source}, {lane}), dn2cpp_vec_get<{element}>({right}, {lane})));");
+        Emit($"    dn2cpp_vec_set<{element}>({result}, {lane}, {helper}(dn2cpp_vec_get<{element}>({source}, {lane}), dn2cpp_vec_get<{element}>({right}, {lane})));");
         Emit("}");
         Push(StackKind.Struct, cpp, result);
         Top = Top with { StaticType = type };

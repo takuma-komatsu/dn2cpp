@@ -1107,6 +1107,14 @@ vtable slot. The separate managed `GetDeclaringMethodForGenericParameter` bridge
 returns CoreCLR's `IRuntimeMethodInfo` and refuses execution rather than inventing
 a MethodDesc. Its raw QCall sibling retains native-import binding authority.
 
+Public `Type.IsTypeDefinition` distinguishes metadata definitions from closed
+generic, formal-parameter and element-bearing types. `IsGenericTypeParameter`
+uses the formal parameter's declaring owner, keeping method parameters distinct.
+The field-free `IsGenericTypeParameter` and `IsGenericMethodParameter` bodies
+retain their CoreLib IL. `MemberInfo`'s protected constructor likewise retains
+its managed body for user subclasses; its abstract identity getters dispatch
+through those subclasses' ordinary virtual slots as well as native member handles.
+
 The exact managed `RuntimeHelpers.IsPrimitiveType(CorElementType)` and
 `CanPrimitiveWiden(CorElementType, CorElementType)` helpers retain their real IL.
 They classify element codes, not Type identities. Undefined codes keep the input
@@ -1285,10 +1293,14 @@ allocation is conservatively classified even for warmed callers. This does not
 initialize ICU/NLS handles or add arbitrary linguistic comparison capabilities.
 
 Native CultureInfo values have a headerless representation distinct from managed
-subclasses. An exact getter virtual/address/reflection demand combined with an
+subclasses. Calls to the public string- and LCID-based base constructors,
+including their user-override overloads, throw a catchable
+PlatformNotSupportedException before initializing a managed subclass. Ordinary
+`new CultureInfo` construction still creates the native representation.
+An exact getter virtual/address/reflection demand combined with an
 actually allocated descendant overriding that slot is diagnosed as unsupported,
 not silently redirected to the invariant base result. A directly proven native
-InvariantCulture producer and explicit nonvirtual base calls remain valid. Merely
+InvariantCulture producer and explicit nonvirtual base getter calls remain valid. Merely
 loading or preserving subtype/getter metadata does not establish dispatch demand.
 Opaque reflection conservatively considers available getter rows when invocation
 or delegate binding is used; it does not infer which runtime method is selected.
@@ -1297,9 +1309,10 @@ No general CultureInfo subclass ABI or virtual-dispatch framework is introduced.
 DateTimeFormatInfo name lookup, public array cloning and pattern composition
 retain their CoreLib IL above frozen invariant-data leaves. Shared precise
 String[] backing arrays use mutex-protected scanned pinned roots; public name
-arrays remain detached clones. First use can allocate. Pattern setters and
-per-culture date formatting remain unsupported. The Char/Byte TChar accessors
-read the existing mutable DateSeparator; other text stays invariant. Char spans
+arrays, including DayNames, MonthNames and MonthGenitiveNames, remain detached
+clones for invariant and cloned format providers. First use can allocate. Pattern
+setters and per-culture date formatting remain unsupported. The Char/Byte TChar
+accessors read the existing mutable DateSeparator; other text stays invariant. Char spans
 borrow string storage, while Byte spans use GC-managed UTF-8 buffers, without
 promising CoreCLR cache identity.
 The exact full positive and negative TimeSpan pattern getters use the same
@@ -1416,8 +1429,11 @@ callers keep their managed wrappers, including positive-one padding.
 
 Portable-vector magnitude selection admits only exact public generic CoreLib
 `MaxMagnitude`, `MinMagnitude` and their `Number` declarations closed over
-float or double. Each lane reuses the scalar selection helper; NaN propagation
-versus numeric selection and signed-zero magnitude ties remain distinct.
+supported numeric elements. Floating-point lanes reuse the scalar selection
+helper; NaN propagation versus numeric selection and signed-zero magnitude ties
+remain distinct. Integer magnitudes use unsigned arithmetic so a signed minimum
+does not overflow; equal magnitudes select the larger signed value for maximum
+and the smaller for minimum. Unsigned lanes use ordinary numeric ordering.
 Operands are evaluated once, and concrete Vector2/3/4 callers retain their IL.
 Original generic signatures and method arguments are checked before cache reuse;
 other element types cannot fall through to a fabricated default result.
@@ -1431,8 +1447,9 @@ guard on both branches; an outer-width Count is not substituted.
 
 
 Portable-vector `MaxNumber` and `MinNumber` reuse the scalar numeric-selection
-helpers for exact public generic declarations closed over float or double.
-Their signed numeric ordering is distinct from magnitude selection. One NaN
+helpers for exact public generic declarations closed over supported numeric
+elements. Integer lanes use ordinary signed or unsigned ordering. Their signed
+numeric ordering is distinct from magnitude selection. One NaN
 selects the number; signed-zero ties select positive zero for maximum and
 negative zero for minimum. Direct and callable routes validate original
 signatures before cache reuse and evaluate operands once. Unsupported
@@ -1468,9 +1485,10 @@ must target the same genuine helper with their original generic argument. Its re
 throw and pure supported-element whitelist are validated. The first unsupported
 guard is retained; a preceding known-supported guard has no effects, and later
 conversion code cannot execute. No unsupported vector layout, bit reinterpret or
-synthetic default result is produced. Numeric-to-numeric reinterpretation keeps
-its existing path. Calls, stored addresses and retained callable bodies share
-this authority without expanding reflection discovery.
+synthetic default result is produced. Numeric-to-numeric reinterpretation copies
+the vector bits for direct calls and callable method groups. Calls, stored
+addresses and retained callable bodies share this authority without expanding
+reflection discovery.
 
 The finite Numerics `Vector<T>.op_Explicit` and `Vector.AsVector{numeric}<T>`
 forwarding families retain their ordinary managed IL for admitted unsupported
