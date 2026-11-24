@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Globalization;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -646,13 +647,10 @@ public sealed class PairHolder<TValue, TReference>
 // through the interpreter.
 public delegate T Mapper<T>(T x);
 
-// A base-image exception whose base is an External BCL exception the
-// corelib-less build never loads (System.SystemException). Both ctor shapes and
-// Describe are exercised by the base Main below so their bodies + invokers are
-// emitted into the base image — which is what lets the patch derive from this
-// type and chain its interpreted ctor into the REAL emitted ctor body (a BCL
-// exception base can only ever seed the message).
-public class QuotaEx : SystemException
+// The primary image leaves this BCL parent unloaded even with CoreLib. Both
+// ctor shapes and Describe have AOT bodies a patch can import; the unresolved
+// BCL parent only supplies the exception prefix and constructor seeding.
+public class QuotaEx : InvalidEnumArgumentException
 {
     public int Quota;
 
@@ -803,6 +801,12 @@ public class Slate
 
 public sealed class ExternalObjectAttribute : Attribute
 {
+}
+
+internal sealed class UnloadedComponentProbe : Component
+{
+    // Keep the external base constructor out of the hot-update export roots.
+    private UnloadedComponentProbe() { }
 }
 
 public sealed class ObjectBodyProbe
@@ -1095,6 +1099,7 @@ internal static class Program
             ObjectVirtualProbe.Inherited(new Slate());
             if (new ExternalObjectAttribute() is null)
                 Console.WriteLine("unreachable");
+            Console.WriteLine("external parent child=" + typeof(UnloadedComponentProbe).FullName);
             return;
         }
         if (args.Length == 1 && args[0] == "--object-groups-oracle")
@@ -1215,8 +1220,8 @@ internal static class Program
         // shapes (the real ctor chain writes Message/inner through the
         // System.Exception intrinsic and the derived field lands), throw/catch
         // on the derived type, and an object-typed isinst whose True proves the
-        // emitted type-info chains to the shared runtime Exception handle (the
-        // absent SystemException base would otherwise cut the chain at null).
+        // emitted type-info chains to the shared runtime Exception handle even
+        // when the InvalidEnumArgumentException parent is unloaded.
         // This also emits both ctors + Describe with invokers into the base
         // image, the surface the patch's external-base section binds against.
         try

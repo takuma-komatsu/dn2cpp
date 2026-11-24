@@ -508,7 +508,7 @@ internal static class Program
 
         // The RESOLVED-base-ctor invoker path, which only an app-module
         // (non-opaque) exception base can exercise: QuotaEx is a base-image
-        // exception whose own base is the External BCL System.SystemException,
+        // exception whose own BCL parent is unloaded in the primary image,
         // so PatchQuotaEx's interpreted `base(message, quota)` binds
         // kShapeExceptionNew with a real fnPtr (the emitted QuotaEx ctor +
         // invoker). The (string, int) shape is positionally unrecognized
@@ -1405,11 +1405,9 @@ internal sealed class PatchIoEx : InvalidOperationException
     }
 }
 
-// A patch exception over a base-image exception whose base is the External BCL
-// System.SystemException (QuotaEx). `base(message, quota)` resolves to the REAL
-// emitted QuotaEx ctor body — the resolved-base-ctor invoker path (fnPtr
-// non-null in exc_seed_and_run_base_ctor), which a BCL exception base can never
-// exercise: its runtime handle carries no ctor bodies, so it can only seed.
+// A patch exception over QuotaEx, whose BCL parent is unloaded in the primary
+// image. `base(message, quota)` resolves to the emitted QuotaEx ctor body.
+// Without that invoker the runtime could only seed the exception prefix.
 internal sealed class PatchQuotaEx : QuotaEx
 {
     public string Origin;
