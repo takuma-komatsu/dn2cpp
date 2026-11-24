@@ -2300,12 +2300,13 @@ internal sealed partial class CppEmitter
         {
             foreach (var cls in _c.Classes.ToList())
             {
-                if (cls.FullName is not ("System.Type" or "System.RuntimeType" or "System.Reflection.Module" or "System.Reflection.RuntimeModule"))
+                if (cls.FullName is not ("System.Type" or "System.RuntimeType" or "System.Reflection.Module" or "System.Reflection.RuntimeModule"
+                    or "System.Reflection.CustomAttributeData" or "System.Reflection.RuntimeCustomAttributeData"))
                     continue;
                 foreach (var method in cls.Methods)
                 {
                     bool instance = method.Name == "GetNullableUnderlyingType" && CoreIntrinsics.IsNullableTypeQuery(method)
-                        || method.Name == "GetCustomAttributesData" && CoreIntrinsics.IsReflectionManagedBody(method);
+                        || method.Name is "GetCustomAttributesData" or "get_ConstructorArguments" && CoreIntrinsics.IsReflectionManagedBody(method);
                     if (!(instance && _c.KeepsUnreachedRow(method) || CoreIntrinsics.IsMemberNotFoundExceptionFactory(method))
                         || !IsRetainedOpaqueMemberRow(method))
                         continue;
@@ -3948,14 +3949,16 @@ internal sealed partial class CppEmitter
                 // An address-taken base body is nonvirtual. Reflection invokes the
                 // runtime override, whose native handle has no generated vtable.
                 if (fnPtr != "nullptr" && invoker != "nullptr"
-                    && (CoreIntrinsics.IsNullableTypeQueryBase(m) || CoreIntrinsics.IsModuleAttributeDataSlot(m)))
+                    && (CoreIntrinsics.IsNullableTypeQueryBase(m) || CoreIntrinsics.IsModuleAttributeDataSlot(m)
+                        || CoreIntrinsics.IsAttributeArgumentsSlot(m)))
                 {
                     var target = _c.ReflectionManagedVirtualFallback(m);
-                    bool module = CoreIntrinsics.IsModuleAttributeDataSlot(m);
-                    if (!module || target != m)
+                    bool nullable = CoreIntrinsics.IsNullableTypeQueryBase(m);
+                    if (nullable || target != m)
                     {
-                        string runtimeType = module ? "&dn2cpp_runtime_module_type" : "&dn2cpp_type_type";
-                        string runtimeTarget = module ? target.Emittable.CppName : CoreIntrinsics.NullableTypeQueryHelper(m);
+                        string runtimeType = nullable ? "&dn2cpp_type_type" : CoreIntrinsics.IsModuleAttributeDataSlot(m)
+                            ? "&dn2cpp_runtime_module_type" : "&dn2cpp_customattributedata_type";
+                        string runtimeTarget = nullable ? CoreIntrinsics.NullableTypeQueryHelper(m) : target.Emittable.CppName;
                         string thunk = invoker.Substring("(void*)&".Length);
                         invoker = $"(void*)&dn2cpp_runtime_virtual_invoker<{m.VtableSlot}, {runtimeType}, {runtimeTarget}, {thunk}>";
                     }

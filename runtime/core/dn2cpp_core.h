@@ -2721,6 +2721,8 @@ struct Dn2CppAttrInfo
     const char* unretainedSetter = nullptr;
     // Bit 0: not inherited; bit 1: allow multiple. Zero is the CLR default.
     uint32_t usageFlags = 0;
+    // Materializes fixed arguments without constructing the attribute.
+    Dn2CppObject* (*constructorArguments)() = nullptr;
 };
 
 // MemberInfo/ParameterInfo.GetCustomAttributes([attrType,] inherit) and
@@ -2900,14 +2902,11 @@ Dn2CppString* dn2cpp_assembly_name_missing_message(Dn2CppString* fileName);
 // native binary does not have).
 Dn2CppString* dn2cpp_module_name(const char* name);
 
-// A reflected System.Reflection.CustomAttributeData handle: wraps one attribute
-// row of an element's attribute table. Only AttributeType is modeled (the
-// declarative view's arguments would need the encoded ctor blob, which the
-// tables don't carry); ConstructorArguments/NamedArguments throw the catchable
-// PlatformNotSupportedException at the call site.
+// First access to positional arguments replaces the original row with a private
+// copy carrying the list. Metadata-only enumeration keeps its one-word payload.
 struct Dn2CppAttrDataRef : Dn2CppObject
 {
-    Dn2CppMetadataHandle<Dn2CppAttrInfo> attr;
+    std::atomic<Dn2CppMetadataHandle<Dn2CppAttrInfo>> attr;
 };
 extern const Dn2CppTypeInfo dn2cpp_customattributedata_type;
 // MemberInfo/ParameterInfo/Type.CustomAttributes / GetCustomAttributesData():
@@ -2919,6 +2918,7 @@ Dn2CppArrayRef* dn2cpp_custom_attribute_data_get_custom_attributes(Dn2CppObject*
 Dn2CppArrayRef* dn2cpp_assembly_custom_attributes_data(const char* name);
 // CustomAttributeData.AttributeType.
 Dn2CppType* dn2cpp_attrdata_attribute_type(Dn2CppAttrDataRef* d);
+Dn2CppObject* dn2cpp_attrdata_constructor_arguments(Dn2CppObject* value);
 void dn2cpp_set_attrdata_constructor_slot(int32_t slot);
 Dn2CppMethodRef* dn2cpp_attrdata_constructor_virtual(Dn2CppObject* value);
 void* dn2cpp_attrdata_constructor_virtual_address(Dn2CppObject* value);

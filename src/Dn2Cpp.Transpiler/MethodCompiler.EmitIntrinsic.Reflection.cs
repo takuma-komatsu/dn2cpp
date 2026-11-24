@@ -2424,8 +2424,7 @@ internal sealed partial class MethodCompiler
                 return true;
             }
             // MemberInfo.CustomAttributes / GetCustomAttributesData(): the element's
-            // attribute rows as CustomAttributeData handles (AttributeType only —
-            // the argument views throw below). One header-dispatched mechanism for
+            // attribute rows as CustomAttributeData handles. One header-dispatched mechanism for
             // Type/field/method/ctor/property/parameter; Assembly has its own form.
             case ("System.Reflection.MemberInfo" or "System.Type" or "System.Reflection.MethodBase"
                     or "System.Reflection.MethodInfo" or "System.Reflection.ConstructorInfo"
@@ -2455,13 +2454,12 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_attrdata_attribute_type((Dn2CppAttrDataRef*)({d.Expr}))");
                 return true;
             }
-            // The declarative argument views need the encoded ctor blob, which the
-            // emitted attribute tables don't carry (they bake instantiation factories
-            // instead) — a catchable runtime PlatformNotSupportedException.
             case ("System.Reflection.CustomAttributeData", "get_ConstructorArguments" or "get_NamedArguments"):
             {
                 Pop();
-                Emit("dn2cpp_throw_platform_not_supported(\"CustomAttributeData exposes AttributeType only in AOT-compiled code (constructor/named arguments are not recorded)\");");
+                string reason = name == "get_NamedArguments" ? "NamedArguments: named arguments are not recorded"
+                    : "ConstructorArguments: the CoreLib typed-argument layout is unavailable";
+                Emit($"dn2cpp_throw_platform_not_supported(\"CustomAttributeData.{reason}\");");
                 Push(StackKind.Ref, "Dn2CppObject*", "nullptr"); // unreachable; stack typing only
                 return true;
             }

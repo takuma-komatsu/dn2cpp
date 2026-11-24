@@ -525,7 +525,7 @@ internal sealed partial class AssemblyDiet
         string owner = Name(method.DeclaringType);
         bool traverse;
         if (IsCopiedCoreClrTypeMaterialization(method, owner) || IsCopiedNullableReboxing(method, owner)
-            || ReflectionManagedBodyContract.IsModuleDataReaderName(owner, method.Name) && IsCopiedReflectionManagedBody(method, owner))
+            || ReflectionManagedBodyContract.IsRuntimeDataReaderName(owner, method.Name) && IsCopiedReflectionManagedBody(method, owner))
             traverse = false;
         else if (IsCopiedDelegateCallableBody(method, owner)
             || DelegateCallableBodyContract.IsInvocationStorage(owner)

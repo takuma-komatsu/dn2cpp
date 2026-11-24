@@ -9,7 +9,7 @@ internal sealed partial class AssemblyDiet
     private bool IsCopiedReflectionManagedBody(MethodDefinition method, string owner)
     {
         if ((!ReflectionManagedBodyContract.IsName(owner, method.Name)
-                && !ReflectionManagedBodyContract.IsModuleDataReaderName(owner, method.Name)) || method.DeclaringType.FullName != owner
+                && !ReflectionManagedBodyContract.IsRuntimeDataReaderName(owner, method.Name)) || method.DeclaringType.FullName != owner
             || method.Module.Assembly?.Name.Name != "System.Private.CoreLib"
             || method.MetadataToken.TokenType != TokenType.Method || method.MetadataToken.RID == 0
             || !_byModule.TryGetValue(method.Module, out var assembly))

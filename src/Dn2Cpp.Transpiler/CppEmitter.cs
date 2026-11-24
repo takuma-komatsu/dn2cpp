@@ -2125,6 +2125,7 @@ internal sealed partial class CppEmitter
         || CoreIntrinsics.BrNullableReboxing.Matches(m)
         || CoreIntrinsics.BrCustomAttributeDataMember.Matches(m)
         || CoreIntrinsics.BrModuleAttributeData.Matches(m)
+        || CoreIntrinsics.BrAttributeArguments.Matches(m)
         || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(m)
         || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(m)
         || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(m)
@@ -2652,6 +2653,7 @@ internal sealed partial class CppEmitter
                                 || CoreIntrinsics.BrNullableReboxing.Matches(m)
                                 || CoreIntrinsics.BrCustomAttributeDataMember.Matches(m)
                                 || CoreIntrinsics.BrModuleAttributeData.Matches(m)
+                                || CoreIntrinsics.BrAttributeArguments.Matches(m)
                                 || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(m)
                                 || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(m)
                                 || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(m)
@@ -5112,7 +5114,8 @@ internal sealed partial class CppEmitter
                 rows.Add(new MetadataRow(new[] { MetadataValue.Ref(TypeInfoRef(da.AttrClass, "custom-attribute table row")),
                     MetadataValue.Ref(create), MetadataValue.Display(RenderAttrDisplay(da)),
                     MetadataValue.Ref(setter is null ? null : TypeInfoRef(setter.DeclaringClass, "custom-attribute setter owner")),
-                    MetadataValue.Text(setter?.Name), MetadataValue.Unsigned(_c.AttributeUsageFlags(da.AttrClass)) }));
+                    MetadataValue.Text(setter?.Name), MetadataValue.Unsigned(_c.AttributeUsageFlags(da.AttrClass)),
+                    MetadataValue.Ref(RenderAttributeArguments(sb, da)) }));
         }
         if (rows.Count == 0)
             return ("nullptr", 0);
@@ -5123,6 +5126,57 @@ internal sealed partial class CppEmitter
         EmitMetadataTable(sb, "Dn2CppAttrInfo", tab, rows, true);
         _attributeTables[init] = tab;
         return (tab, rows.Count);
+    }
+
+    private string? RenderAttributeArguments(StringBuilder sb, Compilation.DecodedAttribute attribute)
+    {
+        if (_c.AttributeArgumentMethods is not { } methods)
+            return null;
+        var lines = new List<string>();
+        int next = 0;
+        string? list = RenderArgumentList(attribute.Fixed, wrapEmpty: false);
+        if (list is null)
+            return null;
+        var body = new StringBuilder().AppendLine("{");
+        foreach (string line in lines)
+            body.AppendLine("    " + line);
+        body.AppendLine($"    return (Dn2CppObject*){list};").AppendLine("}");
+        return "&" + EmitAttributeFactory(sb, body.ToString(), "attrargs_");
+
+        string? RenderArgumentList(System.Collections.Immutable.ImmutableArray<CustomAttributeTypedArgument<TypeDesc>> values, bool wrapEmpty)
+        {
+            var element = TypeDesc.MakeClass(methods.ArgumentCtor.DeclaringClass);
+            string itemType = CppTypes.Of(element);
+            string arrayType = MethodCompiler.PreciseArrayTypeInfoExprOf(element);
+            string array = $"args{next++}";
+            if (values.Length == 0)
+            {
+                lines.Add($"auto* {array} = dn2cpp_array_empty_n({arrayType}, sizeof({itemType}));");
+                if (!wrapEmpty)
+                    return array;
+            }
+            else
+                lines.Add($"auto* {array} = dn2cpp_newarr_n_t({values.Length}, sizeof({itemType}), {arrayType});");
+            for (int i = 0; i < values.Length; i++)
+            {
+                var argument = values[i];
+                var type = argument.Type;
+                if (AttrTypeHandle(type) is not { } handle)
+                    return null;
+                string? value = argument.Value is System.Collections.Immutable.ImmutableArray<CustomAttributeTypedArgument<TypeDesc>> items
+                    ? RenderArgumentList(items, wrapEmpty: true)
+                    : RenderBoxedAttrValue(type is { Class.IsEnum: true } ? TypeDesc.MakePrimitive(type.Class.EnumUnderlying) : type,
+                        argument.Value, lines, ref next);
+                if (value is null)
+                    return null;
+                string typeParameter = CppTypes.Of(methods.ArgumentCtor.Signature.ParameterTypes[0]);
+                lines.Add($"{methods.ArgumentCtor.Emittable.CppName}(&(({itemType}*){array}->data)[{i}], "
+                    + $"({typeParameter})dn2cpp_get_type_from_handle({handle}), (Dn2CppObject*){value});");
+            }
+            string result = $"arglist{next++}";
+            lines.Add($"auto* {result} = {methods.AsReadOnly.Emittable.CppName}({array});");
+            return result;
+        }
     }
 
     private string RenderAttrDisplay(Compilation.DecodedAttribute da)
@@ -5345,10 +5399,14 @@ internal sealed partial class CppEmitter
             body.AppendLine($"    {line}");
         body.AppendLine("    return (Dn2CppObject*)o;");
         body.AppendLine("}");
-        string text = body.ToString();
+        return EmitAttributeFactory(sb, body.ToString(), "attrcreate_");
+    }
+
+    private string EmitAttributeFactory(StringBuilder sb, string text, string prefix)
+    {
         if (_attributeFactories.TryGetValue(text, out var pooled))
             return pooled;
-        string fn = $"attrcreate_{_attrSeq++}";
+        string fn = prefix + _attrSeq++;
         sb.AppendLine($"Dn2CppObject* {fn}()").Append(text);
         _metadataHeader.AppendLine($"Dn2CppObject* {fn}();");
         _attributeFactories[text] = fn;
@@ -5505,6 +5563,9 @@ internal sealed partial class CppEmitter
             case TypeKind.MDArray:
                 string md = "ti_md_" + Compilation.ArrayElemMangle(td);
                 return TypeInfoSymbolDefined(md) ? "&" + md : null;
+            case TypeKind.External when td.ExternalModule is null && td.ExternalName == "System.Type":
+                // The attribute decoder represents a boxed Type argument with this unscoped descriptor.
+                return MethodCompiler.TypeInfoExprOf(td);
             case TypeKind.Template:
             case TypeKind.External:
                 // Open definitions use their owner-scoped handle, not a ClassInfo.

@@ -5,6 +5,38 @@ namespace Dn2Cpp;
 internal sealed partial class Compilation
 {
     private readonly Dictionary<string, List<(Module Module, CustomAttributeHandle Handle)>> _backendAttributeDemands = new(StringComparer.Ordinal);
+    internal (MethodInfo ArgumentCtor, MethodInfo AsReadOnly)? AttributeArgumentMethods { get; private set; }
+
+    private void ReachAttributeArgumentMethods(MethodInfo getter)
+    {
+        if (AttributeArgumentMethods is not null)
+            return;
+        var arg = getter.Signature.ReturnType.Class!.Context.TypeArgs[0];
+        var element = arg.Class!;
+        var ctor = element.EnsureMembers().Methods.First(m => m.Name == ".ctor" && !m.IsStatic
+            && m.Signature.ParameterTypes is [{ Class.FullName: "System.Type" }, { IsObject: true }]);
+        if (RawMetadataDefinition(getter.Module, "System.Array") is not { } arrayHandle
+            || !getter.Module.ClassMap.TryGetValue(arrayHandle, out var array))
+            throw new NotSupportedException("CustomAttributeData.ConstructorArguments requires the CoreLib Array definition.");
+        var reader = array.Module.Reader;
+        foreach (var handle in reader.GetTypeDefinition(array.Handle).GetMethods())
+        {
+            var definition = reader.GetMethodDefinition(handle);
+            if (!reader.StringComparer.Equals(definition.Name, "AsReadOnly") || definition.GetGenericParameters().Count != 1)
+                continue;
+            var wrapper = InstantiateMethodOnClass(array, array.Module, handle, new[] { arg });
+            if (wrapper.Signature.ParameterTypes is not [{ Kind: TypeKind.SZArray, Element: { } e }] || e != arg)
+                continue;
+            AttributeArgumentMethods = (ctor, wrapper);
+            NoteArrayEnumerableElement(arg);
+            NoteReferencedType(element);
+            Reach(ctor);
+            ReachIntrinsicTypeMethod(wrapper);
+            return;
+        }
+        throw new NotSupportedException("CustomAttributeData.ConstructorArguments requires Array.AsReadOnly<CustomAttributeTypedArgument>.");
+    }
+
     private readonly HashSet<(int Module, CustomAttributeHandle Handle)> _backendAttributeRows = new();
     private readonly Queue<(Module Module, CustomAttributeHandle Handle)> _pendingBackendAttributes = new();
     private long _backendAttributeReplayCount;

@@ -274,9 +274,8 @@ internal static class CoreIntrinsicTypeMaps
         "System.Reflection.Module",
         // Reflected attribute rows (MemberInfo.CustomAttributes /
         // GetCustomAttributesData). Modeled as a Dn2CppAttrDataRef wrapping the
-        // element's attribute-table row; AttributeType is intrinsic-dispatched, the
-        // argument views throw a catchable PlatformNotSupportedException, and the
-        // real RuntimeCustomAttributeData IL stays out of the tree.
+        // element's attribute-table row. AttributeType and the retained positional
+        // arguments read that row without invoking the attribute constructor.
         "System.Reflection.CustomAttributeData",
         // IntrospectionExtensions.GetTypeInfo(Type) is the identity in this
         // model (a runtime Type handle IS the TypeInfo, the RuntimeType

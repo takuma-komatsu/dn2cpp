@@ -161,6 +161,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.BrNullableReboxing.Matches(m)
             || CoreIntrinsics.BrCustomAttributeDataMember.Matches(m)
             || CoreIntrinsics.BrModuleAttributeData.Matches(m)
+            || CoreIntrinsics.BrAttributeArguments.Matches(m)
             || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(m)
             || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(m)
             || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(m)
@@ -180,6 +181,8 @@ internal sealed partial class Compilation
             {
                 _predTrace.TryAdd(m, _currentScan);
                 m.EnsureSignature();
+                if (CoreIntrinsics.BrAttributeArguments.Matches(m))
+                    ReachAttributeArgumentMethods(m);
             }
             return;
         }
@@ -2213,8 +2216,8 @@ internal sealed partial class Compilation
     {
         if (!_usedVirtualDecls.Add(decl))
             return;
-        if (decl.Name == "GetCustomAttributesData" && RuntimeReflectionOverride(decl) is { } moduleOverride)
-            Reach(moduleOverride);
+        if (decl.Name is "GetCustomAttributesData" or "get_ConstructorArguments" && RuntimeReflectionOverride(decl) is { } runtimeOverride)
+            Reach(runtimeOverride);
         RegisterVirtualDemand(decl);
         NoteRuntimeRaisedHeirs(decl.DeclaringClass);
         // Slot resolution can allocate types; their allocation path visits the used slots.

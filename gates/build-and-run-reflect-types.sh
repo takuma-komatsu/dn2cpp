@@ -133,7 +133,6 @@
 # NotSupportedException (the AOT boundary), the
 # MakeArrayType(rank) overload always throws it (MD array types — including
 # the rank-1 T[*] — are not modeled),
-# CustomAttributeData's argument views throw PlatformNotSupportedException,
 # ParameterInfo custom modifiers answer from the method signature (including the
 # init-only setter return modreq); DefaultValue throws (the Constant blob is not
 # carried; HasDefaultValue/IsOut answer exactly from the attributes word), and
@@ -742,7 +741,9 @@ gate_extra_asserts() {
         'assembly load invalid name complete' 'ordinary reflection type leaves end' \
         '== chained attribute Type roots ==' 'chain holder=1' 'chain first=1' \
         'chain second=1' 'chain third=1' 'chain last=ChainFourth`1' \
-        'chained attribute Type roots end'; do
+        'chained attribute Type roots end' 'constructor arguments=True/True/3/True/y' \
+        'argument arrays=True/0/True/True/True' 'constructor arguments read-only' \
+        'throwing attribute data=0' 'custom constructor arguments=0/True'; do
         gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: ordinary type witness missing: $line" >&2; return 1; }
     done

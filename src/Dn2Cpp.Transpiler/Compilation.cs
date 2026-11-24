@@ -4158,7 +4158,7 @@ internal sealed partial class Compilation
         if (CoreIntrinsics.BrLifetimeDispose.Matches(m.DeclaringClass.FullName, m.Name))
             Reach(m);
         if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(m) || CoreIntrinsics.IsNullableTypeQueryBase(m)
-            || CoreIntrinsics.IsModuleAttributeDataSlot(m))
+            || CoreIntrinsics.IsModuleAttributeDataSlot(m) || CoreIntrinsics.IsAttributeArgumentsSlot(m))
         {
             // A nonvirtual address can expose a MethodInfo whose Invoke is virtual.
             // Retain only this slot on allocated subclasses, even if Method is unused.
@@ -5809,7 +5809,12 @@ internal sealed partial class Compilation
                 or "System.Runtime.CompilerServices.AsyncIteratorStateMachineAttribute");
             var ps = da.Ctor.Signature.ParameterTypes;
             for (int i = 0; i < da.Fixed.Length; i++)
-                NoteAttrArg(da.Fixed[i].Type, da.Fixed[i].Value, i < ps.Length && ps[i].IsObject, keepFixedArguments);
+            {
+                var argument = da.Fixed[i];
+                if (AttributeArgumentMethods is not null)
+                    NoteTypeIdentityClosure(argument.Type, keepSeed: false);
+                NoteAttrArg(argument.Type, argument.Value, i < ps.Length && ps[i].IsObject, keepFixedArguments);
+            }
             foreach (var na in da.Named)
             {
                 // The member may be declared on an attribute BASE class — walk the

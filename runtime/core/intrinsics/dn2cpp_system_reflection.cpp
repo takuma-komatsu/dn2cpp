@@ -2314,9 +2314,12 @@ static Dn2CppParamRef* dn2cpp_paramref_require(Dn2CppParamRef* p)
 
 static Dn2CppMetadataHandle<Dn2CppAttrInfo> dn2cpp_attrdataref_require(Dn2CppAttrDataRef* d)
 {
-    if (d == nullptr || d->attr == nullptr)
+    if (d == nullptr)
         dn2cpp_throw_null_reference();
-    return d->attr;
+    auto row = d->attr.load(std::memory_order_acquire);
+    if (!row)
+        dn2cpp_throw_null_reference();
+    return row;
 }
 
 // The header-dispatched MemberInfo accessors (Name / DeclaringType / MemberType /
@@ -11123,16 +11126,15 @@ Dn2CppString* dn2cpp_module_name(const char* name)
 // ---- reflection: CustomAttributeData (MemberInfo.CustomAttributes) ----
 
 // Materializes an attribute table as CustomAttributeData handles. Each handle
-// wraps its Dn2CppAttrInfo row without instantiating the attribute (matching
-// the declarative CustomAttributeData contract); only AttributeType is modeled.
+// wraps its Dn2CppAttrInfo row without instantiating the attribute.
 static Dn2CppArrayRef* dn2cpp_attr_table_to_data_array(Dn2CppMetadataTable<Dn2CppAttrInfo> tab, int32_t count)
 {
     Dn2CppArrayRef* arr = dn2cpp_newarr_ref(count);
     for (int32_t i = 0; i < count; i++)
     {
-        auto* d = static_cast<Dn2CppAttrDataRef*>(dn2cpp_alloc(sizeof(Dn2CppAttrDataRef)));
-        d->type = &dn2cpp_customattributedata_type;
-        d->attr = tab[i];
+        auto* d = new (dn2cpp_alloc(sizeof(Dn2CppAttrDataRef))) Dn2CppAttrDataRef{
+            { &dn2cpp_customattributedata_type }, { tab[i] }
+        };
         dn2cpp_gc_store_ref(&arr->data[i], reinterpret_cast<Dn2CppObject*>(d));
     }
     return arr;
@@ -11207,6 +11209,37 @@ Dn2CppObject* dn2cpp_attrdata_constructor_invoker(void* fn, Dn2CppObject* receiv
     if (receiver == nullptr)
         return reinterpret_cast<Dn2CppObject* (*)(Dn2CppObject*)>(fn)(receiver);
     return reinterpret_cast<Dn2CppObject*>(dn2cpp_attrdata_constructor_virtual(receiver));
+}
+
+struct Dn2CppCachedAttributeArguments : Dn2CppAttrInfo
+{
+    // Only a private, GC-owned copy has this bit. Image rows retain their usage flags.
+    static constexpr uint32_t cached = 1u << 31;
+    Dn2CppObject* arguments;
+};
+
+Dn2CppObject* dn2cpp_attrdata_constructor_arguments(Dn2CppObject* value)
+{
+    if (value != nullptr && value->type != &dn2cpp_customattributedata_type)
+        dn2cpp_throw_platform_not_supported("CustomAttributeData.ConstructorArguments: receiver has no native attribute row");
+    auto* data = static_cast<Dn2CppAttrDataRef*>(value);
+    auto source = dn2cpp_attrdataref_require(data);
+    if (const auto* row = source.native(); row != nullptr && (row->usageFlags & Dn2CppCachedAttributeArguments::cached) != 0)
+        return static_cast<const Dn2CppCachedAttributeArguments*>(row)->arguments;
+    const Dn2CppAttrInfo row = *source;
+    if (row.constructorArguments == nullptr)
+        dn2cpp_throw_platform_not_supported("CustomAttributeData.ConstructorArguments: argument type metadata is unavailable");
+    auto* arguments = row.constructorArguments();
+    auto* cached = new (dn2cpp_alloc(sizeof(Dn2CppCachedAttributeArguments))) Dn2CppCachedAttributeArguments{row, arguments};
+    cached->usageFlags |= Dn2CppCachedAttributeArguments::cached;
+    dn2cpp_gc_write_barrier(cached);
+    if (data->attr.compare_exchange_strong(source, Dn2CppMetadataHandle<Dn2CppAttrInfo>(cached),
+            std::memory_order_acq_rel, std::memory_order_acquire))
+    {
+        dn2cpp_gc_write_barrier(data);
+        return arguments;
+    }
+    return static_cast<const Dn2CppCachedAttributeArguments*>(source.native())->arguments;
 }
 
 Dn2CppType* dn2cpp_attrdata_attribute_type(Dn2CppAttrDataRef* d)

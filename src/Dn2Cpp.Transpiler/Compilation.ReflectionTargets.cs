@@ -1007,7 +1007,7 @@ internal sealed partial class Compilation
             || target.Rva != 0 && cls.IntrinsicCppName is null)
             Reach(target);
         if (target.IsVirtual && !target.IsStatic && (CarriesReflectedSlots(cls) || CoreIntrinsics.IsNullableTypeQueryBase(target)
-            || CoreIntrinsics.IsModuleAttributeDataSlot(target)))
+            || CoreIntrinsics.IsModuleAttributeDataSlot(target) || CoreIntrinsics.IsAttributeArgumentsSlot(target)))
         {
             if (IsGvmCall(target))
                 ReachReflectedGvm(cls, target, strips: false);
