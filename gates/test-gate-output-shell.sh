@@ -192,6 +192,50 @@ if [ "${1:-}" = --case ]; then
                 ordinary_fixture_diff_gate ReflectTypes "$subject" --no-ildiet
             fi
             ;;
+        corelib-selection)
+            eval "$(sed -n '/^DN2CPP_BCL_MAJOR=/p; /^locate_corelib() {/,/^}/p; /^_resolve_unpinned_corelib() {/,/^}/p; /^locate_corelib_cross_posix() {/,/^}/p; /^resolve_pinned_corelib() {/,/^}/p' gates/_common.sh)"
+            unset DN2CPP_CORELIB DN2CPP_CORELIB_CROSS
+            dotnet() {
+                [ "$#" -eq 1 ] && [ "$1" = --list-runtimes ] || return 2
+                cat "$fixture/runtimes.txt"
+            }
+            shared="$fixture/shared runtimes"
+            pinned="$DN2CPP_BCL_MAJOR.0.10"
+            older="$DN2CPP_BCL_MAJOR.0.9"
+            preview="$DN2CPP_BCL_MAJOR.0.20-preview.1"
+            newer="$((DN2CPP_BCL_MAJOR + 1)).0.0"
+            for version in "$pinned" "$older" "$preview" "$newer"; do
+                mkdir -p "$shared/$version"
+                : > "$shared/$version/System.Private.CoreLib.dll"
+            done
+            write_runtimes() {
+                local version
+                for version in "$@"; do
+                    printf 'Microsoft.NETCore.App %s [%s]\r\n' "$version" "$shared"
+                done > "$fixture/runtimes.txt"
+            }
+            write_runtimes "$pinned" "$older" "$preview" "$newer"
+            expected="$shared/$pinned/System.Private.CoreLib.dll"
+            selected=$(locate_corelib)
+            if [ "$selected" != "$expected" ]; then
+                printf 'FAIL: automatic CoreLib chose %s, expected %s\n' "$selected" "$expected" >&2
+                exit 1
+            fi
+            override="$shared/$newer/System.Private.CoreLib.dll"
+            test "$(locate_corelib_cross_posix pinned)" = "$expected"
+            test "$(locate_corelib_cross_posix)" = "$override"
+
+            write_runtimes "$preview" "$newer"
+            if locate_corelib > "$fixture/missing.stdout" 2> "$fixture/missing.stderr"; then
+                echo 'FAIL: automatic CoreLib accepted a preview or newer major without the pin' >&2
+                exit 1
+            fi
+            test ! -s "$fixture/missing.stdout"
+            grep -Fqx "error: no stable Microsoft.NETCore.App $DN2CPP_BCL_MAJOR.0.* shared runtime found" "$fixture/missing.stderr"
+            test "$(DN2CPP_CORELIB="$override" locate_corelib)" = "$override"
+            test "$(DN2CPP_CORELIB="$override" locate_corelib_cross_posix)" = "$override"
+            test "$(DN2CPP_CORELIB_CROSS="$override" locate_corelib_cross_posix pinned)" = "$override"
+            ;;
         brotli-reference)
             source gates/_compression-reference.sh
             DN2CPP_BCL_MAJOR=11
@@ -798,3 +842,5 @@ for scenario in ('repeated', 'other', 'second-error', 'disabled', 'direct-defaul
             assert (fixture / 'run' / f'{side}.status').read_text().strip() == '125'
 PY
 printf 'OK: Windows status-4 retry policy\n'
+run_case 0 corelib-selection
+printf 'OK: pinned CoreLib gate selection\n'
