@@ -287,3 +287,10 @@ extern "C" const Dn2CppN2MDelegate dn2cpp_n2m_delegate_thunks[];
 extern "C" const int32_t dn2cpp_n2m_delegate_thunk_count;
 extern "C" const Dn2CppN2MDelegate dn2cpp_dg_invoke_bridges[];
 extern "C" const int32_t dn2cpp_dg_invoke_bridge_count;
+
+struct Dn2CppInterpDelegateEntry;
+struct Dn2CppInterpDelegateAdapter;
+extern "C" const Dn2CppInterpDelegateEntry dn2cpp_interp_object_gettype_delegate;
+extern "C" const Dn2CppInterpDelegateEntry dn2cpp_interp_object_tostring_delegate;
+extern "C" const Dn2CppInterpDelegateAdapter dn2cpp_interp_delegate_adapters[];
+extern "C" const int32_t dn2cpp_interp_delegate_adapter_count;

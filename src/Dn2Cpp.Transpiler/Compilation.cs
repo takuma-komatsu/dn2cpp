@@ -5240,6 +5240,10 @@ internal sealed partial class Compilation
     /// <see cref="ManifestResourcesUsed"/>.</summary>
     internal void NoteManifestResourceUse() => ManifestResourcesUsed = true;
 
+    // A patch may take either address even when no compiled ldftn rooted it.
+    internal MethodInfo? HotUpdateGetType { get; private set; }
+    internal MethodInfo? HotUpdateToString { get; private set; }
+
     private void CompleteAndDiscover()
     {
         _toScan = new Queue<MethodInfo>();
@@ -5260,6 +5264,22 @@ internal sealed partial class Compilation
             ReachRootInitializer(EntryPoint);
         }
         SeedExportContract();
+        if (_hotUpdateBase && FindClassByFullName("System.Object") is { } obj)
+        {
+            foreach (var method in obj.EnsureMembers().Methods)
+            {
+                if (method.IsStatic || method.Name is not ("GetType" or "ToString")
+                    || method.Signature.ParameterTypes.Length != 0)
+                    continue;
+                if (method.Name == "GetType")
+                {
+                    HotUpdateGetType = method;
+                    NoteIntrinsicFtnTarget(method);
+                }
+                else if (CoreIntrinsics.IsObjectVirtualFunctionShape(method.Name, method.Signature))
+                    HotUpdateToString = method;
+            }
+        }
 
         // A module initializer is a side effect with NO call edge — that is the entire
         // point of the feature — so a call-graph tree-shaker can never discover it. The

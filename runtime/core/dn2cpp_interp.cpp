@@ -238,6 +238,7 @@ struct ImportBinding
                         // from the receiver's interface map (type = the interface,
                         // vtableSlot = the interface method slot)
     int32_t vtableSlot; // >= 0: virtual — callvirt dispatches the receiver's vtable
+    const Dn2CppInterpDelegateEntry* intrinsicDelegate; // optional entry for delegate capture, never an ordinary call
     void* gvmDispatcher; // a generic virtual row, which has no slot: the dispatcher a
                         // callvirt enters to select the receiver's override
     void* fnPtr;
@@ -395,7 +396,8 @@ struct Dn2CppInterpDgFtn : Dn2CppObject
     uint32_t kind;
     uint32_t methodIdx;           // kDgFtnPatch: the patch MethodTable index
     const Dn2CppInterpImage* img; // kDgFtnPatch: the owning image
-    void* aotFn;                  // kDgFtnAot: the base-image method pointer
+    void* aotFn;                  // kDgFtnAot: the closed delegate's actual entry
+    const Dn2CppDelegateMethodIdentity* intrinsicIdentity;
     Dn2CppObject* boundThis;      // kDgFtnPatch: the captured receiver (null = static)
     // kDgFtnAot: what the bound import declared its receiver to be, carried from
     // `ldftn` to the delegate `newobj` because that is where the receiver first
@@ -495,6 +497,7 @@ struct IntrinsicImport
     // intrinsic bind resolving no Dn2CppMethodInfo to read it off. A null answers
     // false there, on kRecvUnspecified's terms.
     const Dn2CppTypeInfo* retTi;
+    const Dn2CppInterpDelegateEntry* delegateEntry = nullptr;
 };
 
 void intrinsic_console_writeline_str(Dn2CppString* s) { dn2cpp_console_writeline_str(s); }
@@ -678,10 +681,10 @@ const IntrinsicImport g_intrinsicImports[] = {
     // the registry including its dynamic side-chain.
     { "System.Object", "GetType", "():System.Type",
       reinterpret_cast<void*>(&intrinsic_object_get_type), kShapeRefRetObj, 0, true,
-      kRecvAny, {}, &dn2cpp_public_type_type },
+      kRecvAny, {}, &dn2cpp_public_type_type, &dn2cpp_interp_object_gettype_delegate },
     { "System.Object", "ToString", "():String",
       reinterpret_cast<void*>(&intrinsic_object_tostring), kShapeRefRetObj, 0, true,
-      kRecvAny, {}, &dn2cpp_string_type },
+      kRecvAny, {}, &dn2cpp_string_type, &dn2cpp_interp_object_tostring_delegate },
     { "System.Type", "get_FullName", "():String",
       reinterpret_cast<void*>(&intrinsic_type_get_fullname), kShapeRefRetObj, 0, true,
       kRecvType, {}, &dn2cpp_string_type },
@@ -877,7 +880,18 @@ void dg_ftn_bind_aot(Dn2CppInterpDgFtn* c, const ImportBinding& b)
     if (b.callShape != kShapeInvoker && b.callShape != kShapeRefRetObj)
         interp_fail("interp: a delegate over a base-image method needs a plain instance method (this import's call shape carries no such pointer)");
     c->kind = kDgFtnAot;
-    c->aotFn = b.fnPtr;
+    auto* intrinsic = b.intrinsicDelegate;
+    c->aotFn = intrinsic != nullptr && intrinsic->fn != nullptr ? intrinsic->fn : b.fnPtr;
+    c->intrinsicIdentity = intrinsic != nullptr ? intrinsic->identity : nullptr;
+    // A direct ldftn can name a class body or a default interface body. Look up
+    // its physical row here, so ordinary imports keep their original call ABI.
+    if (b.method != nullptr && !b.isCtor)
+        for (int32_t i = 0; i < dn2cpp_interp_delegate_adapter_count; i++)
+            if (dn2cpp_interp_delegate_adapters[i].methodRow == b.method.identity())
+            {
+                c->aotFn = dn2cpp_interp_delegate_adapters[i].fn;
+                break;
+            }
     c->aotRecvKind = b.recvKind;
     c->aotDeclType = b.type;
     // And the SIGNATURE, for the same reason and by the same route.
@@ -977,8 +991,8 @@ bool dg_aot_signature_ok(const Dn2CppInterpDgFtn* c, const Dn2CppTypeInfo* dti)
 
 // The identity a compiled `newobj` of the same non-virtual method stamps, so a
 // delegate bound here equals, hashes with and reports the method of its compiled
-// twin. One immortal record per method row; an intrinsic-table binding has no row
-// and stays without one, as it does in compiled code.
+// twin. The base image provides intrinsic identities; a metadata binding shares one
+// immortal record per method row.
 struct DgIdentityNode
 {
     const void* row;
@@ -990,7 +1004,7 @@ std::atomic<DgIdentityNode*> g_dg_identity_buckets[64];
 const Dn2CppDelegateMethodIdentity* dg_aot_identity(const Dn2CppInterpDgFtn* c)
 {
     if (c->aotMethod == nullptr)
-        return nullptr;
+        return c->intrinsicIdentity;
     const void* key = c->aotMethod.identity();
     auto& bucket = g_dg_identity_buckets[(reinterpret_cast<uintptr_t>(key) >> 4) % 64];
     DgIdentityNode* head = bucket.load(std::memory_order_acquire);
@@ -1214,6 +1228,7 @@ void bind_from_intrinsic_row(ImportBinding& b, const IntrinsicImport& ii)
 {
     b.callShape = ii.callShape;
     b.fnPtr = ii.fnPtr;
+    b.intrinsicDelegate = ii.delegateEntry;
     b.argCount = ii.argCount;
     b.recvKind = ii.recvKind;
     for (uint32_t j = 0; j < kMaxImportArgs; j++)

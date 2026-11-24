@@ -792,6 +792,13 @@ public class Plaque
 
 public class Slate
 {
+    public string CheckBaseText(ObjectDescriber bound)
+    {
+        ObjectDescriber compiled = base.ToString;
+        MethodInfo? method = bound.Method;
+        return "base.ToString=" + bound.Equals(compiled) + "/" + (bound.GetHashCode() == compiled.GetHashCode())
+            + "/" + method?.DeclaringType?.FullName + "." + method?.Name + "/" + (bound() == GetType().FullName);
+    }
 }
 
 public sealed class ExternalObjectAttribute : Attribute

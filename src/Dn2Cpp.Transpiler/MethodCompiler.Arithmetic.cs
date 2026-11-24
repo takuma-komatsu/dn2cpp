@@ -2118,7 +2118,7 @@ internal sealed partial class MethodCompiler
     /// rest) or the return. Asked of the TARGET alone, deliberately: the delegate type
     /// is not part of the answer, so one target reached through two delegate types gets
     /// one adapter and one ABI.</summary>
-    private static bool NeedsNfiErasedAdapter(MethodInfo target)
+    internal static bool NeedsNfiErasedAdapter(MethodInfo target)
     {
         if (!target.Signature.ReturnType.IsVoid
             && IsNfiCppType(CppTypes.Of(target.Signature.ReturnType)))
@@ -2196,6 +2196,8 @@ internal sealed partial class MethodCompiler
             _c.NoteInterceptFtnTarget(target);
     }
 
+    internal const string ObjectToStringBody = "dn2cpp_object_tostring_nonvirtual";
+
     /// <summary>The runtime helper a call of System.Object's ToString(), Equals(object) or
     /// GetHashCode() lowers to, whose signature is the method's with the receiver first;
     /// null for any other method.</summary>
@@ -2209,7 +2211,7 @@ internal sealed partial class MethodCompiler
             ("ToString", true) => "dn2cpp_object_tostring_virtual",
             ("GetHashCode", true) => "dn2cpp_object_gethashcode",
             ("Equals", true) => "dn2cpp_object_equals_virtual",
-            ("ToString", false) => "dn2cpp_object_tostring_nonvirtual",
+            ("ToString", false) => ObjectToStringBody,
             ("GetHashCode", false) => "dn2cpp_object_hashcode",
             ("Equals", false) => "dn2cpp_object_equals_nonvirtual",
             _ => null,
