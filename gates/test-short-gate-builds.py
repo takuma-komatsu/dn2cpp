@@ -39,7 +39,7 @@ TFM=net11.0
 EXE_EXT=
 DN2CPP_OS=linux
 record() { printf '%s\n' "$*" >> "$FAKE_LOG"; }
-locate_corelib() { printf '%s\n' "$PWD/runtime/System.Private.CoreLib.dll"; }
+locate_corelib() { printf '%s\n' "${DN2CPP_CORELIB:-$PWD/runtime/System.Private.CoreLib.dll}"; }
 resolve_pinned_corelib() { locate_corelib; }
 _gate_cli_hash() { printf 'fake-cli'; }
 prepare_cli() {
@@ -72,9 +72,16 @@ gate_python() { record "PYTHON:$*"; }
 gate_skip() { echo "unexpected skip: $*" >&2; exit 99; }
 fake_invoke_cli() {
     prepare_cli
-    local args="$*" app="$1" dir= arg symbol storage
+    local args="$*" app="$1" dir= arg symbol
+    local refs=0 explicit_shim=0
     while [ "$#" -gt 0 ]; do
-        if [ "$1" = -o ]; then dir="$2"; break; fi
+        case "$1" in
+            -o) dir="$2"; shift ;;
+            -r)
+                refs=$((refs + 1))
+                [[ "$2" != */Dn2Cpp.Runtime.dll ]] || explicit_shim=1
+                shift ;;
+        esac
         shift
     done
     record "EMIT:$dir:$args"
@@ -110,14 +117,15 @@ HEADER
                 echo "Awaiter::Probe transpiling CustomAsyncTaskTypeSharedExceed's real IL" >&2 ;;
         esac
     elif [[ "$app" == *MultiAssembly.dll ]]; then
-        storage=native
-        [[ "$dir" != *-first-packed && "$dir" != *-combined-packed ]] || storage=record
-        echo "md_${storage}_refl_gendef_MetadataAssemblyCollision_Subject_1" >> "$dir/generated.cpp"
+        local first=record policy=native
+        [[ "$dir" != *-both-native ]] || first=native
+        [[ "$dir" != *-policy-packed && "$dir" != *-combined-packed ]] || policy=record
+        echo "md_${first}_refl_gendef_dn2cpp_scoped_m1_MetadataAssemblyCollision_Subject_1" >> "$dir/generated.cpp"
+        echo "md_native_refl_gendef_dn2cpp_scoped_m2_MetadataAssemblyCollision_Subject_1" >> "$dir/generated.cpp"
+        echo "md_record_refl_gendef_dn2cpp_scoped_m1_MetadataCompressionCollision_SharedSubject_1" >> "$dir/generated.cpp"
         for symbol in ti_MultiAssembly_MetadataExternalPolicy ti_MiniBcl_MetadataMiddle \
-                gendef_MetadataCompressionCollision_SharedSubject_1; do
-            storage=native
-            [[ "$dir" != *-policy-packed && "$dir" != *-combined-packed ]] || storage=record
-            echo "md_${storage}_refl_$symbol" >> "$dir/generated.cpp"
+                gendef_dn2cpp_scoped_m2_MetadataCompressionCollision_SharedSubject_1; do
+            echo "md_${policy}_refl_$symbol" >> "$dir/generated.cpp"
         done
         for symbol in ti_MultiAssembly_MetadataDerived ti_MetadataCompressionCollision_MarkedSubject \
                 ti_MultiAssembly_MetadataScopeMarked ti_m2_MetadataCompressionCollision_SharedSubject_String; do
@@ -145,7 +153,7 @@ HEADER
             'const Dn2CppTypeBind dn2cpp_type_binds[] = {};' >> "$dir/generated.cpp"
         echo 'vt_ExceptionMessageSubset_ExceptionVirtualMembers_ChangingMessage[] ChangingMessage_get_Message_m1' >> "$dir/generated.cpp"
     fi
-    echo 'dn2cpp: 4 assemblies, mock'
+    echo "dn2cpp: $((2 + refs - explicit_shim)) assemblies, mock"
 }
 invoke_cli() { fake_invoke_cli "$@"; }
 compile_console() { record "NATIVE:$1:$2"; mkdir -p "$1"; }
@@ -595,7 +603,7 @@ for failure in ("status", "stderr", "missing-status"):
 profiles = [
     ("custom-async-task", "DN2CPP_CUSTOM_ASYNC_TASK_FULL", (3, 3), (5, 5)),
     ("exception-message-subset", "DN2CPP_EXCEPTION_MESSAGE_FULL", (3, 3), (5, 5)),
-    ("multiassembly", "DN2CPP_MULTIASSEMBLY_FULL", (3, 5), (4, 9)),
+    ("multiassembly", "DN2CPP_MULTIASSEMBLY_FULL", (3, 4), (4, 8)),
 ]
 for gate, selector, normal, full in profiles:
     script = source(gate)
@@ -624,11 +632,17 @@ for gate, selector, normal, full in profiles:
                           for line in cache), cache)
         else:
             check(sum(line.startswith("BUILD:") for line in calls) == 1, calls)
+            corelib = "/runtime/System.Private.CoreLib.dll"
+            check(all(line.count(corelib) == 1 and "--auto-ref" not in line
+                      and 0 < line.find("/MiniCorlib.dll") < line.find("/MultiAssemblyAlias.dll")
+                      < line.find(corelib) for line in emit), emit)
+            check(all(any(field.endswith(corelib) for field in line.split(":")[-1].split())
+                      for line in cache), cache)
             for target in ("multiasm/enum-full", "multiasm-inference/enum-full"):
                 check(any(target in line for line in calls if line.startswith("CAPTURE:")), target)
             if value == "0":
                 combined = [line for line in emit if "combined-packed:" in line]
-                check(len(combined) == 1 and combined[0].count("--reflection-metadata") == 4, combined)
+                check(len(combined) == 1 and combined[0].count("--reflection-metadata") == 5, combined)
             else:
                 check(any("multiasm-shimcopy." in line for line in emit), emit)
     for value in ("true", "2", " "):
@@ -646,7 +660,7 @@ for gate, extra in (
         ("exception-message-subset", {"DN2CPP_EXCEPTION_MESSAGE_FULL": "1", "FAKE_STATUS_FAIL": "assert-actual-14"}),
         ("exception-message-subset", {"DN2CPP_EXCEPTION_MESSAGE_FULL": "1", "FAKE_ASSERT_FAIL": "culture Message fallback end"}),
         ("multiassembly", {"FAKE_ASSERT_FAIL": "combined-packed/metadata-assembly.raw.stdout"}),
-        ("multiassembly", {"FAKE_EMIT_FAIL": "metadata-conflicting"})):
+        ("multiassembly", {"FAKE_EMIT_FAIL": "metadata-ambiguous"})):
     result, calls = run(gate + "-failure-" + str(len(results)), source(gate), extra)
     check(result.returncode != 0, (gate, extra))
     if gate != "multiassembly":
