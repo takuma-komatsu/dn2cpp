@@ -2503,11 +2503,9 @@ internal sealed partial class MethodCompiler
 
     /// <summary>Joins the sequence <paramref name="arr"/> of <paramref name="t"/> with
     /// <paramref name="sepStr"/>, or concatenates it when that is null
-    /// (<c>string.Concat</c>), and pushes the <c>Dn2CppString*</c>. An array or a
-    /// List&lt;T&gt; (the live prefix of its backing array — _items, same repr, _size
-    /// elements) joins in one runtime call; an operand that may be an array
-    /// discriminates at run time; any other enumerates through its interface. Each
-    /// element formats as its ToString does, an enum by name.</summary>
+    /// (<c>string.Concat</c>). Arrays join from their storage. A list uses its live
+    /// prefix when a bulk helper is available. Other collections enumerate through
+    /// their interface.</summary>
     private void EmitSequenceJoin(TypeDesc t, StackEntry arr, string? sepStr)
     {
         RequireSequenceFormatter(t);
@@ -2525,16 +2523,15 @@ internal sealed partial class MethodCompiler
         arr = arr with { Expr = values };
         string? call;
         if (arr.CppType.StartsWith("Dn2CppArray"))
-            call = ArrayJoinCall(t, arr.Expr, null, sepStr);
-        else if (TryListBacking(arr) is { } lb)
+            call = ArrayJoinCall(t, arr, sepStr);
+        else if (!IsUnsignedSubword(t) && TryListBacking(arr) is { } lb)
             call = ArrayJoinCall(t, lb.Items, lb.Count, sepStr);
         else if (MayBeArray(arr))
             call = ArrayOrEnumerationJoin(arr, t, sepStr);
         else
             call = EnumerationJoin(arr, t, sepStr);
         Push(StackKind.Ref, "Dn2CppString*", call ?? throw new NotSupportedException(
-            $"{Method.DeclaringClass.FullName}.{Method.Name}: {op}<{t}> element type is not supported yet "
-            + "(enum / int / uint / long / ulong / double / char / reference only)"));
+            $"{Method.DeclaringClass.FullName}.{Method.Name}: {op}<{t}> element type is not supported yet"));
     }
 
     private void RequireSequenceFormatter(TypeDesc t)

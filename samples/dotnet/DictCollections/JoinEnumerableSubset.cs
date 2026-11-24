@@ -14,6 +14,21 @@ namespace JoinEnumerableSubset
     // exercises cross-assembly enumerator reachability. Diffed vs real .NET.
     internal static class Program
     {
+        private sealed class Bytes : List<byte>, IEnumerable<byte>
+        {
+            IEnumerator<byte> IEnumerable<byte>.GetEnumerator() =>
+                ((IEnumerable<byte>)new byte[] { 7, 255 }).GetEnumerator();
+        }
+
+        private static string JoinList(List<byte> values) => string.Join(':', values);
+
+        internal static void RunUnsignedJoins()
+        {
+            Console.WriteLine("byte join=" + string.Join(", ", new byte[] { 0, 128, 255 })
+                + "/" + JoinList(new Bytes { 1 }));
+            Console.WriteLine("ushort join=" + string.Join('|', new ushort[] { 1, 32768, 65535 }));
+        }
+
         internal static void __GateEntry()
         {
             // SortedSet<int>: value-element generic Join<int> + Concat<int>.
