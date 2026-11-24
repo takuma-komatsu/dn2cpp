@@ -50,8 +50,9 @@
 #define DN2CPP_ISA_X86_Avx2_X64 (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVX2))
 #define DN2CPP_ISA_X86_Fma (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_FMA))
 #define DN2CPP_ISA_X86_Fma_X64 (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_FMA))
-#define DN2CPP_ISA_X86_AvxVnni (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVXVNNI))
-#define DN2CPP_ISA_X86_AvxVnni_X64 (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVXVNNI))
+#define DN2CPP_ISA_X86_AvxVnni ((DN2CPP_HAS_X86_VNNI_VEX || DN2CPP_HAS_X86_VNNI_EVEX) && dn2cpp_cpu_has_avxvnni())
+#define DN2CPP_ISA_X86_AvxVnni_V512 (DN2CPP_HAS_X86_VNNI_EVEX && dn2cpp_cpu_has_all(DN2CPP_CPU_X86_VNNI_EVEX))
+#define DN2CPP_ISA_X86_AvxVnni_X64 ((DN2CPP_HAS_X86_VNNI_VEX || DN2CPP_HAS_X86_VNNI_EVEX) && dn2cpp_cpu_has_avxvnni())
 #define DN2CPP_ISA_X86_Avx512F (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVX512))
 #define DN2CPP_ISA_X86_Avx512F_VL (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVX512))
 #define DN2CPP_ISA_X86_Avx512F_X64 (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVX512))
@@ -126,6 +127,7 @@
 #define DN2CPP_ISA_X86_Fma 0
 #define DN2CPP_ISA_X86_Fma_X64 0
 #define DN2CPP_ISA_X86_AvxVnni 0
+#define DN2CPP_ISA_X86_AvxVnni_V512 0
 #define DN2CPP_ISA_X86_AvxVnni_X64 0
 #define DN2CPP_ISA_X86_Avx512F 0
 #define DN2CPP_ISA_X86_Avx512F_VL 0
@@ -165,7 +167,6 @@
 #define DN2CPP_ISA_X86_Gfni_X64 0
 #endif
 // No feature bit: never lowered, so IsSupported is false on every target.
-#define DN2CPP_ISA_X86_AvxVnni_V512 0
 #define DN2CPP_ISA_X86_Avx512Bmm 0
 #define DN2CPP_ISA_X86_Avx512Bmm_X64 0
 

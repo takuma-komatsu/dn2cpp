@@ -8,11 +8,11 @@
 //
 #include "../dn2cpp_isa_common.h"
 
-#if DN2CPP_TARGET_X64
-DN2CPP_ISA_TARGET("avxvnni") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avxvnni_multiplywideningandadd_v128i32_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+#if DN2CPP_TARGET_X64 && (DN2CPP_HAS_X86_VNNI_VEX || DN2CPP_HAS_X86_VNNI_EVEX)
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avxvnni_multiplywideningandadd_v128i32_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_AvxVnni, "System.Runtime.Intrinsics.X86.AvxVnni.MultiplyWideningAndAdd");
-    return dn2cpp_isa_vec<16>(_mm_dpwssd_avx_epi32(dn2cpp_isa_bits<__m128i>(a0), dn2cpp_isa_bits<__m128i>(a1), dn2cpp_isa_bits<__m128i>(a2)));
+    return DN2CPP_ISA_VNNI(_mm_dpwssd, a0, a1, a2);
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avxvnni_multiplywideningandadd_v128i32_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
@@ -21,11 +21,11 @@ DN2CPP_ISA_TARGET("avxvnni") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_av
 }
 #endif
 
-#if DN2CPP_TARGET_X64
-DN2CPP_ISA_TARGET("avxvnni") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avxvnni_multiplywideningandadd_v128i32_v128u8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+#if DN2CPP_TARGET_X64 && (DN2CPP_HAS_X86_VNNI_VEX || DN2CPP_HAS_X86_VNNI_EVEX)
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avxvnni_multiplywideningandadd_v128i32_v128u8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_AvxVnni, "System.Runtime.Intrinsics.X86.AvxVnni.MultiplyWideningAndAdd");
-    return dn2cpp_isa_vec<16>(_mm_dpbusd_avx_epi32(dn2cpp_isa_bits<__m128i>(a0), dn2cpp_isa_bits<__m128i>(a1), dn2cpp_isa_bits<__m128i>(a2)));
+    return DN2CPP_ISA_VNNI(_mm_dpbusd, a0, a1, a2);
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avxvnni_multiplywideningandadd_v128i32_v128u8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
@@ -34,11 +34,11 @@ DN2CPP_ISA_TARGET("avxvnni") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_av
 }
 #endif
 
-#if DN2CPP_TARGET_X64
-DN2CPP_ISA_TARGET("avxvnni") DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_avxvnni_multiplywideningandadd_v256i32_v256i16_v256i16(const Dn2CppVector256& a0, const Dn2CppVector256& a1, const Dn2CppVector256& a2)
+#if DN2CPP_TARGET_X64 && (DN2CPP_HAS_X86_VNNI_VEX || DN2CPP_HAS_X86_VNNI_EVEX)
+DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_avxvnni_multiplywideningandadd_v256i32_v256i16_v256i16(const Dn2CppVector256& a0, const Dn2CppVector256& a1, const Dn2CppVector256& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_AvxVnni, "System.Runtime.Intrinsics.X86.AvxVnni.MultiplyWideningAndAdd");
-    return dn2cpp_isa_vec<32>(_mm256_dpwssd_avx_epi32(dn2cpp_isa_bits<__m256i>(a0), dn2cpp_isa_bits<__m256i>(a1), dn2cpp_isa_bits<__m256i>(a2)));
+    return DN2CPP_ISA_VNNI(_mm256_dpwssd, a0, a1, a2);
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_avxvnni_multiplywideningandadd_v256i32_v256i16_v256i16(const Dn2CppVector256&, const Dn2CppVector256&, const Dn2CppVector256&)
@@ -47,11 +47,11 @@ DN2CPP_ISA_TARGET("avxvnni") DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_av
 }
 #endif
 
-#if DN2CPP_TARGET_X64
-DN2CPP_ISA_TARGET("avxvnni") DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_avxvnni_multiplywideningandadd_v256i32_v256u8_v256i8(const Dn2CppVector256& a0, const Dn2CppVector256& a1, const Dn2CppVector256& a2)
+#if DN2CPP_TARGET_X64 && (DN2CPP_HAS_X86_VNNI_VEX || DN2CPP_HAS_X86_VNNI_EVEX)
+DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_avxvnni_multiplywideningandadd_v256i32_v256u8_v256i8(const Dn2CppVector256& a0, const Dn2CppVector256& a1, const Dn2CppVector256& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_AvxVnni, "System.Runtime.Intrinsics.X86.AvxVnni.MultiplyWideningAndAdd");
-    return dn2cpp_isa_vec<32>(_mm256_dpbusd_avx_epi32(dn2cpp_isa_bits<__m256i>(a0), dn2cpp_isa_bits<__m256i>(a1), dn2cpp_isa_bits<__m256i>(a2)));
+    return DN2CPP_ISA_VNNI(_mm256_dpbusd, a0, a1, a2);
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_avxvnni_multiplywideningandadd_v256i32_v256u8_v256i8(const Dn2CppVector256&, const Dn2CppVector256&, const Dn2CppVector256&)
@@ -60,11 +60,11 @@ DN2CPP_ISA_TARGET("avxvnni") DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_av
 }
 #endif
 
-#if DN2CPP_TARGET_X64
-DN2CPP_ISA_TARGET("avxvnni") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avxvnni_multiplywideningandaddsaturate_v128i32_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+#if DN2CPP_TARGET_X64 && (DN2CPP_HAS_X86_VNNI_VEX || DN2CPP_HAS_X86_VNNI_EVEX)
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avxvnni_multiplywideningandaddsaturate_v128i32_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_AvxVnni, "System.Runtime.Intrinsics.X86.AvxVnni.MultiplyWideningAndAddSaturate");
-    return dn2cpp_isa_vec<16>(_mm_dpwssds_avx_epi32(dn2cpp_isa_bits<__m128i>(a0), dn2cpp_isa_bits<__m128i>(a1), dn2cpp_isa_bits<__m128i>(a2)));
+    return DN2CPP_ISA_VNNI(_mm_dpwssds, a0, a1, a2);
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avxvnni_multiplywideningandaddsaturate_v128i32_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
@@ -73,11 +73,11 @@ DN2CPP_ISA_TARGET("avxvnni") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_av
 }
 #endif
 
-#if DN2CPP_TARGET_X64
-DN2CPP_ISA_TARGET("avxvnni") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avxvnni_multiplywideningandaddsaturate_v128i32_v128u8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+#if DN2CPP_TARGET_X64 && (DN2CPP_HAS_X86_VNNI_VEX || DN2CPP_HAS_X86_VNNI_EVEX)
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avxvnni_multiplywideningandaddsaturate_v128i32_v128u8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_AvxVnni, "System.Runtime.Intrinsics.X86.AvxVnni.MultiplyWideningAndAddSaturate");
-    return dn2cpp_isa_vec<16>(_mm_dpbusds_avx_epi32(dn2cpp_isa_bits<__m128i>(a0), dn2cpp_isa_bits<__m128i>(a1), dn2cpp_isa_bits<__m128i>(a2)));
+    return DN2CPP_ISA_VNNI(_mm_dpbusds, a0, a1, a2);
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avxvnni_multiplywideningandaddsaturate_v128i32_v128u8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
@@ -86,11 +86,11 @@ DN2CPP_ISA_TARGET("avxvnni") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_av
 }
 #endif
 
-#if DN2CPP_TARGET_X64
-DN2CPP_ISA_TARGET("avxvnni") DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_avxvnni_multiplywideningandaddsaturate_v256i32_v256i16_v256i16(const Dn2CppVector256& a0, const Dn2CppVector256& a1, const Dn2CppVector256& a2)
+#if DN2CPP_TARGET_X64 && (DN2CPP_HAS_X86_VNNI_VEX || DN2CPP_HAS_X86_VNNI_EVEX)
+DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_avxvnni_multiplywideningandaddsaturate_v256i32_v256i16_v256i16(const Dn2CppVector256& a0, const Dn2CppVector256& a1, const Dn2CppVector256& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_AvxVnni, "System.Runtime.Intrinsics.X86.AvxVnni.MultiplyWideningAndAddSaturate");
-    return dn2cpp_isa_vec<32>(_mm256_dpwssds_avx_epi32(dn2cpp_isa_bits<__m256i>(a0), dn2cpp_isa_bits<__m256i>(a1), dn2cpp_isa_bits<__m256i>(a2)));
+    return DN2CPP_ISA_VNNI(_mm256_dpwssds, a0, a1, a2);
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_avxvnni_multiplywideningandaddsaturate_v256i32_v256i16_v256i16(const Dn2CppVector256&, const Dn2CppVector256&, const Dn2CppVector256&)
@@ -99,11 +99,11 @@ DN2CPP_ISA_TARGET("avxvnni") DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_av
 }
 #endif
 
-#if DN2CPP_TARGET_X64
-DN2CPP_ISA_TARGET("avxvnni") DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_avxvnni_multiplywideningandaddsaturate_v256i32_v256u8_v256i8(const Dn2CppVector256& a0, const Dn2CppVector256& a1, const Dn2CppVector256& a2)
+#if DN2CPP_TARGET_X64 && (DN2CPP_HAS_X86_VNNI_VEX || DN2CPP_HAS_X86_VNNI_EVEX)
+DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_avxvnni_multiplywideningandaddsaturate_v256i32_v256u8_v256i8(const Dn2CppVector256& a0, const Dn2CppVector256& a1, const Dn2CppVector256& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_AvxVnni, "System.Runtime.Intrinsics.X86.AvxVnni.MultiplyWideningAndAddSaturate");
-    return dn2cpp_isa_vec<32>(_mm256_dpbusds_avx_epi32(dn2cpp_isa_bits<__m256i>(a0), dn2cpp_isa_bits<__m256i>(a1), dn2cpp_isa_bits<__m256i>(a2)));
+    return DN2CPP_ISA_VNNI(_mm256_dpbusds, a0, a1, a2);
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_avxvnni_multiplywideningandaddsaturate_v256i32_v256u8_v256i8(const Dn2CppVector256&, const Dn2CppVector256&, const Dn2CppVector256&)

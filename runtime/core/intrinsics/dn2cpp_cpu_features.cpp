@@ -23,11 +23,10 @@
 #include <sys/sysctl.h>
 #elif defined(__linux__)
 #include <sys/auxv.h>
-#elif defined(_WIN32)
-// NOMINMAX / WIN32_LEAN_AND_MEAN are project-wide compile definitions
-// (runtime/CMakeLists.txt's MSVC arm), not repeated here.
-#include <windows.h>
 #endif
+#endif
+#if defined(_WIN32) && (DN2CPP_TARGET_X64 || DN2CPP_TARGET_ARM64)
+#include <windows.h>
 #endif
 
 std::atomic<uint64_t> dn2cpp_cpu_features_cache{0};
@@ -120,13 +119,14 @@ uint64_t dn2cpp_xgetbv0()
 //   Avx2        Avx2, Bmi1, Bmi2, Lzcnt, Fma, plus F16C and MOVBE (no type)
 //   Avx512      F, BW, CD, DQ, VL (one family here; the aliases name it)
 //   Avx512v2    Avx512Vbmi with AVX512-IFMA (no type)
-//   Avx512v3    Avx512Vbmi2 with AVX512-VNNI, -BITALG and -VPOPCNTDQ (no type)
+//   Avx512v3    Avx512Vbmi2 and AvxVnni.V512 with -BITALG and -VPOPCNTDQ
 //   Vaes        Vaes, Vpclmulqdq
 //   AvxVnniInt  AvxVnniInt8, AvxVnniInt16
 //   Avx10v1     the Avx512v3 group with AVX512-BF16 and -FP16, an AVX10
 //               enumeration leaf reporting the 128-, 256- and 512-bit widths,
 //               and version >= 1; Avx10v2 the same with version >= 2
-// Sse, Sse2, Avx, AvxVnni, Gfni and X86Serialize are sets of their own.
+// Sse, Sse2, Avx, Gfni and X86Serialize are sets of their own.
+// AvxVnni accepts its VEX set or the complete AVX512v3 set in .NET 11.
 uint64_t dn2cpp_cpu_detect()
 {
     uint64_t f = DN2CPP_CPU_X86_X86BASE;
@@ -186,6 +186,16 @@ uint64_t dn2cpp_cpu_detect()
     if (!avxState)
         return f;
 
+    // .NET also consults the Windows XState policy, independently of XCR0.
+    // Apply it to the two VNNI encoding routes without changing other tokens.
+#if defined(_WIN32)
+    const DWORD64 enabledState = ::GetEnabledXStateFeatures();
+    const bool vnniVexState = (enabledState & XSTATE_MASK_AVX) != 0;
+    const bool vnniEvexState = vnniVexState && (enabledState & XSTATE_MASK_AVX512) != 0;
+#else
+    constexpr bool vnniVexState = true, vnniEvexState = true;
+#endif
+
     bool avx2 = avx
         && lzcnt
         && (l1.ecx & (1u << 12)) != 0          // FMA
@@ -217,14 +227,20 @@ uint64_t dn2cpp_cpu_detect()
         && (l7.ecx & (1u << 14)) != 0;   // VPOPCNTDQ
     if (avx512)   f |= DN2CPP_CPU_X86_AVX512;
     if (avx512v2) f |= DN2CPP_CPU_X86_AVX512VBMI;
-    if (avx512v3) f |= DN2CPP_CPU_X86_AVX512VBMI2;
+    if (avx512v3)
+    {
+        f |= DN2CPP_CPU_X86_AVX512VBMI2;
+        if (vnniEvexState)
+            f |= DN2CPP_CPU_X86_AVXVNNI | DN2CPP_CPU_X86_VNNI_EVEX;
+    }
     bool avx512fp16 = (l7.edx & (1u << 23)) != 0;
 
     bool avx512bf16 = false, avx10 = false;
     if (l7.eax >= 1)
     {
         Dn2CppCpuid l71 = dn2cpp_cpuid(7, 1);
-        if (l71.eax & (1u << 4)) f |= DN2CPP_CPU_X86_AVXVNNI;
+        if ((l71.eax & (1u << 4)) != 0 && vnniVexState)
+            f |= DN2CPP_CPU_X86_AVXVNNI | DN2CPP_CPU_X86_VNNI_VEX;
         if ((l71.edx & (1u << 4)) != 0 && (l71.edx & (1u << 10)) != 0)  // INT8, INT16
             f |= DN2CPP_CPU_X86_AVXVNNIINT8 | DN2CPP_CPU_X86_AVXVNNIINT16;
         avx512bf16 = (l71.eax & (1u << 5)) != 0;
@@ -544,6 +560,18 @@ uint64_t dn2cpp_cpu_features_resolve()
 #endif
     uint64_t allowed = (spec == nullptr || spec[0] == '\0') ? g_all_bits : dn2cpp_parse_mask(spec);
     uint64_t effective = dn2cpp_closure(policy & allowed);
+    if (effective & DN2CPP_CPU_X86_AVXVNNI)
+    {
+        // Both routes require the unmasked public family. The EVEX route
+        // also requires that AVX512v3 survived the mask and its closure.
+        const uint64_t vex = detected & DN2CPP_CPU_X86_VNNI_VEX;
+        const uint64_t evex = (effective & DN2CPP_CPU_X86_AVX512VBMI2)
+            ? (detected & DN2CPP_CPU_X86_VNNI_EVEX) : 0;
+        if (vex || evex)
+            effective |= vex | evex;
+        else
+            effective &= ~DN2CPP_CPU_X86_AVXVNNI;
+    }
     const char* diag = dn2cpp_pal_getenv("DN2CPP_CPU_FEATURES_DIAG");
     if (diag != nullptr && diag[0] != '\0')
         dn2cpp_print_diag(detected, allowed, effective);
