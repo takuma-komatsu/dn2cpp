@@ -160,7 +160,7 @@ HU_APP="samples/dotnet/HotUpdateBase/bin/$CONFIG/$TFM/HotUpdateBase.dll"
 HU_PATCH="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/HotUpdatePatch.dll"
 HU_EXPECTED="$(dirname "$0")/expected/shadow-stack-hotupdate.txt"
 OUT=artifacts/shadowstack-hotupdate
-invoke_cli "$HU_APP" --hotupdate-base \
+invoke_cli "$HU_APP" -r "$CORELIB" --hotupdate-base \
     --hotupdate-refs samples/dotnet/HotUpdatePatch/hotupdate-refs.txt \
     --shadow-stack -o "$OUT"
 [ -f "$OUT/base-abi.json" ] || { echo "FAIL: base-abi.json sidecar missing" >&2; exit 1; }
@@ -173,11 +173,11 @@ grep -q "dn2cpp_shadow_stack_mark_enabled" "$OUT"/generated* \
     || { echo "FAIL: --shadow-stack hotupdate transpile emitted no dn2cpp_shadow_stack_mark_enabled init call" >&2; exit 1; }
 invoke_cli --emit-patch "$HU_PATCH" --base-abi "$OUT/base-abi.json" -o "$OUT"
 # Key inputs beyond the $OUT transpile surface (generated* + base-abi.json,
-# hashed by gate_cache_check itself): the two assemblies, the baked BPI the
-# run loads, and the frozen snapshot.
-if gate_cache_check "$OUT" "shadow-stack-hotupdate" \
+# hashed by gate_cache_check itself): the input assemblies, CoreLib, the
+# baked BPI the run loads, and the frozen snapshot.
+if gate_cache_check "$OUT" "shadow-stack-hotupdate|corelib:$CORELIB" \
         "$HU_APP" "${HU_APP%.dll}.runtimeconfig.json" "${HU_APP%.dll}.deps.json" \
-        "$HU_PATCH" "$OUT/HotUpdatePatch.bpi" "$HU_EXPECTED"; then
+        "$HU_PATCH" "$CORELIB" "$OUT/HotUpdatePatch.bpi" "$HU_EXPECTED"; then
     gate_cache_hit_msg
 else
     compile_console "$OUT" HotUpdateBase
