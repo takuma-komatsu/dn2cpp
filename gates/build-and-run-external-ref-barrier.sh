@@ -1,14 +1,6 @@
 #!/usr/bin/env bash
-# Write barriers for stores whose element type is EXTERNAL — a name the load set
-# does not contain, so the GC-reference answer comes from the C++ type map rather
-# than from a structural walk. The project is transpiled with no references at
-# all (asserted below), which is the only way to reach that arm: with the real
-# CoreLib loaded System.Exception is an ordinary Class and every store here is
-# barriered for a different reason. Five store systems — stfld, whole-struct
-# stobj, stelem of a reference-bearing struct element, Array.Fill of a reference
-# element, rank-2 accessor Set — each grepped for its barrier in the generated
-# C++ and then churned against allocation-driven collection cycles in both GC modes.
-# Former gates: none (new area).
+# GC barriers for external ParallelOptions references in fields, struct stores,
+# Array.Fill and rank-2 Set. Run the same image in both GC modes against .NET.
 source "$(dirname "$0")/_common.sh"
 
 project=ExternalRefBarrier
@@ -18,19 +10,30 @@ echo "== 1/4 Building app assembly =="
 build_proj "samples/dotnet/$project/$project.csproj"
 app="samples/dotnet/$project/bin/$CONFIG/$TFM/$project.dll"
 
-echo "== 2/4 Transpiling IL -> C++ (no references: the external-type lane) =="
-invoke_cli "$app" -o "$OUT"
+echo "== 2/4 Transpiling IL -> C++ (CoreLib without the ParallelOptions assembly) =="
+corelib=$(locate_corelib)
+invoke_cli "$app" -r "$corelib" -o "$OUT"
 
-# The load set is the whole point of this bucket, so it is asserted rather than
-# assumed: two assemblies, the app and the runtime's own, and no CoreLib.
-if ! grep -qF 'const int32_t dn2cpp_assembly_registry_count = 2;' "$OUT/generated.cpp"; then
-    echo "FAIL: $project no longer transpiles with an empty reference set — the" >&2
-    echo "      stores below are then structural, not external, and cover nothing" >&2
-    grep -n 'dn2cpp_assembly_registry' "$OUT/generated.cpp" >&2
+registry=$(grep -hF 'const Dn2CppAssemblyRegEntry dn2cpp_assembly_registry[] =' "$OUT"/generated*.cpp)
+if ! grep -qwF '"System.Private.CoreLib"' <<< "$registry" ||
+    grep -qwF '"System.Threading.Tasks.Parallel"' <<< "$registry" ||
+    ! grep -Eq '^[[:space:]]*Dn2CppObject\* f_ExField;' "$OUT/generated.h"; then
+    echo "FAIL: expected CoreLib with ParallelOptions stored as an unloaded external reference" >&2
+    printf '%s\n' "$registry" >&2
     exit 1
 fi
 
 echo "== 3/4 Asserting a barrier at each external-typed store =="
+# A barrier in a CoreLib method cannot witness a store in this fixture.
+store_body="$OUT/external-store.txt"
+LC_ALL=C awk '
+    FNR == 1 { active = 0 }
+    { sub(/\r$/, "") }
+    $0 == "// ExternalWriteBarrierSubset.Program::Store" { active = 1 }
+    active { print }
+    /^}/ { active = 0 }
+' "$OUT/generated.h" "$OUT"/generated*.cpp > "$store_body"
+
 # A store system passes when EVERY line matching its pattern carries a barrier on
 # that line or the next; counting matches instead would pass on one barriered
 # site among several. Element-address patterns distinguish stores from loads.
@@ -44,11 +47,11 @@ barrier_follows() {
         pending { if ($0 !~ /dn2cpp_gc_write_barrier/) print FILENAME ":" pendingline; pending = 0 }
         $0 ~ pat { if ($0 ~ /dn2cpp_gc_write_barrier/) next; pending = 1; pendingline = FNR }
         END { if (pending) print FILENAME ":" pendingline }
-    ' "$OUT"/generated*.cpp)
+    ' "$store_body")
     local hits
     hits=$(PAT="$pattern" awk 'BEGIN { pat = ENVIRON["PAT"] }
         $0 ~ pat { n++ }
-        END { print n + 0 }' "$OUT"/generated*.cpp)
+        END { print n + 0 }' "$store_body")
     if [ "$hits" -eq 0 ]; then
         echo "FAIL: the $what store is gone from the generated output (pattern: $pattern)" >&2
         exit 1
@@ -67,7 +70,7 @@ barrier_follows 'whole-struct field'            '->f_Pair = '
 barrier_follows 'reference-bearing struct elem' '^ *\*\(t_ExternalWriteBarrierSubset_Program_ExPair\*\)dn2cpp_elem_addr\('
 barrier_follows 'Array.Fill of a reference'     'for .*->data\[[^]]+\] = '
 md_store_barrier_asserts() {
-    local out="$1" runtime_source="$2"
+    local store_source="$1" runtime_source="$2"
     LC_ALL=C awk '
         { sub(/\r$/, "") }
         pending {
@@ -88,7 +91,7 @@ md_store_barrier_asserts() {
             if (failed) exit 1
             print "OK: rank-2 accessor Set (" hits " site(s))"
         }
-    ' "$out"/generated*.cpp || return 1
+    ' "$store_source" || return 1
 
     # Generated stores must reach the barrier on every successful helper path.
     # The heap-only barrier also accepts reflection/byref slots outside the heap.
@@ -126,13 +129,13 @@ md_store_barrier_asserts() {
         }
     ' "$runtime_source"
 }
-md_store_barrier_asserts "$OUT" runtime/core/intrinsics/dn2cpp_system_reflection.cpp
+md_store_barrier_asserts "$store_body" runtime/core/intrinsics/dn2cpp_system_reflection.cpp
 
 ctx="external_ref_barrier|runs:DN2CPP_GC_INCREMENTAL=0+1|DN2CPP_GC_STATS=1"
-ctx="$ctx|assert:empty-refset+generated-barriers+md-reference-helper+mode+diff+exit+allocation-collection-floor"
+ctx="$ctx|assert:corelib+external-parallel-options+generated-barriers+md-reference-helper+mode+diff+exit+allocation-collection-floor"
 ctx="$ctx$(_gate_ctx_extras)"
 if gate_cache_check "$OUT" "$ctx" \
-        "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json"; then
+        "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json" "$corelib"; then
     gate_cache_hit_msg
     exit 0
 fi

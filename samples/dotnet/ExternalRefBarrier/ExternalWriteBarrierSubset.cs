@@ -1,44 +1,38 @@
 using System;
+using System.Threading.Tasks;
 
 namespace ExternalWriteBarrierSubset
 {
-    // The payload type is System.Exception because this project is transpiled
-    // with NO references: every store below then asks whether an EXTERNAL name
-    // contains GC references, the predicate arm a CoreLib-loaded bucket cannot
-    // reach (there Exception is a loaded Class and answers true structurally).
-    // Five store systems, one per emit-side barrier decision: stfld, whole-struct
-    // stobj, stelem of a reference-bearing struct element, Array.Fill of a
-    // reference element, and a rank-2 accessor Set.
+    // ParallelOptions lives outside CoreLib. Without its declaring assembly the
+    // stores must recognize the runtime-mapped reference, including inside ExPair.
     internal static class Program
     {
         private const int HolderCount = 256;
         private const int PathCount = 5;
         private const int CycleCount = 4;
-        // Public GC policy needs CoreLib, which this external-type fixture must
-        // not load. Allocation pressure drives the cycles; the gate checks their
-        // count through DN2CPP_GC_STATS rather than a managed collection query.
+        // Drive collection by allocation so the gate can check actual cycles in GC stats.
         private const int AllocationBudget = 30_000;
 
         private struct ExPair
         {
-            internal Exception Value;
+            internal ParallelOptions Value;
         }
 
         private sealed class Holder
         {
-            internal Exception ExField;
+            internal ParallelOptions ExField;
             internal ExPair Pair;
             internal readonly ExPair[] PairArr = new ExPair[1];
-            internal readonly Exception[] Fill = new Exception[1];
-            internal readonly Exception[,] Grid = new Exception[1, 1];
+            internal readonly ParallelOptions[] Fill = new ParallelOptions[1];
+            internal readonly ParallelOptions[,] Grid = new ParallelOptions[1, 1];
         }
 
-        private static Exception MakePayload(int id)
+        private static ParallelOptions MakePayload(int id)
         {
-            return new InvalidOperationException("payload " + id);
+            return new ParallelOptions { MaxDegreeOfParallelism = id };
         }
 
-        private static void Store(Holder holder, int path, Exception value)
+        private static void Store(Holder holder, int path, ParallelOptions value)
         {
             switch (path)
             {
@@ -60,7 +54,7 @@ namespace ExternalWriteBarrierSubset
             }
         }
 
-        private static Exception Load(Holder holder, int path)
+        private static ParallelOptions Load(Holder holder, int path)
         {
             return path switch
             {
@@ -82,9 +76,9 @@ namespace ExternalWriteBarrierSubset
                     int id = expected[i * PathCount + path];
                     if (id == 0)
                         continue;
-                    Exception payload = Load(holders[i], path);
-                    if (payload is null || !(payload is InvalidOperationException)
-                        || payload.Message != "payload " + id)
+                    ParallelOptions payload = Load(holders[i], path);
+                    if (payload is null || payload.GetType() != typeof(ParallelOptions)
+                        || payload.MaxDegreeOfParallelism != id)
                         throw new InvalidOperationException("External-typed reference store lost its payload");
                     checksum = unchecked(checksum * 31 + id);
                 }
