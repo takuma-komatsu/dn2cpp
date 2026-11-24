@@ -10,14 +10,15 @@ internal static class ReflectionManagedBodyContract
         || owner == "System.Type" && name is "get_IsGenericTypeParameter" or "get_IsGenericMethodParameter"
         || owner == "System.Reflection.Module" && name is ".ctor" or "GetCustomAttributesData" or "get_CustomAttributes"
         || owner == "System.Reflection.RuntimeModule" && name == "GetCustomAttributesData"
-        || owner == "System.Reflection.CustomAttributeData" && name == "GetCustomAttributes";
+        || owner == "System.Reflection.CustomAttributeData" && name is ".ctor" or "GetCustomAttributes" or "get_ConstructorArguments"
+        || owner == "System.Reflection.RuntimeCustomAttributeData" && name == "get_ConstructorArguments";
 
-    internal static bool IsModuleDataReaderName(string? owner, string name) =>
-        owner == "System.Reflection.RuntimeCustomAttributeData" && name == "GetCustomAttributesInternal";
+    internal static bool IsRuntimeDataReaderName(string? owner, string name) =>
+        owner == "System.Reflection.RuntimeCustomAttributeData" && name is "GetCustomAttributesInternal" or "get_ConstructorArguments";
 
-    private static bool ReadClass(MetadataReader reader, ref BlobReader signature, string ns, string name)
+    private static bool ReadClass(MetadataReader reader, ref BlobReader signature, string ns, string name, byte typeCode = 0x12)
     {
-        if (signature.RemainingBytes < 2 || signature.ReadByte() != 0x12
+        if (signature.RemainingBytes < 2 || signature.ReadByte() != typeCode
             || !signature.TryReadCompressedInteger(out int token) || (token & 3) != 0
             || token >> 2 == 0 || token >> 2 > reader.TypeDefinitions.Count)
             return false;
@@ -28,7 +29,7 @@ internal static class ReflectionManagedBodyContract
 
     internal static bool IsDefinition(MetadataReader reader, MethodDefinitionHandle handle, string owner, string name)
     {
-        if ((!IsName(owner, name) && !IsModuleDataReaderName(owner, name)) || handle.IsNil || !reader.IsAssembly
+        if ((!IsName(owner, name) && !IsRuntimeDataReaderName(owner, name)) || handle.IsNil || !reader.IsAssembly
             || !reader.StringComparer.Equals(reader.GetAssemblyDefinition().Name, "System.Private.CoreLib"))
             return false;
         var method = reader.GetMethodDefinition(handle);
@@ -57,7 +58,17 @@ internal static class ReflectionManagedBodyContract
                     : MethodAttributes.Family | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName)
                 && signature.RemainingBytes == 3 && signature.ReadByte() == 0x20 && signature.ReadByte() == 0
                 && signature.ReadByte() == (typePredicate ? 0x02 : 0x01);
-        bool readerLeaf = IsModuleDataReaderName(owner, name);
+        if (name == "get_ConstructorArguments")
+        {
+            var expected = owner == "System.Reflection.CustomAttributeData" ? newVirtual : newVirtual & ~MethodAttributes.NewSlot;
+            return method.Attributes == (expected | MethodAttributes.SpecialName) && signature.RemainingBytes >= 8
+                && signature.ReadByte() == 0x20 && signature.ReadByte() == 0 && signature.ReadByte() == 0x15
+                && ReadClass(reader, ref signature, "System.Collections.Generic", "IList`1")
+                && signature.RemainingBytes >= 3 && signature.ReadByte() == 1
+                && ReadClass(reader, ref signature, "System.Reflection", "CustomAttributeTypedArgument", 0x11)
+                && signature.RemainingBytes == 0;
+        }
+        bool readerLeaf = IsRuntimeDataReaderName(owner, name);
         bool forwarding = owner == "System.Reflection.CustomAttributeData";
         bool property = name == "get_CustomAttributes";
         var attributes = readerLeaf || forwarding

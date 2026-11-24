@@ -157,6 +157,37 @@ namespace ReflectAttrBoxedSubset
 
     internal static class Program
     {
+        private sealed class CustomData : CustomAttributeData
+        {
+            public override IList<CustomAttributeTypedArgument> ConstructorArguments => Array.Empty<CustomAttributeTypedArgument>();
+            internal bool BaseIsNull() => base.ConstructorArguments is null;
+        }
+
+        internal static void RunConstructorArguments()
+        {
+            var rows = typeof(ObjectArrays).GetCustomAttributesData();
+            var arguments = rows[0].ConstructorArguments;
+            var getter = typeof(CustomAttributeData).GetMethod("get_ConstructorArguments")!;
+            var elements = (IList<CustomAttributeTypedArgument>)arguments[0].Value!;
+            var nested = (IList<CustomAttributeTypedArgument>)elements[5].Value!;
+            Console.WriteLine("constructor arguments=" + (arguments[0].ArgumentType == typeof(object[])) + "/"
+                + (elements[3].ArgumentType == typeof(Small)) + "/" + (byte)elements[3].Value! + "/"
+                + (elements[4].ArgumentType == typeof(Type) && elements[4].Value == (object)typeof(string)) + "/" + nested[1].Value);
+            Console.WriteLine("argument arrays=" + (rows[1].ConstructorArguments[0].Value is null) + "/"
+                + ((IList<CustomAttributeTypedArgument>)rows[2].ConstructorArguments[0].Value!).Count
+                + "/" + elements.IsReadOnly + "/" + ReferenceEquals(arguments, rows[0].ConstructorArguments)
+                + "/" + ReferenceEquals(arguments, getter.Invoke(rows[0], null)));
+            try { arguments[0] = default; }
+            catch (NotSupportedException) { Console.WriteLine("constructor arguments read-only"); }
+
+            foreach (var row in typeof(AttributeConstructionOrderSubset.Tagged).GetCustomAttributesData())
+                if (row.AttributeType == typeof(AttributeConstructionOrderSubset.OtherAttribute))
+                    Console.WriteLine("throwing attribute data=" + row.ConstructorArguments.Count);
+            var custom = new CustomData();
+            CustomAttributeData receiver = custom;
+            Console.WriteLine("custom constructor arguments=" + receiver.ConstructorArguments.Count + "/" + custom.BaseIsNull());
+        }
+
         private static string CodeUnits(string value)
         {
             var units = new List<string>();

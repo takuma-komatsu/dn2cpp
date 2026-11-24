@@ -1481,6 +1481,13 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(_method)
             || CoreIntrinsics.IsCoreClrTypeMaterialization(_method) && _method.Rva == 0)
             return CompileInterceptWrapper();
+        if (CoreIntrinsics.BrAttributeArguments.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                var result = CppTypes.Of(_method.Signature.ReturnType);
+                Push(StackKind.Ref, result, $"({result})dn2cpp_attrdata_constructor_arguments({Cast(Pop(), "Dn2CppObject*")})");
+                return true;
+            }, "custom attribute constructor arguments");
         if (CoreIntrinsics.BrCustomAttributeDataMember.Matches(_method) || CoreIntrinsics.BrModuleAttributeData.Matches(_method))
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
             {

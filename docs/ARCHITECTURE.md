@@ -801,8 +801,11 @@ results retain the array representation and its index-bound checks.
 `RuntimeModule.GetCustomAttributesData()` reads the defining module's attribute
 rows with the same collection behavior. `Module.CustomAttributes` and
 `CustomAttributeData.GetCustomAttributes(Module)` use their CoreLib bodies to
-dispatch to the receiver's override. Encoded constructor and named argument
-views remain unsupported.
+dispatch to the receiver's override. On a retained row, `ConstructorArguments`
+caches a read-only list of typed positional values. Enums expose their underlying
+primitive as the value, and an encoded array exposes a read-only list of its
+elements. Reading the list does not invoke the attribute constructor.
+`NamedArguments` remains unsupported on native rows.
 
 The retained CustomAttributeData.Constructor base body remains ordinary managed IL:
 nonvirtual calls and addresses return null without reading the receiver. Virtual calls

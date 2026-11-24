@@ -9,12 +9,10 @@ using System.Runtime.CompilerServices;
 // derived from them), MemberInfo.MemberType/MetadataToken/Module,
 // Type.Equals/UnderlyingSystemType/HasElementType/MakeArrayType/
 // GetEnumValuesAsUnderlyingType/FindInterfaces/IsVisible family,
-// MemberInfo.CustomAttributes (CustomAttributeData, AttributeType only), and
+// MemberInfo.CustomAttributes (attribute type and constructor arguments), and
 // RuntimeHelpers.AllocateTypeAssociatedMemory. Everything here matches real
 // .NET except the marked AOT-boundary divergences:
-// CustomAttributeData.ConstructorArguments throws the catchable
-// PlatformNotSupportedException (dn2cpp records AttributeType only),
-// ParameterInfo.DefaultValue throws it too (Invoke's default factories do not
+// ParameterInfo.DefaultValue throws PlatformNotSupportedException (Invoke's default factories do not
 // expose the raw-value API; HasDefaultValue answers exactly), and
 // Type.GetGenericParameterConstraints throws it where real .NET throws
 // InvalidOperationException (no generic-parameter Type ever materializes).
@@ -270,7 +268,7 @@ namespace ReflectLongtailSubset
             for (int i = 0; i < ivt.Length; i++) si += (i > 0 ? "," : "") + ivt[i];
             Show("enum-int", ivt.Length + ":" + si);
 
-            // -- CustomAttributes (CustomAttributeData; AttributeType only) --
+            // -- CustomAttributeData --
             Show("cad-type", DescribeCad(tg.CustomAttributes.ToArray()));
             Show("cad-method", DescribeCad(spin.CustomAttributes.ToArray()));
             Show("cad-field", DescribeCad(counter.CustomAttributes.ToArray()));
@@ -278,15 +276,7 @@ namespace ReflectLongtailSubset
             Show("cad-any", tg.CustomAttributes.Any(a => a.AttributeType == typeof(MarkAttribute)));
             Show("cad-asm", Assembly.GetEntryAssembly().CustomAttributes
                 .Any(a => a.AttributeType.Name == "AsmMetaAttribute"));
-            try
-            {
-                var args = tg.CustomAttributes.First().ConstructorArguments;
-                Console.WriteLine("cad-args=" + args.Count);
-            }
-            catch (PlatformNotSupportedException)
-            {
-                Console.WriteLine("cad-args=PlatformNotSupportedException");
-            }
+            Show("cad-args", tg.CustomAttributes.First().ConstructorArguments.Count);
 
             // -- RuntimeHelpers.AllocateTypeAssociatedMemory --
             IntPtr mem = RuntimeHelpers.AllocateTypeAssociatedMemory(typeof(Gadget), 64);

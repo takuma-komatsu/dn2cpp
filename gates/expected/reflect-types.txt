@@ -653,7 +653,7 @@ cad-field=1:MarkAttribute
 cad-prop=1:MarkAttribute
 cad-any=True
 cad-asm=True
-cad-args=PlatformNotSupportedException
+cad-args=1
 alloc=True
 == lookup ==
 gm-name => Dup/1p decl=Derived static=False

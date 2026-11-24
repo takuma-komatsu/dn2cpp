@@ -149,6 +149,7 @@ constexpr Field Dn2CppAttrInfo_fields[] = {
     { offsetof(Dn2CppAttrInfo, unretainedSetterOwner), Encoding::Pointer },
     { offsetof(Dn2CppAttrInfo, unretainedSetter), Encoding::Pointer },
     { offsetof(Dn2CppAttrInfo, usageFlags), Encoding::Unsigned32 },
+    { offsetof(Dn2CppAttrInfo, constructorArguments), Encoding::Pointer },
 };
 constexpr Field Dn2CppEnumMember_fields[] = {
     { offsetof(Dn2CppEnumMember, name), Encoding::Pointer },

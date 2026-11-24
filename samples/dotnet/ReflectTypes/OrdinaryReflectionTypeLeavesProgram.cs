@@ -47,5 +47,6 @@ static class Program
             return;
         CollectibilitySubset.Program.Run();
         ReflectRuntimeTypeParitySubset.Program.RunAssemblyReferences();
+        ReflectAttrBoxedSubset.Program.RunConstructorArguments();
     }
 }

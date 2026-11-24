@@ -9,6 +9,10 @@ internal static partial class CoreIntrinsics
         method.Name == "GetCustomAttributesData" && method.DeclaringClass.FullName == "System.Reflection.Module"
         && IsReflectionManagedBody(method);
 
+    internal static bool IsAttributeArgumentsSlot(MethodInfo method) =>
+        method.Name == "get_ConstructorArguments" && method.DeclaringClass.FullName == "System.Reflection.CustomAttributeData"
+        && IsReflectionManagedBody(method);
+
     internal static bool IsReflectionManagedBody(MethodInfo method) =>
         ReflectionManagedBodyContract.IsName(method.DeclaringClass.FullName, method.Name)
         && method.DeclaringClass.Module == method.Module
