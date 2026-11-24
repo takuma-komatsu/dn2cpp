@@ -17,7 +17,9 @@ echo "== 1/3 Building GcPauseBench C# assembly =="
 build_proj samples/dotnet/GcPauseBench/GcPauseBench.csproj
 
 echo "== 2/3 Transpiling IL -> C++ and compiling native binary =="
-invoke_cli "samples/dotnet/GcPauseBench/bin/$CONFIG/$TFM/GcPauseBench.dll" -o "$OUT"
+CORELIB=$(locate_corelib)
+invoke_cli "samples/dotnet/GcPauseBench/bin/$CONFIG/$TFM/GcPauseBench.dll" \
+    -r "$CORELIB" -o "$OUT"
 compile_console "$OUT" GcPauseBench
 
 echo "== 3/3 Measuring stop-the-world pauses (baseline vs incremental) =="

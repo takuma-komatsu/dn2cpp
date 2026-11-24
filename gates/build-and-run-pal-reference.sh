@@ -166,9 +166,10 @@ echo "== 4/6 Running a transpiled program on the reference PAL =="
 build_proj samples/dotnet/HelloWorld/HelloWorld.csproj
 app="samples/dotnet/HelloWorld/bin/$CONFIG/$TFM/HelloWorld.dll"
 OUT=artifacts/palreference
-invoke_cli "$app" -o "$OUT"
-if gate_cache_check "$OUT" "pal-reference|palref+nogc" \
-        "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json" \
+corelib=$(locate_corelib)
+invoke_cli "$app" -r "$corelib" -o "$OUT"
+if gate_cache_check "$OUT" "pal-reference|palref+nogc|corelib:$corelib" \
+        "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json" "$corelib" \
         "$PAL_H" "$REF_CPP" runtime/core/platform/reference/dn2cpp_pal_reference.h; then
     gate_cache_hit_msg
     exit 0
