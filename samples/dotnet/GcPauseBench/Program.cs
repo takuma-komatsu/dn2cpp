@@ -7,7 +7,7 @@ namespace GcPauseBench
     // churning short-lived garbage and occasionally mutating the live set (so an
     // incremental/generational collector has dirty pages to re-scan). The pause
     // numbers come from the runtime's DN2CPP_GC_STATS instrumentation, not from
-    // here — see gates/measure-gcpause.sh. MVP-level only (no -r CoreLib needed).
+    // here — see gates/measure-gcpause.sh.
     internal sealed class Node
     {
         public int Value;

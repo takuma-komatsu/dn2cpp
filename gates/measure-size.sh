@@ -350,7 +350,8 @@ dotnet build "$PROJ/MinimalHello.csproj" -c "$CONFIG" --nologo -v q
 
 echo "== 2/5 Transpiling IL -> C++ -> native =="
 DN2CPP_BIN="$OUT/dn2cpp-build"
-invoke_cli "$PROJ/bin/$CONFIG/$TFM/MinimalHello.dll" -o "$DN2CPP_BIN"
+CORELIB=$(locate_corelib)
+invoke_cli "$PROJ/bin/$CONFIG/$TFM/MinimalHello.dll" -r "$CORELIB" -o "$DN2CPP_BIN"
 # Attribution needs a symbol table and the untrimmed set of translation units, so
 # this build opts out of the committed defaults: it is the "as linked" baseline
 # every breakdown below is computed on. The committed build (strip + dead-strip)
