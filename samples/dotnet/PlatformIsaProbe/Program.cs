@@ -26,8 +26,9 @@ namespace PlatformIsaProbe;
 // one prints a header-only section), otherwise it calls one representative
 // instruction, which must throw PlatformNotSupportedException as it does in
 // .NET. Selected unsupported nested rows with a registered probe do the same,
-// covering capabilities narrower than their supported enclosing family. A
-// successful probe prints nothing.
+// covering capabilities narrower than their supported enclosing family.
+// PrintProbe prints "probe=PlatformNotSupportedException" for the expected
+// exception or "probe=returned" if the probe returns normally.
 //
 // Never print Vector128/256/512.IsHardwareAccelerated or Vector<T>.Count: they
 // flip under DOTNET_EnableHWIntrinsic=0, which is the oracle for the masked run.

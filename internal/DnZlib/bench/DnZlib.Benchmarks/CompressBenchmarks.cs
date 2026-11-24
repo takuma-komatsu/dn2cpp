@@ -25,10 +25,8 @@ public class CompressBenchmarks
     [Benchmark(Baseline = true)]
     public byte[] SystemIOCompression()
     {
-        // Drive native zlib-ng at the SAME numeric level as DnZlib, via ZLibCompressionOptions.
-        // The classic CompressionLevel enum only has Fastest/Optimal/SmallestSize, and Optimal maps to
-        // zlib level 6 — so mapping levels 7 and 8 to Optimal would compare DnZlib's real level 7/8
-        // against native level 6, inflating those rows (the historical "L7/text 2.29x" artifact).
+        // CompressionLevel offers NoCompression, Fastest, Optimal and SmallestSize.
+        // Use the numeric setting so the native baseline can also select levels 7 and 8.
         using var ms = new MemoryStream();
         using (var z = new ZLibStream(ms, new ZLibCompressionOptions { CompressionLevel = Level }, leaveOpen: true))
             z.Write(_data, 0, _data.Length);
