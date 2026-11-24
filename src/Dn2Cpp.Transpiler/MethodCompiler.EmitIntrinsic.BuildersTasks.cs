@@ -1034,6 +1034,13 @@ internal sealed partial class MethodCompiler
             case ("System.Threading.Tasks.Task", "get_Factory"):
                 Push(StackKind.Ref, "Dn2CppObject*", "nullptr");
                 return true;
+            // AOT has no attached managed debugger. The protected base constructor
+            // only registers with the debugger on that path and leaves the Id lazy.
+            case ("System.Threading.Tasks.TaskScheduler", ".ctor") when sig.Header.RawValue == 0x20
+                && sig.GenericParameterCount == 0 && sig.ParameterTypes.Length == 0 && sig.ReturnType.IsVoid
+                && Comp.DeclaringDefinitionOf(Module, SRME.EntityHandle(_callSiteToken))?.Module.AssemblyName == "System.Private.CoreLib":
+                Pop();
+                return true;
             case ("System.Threading.Tasks.TaskScheduler", "get_Default"):
             case ("System.Threading.Tasks.TaskScheduler", "get_Current"):
                 Push(StackKind.Ref, "Dn2CppObject*", "dn2cpp_taskscheduler_default()");

@@ -39,9 +39,8 @@ internal static class Program
             (defaultScheduler.Id == defaultId) + "/" + (TaskScheduler.Current.Id == defaultId) + "/" +
             ((int)property.GetValue(defaultScheduler) == defaultId));
 
-        // Exercise identity without depending on construction or dispatch of custom schedulers.
-        var first = (TaskScheduler)RuntimeHelpers.GetUninitializedObject(typeof(IdentityOnlyScheduler));
-        var second = (TaskScheduler)RuntimeHelpers.GetUninitializedObject(typeof(IdentityOnlyScheduler));
+        TaskScheduler first = new IdentityOnlyScheduler();
+        TaskScheduler second = new IdentityOnlyScheduler();
         int secondId = second.Id;
         int taskId = new Task(() => { }).Id;
         int firstId = first.Id;
