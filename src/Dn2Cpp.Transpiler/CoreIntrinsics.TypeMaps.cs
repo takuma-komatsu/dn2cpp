@@ -424,8 +424,8 @@ internal static class CoreIntrinsicTypeMaps
         // factory.StartNew dispatches to the same worker pool as Task.Run (the
         // TaskCreationOptions/scheduler selection are hints dn2cpp's fixed pool does not
         // model). Keeps the real TPL scheduler machinery out of the tree —
-        // TaskScheduler..ctor alone drags in ThreadPoolTaskScheduler plus the
-        // Debugger/ConditionalWeakTable/DependentHandle debug bookkeeping.
+        // the default scheduler and debugger registration would otherwise reach
+        // ThreadPoolTaskScheduler and ConditionalWeakTable/DependentHandle.
         "System.Threading.Tasks.TaskFactory",
         "System.Threading.Tasks.TaskScheduler",
         // Cancellation. CancellationTokenSource is a runtime object with a canceled

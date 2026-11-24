@@ -1761,8 +1761,10 @@ Other direct awaiter and `IValueTaskSource` registrations are unchanged.
 The default scheduler and generated scheduler subclasses share a native identity
 field. CoreLib's `TaskScheduler.Id` getter assigns it lazily from its own counter,
 independent of task IDs. The default pool claims its ID when the scheduler statics
-are initialized. Identity does not implement the protected scheduler constructor,
-its debugger bookkeeping, or custom queue and dispatch operations.
+are initialized. The protected parameterless base constructor leaves the derived
+instance's ID unassigned. Its CoreLib debugger registration is inactive under
+dn2cpp, where `Debugger.IsAttached` is false. Task dispatch uses the native
+scheduler independently of construction.
 
 The retained CoreLib `TaskScheduler.TryRunInline` helper rejects native promises,
 actionless precompleted tasks, unassigned cold tasks and continuations, invoked
