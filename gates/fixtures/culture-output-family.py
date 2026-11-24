@@ -78,11 +78,33 @@ run_family() {
     def run_full_frozen_hook(self, data):
         path = self.directory / 'full.stdout'
         path.write_bytes(data)
+        (self.directory / 'subclass.native.stdout').write_bytes(
+            (ROOT / 'gates/expected/culture-subclass-construction.txt').read_bytes())
+        (self.directory / 'subclass.oracle.stdout').write_bytes(
+            b'== culture subclass construction ==\n'
+            b'culture subclass string=\n'
+            b'culture subclass string/bool=\n'
+            b'culture subclass int=\n'
+            b'culture subclass int/bool=\n'
+            b'culture subclass construction end\n')
         adapter = re.findall(r'^gate_extra_asserts\(\) \{\n.*?^\}', SOURCE, re.M | re.S)[0]
         script = PRELUDE + '''
 culture_info_run() {
-    local result="$1"
-    printf -v "$result" '%s' "$fixture/full.stdout"
+    local result="$1" side="$2" capture
+    shift 2
+    case "$side" in
+        native) shift ;;
+        oracle) shift 2 ;;
+        *) return 1 ;;
+    esac
+    if [ "$#" -eq 0 ]; then
+        capture="$fixture/full.stdout"
+    elif [ "$#" -eq 1 ] && [ "$1" = culture-subclass-construction ]; then
+        capture="$fixture/subclass.$side.stdout"
+    else
+        return 1
+    fi
+    printf -v "$result" '%s' "$capture"
 }
 ''' + adapter + '\ngate_extra_asserts "$fixture"\n'
         result = run_bash(script, [

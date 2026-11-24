@@ -261,6 +261,9 @@ internal static partial class Program
         VectorAsSection();
         ConcreteReductionsSection();
         Console.WriteLine("-- vector probe complete --");
+        if (args.Length > 0 && args[0] == "before-integer-selection") return;
+        IntegerSelectionSection();
+        VectorAsCallableSection();
     }
 
     private static void VectorCopyTargets()

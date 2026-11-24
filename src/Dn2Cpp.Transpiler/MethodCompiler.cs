@@ -1453,6 +1453,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsTaskLifecycleNative(_method)
             || CoreIntrinsics.IsThreadingPrivate(_method)
             || CoreIntrinsics.IsDateTimeLeapSecondSupport(_method)
+            || CoreIntrinsics.IsCultureInfoBaseConstructor(_method)
             || CoreIntrinsics.IsAppContextOnProcessExit(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleFields(_method)
@@ -4384,6 +4385,15 @@ internal sealed partial class MethodCompiler : IEvalStack
                     Emit($"{receiver} = (Dn2CppObject*)dn2cpp_null_check({obj.Expr});");
                     expr = $"({receiver}->type->vtable != nullptr ? (void*){receiver}->type->vtable[{m.VtableSlot}]"
                         + $" : (void*)&{m.Emittable.CppName})";
+                }
+                else if (m.IsVirtual && CoreIntrinsics.IsReflectionManagedBody(m))
+                {
+                    NoteFtnTargetBody(m.Emittable);
+                    _c.NoteNamedBodySymbol(_method, m.Emittable);
+                    string receiver = NewTemp("Dn2CppObject*");
+                    Emit($"{receiver} = (Dn2CppObject*)dn2cpp_null_check({obj.Expr});");
+                    expr = $"({receiver}->type->vtable == nullptr ? (void*)&{m.Emittable.CppName}"
+                        + $" : (void*){receiver}->type->vtable[{m.VtableSlot}])";
                 }
                 else if (m.IsVirtual && !m.DeclaringClass.IsInterface
                          && CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName)

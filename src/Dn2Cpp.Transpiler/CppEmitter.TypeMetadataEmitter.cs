@@ -4198,6 +4198,7 @@ internal sealed partial class CppEmitter
                 || CoreIntrinsics.IsTaskLifecycleNative(method)
                 || CoreIntrinsics.IsThreadingPrivate(method)
                 || CoreIntrinsics.IsDateTimeCultureManagedBody(method)
+                || CoreIntrinsics.IsReflectionManagedBody(method)
                 || (CoreIntrinsics.IsRuntimeTypeHandleCopy(method) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(method))
                 || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(method)
                 || CoreIntrinsics.IsTaskManagedForwarder(method)

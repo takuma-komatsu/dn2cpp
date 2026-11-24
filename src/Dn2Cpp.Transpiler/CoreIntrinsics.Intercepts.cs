@@ -619,6 +619,11 @@ internal readonly struct NameKeyedIntercept
 
 internal static partial class CoreIntrinsics
 {
+    // The native handle path and generated subclass vtables share these getters.
+    public static readonly MethodDefIntercept MdMemberInfoProperty = new(
+        InterceptCutKind.Cut, InterceptEmitArm.IntrinsicUnderDeclType,
+        extra: static method => IsMemberInfoProperty(method));
+
     /// <summary>The intra-CoreLib runtime primitives
     /// (<see cref="LoweredRuntimePrimitive"/>) — cut by NAME over whole overload
     /// families; the arm is total over the predicate, so an unmodeled shape
@@ -633,6 +638,7 @@ internal static partial class CoreIntrinsics
             || IsTaskLifecycleNative(mi)
             || IsThreadingPrivate(mi)
             || IsDateTimeLeapSecondSupport(mi)
+            || IsCultureInfoBaseConstructor(mi)
             || IsCoreClrGcMemoryQuery(mi)
             || IsCoreClrFinalizerWorker(mi)
             || IsCoreClrIntroducedMethodEnumeration(mi)
@@ -3179,6 +3185,7 @@ internal static partial class CoreIntrinsics
     /// why the two chain orders must not be unified).</summary>
     public static readonly MethodDefIntercept[] MethodDefIntercepts =
     [
+        MdMemberInfoProperty,
         MdRuntimePrimitive,
         MdEventSourceIsEnabled,
         MdFrameworkEventSourceProvider,

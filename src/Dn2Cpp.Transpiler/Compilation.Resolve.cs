@@ -127,10 +127,13 @@ internal sealed partial class Compilation
                 // receiver (which folds to the dispatching runtime helper) finds it. Over-
                 // reaching on the non-virtual form is harmless.
                 ReachExceptionGetMessage(mi);
+                if (CoreIntrinsics.MdMemberInfoProperty.Matches(mi))
+                    ReachUsedVirtual(mi);
                 CoreIntrinsics.ValidateDelegateCallableBody(mi);
                 if (CoreIntrinsics.BrDelegateCallable.Matches(mi)) return mi;
                 if (CoreIntrinsics.IsWaitHandleTimeoutConversion(mi)
                     || CoreIntrinsics.IsDateTimeCultureManagedBody(mi)
+                    || CoreIntrinsics.IsReflectionManagedBody(mi)
                     || CoreIntrinsics.IsInvariantCompareInfoGetter(mi)
                     || CoreIntrinsics.IsRuntimeTypeHandleCopy(mi)
                     || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(mi)
@@ -821,13 +824,25 @@ internal sealed partial class Compilation
                 }
                 // Non-generic parent: reach the real method when it resolves to a
                 // loaded (non-intrinsic) BCL type; otherwise treat as intrinsic.
+                if (CoreIntrinsics.IsMemberInfoPropertyName(mrParent, mrName)
+                    && (mr.Parent.Kind == HandleKind.TypeDefinition
+                        || mr.Parent.Kind == HandleKind.TypeReference
+                            && ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class is not null))
+                {
+                    var property = ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
+                    if (CoreIntrinsics.MdMemberInfoProperty.Matches(property))
+                    {
+                        ReachUsedVirtual(property);
+                        return null;
+                    }
+                }
                 MethodInfo? resolved = TryResolveMemberRefMethod(
                     module, (MemberReferenceHandle)handle, ctx);
                 if (resolved is not null)
                     NoteObfuscationMethod(resolved);
                 if (resolved is not null
-                    && resolved.DeclaringClass.FullName
-                        == "System.Runtime.InteropServices.NativeLibrary"
+                    && (resolved.DeclaringClass.FullName == "System.Runtime.InteropServices.NativeLibrary"
+                        || CoreIntrinsics.IsCultureInfoBaseConstructor(resolved))
                     && CoreIntrinsics.MdRuntimePrimitive.Matches(resolved))
                     return null;
                 return resolved;
@@ -2357,6 +2372,20 @@ internal sealed partial class Compilation
         if (mr.Parent.Kind is not (HandleKind.TypeReference or HandleKind.TypeDefinition))
             return null;
         string? full = MemberRefParentTypeName(module, handle);
+        if (full == "System.Globalization.CultureInfo" && reader.StringComparer.Equals(mr.Name, ".ctor")
+            && (mr.Parent.Kind == HandleKind.TypeDefinition
+                || ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class is not null))
+        {
+            var constructor = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsCultureInfoBaseConstructor(constructor)) return constructor;
+        }
+        if (ReflectionManagedBodyContract.IsName(full, reader.GetString(mr.Name))
+            && (mr.Parent.Kind == HandleKind.TypeDefinition
+                || ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class is not null))
+        {
+            var method = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsReflectionManagedBody(method)) return method;
+        }
         if (CoreIntrinsics.IsThreadingPrivateName(full, reader.GetString(mr.Name)))
             return ResolveMemberRefMethod(module, handle, callerCtx);
         if (reader.StringComparer.Equals(mr.Name, "IsKnownConstant")

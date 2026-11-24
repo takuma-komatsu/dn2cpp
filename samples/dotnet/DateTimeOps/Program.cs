@@ -103,6 +103,9 @@ namespace DateTimeOps
                 return;
             DateTimeParse.Program.RunExactOffsets(showClocks: false);
             ParseExactDotElision.Program.RunMissingOffset();
+            if (args.Length > 0 && args[0] == "before-dtfi-public-arrays")
+                return;
+            DateTimeFormatInfoSubset.Program.RunPublicNameArrays();
         }
     }
 }

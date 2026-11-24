@@ -32,6 +32,7 @@ source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/DateTimeInterceptFixture.cs gates/fixtures/ldftn-local/DateTimeTCharFixture.cs gates/fixtures/ldftn-local/AbbreviatedDayFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj gates/expected/datetime-refusals.txt"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|datetime-private-calls:fixture,direct-only-emission|public-ctor:no-corelib,no-ildiet|refusals:native-frozen|tchar:malformed-return-owner|day:malformed-return|dtfi-name-edges:prefix|dtfi-timespan-patterns:prefix|cli:$(_gate_cli_hash)"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|dto-local-time-prefix:before-dto-local-time|date-defaults-prefix:before-missing-date-defaults|exact-offset-prefix:before-exact-offset-parse"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|dtfi-public-arrays-prefix:before-dtfi-public-arrays"
 
 # Keep the rewritten input private to this gate; the suite prebuild stays intact.
 _corelib_gate_core() {
@@ -194,6 +195,22 @@ gate_extra_asserts() {
     gate_output compare "$out/exact-offset-prefix.stdout" "$out/exact-offset-before.stdout"
     gate_output byte-witness "$out/native.stdout" 'exact zzz local=True' 'exact zzz universal=True' \
         'exact K roundtrip=True/True/True' 'exact offset syntax=True/True/True' --count 1 --policy crlf
+
+    gate_capture_ok "$out/public-name-arrays-before" run_bounded dotnet "$_CG_APP" before-dtfi-public-arrays
+    gate_output select "$out/native.stdout" "$out/public-name-arrays-prefix.stdout" \
+        --before '== DateTimeFormatInfo public name arrays ==' --policy crlf
+    gate_output compare "$out/public-name-arrays-prefix.stdout" "$out/public-name-arrays-before.stdout"
+    gate_output byte-witness "$out/native.stdout" '== DateTimeFormatInfo public name arrays ==' \
+        'DateTimeFormatInfo public name arrays end' --count 1 --policy crlf
+    local property origin first_name
+    for property in DayNames MonthNames MonthGenitiveNames; do
+        first_name=January
+        [ "$property" != DayNames ] || first_name=Sunday
+        for origin in invariant clone; do
+            gate_output match-record "$out/native.stdout" \
+                "$property $origin $first_name,.* shared=False after=$first_name" --count 1 --policy crlf
+        done
+    done
 
     local isolated="$out/direct-only" method
     mkdir -p "$isolated/input"

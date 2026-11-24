@@ -5,6 +5,19 @@ using System.Reflection;
 
 namespace ReflectMemberIdentitySubset
 {
+    public sealed class CustomMember : MemberInfo
+    {
+        private readonly string name;
+        public CustomMember(string name) { this.name = name; }
+        public override string Name => name;
+        public override Type? DeclaringType => typeof(CustomMember);
+        public override Type? ReflectedType => typeof(CustomMember);
+        public override MemberTypes MemberType => MemberTypes.Custom;
+        public override object[] GetCustomAttributes(bool inherit) => Array.Empty<object>();
+        public override object[] GetCustomAttributes(Type type, bool inherit) => Array.Empty<object>();
+        public override bool IsDefined(Type type, bool inherit) => false;
+    }
+
     // SUBJECT: reflected member-handle IDENTITY. .NET's member cache hands back
     // the SAME instance for a member however it is reached, so ReferenceEquals,
     // Equals, a stable GetHashCode, HashSet dedup and List.Contains all agree
@@ -145,6 +158,15 @@ namespace ReflectMemberIdentitySubset
                 if (defaultMembers.Contains(m))
                     kept.Add(m.Name);
             Console.WriteLine("kept=" + string.Join(",", kept.ToArray()));
+        }
+
+        public static void RunCustomMember()
+        {
+            Console.WriteLine("== custom MemberInfo construction ==");
+            MemberInfo member = new CustomMember("custom-name");
+            Console.WriteLine("custom member=" + member.Name + "/" + member.MemberType
+                + "/" + (member.DeclaringType == typeof(CustomMember)));
+            Console.WriteLine("custom MemberInfo construction end");
         }
     }
 }

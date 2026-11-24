@@ -77,6 +77,16 @@ public static unsafe class Program
     private static Type Identity<T>() => typeof(T);
     private static Type NestedIdentity<T>() => Identity<T[]>();
 
+    public static void RunPublicPredicates()
+    {
+        Console.WriteLine("== public type predicates ==");
+        Type typeParameter = typeof(GenericFunction<>).GetGenericArguments()[0];
+        Type methodParameter = typeof(Program).GetMethod(nameof(Identity), BindingFlags.Static | BindingFlags.NonPublic).GetGenericArguments()[0];
+        foreach (Type type in new[] { typeof(int), typeof(List<>), typeof(List<int>), typeof(int[]), typeParameter, methodParameter })
+            Console.WriteLine("type predicates " + type.Name + "=" + type.IsTypeDefinition + "/" + type.IsGenericTypeParameter + "/" + type.IsGenericMethodParameter);
+        Console.WriteLine("public type predicates end");
+    }
+
     public static void RunGenericSignatureArguments()
     {
         Console.WriteLine("== generic function signature arguments ==");

@@ -66,7 +66,7 @@ internal sealed partial class Compilation
         // Check the unnormalized argument before the decoder or instantiation cache.
         var shape = raw;
         int code = shape.ReadByte();
-        if (code is 0x0c or 0x0d)
+        if (code is >= 0x04 and <= 0x0d or 0x18 or 0x19)
         {
             if (shape.RemainingBytes != 0) throw VectorMagnitudeUnsupported();
         }
@@ -127,5 +127,5 @@ internal sealed partial class Compilation
     }
 
     private static NotSupportedException VectorMagnitudeUnsupported() =>
-        new("Vector magnitude selection requires an exact floating-point generic CoreLib declaration and method specification");
+        new("Vector magnitude selection requires an exact numeric generic CoreLib declaration and method specification");
 }

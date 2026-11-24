@@ -522,6 +522,7 @@ internal sealed partial class AssemblyDiet
         else if (IsCopiedCultureInfoNameValidator(method, owner)
             || IsCopiedDateTimeManagedBody(method, owner)
             || IsCopiedDateTimeFormatInfoManagedBody(method, owner)
+            || IsCopiedReflectionManagedBody(method, owner)
             || IsCopiedRangeThrowManagedBody(method, owner)
             || IsCopiedScalarNumericLeaf(method, owner)
             || IsCopiedBinaryIntegerEndianBody(method, owner)

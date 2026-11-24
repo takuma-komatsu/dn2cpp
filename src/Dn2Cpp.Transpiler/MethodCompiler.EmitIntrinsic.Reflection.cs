@@ -97,6 +97,15 @@ internal sealed partial class MethodCompiler
         return $"(int32_t)(({word} & 0x{mask:X}) == 0x{value:X})";
     }
 
+    private string ReflectionManagedVirtualCall(MethodInfo method, IReadOnlyList<string> args)
+    {
+        string receiver = args[0];
+        string result = CppTypes.Of(method.Signature.ReturnType);
+        string receiverType = ReceiverCppType(method.DeclaringClass);
+        return $"(((Dn2CppObject*){receiver})->type->vtable == nullptr ? {DirectCall(method, args)} : "
+            + $"(({result} (*)({receiverType}))((Dn2CppObject*){receiver})->type->vtable[{method.VtableSlot}])({receiver}))";
+    }
+
     private bool TryEmitReflectionIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
         // Shared-body candidate: a typeof over a placeholder-bearing type rides the
@@ -132,6 +141,29 @@ internal sealed partial class MethodCompiler
                 }
                 if (!IsPlaceholderAgnosticFold(name, Compilation.ContainsRefPlaceholder(tk)))
                     ThrowSharedTaint("type-identity", $"{declType}.{name} on {tk}");
+            }
+        }
+        if (CoreIntrinsics.IsMemberInfoPropertyName(declType, name)
+            && Comp.FindClassByFullName(declType) is { } memberInfo)
+        {
+            Comp.EnsureCompleted(memberInfo);
+            foreach (var method in memberInfo.Methods)
+            {
+                if (method.Name != name || !CoreIntrinsics.MdMemberInfoProperty.Matches(method)) continue;
+                string receiver = NewTemp("Dn2CppObject*");
+                Emit($"{receiver} = dn2cpp_null_check({Cast(Pop(), "Dn2CppObject*")});");
+                string native = name switch
+                {
+                    "get_Name" => "dn2cpp_memberinfo_name",
+                    "get_DeclaringType" => "dn2cpp_memberinfo_declaring_type",
+                    "get_ReflectedType" => "dn2cpp_memberinfo_reflected_type",
+                    _ => "dn2cpp_memberinfo_member_type",
+                };
+                string result = CppTypes.Of(sig.ReturnType);
+                Push(CppTypes.KindOf(sig.ReturnType), result,
+                    $"({receiver}->type->vtable == nullptr ? ({result}){native}({receiver}) : "
+                    + $"(({result} (*)(Dn2CppObject*)){receiver}->type->vtable[{method.VtableSlot}])({receiver}))");
+                return true;
             }
         }
         switch (declType, name)
@@ -2066,6 +2098,12 @@ internal sealed partial class MethodCompiler
                     _ => 7,
                 };
                 Push(StackKind.I4, "int32_t", $"(int32_t)((dn2cpp_type_il_attrs(dn2cpp_type_require({Cast(a, "Dn2CppType*")})) & 7) == {visibility})");
+                return true;
+            }
+            case ("System.Type", "get_IsTypeDefinition"):
+            {
+                var type = Pop();
+                Push(StackKind.I4, "int32_t", $"dn2cpp_type_is_type_definition(dn2cpp_type_require({Cast(type, "Dn2CppType*")}))");
                 return true;
             }
             case ("System.Type", "get_IsGenericParameter"):

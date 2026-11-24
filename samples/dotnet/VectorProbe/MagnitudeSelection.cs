@@ -95,4 +95,21 @@ internal static partial class Program
         SelectionRecord("generic.i128", () => SelectionGeneric(SelectionOperand<Vector<Int128>>("L"), SelectionOperand<Vector<Int128>>("R")));
         Console.WriteLine("-- vector magnitude selection end --");
     }
+
+    private static void IntegerSelectionSection()
+    {
+        Console.WriteLine("-- vector integer selection --");
+        var left = Vector128.Create(-3, int.MinValue, -5, 5);
+        var right = Vector128.Create(2, 1, 5, -5);
+        PrintI32("select int.MaxMagnitude", Vector128.MaxMagnitude(left, right));
+        PrintI32("select int.MinMagnitude", Vector128.MinMagnitude(left, right));
+        PrintI32("select int.MaxMagnitudeNumber", Vector128.MaxMagnitudeNumber(left, right));
+        PrintI32("select int.MinMagnitudeNumber", Vector128.MinMagnitudeNumber(left, right));
+        Func<Vector128<int>, Vector128<int>, Vector128<int>> maximum = Vector128.MaxNumber;
+        PrintI32("select int.callable.MaxNumber", maximum(left, right));
+        PrintI32("select int.MinNumber", Vector128.MinNumber(left, right));
+        Console.WriteLine("select long.MinMagnitude=" + Vector64.MinMagnitude(Vector64.Create(long.MinValue), Vector64.Create(long.MaxValue)).GetElement(0));
+        Console.WriteLine("select ulong.MaxMagnitude=" + Vector128.MaxMagnitude(Vector128.Create(ulong.MaxValue), Vector128.Create(ulong.MaxValue - 1)).GetElement(0));
+        Console.WriteLine("-- vector integer selection end --");
+    }
 }

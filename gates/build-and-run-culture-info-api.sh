@@ -78,6 +78,8 @@
 # Windows rejects some identifiers before ISO metadata is available; constructor
 # and cache refusals each participate in the live comparison. Legacy Chinese
 # names retain their identity with platform-specific numeric and LCID data.
+# Managed subclasses' base constructors refuse the headerless native layout;
+# a native-only frozen mode reuses this image and the CLR proves construction succeeds.
 #
 # Its LAST TWO sections are not about CultureInfo's API at all; do not prune this
 # bucket by theme.
@@ -243,6 +245,8 @@ fi
 
 # Manual/opt-in parity requires the exact reference; normal suites exclude it.
 bash "$_DN2CPP_GATE_ROOT/gates/check-culture-reference.sh"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/expected/culture-subclass-construction.txt"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|culture-subclass-construction:native-frozen,clr-success"
 
 # The appended section has parity semantics; the existing prefix retains its
 # deliberate divergences and is still compared to the unchanged snapshot.
@@ -250,7 +254,7 @@ bash "$_DN2CPP_GATE_ROOT/gates/check-culture-reference.sh"
 # Completion records are text-only; this does not assert full-run CLR parity.
 # culture_info_run still requires status 0, and all prefix/snapshot checks remain.
 gate_extra_asserts() {
-    local out="$1" native prefix
+    local out="$1" native prefix expected
     culture_info_run native native "./$out/CultureInfoApi$EXE_EXT"
 
     prefix="$native.prefix"
@@ -258,6 +262,13 @@ gate_extra_asserts() {
     gate_output compare "$prefix" "$(dirname "$0")/expected/culture-info-api.txt" --policy crlf
     gate_output byte-witness "$native" 'culture name resolution end' --count any --policy crlf \
         || { echo "FAIL: culture names section did not finish" >&2; return 1; }
+    culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-subclass-construction
+    gate_output compare "$native" "$(dirname "$0")/expected/culture-subclass-construction.txt" --policy crlf
+    culture_info_run expected oracle dotnet "$_CG_APP" culture-subclass-construction
+    gate_output byte-witness "$expected" '== culture subclass construction ==' \
+        'culture subclass string=' 'culture subclass string/bool=' \
+        'culture subclass int=' 'culture subclass int/bool=' \
+        'culture subclass construction end' --count 1 --policy crlf
 }
 DN2CPP_GATE_RUN_ARGS=before-culture-names
 corelib_freeze_gate CultureInfoApi "$(dirname "$0")/expected/culture-info-api.txt" \

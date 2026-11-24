@@ -217,6 +217,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsUInt128Checked(m)
             || CoreIntrinsics.IsInvariantCompareInfoGetter(m)
             || CoreIntrinsics.IsDateTimeFormatInfoBoundary(m)
+            || CoreIntrinsics.IsCultureInfoBaseConstructor(m)
             || CoreIntrinsics.IsTaskLifecycleNative(m)
             || CoreIntrinsics.IsThreadingPrivate(m)
             || CoreIntrinsics.IsAppContextOnProcessExit(m)
@@ -277,6 +278,7 @@ internal sealed partial class Compilation
             return;
         if (CoreIntrinsics.IsWaitHandleTimeoutConversion(m)
             || CoreIntrinsics.IsDateTimeCultureManagedBody(m)
+            || CoreIntrinsics.IsReflectionManagedBody(m)
             || (CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(m)) || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
             || CoreIntrinsics.IsTaskManagedForwarder(m)
             || CoreIntrinsics.IsInterpolationStaticHelper(m)
