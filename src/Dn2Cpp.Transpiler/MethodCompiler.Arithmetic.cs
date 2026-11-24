@@ -2187,7 +2187,7 @@ internal sealed partial class MethodCompiler
         {
             // The real-body members' canonical counterpart is never reached (see the
             // matching guard in TranslateGenericIntrinsic).
-            if (CoreIntrinsics.IsRealBodyGeneric(target.DeclaringClass.FullName, target.Name))
+            if (_c.UsesRealBodyGeneric(target.DeclaringClass.FullName, target.Name, target.Context.MethodArgs))
                 foreach (var arg in target.Context.MethodArgs)
                     TaintIfCanonical(arg, "real-body");
             _c.NoteIntrinsicFtnTarget(target);

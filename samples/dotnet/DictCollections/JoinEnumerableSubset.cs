@@ -60,6 +60,20 @@ namespace JoinEnumerableSubset
             }
         }
 
+        private readonly struct Label(string text) : IFormattable
+        {
+            public override string ToString() => text;
+            string IFormattable.ToString(string format, IFormatProvider provider) => "formatted";
+        }
+
+        internal static void RunStructJoins()
+        {
+            var text = new string('x', 3);
+            var label = new Label(text);
+            Console.WriteLine("struct join=" + string.Join('|', new[] { label, default, label })
+                + ", singleton=" + ReferenceEquals(text, string.Concat(new[] { label })));
+        }
+
         internal static void __GateEntry()
         {
             // SortedSet<int>: value-element generic Join<int> + Concat<int>.

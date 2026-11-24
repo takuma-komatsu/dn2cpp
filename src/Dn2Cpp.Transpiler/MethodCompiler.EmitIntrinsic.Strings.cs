@@ -157,6 +157,21 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_string_concat_spanchars{n}({args})");
                 return true;
             }
+            case ("System.String", "JoinCore") when sig.ParameterTypes is [var chars, var strings]
+                && IsReadOnlySpanChar(chars) && IsStringSpan(strings):
+            {
+                // String.ToString returns itself. The object-span overload keeps empty
+                // and singleton identity without writing CoreCLR's private string storage.
+                var body = Comp.ReachStringStaticMethod(name, p => p is [var sep, var items]
+                    && IsReadOnlySpanChar(sep) && IsObjectSpan(items));
+                if (body is null)
+                    return false;
+                string values = PopSpanTemp(strings);
+                string objects = CppTypes.Of(body.Signature.ParameterTypes[1]);
+                Push(StackKind.Struct, objects, $"{objects}{{ (Dn2CppObject**){values}.f__reference, {values}.f__length }}");
+                EmitManagedCall(body, isCallvirt: false);
+                return true;
+            }
             // string.Join(separator, string[], int startIndex, int count) — the
             // 4-arg slice form; the helper carries .NET's checks (null array ANE,
             // bad slice catchable AOORE).

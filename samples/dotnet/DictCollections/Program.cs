@@ -52,6 +52,7 @@ namespace DictCollections
             IntegralUnionSubset.Program.__GateEntry();
             JoinEnumerableSubset.Program.RunUnsignedJoins();
             JoinEnumerableSubset.Program.RunSingleJoins();
+            JoinEnumerableSubset.Program.RunStructJoins();
         }
     }
 }
