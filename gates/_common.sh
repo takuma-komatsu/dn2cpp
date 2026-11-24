@@ -3314,7 +3314,7 @@ corelib_freeze_gate() {
 }
 
 # xasm_gate PROJECT LIBDLL OUT [CLI_ARGS...] — cross-assembly gate: build PROJECT (which also
-# emits LIBDLL), transpile app + lib together, compile and run.
+# emits LIBDLL), transpile app + libraries with CoreLib, compile and run.
 xasm_gate() {
     local project="$1" libdll="$2" out="$3"
     shift 3
@@ -3324,12 +3324,15 @@ xasm_gate() {
     local app="samples/dotnet/$project/bin/$CONFIG/$TFM/$project.dll"
     local lib="samples/dotnet/$project/bin/$CONFIG/$TFM/$libdll"
 
-    echo "== 2/3 Transpiling app + library together =="
-    invoke_cli "$app" -r "$lib" -o "$out" "$@"
+    echo "== 2/3 Transpiling app + libraries with CoreLib =="
+    local corelib
+    corelib=$(locate_corelib) || return
+    # Keep app and library module indexes stable for emitted identity checks.
+    invoke_cli "$app" -r "$lib" -o "$out" "$@" -r "$corelib"
     local extra_inputs=() input
     while IFS= read -r input; do extra_inputs+=("$input"); done < <(_gate_extra_inputs)
-    if gate_cache_check "$out" "xasm_gate|$project|$libdll|$out|$*$(_gate_ctx_extras)" \
-            "$app" "$lib" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json" \
+    if gate_cache_check "$out" "xasm_gate|$project|$libdll|$out|corelib:$corelib|$*$(_gate_ctx_extras)" \
+            "$app" "$lib" "$corelib" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json" \
             ${extra_inputs[@]+"${extra_inputs[@]}"}; then
         gate_cache_hit_msg
         return 0

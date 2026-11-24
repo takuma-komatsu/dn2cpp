@@ -35,14 +35,15 @@ descriptor=samples/dotnet/MultiAssembly/link.xml
 app="samples/dotnet/MultiAssembly/bin/$CONFIG/$TFM/MultiAssembly.dll"
 lib="samples/dotnet/MultiAssembly/bin/$CONFIG/$TFM/MiniCorlib.dll"
 aliaslib="samples/dotnet/MultiAssembly/bin/$CONFIG/$TFM/MultiAssemblyAlias.dll"
+corelib=$(locate_corelib)
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $aliaslib"
-DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS $descriptor" \
+DN2CPP_CORELIB="$corelib" DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS $descriptor" \
     xasm_gate MultiAssembly MiniCorlib.dll artifacts/multiasm -r "$aliaslib" --link-xml "$descriptor"
 
 # This lane infers every recognized reflection target; it preserves only the members
 # reached through a helper's returned constructor, which no site resolves.
 helper_results=samples/dotnet/MultiAssembly/keep-helper-results.xml
-DN2CPP_SKIP_BUILD=1 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS $helper_results" \
+DN2CPP_CORELIB="$corelib" DN2CPP_SKIP_BUILD=1 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS $helper_results" \
     xasm_gate MultiAssembly MiniCorlib.dll artifacts/multiasm-inference -r "$aliaslib" --no-ildiet \
     --link-xml "$helper_results"
 
@@ -151,7 +152,7 @@ metadata_emit_layout() {
     local name="$1" format="$2"
     shift 2
     local out="artifacts/multiasm-metadata-$name"
-    invoke_cli "$app" -r "$lib" -r "$aliaslib" --no-ildiet --link-xml "$helper_results" -o "$out" "$@"
+    invoke_cli "$app" -r "$lib" -r "$aliaslib" -r "$corelib" --no-ildiet --link-xml "$helper_results" -o "$out" "$@"
     shared_definition_layout "$out" "$format" 1
     shared_definition_layout "$out" native 2
 }
@@ -193,7 +194,7 @@ metadata_reject_layout() {
     shift 2
     local out="artifacts/multiasm-metadata-$name"
     mkdir -p "$out"
-    run_bounded invoke_cli "$app" -r "$lib" -r "$aliaslib" --no-ildiet -o "$out" "$@" \
+    run_bounded invoke_cli "$app" -r "$lib" -r "$aliaslib" -r "$corelib" --no-ildiet -o "$out" "$@" \
         > "$out/diagnostic.log" 2>&1 || status=$?
     if [ "$status" -ne 2 ] || ! grep -Fq -- "$diagnostic" "$out/diagnostic.log"; then
         cat "$out/diagnostic.log" >&2
@@ -228,21 +229,21 @@ grep -qw "struct alignas(8) t_MiniBcl_LayoutAligned" "$hdr" \
 # the LOAD SET (the assembly registry walks every module, reached or not), so a
 # double load is a latent output divergence even when tree-shaking hides it.
 # Transpile-only re-run against a copied shim; the baseline transpile above
-# loads app + both libraries + auto shim, and the explicit copy must fold
-# into that same count. Deliberately outside the gate cache: a different OUT,
-# no gate_cache_check; every full-profile run checks the explicit reference.
+# loads app + both libraries + CoreLib + auto shim, and the explicit copy
+# must fold into that same count. Check the explicit reference every full-profile run,
+# independently of whether the baseline binary was cached.
 if [ "$DN2CPP_MULTIASSEMBLY_FULL" = 1 ]; then
     echo "== -r on a copied Dn2Cpp.Runtime.dll dedupes by file name =="
     cli_dir="src/Dn2Cpp.Cli/bin/$CONFIG/$TFM"
     [ -n "${DN2CPP_CLI_DLL:-}" ] && cli_dir="$(dirname "$DN2CPP_CLI_DLL")"
     shimcopy_dir=$(mktemp -d "artifacts/multiasm-shimcopy.XXXXXX")
     cp "$cli_dir/Dn2Cpp.Runtime.dll" "$shimcopy_dir/Dn2Cpp.Runtime.dll"
-    dedupe_out=$(invoke_cli "$app" -r "$lib" -r "$aliaslib" -r "$shimcopy_dir/Dn2Cpp.Runtime.dll" \
+    dedupe_out=$(invoke_cli "$app" -r "$lib" -r "$aliaslib" -r "$corelib" -r "$shimcopy_dir/Dn2Cpp.Runtime.dll" \
         --link-xml "$descriptor" -o "$shimcopy_dir/out")
     echo "$dedupe_out"
-    if ! grep -q "^dn2cpp: 4 assemblies," <<<"$dedupe_out"; then
+    if ! grep -q "^dn2cpp: 5 assemblies," <<<"$dedupe_out"; then
         echo "FAIL: -r $shimcopy_dir/Dn2Cpp.Runtime.dll must dedupe against the" >&2
-        echo "CLI-sibling shim by file name (expected '4 assemblies' in the line above)" >&2
+        echo "CLI-sibling shim by file name (expected '5 assemblies' in the line above)" >&2
         exit 1
     fi
 fi

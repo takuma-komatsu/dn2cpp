@@ -8,10 +8,11 @@ echo "== 1/4 Building sample C# assembly =="
 build_proj samples/dotnet/HelloWorld/HelloWorld.csproj
 app="samples/dotnet/HelloWorld/bin/$CONFIG/$TFM/HelloWorld.dll"
 
-echo "== 2/4 Transpiling IL -> C++ =="
+echo "== 2/4 Transpiling IL -> C++ with CoreLib =="
+corelib=$(locate_corelib)
 transpile_log="$OUT.transpile.log"
 mkdir -p "$(dirname "$transpile_log")"
-invoke_cli "$app" -o "$OUT" | tee "$transpile_log"
+invoke_cli "$app" -r "$corelib" -o "$OUT" | tee "$transpile_log"
 # The bounded-native-import report's negative control, and it costs one grep: the
 # line is UNCONDITIONAL (a silently wrong answer at run time deserves no opt-in),
 # which only stays acceptable while it is silent on a program that bounds
@@ -41,8 +42,8 @@ if grep -Eq 'dn2cpp_cpu_features|DN2CPP_ISA_|dn2cpp_isa_|#include "isa/' \
     echo "FAIL: HelloWorld generated surface contains platform-ISA support" >&2
     exit 1
 fi
-if gate_cache_check "$OUT" "sample|console" \
-        "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json" gates/assert-fp-mode.py; then
+if gate_cache_check "$OUT" "sample|console|corelib:$corelib" \
+        "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json" "$corelib" gates/assert-fp-mode.py; then
     gate_cache_hit_msg
     exit 0
 fi
@@ -74,7 +75,7 @@ echo "== Floating-point mode changes reach incremental native builds =="
 app_build="$(_cmake_app_builddir "$OUT")"
 gate_python gates/assert-fp-mode.py "$app_build" strict
 cpp_surface=$(_gate_surface_lines "$OUT" | grep -v 'generated-fp-mode.txt$')
-invoke_cli "$app" -o "$OUT" --fp-mode precise > "$OUT/fp-precise-transpile.log"
+invoke_cli "$app" -r "$corelib" -o "$OUT" --fp-mode precise > "$OUT/fp-precise-transpile.log"
 [ "$cpp_surface" = "$(_gate_surface_lines "$OUT" | grep -v 'generated-fp-mode.txt$')" ] \
     || { echo 'FAIL: --fp-mode changed generated C++' >&2; exit 1; }
 _cmake_step "$OUT/fp-precise-build.log" 'rebuilding precise FP mode' "$CMAKE" --build "$app_build"
@@ -96,7 +97,7 @@ gate_python gates/assert-fp-mode.py "$app_build" strict
 gate_capture_ok "$OUT/legacy" run_bounded "$app_build/HelloWorld$EXE_EXT"
 gate_output compare "$OUT/legacy.stdout" "$OUT/oracle.stdout"
 
-invoke_cli "$app" -o "$OUT" > "$OUT/fp-default-transpile.log"
+invoke_cli "$app" -r "$corelib" -o "$OUT" > "$OUT/fp-default-transpile.log"
 printf 'strict\n' > "$OUT/fp-strict.expected"
 gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-strict.expected"
 _cmake_step "$OUT/fp-default-build.log" 'rebuilding default FP mode' "$CMAKE" --build "$app_build"
