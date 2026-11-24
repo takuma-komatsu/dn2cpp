@@ -23,6 +23,8 @@
 # A static field read through a constant-named derived owner keeps its base's
 # initializer, a conditional descriptor applies to a type used only through a
 # constant name, and Type attribute arguments retain their types without a descriptor.
+# Constant-name InvokeMember keeps the bodies of the method, accessor and default
+# member it selects while unselected siblings stay signature-only stubs.
 # Conditional field signatures activate earlier, later and closed generic owners.
 # Local and captured interface arrays supply null defaults without a base type row.
 # Typed loads recover external enum zero defaults; untyped defaults stay unknown.
@@ -60,6 +62,7 @@ if preserve_full; then
     DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|low-input-roots:raw,full"
 fi
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|return-parameter-prefix:${DN2CPP_BEFORE_RETURN_PARAMETER_ATTRIBUTES:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|invoke-member-prefix:${DN2CPP_BEFORE_INVOKE_MEMBER:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/ReturnParameterAttributesSubset.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.Intercepts.cs gates/fixtures/ildiet-metadata-validation/intercept_retention.py"
 gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for ILDiet validation"
@@ -452,6 +455,12 @@ gate_extra_asserts() {
         'ReturnNoteAttribute::.ctor stub=False' 'ReturnNoteAttribute::set_Name stub=False' 'ReturnKeptAttribute::.ctor stub=False' \
         'LateArgumentAttribute::.ctor stub=False' 'LateArgumentAttribute::set_Number stub=False' \
         'LateReturnAttribute::.ctor stub=False' 'LateReturnAttribute::set_Number stub=False' 'LateExecutedRows::Execute stub=False')"
+    before="$out/invoke-member-before.native"
+    DN2CPP_BEFORE_INVOKE_MEMBER=1 gate_capture_ok "$before" run_bounded "$out/ILDietControl$EXE_EXT"
+    gate_output select "$native" "$out/invoke-member-prefix.native.stdout" --before '== constant-name InvokeMember ==' --policy crlf
+    gate_output compare "$out/invoke-member-prefix.native.stdout" "$before.stdout"
+    gate_output byte-witness "$native" --count 1 --policy crlf '== constant-name InvokeMember ==' \
+        'invoke-method=21' 'invoke-property=8' 'invoke-field=6' 'invoke-default=pick:2' 'constant-name InvokeMember end'
 }
 # Construct(Type) activates attribute-carried types no analyzable site names; their
 # constructors are preserved explicitly.
@@ -470,10 +479,20 @@ for row in 'method ILDietControl.Loose::.ctor' 'method ILDietControl.Box`1::.cto
         || { echo "FAIL: ILDiet removed a type-token-selected constructor: $row" >&2; exit 1; }
 done
 for row in 'method ILDietControl.Named::Twice' 'method ILDietControl.Named::Describe' \
-        'method ILDietControl.Named::get_Label' 'method ILDietControl.Named::set_Label'; do
+        'method ILDietControl.Named::get_Label' 'method ILDietControl.Named::set_Label' \
+        'method ILDietControl.Invoked::Triple' 'method ILDietControl.Invoked::get_Size' \
+        'field ILDietControl.Invoked::Total' 'method ILDietControl.Invoked::Pick'; do
     grep -Fxq "$row" <<<"$stripped_diet_app" \
         || { echo "FAIL: ILDiet removed a member a reflective invoke can select: $row" >&2; exit 1; }
 done
+gate_capture_ok "$DIET_OUT/invoked-bodies" dotnet exec "$PROBE" --method-stubs \
+    "$(ildiet_generation "$DIET_OUT/ildiet")/ILDietControl.dll" \
+    ILDietControl.Invoked::Triple ILDietControl.Invoked::get_Size ILDietControl.Invoked::Pick \
+    ILDietControl.Invoked::Quadruple ILDietControl.Invoked::get_Extent
+gate_assert_text "$DIET_OUT/invoked-bodies.stdout" "$(printf '%s\n' \
+    'ILDietControl.Invoked::Triple stub=False' 'ILDietControl.Invoked::get_Size stub=False' \
+    'ILDietControl.Invoked::Pick stub=False' 'ILDietControl.Invoked::Quadruple stub=True' \
+    'ILDietControl.Invoked::get_Extent stub=True')"
 grep -Fxq 'method ILDietControl.CalledOnly::.ctor' <<<"$original_diet_app" \
     || { echo "FAIL: original fixture is missing CalledOnly's constructor" >&2; exit 1; }
 grep -Fxq 'method ILDietControl.CalledOnly::.ctor' <<<"$stripped_diet_app" \

@@ -92,6 +92,11 @@ namespace ReflectInvoke
                 ReflectGenericMethodSubset.Program.RunSignatureBoundaries();
                 return;
             }
+            if (args.Length > 1 && args[0] == "invoke-member-boundaries")
+            {
+                InvokeMemberSubset.Program.RunBoundaries(args[1]);
+                return;
+            }
 
             if (Environment.GetEnvironmentVariable("DN2CPP_REFLECTION_MEASURE") == "1")
             {
@@ -417,6 +422,9 @@ namespace ReflectInvoke
         ReflectionSignatureTypesSubset.Program.RunPublicPredicates();
         ReflectMemberIdentitySubset.Program.RunCustomMember();
         GetInterfaceSubset.Program.RunModuleData();
+        if (args.Length > 0 && args[0] == "before-invoke-member")
+            return;
+        InvokeMemberSubset.Program.Run();
         }
     }
 }
