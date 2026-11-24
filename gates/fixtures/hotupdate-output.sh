@@ -152,8 +152,8 @@ fixture_status=0
 check_consumer "$ordinary_consumer" pass
 fixture_status=7
 check_consumer "$ordinary_consumer" pass
-# Exercise the real early cache call: changing the selected profile or host
-# policy must miss a representative Windows receipt.
+# Exercise the real early cache call: changing the selected profile, host
+# policy, or pinned CoreLib path must miss a representative Windows receipt.
 gate_python - "$OUT/cache-call" <<'PYCODE'
 from pathlib import Path
 import sys
@@ -165,7 +165,7 @@ PYCODE
 # A function keeps Bash 3.2 errexit from terminating a sourced cache-miss probe.
 source "$OUT/cache-call"
 _gate_cli_hash() { printf cli; }
-resolve_pinned_corelib() { printf corelib; }
+corelib="$OUT/System.Private.CoreLib.dll"
 field_packed=packed
 field_native=native
 cached_context=''
@@ -182,6 +182,14 @@ DN2CPP_HOTUPDATE_FULL=0
 hotupdate_cache_probe || :
 cache_mode=read
 hotupdate_cache_probe || { echo 'FAIL: same-host cache control missed' >&2; exit 1; }
+selected_corelib="$corelib"
+corelib="$OUT/other/System.Private.CoreLib.dll"
+if hotupdate_cache_probe; then
+    echo 'FAIL: different pinned CoreLib path reused cached evidence' >&2
+    exit 1
+fi
+corelib="$selected_corelib"
+hotupdate_cache_probe || { echo 'FAIL: restored pinned CoreLib cache control missed' >&2; exit 1; }
 DN2CPP_HOTUPDATE_FULL=1
 if hotupdate_cache_probe; then
     echo 'FAIL: full hot-update profile reused representative evidence' >&2

@@ -8,8 +8,8 @@
 # receiver, bound through the declaring row or by ldvirtftn, reports that
 # override as Delegate.Method and equals a binding of the override.
 # An Object virtual's method group and reflective binding report the nearest
-# AOT override or Object's row under either BCL load set. Non-virtual base
-# method groups retain Object's own body and declaring row.
+# AOT override or Object's row with CoreLib alone or its framework closure.
+# Non-virtual base method groups retain Object's own body and declaring row.
 # Patch receivers that inherit renamed interface fillers retain the filler's
 # method and delegate identity; replacing the interface body keeps it distinct.
 # Renamed Object overrides require a loaded CoreLib rather than falling back
@@ -78,9 +78,9 @@
 #     base-image generics (type, delegate and method instantiations bound by
 #     sigShape, which a method's type arguments lead), String.Concat lowering,
 #     and exception handling
-#   - an external-base exception whose base is the never-loaded External BCL
-#     System.SystemException, driven from AOT and from a patch whose interpreted
-#     `base(message, quota)` runs the real emitted ctor body
+#   - an exception whose BCL parent is outside CoreLib and unloaded in the
+#     primary base. The patch's interpreted `base(message, quota)` runs the
+#     real emitted AOT ctor body
 #   - the interpreter's eleven NULL checks, each caught by the interpreted code
 #     that tripped it. They used to abort() rather than throw, so a regression
 #     ends the process and the diff is the whole tail. Div-by-zero is
@@ -165,11 +165,9 @@
 # newest-wins Describe line and the Type-identity probes; and an entry-less BPI
 # that Load accepts as a registration-only image while Run rejects it.
 #
-# A final real-CoreLib-closure section builds a SECOND base
-# (HotUpdateCoreLibBase) against the real pinned CoreLib — every other base
-# here is intrinsic-BCL only. Such a base keeps every method row, and an
-# interface row's signature-only invoker thunk can name a struct type the emit
-# set never declared (Span<char> at ISpanFormattable.TryFormat; DictionaryEntry
+# A separate real-CoreLib-closure section builds HotUpdateCoreLibBase. Such a base
+# keeps every method row, and an interface row's invoker thunk can name a struct
+# type the emit set never declared (Span<char> at ISpanFormattable.TryFormat; DictionaryEntry
 # at IDictionaryEnumerator.get_Entry). The section asserts the base transpiles
 # AND compiles+links, that the blocked rows carry trapping invmiss_ stubs
 # (bindable row, catchable NotSupportedException naming the method and the
@@ -387,15 +385,23 @@ echo "== 2/5 Transpiling the base with --hotupdate-base =="
 # --hotupdate-refs force-emits the closed generic instantiations the patch binds
 # but the base program never uses (the generic type Holder<string> and the generic
 # method Counter.Echo<int>/<string>) — HybridCLR's AOTGenericReferences.
-invoke_cli "$base_app" --hotupdate-base \
+corelib=$(resolve_pinned_corelib)
+invoke_cli "$base_app" -r "$corelib" --hotupdate-base \
     --reflection-metadata "$field_packed" \
     --hotupdate-refs samples/dotnet/HotUpdatePatch/hotupdate-refs.txt -o "$OUT"
 grep -qw 'md_record_fldtab_HotUpdateBase_Counter' "$OUT"/generated*.cpp \
     || { echo "FAIL: Counter field metadata was not emitted packed" >&2; exit 1; }
 grep -Eq '^const Dn2CppTypeInfo ti_HotUpdateBase_Slate = \{[^,]+, &dn2cpp_object_type,' "$OUT"/generated*.cpp \
     || { echo "FAIL: intrinsic Object base type-info is missing" >&2; exit 1; }
-grep -Eq '^const Dn2CppTypeInfo ti_HotUpdateBase_ExternalObjectAttribute = \{[^,]+, nullptr,' "$OUT"/generated*.cpp \
-    || { echo "FAIL: an unloaded external base acquired an Object type-info chain" >&2; exit 1; }
+if ! registry=$(grep -hF 'const Dn2CppAssemblyRegEntry dn2cpp_assembly_registry[] =' "$OUT"/generated*.cpp) ||
+    ! grep -qwF '"System.Private.CoreLib"' <<< "$registry" ||
+    grep -qwF '"System.ComponentModel.Primitives"' <<< "$registry"; then
+    echo "FAIL: expected CoreLib without the external parent assembly" >&2
+    printf '%s\n' "$registry" >&2
+    exit 1
+fi
+grep -Eq '^const Dn2CppTypeInfo ti_HotUpdateBase_UnloadedComponentProbe = \{[^,]+, nullptr,' "$OUT"/generated*.cpp \
+    || { echo "FAIL: the external-parent probe is missing or acquired a base type-info chain" >&2; exit 1; }
 [ -f "$OUT/base-abi.json" ] || { echo "FAIL: base-abi.json sidecar missing" >&2; exit 1; }
 grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
     || { echo "FAIL: dn2cpp_base_image_abi_hash constant missing from generated.cpp" >&2; exit 1; }
@@ -405,13 +411,10 @@ grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
 # fixture scripts) and of transpiler BEHAVIOR: the bakes, their rejections and
 # the later base transpiles. None of those outputs is in the key's surface, so
 # _gate_cli_hash stands in for the transpiler (see that helper's doc).
-#
-# The conditional-default-reference section transpiles the same base
-# against the REAL pinned CoreLib, so which CoreLib that resolves to is an input
-# of this gate the same way it is of bcl_diff_gate — a runtime bump must
-# not be served a green recorded against the previous one.
-if gate_cache_check "$OUT" "hotupdate-subset|full:$DN2CPP_HOTUPDATE_FULL|abort-host:$DN2CPP_OS|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_pinned_corelib)|delegate-bindings:object/gettype/headerless-remove|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|patch-method-identities:private-rows/roundtrip/virtual-override/invoke/refusal-variant/metadata-v4|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/intrinsic-bcl/corelib/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:packed/native/register/stack/fields/field-address-refusal|carried-attribute-type-infos" \
-        "$base_app" "$patch_app" "$bad_app" "$badgvm_app" "$baditf_app" "$baddg_app" \
+# CoreLib is a content input as well as the pinned path shared with the
+# conditional-default-reference arms.
+if gate_cache_check "$OUT" "hotupdate-subset|full:$DN2CPP_HOTUPDATE_FULL|abort-host:$DN2CPP_OS|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$corelib|delegate-bindings:object/gettype/headerless-remove|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|patch-method-identities:private-rows/roundtrip/virtual-override/invoke/refusal-variant/metadata-v4|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/corelib/framework-closure|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/corelib/framework-closure/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:packed/native/register/stack/fields/field-address-refusal|carried-attribute-type-infos" \
+        "$corelib" "$base_app" "$patch_app" "$bad_app" "$badgvm_app" "$baditf_app" "$baddg_app" \
         "$concat_oracle_app" \
         "$signature_arguments_base" "$signature_arguments_patch" "$signature_arguments_address" gates/_hotupdate-signature-arguments.sh \
         "$badmc_app" "$dir1_app" "$dir2_app" "$dgrecv_app" "$dgsig_app" \
@@ -756,7 +759,11 @@ hotupdate_capture inherited_object_oracle _hotupdate_status stdout run_bounded d
 gate_output status "$_hotupdate_status" 0
 gate_output witness "$inherited_object_oracle" 'methods=System.Object.ToString/System.Object.Equals/System.Object.GetHashCode' --count any --policy crlf \
     || { echo "FAIL: inherited Object virtual identity witness is missing" >&2; exit 1; }
-hotupdate_fixture expected --file "$expected" --file "$inherited_object_oracle"
+# The standalone oracle also checks the metadata-only child. The aggregate
+# transcript still ends this block at the inherited Object virtuals marker.
+external_parent_witness='external parent child=HotUpdateBase.UnloadedComponentProbe'
+gate_output witness "$inherited_object_oracle" "$external_parent_witness" --count 1 --policy crlf
+hotupdate_fixture expected --file "$expected" --file "$(hotupdate_before "$inherited_object_oracle" "$external_parent_witness")"
 expected_before_object_groups="$expected"
 hotupdate_capture object_groups_oracle _hotupdate_status stdout run_bounded dotnet "$base_app" --object-groups-oracle
 gate_output status "$_hotupdate_status" 0
@@ -894,7 +901,7 @@ echo "-- conditional default refs: a base whose load set carries a TRIGGER --"
 # (When the shim IS reached the base emits its types, they enter the contract as
 # ordinary T/L/F/V lines and the hash moves on its own — so the dangerous
 # direction is already covered by the existing staleness guard.)
-trig_corelib=$(resolve_pinned_corelib)
+trig_corelib="$corelib"
 trig_bcl=$(dirname "$trig_corelib")
 trig_comp="$trig_bcl/System.IO.Compression.dll"
 [ -f "$trig_comp" ] || { echo "FAIL: real System.IO.Compression not found: $trig_comp" >&2; exit 1; }
@@ -1798,14 +1805,10 @@ assert_exit_code "$cl_missing_rc" 0
 echo "OK (real-CoreLib base: blocked rows trapped; known value and missing type imports refused catchably)"
 
 # ---- Console.Error in a CoreLib-less base image ------------------------------
-# The mirror image of the section above: no CoreLib at all in the load set, which
-# is this bucket's default posture and the one gates/measure-interp.sh transpiles
-# under. Console.get_Error cannot answer with the managed Dn2CppConsoleWriter
-# there — the shim's System.IO.TextWriter base is an unresolved External name, so
-# the subtype has no base vtable, its chained TextWriter::.ctor() resolves to
-# nothing, and its get_Encoding slot names an untypeable External
-# System.Text.Encoding — so the route falls back to the header-less runtime
-# writer, which is the whole of what this load set models.
+# Keep this InterpBench image CoreLib-less. The shim's System.IO.TextWriter
+# base is unresolved, so Dn2CppConsoleWriter has no base vtable, its chained
+# TextWriter::.ctor() cannot bind, and its get_Encoding slot names an External
+# System.Text.Encoding. Console.Error falls back to the header-less runtime writer.
 #
 # It is asserted HERE, in the suite, because InterpBench is the only CoreLib-less
 # program in the tree that touches Console.Error, and the only other thing that
