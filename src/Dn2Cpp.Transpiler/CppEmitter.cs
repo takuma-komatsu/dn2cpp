@@ -9412,8 +9412,9 @@ internal sealed partial class CppEmitter
             string thunk = $"dn2cpp_dgthunk_{cls.CppName}";
             var tps = new List<string> { "Dn2CppObject* __closure" };
             for (int i = 0; i < n; i++)
-                tps.Add($"{paramCs[i]} a{i}");
-            bodies.AppendLine($"static {retC} {thunk}({string.Join(", ", tps)})");
+                tps.Add($"{MethodCompiler.NfiErasedAbi(paramCs[i])} a{i}");
+            string fnRet = MethodCompiler.NfiErasedAbi(retC);
+            bodies.AppendLine($"static {fnRet} {thunk}({string.Join(", ", tps)})");
             bodies.AppendLine("{");
             if (n > 0)
             {
@@ -9431,9 +9432,9 @@ internal sealed partial class CppEmitter
             if (retC == "void")
                 bodies.AppendLine($"    {tcall};");
             else if (SlotMember(retC) == "ref")
-                bodies.AppendLine($"    return ({retC}){tcall}.ref;");
+                bodies.AppendLine($"    return ({fnRet}){tcall}.ref;");
             else
-                bodies.AppendLine($"    return ({retC}){tcall}.{SlotMember(retC)};");
+                bodies.AppendLine($"    return ({fnRet}){tcall}.{SlotMember(retC)};");
             bodies.AppendLine("}");
 
             // The reverse invoke bridge: unpacks the argument slots into the
@@ -9447,9 +9448,15 @@ internal sealed partial class CppEmitter
             for (int i = 0; i < n; i++)
             {
                 string m = SlotMember(paramCs[i])!;
-                callArgs.Add(m == "ref" ? $"({paramCs[i]})__a[{i}].ref" : $"({paramCs[i]})__a[{i}].{m}");
+                // Interpreter slots contain managed references; dginvoke takes
+                // typed arguments, then calls f_method through its erased ABI.
+                callArgs.Add(MethodCompiler.IsNfiCppType(paramCs[i])
+                    ? MethodCompiler.NfiUnwrapExpr($"__a[{i}].ref", paramCs[i])
+                    : $"({paramCs[i]})__a[{i}].{m}");
             }
             string invokeCall = $"dginvoke_{cls.CppName}({string.Join(", ", callArgs)})";
+            if (MethodCompiler.IsNfiCppType(retC))
+                invokeCall = MethodCompiler.NfiWrapExpr(invokeCall, invoke.Signature.ReturnType);
             if (retC == "void")
             {
                 bodies.AppendLine($"    {invokeCall};");

@@ -11,6 +11,11 @@ internal static class Program
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        if (args.Length > 0 && args[0] == "--object-delegate-binding")
+        {
+            Console.WriteLine(HotUpdatePatch.InterpretedObjectBinding.Run());
+            return;
+        }
         if (args.Length > 0 && args[0] == "--type-getter-signature")
         {
             object receiver = new QuotaEx("oracle", 1);
@@ -51,6 +56,7 @@ internal static class Program
             if (args.Length > 1 && args[1] == "before-ordinary-exception-message")
                 return;
             Console.WriteLine(HotUpdateCoreLibPatch.InterpretedAggregateCollectionSubset.RunOrdinaryMessageDispatch());
+            Console.WriteLine(HotUpdateCoreLibPatch.InterpretedDelegateBindings.Run());
             return;
         }
         Console.WriteLine(HotUpdatePatch.InterpretedConcatSubset.Run());

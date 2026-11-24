@@ -9385,6 +9385,19 @@ struct Dn2CppN2MDelegate
     const void* fn;           // the bridge function
 };
 
+// Call imports retain their invocation ABI. Only delegate capture substitutes
+// the nonvirtual Object entry or the managed-reference ABI of an adapted method.
+struct Dn2CppInterpDelegateEntry
+{
+    void* fn;
+    const Dn2CppDelegateMethodIdentity* identity;
+};
+struct Dn2CppInterpDelegateAdapter
+{
+    const void* methodRow;
+    void* fn;
+};
+
 // The interpreter dispatch a delegate thunk forwards into: `closure` is the
 // loader-built closure carried as the delegate's target (image + patch method
 // index + bound `this`), `args` the marshalled invoke arguments (excluding the

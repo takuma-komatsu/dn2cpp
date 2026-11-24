@@ -1136,11 +1136,13 @@ prev, identity, entry, invocationCache }`. `prev` is the multicast chain;
 `entry` retains a copied list node's original delegate, and `invocationCache`
 is an atomic reference to the invocation-list cache. An interpreter-built
 delegate is single-target and initializes these fields to zero. `identity`
-is the emitter's static method identity. The interpreter stamps the one a
-compiled binding carries when the delegate binds a compiled method that has
-a metadata row, so the delegate equals, hashes with and reports the `Method`
-of its compiled twin; a delegate over a patch method or an intrinsic-table
-binding has none, and its `Delegate.Method` is null. An `Invoke` calls
+identifies the compiled method independently of its entry. A metadata import
+takes its identity from the method row; a headerless-parameter or return type
+takes the same erasing adapter as a compiled method group. For nonvirtual
+`Object.ToString` and, with CoreLib loaded, `Object.GetType`, the base image
+supplies both the compiled entry and its identity. Other intrinsic imports
+without a recorded identity and patch-method closures report null for
+`Delegate.Method`. An `Invoke` calls
 `method(target, args…)` with the delegate's Invoke C++ ABI (the target is
 always the first argument; an instance method's real address takes it as
 `this`, a static one goes through an adapter that drops it). A patch method
@@ -1173,9 +1175,11 @@ recovers `(image, methodIdx, boundThis)` from the closure, prepends the bound
 `this` for an instance patch method (otherwise the frame is the invoke
 arguments alone), and runs the method as an ordinary interpreted frame. An
 `ldftn` on a base-image instance method instead builds an "AOT" closure whose
-method pointer becomes the delegate's `method` directly (the natural AOT
-delegate, no interpreter hop), so a delegate wrapping an AOT method is bound
-and invoked without the tables.
+delegate entry becomes the delegate's `method` directly (the natural AOT
+delegate, no interpreter hop). Capture consults the base image, not the BPI:
+intrinsic rows name their delegate entry separately from their call entry, and
+a method row with a headerless adapter is keyed by its physical metadata row.
+Neither substitution changes how an ordinary call import is invoked.
 
 The construction site is where every type statement is enforced, because once
 the closure's `method` is a raw pointer the interpreter has no further

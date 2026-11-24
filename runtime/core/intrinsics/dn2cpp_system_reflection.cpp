@@ -8653,8 +8653,7 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
             dn2cpp_invoke_declaring(bound->declaringType, bind->declaring)));
     }
     auto* dg = reinterpret_cast<Dn2CppDelegate*>(d);
-    // A runtime-created delegate, and an interpreted one over a patch method or an
-    // intrinsic-table binding, carries no static identity.
+    // Runtime-created delegates and patch methods need not carry an identity.
     const auto* identity = dg->identity;
     if (identity == nullptr || identity->declaringType == nullptr)
         return nullptr;

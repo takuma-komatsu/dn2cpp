@@ -2029,6 +2029,8 @@ internal sealed partial class CppEmitter
                 foreach (var entry in primarySlotStubs!)
                     _slotStubs.Add(entry.Key, entry.Value);
             }
+            if (_e.HotUpdateBase)
+                EmitHotUpdateDelegateBindings();
             EmitDelegateMethodCatalog();
             EmitNamedRuntimeMethodRows();
             EmitDateOnlyDeconstructRow();
@@ -2323,9 +2325,37 @@ internal sealed partial class CppEmitter
             }
         }
 
+        // Physical row addresses distinguish same-name overloads, generic
+        // instantiations and bodies folded by the linker, in either metadata format.
+        private readonly List<string> _hotUpdateDelegateAdapters = new();
+
+        private void EmitHotUpdateDelegateBindings()
+        {
+            string ObjectEntry(MethodInfo? method, string entry)
+                => method is null ? "{ nullptr, nullptr }"
+                    : $"{{ (void*)&{entry}, &{_c.NoteDelegateIdentity(method, false)} }}";
+            var getter = _c.HotUpdateGetType;
+            string getType = ObjectEntry(getter, getter?.Emittable.CppName ?? "");
+            string toString;
+            if (_c.HotUpdateToString is { } text)
+                toString = ObjectEntry(text, MethodCompiler.ObjectToStringBody);
+            else
+            {
+                // The synthetic no-CoreLib ldftn has the same Object descriptor.
+                _sb.AppendLine($"static const Dn2CppDelegateMethodIdentity patch_object_text_id = {{ &dn2cpp_object_type, {RuntimeObjectToken("ToString")} }};");
+                toString = $"{{ (void*)&{MethodCompiler.ObjectToStringBody}, &patch_object_text_id }}";
+            }
+            _sb.AppendLine($"extern \"C\" const Dn2CppInterpDelegateEntry dn2cpp_interp_object_gettype_delegate = {getType};");
+            _sb.AppendLine($"extern \"C\" const Dn2CppInterpDelegateEntry dn2cpp_interp_object_tostring_delegate = {toString};");
+            int count = _hotUpdateDelegateAdapters.Count;
+            string rows = count == 0 ? "{ nullptr, nullptr }" : string.Join(", ", _hotUpdateDelegateAdapters);
+            _sb.AppendLine($"extern \"C\" const Dn2CppInterpDelegateAdapter dn2cpp_interp_delegate_adapters[] = {{ {rows} }};");
+            _sb.AppendLine($"extern \"C\" const int32_t dn2cpp_interp_delegate_adapter_count = {count};");
+        }
+
         private void EmitDelegateMethodCatalog()
         {
-            if (!_c.ReadsDelegateMethod && !_c.NeedsReflectionDelegateBind)
+            if (!_c.ReadsDelegateMethod && !_c.NeedsReflectionDelegateBind && _c.HotUpdateGetType is null)
                 return;
             var entries = new List<string>();
             if (_c.ReadsDelegateMethod)
@@ -2347,8 +2377,8 @@ internal sealed partial class CppEmitter
                         || cls.FullName == "System.SZArrayHelper" && m.Context.MethodArgs.Length != 0)).ToList();
                 if (!_c.ReadsDelegateMethod)
                     methods = _c.GetDelegateIdentityDeclarations().Where(m => m.DeclaringClass == cls
-                        && !m.Handle.IsNil && !m.IsStatic && m.IsVirtual
-                        && m.Name is "ToString" or "Equals" or "GetHashCode").Distinct().ToList();
+                        && !m.Handle.IsNil && !m.IsStatic
+                        && (m == _c.HotUpdateGetType || m.IsVirtual && m.Name is "ToString" or "Equals" or "GetHashCode")).Distinct().ToList();
                 else
                 {
                     foreach (string name in new[] { "ToString", "Equals", "GetHashCode" })
@@ -2653,8 +2683,11 @@ internal sealed partial class CppEmitter
             return targets.Count;
         }
 
+        private static int RuntimeObjectToken(string name) =>
+            name switch { "ToString" => -1, "Equals" => -2, "GetHashCode" => -3, _ => 0 };
+
         private static int DelegateIdentityToken(MethodInfo method) => method.Handle.IsNil
-            ? method.Name switch { "ToString" => -1, "Equals" => -2, "GetHashCode" => -3, _ => 0 }
+            ? RuntimeObjectToken(method.Name)
             : System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(method.Handle);
 
         /// <summary>The dispatcher a generic virtual method row runs through when
@@ -3737,6 +3770,7 @@ internal sealed partial class CppEmitter
             // demand. A hot-update base keeps the interpreter's member import contract.
             // (Row filter mirrored by NoteReflectedMemberTypes — keep in step.)
             bool trim = prefix != "delegatetab" && !appCls && !_e._hotUpdateBase;
+            List<(int Index, string Entry)>? adapters = null;
             var propertyAccessors = ReflectionAccessorHandles(cls);
             foreach (var m in members)
             {
@@ -3892,6 +3926,14 @@ internal sealed partial class CppEmitter
                 {
                     fnPtr = $"(void*)&{m.Emittable.CppName}";
                     bodyRow = true;
+                    if (_e.HotUpdateBase && prefix == "methtab" && !cls.IsValueType
+                        && !m.IsStatic && MethodCompiler.NeedsNfiErasedAdapter(m.Emittable))
+                    {
+                        var adapter = new DelegateAdapter(m.Emittable, false, NfiErased: true);
+                        if (!_c.DelegateAdapters.Contains(adapter))
+                            _c.DelegateAdapters.Add(adapter);
+                        (adapters ??= new()).Add((rows.Count, adapter.CppName));
+                    }
                     // A template level's static body is the canonical one, which takes
                     // the generic context no forwarder of a clone could append.
                     bool contextArg = m.IsStatic && m.Emittable.RgctxParam && _e.IsRuntimeTemplateLevel(cls);
@@ -4061,6 +4103,9 @@ internal sealed partial class CppEmitter
             if (rows.Count == 0)
                 return null;
             _e.EmitMetadataTable(_sb, "Dn2CppMethodInfo", tab, rows);
+            if (adapters is not null)
+                foreach (var (index, entry) in adapters)
+                    _hotUpdateDelegateAdapters.Add($"{{ {_e.MetadataRowAddress(tab, index)}, (void*)&{entry} }}");
             foreach (var m in members)
                 if (_memberAddr.TryGetValue(m, out var index) && int.TryParse(index, out int rowIndex))
                     _memberAddr[m] = _e.MetadataRowAddress(tab, rowIndex);

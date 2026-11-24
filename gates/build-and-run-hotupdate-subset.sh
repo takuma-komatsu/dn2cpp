@@ -178,6 +178,8 @@
 # at the loader's one-shot bind pass, whose marshal surface (scalars +
 # references) is strictly narrower than the invoker ABI; if that surface ever
 # widens the call lands on the invmiss_ stub and raises the same exception.
+# A patch binding of base.ToString, Object.GetType or a headerless-argument
+# handler must invoke, compare and report Method like a compiled binding.
 source "$(dirname "$0")/_common.sh"
 
 case "${DN2CPP_HOTUPDATE_FULL:-0}" in
@@ -408,7 +410,7 @@ grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
 # against the REAL pinned CoreLib, so which CoreLib that resolves to is an input
 # of this gate the same way it is of bcl_diff_gate — a runtime bump must
 # not be served a green recorded against the previous one.
-if gate_cache_check "$OUT" "hotupdate-subset|full:$DN2CPP_HOTUPDATE_FULL|abort-host:$DN2CPP_OS|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_pinned_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|patch-method-identities:private-rows/roundtrip/virtual-override/invoke/refusal-variant/metadata-v4|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/intrinsic-bcl/corelib/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:packed/native/register/stack/fields/field-address-refusal|carried-attribute-type-infos" \
+if gate_cache_check "$OUT" "hotupdate-subset|full:$DN2CPP_HOTUPDATE_FULL|abort-host:$DN2CPP_OS|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_pinned_corelib)|delegate-bindings:object/gettype/headerless-remove|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|patch-method-identities:private-rows/roundtrip/virtual-override/invoke/refusal-variant/metadata-v4|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/intrinsic-bcl/corelib/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:packed/native/register/stack/fields/field-address-refusal|carried-attribute-type-infos" \
         "$base_app" "$patch_app" "$bad_app" "$badgvm_app" "$baditf_app" "$baddg_app" \
         "$concat_oracle_app" \
         "$signature_arguments_base" "$signature_arguments_patch" "$signature_arguments_address" gates/_hotupdate-signature-arguments.sh \
@@ -785,7 +787,10 @@ for line in '== AOT derived aggregates ==' 'AOT derived aggregates end' \
     gate_output witness "$derived_aggregate_oracle" "$line" --count any --policy crlf \
         || { echo "FAIL: managed derived aggregate witness missing: $line" >&2; exit 1; }
 done
-hotupdate_fixture expected --file "$expected_before_derived_aggregate" --file "$derived_aggregate_oracle" --text "True/True"
+hotupdate_capture object_binding_oracle _hotupdate_status stdout run_bounded dotnet "$concat_oracle_app" --object-delegate-binding
+gate_output status "$_hotupdate_status" 0
+gate_output witness "$object_binding_oracle" 'base.ToString=True/True/System.Object.ToString/True' --count 1 --policy crlf
+hotupdate_fixture expected --file "$expected_before_derived_aggregate" --file "$derived_aggregate_oracle" --text "True/True" --file "$object_binding_oracle"
 # Exit status captured explicitly (`$(...)` inline would swallow it): a base
 # that aborts in teardown AFTER printing the full transcript must not pass.
 set +e
@@ -1674,7 +1679,9 @@ for line in '== interpreted aggregate collections ==' \
     'ordinary Message virtual reads=1/reads' \
     'ordinary Message base again=ordinary base' \
     'ordinary Message final reads=1/reads' \
-    'interpreted ordinary exception Message dispatch end'; do
+    'interpreted ordinary exception Message dispatch end' \
+    'object.GetType=True/True/System.Object.GetType/True' \
+    'culture handler=True/True/ApplyCulture/removed=True/applied=True/returned=True'; do
     gate_output witness "$aggregate_collection_oracle" "$line" --count any --policy crlf \
         || { echo "FAIL: managed aggregate collection witness missing: $line" >&2; exit 1; }
 done

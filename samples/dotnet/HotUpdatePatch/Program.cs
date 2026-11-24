@@ -644,7 +644,7 @@ internal static class Program
     {
         Counter addend = new Counter(100);
         IntTransform aotAdd = addend.Add;
-        return Counter.SameAddBinding(addend, aotAdd);
+        return Counter.SameAddBinding(addend, aotAdd) + "\n" + InterpretedObjectBinding.Run();
     }
 
     private static string GenericVirtualNames()

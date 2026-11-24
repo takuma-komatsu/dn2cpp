@@ -37,6 +37,7 @@ internal static class Program
         AggregateCollectionProbe.PatchRead = InterpretedAggregateCollectionSubset.Run;
         AggregateCollectionProbe.PatchMessageRead = InterpretedAggregateCollectionSubset.RunMessageDispatch;
         AggregateCollectionProbe.PatchOrdinaryMessageRead = InterpretedAggregateCollectionSubset.RunOrdinaryMessageDispatch;
+        CultureMenu.PatchBindingProbe = InterpretedDelegateBindings.Run;
     }
 }
 

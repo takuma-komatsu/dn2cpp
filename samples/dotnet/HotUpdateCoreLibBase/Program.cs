@@ -70,6 +70,37 @@ public static class Registry
     }
 }
 
+public delegate Type ObjectTypeReader();
+public delegate CultureInfo CultureHandler(CultureInfo value);
+
+public sealed class CultureMenu
+{
+    public static AggregateCollectionReader? PatchBindingProbe;
+    private bool _applied;
+
+    public CultureInfo Input() => CultureInfo.InvariantCulture;
+
+    public CultureInfo ApplyCulture(CultureInfo value)
+    {
+        _applied = ReferenceEquals(value, Input());
+        return Input();
+    }
+
+    public string Inspect(ObjectTypeReader getter, CultureHandler handler, CultureInfo result)
+    {
+        ObjectTypeReader compiledGetter = GetType;
+        CultureHandler compiledHandler = ApplyCulture;
+        CultureHandler? subscription = compiledHandler;
+        subscription -= handler;
+        MethodInfo? method = getter.Method;
+        return "object.GetType=" + getter.Equals(compiledGetter) + "/" + (getter.GetHashCode() == compiledGetter.GetHashCode())
+            + "/" + method?.DeclaringType?.FullName + "." + method?.Name + "/" + (getter() == GetType())
+            + "\nculture handler=" + handler.Equals(compiledHandler) + "/" + (handler.GetHashCode() == compiledHandler.GetHashCode())
+            + "/" + handler.Method?.Name + "/removed=" + (subscription is null) + "/applied=" + _applied
+            + "/returned=" + ReferenceEquals(result, Input());
+    }
+}
+
 // The ToString override a patch receiver below it inherits.
 public class Plaque
 {
@@ -181,5 +212,7 @@ internal static class Program
             return;
         if (AggregateCollectionProbe.PatchOrdinaryMessageRead is not null)
             Console.WriteLine(AggregateCollectionProbe.PatchOrdinaryMessageRead());
+        if (CultureMenu.PatchBindingProbe is not null)
+            Console.WriteLine(CultureMenu.PatchBindingProbe());
     }
 }
