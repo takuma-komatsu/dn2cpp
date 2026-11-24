@@ -180,15 +180,24 @@ libpath_flag() {
     fi
 }
 
-# locate_corelib — System.Private.CoreLib.dll of the highest installed
-# Microsoft.NETCore.App shared runtime (the ref pack has no IL bodies); fails if
-# not found. Echoes DN2CPP_CORELIB when set, else resolves via
-# `dotnet --list-runtimes` and exports the result.
+# locate_corelib [unpinned] — host CoreLib matching the sample TFM, unless
+# DN2CPP_CORELIB is set. The POSIX cross build-only lane can opt out of the pin.
 locate_corelib() {
     if [ -n "${DN2CPP_CORELIB:-}" ]; then
         printf '%s\n' "$DN2CPP_CORELIB"
         return 0
     fi
+    local corelib
+    if [ "${1:-}" = unpinned ]; then
+        corelib=$(_resolve_unpinned_corelib) || return 1
+    else
+        corelib=$(resolve_pinned_corelib) || return 1
+    fi
+    export DN2CPP_CORELIB="$corelib"
+    printf '%s\n' "$corelib"
+}
+
+_resolve_unpinned_corelib() {
     local name version path candidate corelib=""
     while read -r name version path; do
         [ "$name" = "Microsoft.NETCore.App" ] || continue
@@ -203,11 +212,10 @@ locate_corelib() {
         echo "error: could not locate System.Private.CoreLib.dll via 'dotnet --list-runtimes'" >&2
         return 1
     fi
-    export DN2CPP_CORELIB="$corelib"
     printf '%s\n' "$corelib"
 }
 
-# locate_corelib_cross_posix [pinned] — locate_corelib, but a CoreLib whose native
+# locate_corelib_cross_posix [pinned] — CoreLib whose native
 # interop surface matches a POSIX CROSS-TARGET (Android/NDK and Web/Emscripten
 # both want it). `pinned` also pins the version; the two axes are independent, and
 # taking only the version one is how a Windows-flavour CoreLib reached an NDK
@@ -221,7 +229,11 @@ locate_corelib_cross_posix() {
         return 0
     fi
     if [ "$DN2CPP_OS" != windows ]; then
-        if [ "${1:-}" = pinned ]; then resolve_pinned_corelib; else locate_corelib; fi
+        if [ "${1:-}" = pinned ]; then
+            resolve_pinned_corelib
+        else
+            locate_corelib unpinned
+        fi
         return $?
     fi
     # The runtime pack's version directory carries the version, so the pin is a
@@ -253,8 +265,7 @@ locate_corelib_cross_posix() {
 # resolve_pinned_corelib — CoreLib of the highest installed STABLE
 # Microsoft.NETCore.App $DN2CPP_BCL_MAJOR.0.* shared runtime; fails if none. The
 # oracle and the transpiled BCL must both be the supported major's stable
-# runtime: a newer major or a prerelease installed side by side has a different
-# CoreLib shape, so it must never be picked the way locate_corelib would.
+# runtime: a newer major or prerelease can have a different CoreLib shape.
 resolve_pinned_corelib() {
     local name version path best_ver="" best_path=""
     while read -r name version path; do
