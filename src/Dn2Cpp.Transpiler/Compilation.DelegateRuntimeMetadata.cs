@@ -11,28 +11,49 @@ internal sealed partial class Compilation
     internal readonly List<(ClassInfo Receiver, MethodInfo Declaration, MethodInfo Target)> RuntimeDelegateInterfaceTargets = new();
     private readonly HashSet<(ClassInfo, MethodInfo)> _runtimeDelegateInterfacePairs = new();
 
-    internal MethodInfo? NullableDelegateRuntimeOverride { get; private set; }
+    private readonly Dictionary<MethodInfo, MethodInfo> _runtimeReflectionOverrides = new();
 
-    internal void PrepareNullableDelegateMetadata()
+    internal MethodInfo ReflectionManagedVirtualFallback(MethodInfo method) =>
+        _runtimeReflectionOverrides.GetValueOrDefault(method) ?? method;
+
+    private MethodInfo? RuntimeReflectionOverride(MethodInfo declaration)
     {
-        if (NullableDelegateRuntimeOverride is not null || !ReadsDelegateMethod)
+        if (_runtimeReflectionOverrides.TryGetValue(declaration, out var found))
+            return found;
+        bool module = CoreIntrinsics.IsModuleAttributeDataSlot(declaration);
+        if (!module && !(declaration.Name == "GetNullableUnderlyingType" && CoreIntrinsics.IsNullableTypeQueryBase(declaration)))
+            return null;
+        var key = module ? ("System.Reflection", "RuntimeModule") : ("System", "RuntimeType");
+        if (TypeIndex().TryGetValue(key, out var candidates))
+            foreach (var (owner, handle) in candidates)
+            {
+                if (owner != declaration.Module) continue;
+                var runtime = GetClass(owner, handle);
+                EnsureCompleted(runtime);
+                int slot = declaration.VtableSlot;
+                if (slot >= 0 && slot < runtime.Vtable.Count && runtime.Vtable[slot] is { } target
+                    && target.DeclaringClass == runtime && (module ? CoreIntrinsics.IsReflectionManagedBody(target)
+                        : CoreIntrinsics.IsRuntimeNullableTypeQuery(target)))
+                {
+                    _runtimeReflectionOverrides.Add(declaration, target);
+                    return target;
+                }
+            }
+        return null;
+    }
+
+    internal void PrepareRuntimeReflectionDelegateMetadata()
+    {
+        if (!ReadsDelegateMethod)
             return;
         foreach (var (declaration, isVirtual) in _delegateIdentities.Values)
         {
-            if (!isVirtual || declaration.Name != "GetNullableUnderlyingType" || !CoreIntrinsics.IsNullableTypeQueryBase(declaration))
+            if (!isVirtual || declaration.Name is not ("GetNullableUnderlyingType" or "GetCustomAttributesData")
+                || RuntimeReflectionOverride(declaration) is not { } target || !_delegateIdentityTargets.Add(target.CppName))
                 continue;
-            // typeof produces a runtime-owned receiver that is absent from managed allocations.
-            var owner = FindClassByFullName("System.RuntimeType");
-            int slot = declaration.VtableSlot;
-            if (owner is not null && slot >= 0 && slot < owner.Vtable.Count
-                && owner.Vtable[slot] is { } target && CoreIntrinsics.IsRuntimeNullableTypeQuery(target))
-            {
-                NullableDelegateRuntimeOverride = target;
-                _delegateIdentityTargets.Add(target.CppName);
-                NoteReferencedType(owner);
-                Reach(target);
-            }
-            return;
+            // Interned reflection receivers have no managed allocation site.
+            NoteReferencedType(target.DeclaringClass);
+            Reach(target);
         }
     }
 

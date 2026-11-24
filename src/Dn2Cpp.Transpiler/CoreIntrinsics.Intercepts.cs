@@ -1042,6 +1042,12 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.BodyReplace, InterceptEmitArm.CustomAttributeDataMemberBody,
         typeGate: "System.Reflection.CustomAttributeData", nameGate: "GetCustomAttributes", extra: static m => IsCustomAttributeDataMember(m));
 
+    public static readonly MethodDefIntercept BrModuleAttributeData = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.CustomAttributeDataMemberBody,
+        typeGate: "System.Reflection.RuntimeCustomAttributeData", nameGate: "GetCustomAttributesInternal",
+        extra: static m => m.DeclaringClass.Module == m.Module && !m.IsSynthetic && m.PInvoke is null
+            && ReflectionManagedBodyContract.IsDefinition(m.Module.Reader, m.Handle, m.DeclaringClass.FullName, m.Name));
+
     internal static bool IsRuntimeTypeCacheGenericDefinition(MethodInfo method)
     {
         if (method.Module.AssemblyName != "System.Private.CoreLib"
@@ -4370,7 +4376,10 @@ internal static partial class CoreIntrinsics
 
         CheckRow(nameof(BrCustomAttributeDataMember), 0, BrCustomAttributeDataMember.EmitArm,
             BrCustomAttributeDataMember.TypeGate, BrCustomAttributeDataMember.NameGate);
-        if (BrCustomAttributeDataMember.CutKind != InterceptCutKind.BodyReplace)
+        CheckRow(nameof(BrModuleAttributeData), 0, BrModuleAttributeData.EmitArm,
+            BrModuleAttributeData.TypeGate, BrModuleAttributeData.NameGate);
+        if (BrCustomAttributeDataMember.CutKind != InterceptCutKind.BodyReplace
+            || BrModuleAttributeData.CutKind != InterceptCutKind.BodyReplace)
             throw new InvalidOperationException("Attribute-data member bridge must retain a callable body");
         CheckRow(nameof(BrRuntimeTypeCacheGenericDefinition), 0, BrRuntimeTypeCacheGenericDefinition.EmitArm,
             BrRuntimeTypeCacheGenericDefinition.TypeGate, BrRuntimeTypeCacheGenericDefinition.NameGate);

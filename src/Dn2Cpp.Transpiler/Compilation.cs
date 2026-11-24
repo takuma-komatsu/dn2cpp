@@ -4157,7 +4157,8 @@ internal sealed partial class Compilation
         }
         if (CoreIntrinsics.BrLifetimeDispose.Matches(m.DeclaringClass.FullName, m.Name))
             Reach(m);
-        if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(m) || CoreIntrinsics.IsNullableTypeQueryBase(m))
+        if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(m) || CoreIntrinsics.IsNullableTypeQueryBase(m)
+            || CoreIntrinsics.IsModuleAttributeDataSlot(m))
         {
             // A nonvirtual address can expose a MethodInfo whose Invoke is virtual.
             // Retain only this slot on allocated subclasses, even if Method is unused.

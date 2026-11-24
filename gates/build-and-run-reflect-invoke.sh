@@ -313,7 +313,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|library-bindings-prefix-ar
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|metadata-projections-prefix-argv:before-metadata-projections|written-generic-arguments-prefix-argv:before-written-generic-arguments"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|selection-filters-prefix-argv:before-selection-filters"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-alternatives-prefix-argv:before-reflection-alternatives"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|public-type-predicates-prefix-argv:before-public-type-predicates|memberinfo-managed-constructor"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|public-type-predicates-prefix-argv:before-public-type-predicates|memberinfo-managed-constructor|module-attribute-data"
 
 gate_python -c 'pass' >/dev/null
 source gates/_reflect-invoke-inputs.sh
@@ -2332,7 +2332,10 @@ for axis in native dotnet; do
         'type predicates List`1=False/False/False' 'type predicates Int32[]=False/False/False' \
         'type predicates T=False/True/False' 'type predicates T=False/False/True' 'public type predicates end' \
         '== custom MemberInfo construction ==' 'custom member=custom-name/Custom/True' \
-        'custom MemberInfo construction end' --count 1 --policy crlf
+        'custom MemberInfo construction end' 'module attribute masks=2/2/2/3 constructed=0' \
+        'module attribute data read-only' 'custom module overrides=2 base=NotImplementedException' \
+        'null module=NullReferenceException' 'null module argument=target' \
+        'module method=True/True/2/2' --count 1 --policy crlf
 done
 if ! reflection_full_profile; then
     exit 0

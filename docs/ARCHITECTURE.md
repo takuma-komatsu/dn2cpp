@@ -797,8 +797,12 @@ throws ArgumentNullException for `target`; custom MemberInfo headers explicitly 
 before payload access rather than silently losing a virtual override. Existing row-data
 materialization supplies AttributeType without running attribute constructors. A managed
 ReadOnlyCollection wraps nonempty rows so IList mutation remains unsupported; empty
-results retain the array representation and its index-bound checks. Encoded argument views and sibling overloads are not expanded. The new
-wrapper does not change existing instance helpers or custom virtual dispatch policy.
+results retain the array representation and its index-bound checks.
+`RuntimeModule.GetCustomAttributesData()` reads the defining module's attribute
+rows with the same collection behavior. `Module.CustomAttributes` and
+`CustomAttributeData.GetCustomAttributes(Module)` use their CoreLib bodies to
+dispatch to the receiver's override. Encoded constructor and named argument
+views remain unsupported.
 
 The retained CustomAttributeData.Constructor base body remains ordinary managed IL:
 nonvirtual calls and addresses return null without reading the receiver. Virtual calls

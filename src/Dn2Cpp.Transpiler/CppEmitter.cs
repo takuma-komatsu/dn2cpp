@@ -2124,6 +2124,7 @@ internal sealed partial class CppEmitter
         || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(m)
         || CoreIntrinsics.BrNullableReboxing.Matches(m)
         || CoreIntrinsics.BrCustomAttributeDataMember.Matches(m)
+        || CoreIntrinsics.BrModuleAttributeData.Matches(m)
         || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(m)
         || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(m)
         || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(m)
@@ -2323,7 +2324,7 @@ internal sealed partial class CppEmitter
             // because the noted-array / cast-target sets keep growing as bodies compile.
             _c.ExpandArrayEnumerableMaps();
             _c.PrepareArrayDelegateMetadata();
-            _c.PrepareNullableDelegateMetadata();
+            _c.PrepareRuntimeReflectionDelegateMetadata();
             _c.PrepareRuntimeDelegateInterfaceMetadata();
             _c.PrepareRuntimeInterfaces();
             // Reflection support for the delegates the bodies just compiled allocate or
@@ -2650,6 +2651,7 @@ internal sealed partial class CppEmitter
                                 || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(m)
                                 || CoreIntrinsics.BrNullableReboxing.Matches(m)
                                 || CoreIntrinsics.BrCustomAttributeDataMember.Matches(m)
+                                || CoreIntrinsics.BrModuleAttributeData.Matches(m)
                                 || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(m)
                                 || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(m)
                                 || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(m)
@@ -3234,10 +3236,14 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    dn2cpp_set_resourcemanager_default_type_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({resourceManagerRow}));");
         if (_dateOnlyDeconstructRow is { } dateOnlyRow)
             sb.AppendLine($"    dn2cpp_set_dateonly_deconstruct_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({dateOnlyRow}));");
-        if (_nullableUnderlyingRow is not null || _runtimeNullableUnderlyingRow is not null)
-            sb.AppendLine($"    dn2cpp_set_nullable_underlying_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_nullableUnderlyingRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_runtimeNullableUnderlyingRow ?? "nullptr"}));");
-        if (_memberNotFoundFactoryRow is { } factoryRow)
-            sb.AppendLine($"    dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({factoryRow}));");
+        if (_namedRuntimeMethodRows.Count != 0)
+        {
+            sb.AppendLine("    static const Dn2CppMetadataHandle<Dn2CppMethodInfo> namedRuntimeMethods[] = {");
+            foreach (string row in _namedRuntimeMethodRows.OrderBy(r => r, StringComparer.Ordinal))
+                sb.AppendLine($"        Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({row}),");
+            sb.AppendLine("    };");
+            sb.AppendLine($"    dn2cpp_set_named_runtime_methods(namedRuntimeMethods, {_namedRuntimeMethodRows.Count});");
+        }
         if (_objectVirtualInheritance is { } objectVirtuals)
             sb.AppendLine($"    dn2cpp_set_object_virtual_inheritance({objectVirtuals.Sym}, {objectVirtuals.Count});");
         // The shared reference-element SZArray fallback table goes in before any managed
@@ -4004,9 +4010,7 @@ internal sealed partial class CppEmitter
     private readonly List<string> _runtimeHandleObjectRows = [];
     private (string Sym, int Count)? _objectVirtualInheritance;
     private (string Sym, int Count)? _delegateMethodCatalog;
-    private string? _memberNotFoundFactoryRow;
-    private string? _nullableUnderlyingRow;
-    private string? _runtimeNullableUnderlyingRow;
+    private readonly List<string> _namedRuntimeMethodRows = new();
     private string? _dateOnlyDeconstructRow;
     private string? _resourceManagerDefaultTypeRow;
     private string? _cultureCompareInfoRow;

@@ -1234,10 +1234,11 @@ int32_t dn2cpp_runtime_type_is_generic_definition(Dn2CppObject* receiver)
     return dn2cpp_type_is_generic_type_definition(dn2cpp_nullable_receiver_info(static_cast<Dn2CppType*>(receiver)));
 }
 
-void* dn2cpp_nullable_type_address(Dn2CppObject* receiver, int32_t slot, void* runtimeTarget)
+void* dn2cpp_runtime_virtual_address(Dn2CppObject* receiver, int32_t slot,
+    const Dn2CppTypeInfo* runtimeType, void* runtimeTarget)
 {
     dn2cpp_null_check(receiver);
-    if (receiver->type == &dn2cpp_type_type)
+    if (receiver->type == runtimeType)
         return runtimeTarget;
     if (slot >= 0 && receiver->type->vtable != nullptr)
     {
@@ -1245,7 +1246,14 @@ void* dn2cpp_nullable_type_address(Dn2CppObject* receiver, int32_t slot, void* r
         if (target != nullptr && !dn2cpp_is_vcall_trap(target))
             return const_cast<void*>(target);
     }
-    dn2cpp_throw_platform_not_supported("Nullable type query has no retained virtual implementation");
+    dn2cpp_throw_platform_not_supported(runtimeType == &dn2cpp_type_type
+        ? "Nullable type query has no retained virtual implementation"
+        : "Module attribute data has no retained virtual implementation");
+}
+
+void* dn2cpp_nullable_type_address(Dn2CppObject* receiver, int32_t slot, void* runtimeTarget)
+{
+    return dn2cpp_runtime_virtual_address(receiver, slot, &dn2cpp_type_type, runtimeTarget);
 }
 
 // The private RuntimeType/UInt64 overload consumes the source bits before narrowing.
@@ -4497,18 +4505,13 @@ static int32_t dn2cpp_meta_collect_family(const Dn2CppTypeInfo* type, int32_t fl
     return n;
 }
 
-static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_named_type_methods[3];
+static const Dn2CppMetadataHandle<Dn2CppMethodInfo>* g_named_runtime_methods;
+static int32_t g_named_runtime_method_count;
 
-void dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method)
+void dn2cpp_set_named_runtime_methods(const Dn2CppMetadataHandle<Dn2CppMethodInfo>* rows, int32_t count)
 {
-    g_named_type_methods[0] = method;
-}
-
-void dn2cpp_set_nullable_underlying_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> declaration,
-    Dn2CppMetadataHandle<Dn2CppMethodInfo> runtimeOverride)
-{
-    g_named_type_methods[1] = declaration;
-    g_named_type_methods[2] = runtimeOverride;
+    g_named_runtime_methods = rows;
+    g_named_runtime_method_count = count;
 }
 
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_culture_compare_info_row;
@@ -4617,9 +4620,12 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     Dn2CppMethodCandidates& cands)
 {
     Dn2CppMethodCandidates namedTypeMethods;
-    for (auto method : g_named_type_methods)
-        if (method != nullptr && dn2cpp_member_name_matches(method->name, name, bindingFlags, false))
+    for (int32_t i = 0; i < g_named_runtime_method_count; i++)
+    {
+        const auto method = g_named_runtime_methods[i];
+        if (dn2cpp_member_name_matches(method->name, name, bindingFlags, false))
             namedTypeMethods.push_back(method);
+    }
     const auto dateOnly = g_dateonly_deconstruct_row;
     const bool dateOnlyNamed = dateOnly != nullptr
         && dn2cpp_member_name_matches(dateOnly->name, name, bindingFlags, false);

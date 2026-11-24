@@ -2029,7 +2029,7 @@ internal sealed partial class CppEmitter
                     _slotStubs.Add(entry.Key, entry.Value);
             }
             EmitDelegateMethodCatalog();
-            EmitNamedTypeMethodRows();
+            EmitNamedRuntimeMethodRows();
             EmitDateOnlyDeconstructRow();
             EmitResourceManagerDefaultTypeRow();
             EmitCultureCompareInfoRow();
@@ -2296,28 +2296,27 @@ internal sealed partial class CppEmitter
             }
         }
 
-        private void EmitNamedTypeMethodRows()
+        private void EmitNamedRuntimeMethodRows()
         {
             foreach (var cls in _c.Classes.ToList())
             {
-                if (cls.FullName is not ("System.Type" or "System.RuntimeType"))
+                if (cls.FullName is not ("System.Type" or "System.RuntimeType" or "System.Reflection.Module" or "System.Reflection.RuntimeModule"))
                     continue;
                 foreach (var method in cls.Methods)
                 {
-                    bool nullable = method.Name == "GetNullableUnderlyingType" && CoreIntrinsics.IsNullableTypeQuery(method)
-                        && _c.KeepsUnreachedRow(method);
-                    if ((!nullable && !CoreIntrinsics.IsMemberNotFoundExceptionFactory(method)) || !IsRetainedOpaqueMemberRow(method))
+                    bool instance = method.Name == "GetNullableUnderlyingType" && CoreIntrinsics.IsNullableTypeQuery(method)
+                        || method.Name == "GetCustomAttributesData" && CoreIntrinsics.IsReflectionManagedBody(method);
+                    if (!(instance && _c.KeepsUnreachedRow(method) || CoreIntrinsics.IsMemberNotFoundExceptionFactory(method))
+                        || !IsRetainedOpaqueMemberRow(method))
                         continue;
                     // Delegate.Method and named lookup must hand out the same physical row.
                     if (!_memberAddr.TryGetValue(method, out var address))
                     {
-                        BuildMemberTable(cls, new List<MethodInfo> { method }, nullable ? "namednullabletab" : "namedfactorytab");
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "namedruntimetab_" + method.Name);
                         if (!_memberAddr.TryGetValue(method, out address))
-                            throw new InvalidOperationException($"Retained Type.{method.Name} has no metadata row.");
+                            throw new InvalidOperationException($"Retained {cls.FullName}.{method.Name} has no metadata row.");
                     }
-                    if (!nullable) _e._memberNotFoundFactoryRow = address;
-                    else if (cls.FullName == "System.RuntimeType") _e._runtimeNullableUnderlyingRow = address;
-                    else _e._nullableUnderlyingRow = address;
+                    _e._namedRuntimeMethodRows.Add(address);
                 }
             }
         }
@@ -2503,8 +2502,8 @@ internal sealed partial class CppEmitter
                     // runtime template receiver, independently of its member rows.
                     var targets = new List<(ClassInfo? Receiver, MethodInfo Target, bool Family)>();
                     var receivers = _c.DelegateCloneReceiverTypes.ToList();
-                    if (m.Name == "GetNullableUnderlyingType" && CoreIntrinsics.IsNullableTypeQueryBase(m)
-                        && _c.NullableDelegateRuntimeOverride is { } runtimeOverride && !receivers.Contains(runtimeOverride.DeclaringClass))
+                    var runtimeOverride = _c.ReflectionManagedVirtualFallback(m);
+                    if (runtimeOverride != m && !receivers.Contains(runtimeOverride.DeclaringClass))
                         receivers.Add(runtimeOverride.DeclaringClass);
                     if (_c.StringInterfaces is { } stringInterfaces)
                         receivers.Add(stringInterfaces.StringClass);
@@ -3948,10 +3947,18 @@ internal sealed partial class CppEmitter
                 }
                 // An address-taken base body is nonvirtual. Reflection invokes the
                 // runtime override, whose native handle has no generated vtable.
-                if (CoreIntrinsics.IsNullableTypeQueryBase(m) && fnPtr != "nullptr" && invoker != "nullptr")
+                if (fnPtr != "nullptr" && invoker != "nullptr"
+                    && (CoreIntrinsics.IsNullableTypeQueryBase(m) || CoreIntrinsics.IsModuleAttributeDataSlot(m)))
                 {
-                    string thunk = invoker.Substring("(void*)&".Length);
-                    invoker = $"(void*)&dn2cpp_nullable_type_invoker<{m.VtableSlot}, {CoreIntrinsics.NullableTypeQueryHelper(m)}, {thunk}>";
+                    var target = _c.ReflectionManagedVirtualFallback(m);
+                    bool module = CoreIntrinsics.IsModuleAttributeDataSlot(m);
+                    if (!module || target != m)
+                    {
+                        string runtimeType = module ? "&dn2cpp_runtime_module_type" : "&dn2cpp_type_type";
+                        string runtimeTarget = module ? target.Emittable.CppName : CoreIntrinsics.NullableTypeQueryHelper(m);
+                        string thunk = invoker.Substring("(void*)&".Length);
+                        invoker = $"(void*)&dn2cpp_runtime_virtual_invoker<{m.VtableSlot}, {runtimeType}, {runtimeTarget}, {thunk}>";
+                    }
                 }
                 if (CoreIntrinsics.IsMemberMetadataDefinitionBase(m))
                     invoker = "nullptr";

@@ -1411,10 +1411,8 @@ struct Dn2CppDelegateMethodCatalog
     int32_t methodCount;
 };
 void dn2cpp_set_delegate_method_catalog(const Dn2CppDelegateMethodCatalog* rows, int32_t count);
-// Selected named rows leave the runtime-owned Type handle immutable.
-void dn2cpp_set_nullable_underlying_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo> declaration,
-    Dn2CppMetadataHandle<Dn2CppMethodInfo> runtimeOverride);
-void dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
+// Selected named rows leave runtime-owned reflection handles immutable.
+void dn2cpp_set_named_runtime_methods(const Dn2CppMetadataHandle<Dn2CppMethodInfo>* rows, int32_t count);
 // Exact retained CultureInfo getter; no general intrinsic-type metadata mutation.
 void dn2cpp_set_culture_compare_info_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 void dn2cpp_set_task_private_row(int32_t slot, Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
@@ -1916,6 +1914,8 @@ Dn2CppObject* dn2cpp_enum_get_values_underlying(Dn2CppType* t);
 Dn2CppType* dn2cpp_nullable_get_underlying(Dn2CppType* t);
 Dn2CppType* dn2cpp_runtime_type_nullable_underlying(Dn2CppObject* receiver);
 int32_t dn2cpp_runtime_type_is_generic_definition(Dn2CppObject* receiver);
+void* dn2cpp_runtime_virtual_address(Dn2CppObject* receiver, int32_t slot,
+    const Dn2CppTypeInfo* runtimeType, void* runtimeTarget);
 void* dn2cpp_nullable_type_address(Dn2CppObject* receiver, int32_t slot, void* runtimeTarget);
 template<int32_t Slot, auto RuntimeTarget>
 auto dn2cpp_nullable_type_virtual(Dn2CppObject* receiver)
@@ -1926,13 +1926,13 @@ auto dn2cpp_nullable_type_virtual(Dn2CppObject* receiver)
     return target(receiver);
 }
 
-template<int32_t Slot, auto RuntimeTarget, auto Invoke>
-Dn2CppObject* dn2cpp_nullable_type_invoker(void* fn, Dn2CppObject* receiver,
+template<int32_t Slot, const Dn2CppTypeInfo* RuntimeType, auto RuntimeTarget, auto Invoke>
+Dn2CppObject* dn2cpp_runtime_virtual_invoker(void* fn, Dn2CppObject* receiver,
     Dn2CppObject** args, const Dn2CppTypeInfo* result)
 {
     // A delegate closed over null enters the base body. MethodInfo.Invoke checks its receiver first.
     if (receiver != nullptr)
-        fn = dn2cpp_nullable_type_address(receiver, Slot, reinterpret_cast<void*>(RuntimeTarget));
+        fn = dn2cpp_runtime_virtual_address(receiver, Slot, RuntimeType, reinterpret_cast<void*>(RuntimeTarget));
     return Invoke(fn, receiver, args, result);
 }
 

@@ -1006,7 +1006,8 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsMemberNotFoundExceptionFactory(target)
             || target.Rva != 0 && cls.IntrinsicCppName is null)
             Reach(target);
-        if (target.IsVirtual && !target.IsStatic && (CarriesReflectedSlots(cls) || CoreIntrinsics.IsNullableTypeQueryBase(target)))
+        if (target.IsVirtual && !target.IsStatic && (CarriesReflectedSlots(cls) || CoreIntrinsics.IsNullableTypeQueryBase(target)
+            || CoreIntrinsics.IsModuleAttributeDataSlot(target)))
         {
             if (IsGvmCall(target))
                 ReachReflectedGvm(cls, target, strips: false);
