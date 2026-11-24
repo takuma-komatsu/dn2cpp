@@ -5,6 +5,7 @@
 # [ThreadStatic] (main-thread behavior), and managed WaitHandle subclass key lifetime
 # across collection and address reuse. Primitive observations are single-threaded;
 # cancellation callback faults run on a joined worker and a controlled timer.
+# WaitHandle multiple waits cover atomic auto-reset consumption and timeout results.
 # Deterministic output is diffed exact vs real .NET (corelib_diff_gate).
 # Also covers the two lowerings of the `lock` STATEMENT, single-threaded and so
 # equally deterministic: LockSubset (`lock (object)` -> Monitor.Enter(ref taken) /
@@ -144,6 +145,15 @@ gate_extra_asserts() {
     gate_capture_ok "$out/raw-wait-boundary" run_bounded "./$out/ThreadingPrimitives" native-boundary
     gate_output byte-witness "$out/raw-wait-boundary.stdout" 'raw-wait-public-wait=PlatformNotSupportedException:True:True' \
         --count 1 --policy crlf
+    gate_capture_ok "$out/before-multiple-waits" run_bounded dotnet "$_CG_APP" before-multiple-waits
+    gate_output select "$native" "$out/prefix-multiple-waits.stdout" --before '== WaitHandle multiple waits ==' --policy crlf
+    gate_output compare "$out/prefix-multiple-waits.stdout" "$out/before-multiple-waits.stdout"
+    gate_output witness "$native" 'all partial=False/True' 'all infinite=True/False/True' \
+        'any context=258/258' 'all alias=duplicate/waitHandles[1]' 'WaitHandle multiple waits end' --count 1 --policy crlf
+    if [[ "${OS:-}" == Windows_NT ]]; then
+        gate_output witness "$native" 'mixed priority=0' 'mixed partial=False' 'mixed success=True/False/False' \
+            --count 1 --policy crlf
+    fi
 }
 
 corelib_diff_gate ThreadingPrimitives

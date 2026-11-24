@@ -794,6 +794,7 @@ internal static partial class CoreIntrinsics
         ["System.OverflowException"] = "&dn2cpp_overflow_exception_type",
         ["System.IndexOutOfRangeException"] = "&dn2cpp_index_out_of_range_exception_type",
         ["System.ArgumentException"] = "&dn2cpp_argument_exception_type",
+        ["System.DuplicateWaitObjectException"] = "&dn2cpp_duplicate_wait_object_exception_type",
         ["System.Globalization.CultureNotFoundException"] = "&dn2cpp_culture_not_found_exception_type",
         // Marshal.GetExceptionForHR's fallback for a failed HRESULT with no more
         // specific managed mapping. The stable handle keeps catch (COMException)

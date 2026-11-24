@@ -742,6 +742,10 @@ extern const Dn2CppType dn2cpp_argument_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_argument_exception_type =
     dn2cpp_ti_with_typeobject({ "System.ArgumentException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_argument_exception_type_obj);
 const Dn2CppType dn2cpp_argument_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_argument_exception_type };
+extern const Dn2CppType dn2cpp_duplicate_wait_object_exception_type_obj;
+Dn2CppTypeInfo dn2cpp_duplicate_wait_object_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.DuplicateWaitObjectException", &dn2cpp_argument_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_duplicate_wait_object_exception_type_obj);
+const Dn2CppType dn2cpp_duplicate_wait_object_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_duplicate_wait_object_exception_type };
 extern const Dn2CppType dn2cpp_culture_not_found_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_culture_not_found_exception_type =
     dn2cpp_ti_with_typeobject({ "System.Globalization.CultureNotFoundException", &dn2cpp_argument_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_culture_not_found_exception_type_obj);

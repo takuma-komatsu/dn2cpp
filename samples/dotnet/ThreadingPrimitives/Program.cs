@@ -44,6 +44,9 @@ namespace ThreadingPrimitives
             if (args.Length != 0 && args[0] == "before-raw-wait")
                 return;
             WaitHandleRawWaitSubset.Program.Run();
+            if (args.Length != 0 && args[0] == "before-multiple-waits")
+                return;
+            WaitHandleWaitAny.Program.RunMultiple();
         }
     }
 }

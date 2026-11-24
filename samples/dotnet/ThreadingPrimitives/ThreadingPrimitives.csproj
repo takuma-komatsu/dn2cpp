@@ -10,4 +10,8 @@
     <DebugType>none</DebugType>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(OS)' == 'Windows_NT'">
+    <DefineConstants>$(DefineConstants);DN2CPP_HOST_WINDOWS</DefineConstants>
+  </PropertyGroup>
+
 </Project>

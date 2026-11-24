@@ -407,6 +407,7 @@ static const char* dn2cpp_default_message_key(const Dn2CppTypeInfo* ti)
     if (ti == &dn2cpp_overflow_exception_type) return DN2CPP_SR_OVERFLOW;
     if (ti == &dn2cpp_index_out_of_range_exception_type) return DN2CPP_SR_INDEX_OUT_OF_RANGE;
     if (ti == &dn2cpp_argument_exception_type) return DN2CPP_SR_ARGUMENT;
+    if (ti == &dn2cpp_duplicate_wait_object_exception_type) return DN2CPP_SR_DUPLICATE_WAIT_OBJECT;
     if (ti == &dn2cpp_culture_not_found_exception_type) return DN2CPP_SR_CULTURE_NOT_SUPPORTED;
     if (ti == &dn2cpp_argument_out_of_range_exception_type) return DN2CPP_SR_ARGUMENT_OUT_OF_RANGE;
     if (ti == &dn2cpp_argument_null_exception_type) return DN2CPP_SR_ARGUMENT_NULL;
@@ -1070,6 +1071,7 @@ static int32_t dn2cpp_exception_default_hresult(const Dn2CppTypeInfo* ti)
         { &dn2cpp_overflow_exception_type, 0x80131516u },
         { &dn2cpp_index_out_of_range_exception_type, 0x80131508u },
         { &dn2cpp_argument_exception_type, 0x80070057u },
+        { &dn2cpp_duplicate_wait_object_exception_type, 0x80131529u },
         { &dn2cpp_culture_not_found_exception_type, 0x80070057u },
         { &dn2cpp_com_exception_type, 0x80004005u },
         { &dn2cpp_argument_out_of_range_exception_type, 0x80131502u },
