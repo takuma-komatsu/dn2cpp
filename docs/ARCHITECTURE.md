@@ -1686,6 +1686,12 @@ capability contract, not a set of independent constants:
   surface enter the effective set only under `DN2CPP_ENABLE_AVX10V2=1`, matching
   .NET's default-off policy. The compiler-capability guard is an independent
   requirement, so the opt-in cannot expose helpers the compiler cannot build.
+- **AvxVnni has two encodings.** The AVX-VNNI (VEX) instruction set is
+  preferred. When only the AVX512v3 set is usable, its EVEX instructions serve
+  the same narrow vectors. `V512` uses only EVEX. On Windows, each route
+  requires the corresponding OS-enabled XState as well as XCR0 support.
+  Masking `AvxVnni` disables the family; masking an AVX-512 prerequisite
+  disables only its EVEX route.
 - **The mask intersects policy.** `DN2CPP_CPU_FEATURES` narrows the post-policy
   detected set (the effective set is the implication closure of policy ∩ allowed)
   and can never opt into AVX10.2 or make a getter true that detection left false.

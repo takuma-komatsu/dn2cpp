@@ -44,6 +44,7 @@
 #include "x86/dn2cpp_isa_x86_avx512vbmi2_vl.h"
 #include "x86/dn2cpp_isa_x86_avx512vbmi_vl.h"
 #include "x86/dn2cpp_isa_x86_avxvnni.h"
+#include "x86/dn2cpp_isa_x86_avxvnni_v512.h"
 #include "x86/dn2cpp_isa_x86_avxvnniint16.h"
 #include "x86/dn2cpp_isa_x86_avxvnniint16_v512.h"
 #include "x86/dn2cpp_isa_x86_avxvnniint8.h"

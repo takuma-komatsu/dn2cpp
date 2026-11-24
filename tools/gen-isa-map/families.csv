@@ -32,9 +32,8 @@
 #
 # A family with no bits answers IsSupported false on every target and its calls throw
 # PlatformNotSupportedException, whatever the CPU has. Sve, Sve2, SveSha3 and SveSm4 are
-# scalable vectors without a fixed register width. Sha3, Sm4, Avx512Bmm and AvxVnni.V512
-# have neither a detector bit nor a map. A nested type may have no bits under an enclosing
-# type that has them (AvxVnni.V512): only a lowered nested type requires its enclosing one.
+# scalable vectors without a fixed register width. Sha3, Sm4 and Avx512Bmm have neither
+# a detector bit nor a map.
 #
 # Sources: the IsSupported properties in System.Private.CoreLib and the JIT's
 # instruction-set description (InstructionSetDesc.txt) for the implication groups.
@@ -93,7 +92,7 @@ System.Runtime.Intrinsics.X86.Avx2+X64,x86,X86_AVX2,6
 System.Runtime.Intrinsics.X86.Fma,x86,X86_FMA,6
 System.Runtime.Intrinsics.X86.Fma+X64,x86,X86_FMA,6
 System.Runtime.Intrinsics.X86.AvxVnni,x86,X86_AVXVNNI,6
-System.Runtime.Intrinsics.X86.AvxVnni+V512,x86,,6
+System.Runtime.Intrinsics.X86.AvxVnni+V512,x86,X86_AVXVNNI|X86_AVX512VBMI2,6
 System.Runtime.Intrinsics.X86.AvxVnni+X64,x86,X86_AVXVNNI,6
 System.Runtime.Intrinsics.X86.Avx512F,x86,X86_AVX512,7
 System.Runtime.Intrinsics.X86.Avx512F+VL,x86,X86_AVX512,7

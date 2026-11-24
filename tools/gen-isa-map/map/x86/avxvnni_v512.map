@@ -1,0 +1,5 @@
+# The 512-bit forms require AVX512v3, independently of VEX AVX-VNNI.
+MultiplyWideningAndAdd(v512i32,v512u8,v512i8) @storage = DN2CPP_ISA_VNNI_EVEX(_mm512_dpbusd, $0, $1, $2)
+MultiplyWideningAndAdd(v512i32,v512i16,v512i16) @storage = DN2CPP_ISA_VNNI_EVEX(_mm512_dpwssd, $0, $1, $2)
+MultiplyWideningAndAddSaturate(v512i32,v512u8,v512i8) @storage = DN2CPP_ISA_VNNI_EVEX(_mm512_dpbusds, $0, $1, $2)
+MultiplyWideningAndAddSaturate(v512i32,v512i16,v512i16) @storage = DN2CPP_ISA_VNNI_EVEX(_mm512_dpwssds, $0, $1, $2)

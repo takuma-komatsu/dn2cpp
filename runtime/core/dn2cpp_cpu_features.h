@@ -44,6 +44,22 @@
 #define DN2CPP_HAS_X86_AVX10V2_INTRINSICS 0
 #endif
 
+// GCC and native Clang expose the encodings in separate intrinsic headers;
+// whether a header exists is not sufficient in Clang's MSVC or SCE modes.
+#if DN2CPP_TARGET_X64 && ((defined(_MSC_VER) && !defined(__clang__) && _MSC_VER >= 1930) || \
+    (!defined(_MSC_VER) && !defined(__SCE__) && __has_include(<avxvnniintrin.h>)))
+#define DN2CPP_HAS_X86_VNNI_VEX 1
+#else
+#define DN2CPP_HAS_X86_VNNI_VEX 0
+#endif
+#if DN2CPP_TARGET_X64 && ((defined(_MSC_VER) && !defined(__clang__) && _MSC_VER >= 1930) || \
+    (!defined(_MSC_VER) && !defined(__SCE__) && __has_include(<avx512vnniintrin.h>) && \
+    (__has_include(<avx512vlvnniintrin.h>) || __has_include(<avx512vnnivlintrin.h>))))
+#define DN2CPP_HAS_X86_VNNI_EVEX 1
+#else
+#define DN2CPP_HAS_X86_VNNI_EVEX 0
+#endif
+
 // X(ID, "Name", ARCH, parentsMask). Name is the .NET type name and the token
 // accepted by the DN2CPP_CPU_FEATURES mask. parentsMask lists the families a
 // family implies: a child bit is only ever set when every parent bit is set,
@@ -110,10 +126,13 @@ enum : uint64_t {
 #define DN2CPP_CPU_FEATURE_MASK(id, name, arch, parents) DN2CPP_CPU_##id = 1ull << DN2CPP_CPU_BIT_##id,
     DN2CPP_CPU_FEATURE_TABLE(DN2CPP_CPU_FEATURE_MASK)
 #undef DN2CPP_CPU_FEATURE_MASK
+    // Effective encoding facts; neither adds a public family mask name.
+    DN2CPP_CPU_X86_VNNI_VEX = 1ull << DN2CPP_CPU_FEATURE_COUNT,
+    DN2CPP_CPU_X86_VNNI_EVEX = 1ull << (DN2CPP_CPU_FEATURE_COUNT + 1),
     DN2CPP_CPU_RESOLVED = 1ull << 63
 };
 
-static_assert(DN2CPP_CPU_FEATURE_COUNT < 63, "feature bits must stay below DN2CPP_CPU_RESOLVED");
+static_assert(DN2CPP_CPU_FEATURE_COUNT + 1 < 63, "feature bits must stay below DN2CPP_CPU_RESOLVED");
 
 // Detect, apply the positive policy and narrowing mask, publish into the cache
 // and return the result (with DN2CPP_CPU_RESOLVED set); once resolved, return
@@ -137,6 +156,15 @@ static inline uint64_t dn2cpp_cpu_features()
 static inline int32_t dn2cpp_cpu_has_all(uint64_t mask)
 {
     return (dn2cpp_cpu_features() & mask) == mask;
+}
+
+// A compiler may expose only one encoding. Test its route in the consuming
+// translation unit, independently of the compiler that built the detector.
+static inline int32_t dn2cpp_cpu_has_avxvnni()
+{
+    uint64_t f = dn2cpp_cpu_features();
+    return (DN2CPP_HAS_X86_VNNI_VEX && (f & DN2CPP_CPU_X86_VNNI_VEX) != 0)
+        || (DN2CPP_HAS_X86_VNNI_EVEX && (f & DN2CPP_CPU_X86_VNNI_EVEX) != 0);
 }
 
 #include "isa/dn2cpp_isa_tokens.g.h"

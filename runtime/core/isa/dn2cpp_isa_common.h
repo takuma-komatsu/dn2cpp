@@ -113,6 +113,58 @@ DN2CPP_ISA_TARGET("avx512f") static inline To dn2cpp_isa_bits(const Dn2CppVec<64
 }
 #endif
 
+// Keep the dispatch at the baseline ISA. cl.exe has no target attribute, and
+// can use AVX-512 registers throughout a function with an EVEX intrinsic.
+// Do not inline across encodings; only managed vector storage crosses the call.
+#if DN2CPP_HAS_X86_VNNI_VEX || DN2CPP_HAS_X86_VNNI_EVEX
+#if defined(_MSC_VER) && !defined(__clang__)
+#define DN2CPP_ISA_VNNI_TARGET(isa) __declspec(noinline)
+#else
+#define DN2CPP_ISA_VNNI_TARGET(isa) DN2CPP_ISA_TARGET(isa)
+#endif
+#define DN2CPP_ISA_VNNI_HELPER(NAME, OP, VEC, ISA) \
+    template <int N> \
+    DN2CPP_ISA_VNNI_TARGET(ISA) static Dn2CppVec<N> NAME( \
+        const Dn2CppVec<N>& s, const Dn2CppVec<N>& a, const Dn2CppVec<N>& b) \
+    { \
+        static_assert(sizeof(VEC) == N, "vector width mismatch"); \
+        VEC vs, va, vb; \
+        std::memcpy(&vs, s.b, N); \
+        std::memcpy(&va, a.b, N); \
+        std::memcpy(&vb, b.b, N); \
+        return dn2cpp_isa_vec<N>(OP(vs, va, vb)); \
+    }
+#define DN2CPP_ISA_VNNI_WIDTH(PREFIX, MM, SUFFIX, VEC, ISA) \
+    DN2CPP_ISA_VNNI_HELPER(PREFIX##MM##_dpbusd,  MM##_dpbusd##SUFFIX,  VEC, ISA) \
+    DN2CPP_ISA_VNNI_HELPER(PREFIX##MM##_dpbusds, MM##_dpbusds##SUFFIX, VEC, ISA) \
+    DN2CPP_ISA_VNNI_HELPER(PREFIX##MM##_dpwssd,  MM##_dpwssd##SUFFIX,  VEC, ISA) \
+    DN2CPP_ISA_VNNI_HELPER(PREFIX##MM##_dpwssds, MM##_dpwssds##SUFFIX, VEC, ISA)
+
+#if DN2CPP_HAS_X86_VNNI_EVEX
+DN2CPP_ISA_VNNI_WIDTH(dn2cpp_isa_vnni_evex, _mm,    _epi32, __m128i, "avx512vnni,avx512vl")
+DN2CPP_ISA_VNNI_WIDTH(dn2cpp_isa_vnni_evex, _mm256, _epi32, __m256i, "avx512vnni,avx512vl")
+DN2CPP_ISA_VNNI_WIDTH(dn2cpp_isa_vnni_evex, _mm512, _epi32, __m512i, "avx512vnni")
+#define DN2CPP_ISA_VNNI_EVEX(OP, S, A, B) dn2cpp_isa_vnni_evex##OP(S, A, B)
+#endif
+#if DN2CPP_HAS_X86_VNNI_VEX
+DN2CPP_ISA_VNNI_WIDTH(dn2cpp_isa_vnni_vex, _mm,    _avx_epi32, __m128i, "avxvnni")
+DN2CPP_ISA_VNNI_WIDTH(dn2cpp_isa_vnni_vex, _mm256, _avx_epi32, __m256i, "avxvnni")
+#define DN2CPP_ISA_VNNI_VEX(OP, S, A, B) dn2cpp_isa_vnni_vex##OP(S, A, B)
+#endif
+
+#undef DN2CPP_ISA_VNNI_WIDTH
+#undef DN2CPP_ISA_VNNI_HELPER
+#undef DN2CPP_ISA_VNNI_TARGET
+#endif
+#if DN2CPP_HAS_X86_VNNI_VEX && DN2CPP_HAS_X86_VNNI_EVEX
+#define DN2CPP_ISA_VNNI(OP, S, A, B) (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_VNNI_VEX) \
+    ? DN2CPP_ISA_VNNI_VEX(OP, S, A, B) : DN2CPP_ISA_VNNI_EVEX(OP, S, A, B))
+#elif DN2CPP_HAS_X86_VNNI_VEX
+#define DN2CPP_ISA_VNNI DN2CPP_ISA_VNNI_VEX
+#elif DN2CPP_HAS_X86_VNNI_EVEX
+#define DN2CPP_ISA_VNNI DN2CPP_ISA_VNNI_EVEX
+#endif
+
 // A scalar handed back in another type's bits (EXTRACTPS yields the lane as an
 // int32; .NET returns the float).
 template <class To, class From>

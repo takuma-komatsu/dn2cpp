@@ -84,6 +84,8 @@
 //     @exerciseimm=0    use this valid value in the generated exercise instead of the range's
 //                      midpoint; `@exerciseimm$k=0` names one of two immediate parameters
 //     @target("isa")   per-row DN2CPP_ISA_TARGET override of the family-level `target =`
+//     @storage          pass managed vector storage to a helper which converts inside its ISA
+//                      boundary: do not convert vector parameters or the vector return
 //     @targetonly       the target guard is the capability: omit the family's run-time token
 //                      check while retaining the foreign-target throwing stub
 //     @throws          documentation only: the intrinsic can raise (fault, #UD); no code effect
@@ -314,10 +316,14 @@ static class Contract
     // the compiler that consumes the generated headers has no spelling for its instructions.
     // Families whose bit set includes AVX10V2 share that capability with their nested V512
     // surfaces, including the V512 AvxVnniInt families whose instructions AVX10.2 introduces.
-    public static string CompilerCondition(Family family) =>
-        family.Bits.Any(bit => bit is "X86_AVX10V2" or "X86_AVX10V2_512")
-            ? "DN2CPP_HAS_X86_AVX10V2_INTRINSICS"
-            : "1";
+    public static string CompilerCondition(Family family)
+    {
+        if (family.Bits.Contains("X86_AVXVNNI"))
+            return family.Bits.Contains("X86_AVX512VBMI2")
+                ? "DN2CPP_HAS_X86_VNNI_EVEX" : "(DN2CPP_HAS_X86_VNNI_VEX || DN2CPP_HAS_X86_VNNI_EVEX)";
+        return family.Bits.Any(bit => bit is "X86_AVX10V2" or "X86_AVX10V2_512")
+            ? "DN2CPP_HAS_X86_AVX10V2_INTRINSICS" : "1";
+    }
 
     // The `#if` a helper's real body sits under. wasm SIMD is a module-wide property
     // (-msimd128, DN2CPP_WASM_SIMD), while a compiler capability selects either the mapped
@@ -473,7 +479,7 @@ sealed record ImmSpec(int Param, int Lo, int Count, ImmutableArray<int> Values =
 
 // Ref is the row's portable C# cross-check (@ref), spelled over the exercise's operands.
 sealed record MapRow(string Expression, string? Target, ImmutableArray<ImmSpec> Imms, string? Ref,
-    bool Opaque, bool TargetOnly, string SourceLine);
+    bool Opaque, bool TargetOnly, bool Storage, string SourceLine);
 
 static class Lowering
 {
@@ -1357,6 +1363,7 @@ static class Maps
         string? reference = null;
         bool opaque = false;
         bool targetOnly = false;
+        bool storage = false;
         var imms = new List<ImmSpec>();
         var exerciseImms = new List<(int? Param, int Value, string Annotation)>();
         foreach (string raw in spec.Annotations)
@@ -1421,6 +1428,12 @@ static class Maps
                     throw new ContractException($"{where}: two @targetonly annotations");
                 targetOnly = true;
             }
+            else if (ann == "@storage")
+            {
+                if (mm.Return.Kind != TyKind.Vector || mm.Params.Any(p => p.Kind != TyKind.Vector))
+                    throw new ContractException($"{where}: @storage needs a vector return and only vector parameters");
+                storage = true;
+            }
             else if (ann == "@opaque")
                 opaque = true;
             else if (ann != "@throws")
@@ -1465,7 +1478,7 @@ static class Maps
 
         string expr = Substitute(spec.Expression, w, t, where);
         mm.Row = new MapRow(expr, target, imms.ToImmutableArray(), reference, opaque,
-            targetOnly, where);
+            targetOnly, storage, where);
     }
 
     static string Substitute(string text, string w, string t, string where) =>
@@ -1596,8 +1609,13 @@ static class Emit
                     sb.Append("#define ").Append(f.Token).Append(" (");
                     if (compiler != "1")
                         sb.Append(compiler).Append(" && ");
-                    sb.Append("dn2cpp_cpu_has_all(")
-                      .Append(string.Join(" | ", f.Bits.Select(b => "DN2CPP_CPU_" + b))).Append("))\n");
+                    if (f.Bits.Contains("X86_AVXVNNI"))
+                        // The effective EVEX route already implies the two public V512 bits.
+                        sb.Append(f.Bits.Length == 1 ? "dn2cpp_cpu_has_avxvnni())\n"
+                            : "dn2cpp_cpu_has_all(DN2CPP_CPU_X86_VNNI_EVEX))\n");
+                    else
+                        sb.Append("dn2cpp_cpu_has_all(")
+                          .Append(string.Join(" | ", f.Bits.Select(b => "DN2CPP_CPU_" + b))).Append("))\n");
                 }
                 sb.Append("#else\n");
                 foreach (var f in own)
@@ -1828,7 +1846,13 @@ static class Emit
             if (x.Groups[2].Success)
                 throw new ContractException($"{row.SourceLine}: ${k} is not a tuple");
             if (p.Kind == TyKind.Vector)
-                return $"dn2cpp_isa_bits<{Codes.Native(f.Arch, asElem is null ? p : Ty.Vector(p.Bits, asElem))}>(a{k})";
+            {
+                if (!row.Storage)
+                    return $"dn2cpp_isa_bits<{Codes.Native(f.Arch, asElem is null ? p : Ty.Vector(p.Bits, asElem))}>(a{k})";
+                if (asElem is not null)
+                    throw new ContractException($"{row.SourceLine}: {x.Value} cannot convert @storage to another element type");
+                return $"a{k}";
+            }
             if (asElem is not null)
                 throw new ContractException($"{row.SourceLine}: ${k}:{asElem} but ${k} is not a vector");
             return $"a{k}";
@@ -1836,7 +1860,7 @@ static class Emit
 
         string produce = m.Return.Kind switch
         {
-            TyKind.Vector => $"dn2cpp_isa_vec<{m.Return.Bits / 8}>({expr})",
+            TyKind.Vector when !row.Storage => $"dn2cpp_isa_vec<{m.Return.Bits / 8}>({expr})",
             _ => expr,
         };
         switch (row.Imms.Length)
@@ -2066,7 +2090,10 @@ static class Exercises
                     value = Literal(p, Lane(k, 0, p.Code));
                     break;
                 case TyKind.Vector:
-                    value = VectorLiteral(p, k, IndexModulus(m, k));
+                    // Ordinary addends never distinguish VNNI's saturating operation from wrapping.
+                    value = k == 0 && f.TypePath == "AvxVnni+V512" && m.Name == "MultiplyWideningAndAddSaturate"
+                        ? "Vector512.Create(Vector256.Create(int.MaxValue), Vector256.Create(int.MinValue))"
+                        : VectorLiteral(p, k, IndexModulus(m, k));
                     break;
                 case TyKind.Tuple:
                     value = "(" + string.Join(", ", p.Items.Select((it, j) => VectorLiteral(it, k * 4 + j, 0))) + ")";
