@@ -1874,10 +1874,10 @@ set -e
 
 echo "== Invalid link feature and malformed XML fail before emission =="
 set +e
-feature_err=$(invoke_cli "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" \
+feature_err=$(invoke_cli "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" -r "$_CG_CORELIB" \
     --link-feature typo -o artifacts/preserve-feature-bad 2>&1)
 feature_code=$?
-malformed_err=$(invoke_cli "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" \
+malformed_err=$(invoke_cli "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" -r "$_CG_CORELIB" \
     --project-root samples/dotnet/PreserveControlMalformed -o artifacts/preserve-malformed 2>&1)
 malformed_code=$?
 set -e
@@ -1895,7 +1895,7 @@ dotnet exec "$CONSOLE_CLI" "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" --auto-ref \
 compare_dlls "$(ildiet_generation "$OUT/ildiet")" "$(ildiet_generation "$CONSOLE_ILD")"
 
 set +e
-console_err=$(dotnet exec "$CONSOLE_CLI" "$APP" --link-feature typo 2>&1)
+console_err=$(dotnet exec "$CONSOLE_CLI" "$APP" -r "$_CG_CORELIB" --link-feature typo 2>&1)
 console_code=$?
 set -e
 [ "$console_code" -ne 0 ] && grep -q "com, sre, or remoting" <<<"$console_err" \
@@ -1905,7 +1905,7 @@ for fixture in PreserveControlUnknownElement PreserveControlUnknownPreserve \
         PreserveControlUnknownFeature PreserveControlBadDeclaration \
         PreserveControlIgnoredInvalid; do
     set +e
-    schema_err=$(invoke_cli "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" \
+    schema_err=$(invoke_cli "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" -r "$_CG_CORELIB" \
         --project-root "samples/dotnet/$fixture" -o "artifacts/$fixture" 2>&1)
     schema_code=$?
     set -e
