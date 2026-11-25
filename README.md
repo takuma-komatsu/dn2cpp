@@ -1377,6 +1377,7 @@ and the V512 `AvxVnniInt8` / `AvxVnniInt16` surface disabled until the positive
 run-time opt-in `DN2CPP_ENABLE_AVX10V2=1`. AVX10.2 also uses a compiler-intrinsic
 capability: a compiler without the checked spellings reports those families
 false and compiles the same throwing stubs used on a foreign architecture.
+AVX10.2 execution on real hardware remains unverified.
 `Wasm.PackedSimd` lowers, but a wasm module
 either carries SIMD instructions or can load on an engine without them, so
 it answers true only in a `DN2CPP_WASM_SIMD` (`-msimd128`) build; the default
