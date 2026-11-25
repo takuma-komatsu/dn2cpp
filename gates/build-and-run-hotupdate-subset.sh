@@ -12,8 +12,8 @@
 # Non-virtual base method groups retain Object's own body and declaring row.
 # Patch receivers that inherit renamed interface fillers retain the filler's
 # method and delegate identity; replacing the interface body keeps it distinct.
-# Renamed Object overrides require a loaded CoreLib rather than falling back
-# to the declaration's name; loaded ToString and Finalize rows keep their bodies.
+# A renamed Object override needs its declaration even in a no-reference
+# measurement. Its ToString and Finalize rows dispatch to the renamed bodies.
 # Class generic virtual rows no AOT class callvirt names, one with a reached body
 # and one abstract, both called by the base only through interfaces, bind to the
 # dispatcher a --hotupdate-base build registers for them; an instantiation the
@@ -337,11 +337,6 @@ build_proj samples/dotnet/HotUpdateDgSigPatch/HotUpdateDgSigPatch.csproj
 build_proj samples/dotnet/HotUpdateCoreLibBase/HotUpdateCoreLibBase.csproj
 build_proj samples/dotnet/HotUpdateCoreLibPatch/HotUpdateCoreLibPatch.csproj
 build_proj samples/dotnet/HotUpdateCoreLibBadPatch/HotUpdateCoreLibBadPatch.csproj
-# The CoreLib-less Console.Error section at the end of this gate. InterpBench is
-# gates/measure-interp.sh's base program; this bucket borrows it rather than
-# adding a sample, because the surface under test is exactly this bucket's own
-# posture (a base image with no CoreLib in the load set).
-build_proj samples/dotnet/InterpBench/InterpBench.csproj
 fi
 base_app="samples/dotnet/HotUpdateBase/bin/$CONFIG/$TFM/HotUpdateBase.dll"
 patch_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/HotUpdatePatch.dll"
@@ -409,9 +404,8 @@ grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
 # fixture scripts) and of transpiler BEHAVIOR: the bakes, their rejections and
 # the later base transpiles. None of those outputs is in the key's surface, so
 # _gate_cli_hash stands in for the transpiler (see that helper's doc).
-# CoreLib is a content input as well as the pinned path shared with the
-# conditional-default-reference arms.
-if gate_cache_check "$OUT" "hotupdate-subset|full:$DN2CPP_HOTUPDATE_FULL|abort-host:$DN2CPP_OS|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$corelib|delegate-bindings:object/gettype/headerless-remove|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|patch-method-identities:private-rows/roundtrip/virtual-override/invoke/refusal-variant/metadata-v4|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/corelib/framework-closure|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/corelib/framework-closure/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:packed/native/register/stack/fields/field-address-refusal|carried-attribute-type-infos" \
+# Every base uses the same CoreLib. Its contents and path are cache inputs.
+if gate_cache_check "$OUT" "hotupdate-subset|full:$DN2CPP_HOTUPDATE_FULL|abort-host:$DN2CPP_OS|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$corelib|delegate-bindings:object/gettype/headerless-remove|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|patch-method-identities:private-rows/roundtrip/virtual-override/invoke/refusal-variant/metadata-v4|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/corelib/framework-closure|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/--measure/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/corelib/framework-closure/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:packed/native/register/stack/fields/field-address-refusal|carried-attribute-type-infos" \
         "$corelib" "$base_app" "$patch_app" "$bad_app" "$badgvm_app" "$baditf_app" "$baddg_app" \
         "$concat_oracle_app" \
         "$signature_arguments_base" "$signature_arguments_patch" "$signature_arguments_address" gates/_hotupdate-signature-arguments.sh \
@@ -420,7 +414,6 @@ if gate_cache_check "$OUT" "hotupdate-subset|full:$DN2CPP_HOTUPDATE_FULL|abort-h
         samples/dotnet/HotUpdateCoreLibBase/bin/$CONFIG/$TFM/HotUpdateCoreLibBase.dll \
         samples/dotnet/HotUpdateCoreLibPatch/bin/$CONFIG/$TFM/HotUpdateCoreLibPatch.dll \
         samples/dotnet/HotUpdateCoreLibBadPatch/bin/$CONFIG/$TFM/HotUpdateCoreLibBadPatch.dll \
-        samples/dotnet/InterpBench/bin/$CONFIG/$TFM/InterpBench.dll \
         samples/dotnet/HotUpdatePatch/hotupdate-refs.txt \
         "$noctor_base_app" "$noctor_patch_app" "$noctor_oracle_app" \
         "$gvmhit_app" "$gvmmiss_app" "$gvmcall_app" "$renamed_slot_app" \
@@ -899,8 +892,7 @@ echo "-- conditional default refs: a base whose load set carries a TRIGGER --"
 # (When the shim IS reached the base emits its types, they enter the contract as
 # ordinary T/L/F/V lines and the hash moves on its own — so the dangerous
 # direction is already covered by the existing staleness guard.)
-trig_corelib="$corelib"
-trig_bcl=$(dirname "$trig_corelib")
+trig_bcl=$(dirname "$corelib")
 trig_comp="$trig_bcl/System.IO.Compression.dll"
 [ -f "$trig_comp" ] || { echo "FAIL: real System.IO.Compression not found: $trig_comp" >&2; exit 1; }
 # Interface-returning delegate metadata needs the loaded CoreLib in both arms.
@@ -908,7 +900,7 @@ trig_method_roots="$OUT/corelib-method-refs.txt"
 cp samples/dotnet/HotUpdatePatch/hotupdate-refs.txt "$trig_method_roots"
 printf '\nHotUpdateBase.TypeGetterSignatureFixture::EmitSurface\n' >> "$trig_method_roots"
 for arm in trigger notrigger; do
-    trig_refs=(-r "$trig_corelib" -r "samples/dotnet/HotUpdateCoreLibBase/bin/$CONFIG/$TFM/HotUpdateCoreLibBase.dll")
+    trig_refs=(-r "$corelib" -r "samples/dotnet/HotUpdateCoreLibBase/bin/$CONFIG/$TFM/HotUpdateCoreLibBase.dll")
     [ "$arm" = trigger ] && trig_refs+=(-r "$trig_comp")
     invoke_cli "$base_app" "${trig_refs[@]}" --auto-ref --hotupdate-base \
         --reflection-metadata "$field_native" \
@@ -1617,7 +1609,7 @@ echo "-- a hot-update base over a real-CoreLib closure --"
 cl_base="samples/dotnet/HotUpdateCoreLibBase/bin/$CONFIG/$TFM/HotUpdateCoreLibBase.dll"
 cl_patch="samples/dotnet/HotUpdateCoreLibPatch/bin/$CONFIG/$TFM/HotUpdateCoreLibPatch.dll"
 cl_bad="samples/dotnet/HotUpdateCoreLibBadPatch/bin/$CONFIG/$TFM/HotUpdateCoreLibBadPatch.dll"
-invoke_cli "$cl_base" -r "$(resolve_pinned_corelib)" --auto-ref --hotupdate-base -o "$OUT/corelib"
+invoke_cli "$cl_base" -r "$corelib" --auto-ref --hotupdate-base -o "$OUT/corelib"
 grep -q 'System.ISpanFormattable.TryFormat: no reflection invoker in this image (the signature names t_System_Span_Char' \
         "$OUT/corelib"/generated_m*.cpp \
     || { echo "FAIL: the blocked ISpanFormattable.TryFormat row carries no invmiss_ trap" >&2; exit 1; }
@@ -1802,32 +1794,9 @@ gate_assert_text "$cl_missing_out" \
 assert_exit_code "$cl_missing_rc" 0
 echo "OK (real-CoreLib base: blocked rows trapped; known value and missing type imports refused catchably)"
 
-# ---- Console.Error in a CoreLib-less base image ------------------------------
-# Keep this InterpBench image CoreLib-less. The shim's System.IO.TextWriter
-# base is unresolved, so Dn2CppConsoleWriter has no base vtable, its chained
-# TextWriter::.ctor() cannot bind, and its get_Encoding slot names an External
-# System.Text.Encoding. Console.Error falls back to the header-less runtime writer.
-#
-# It is asserted HERE, in the suite, because InterpBench is the only CoreLib-less
-# program in the tree that touches Console.Error, and the only other thing that
-# runs it is a measurement aid outside the build-and-run-* glob. A regression
-# here once stood for over two weeks. Capturing the two streams separately is
-# the point — a fallback that wrote the marker to stdout would still "work".
-echo "== CoreLib-less Console.Error =="
-interp_app="samples/dotnet/InterpBench/bin/$CONFIG/$TFM/InterpBench.dll"
-invoke_cli "$interp_app" --hotupdate-base -o "$OUT/interp"
-compile_console "$OUT/interp" InterpBench
-set +e
-hotupdate_capture ie_out ie_rc stdout run_bounded "./$OUT/interp/InterpBench" noop 1
-cp "${ie_out%.stdout}.stderr" "$OUT/interp/native.err"
-set -e
-gate_assert_text "$ie_out" "checksum:noop:0"
-gate_assert_text "$OUT/interp/native.err" "impl:Kernel"
-assert_exit_code "$ie_rc" 0
-echo "OK (CoreLib-less Console.Error reaches stderr and only stderr)"
 echo "-- constructor-free ordinary generic import identity --"
 noctor_out="$OUT/noctor"
-DN2CPP_STRICT_COMPLETION=1 invoke_cli "$noctor_base_app" --hotupdate-base \
+DN2CPP_STRICT_COMPLETION=1 invoke_cli "$noctor_base_app" -r "$corelib" --hotupdate-base \
     --no-metadata-compression \
     --hotupdate-refs samples/dotnet/HotUpdatePatch/noctor-import-refs.txt -o "$noctor_out/normal"
 invoke_cli --emit-patch "$noctor_patch_app" --base-abi "$noctor_out/normal/base-abi.json" -o "$noctor_out"
@@ -1858,13 +1827,12 @@ compile_console "$noctor_out/normal" NoCtorImportBase
 hotupdate_capture noctor_result _hotupdate_status stdout run_bounded "./$noctor_out/normal/NoCtorImportBase$EXE_EXT" "$noctor_bpi"
 gate_output status "$_hotupdate_status" 0
 gate_output compare "$noctor_result" "$noctor_expected" --policy crlf
-# Native row mutation exercises the real resolver without changing its code or
-# relying on the malformed image's method-table order.
+# Each variant changes native method rows in the same emitted base and loads
+# the original patch against its original ABI.
 for noctor_axis in duplicate missing legacy-single legacy-ambiguous; do
-    DN2CPP_STRICT_COMPLETION=1 invoke_cli "$noctor_base_app" --hotupdate-base \
-        --no-metadata-compression \
-        --hotupdate-refs samples/dotnet/HotUpdatePatch/noctor-import-refs.txt -o "$noctor_out/$noctor_axis"
-    cmp "$noctor_out/normal/base-abi.json" "$noctor_out/$noctor_axis/base-abi.json"
+    mkdir -p "$noctor_out/$noctor_axis"
+    rm -f "$noctor_out/$noctor_axis"/generated*
+    cp "$noctor_out/normal"/generated* "$noctor_out/normal/base-abi.json" "$noctor_out/$noctor_axis/"
     gate_python gates/fixtures/hotupdate-import-identity/mutate-native-rows.py \
         "$noctor_out/$noctor_axis" "$noctor_axis"
     compile_console "$noctor_out/$noctor_axis" NoCtorImportBase
@@ -2221,7 +2189,7 @@ for gvmcall_reference_sharing in shared monomorphic; do
     gvmcall_reference_flags=()
     [ "$gvmcall_reference_sharing" = monomorphic ] && gvmcall_reference_flags+=(--no-shared-generics)
     gvmcall_reference_out="$OUT/gvm-reference/$gvmcall_reference_sharing"
-    invoke_cli "$gvmcall_reference_base" -r "$base_app" --hotupdate-base \
+    invoke_cli "$gvmcall_reference_base" -r "$corelib" -r "$base_app" --hotupdate-base \
         ${gvmcall_reference_flags[@]+"${gvmcall_reference_flags[@]}"} -o "$gvmcall_reference_out"
     compile_console "$gvmcall_reference_out" GvmCallReferenceBase
     for gvmcall_reference_codec in register stack; do
@@ -2240,7 +2208,7 @@ for gvmcall_reference_sharing in shared monomorphic; do
     # Retention must terminate when Reach declines the named default. The base
     # prefix does not call it, and stays runnable with the same retained interface.
     gvmcall_reference_cut_out="$OUT/gvm-reference/cut-$gvmcall_reference_sharing"
-    run_bounded dotnet exec "$DN2CPP_CLI_DLL" "$gvmcall_reference_base" -r "$base_app" \
+    run_bounded dotnet exec "$DN2CPP_CLI_DLL" "$gvmcall_reference_base" -r "$corelib" -r "$base_app" \
         --hotupdate-base --cut HotUpdateBase.IOverriddenBin::Cold \
         ${gvmcall_reference_flags[@]+"${gvmcall_reference_flags[@]}"} -o "$gvmcall_reference_cut_out"
     compile_console "$gvmcall_reference_cut_out" GvmCallReferenceBase
@@ -2271,7 +2239,7 @@ for gvmcall_late_layout_mode in normal shared monomorphic; do
     [ "$gvmcall_late_layout_mode" = normal ] || gvmcall_late_layout_flags+=(--hotupdate-base)
     [ "$gvmcall_late_layout_mode" = monomorphic ] && gvmcall_late_layout_flags+=(--no-shared-generics)
     gvmcall_late_layout_out="$OUT/gvm-late-layout/$gvmcall_late_layout_mode"
-    run_bounded dotnet exec "$DN2CPP_CLI_DLL" "$gvmcall_late_layout_app" -r "$gvmcall_late_layout_library" \
+    run_bounded dotnet exec "$DN2CPP_CLI_DLL" "$gvmcall_late_layout_app" -r "$corelib" -r "$gvmcall_late_layout_library" \
         ${gvmcall_late_layout_flags[@]+"${gvmcall_late_layout_flags[@]}"} -o "$gvmcall_late_layout_out"
     compile_console "$gvmcall_late_layout_out" GvmCallLateLayout
     hotupdate_capture gvmcall_late_layout_native _hotupdate_status stdout run_bounded "./$gvmcall_late_layout_out/GvmCallLateLayout$EXE_EXT"
@@ -2312,7 +2280,7 @@ for gvmcall_late_noalloc_mode in normal monomorphic; do
     gvmcall_late_noalloc_flags=()
     [ "$gvmcall_late_noalloc_mode" = normal ] || gvmcall_late_noalloc_flags+=(--hotupdate-base --no-shared-generics)
     gvmcall_late_noalloc_out="$OUT/gvm-late-noalloc/$gvmcall_late_noalloc_mode"
-    run_bounded dotnet exec "$DN2CPP_CLI_DLL" "$gvmcall_late_noalloc_app" -r "$gvmcall_late_noalloc_library" \
+    run_bounded dotnet exec "$DN2CPP_CLI_DLL" "$gvmcall_late_noalloc_app" -r "$corelib" -r "$gvmcall_late_noalloc_library" \
         ${gvmcall_late_noalloc_flags[@]+"${gvmcall_late_noalloc_flags[@]}"} -o "$gvmcall_late_noalloc_out"
     compile_console "$gvmcall_late_noalloc_out" GvmCallLateNoAlloc
     hotupdate_capture gvmcall_late_noalloc_native _hotupdate_status stdout run_bounded "./$gvmcall_late_noalloc_out/GvmCallLateNoAlloc$EXE_EXT"
@@ -2321,7 +2289,7 @@ for gvmcall_late_noalloc_mode in normal monomorphic; do
 done
 gvmcall_late_noalloc_rejected="$OUT/gvm-late-noalloc/shared"
 set +e
-run_bounded dotnet exec "$DN2CPP_CLI_DLL" "$gvmcall_late_noalloc_app" -r "$gvmcall_late_noalloc_library" \
+run_bounded dotnet exec "$DN2CPP_CLI_DLL" "$gvmcall_late_noalloc_app" -r "$corelib" -r "$gvmcall_late_noalloc_library" \
     --hotupdate-base -o "$gvmcall_late_noalloc_rejected" > "$OUT/gvm-late-noalloc/shared.err" 2>&1
 gvmcall_late_noalloc_rc=$?
 set -e
@@ -2346,7 +2314,7 @@ unavailable ctor fixture end"
 # Keep the primary image callable. Only this dedicated image loses the two bodies;
 # constructor identities, signatures and its ABI contract remain unchanged.
 aggregate_ctor_base="$OUT/aggregate-ctor/base"
-invoke_cli "$base_app" --hotupdate-base \
+invoke_cli "$base_app" -r "$corelib" --hotupdate-base \
     --reflection-metadata HotUpdateBase.UnavailableAggregateProbe=native \
     --reflection-metadata HotUpdateBase.UnavailableOrdinaryProbe=native \
     --hotupdate-refs samples/dotnet/HotUpdatePatch/hotupdate-refs.txt -o "$aggregate_ctor_base"
@@ -2456,7 +2424,7 @@ echo "OK (inherited and replaced interface identities, Invoke and delegate round
 # Attribute reads arm global attribute reachability. Keep their refusal witness in
 # a separate base so the unreached-default-shim ABI comparison stays unchanged.
 metadata_base="$OUT/patch-method-metadata"
-invoke_cli "samples/dotnet/HotUpdateBase/bin/metadata/$CONFIG/$TFM/HotUpdateBase.dll" \
+invoke_cli "samples/dotnet/HotUpdateBase/bin/metadata/$CONFIG/$TFM/HotUpdateBase.dll" -r "$corelib" \
     --hotupdate-base --hotupdate-refs samples/dotnet/HotUpdatePatch/hotupdate-refs.txt -o "$metadata_base"
 compile_console "$metadata_base" HotUpdateBase
 if grep -q 'RunUnavailablePatchMetadata' "$OUT"/generated*.cpp; then
@@ -2510,12 +2478,12 @@ done
 echo "OK (malformed patch method metadata refused before execution)"
 
 # Rewrite copies only: the ordinary base keeps its same-name Object overrides.
-echo "-- renamed Object declarations refuse without CoreLib and dispatch with it --"
+echo "-- renamed Object declarations in measurement and the hot-update base --"
 renamed_object_root="$OUT/renamed-object"
 for renamed_object_case in object finalize loaded; do
     renamed_object_input="$renamed_object_root/$renamed_object_case/input"
     mkdir -p "$renamed_object_input"
-    cp "${base_app%.dll}.dll" "${base_app%.dll}.deps.json" \
+    cp "$base_app" "${base_app%.dll}.deps.json" \
         "${base_app%.dll}.runtimeconfig.json" "$(dirname "$base_app")/Dn2Cpp.Runtime.dll" \
         "$renamed_object_input/"
     renamed_object_copy="$renamed_object_input/HotUpdateBase.dll"
@@ -2525,7 +2493,7 @@ for renamed_object_case in object finalize loaded; do
     else
         run_bounded dotnet "$renamed_slot_fixture" "$renamed_object_copy" "--$renamed_object_case"
         set +e
-        invoke_cli "$renamed_object_copy" --hotupdate-base \
+        invoke_cli "$renamed_object_copy" --measure \
             -o "$renamed_object_root/$renamed_object_case/refused" \
             > "$renamed_object_root/$renamed_object_case/refused.log" 2>&1
         renamed_object_rc=$?
@@ -2539,11 +2507,11 @@ for renamed_object_case in object finalize loaded; do
         fi
         grep -Fq "renamed MethodImpl body '$renamed_object_body' for System.Object::$renamed_object_declaration requires a CoreLib reference" \
             "$renamed_object_root/$renamed_object_case/refused.log" \
-            || { echo "FAIL: renamed Object refusal did not explain the missing CoreLib" >&2; exit 1; }
+            || { echo "FAIL: measurement did not explain the missing CoreLib declaration" >&2; exit 1; }
     fi
 done
 renamed_object_loaded="$renamed_object_root/loaded/native"
-invoke_cli "$renamed_object_copy" -r "$(resolve_pinned_corelib)" --auto-ref --hotupdate-base \
+invoke_cli "$renamed_object_copy" -r "$corelib" --auto-ref --hotupdate-base \
     -o "$renamed_object_loaded"
 compile_console "$renamed_object_loaded" HotUpdateBase
 for renamed_object_case in object finalize; do
@@ -2565,10 +2533,10 @@ for renamed_object_case in object finalize; do
             || { echo "FAIL: renamed Object witness must run once: $line" >&2; exit 1; }
     done
 done
-echo "OK (renamed Object and Finalize refusals, loaded method identity and bodies)"
+echo "OK (renamed Object and Finalize measurement refusals, method identity and bodies)"
 
 # Provider imports retain the managed parameter/return/field ABI with loaded CoreLib.
 hotupdate_signature_argument_roundtrip "$signature_arguments_base" "$signature_arguments_patch" \
-    "$OUT/signature-arguments" "$signature_arguments_address"
+    "$OUT/signature-arguments" "$signature_arguments_address" "$corelib"
 
 gate_cache_commit

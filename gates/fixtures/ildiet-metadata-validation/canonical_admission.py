@@ -61,7 +61,7 @@ def check_loadset_closure_marker(output, mode):
     assert output.startswith(prefix), "loadset operand closure inspection did not run: " + mode
 
 
-def check_primary_admission(cli, original, corelib, output, mode):
+def check_primary_admission(cli, inputs, corelib, output, mode):
     assert mode in MODES + OWNER_MODES + CONTEXT_MODES + VIEW_MODES + BOUND_MODES + ORIGIN_MODES + DEFINITION_MODES + ALL_LOADSET_MODES, "unknown canonical admission mode: " + mode
     delegator = mode in ("object-unknown", "object-generic-unknown")
     for shared in sharing_modes(mode in ("canonical-array-unknown", "canonical-array-complete")):
@@ -72,16 +72,14 @@ def check_primary_admission(cli, original, corelib, output, mode):
         for pattern in ("generated*.cpp", "generated*.h"):
             for path in destination.glob(pattern):
                 path.unlink()
-        references = loadset_references(original, corelib, mode) if mode in ALL_LOADSET_MODES else [original / "GraphLib.dll", corelib]
-        command = ["dotnet", "exec", str(cli), str(original / "GraphApp.dll")]
-        for reference in references:
-            command.extend(("-r", str(reference)))
+        command = ["dotnet", "exec", str(cli), str(inputs / "GraphApp.dll"),
+                   "-r", str(inputs / "GraphLib.dll"), "-r", str(corelib)]
         command.extend(("--no-ildiet", "--shared-generics" if shared else "--no-shared-generics", "-o", str(destination)))
         if delegator:
             # Bound the unsupported base constructor only for C++ admission, not runtime parity.
             command.extend(("--cut", "System.Reflection.TypeInfo::.ctor"))
         if mode in ALL_LOADSET_MODES:
-            assert (corelib in references) == mode.endswith("-complete") and "--auto-ref" not in command, "primitive primary changed its exact reference contract"
+            assert "--auto-ref" not in command, "loadset primary must use only its explicit references"
             (destination / "primary-command.txt").write_text("\n".join(command) + "\n", encoding="utf-8")
         result = subprocess.run(command, capture_output=True, env=os.environ.copy())
         (destination / "primary.stdout.log").write_bytes(result.stdout)
@@ -97,8 +95,8 @@ def check_primary_admission(cli, original, corelib, output, mode):
         bodies = "\n".join(path.read_text(encoding="utf-8") for path in files)
         assert (b"dn2cpp: shared-generics:" in result.stdout) == shared, "primary sharing receipt differed: " + mode + ":" + arm
         if mode in ALL_LOADSET_MODES:
-            assemblies = 2 + int((Path(cli).parent / "Dn2Cpp.Runtime.dll").is_file()) + int(mode.endswith("-complete"))
-            assert re.search(rb"(?m)^dn2cpp: " + str(assemblies).encode() + rb" assemblies,", result.stdout), "primitive primary loaded an unexpected assembly count: " + mode + ":" + arm
+            assemblies = 3 + int((Path(cli).parent / "Dn2Cpp.Runtime.dll").is_file())
+            assert re.search(rb"(?m)^dn2cpp: " + str(assemblies).encode() + rb" assemblies,", result.stdout), "loadset primary loaded an unexpected assembly count: " + mode + ":" + arm
 
         def definition(symbol):
             return re.search(r"(?m)^[A-Za-z_][A-Za-z0-9_* ]* " + symbol +

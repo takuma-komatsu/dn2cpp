@@ -3746,18 +3746,11 @@ internal sealed partial class Compilation
         return (cls, ctor);
     }
 
-    /// <summary>The resolved <c>Dn2Cpp.Runtime.Dn2CppConsoleWriter</c> class + its
-    /// parameterless ctor, once <see cref="ConsoleErrorWriter"/> has reached them; null
-    /// before any <c>Console.Error</c> use, and null forever in a CoreLib-less load set
-    /// (see <see cref="ConsoleErrorWriter"/>). CppEmitter reads this to emit the cached
-    /// singleton accessor, and the TextWriter fast-path checks reuse
-    /// <see cref="ConsoleErrorWriterCppType"/>.</summary>
+    /// <summary>The writer reached by <c>Console.Error</c>. The emitter uses its
+    /// constructor for the singleton accessor and its type for direct writes.</summary>
     internal (ClassInfo Cls, MethodInfo Ctor)? ConsoleErrorWriterInfo { get; private set; }
 
-    /// <summary>Whether <see cref="ConsoleErrorWriter"/> has already answered. Separate
-    /// from <see cref="ConsoleErrorWriterInfo"/> because null is a real answer, not only
-    /// the not-yet-asked state: it memoizes the CoreLib-less verdict so a second
-    /// <c>Console.Error</c> use re-resolves nothing.</summary>
+    // A partial --measure load set can resolve the shim but lack its TextWriter base.
     private bool _consoleErrorWriterResolved;
 
     /// <summary>The C++ receiver type (<c>t_…*</c>) a <c>Console.get_Error</c> result carries
@@ -3768,28 +3761,9 @@ internal sealed partial class Compilation
     internal string? ConsoleErrorWriterCppType =>
         ConsoleErrorWriterInfo is { } i ? i.Cls.CppStructName + "*" : null;
 
-    /// <summary>Resolves, completes, allocates and fully reaches the
-    /// <c>Dn2Cpp.Runtime.Dn2CppConsoleWriter</c> singleton the transpiler returns from
-    /// <c>Console.Error</c>. A real header-bearing <see cref="TextWriter"/> subtype:
-    /// its vtable's core write slots (populated by the normal BuildVtables from the C#
-    /// overrides, which route to the <c>ConsoleRuntime.Err*</c> intrinsics) let a spilled
-    /// <c>callvirt</c> dispatch correctly instead of crashing on the header-less runtime
-    /// writer struct. Mirrors <see cref="SZArrayEnumerableFor"/>: reaching during body
-    /// compilation is fine — the emit fixpoint picks up the newly-reachable overrides. A
-    /// missing/stale shim throws (see RequireShimType).
-    ///
-    /// <para><b>Answers null when the shim's own base did not resolve</b> — i.e. a
-    /// transpile with no CoreLib in the load set, where <c>System.IO.TextWriter</c> is an
-    /// External name rather than a loaded class. The subtype is not merely unnecessary
-    /// there, it is inexpressible: with no base class there is no base vtable, so
-    /// <c>RenderVtable</c> types the shim's own <c>get_Encoding</c> slot and dies on the
-    /// External <c>System.Text.Encoding</c> return, and the ctor's chained
-    /// <c>TextWriter::.ctor()</c> resolves to nothing. <c>Console.get_Error</c> falls back
-    /// to the header-less runtime writer, which is exactly what that load set can express,
-    /// and the fallback cannot crash a dispatch: every receiver shape that bypasses the
-    /// receiver-keyed fast path — a Roslyn spill, a <c>TextWriter</c> parameter — needs a
-    /// C++ type for the External base, and <see cref="CppTypes.Of"/> refuses that loudly at
-    /// transpile time instead of emitting a callvirt through a missing header.</para></summary>
+    /// <summary>Reaches the managed <c>Console.Error</c> singleton and its write
+    /// overrides so a receiver stored in a <c>TextWriter</c> local supports virtual
+    /// dispatch. Returns null if the supplied metadata omits the base.</summary>
     internal (ClassInfo Cls, MethodInfo Ctor)? ConsoleErrorWriter()
     {
         if (_consoleErrorWriterResolved)
@@ -3801,13 +3775,8 @@ internal sealed partial class Compilation
             throw new NotSupportedException(
                 "Dn2Cpp.Runtime.Dn2CppConsoleWriter could not be resolved from the loaded "
                 + "Dn2Cpp.Runtime.dll (stale or mismatched shim). It is needed for " + Need + ".");
-        // No loaded base => no CoreLib in the load set (see the summary). Nothing is
-        // reached, so there is no cut/route asymmetry to answer for: the writer's class,
-        // ctor and overrides simply never enter the tree. The memo is set on the two
-        // ANSWER paths only, never ahead of the throws above: --measure records a body's
-        // NotSupportedException as a gap row and keeps draining, and a memo set before
-        // the throw would turn the stale-shim diagnostic into a silent fallback for
-        // every later Console.Error body.
+        // Cache only successful lookups so --measure records a stale-shim gap in
+        // every affected body.
         if (cls.BaseClass is null)
         {
             _consoleErrorWriterResolved = true;

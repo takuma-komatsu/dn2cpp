@@ -193,6 +193,12 @@ public static class TranspileDriver
             options = options with { DefaultRefDir = AppContext.BaseDirectory };
             Timing.Mark("setup");
             var loadSet = AssemblyLoadSet.Resolve(paths, options, allowHostCoreLib: true);
+            if (!measure && options.IsaSurfaceDump is null && loadSet.CoreLibPath is null)
+            {
+                Console.Error.WriteLine("error: AOT transpilation requires System.Private.CoreLib. "
+                    + "Pass -r <path/to/System.Private.CoreLib.dll> or use --auto-ref with the managed CLI.");
+                return 2;
+            }
             paths = loadSet.Paths;
             options = options with
             {

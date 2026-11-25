@@ -801,16 +801,8 @@ internal sealed partial class Compilation
                 // constant, so the getter body is never needed.
                 if (CoreIntrinsics.MrConstFoldedGetter.Matches(mrParent, mrName, Sig))
                     return null;
-                // System.IO.TextWriter.Write/WriteLine on the Console.Error stderr writer
-                // are lowered inline to the dn2cpp_textwriter_* helpers, but only when the
-                // receiver is statically the Dn2CppTextWriter* Console.get_Error returns
-                // (MethodCompiler's intercept is receiver-sensitive): a real writer (e.g.
-                // the StreamWriter File.CreateText returns) dispatches the transpiled
-                // virtual instead, since the real file-I/O bodies transpile. So the
-                // MemberRef IS a reachability edge — the real TextWriter.Write/WriteLine
-                // bodies must be in the tree for the virtual dispatch path. (Console is an
-                // intrinsic type, so get_Error itself is still not an edge, and a
-                // Console.Error receiver still never executes the real bodies.)
+                // TextWriter.Write/WriteLine must stay reachable for virtual dispatch.
+                // Only a statically known Console.Error receiver takes the emit fast path.
                 // System.Exception::get_Message: cut as intrinsic (TryResolveMemberRefMethod
                 // returns null for the intrinsic parent), but reach the used-virtual so a
                 // base-typed `ex.Message` dispatches the derived override — the MemberRef

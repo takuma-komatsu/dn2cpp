@@ -68,17 +68,8 @@ internal sealed partial class MethodCompiler
                 return true;
             }
 
-            // Console.Error is the process stderr TextWriter. System.Console is an intrinsic
-            // type, so get_Error routes here with no real body. Return a cached,
-            // header-stamped managed singleton (Dn2Cpp.Runtime.Dn2CppConsoleWriter, a real
-            // TextWriter subtype) rather than the header-less runtime writer struct, so a
-            // callvirt against it dispatches through a real vtable and a spilled receiver
-            // (the interpolated-string case) stays sound. The non-spilled fast path below
-            // still intercepts Write/WriteLine by the receiver's static C++ type, keeping
-            // byte-identical output. With no CoreLib in the load set the subtype is
-            // inexpressible (its base is an External name, so it has no vtable to dispatch
-            // through) and ConsoleErrorWriter answers null: fall back to the header-less
-            // runtime writer, which is the whole of what that load set can model.
+            // AOT uses the managed singleton so a spilled TextWriter dispatches through
+            // its vtable. A --measure run without CoreLib can model direct stderr writes.
             case ("System.Console", "get_Error"):
             {
                 if (Comp.ConsoleErrorWriter() is { } ew)

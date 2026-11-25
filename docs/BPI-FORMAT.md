@@ -1139,10 +1139,10 @@ delegate is single-target and initializes these fields to zero. `identity`
 identifies the compiled method independently of its entry. A metadata import
 takes its identity from the method row; a headerless-parameter or return type
 takes the same erasing adapter as a compiled method group. For nonvirtual
-`Object.ToString` and, with CoreLib loaded, `Object.GetType`, the base image
-supplies both the compiled entry and its identity. Other intrinsic imports
-without a recorded identity and patch-method closures report null for
-`Delegate.Method`. An `Invoke` calls
+`Object.ToString` and for `Object.GetType`, the base image pairs each compiled
+entry with the identity of its declaration in the target CoreLib. Other
+intrinsic imports without a recorded identity and patch-method closures report
+null for `Delegate.Method`. An `Invoke` calls
 `method(target, args…)` with the delegate's Invoke C++ ABI (the target is
 always the first argument; an instance method's real address takes it as
 `this`, a static one goes through an adapter that drops it). A patch method

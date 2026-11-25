@@ -785,6 +785,7 @@ for platform in ("posix", "windows"):
               capture)
 
 cli_stubs = r'''
+echo System.Private.CoreLib > runtime/System.Private.CoreLib.dll
 : > runtime/System.Runtime.dll
 gate_capture() {
     local prefix="$1" status=0
@@ -794,14 +795,16 @@ gate_capture() {
 }
 fake_frontend() {
     local frontend="$1" args dir= jobs= no_metadata=0 rejected= token fp=strict
-    local ildiet=1 ildiet_args=() auto_ref=0
+    local ildiet=1 ildiet_args=() auto_ref=0 corelib=0 surface=
     shift
     args="$*"
     while [ "$#" -gt 0 ]; do
         token="$1"; shift
         case "$token" in
             -o) dir="$1"; shift ;;
-            -r) shift ;;
+            -r)
+                if cmp -s "$1" "$CORELIB"; then corelib=1; fi
+                shift ;;
             --jobs)
                 jobs="${1:-}"
                 case "$jobs" in
@@ -820,6 +823,7 @@ fake_frontend() {
                 shift ;;
             --no-metadata-compression) no_metadata=1 ;;
             --auto-ref) auto_ref=1 ;;
+            --dump-isa-surface) surface="$1"; shift ;;
             --no-ildiet) ildiet=0 ;;
             --ildiet-output) shift ;;
             --ildiet-arg)
@@ -860,6 +864,16 @@ fake_frontend() {
         fi
         return 2
     fi
+    if [ -n "$surface" ]; then
+        record "ISA:$frontend:$args"
+        printf 'corelib\t\n' > "$surface"
+        return 0
+    fi
+    if [ "$corelib" = 0 ] && [ "$auto_ref" = 0 ]; then
+        record "REJECT:$frontend:missing CoreLib"
+        echo 'System.Private.CoreLib requires -r <path> or --auto-ref in the managed CLI' >&2
+        return 2
+    fi
     [ -n "$dir" ] || { echo 'fake frontend requires an output directory' >&2; return 97; }
     record "ACCEPT:$frontend:$args"
     [ "${FAKE_ACCEPT_FAIL:-}" != "$frontend:$jobs" ] || return 29
@@ -891,10 +905,12 @@ result, calls = run("cli-args", cli)
 check(result.returncode == 0, result.stderr)
 accepted = [line for line in calls if line.startswith("ACCEPT:")]
 rejected = [line for line in calls if line.startswith("REJECT:")]
-check(len(accepted) == 7 and len(rejected) == 36, (accepted, rejected))
+check(len(accepted) == 7 and len(rejected) == 38, (accepted, rejected))
 check(sum(line.startswith("EMIT:") for line in calls) == 7, calls)
+check(sum(line.startswith("ISA:full:") for line in calls) == 1, calls)
 check(not any(line.startswith("NATIVE:") for line in calls), calls)
 for frontend in ("full", "console"):
+    check("REJECT:" + frontend + ":missing CoreLib" in rejected, rejected)
     for jobs in ("1", "2"):
         matching = [line for line in accepted if line.startswith("ACCEPT:" + frontend + ":") and "--jobs " + jobs in line]
         check(len(matching) == 1, (frontend, jobs, accepted))
@@ -990,8 +1006,7 @@ gate_python() {
         "$FAKE_PYTHON" "$FAKE_GATES/${1#gates/}" "${@:2}"
     fi
 }
-# Missing CoreLib and malformed private inputs refuse; positive emissions retain
-# their command/image count, including the two BPI encodings and metadata-only TI.
+# A missing CoreLib produces measured GC gaps. Malformed private inputs refuse.
 invoke_cli() {
     local args="$*" dir= name= diagnostic= suffix body leaf query collect wait backedge refusal="${FAKE_GC_REFUSAL:-}"
     local argv=("$@")
@@ -1023,12 +1038,18 @@ invoke_cli() {
             suffix=Internal
             [[ "$name" != *batch ]] || suffix=Batch
             diagnostic="System.Buffer::BulkMoveWithWriteBarrier$suffix(ref Byte, ref Byte, Int32) is unsupported" ;;
-        */gc-missing-corelib.*/collect/emitted|*/gc-missing-corelib.*/memory/emitted)
-            name=${dir%/emitted}; name=${name##*/}
+        */gc-missing-corelib.*/collect/measured|*/gc-missing-corelib.*/memory/measured)
+            name=${dir%/measured}; name=${name##*/}
+            record "MEASURE:$name:$args"
+            [ "${FAKE_GC_MEASURE:-}" != "$name:status" ] || return 2
             suffix=Collect
             [[ "$name" != memory ]] || suffix=GetTotalMemory
-            name=gc-missing-corelib-$name
-            diagnostic="System.GC.$suffix requires CoreLib IL; use --auto-ref or -r <path/to/System.Private.CoreLib.dll>." ;;
+            diagnostic="System.GC.$suffix requires CoreLib IL; use --auto-ref or -r <path/to/System.Private.CoreLib.dll>."
+            [ "${FAKE_GC_MEASURE:-}" != "$name:diagnostic" ] || diagnostic='wrong diagnostic'
+            mkdir -p "$dir"
+            printf 'compile\t<global>\tProgram.Main\tNotSupportedException\t%s\n' "$diagnostic" > "$dir/s0-gaps.tsv"
+            echo 'dn2cpp --measure: 2 compile-phase bodies attempted, 1 compiled OK, 1 gaps total'
+            return 0 ;;
         */gen2-retained.*/newobj)
             name=gen2-newobj
             diagnostic='newobj System.Gen2GcCallback — native allocation of Gen2 GC notification objects is not supported.' ;;
@@ -1276,7 +1297,7 @@ for label, extra, expected in (
     check(any("delegate-callable-refusals.txt" in line and "keep-delegate-callable-bodies.xml" in line
               and "delegate-callable:reflection,call,calli,callvirt,ldvirtftn" in line for line in cache), cache)
     for dependency in ("_gc-collector-contracts.sh", "check-gc-collector-bodies.py", "BufferReferenceMoveFixture.cs",
-                       "GcCoreLibInputFixture.cs", "gc-corelib-input:collect,memory",
+                       "GcCoreLibInputFixture.cs", "gc-corelib-input:collect,memory,measure",
                        "_gen2-gate.sh", "Gen2CallbackFixture.cs", "check-minimal-metadata.py",
                        "gc-collector:il-wrappers,finalizer-refusal", "buffer-reference-moves:internal,batch,overlap,barrier,wrong-count,standalone-clr",
                        "gen2:reflection,register,stack,reference-only,newobj,memberref"):
@@ -1384,11 +1405,11 @@ for label, extra, expected in (
                   and "LdftnLocalFixture.dll" not in line for line in captures), captures)
     refusals = [line for line in calls if line.startswith("REJECT:") and "artifacts/selfhost-prim-routes-" not in line]
     check([line.split(":")[1] for line in refusals] == ["buffer-negative-internal", "buffer-negative-batch",
-          "gc-missing-corelib-collect", "gc-missing-corelib-memory", "gen2-newobj", "gen2-memberref"], refusals)
-    check(sum(line == "ASSERT:status 2 2" for line in calls) == (6 if label == "routes-warm" else 11), calls)
+          "gen2-newobj", "gen2-memberref"], refusals)
+    check(sum(line == "ASSERT:status 2 2" for line in calls) == (4 if label == "routes-warm" else 9), calls)
     for mode in ("collect", "memory"):
-        missing = [line for line in refusals if line.startswith(f"REJECT:gc-missing-corelib-{mode}:")]
-        check(len(missing) == 1 and f"/{mode}/SelfHostPrimSubset.dll --no-ildiet -o " in missing[0], missing)
+        missing = [line for line in calls if line.startswith(f"MEASURE:{mode}:")]
+        check(len(missing) == 1 and f"/{mode}/SelfHostPrimSubset.dll --no-ildiet --measure -o " in missing[0], missing)
         check(" -r " not in missing[0] and " --auto-ref" not in missing[0] and " --no-default-ref" not in missing[0], missing)
         check(sum(f" --gc-missing-corelib-{mode} " in line for line in captures) == 1, captures)
     check(sum("check-minimal-metadata.py" in line for line in calls if line.startswith("PYTHON:")) == 1, calls)
@@ -1485,10 +1506,14 @@ for mode in ("collect", "memory"):
         result, calls = run("selfhost-gc-input-fixture-" + mode + "-" + failure, selfhost_stubs + selfhost,
                             {**selfhost_env, variable: "/" + mode + "/fixture"})
         check(result.returncode != 0 and "COMMIT" not in calls, (mode, failure, calls))
-        check(not any(line.startswith("REJECT:gc-missing-corelib-" + mode + ":") for line in calls), calls)
+        check(not any(line.startswith(f"MEASURE:{mode}:") for line in calls), calls)
+    for failure in ("status", "diagnostic"):
+        result, calls = run(f"selfhost-gc-measure-{mode}-{failure}", selfhost_stubs + selfhost,
+                            {**selfhost_env, "FAKE_GC_MEASURE": f"{mode}:{failure}"})
+        check(result.returncode != 0 and "COMMIT" not in calls, (mode, failure, calls))
+        check(any(line.startswith(f"MEASURE:{mode}:") for line in calls), calls)
 
-for name in ("buffer-negative-internal", "buffer-negative-batch", "gc-missing-corelib-collect",
-             "gc-missing-corelib-memory", "gen2-newobj", "gen2-memberref"):
+for name in ("buffer-negative-internal", "buffer-negative-batch", "gen2-newobj", "gen2-memberref"):
     for failure in ("accepted", "diagnostic"):
         result, calls = run("selfhost-refusal-" + name + "-" + failure, selfhost_stubs + selfhost,
                             {**selfhost_env, "FAKE_GC_REFUSAL": name + ":" + failure})

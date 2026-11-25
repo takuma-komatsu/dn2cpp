@@ -16,6 +16,7 @@
 #
 # Accepted flags share the worker-count runs; rejections remain isolated.
 # Floating-point mode selection must survive re-emission without a stale opt-in.
+# AOT requires a CoreLib manifest before writing output. ISA reports can omit it.
 # Auto references follow the explicitly selected CoreLib, not app-local copies.
 # ILDiet arguments stay literal, preserve protocol ownership and are inert when disabled.
 # Assertions:
@@ -62,7 +63,7 @@ echo "corelib: $CORELIB"
 # make this gate permanently uncacheable since it clears OUT on every run.
 OUT=artifacts/cli-args-baseline
 rm -rf "$OUT"; mkdir -p "$OUT"
-if gate_cache_check "$OUT" "cli-args|combined-acceptance|ildiet-arg:literal-budget-request|auto-ref:selected-corelib|cli:$(_gate_cli_hash)" \
+if gate_cache_check "$OUT" "cli-args|combined-acceptance|ildiet-arg:literal-budget-request|auto-ref:selected-corelib|corelib:aot-required,isa-optional|cli:$(_gate_cli_hash)" \
         "$APP" "$CONSOLE_CLI" "$CORELIB" "$(dirname "$CORELIB")/System.Runtime.dll"; then
     gate_cache_hit_msg
     exit 0
@@ -287,6 +288,26 @@ assert_accepted 'console default FP reset without ILDiet' console "$APP" -r "$CO
 gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-strict.expected"
 [ ! -e "$OUT/disabled-full" ] && [ ! -e "$OUT/disabled-console" ] \
     || { echo 'FAIL: --no-ildiet invoked the companion with additional arguments' >&2; exit 1; }
+
+echo "== AOT requires a CoreLib manifest before writing output =="
+cold="$OUT/missing-corelib-output"
+previous="$OUT/previous-output"
+mkdir -p "$previous"
+cp "$OUT/generated.cpp" "$previous/"
+cp -R "$previous" "$previous-before"
+cp "$selected/System.Runtime.dll" "$shadow/System.Private.CoreLib.dll"
+gate_capture "$OUT/no-corelib" run_frontend full "$APP" --hotupdate-base -o "$cold"
+gate_capture "$OUT/misnamed-corelib" run_frontend console "$APP" -r "$shadow/System.Private.CoreLib.dll" --no-ildiet -o "$previous"
+for refusal in "$OUT/no-corelib" "$OUT/misnamed-corelib"; do
+    gate_output status "$(cat "$refusal.status")" 2
+    gate_output match-record "$refusal.stderr" '.*System\.Private\.CoreLib.*-r .*--auto-ref.*managed CLI.*' --policy crlf
+done
+[ ! -e "$cold" ] || { echo "FAIL: missing CoreLib created $cold" >&2; exit 1; }
+diff -r "$previous-before" "$previous"
+
+gate_capture_ok "$OUT/isa-no-corelib" run_frontend full "$APP" --dump-isa-surface "$OUT/isa-no-corelib.tsv" -o "$cold"
+gate_output witness "$OUT/isa-no-corelib.tsv" $'corelib\t'
+[ ! -e "$cold" ] || { echo "FAIL: ISA report created $cold" >&2; exit 1; }
 
 gate_cache_commit
 echo "PASS: both CLIs accept worker counts, metadata and floating-point options; invalid arguments remain hard errors"

@@ -54,7 +54,7 @@ measurements, and unverified counts. Keep comments short.
 
 ```bash
 dotnet build src/Dn2Cpp.Cli -c Release
-dotnet run --project src/Dn2Cpp.Cli -- <assembly.dll> [-r <ref.dll>] [-o <dir>] [--gdextension]
+dotnet run --project src/Dn2Cpp.Cli -- <assembly.dll> --auto-ref [-r <ref.dll>] [-o <dir>] [--gdextension]
 ```
 
 - During development, run the individual gates relevant to the change. Coding
