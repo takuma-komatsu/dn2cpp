@@ -49,6 +49,7 @@ internal static partial class Program
         {
             Console.WriteLine(System.Runtime.Intrinsics.X86.Avx2.IsSupported
                 && System.Runtime.Intrinsics.X86.Fma.IsSupported
+                && System.Runtime.Intrinsics.X86.Bmi1.IsSupported
                 && System.Runtime.Intrinsics.X86.Bmi2.IsSupported ? "avx2"
                 : System.Runtime.Intrinsics.Arm.AdvSimd.Arm64.IsSupported ? "arm64" : "none");
             return;
