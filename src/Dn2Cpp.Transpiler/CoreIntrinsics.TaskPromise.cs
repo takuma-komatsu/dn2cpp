@@ -5,6 +5,14 @@ namespace Dn2Cpp;
 
 internal static partial class CoreIntrinsics
 {
+    internal static bool IsTaskCompletionSourceOwner(ClassInfo owner) =>
+        owner.Module.AssemblyName == "System.Private.CoreLib"
+        && (owner.FullName == "System.Threading.Tasks.TaskCompletionSource"
+            || owner.IntrinsicCppName == "Dn2CppTaskCompletionSource*");
+
+    internal static bool IsTaskCompletionTransfer(MethodInfo method) =>
+        method.Name is ("SetFromTask" or "TrySetFromTask") && IsTaskCompletionSourceOwner(method.DeclaringClass);
+
     internal static bool IsTaskDefaultResultField(ClassInfo owner, string name)
     {
         if (name != "s_defaultResultTask" || owner.IntrinsicCppName != "Dn2CppTask*"

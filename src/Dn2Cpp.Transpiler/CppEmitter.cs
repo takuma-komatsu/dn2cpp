@@ -3159,8 +3159,9 @@ internal sealed partial class CppEmitter
             && _c.CanceledExceptionTokenField is { } cancellationToken)
             sb.AppendLine($"    dn2cpp_set_canceled_exception_type(&{canceledType}, "
                 + $"offsetof({cancellationToken.DeclaringClass.CppStructName}, {cancellationToken.CppName}));");
-        if (_c.TaskCanceledExceptionTypeInfoName is { } taskCanceledType)
-            sb.AppendLine($"    dn2cpp_set_task_canceled_exception_type(&{taskCanceledType});");
+        if (_c.TaskCanceledExceptionTaskField is { } canceledTask)
+            sb.AppendLine($"    dn2cpp_set_task_canceled_exception_type(&{canceledTask.DeclaringClass.CppTypeInfoName}, "
+                + $"offsetof({canceledTask.DeclaringClass.CppStructName}, {canceledTask.CppName}));");
         sb.AppendLine("    dn2cpp_set_culture_exception_store(&dn2cpp_image_culture_exception_store);");
         sb.AppendLine("    dn2cpp_set_type_initialization_exception_store(&dn2cpp_image_type_initialization_exception_store);");
         // The image's per-signature vtable trap thunks, so dn2cpp_exception_message can

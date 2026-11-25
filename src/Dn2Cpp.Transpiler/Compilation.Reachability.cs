@@ -3906,11 +3906,8 @@ internal sealed partial class Compilation
     internal string? CanceledExceptionTypeInfoName { get; private set; }
     internal FieldInfo? CanceledExceptionTokenField { get; private set; }
 
-    /// <summary>The C++ type-info symbol of System.Threading.Tasks.TaskCanceledException,
-    /// reached alongside the OCE one — a CANCELED task carries this type, as in real
-    /// .NET, while the token-side throw keeps the plain OCE. Null when the load set
-    /// does not carry the type (the runtime then falls back to the OCE identity).</summary>
-    internal string? TaskCanceledExceptionTypeInfoName { get; private set; }
+    /// <summary>The Task field on the exception a canceled await or wait synthesizes.</summary>
+    internal FieldInfo? TaskCanceledExceptionTaskField { get; private set; }
 
     /// <summary>Force-reaches System.OperationCanceledException and
     /// System.Threading.Tasks.TaskCanceledException (type-info + base chain) when a
@@ -3922,10 +3919,10 @@ internal sealed partial class Compilation
     {
         if (CanceledExceptionTypeInfoName is not null)
             return;
-        if (!TypeIndex().TryGetValue(("System", "OperationCanceledException"), out var cands))
-            return;
-        var (mod, tdh) = cands[0];
-        if (!mod.ClassMap.TryGetValue(tdh, out var cls))
+        var corelib = Modules.FirstOrDefault(m => m.AssemblyName == "System.Private.CoreLib")
+            ?? Modules.FirstOrDefault(m => m.AssemblyName == "mscorlib");
+        if (corelib is null || RawMetadataDefinition(corelib, "System.OperationCanceledException") is not { } oce
+            || !corelib.ClassMap.TryGetValue(oce, out var cls))
             return;
         // Runtime token access uses the real field offset and allocation extent,
         // including when no managed constructor or getter makes layout reachable.
@@ -3938,17 +3935,16 @@ internal sealed partial class Compilation
         CanceledExceptionTypeInfoName = cls.CppTypeInfoName;
         // TCE derives from OCE, so reaching it here keeps `catch (OperationCanceled
         // Exception)` matching a canceled task through the emitted base chain.
-        if (TypeIndex().TryGetValue(("System.Threading.Tasks", "TaskCanceledException"), out var tceCands))
+        if (RawMetadataDefinition(corelib, "System.Threading.Tasks.TaskCanceledException") is { } definition
+            && corelib.ClassMap.TryGetValue(definition, out var tce))
         {
-            var (tceMod, tceTdh) = tceCands[0];
-            if (tceMod.ClassMap.TryGetValue(tceTdh, out var tce))
-            {
-                // A synthesized TCE needs its inherited OCE storage, not a shell.
-                NoteForceEmit(tce);
-                NoteReferencedType(tce);
-                ReachAllocatedType(tce);
-                TaskCanceledExceptionTypeInfoName = tce.CppTypeInfoName;
-            }
+            // A synthesized TCE needs its inherited OCE storage, not a shell.
+            NoteForceEmit(tce);
+            NoteReferencedType(tce);
+            ReachAllocatedType(tce);
+            TaskCanceledExceptionTaskField = tce.Fields.FirstOrDefault(field => !field.IsStatic
+                && field.Name == "_canceledTask" && CppTypes.Of(field.Type) == "Dn2CppTask*")
+                ?? throw new NotSupportedException("TaskCanceledException requires its Task storage field");
         }
     }
 
@@ -5606,7 +5602,8 @@ internal sealed partial class Compilation
             spec.IsValueType = !spec.IntrinsicCppName.EndsWith('*');
             if (IsTypedGCHandle(spec))
                 CompleteTypedGCHandleInterfaces(spec);
-            if (CoreIntrinsics.IsTaskLifecycleOwner(spec) || spec.FullName == "System.Threading.Tasks.TaskScheduler")
+            if (CoreIntrinsics.IsTaskLifecycleOwner(spec) || spec.FullName == "System.Threading.Tasks.TaskScheduler"
+                || CoreIntrinsics.IsTaskCompletionSourceOwner(spec))
                 CompleteTaskLifecycleMembers(spec);
             return;
         }

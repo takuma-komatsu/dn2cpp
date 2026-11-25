@@ -804,8 +804,9 @@ internal sealed partial class MethodCompiler
             && _c.CanceledExceptionTokenField is { } token)
             Emit($"dn2cpp_set_canceled_exception_type(&{n}, "
                 + $"offsetof({token.DeclaringClass.CppStructName}, {token.CppName}));");
-        if (_c.TaskCanceledExceptionTypeInfoName is { } tn)
-            Emit($"dn2cpp_set_task_canceled_exception_type(&{tn});");
+        if (_c.TaskCanceledExceptionTaskField is { } task)
+            Emit($"dn2cpp_set_task_canceled_exception_type(&{task.DeclaringClass.CppTypeInfoName}, "
+                + $"offsetof({task.DeclaringClass.CppStructName}, {task.CppName}));");
     }
 
     /// <summary>When a <see cref="PopTaskArrayOperand"/> sequence source rejects a null

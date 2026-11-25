@@ -1265,6 +1265,25 @@ internal sealed partial class MethodCompiler
                     $"((Dn2CppTaskCompletionSource*)({t.Expr}))->task");
                 return true;
             }
+            case ("System.Threading.Tasks.TaskCompletionSource", "SetFromTask" or "TrySetFromTask"):
+            {
+                var target = _callSiteToken == 0 ? Method
+                    : ResolveMethodHandle(SRME.EntityHandle(_callSiteToken), name);
+                if (!CoreIntrinsics.IsTaskCompletionTransfer(target)
+                    || sig.Header.RawValue != 0x20 || sig.ParameterTypes is not [{ } input]
+                    || !NamesTask(input) || target.Signature.ReturnType != sig.ReturnType
+                    || target.Signature.ParameterTypes is not [{ } expected] || expected != input)
+                    return false;
+                string completed = Cast(Pop(), "Dn2CppTask*");
+                string source = Cast(Pop(), "Dn2CppTaskCompletionSource*");
+                string copyResult = target.DeclaringClass.GenericArity == 1 ? "true" : "false";
+                string args = $"{source}, {completed}, {copyResult}";
+                if (name == "SetFromTask")
+                    Emit($"dn2cpp_tcs_set_from_task({args});");
+                else
+                    Push(StackKind.I4, "int32_t", $"dn2cpp_tcs_try_set_from_task({args})");
+                return true;
+            }
             case ("System.Threading.Tasks.TaskCompletionSource", "SetResult"):
             case ("System.Threading.Tasks.TaskCompletionSource", "TrySetResult"):
             {

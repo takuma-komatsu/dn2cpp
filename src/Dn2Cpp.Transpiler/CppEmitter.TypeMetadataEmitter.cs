@@ -1466,7 +1466,8 @@ internal sealed partial class CppEmitter
             {
                 var helperRows = ReferencedIntrinsicHelperRows(c).ToList();
                 var helperTable = BuildMemberTable(c, helperRows.Where(m => m.Name != ".ctor").ToList(),
-                    c.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler" ? "interpolationhelpertab" : "methtab");
+                    c.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler" ? "interpolationhelpertab"
+                    : CoreIntrinsics.IsTaskCompletionSourceOwner(c) ? "tcstransfertab" : "methtab");
                 var helperConstructors = BuildMemberTable(c, helperRows.Where(m => m.Name == ".ctor").ToList(), "ctortab");
                 bool isTask = _c.GenericDefFullName(c) == "System.Threading.Tasks.Task";
                 string interfaces = "nullptr";
@@ -4222,7 +4223,7 @@ internal sealed partial class CppEmitter
         private static bool IsReferencedIntrinsicHelperOwner(ClassInfo owner)
         {
             if (owner.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
-                || CoreIntrinsics.IsTaskLifecycleOwner(owner))
+                || CoreIntrinsics.IsTaskLifecycleOwner(owner) || CoreIntrinsics.IsTaskCompletionSourceOwner(owner))
                 return true;
             if (owner.FullName != "System.Runtime.InteropServices.GCHandle"
                 || owner.Module.AssemblyName != "System.Private.CoreLib" || owner.Handle.IsNil
@@ -4258,7 +4259,8 @@ internal sealed partial class CppEmitter
         private bool IsReferencedIntrinsicHelperRow(MethodInfo method) =>
             method.DeclaringClass.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
                 ? IsInterpolationHelperRow(method)
-                : (CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(method) || CoreIntrinsics.IsTaskLifecycle(method))
+                : (CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(method) || CoreIntrinsics.IsTaskLifecycle(method)
+                    || CoreIntrinsics.IsTaskCompletionTransfer(method))
                     && IsRetainedOpaqueMemberRow(method);
 
         private bool IsRetainedOpaqueMemberRow(MethodInfo method) =>
@@ -4266,6 +4268,7 @@ internal sealed partial class CppEmitter
             && (_c.Reachable.Contains(method) || _c.KeepsUnreachedRow(method))
             && (CoreIntrinsics.BrDelegateCallable.Matches(method)
                 || CoreIntrinsics.IsMathOverflowHelper(method)
+                || CoreIntrinsics.IsTaskCompletionTransfer(method)
                 || CoreIntrinsics.IsDateTimeFormatInfoBoundary(method)
                 || CoreIntrinsics.IsTaskLifecycleNative(method)
                 || CoreIntrinsics.IsThreadingPrivate(method)
