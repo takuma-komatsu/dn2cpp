@@ -54,6 +54,11 @@ extern const Dn2CppType dn2cpp_task_type_obj;
 Dn2CppTypeInfo dn2cpp_task_type =
     dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.Task", &dn2cpp_object_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppTask), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_task_type_obj);
 const Dn2CppType dn2cpp_task_type_obj = { { &dn2cpp_type_type }, &dn2cpp_task_type };
+const Dn2CppTypeInfo dn2cpp_task_factory_type = {
+    "System.Threading.Tasks.TaskFactory", &dn2cpp_object_type, nullptr, nullptr,
+    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+    (int32_t)sizeof(Dn2CppTaskFactory)
+};
 extern const Dn2CppType dn2cpp_taskscheduler_type_obj;
 static Dn2CppTypeReflection g_taskscheduler_reflection;
 
@@ -534,6 +539,22 @@ Dn2CppTask** dn2cpp_task_default_result_field(const Dn2CppTypeInfo* taskType)
     dn2cpp_gc_store_ref(&entry->next, entries);
     dn2cpp_gc_store_ref(&entries, entry);
     return &entry->task;
+}
+
+Dn2CppTaskFactory* dn2cpp_default_task_factory(const Dn2CppTypeInfo* type)
+{
+    // The root mirrors the static backing field on each closed Task<TResult>.
+    struct Entry : Dn2CppTaskFactory { Entry* next; };
+    static DN2CPP_GC_STATIC_ROOT Entry* factories = nullptr;
+    std::lock_guard<std::mutex> lock(g_task_mtx);
+    for (auto* entry = factories; entry != nullptr; entry = entry->next)
+        if (entry->type == type)
+            return entry;
+    auto* entry = static_cast<Entry*>(dn2cpp_alloc(sizeof(Entry)));
+    entry->type = type;
+    dn2cpp_gc_store_ref(&entry->next, factories);
+    dn2cpp_gc_store_ref(&factories, entry);
+    return entry;
 }
 
 static Dn2CppString* dn2cpp_task_result_tostring(Dn2CppTask* task,

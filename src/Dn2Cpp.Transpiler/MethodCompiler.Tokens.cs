@@ -147,7 +147,7 @@ internal sealed partial class MethodCompiler
                 _ => _c.ResolveTypeRef(_module, h) is { Kind: TypeKind.Class, Class: { } rcls } rc
                         && (rcls.Module.AssemblyName != "System.Private.CoreLib"
                             || rcls.IsValueType || rcls.IsEnum
-                            || rcls.FullName is "System.Collections.IList" or "System.Collections.ICollection")
+                            || rcls.FullName is "System.Collections.IList" or "System.Collections.ICollection" or "System.Threading.Tasks.TaskFactory")
                     ? rc
                     : _c.ExternalTypeRef(_module, h),
             };
@@ -359,7 +359,7 @@ internal sealed partial class MethodCompiler
         // the runtime-raised exceptions must keep the SAME symbol a resolved reference to
         // them keeps, or the corelib-less lane hands back a second identity for exactly the
         // types whose objects the runtime allocates.
-        TypeKind.External when CoreIntrinsics.RuntimeTypeInfoSymbol(t.ExternalName) is { } rt => rt,
+        TypeKind.External => CoreIntrinsics.ExternalRuntimeTypeInfoSymbol(t),
         // A reference-element array reached through THIS generic fallback reads as the
         // shared array_ref_type ("System.Object[]"). The identity-bearing sites do not land
         // here: typeof(T[]), newarr / Array.Empty, the castclass/isinst targets

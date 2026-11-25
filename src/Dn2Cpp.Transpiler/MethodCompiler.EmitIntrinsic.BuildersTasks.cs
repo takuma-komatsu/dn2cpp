@@ -1026,14 +1026,26 @@ internal sealed partial class MethodCompiler
                 PushStampedTask($"dn2cpp_task_run_void((Dn2CppObject*)({del.Expr}), DN2CPP_TASK_DENY_CHILD_ATTACH, {source})", sig.ReturnType);
                 return true;
             }
-            // Task.Factory is an opaque nullptr sentinel, only ever the receiver of
-            // the StartNew intercept below (never dereferenced); the scheduler
-            // singleton is a real non-null reference, even when used as a hint.
-            // Intercepting get_Default here keeps the whole TaskScheduler..cctor /
-            // ThreadPoolTaskScheduler / Debugger / DependentHandle subtree unreached.
-            case ("System.Threading.Tasks.Task", "get_Factory"):
-                Push(StackKind.Ref, "Dn2CppObject*", "nullptr");
+            case ("System.Threading.Tasks.Task", "get_Factory") when sig.Header.RawValue == 0
+                && sig.ParameterTypes.Length == 0
+                && (sig.ReturnType is { Class: { IntrinsicCppName: "Dn2CppTaskFactory*", Module.AssemblyName: "System.Private.CoreLib" or "mscorlib" } }
+                    || sig.ReturnType is { Kind: TypeKind.External, ExternalName: "System.Threading.Tasks.TaskFactory" }
+                        && CoreIntrinsics.ExternalRuntimeTypeInfoSymbol(sig.ReturnType) is not null):
+            {
+                var token = SRME.EntityHandle(_callSiteToken);
+                var owner = token.IsNil ? Method.Module : Comp.DeclaringDefinitionOf(Module, token)?.Module;
+                if (owner is null
+                    ? token.Kind != HandleKind.MemberReference || !Comp.AssemblyTypeResolver.CanBindUnresolvedCoreType(Module,
+                        Module.Reader.GetMemberReference((MemberReferenceHandle)token).Parent)
+                    : owner.AssemblyName is not ("System.Private.CoreLib" or "mscorlib"))
+                    return false;
+                string type = SharedTrial && Compilation.ContainsCanonPlaceholder(sig.ReturnType)
+                    ? "(const Dn2CppTypeInfo*)" + RgctxSlotAccess(RgctxSlotKind.TaskTypeInfo,
+                        _callSiteToken, "task factory typeinfo", sig.ReturnType)
+                    : TypeInfoExpr(sig.ReturnType) ?? throw new InvalidOperationException("Task.Factory requires its factory type");
+                Push(StackKind.Ref, "Dn2CppTaskFactory*", $"dn2cpp_default_task_factory({type})");
                 return true;
+            }
             // AOT has no attached managed debugger. The protected base constructor
             // only registers with the debugger on that path and leaves the Id lazy.
             case ("System.Threading.Tasks.TaskScheduler", ".ctor") when sig.Header.RawValue == 0x20
@@ -1090,7 +1102,7 @@ internal sealed partial class MethodCompiler
                 {
                     var state = Pop(); // object? state (passed to the delegate)
                     var del = Pop();   // Action<object?>
-                    Pop();             // receiver — the Task.Factory nullptr sentinel
+                    Pop();             // factory receiver
                     PushStampedTask(
                         $"dn2cpp_task_run_void_state((Dn2CppObject*)({del.Expr}), {Cast(state, "Dn2CppObject*")}, {options}, {source})",
                         sig.ReturnType);
@@ -1098,7 +1110,7 @@ internal sealed partial class MethodCompiler
                 else
                 {
                     var del = Pop(); // Action
-                    Pop();           // receiver — the Task.Factory nullptr sentinel
+                    Pop();           // factory receiver
                     PushStampedTask($"dn2cpp_task_run_void((Dn2CppObject*)({del.Expr}), {options}, {source})", sig.ReturnType);
                 }
                 return true;

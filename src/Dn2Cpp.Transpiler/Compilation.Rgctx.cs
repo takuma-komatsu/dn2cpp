@@ -2443,7 +2443,7 @@ internal sealed partial class Compilation
 
         if (siteType is not { Kind: TypeKind.Class, Class: { } cls })
             throw new NotSupportedException($"rgctx: Task producer has non-class site type {siteType}");
-        if (cls.IntrinsicCppName == "Dn2CppTask*")
+        if (cls.IntrinsicCppName is "Dn2CppTask*" or "Dn2CppTaskFactory*")
             return siteType;
         if (GenericDefFullName(cls) is not ("System.Threading.Tasks.ValueTask"
                                              or "System.Threading.Tasks.TaskCompletionSource")
