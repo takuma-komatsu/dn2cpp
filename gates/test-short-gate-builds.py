@@ -116,6 +116,8 @@ HEADER
                 echo "Awaiter::Probe transpiling CustomAsyncTaskLib's real IL" >&2
                 echo "Awaiter::Probe transpiling CustomAsyncTaskTypeSharedExceed's real IL" >&2 ;;
         esac
+    elif [[ "$app" == */AsyncCombinators.dll ]]; then
+        echo 'struct Program_AwaitTasks_m1__AsyncFrame {};' > "$dir/generated.cpp"
     elif [[ "$app" == *MultiAssembly.dll ]]; then
         local first=record policy=native
         [[ "$dir" != *-both-native ]] || first=native
@@ -1104,7 +1106,8 @@ gate_capture() {
             printf 'Runtime is-pointer routes end\n' > "$prefix.stdout" ;;
         */runtime-field-boundary)
             [ "${@: -1}" = native-boundary ] || return 97
-            printf '%s\n' 'field-handle-GetAttributes-direct:PlatformNotSupportedException:System.RuntimeFieldHandle.GetAttributes requires CoreCLR field descriptors. Use FieldInfo instead.' > "$prefix.stdout" ;;
+            printf 'field-handle-GetAttributes-%s:PlatformNotSupportedException:System.RuntimeFieldHandle.GetAttributes requires CoreCLR field descriptors. Use FieldInfo instead.\n' \
+                direct reflection > "$prefix.stdout" ;;
         */selfhostprimsubset*/native|*/selfhostprimsubset*/oracle|*/buffer-unrewritten)
             gc_stdout > "$prefix.stdout"
             if [ "${FAKE_RUNTIME_TAINT:-}" = prefix ] && [[ "$prefix" == */native ]]; then
