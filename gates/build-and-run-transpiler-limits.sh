@@ -142,6 +142,7 @@ transpiler_limits_representative_gate() (
     corelib=$(locate_corelib)
     build_proj samples/dotnet/GenericRecursionBad/GenericRecursionBad.csproj
     build_proj samples/dotnet/StringCore/StringCore.csproj
+    prepare_cli || return 1
     rec_app="samples/dotnet/GenericRecursionBad/bin/$CONFIG/$TFM/GenericRecursionBad.dll"
     big_app="samples/dotnet/StringCore/bin/$CONFIG/$TFM/StringCore.dll"
 
@@ -314,6 +315,7 @@ fi
 # under the pipe buffer, because the race is against grep's EXIT and not against the
 # buffer filling. A here-string is fully materialized before grep starts.
 echo "== 2/9 A self-deepening generic must hit the monomorphization bound =="
+prepare_cli
 for rec_cap in 32 40; do
     for rec_mode in ildiet original; do
         summary_rec_rc=0
@@ -333,6 +335,10 @@ for rec_cap in 32 40; do
         if [ "$rec_mode" = ildiet ]; then
             [ -f "$(ildiet_generation "$summary_rec_out/ildiet")/GenericRecursionBad.dll" ] \
                 || { echo 'FAIL: definition graph did not finish before the transpiler bound' >&2; exit 1; }
+        elif [ "$rec_cap" = 40 ] && ! grep -q 'nested 41 deep' <<<"$summary_rec_err"; then
+            echo 'FAIL: DN2CPP_MAX_GENERIC_DEPTH=40 did not move the bound to 41' >&2
+            echo "$summary_rec_err" >&2
+            exit 1
         fi
     done
     echo "OK (ILDiet graph completed; original and rewritten input hit the $rec_cap-level transpiler bound)"
@@ -353,16 +359,6 @@ fi
 if ! grep -q "DN2CPP_MAX_GENERIC_DEPTH" <<<"$rec_err"; then
     echo "FAIL: the rejection does not name the lever that raises the bound:" >&2
     echo "$rec_err" >&2
-    exit 1
-fi
-# A ceiling, not a ban: raising it cannot make this input terminate, but it must be
-# the DEPTH that stops it, at the new level. (invoke_cli is a shell function, so the
-# override goes inside the subshell — bash does not reliably scope `VAR=x func`.)
-deep_rc=0
-deep_err=$(export DN2CPP_MAX_GENERIC_DEPTH=40; invoke_cli "$rec_app" -r "$corelib" --no-ildiet -o "$out" 2>&1 >/dev/null) || deep_rc=$?
-if [ "$deep_rc" -ne 2 ] || ! grep -q "nested 41 deep" <<<"$deep_err"; then
-    echo "FAIL: DN2CPP_MAX_GENERIC_DEPTH=40 did not move the bound to 41 (exit $deep_rc)" >&2
-    echo "$deep_err" >&2
     exit 1
 fi
 echo "OK (rejected at the bound, names its lever, and the lever moves it)"
@@ -640,7 +636,6 @@ echo "OK (and the shared body's array-to-collection boundary runs — output mat
 echo "== 3e/9 Canonical linking must preserve the instantiation bound =="
 # CoreLib mints closed types before linking Id<CnRef>. Exercise emission below
 # the CLI's load-set boundary so this budget covers just Id<string> and Id<CnRef>.
-prepare_cli
 link_transpiler="$(dirname "$DN2CPP_CLI_DLL")/Dn2Cpp.Transpiler.dll"
 link_run() (
     export DN2CPP_MAX_INSTANTIATIONS="$2"
