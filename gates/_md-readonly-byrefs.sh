@@ -37,25 +37,26 @@ md_readonly_pending_asserts() {
 }
 
 md_readonly_byrefs_gate() {
-    local axis="$1" out="artifacts/md-readonly-byrefs-$1"
+    local target="$1" source="artifacts/md-readonly-byrefs-$1"
     local DN2CPP_SAMPLE_PROJECT_DIR=gates/fixtures/md-readonly-byrefs
-    local DN2CPP_NO_GC= DN2CPP_GC_BACKEND=unity WASM= uses_gc=1
-    case "$axis" in
-        unity) ;;
-        nogc) DN2CPP_NO_GC=1; uses_gc=0 ;;
-        upstream) DN2CPP_GC_BACKEND=upstream ;;
-        wasm) WASM=1 ;;
-        *) echo "FAIL: unknown readonly byref allocator axis: $axis" >&2; return 1 ;;
+    local DN2CPP_NO_GC= DN2CPP_GC_BACKEND=unity WASM= _CG_CORELIB_IN=
+    local axes axis out uses_gc file inputs=()
+    case "$target" in
+        native)
+            axes=(unity nogc upstream)
+            # This directory holds only this invocation's common build inputs.
+            rm -rf "$source"
+            ;;
+        wasm)
+            axes=(wasm)
+            WASM=1
+            _CG_CORELIB_IN=$(locate_corelib_cross_posix pinned) || return 1
+            ;;
+        *) echo "FAIL: unknown readonly byref target: $target" >&2; return 1 ;;
     esac
     export DN2CPP_NO_GC DN2CPP_GC_BACKEND WASM
-    local _CG_CORELIB_IN
-    if [ "$axis" = wasm ]; then
-        _CG_CORELIB_IN=$(locate_corelib_cross_posix pinned)
-    fi
-    _corelib_gate_core MdReadonlyByrefs "$out" System.Collections
-    md_readonly_pending_asserts "$out"
-    printf '#define DN2CPP_EXPECT_RAW_MD_GC %s\n' "$uses_gc" > "$out/generated_readonly_checks.cpp"
-    cat gates/fixtures/md-readonly-byrefs/runtime-checks.cpp >> "$out/generated_readonly_checks.cpp"
+    _corelib_gate_core MdReadonlyByrefs "$source" System.Collections
+    md_readonly_pending_asserts "$source"
     awk '
         BEGIN { print "void dn2cpp_readonly_byref_runtime_checks();" }
         { print }
@@ -63,22 +64,44 @@ md_readonly_byrefs_gate() {
             print "    dn2cpp_readonly_byref_runtime_checks();"; calls++
         }
         END { if (calls != 1) exit 1 }
-    ' "$out/generated.cpp" > "$out/generated.checked.cpp.tmp" || return 1
-    mv "$out/generated.checked.cpp.tmp" "$out/generated.cpp"
-    if [ "$axis" = wasm ]; then
-        compile_console_wasm "$out" MdReadonlyByrefs
-        gate_capture_ok "$out/native" run_bounded node "$out/MdReadonlyByrefs.js"
-    else
-        compile_console "$out" MdReadonlyByrefs
-        gate_capture_ok "$out/native" run_bounded "$out/MdReadonlyByrefs$EXE_EXT"
-        DN2CPP_GC_INCREMENTAL=1 gate_capture_ok "$out/incremental" run_bounded "$out/MdReadonlyByrefs$EXE_EXT"
-        gate_output compare "$out/native.stdout" "$out/incremental.stdout"
+    ' "$source/generated.cpp" > "$source/generated.checked.cpp.tmp" || return 1
+    mv "$source/generated.checked.cpp.tmp" "$source/generated.cpp"
+    gate_capture_ok "$source/clr" run_bounded dotnet "$_CG_APP"
+
+    if [ "$target" = native ]; then
+        # CMake consumes the flat emission and link sidecars. ILDiet's descriptor
+        # retains the absolute paths of the single managed publication.
+        for file in "$source"/*; do
+            if [ -f "$file" ]; then inputs+=("$file"); fi
+        done
     fi
-    gate_capture_ok "$out/clr" run_bounded dotnet "$_CG_APP"
-    if [ "$axis" = wasm ]; then
-        gate_output compare "$out/clr.stdout" "$out/native.stdout" --policy crlf
-    else
-        gate_output compare "$out/clr.stdout" "$out/native.stdout"
-    fi
-    echo "OK: readonly MD aliases and owner discrimination ($axis)"
+    for axis in "${axes[@]}"; do
+        out="artifacts/md-readonly-byrefs-$axis"
+        DN2CPP_NO_GC= DN2CPP_GC_BACKEND=unity uses_gc=1
+        case "$axis" in
+            nogc) DN2CPP_NO_GC=1; uses_gc=0 ;;
+            upstream) DN2CPP_GC_BACKEND=upstream ;;
+        esac
+        if [ "$target" = native ]; then
+            mkdir -p "$out"
+            # A smaller emission must remove stale TUs and link sidecars. Hidden
+            # CMake directories keep their own toolchain and incremental build.
+            rm -rf "$out"/*
+            cp "${inputs[@]}" "$out/"
+        fi
+        printf '#define DN2CPP_EXPECT_RAW_MD_GC %s\n' "$uses_gc" > "$out/generated_readonly_checks.cpp"
+        cat gates/fixtures/md-readonly-byrefs/runtime-checks.cpp >> "$out/generated_readonly_checks.cpp"
+        if [ "$axis" = wasm ]; then
+            compile_console_wasm "$out" MdReadonlyByrefs
+            gate_capture_ok "$out/native" run_bounded node "$out/MdReadonlyByrefs.js"
+            gate_output compare "$out/clr.stdout" "$out/native.stdout" --policy crlf
+        else
+            compile_console "$out" MdReadonlyByrefs
+            gate_capture_ok "$out/native" run_bounded "$out/MdReadonlyByrefs$EXE_EXT"
+            DN2CPP_GC_INCREMENTAL=1 gate_capture_ok "$out/incremental" run_bounded "$out/MdReadonlyByrefs$EXE_EXT"
+            gate_output compare "$out/native.stdout" "$out/incremental.stdout"
+            gate_output compare "$out/clr.stdout" "$out/native.stdout"
+        fi
+        echo "OK: readonly MD aliases and owner discrimination ($axis)"
+    done
 }
