@@ -1,4 +1,5 @@
 """Read and independently validate an ILDiet publication used by gate fixtures."""
+from functools import lru_cache
 from pathlib import Path
 import re
 import xml.etree.ElementTree as ET
@@ -9,6 +10,10 @@ def fnv1a(content):
     for byte in content:
         value = ((value ^ byte) * 1099511628211) & 0xffffffffffffffff
     return f"{value:016x}"
+
+
+# A copied CoreLib recurs across publications. Its bytes identify the cached hash.
+_corelib_fnv1a = lru_cache(maxsize=1)(fnv1a)
 
 
 def manifest(output, result=None):
@@ -31,7 +36,8 @@ def manifest(output, result=None):
     for assembly in assemblies:
         assert assembly.get("mode") in ("rewritten", "copied"), "invalid assembly mode"
         path = generation / (assembly.get("name") + ".dll")
-        assert assembly.get("hash") == fnv1a(path.read_bytes()), "assembly hash mismatch: " + path.name
+        hash_bytes = _corelib_fnv1a if path.name == "System.Private.CoreLib.dll" else fnv1a
+        assert assembly.get("hash") == hash_bytes(path.read_bytes()), "assembly hash mismatch: " + path.name
         assert assembly.get("registryRewritten") in ("true", "false"), "missing registry mode"
         assert assembly.get("registryRewritten") != "true" or assembly.get("mode") == "rewritten", "copied registry changed"
     assert (root.get("constructorRegistriesRewritten") == "true") == any(a.get("registryRewritten") == "true" for a in assemblies), "registry aggregate mismatch"
