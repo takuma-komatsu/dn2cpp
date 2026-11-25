@@ -442,7 +442,7 @@ gate_extra_asserts() {
         || { echo 'FAIL: Type.GetType case-collision section did not run' >&2; return 1; }
 }
 corelib_diff_gate TypeGetTypeIgnoreCase --no-ildiet
-DN2CPP_OUT_SUFFIX=-diet corelib_diff_gate TypeGetTypeIgnoreCase
+DN2CPP_SKIP_BUILD=1 DN2CPP_OUT_SUFFIX=-diet corelib_diff_gate TypeGetTypeIgnoreCase
 unset -f gate_extra_asserts
 
 gate_extra_asserts() {
@@ -985,10 +985,10 @@ if [ "$DN2CPP_REFLECT_TYPES_FULL" != 1 ]; then
     exit 0
 fi
 DN2CPP_OUT_SUFFIX=-diet DN2CPP_STRICT_COMPLETION=1 \
-    ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
+    ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves --built-app "$_CG_APP" \
     System.Collections System.ComponentModel.Primitives "${ORDINARY_TYPE_LEAVES_KEEP[@]}"
 DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
-    ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
+    ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves --built-app "$_CG_APP" \
     System.Collections System.ComponentModel.Primitives --no-ildiet --no-metadata-compression \
     "${ORDINARY_TYPE_LEAVES_KEEP[@]}"
 # With no attribute read, the closed owner's retained row must reach the deepest
@@ -1301,7 +1301,7 @@ TEMPLATE_SIGNATURES_KEEP=(--link-xml samples/dotnet/ReflectTypes/keep-template-s
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes ReflectionTemplateDispatch --no-ildiet \
     "${TEMPLATE_SIGNATURES_KEEP[@]}"
 DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
-    ordinary_fixture_diff_gate ReflectTypes ReflectionTemplateDispatch --no-ildiet --no-metadata-compression \
+    ordinary_fixture_diff_gate ReflectTypes ReflectionTemplateDispatch --built-app "$_CG_APP" --no-ildiet --no-metadata-compression \
     "${TEMPLATE_SIGNATURES_KEEP[@]}"
 unset -f gate_extra_asserts
 
@@ -1344,9 +1344,9 @@ gate_extra_asserts() {
 }
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes TemplateSignatureAllocationOnly --no-ildiet
 DN2CPP_OUT_SUFFIX=-diet DN2CPP_STRICT_COMPLETION=1 \
-    ordinary_fixture_diff_gate ReflectTypes TemplateSignatureAllocationOnly
+    ordinary_fixture_diff_gate ReflectTypes TemplateSignatureAllocationOnly --built-app "$_CG_APP"
 DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
-    ordinary_fixture_diff_gate ReflectTypes TemplateSignatureAllocationOnly --no-ildiet --no-metadata-compression
+    ordinary_fixture_diff_gate ReflectTypes TemplateSignatureAllocationOnly --built-app "$_CG_APP" --no-ildiet --no-metadata-compression
 unset -f gate_extra_asserts
 
 # Unknown generic arguments retain no executable target. Independent static calls,

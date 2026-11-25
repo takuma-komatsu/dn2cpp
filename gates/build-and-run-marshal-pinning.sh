@@ -88,6 +88,7 @@ echo "== Asserting [StructLayout(Size=N)] with N not a multiple of the alignment
 # green right over it.
 _neg_corelib=$(locate_corelib)
 build_proj samples/dotnet/LayoutSizeBad/LayoutSizeBad.csproj
+prepare_cli
 _neg_app="samples/dotnet/LayoutSizeBad/bin/$CONFIG/$TFM/LayoutSizeBad.dll"
 mkdir -p artifacts
 _neg_out=$(mktemp -d artifacts/marshalpinning-layoutsize-neg.XXXXXX)

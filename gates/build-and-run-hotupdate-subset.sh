@@ -290,9 +290,7 @@ build_proj samples/dotnet/HotUpdatePatch/GvmRowMissPatch.csproj
 build_proj samples/dotnet/HotUpdatePatch/GvmCallPatch.csproj
 build_proj samples/dotnet/HotUpdatePatch/GvmCallReferenceBase.csproj
 build_proj samples/dotnet/HotUpdatePatch/GvmCallReferencePatch.csproj
-build_proj samples/dotnet/HotUpdatePatch/GvmCallLateLayoutLibrary.csproj
 build_proj samples/dotnet/HotUpdatePatch/GvmCallLateLayout.csproj
-build_proj samples/dotnet/HotUpdatePatch/GvmCallLateNoAllocLibrary.csproj
 build_proj samples/dotnet/HotUpdatePatch/GvmCallLateNoAlloc.csproj
 build_proj samples/dotnet/HotUpdatePatch/RenamedSlotPatch.csproj
 build_proj samples/dotnet/HotUpdatePatch/AggregateCtorMissPatch.csproj

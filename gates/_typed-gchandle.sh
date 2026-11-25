@@ -33,11 +33,9 @@ typed_gchandle_assert_types() {
 }
 
 typed_gchandle_negative_cases() {
-    local seed="$1" root corelib fixture mode path preprocessing expected status
-    shift
+    local generator="$1" seed="$2" root corelib mode path preprocessing expected status
+    shift 2
     corelib=$(locate_corelib) || return 1
-    build_gate_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj || return 1
-    fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll"
     mkdir -p artifacts || return 1
     root=$(mktemp -d "artifacts/typed-gchandle-negative-${CONFIG}.XXXXXX") || return 1
     local cases=(ldftn-dispose ldvirtftn-equals-object call-dispose-return newobj-name)
@@ -58,7 +56,7 @@ typed_gchandle_negative_cases() {
     fi
     for mode in "${cases[@]}"; do
         path="$root/$mode/TypedGCHandleBasics.dll"
-        gate_capture_ok "$root/$mode-generator" run_bounded dotnet "$fixture" \
+        gate_capture_ok "$root/$mode-generator" run_bounded dotnet "$generator" \
             --typed-gchandle-negative "$seed" "$path" "$mode" || return 1
         gate_output witness "$root/$mode-generator.stdout" "typed-gchandle-negative:$mode" --count 1 --policy crlf || return 1
         case "$mode" in
@@ -107,12 +105,10 @@ typed_gchandle_assert_collections() {
 }
 
 typed_gchandle_retention() {
-    local fixture=gates/fixtures/typed-gchandle core_root level
-    build_gate_proj "$fixture/retention/TypedGCHandleRetention.csproj"
-    build_gate_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+    local generator="$1" fixture=gates/fixtures/typed-gchandle core_root level
+    build_gate_proj "$fixture/retention/TypedGCHandleRetention.csproj" || return 1
     core_root=$(mktemp -d "artifacts/typed-gchandle-core-${CONFIG}.XXXXXX")
-    gate_capture_ok "$core_root/generator" run_bounded dotnet \
-        "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+    gate_capture_ok "$core_root/generator" run_bounded dotnet "$generator" \
         --typed-gchandle-core "$core_root/System.Private.CoreLib.dll"
     gate_output witness "$core_root/generator.stdout" 'typed-gchandle-core:written' --count 1 --policy crlf
     # Real CoreLib Medium retention reaches unrelated unmodeled globalization.
@@ -126,7 +122,7 @@ typed_gchandle_retention() {
             DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-$level"
             export DN2CPP_GC_STATS=1
             local DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|typed-retention-gc-floor:2"
-            corelib_diff_gate TypedGCHandleRetention --stripping-level "$level"
+            DN2CPP_SKIP_BUILD=1 corelib_diff_gate TypedGCHandleRetention --stripping-level "$level"
             # The saved observation remains mandatory on a gate-cache hit.
             typed_gchandle_assert_collections "$_CG_OUT/native.stderr"
         )
@@ -135,20 +131,22 @@ typed_gchandle_retention() {
 
 typed_gchandle_regressions() {
     local fixture=gates/fixtures/typed-gchandle
+    local generator="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll"
     build_gate_proj "$fixture/basics/TypedGCHandleBasics.csproj" || return 1
-    typed_gchandle_negative_cases "$fixture/basics/bin/$CONFIG/$TFM/TypedGCHandleBasics.dll" || return 1
+    build_gate_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj || return 1
+    typed_gchandle_negative_cases "$generator" "$fixture/basics/bin/$CONFIG/$TFM/TypedGCHandleBasics.dll" || return 1
     build_gate_proj "$fixture/type-only/TypedGCHandleTypeOnly.csproj" || return 1
     (
         DN2CPP_SAMPLE_PROJECT_DIR="$fixture/type-only"
         DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-high"
-        corelib_diff_gate TypedGCHandleTypeOnly --stripping-level high
+        DN2CPP_SKIP_BUILD=1 corelib_diff_gate TypedGCHandleTypeOnly --stripping-level high
     )
     if [ "$DN2CPP_MARSHAL_FULL" = 1 ]; then
         (
             DN2CPP_SAMPLE_PROJECT_DIR="$fixture/basics"
             DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-high"
-            corelib_diff_gate TypedGCHandleBasics --stripping-level high
+            DN2CPP_SKIP_BUILD=1 corelib_diff_gate TypedGCHandleBasics --stripping-level high
         )
-        typed_gchandle_retention
+        typed_gchandle_retention "$generator"
     fi
 }

@@ -241,5 +241,5 @@ PY
 DN2CPP_STRICT_COMPLETION=1 corelib_diff_gate Obfuscation --obfuscate
 unset -f gate_extra_asserts
 if [ "$DN2CPP_OBFUSCATION_FULL" = 1 ]; then
-    DN2CPP_OUT_SUFFIX=-plain corelib_diff_gate Obfuscation
+    DN2CPP_SKIP_BUILD=1 DN2CPP_OUT_SUFFIX=-plain corelib_diff_gate Obfuscation
 fi

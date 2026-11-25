@@ -2,8 +2,16 @@
 # A secondary driver stays beside its themed bucket and uses the same exact
 # .NET parity and cache machinery as the bucket's ordinary CoreLib drivers.
 ordinary_fixture_diff_gate() {
-    local fixture_bucket="$1" fixture_subject="$2" core_definition
+    local fixture_bucket="$1" fixture_subject="$2" fixture_app="" core_definition
     shift 2
+    if [ "${1:-}" = --built-app ]; then
+        fixture_app=${2:-}
+        if [ ! -f "$fixture_app" ] || [ "${fixture_app##*/}" != "$fixture_subject.dll" ]; then
+            echo "FAIL: expected the built $fixture_subject.dll fixture at '$fixture_app'" >&2
+            return 1
+        fi
+        shift 2
+    fi
     core_definition=$(declare -f _corelib_gate_core)
     _corelib_gate_core() {
         local project="$1" out="$2" bcl name
@@ -11,13 +19,16 @@ ordinary_fixture_diff_gate() {
         _CG_OUT="$out"
         _CG_CORELIB=${_CG_CORELIB_IN:-$(locate_corelib)}
         bcl=$(dirname "$_CG_CORELIB")
-        if declare -F gate_build_fixture >/dev/null; then
-            gate_build_fixture "samples/dotnet/$fixture_bucket/$project.csproj" "$out/app"
-        else
-            dotnet build "samples/dotnet/$fixture_bucket/$project.csproj" \
-                -c "$CONFIG" --nologo -v q -o "$out/app"
+        if [ -z "$fixture_app" ]; then
+            if declare -F gate_build_fixture >/dev/null; then
+                gate_build_fixture "samples/dotnet/$fixture_bucket/$project.csproj" "$out/app" || return 1
+            else
+                dotnet build "samples/dotnet/$fixture_bucket/$project.csproj" \
+                    -c "$CONFIG" --nologo -v q -o "$out/app" || return 1
+            fi
+            fixture_app="$out/app/$project.dll"
         fi
-        _CG_APP="$out/app/$project.dll"
+        _CG_APP="$fixture_app"
         _CG_EXTRA_REFERENCE_INPUTS=()
         local refs=(-r "$_CG_CORELIB")
         while [ "$#" -gt 0 ]; do

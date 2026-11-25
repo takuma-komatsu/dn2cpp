@@ -76,11 +76,8 @@ ASSEMBLYPROJECT=samples/dotnet/PreserveAssemblyLib
 echo "== Building app and checking both Runtime target frameworks =="
 build_proj "$ROOT/$PROJECT.csproj"
 if preserve_full; then
-build_proj samples/dotnet/ILDietControl/ILDietControl.csproj
 build_proj samples/dotnet/ILDietControl/LookupOnly/LookupOnly.csproj
 build_proj samples/dotnet/ILDietControl/EventBoundary/EventBoundary.csproj
-build_proj samples/dotnet/ILDietControl/ConstructorOnly/ConstructorOnly.csproj
-build_proj samples/dotnet/ILDietControl/InvokeOnly/InvokeOnly.csproj
 build_proj src/Dn2Cpp.Cli.Console/Dn2Cpp.Cli.Console.csproj
 fi
 build_gate_proj gates/fixtures/preserve-control/MetadataProbe.csproj
@@ -1101,6 +1098,8 @@ echo "== Constructor-only reflection constructs signature-selected types and kee
     }
     # Construct(string, Type) activates signature-selected types no analyzable site names.
     external_array_context="$DN2CPP_GATE_EXTRA_CONTEXT"
+    build_proj "$DN2CPP_SAMPLE_PROJECT_DIR/ConstructorOnly.csproj"
+    DN2CPP_SKIP_BUILD=1
     for external_array_mode in ildiet no-ildiet; do
         [ "$external_array_mode" = ildiet ] || preserve_full || continue
         DN2CPP_GATE_EXTRA_CONTEXT="$external_array_context|external-array-defaults:$external_array_mode|reflection-summary:1"
@@ -1119,7 +1118,6 @@ echo "== Constructor-only reflection constructs signature-selected types and kee
 
 if preserve_full; then
 echo "== Initialized local reflection operands retain zero and null across control-flow joins =="
-build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csproj
 (
     local_defaults_original="samples/dotnet/ILDietControl/ConstructorOnly/bin/$CONFIG/$TFM/ConstructorOnly.dll"
     DN2CPP_SAMPLE_PROJECT_DIR="artifacts/constructor-local-defaults-$CONFIG"
@@ -1193,7 +1191,6 @@ build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csp
 )
 
 echo "== Integer storage operands and captured field defaults retain their CLI values =="
-build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csproj
 (
     narrowing_original="samples/dotnet/ILDietControl/ConstructorOnly/bin/$CONFIG/$TFM/ConstructorOnly.dll"
     DN2CPP_SAMPLE_PROJECT_DIR="artifacts/constructor-array-narrowing-$CONFIG"
@@ -1602,6 +1599,8 @@ echo "== Lookups, unselected overloads, unrelated field types, preserved constru
         done
     }
     absence_keep="$DN2CPP_SAMPLE_PROJECT_DIR/keep-preserved-constructor.xml"
+    build_proj "$DN2CPP_SAMPLE_PROJECT_DIR/AbsenceOnly.csproj"
+    DN2CPP_SKIP_BUILD=1
     for preprocessing in enabled disabled; do
         [ "$preprocessing" = enabled ] || preserve_full || continue
         absence_flags=()
@@ -1825,7 +1824,7 @@ echo "== A reflection target from a parameter, a collection, a written-back argu
         || { echo "FAIL: a build-time fix does not name the member its refusal names" >&2; exit 1; }
     DN2CPP_OUT_SUFFIX=-kept
     unknown_attribute_kept=true
-    corelib_diff_gate UnknownTargetOnly --link-xml "$unknown_keep" System.Linq -r "$unknown_library"
+    DN2CPP_SKIP_BUILD=1 corelib_diff_gate UnknownTargetOnly --link-xml "$unknown_keep" System.Linq -r "$unknown_library"
     assert_unknown_target_report "$_CG_OUT"
     grep -Fxq '// ILDietUnknownTargetOnly.TemplateTarget_$CnAny0::Describe' "$_CG_OUT"/generated*.cpp \
         || { echo 'FAIL: the member rule did not compile the runtime-instantiation template body' >&2; exit 1; }
@@ -1969,7 +1968,6 @@ echo "== ILDiet payload changes invalidate behavior gate caches =="
 )
 
 echo "== Rewritten metadata, signed identity, resources and dead assemblies =="
-build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csproj
 gate_python gates/fixtures/ildiet-metadata-validation/check.py "$ILD_DLL" \
     "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
     "$DIET_APP" "$DIET_LIB" "$_CG_CORELIB" "artifacts/ildiet-metadata-tests-$CONFIG"
