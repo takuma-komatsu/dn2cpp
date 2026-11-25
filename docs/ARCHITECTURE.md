@@ -1096,6 +1096,9 @@ operands reuse retained shapes and otherwise throw PlatformNotSupportedException
 with an exact static-shape remedy. Open and signature
 array types use their existing interning and rank limits. These wrappers do not
 expand the native array factory or implement CoreCLR's private loader ABI.
+Constructor reflection on a closed ranked array synthesizes its length and
+lower-bound/length overloads on demand. Invoking either overload uses the array
+factory and returns an SZ array for rank one with a zero lower bound.
 A direct private MakeArray call with a nonpositive rank throws
 PlatformNotSupportedException after handle validation. Its public RuntimeType
 overload keeps the real managed rank check before handle construction, and a
