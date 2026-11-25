@@ -25,26 +25,28 @@ def between(start, end):
     return source[first:source.index(end, first)]
 
 
-# Execute the real selection/build/cache branches, replacing server setup and
-# assertions with the actual capture calls, whose callbacks never execute them.
-build = between('echo "== 2/17 ', '\nif [ "$DN2CPP_HTTP_FULL" = 1 ]; then\necho "== 3/17 ')
-live = between('echo "== 8/17 ', '\nif [ "$DN2CPP_HTTP_FULL" = 1 ]; then\necho "== 16/17 ')
+# Keep the driver selection, capture calls, curl-less link and cache boundaries.
+build = between('echo "== 2/16 ', 'echo "== 3/16 ') + "fi\n"
+live = source[source.index('echo "== 8/16 '):]
 regions = [
-    ('echo "== 9/17 ', 'if [ "$DN2CPP_HTTP_FULL" = 1 ]; then gate_cache_commit; fi\nfi   # real arm'),
-    ('echo "== 12/17 ', 'if [ "$DN2CPP_HTTP_FULL" = 1 ]; then gate_cache_commit; fi\nfi   # beyond arm'),
-    ('# The trust anchors, read at the LINKER', 'gate_cache_commit\nfi   # tls arm'),
+    ('echo "== 9/16 ', 'echo "== 11/16 '),
+    ('echo "== 12/16 ', 'echo "== 13/16 '),
+    ('echo "== 13/16 ', 'if [ "$DN2CPP_HTTP_FULL" = 1 ]; then\necho "== 16/16 '),
 ]
-for start, end in regions:
+for (start, end), expected in zip(regions, (2, 2, 3)):
     first = live.index(start)
     last = live.index(end, first)
     captures = re.findall(r'^gate_capture_ok [^\n]*(?:\\\n[^\n]*)? \|\| \{', live[first:last], re.M)
-    expected = 3 if 'trust anchors' in start else 2
     check(len(captures) == expected, (start, captures))
     live = live[:first] + '\n'.join(capture[:-len(' || {')] for capture in captures) + '\n' + live[last:]
 
 stubs = r'''
 set -euo pipefail
 CONFIG=Debug TFM=net11.0 corelib=corelib nethttp=nethttp
+DN2CPP_CLI_DLL="cli payload/dn2cpp.dll"
+mkdir -p "cli payload" runtime-nocurl
+: > "cli payload/DnHttp.dll"
+DN2CPP_OS=linux
 base=http://get ebase=http://beyond tbase=https://tls tlsca=ca.pem tlsdir=tls-evidence
 build_proj() {
     printf 'PROJECT:%s\n' "$1"
@@ -54,7 +56,10 @@ build_proj() {
     mkdir -p "$dir"
     : > "$dir/$name.dll"
 }
-invoke_cli() { printf 'EMIT:%s\n' "$*"; }
+invoke_cli() {
+    printf 'EMIT:%s\n' "$*"
+    : > "${!#}/generated.cpp"
+}
 compile_console() {
     printf 'NATIVE:%s/%s\n' "$1" "$2"
     : > "$1/$2$EXE_EXT"
@@ -63,6 +68,15 @@ compile_console() {
 gate_cache_check() { printf 'CACHE:%s\n' "$*"; return "$CACHE_STATUS"; }
 gate_cache_hit_msg() { printf 'HIT\n'; }
 gate_cache_commit() { printf 'COMMIT\n'; }
+ensure_cmake_runtime() { printf '%s\n' "$PWD/runtime-nocurl/dn2cpp-targets.cmake"; }
+dump_object_symbols_defined() { :; }
+cmake_build_app() {
+    [ "$DN2CPP_NO_CURL" = 1 ] && [ -f "$1/generated.cpp" ] || return 1
+    printf '%s\n' "$1" >> nocurl-calls
+    [ "$LINK_RESULT" != success ] || return 0
+    printf 'undefined symbol: %s\n' "$LINK_RESULT"
+    return 1
+}
 gate_capture_ok() {
     printf 'CAPTURE:%s\n' "$*"
     [ "$1" != "$FAIL_CAPTURE" ] || return 37
@@ -78,38 +92,54 @@ with tempfile.TemporaryDirectory(prefix="dn2cpp-http-profile-test-") as temp:
                 directory = Path(temp) / (full + cache + (extension or "unix"))
                 directory.mkdir()
                 env = dict(os.environ, DN2CPP_HTTP_FULL=full, CACHE_STATUS=cache,
-                           EXE_EXT=extension, FAIL_CAPTURE="")
+                           EXE_EXT=extension, FAIL_CAPTURE="", LINK_RESULT="dn2cpp_http2_call_open")
                 result = subprocess.run([BASH, "../script.sh"], cwd=directory,
                                         env=env, capture_output=True, text=True, encoding="utf-8")
                 check(result.returncode == 0, (full, cache, extension, result.stderr))
                 lines = result.stdout.splitlines()
                 count = lambda prefix: sum(line.startswith(prefix) for line in lines)
-                images = 1 if full == "0" else 3
-                check(count("EMIT:") == images, result.stdout)
-                check(count("CACHE:") == images, result.stdout)
-                check(count("NATIVE:") == (images if cache == "1" else 0), result.stdout)
-                check(count("COMMIT") == (images if cache == "1" else 0), result.stdout)
+                check(count("EMIT:") == 1 and count("CACHE:") == 1, result.stdout)
+                emit = next(line for line in lines if line.startswith("EMIT:"))
+                key = next(line for line in lines if line.startswith("CACHE:"))
+                explicit_shim = "internal/DnHttp/src/DnHttp/bin/Debug/net11.0/DnHttp.dll"
+                check((" -r " + explicit_shim in emit) == (full == "0"), emit)
+                shim = explicit_shim if full == "0" else "cli payload/DnHttp.dll"
+                mode = "explicit" if full == "0" else "default"
+                check("|dnhttp:" + mode + "|" in key and " " + shim + " " in key, key)
+                check(count("NATIVE:") == (1 if cache == "1" else 0), result.stdout)
+                check(count("COMMIT") == (1 if cache == "1" else 0), result.stdout)
                 check(count("CAPTURE:") == (7 if cache == "1" else 0), result.stdout)
                 projects = [line for line in lines if line.startswith("PROJECT:")]
-                check(len(projects) == (2 if full == "0" else 5), projects)
+                check(len(projects) == (2 if full == "0" else 3), projects)
+                nocurl = directory / "nocurl-calls"
+                if full == "1" and cache == "1":
+                    check(nocurl.read_text().splitlines() == ["artifacts/httptransport-native"], nocurl)
+                else:
+                    check(not nocurl.exists(), nocurl)
                 if cache == "1":
                     calls = [line for line in lines if line.startswith("CAPTURE:")]
-                    if full == "0":
-                        for call, mode in zip(calls, ("get", "get", "beyond", "beyond", "tls", "tls", "tls")):
-                            check(" " + mode + " " in call, call)
-                        check(lines.index("COMMIT") > lines.index(calls[-1]), result.stdout)
-                    else:
-                        check(all("HttpTransport" not in call and "/httptransport" not in call for call in calls), calls)
+                    for call, mode in zip(calls, ("get", "get", "beyond", "beyond", "tls", "tls", "tls")):
+                        check(" " + mode + " " in call, call)
+                    check(lines.index("COMMIT") > lines.index(calls[-1]), result.stdout)
 
     for failure in ("artifacts/httptransport-native/native", "artifacts/httptransport-native/beyond/native",
                     "tls-evidence/trusted", "tls-evidence/untrusted", "tls-evidence/untrusted-oracle"):
         directory = Path(temp) / ("fail-" + failure.replace("/", "-"))
         directory.mkdir()
-        env = dict(os.environ, DN2CPP_HTTP_FULL="0", CACHE_STATUS="1", EXE_EXT="", FAIL_CAPTURE=failure)
+        env = dict(os.environ, DN2CPP_HTTP_FULL="1", CACHE_STATUS="1", EXE_EXT="", FAIL_CAPTURE=failure)
         result = subprocess.run([BASH, "../script.sh"], cwd=directory, env=env,
                                 capture_output=True, text=True, encoding="utf-8")
         check(result.returncode == 37, (failure, result.returncode, result.stderr))
         check("COMMIT" not in result.stdout, (failure, result.stdout))
+
+    for link_result in ("success", "unrelated_symbol"):
+        directory = Path(temp) / link_result
+        directory.mkdir()
+        env = dict(os.environ, DN2CPP_HTTP_FULL="1", CACHE_STATUS="1", EXE_EXT="",
+                   FAIL_CAPTURE="", LINK_RESULT=link_result)
+        result = subprocess.run([BASH, "../script.sh"], cwd=directory, env=env,
+                                capture_output=True, text=True, encoding="utf-8")
+        check(result.returncode != 0 and "COMMIT" not in result.stdout, (link_result, result.stdout))
 
 project = REPO / "samples/dotnet/HttpTransport/HttpTransport.csproj"
 aggregate = ET.parse(project).getroot()
@@ -122,4 +152,4 @@ for name in ("HttpReal", "HttpBeyondGet", "HttpsTls"):
     for property in leaf.find("PropertyGroup"):
         check(aggregate.findtext("PropertyGroup/" + property.tag) == property.text, (name, property.tag))
 
-print(f"http-profile-controls: {checks} checks passed; aggregate 1 emit/native build, isolated live drivers 3")
+print(f"http-profile-controls: {checks} checks passed")
