@@ -183,6 +183,12 @@ internal sealed partial class Compilation
                 m.EnsureSignature();
                 if (CoreIntrinsics.BrAttributeArguments.Matches(m))
                     ReachAttributeArgumentMethods(m);
+                if (CoreIntrinsics.BrUnsupportedAlignedDefault.Matches(m)
+                    && ResolveUnsupportedAlignedEdges(m) is { } edges)
+                {
+                    ReachIntrinsicTypeMethod(edges.Alignment);
+                    ReachIntrinsicTypeMethod(edges.Violation);
+                }
             }
             return;
         }

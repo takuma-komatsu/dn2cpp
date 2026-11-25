@@ -710,7 +710,10 @@ internal sealed partial class MethodCompiler : IEvalStack
             && Compilation.ContainsCanonPlaceholder(_method.DeclaringClass))
             ThrowSharedTaint("unsupported-aligned-default", _method.DeclaringClass.FullName);
         if (CoreIntrinsics.BrUnsupportedAlignedDefault.Matches(_method))
-            return CompileUnsupportedAlignedDefaultBody();
+        {
+            _unsupportedAlignedEdges = _c.ResolveUnsupportedAlignedEdges(_method);
+            if (_unsupportedAlignedEdges is null) return CompileUnsupportedAlignedDefaultBody();
+        }
         _c.ValidateSimdAlignmentBody(_method);
         CoreIntrinsics.ValidateDelegateCallableBody(_method);
         CoreIntrinsics.ValidateConcreteVectorElement(_method);
@@ -1359,7 +1362,7 @@ internal sealed partial class MethodCompiler : IEvalStack
         CoreIntrinsics.ValidateTaskLifecycle(_method);
         CoreIntrinsics.ValidateThreadingPrivate(_method);
         CoreIntrinsics.ValidateUnsupportedAlignedDefault(_method);
-        if (CoreIntrinsics.BrUnsupportedAlignedDefault.Matches(_method)) return CompileUnsupportedAlignedDefaultBody();
+        if (CoreIntrinsics.BrUnsupportedAlignedDefault.Matches(_method)) return Compile();
         if (CoreIntrinsics.BrDelegateCallable.Matches(_method)) return CompileDelegateCallableBody();
         if (CoreIntrinsics.BrArrayNativeLength.Matches(_method))
             return CompileArrayNativeLengthBody();

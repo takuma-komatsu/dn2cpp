@@ -425,6 +425,7 @@ internal sealed partial class MethodCompiler
         _callSiteToken = insn.Token;
         _callSiteOffset = insn.Offset;
         _callIsVirtual = isCallvirt;
+        if (_unsupportedAlignedEdges is not null && TryEmitUnsupportedAlignedEdge(insn)) return;
         var handle = SRME.EntityHandle(insn.Token);
         TaintCanonicalVectorOperation(handle);
         TaintCanonicalFixedVectorValueOperation(handle);

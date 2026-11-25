@@ -78,22 +78,30 @@ vector_floating_wasm_gate() {
         DN2CPP_WASM_SIMD=
         sections=floating-point
         [ "$mode" = default ] || DN2CPP_WASM_SIMD=1
-        [ "$mode" != default ] || sections=floating-point,value-semantics-only
-        _corelib_gate_core VectorProbe "$out"
-        if gate_cache_check "$out" "vector-probe-wasm|mode:$mode|$_CG_CORELIB|argv:$sections|oracle:DOTNET_EnableAVX=0" \
-                "$_CG_APP" "${_CG_APP%.dll}.runtimeconfig.json" "${_CG_APP%.dll}.deps.json" \
+        if [ "$mode" = default ]; then
+            sections=floating-point,value-semantics-only,unsupported-aligned-order
+            DN2CPP_STRICT_COMPLETION=1 _corelib_gate_core VectorProbe "$out"
+        else
+            # Both wasm targets consume the same managed sample build.
+            DN2CPP_SKIP_BUILD=1 _corelib_gate_core VectorProbe "$out"
+        fi
+        if _corelib_gate_check "$out" "vector-probe-wasm|mode:$mode|$_CG_CORELIB|argv:$sections|oracle:DOTNET_EnableAVX=0$(_gate_ctx_extras)" \
                 gates/_vector-floating-point.sh gates/_vector-corelib-checks.sh; then
             gate_cache_hit_msg
-            continue
+        else
+            compile_console_wasm "$out" VectorProbe
+            gate_capture_ok "$out/native" run_bounded node "$out/VectorProbe.js" floating-point
+            DOTNET_EnableAVX=0 gate_capture_ok "$out/oracle" run_bounded dotnet "$_CG_APP" floating-point
+            gate_output compare "$out/native.stdout" "$out/oracle.stdout" --policy crlf
+            vector_floating_witnesses "$out/native.stdout"
+            if [ "$mode" = default ]; then
+                vector_value_wasm_gate "$out" "$_CG_APP"
+            fi
+            gate_cache_commit
         fi
-        compile_console_wasm "$out" VectorProbe
-        gate_capture_ok "$out/native" run_bounded node "$out/VectorProbe.js" floating-point
-        DOTNET_EnableAVX=0 gate_capture_ok "$out/oracle" run_bounded dotnet "$_CG_APP" floating-point
-        gate_output compare "$out/native.stdout" "$out/oracle.stdout" --policy crlf
-        vector_floating_witnesses "$out/native.stdout"
         if [ "$mode" = default ]; then
-            vector_value_wasm_gate "$out" "$_CG_APP"
+            vector_aligned_parity "$out" node "$out/VectorProbe.js"
+            DN2CPP_STRICT_COMPLETION=1 vector_aligned_full "$out"
         fi
-        gate_cache_commit
     done
 }

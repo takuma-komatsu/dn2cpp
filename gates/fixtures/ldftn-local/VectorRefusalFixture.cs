@@ -166,6 +166,29 @@ internal static class VectorRefusalFixture
                 Call(args[3] == "unsupported-alignment-methodspec" ? Specialize(target, element) : target, new PointerType(element));
                 break;
             }
+            case "unsupported-alignment-foreign-caller":
+            {
+                var definition = Type("System.Runtime.Intrinsics.ISimdVector`2");
+                var contract = new GenericInstanceType(module.ImportReference(definition));
+                var vector = Closed("System.Runtime.Intrinsics.Vector128`1", module.TypeSystem.Char);
+                contract.GenericArguments.Add(vector);
+                contract.GenericArguments.Add(module.TypeSystem.Char);
+                foreach (string name in new[] { "LoadAligned", "StoreAligned" })
+                {
+                    var target = module.ImportReference(definition.Methods.Single(m => m.Name == name));
+                    target.DeclaringType = contract;
+                    il.Emit(OpCodes.Ldftn, target);
+                    il.Emit(OpCodes.Pop);
+                }
+                // Retaining both defaults must not authorize this caller's own
+                // alignment slot on the same closed vector.
+                var alignment = module.ImportReference(definition.Methods.Single(m => m.Name == "get_Alignment"));
+                alignment.DeclaringType = contract;
+                il.Emit(OpCodes.Constrained, vector);
+                il.Emit(OpCodes.Call, alignment);
+                il.Emit(OpCodes.Pop);
+                break;
+            }
             case "alignment-valid":
             {
                 // Admission/emission only: the zero pointers are not executable

@@ -15,6 +15,11 @@ internal static partial class Program
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+        if (args.Length != 0 && args[0] == "unsupported-aligned-order")
+        {
+            UnsupportedAlignedBoundary.RunOrdered();
+            return;
+        }
         if (args.Length != 0 && args[0] == "unsupported-aligned-boundary")
         {
             UnsupportedAlignedBoundary.Run();

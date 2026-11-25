@@ -132,7 +132,7 @@ internal sealed partial class Compilation
         ValidateGenericVectorThrowGuard(guard, count.DeclaringClass);
     }
 
-    private void ValidateGenericVectorThrowGuard(MethodInfo guard, ClassInfo vector)
+    private MethodInfo ValidateGenericVectorThrowGuard(MethodInfo guard, ClassInfo vector, bool aligned = false)
     {
         var il = GenericVectorGuardInstructions(guard);
         if (il.Count != 5 || il[0].OpCode != ILOpCode.Call
@@ -140,7 +140,8 @@ internal sealed partial class Compilation
             || il[2].OpCode != ILOpCode.Ldc_i4_s
             || il[3].OpCode != ILOpCode.Call || il[4].OpCode != ILOpCode.Ret)
             throw GenericVectorGuardUnsupported();
-        ValidateGenericVectorUnsupportedGetter(guard, il[0].Token, vector);
+        var getter = ValidateGenericVectorUnsupportedGetter(guard, il[0].Token, vector, aligned);
+        if (aligned) ValidateVectorAsSupportedWhitelist(getter, aligned: true);
         var sinkToken = SRME.EntityHandle(il[3].Token);
         if (sinkToken.Kind != HandleKind.MethodDefinition) throw GenericVectorGuardUnsupported();
         var sink = ResolveMethodHandle(guard.Module, sinkToken, GenericContext.Empty);
@@ -199,9 +200,10 @@ internal sealed partial class Compilation
             || constructor.Signature.RequiredParameterCount != 1
             || constructor.Signature.ReturnType is not { Kind: TypeKind.Primitive, IsCanonPlaceholder: false, Primitive: PrimitiveTypeCode.Void })
             throw GenericVectorGuardUnsupported();
+        return sink;
     }
 
-    private void ValidateGenericVectorUnsupportedGetter(MethodInfo guard, int token, ClassInfo vector)
+    private MethodInfo ValidateGenericVectorUnsupportedGetter(MethodInfo guard, int token, ClassInfo vector, bool aligned)
     {
         var module = guard.Module;
         var handle = SRME.EntityHandle(token);
@@ -228,7 +230,11 @@ internal sealed partial class Compilation
             expected = candidate;
         }
         if (expected.IsNil) throw GenericVectorGuardUnsupported();
-        var getter = ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, guard.Context);
+        // Mapped char vectors have no ordinary MethodInfo for this getter. Only
+        // its metadata and IL are inspected; this shell is never callable.
+        var getter = aligned && vector.IntrinsicCppName is not null
+            ? AlignedProofMethod(vector, expected, vector.Context)
+            : ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, guard.Context);
         if (getter.DeclaringClass != vector || getter.Module != module || getter.IsSynthetic
             || getter.Handle.IsNil || getter.Context.MethodArgs.Length != 0
             || getter.Attributes != (MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig | MethodAttributes.SpecialName)
@@ -236,15 +242,16 @@ internal sealed partial class Compilation
             || getter.Rva == 0 || getter.PInvoke is not null)
             throw GenericVectorGuardUnsupported();
         ValidateMagnitudeResolvedDefinition(getter, module, expected);
-        if (getter.Context.TypeArgs is not [var element] || element.Kind != TypeKind.Class || element.IsCanonPlaceholder
-            || element.Class != vector.Context.TypeArgs[0].Class
+        if (getter.Context.TypeArgs is not [var element] || element.IsCanonPlaceholder
+            || !SameTypeArg(element, vector.Context.TypeArgs[0])
             || getter.Signature.Header.RawValue != 0 || getter.Signature.GenericParameterCount != 0
             || getter.Signature.RequiredParameterCount != 0 || getter.Signature.ParameterTypes.Length != 0
             || getter.Signature.ReturnType is not { Kind: TypeKind.Primitive, IsCanonPlaceholder: false, Primitive: PrimitiveTypeCode.Boolean })
             throw GenericVectorGuardUnsupported();
         // The emitter lowers this exact unsupported element getter to false.
-        if (!CoreIntrinsics.IsVectorManagedValueElement(vector.Context.TypeArgs[0]))
+        if (!(aligned ? CoreIntrinsics.IsOrderedUnsupportedAlignedVector(vector) : CoreIntrinsics.IsVectorManagedValueElement(element)))
             throw GenericVectorGuardUnsupported();
+        return getter;
     }
 
     private static bool GenericVectorBooleanGetterSignature(BlobReader blob) =>
