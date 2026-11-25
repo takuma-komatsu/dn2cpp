@@ -6,7 +6,7 @@ namespace Dn2Cpp;
 internal static partial class CoreIntrinsics
 {
     internal static bool IsTaskSchedulerMemberName(string? owner, string name) =>
-        owner == "System.Threading.Tasks.TaskScheduler" && name is "TryRunInline" or "InternalQueueTask" or "get_Id" or "TryDequeue";
+        owner == "System.Threading.Tasks.TaskScheduler" && name is "TryRunInline" or "InternalQueueTask" or "get_Id" or "TryDequeue" or "TryExecuteTask";
 
     internal static bool IsTaskSchedulerId(MethodInfo method) =>
         method.Name == "get_Id" && IsTaskSchedulerOperation(method);
@@ -17,8 +17,11 @@ internal static partial class CoreIntrinsics
     internal static bool IsTaskSchedulerDequeue(MethodInfo method) =>
         method.Name == "TryDequeue" && IsTaskSchedulerMember(method);
 
+    internal static bool IsTaskSchedulerExecute(MethodInfo method) =>
+        method.Name == "TryExecuteTask" && IsTaskSchedulerMember(method);
+
     internal static bool IsTaskSchedulerOperation(MethodInfo method) =>
-        method.Name != "TryDequeue" && IsTaskSchedulerMember(method);
+        method.Name is not ("TryDequeue" or "TryExecuteTask") && IsTaskSchedulerMember(method);
 
     internal static bool IsTaskSchedulerMember(MethodInfo method)
     {
@@ -32,6 +35,7 @@ internal static partial class CoreIntrinsics
             || method.Attributes != (method.Name switch
             {
                 "get_Id" => MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName,
+                "TryExecuteTask" => MethodAttributes.Family | MethodAttributes.HideBySig,
                 "TryDequeue" => MethodAttributes.FamORAssem | MethodAttributes.HideBySig | MethodAttributes.Virtual | MethodAttributes.NewSlot,
                 _ => MethodAttributes.Assembly | MethodAttributes.HideBySig,
             })
@@ -57,7 +61,7 @@ internal static partial class CoreIntrinsics
             return blob.RemainingBytes == 3 && blob.ReadByte() == 0x20 && blob.ReadByte() == 0
                 && blob.ReadByte() == (byte)SignatureTypeCode.Int32;
         bool inline = name == "TryRunInline";
-        if (!inline && name is not ("InternalQueueTask" or "TryDequeue")) return false;
+        if (!inline && name is not ("InternalQueueTask" or "TryDequeue" or "TryExecuteTask")) return false;
         return blob.RemainingBytes >= (inline ? 6 : 5)
             && blob.ReadByte() == 0x20 && blob.ReadByte() == (inline ? 2 : 1)
             && blob.ReadByte() == (byte)(name == "InternalQueueTask" ? SignatureTypeCode.Void : SignatureTypeCode.Boolean)
@@ -74,7 +78,7 @@ internal static partial class CoreIntrinsics
                 && signature.RequiredParameterCount == 0 && signature.ParameterTypes.Length == 0
                 && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32, IsCanonPlaceholder: false };
         bool inline = method.Name == "TryRunInline";
-        if ((!inline && method.Name is not ("InternalQueueTask" or "TryDequeue"))
+        if ((!inline && method.Name is not ("InternalQueueTask" or "TryDequeue" or "TryExecuteTask"))
             || signature.Header.RawValue != 0x20 || signature.GenericParameterCount != 0
             || signature.RequiredParameterCount != (inline ? 2 : 1)
             || signature.ParameterTypes.Length != (inline ? 2 : 1)

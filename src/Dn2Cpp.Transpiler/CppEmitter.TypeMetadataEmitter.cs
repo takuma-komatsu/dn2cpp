@@ -2310,7 +2310,7 @@ internal sealed partial class CppEmitter
                 {
                     bool instance = method.Name == "GetNullableUnderlyingType" && CoreIntrinsics.IsNullableTypeQuery(method)
                         || method.Name is "GetCustomAttributesData" or "get_ConstructorArguments" && CoreIntrinsics.IsReflectionManagedBody(method)
-                        || CoreIntrinsics.IsTaskSchedulerDequeue(method);
+                        || CoreIntrinsics.IsTaskSchedulerDequeue(method) || CoreIntrinsics.IsTaskSchedulerExecute(method);
                     if (!(instance && _c.KeepsUnreachedRow(method) || CoreIntrinsics.IsMemberNotFoundExceptionFactory(method))
                         || !IsRetainedOpaqueMemberRow(method))
                         continue;

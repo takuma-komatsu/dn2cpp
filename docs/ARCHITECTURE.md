@@ -1778,8 +1778,19 @@ dn2cpp, where `Debugger.IsAttached` is false.
 `QueueTask` on the calling thread. Cancellation asks the assigned scheduler to
 remove pending work through `TryDequeue`. If the queue rejects a pending task,
 `Start` rethrows the `TaskSchedulerException` stored on the faulted task. If the
-queue first cancels the task and then rejects it, that rejection faults the task
-and `Start` raises `InvalidCastException`. The task signals its continuations once.
+queue completes the task before rejecting it, `Start` raises `InvalidCastException`
+and the task records the rejection alongside any delegate fault. If rejection
+wins while another thread runs the delegate, its later finish raises
+`InvalidCastException` and appends any delegate fault after the rejection.
+The task signals its continuations once.
+
+CoreLib's protected `TaskScheduler.TryExecuteTask(Task)` checks the assigned
+scheduler before claiming its delegate. A managed scheduler runs its queued task
+once on the calling thread. A canceled task returns true to its owner even on
+subsequent calls. During execution, `Task.CurrentId` identifies the task and
+`TaskScheduler.Current` supplies the scheduler for a nested `Task.Start()`.
+`HideScheduler` exposes the default scheduler. Nested execution restores both
+values when the delegate returns.
 
 A direct call to `TaskScheduler.TryDequeue(Task)` runs the CoreLib base body and
 returns false. Virtual calls on generated schedulers use the receiver's override.

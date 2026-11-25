@@ -95,7 +95,7 @@ internal sealed partial class Compilation
                 return target;
             }
         }
-        if (name is ("TryRunInline" or "InternalQueueTask" or "get_Id" or "TryDequeue") && reference.Parent.Kind == HandleKind.TypeSpecification)
+        if (name is ("TryRunInline" or "InternalQueueTask" or "get_Id" or "TryDequeue" or "TryExecuteTask") && reference.Parent.Kind == HandleKind.TypeSpecification)
         {
             var schedulerOwner = reader.GetTypeSpecification((TypeSpecificationHandle)reference.Parent)
                 .DecodeSignature(SigProvider, context).Class;

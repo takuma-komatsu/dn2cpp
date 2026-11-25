@@ -255,15 +255,35 @@ struct Dn2CppTaskDelegateScope
 {
     static thread_local Dn2CppTaskDelegateScope* active;
     Dn2CppTask* task;
+    Dn2CppObject* scheduler;
+    int32_t hiddenId = 0; // a Task.Run unwrap owns a distinct hidden task
     Dn2CppTaskDelegateScope* previous = active;
 
-    explicit Dn2CppTaskDelegateScope(Dn2CppTask* current) : task(current) { active = this; }
+    explicit Dn2CppTaskDelegateScope(Dn2CppTask* current, Dn2CppObject* owner = nullptr)
+        : task(current), scheduler(owner) { active = this; }
     ~Dn2CppTaskDelegateScope() { active = previous; }
     Dn2CppTaskDelegateScope(const Dn2CppTaskDelegateScope&) = delete;
     Dn2CppTaskDelegateScope& operator=(const Dn2CppTaskDelegateScope&) = delete;
 };
 
 thread_local Dn2CppTaskDelegateScope* Dn2CppTaskDelegateScope::active = nullptr;
+
+int32_t dn2cpp_task_current_id()
+{
+    auto* scope = Dn2CppTaskDelegateScope::active;
+    if (scope == nullptr) return 0;
+    if (scope->task != nullptr) return scope->task->id;
+    if (scope->hiddenId == -1) scope->hiddenId = dn2cpp_task_next_id();
+    return scope->hiddenId;
+}
+
+Dn2CppObject* dn2cpp_taskscheduler_current()
+{
+    auto* scope = Dn2CppTaskDelegateScope::active;
+    if (scope != nullptr && scope->scheduler != nullptr && !(scope->task->creationOptions & DN2CPP_TASK_HIDE_SCHEDULER))
+        return scope->scheduler;
+    return dn2cpp_taskscheduler_default();
+}
 
 template<class Fn>
 static decltype(auto) dn2cpp_task_invoke_as(Dn2CppTask* task, Fn&& invoke)
@@ -1346,7 +1366,7 @@ struct Dn2CppJoinDrain
         // task itself. Release the drain only after publishing its joins.
         active = nullptr;
         while (auto* c = posts.pop())
-            c->fn(c->state);
+            dn2cpp_task_invoke_as(nullptr, [&] { c->fn(c->state); });
     }
 };
 
@@ -1469,7 +1489,7 @@ static Dn2CppCont* dn2cpp_task_publish_locked(Dn2CppTask* t, int32_t status, uin
     // Settled last, with release: await-registration gates on it under this
     // lock, and the drain reads it — and then result/exception — without it.
     dn2cpp_task_publish_status_locked(t, status);
-    if (releaseAction)
+    if (releaseAction || (t->cold != nullptr && (t->execution & DN2CPP_TASK_INVOKED)))
         dn2cpp_task_release_action_locked(t);
     auto* conts = t->continuations;
     dn2cpp_gc_store_ref(&t->continuations, static_cast<Dn2CppCont*>(nullptr));
@@ -1489,7 +1509,7 @@ static void dn2cpp_task_complete(Dn2CppTask* t, int32_t status, uint64_t result,
     dn2cpp_fire_conts(conts);
 }
 
-enum class Dn2CppTaskFinishKind { Normal, PromiseCancellation, BeforeDelegate, AfterDelegate, RejectedAfterCancellation };
+enum class Dn2CppTaskFinishKind { Normal, PromiseCancellation, BeforeDelegate, AfterDelegate, RejectedAfterCompletion };
 
 // A delegate Finish (and a promise TrySetException) drains previously recorded
 // faults. Direct promise result and cancellation transitions do not.
@@ -1503,9 +1523,11 @@ static bool dn2cpp_task_finish_recorded(Dn2CppTask* t, int32_t status, uint64_t 
     Dn2CppObject* nativeAggregate = payloads == nullptr || hasDispatch
         ? nullptr : dn2cpp_aggregate_exception_new(payloads);
     std::unique_lock<std::mutex> lock(g_task_mtx);
-    bool rejectedAfterCancellation = kind == Dn2CppTaskFinishKind::RejectedAfterCancellation && t->status == DN2CPP_TASK_CANCELED;
-    if ((!rejectedAfterCancellation && t->status != DN2CPP_TASK_PENDING) || t->exceptionHolderState == DN2CPP_TASK_HOLDER_RESERVED)
+    bool queueRejection = kind == Dn2CppTaskFinishKind::RejectedAfterCompletion;
+    if ((!queueRejection && t->status != DN2CPP_TASK_PENDING) || t->exceptionHolderState == DN2CPP_TASK_HOLDER_RESERVED)
         return false;
+    if (queueRejection && t->status == DN2CPP_TASK_CANCELED)
+        t->execution.fetch_or(DN2CPP_TASK_CANCELED_BEFORE_REJECTION);
     bool explicitFinish = kind == Dn2CppTaskFinishKind::BeforeDelegate || kind == Dn2CppTaskFinishKind::AfterDelegate;
     if (explicitFinish)
     {
@@ -1520,7 +1542,7 @@ static bool dn2cpp_task_finish_recorded(Dn2CppTask* t, int32_t status, uint64_t 
                 : "Task.Finish before delegate execution cannot collect faults from previously attached children";
         else if (origin == DN2CPP_TASK_ORIGIN_POOL || origin == DN2CPP_TASK_ORIGIN_UNOWNED_QUEUE
             || origin == DN2CPP_TASK_ORIGIN_ACTIVE_CONTINUATION
-            || (origin == DN2CPP_TASK_ORIGIN_COLD && t->cold == nullptr))
+            || (origin == DN2CPP_TASK_ORIGIN_COLD && (t->cold == nullptr || (t->execution & DN2CPP_TASK_INVOKED))))
             unsupported = "Task.Finish cannot take completion ownership from dispatched native work";
         if (unsupported != nullptr)
         {
@@ -2923,12 +2945,11 @@ int32_t dn2cpp_task_try_set_canceled(Dn2CppTask* t, Dn2CppCancelSource* source)
     return dn2cpp_task_try_complete(t, DN2CPP_TASK_CANCELED, 0, nullptr, nullptr, source);
 }
 
-static int32_t dn2cpp_tcs_await_winner(Dn2CppTask* t, int32_t won)
+static int32_t dn2cpp_task_await_winner(Dn2CppTask* t, int32_t won)
 {
     if (won || t->status != DN2CPP_TASK_PENDING)
         return won;
-    // The public promises return false only after the winner's terminal
-    // publication. Managed capture/iteration cannot run under this lock.
+    // A competing finish can reserve the task while capturing managed exceptions.
     std::unique_lock<std::mutex> lock(g_task_mtx);
     ++g_task_completion_waiters;
     g_task_completed.wait(lock, [t] { return t->status != DN2CPP_TASK_PENDING; });
@@ -2938,17 +2959,17 @@ static int32_t dn2cpp_tcs_await_winner(Dn2CppTask* t, int32_t won)
 
 int32_t dn2cpp_tcs_try_set_result(Dn2CppTask* t, uint64_t result)
 {
-    return dn2cpp_tcs_await_winner(t, dn2cpp_task_try_set_result(t, result));
+    return dn2cpp_task_await_winner(t, dn2cpp_task_try_set_result(t, result));
 }
 
 int32_t dn2cpp_tcs_try_set_exception(Dn2CppTask* t, Dn2CppObject* exception)
 {
-    return dn2cpp_tcs_await_winner(t, dn2cpp_task_try_set_exception(t, exception));
+    return dn2cpp_task_await_winner(t, dn2cpp_task_try_set_exception(t, exception));
 }
 
 int32_t dn2cpp_tcs_try_set_canceled(Dn2CppTask* t, Dn2CppCancelSource* source)
 {
-    return dn2cpp_tcs_await_winner(t, dn2cpp_task_try_set_canceled(t, source));
+    return dn2cpp_task_await_winner(t, dn2cpp_task_try_set_canceled(t, source));
 }
 
 // The non-Try setters throw when the task has already settled, like real .NET.
@@ -4699,13 +4720,38 @@ static Dn2CppTask* dn2cpp_pool_inner_chain(Dn2CppObject* del)
     return reinterpret_cast<Dn2CppTask* (*)(Dn2CppObject*)>(d->method)(d->target);
 }
 
-static void dn2cpp_task_finish_cold_exception(Dn2CppTask* task, Dn2CppObject* exception)
+static void dn2cpp_task_append_terminal_fault(Dn2CppTask* task, Dn2CppObject* exception)
 {
-    auto* source = task->cancellationSource.load(std::memory_order_acquire);
-    if (source != nullptr && dn2cpp_cts_is_cancelled(source) && dn2cpp_canceled_exception_source(exception) == source)
-        dn2cpp_task_finish_recorded(task, DN2CPP_TASK_CANCELED, task->result, exception, source);
-    else
-        dn2cpp_task_finish_recorded(task, DN2CPP_TASK_FAULTED, task->result, exception);
+    if (g_task_holder_create != nullptr)
+    {
+        dn2cpp_task_add_exception(task, exception, false);
+        return;
+    }
+    Dn2CppRefList* faults = nullptr;
+    dn2cpp_task_collect_fault(faults, task);
+    dn2cpp_reflist_add(faults, exception);
+    dn2cpp_gc_store_ref(&task->exceptionAggregate, dn2cpp_aggregate_exception_new(dn2cpp_reflist_to_array(faults)));
+}
+
+static void dn2cpp_task_finish_cold_delegate(Dn2CppTask* task, uint64_t result, Dn2CppObject* exception)
+{
+    int32_t status = DN2CPP_TASK_SUCCEEDED;
+    Dn2CppCancelSource* cancellation = nullptr;
+    if (exception != nullptr)
+    {
+        auto* source = task->cancellationSource.load(std::memory_order_acquire);
+        if (source != nullptr && dn2cpp_cts_is_cancelled(source) && dn2cpp_canceled_exception_source(exception) == source)
+            cancellation = source;
+        status = cancellation != nullptr ? DN2CPP_TASK_CANCELED : DN2CPP_TASK_FAULTED;
+    }
+    if (dn2cpp_task_finish_recorded(task, status, result, exception, cancellation)
+        || !(task->execution & DN2CPP_TASK_QUEUE_REJECTED_WHILE_RUNNING)) return;
+
+    // The queue's rejection won completion. Preserve the delegate's later fault
+    // in the same order without notifying continuations a second time.
+    dn2cpp_task_await_winner(task, false);
+    if (status == DN2CPP_TASK_FAULTED) dn2cpp_task_append_terminal_fault(task, exception);
+    dn2cpp_throw_sr0(&dn2cpp_invalid_cast_exception_type, DN2CPP_SR_INVALID_CAST);
 }
 
 static void dn2cpp_pool_worker()
@@ -4816,7 +4862,12 @@ static void dn2cpp_pool_worker()
                 // returned (a non-async Func<Task> body) is caught below and faults the
                 // outer, matching real .NET's eager fault.
                 // The hidden Task.Run owner denies child attachment.
-                Dn2CppTask* inner = dn2cpp_task_invoke_as(nullptr, [&] { return dn2cpp_pool_inner_chain(it.del); });
+                Dn2CppTask* inner;
+                {
+                    Dn2CppTaskDelegateScope scope(nullptr);
+                    scope.hiddenId = -1;
+                    inner = dn2cpp_pool_inner_chain(it.del);
+                }
                 // Unwrapping a null task is CANCELED on .NET, not a crash: an async lambda
                 // whose body returns null hands one back, and the outer is all the caller
                 // holds.
@@ -4883,7 +4934,7 @@ static void dn2cpp_pool_worker()
         {
             int32_t origin = it.task->startKind.load(std::memory_order_acquire);
             if (origin == DN2CPP_TASK_ORIGIN_COLD || origin == DN2CPP_TASK_ORIGIN_UNOWNED_QUEUE)
-                dn2cpp_task_finish_cold_exception(it.task, e.obj);
+                dn2cpp_task_finish_cold_delegate(it.task, it.task->result, e.obj);
             else
                 dn2cpp_task_finish_recorded(it.task, DN2CPP_TASK_FAULTED, it.task->result, e.obj);
             dn2cpp_exc_inflight_pop(e.obj);
@@ -5409,7 +5460,13 @@ static Dn2CppTaskCold* dn2cpp_task_claim_cold(Dn2CppTask* t, bool synchronous,
                     dn2cpp_throw_platform_not_supported("Task.Start requires its custom scheduler queue slots");
                 }
                 c->customQueue = queue;
+            }
+            if (scheduler == dn2cpp_taskscheduler_default())
+                t->execution.fetch_or(DN2CPP_TASK_DEFAULT_OWNER);
+            else
+            {
                 dn2cpp_gc_store_ref(&t->workerKeepAlive, static_cast<void*>(scheduler));
+                t->execution.fetch_or(DN2CPP_TASK_CUSTOM_OWNER);
             }
             dn2cpp_gc_store_ref(&c->scheduler, scheduler);
             marked = dn2cpp_task_mark_started_locked(t);
@@ -5457,18 +5514,23 @@ void dn2cpp_task_start(Dn2CppTask* t, Dn2CppObject* scheduler, const Dn2CppTaskS
     {
         auto* wrapped = queue->wrapException(e.obj);
         dn2cpp_exc_inflight_pop(e.obj);
-        bool canceled;
         {
             std::lock_guard<std::mutex> lock(g_task_mtx);
-            canceled = t->status == DN2CPP_TASK_CANCELED;
+            if (t->status == DN2CPP_TASK_PENDING && (t->execution & DN2CPP_TASK_INVOKED))
+                t->execution.fetch_or(DN2CPP_TASK_QUEUE_REJECTED_WHILE_RUNNING);
             dn2cpp_task_release_action_locked(t);
         }
-        auto kind = canceled ? Dn2CppTaskFinishKind::RejectedAfterCancellation : Dn2CppTaskFinishKind::Normal;
-        dn2cpp_task_finish_recorded(t, DN2CPP_TASK_FAULTED, 0, wrapped, nullptr, nullptr, false, nullptr, kind);
-        // Cancellation already detached and notified the continuations. CoreLib
-        // publishes the queue's fault, then its second finish raises InvalidCastException.
-        if (canceled)
+        if (!dn2cpp_task_await_winner(t, dn2cpp_task_finish_recorded(t, DN2CPP_TASK_FAULTED, 0, wrapped)))
+        {
+            // QueueTask may execute or cancel the delegate before throwing. Its
+            // rejection appends to any delegate faults after continuations have fired.
+            if (t->status != DN2CPP_TASK_FAULTED)
+                dn2cpp_task_finish_recorded(t, DN2CPP_TASK_FAULTED, 0, wrapped, nullptr, nullptr,
+                    false, nullptr, Dn2CppTaskFinishKind::RejectedAfterCompletion);
+            else
+                dn2cpp_task_append_terminal_fault(t, wrapped);
             dn2cpp_throw_sr0(&dn2cpp_invalid_cast_exception_type, DN2CPP_SR_INVALID_CAST);
+        }
         if (auto* holder = dn2cpp_task_holder_for_observation(t))
         {
             Dn2CppMonitorGuard guard(holder);
@@ -5487,19 +5549,55 @@ static void dn2cpp_task_invoke_cold(Dn2CppTask* t, Dn2CppTaskCold* c)
         dn2cpp_task_set_canceled(t, source);
         return;
     }
+    Dn2CppTaskDelegateScope scope(t, c->customQueue != nullptr ? c->scheduler : nullptr);
+    uint64_t result = 0;
+    Dn2CppObject* exception = nullptr;
     try
     {
-        uint64_t r = dn2cpp_task_invoke_as(t, [&]
-        {
-            return c->invoke2 != nullptr ? c->invoke2(c->del, c->state) : c->invoke(c->del);
-        });
-        dn2cpp_task_finish_recorded(t, DN2CPP_TASK_SUCCEEDED, r, nullptr);
+        result = c->invoke2 != nullptr ? c->invoke2(c->del, c->state) : c->invoke(c->del);
     }
     catch (const Dn2CppException& e)
     {
-        dn2cpp_task_finish_cold_exception(t, e.obj);
-        dn2cpp_exc_inflight_pop(e.obj); // rooted by the task before leaving the catch
+        exception = e.obj;
+        dn2cpp_exc_inflight_pop(e.obj);
     }
+    dn2cpp_task_finish_cold_delegate(t, result, exception);
+}
+
+Dn2CppObject* dn2cpp_task_executing_scheduler(Dn2CppTask* task)
+{
+    dn2cpp_null_check(task);
+    auto flags = task->execution.load(std::memory_order_acquire);
+    if (flags & DN2CPP_TASK_CUSTOM_OWNER) return static_cast<Dn2CppObject*>(task->workerKeepAlive);
+    auto origin = task->startKind.load(std::memory_order_acquire);
+    if ((flags & DN2CPP_TASK_DEFAULT_OWNER) || origin == DN2CPP_TASK_ORIGIN_POOL || origin == DN2CPP_TASK_ORIGIN_ACTIVE_CONTINUATION)
+        return dn2cpp_taskscheduler_default();
+    return nullptr;
+}
+
+int32_t dn2cpp_task_execute_entry(Dn2CppTask* task)
+{
+    Dn2CppTaskCold* work;
+    {
+        std::unique_lock<std::mutex> lock(g_task_mtx);
+        auto flags = task->execution.load(std::memory_order_relaxed);
+        if (task->status == DN2CPP_TASK_CANCELED || (flags & DN2CPP_TASK_CANCELED_BEFORE_REJECTION)) return true;
+        if (task->status != DN2CPP_TASK_PENDING || (flags & DN2CPP_TASK_INVOKED)) return false;
+        work = task->cold;
+        if (work == nullptr && task->startKind != DN2CPP_TASK_ORIGIN_PROMISE)
+        {
+            lock.unlock();
+            dn2cpp_throw_platform_not_supported("Task execution requires a retained delegate");
+        }
+        task->execution.fetch_or(DN2CPP_TASK_INVOKED);
+        // A cancellation racing the running delegate still calls the assigned
+        // scheduler's TryDequeue. Completion releases the retained queue data.
+    }
+    if (work != nullptr)
+        dn2cpp_task_invoke_cold(task, work);
+    else
+        dn2cpp_task_finish_recorded(task, DN2CPP_TASK_SUCCEEDED, task->result, nullptr);
+    return true;
 }
 
 void dn2cpp_task_run_synchronously(Dn2CppTask* t, Dn2CppObject* scheduler)

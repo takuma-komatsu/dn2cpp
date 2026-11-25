@@ -227,7 +227,7 @@ internal sealed partial class MethodCompiler
             {
                 string r = NewTemp("Dn2CppParallelLoopResult");
                 Emit($"{r} = {DerefReceiver("Dn2CppParallelLoopResult")};");
-                PushNullableInt64(sig.ReturnType, $"{r}.hasLowestBreak", $"{r}.lowestBreakIteration");
+                PushNullableValue(sig.ReturnType, $"{r}.hasLowestBreak", $"{r}.lowestBreakIteration");
                 return true;
             }
 
@@ -274,7 +274,7 @@ internal sealed partial class MethodCompiler
             {
                 var recv = Pop(); // this
                 string castRecv = $"(Dn2CppObject*)({recv.Expr})";
-                PushNullableInt64(sig.ReturnType,
+                PushNullableValue(sig.ReturnType,
                     $"dn2cpp_parallel_loop_state_lowest_break_has_value({castRecv})",
                     $"dn2cpp_parallel_loop_state_lowest_break_value({castRecv})");
                 return true;
@@ -395,17 +395,11 @@ internal sealed partial class MethodCompiler
         }
     }
 
-    /// <summary>Builds a Nullable&lt;Int64&gt; (long?) value from a has-value + value C++
-    /// expression pair and pushes it — used by ParallelLoopResult.LowestBreakIteration and
-    /// ParallelLoopState.LowestBreakIteration, which surface the same optional-break-index
-    /// shape from different backing storage. <paramref name="nullableType"/> is the call's
-    /// decoded return type (a closed Nullable&lt;Int64&gt;), which gives the real
-    /// hasValue/value field names of that instantiation.</summary>
-    private void PushNullableInt64(TypeDesc nullableType, string hasValueExpr, string valueExpr)
+    private void PushNullableValue(TypeDesc nullableType, string hasValueExpr, string valueExpr)
     {
         if (NullableLayout(nullableType) is not (_, { } hvField, { } valField))
             throw new NotSupportedException(
-                $"{Method.DeclaringClass.FullName}.{Method.Name}: expected a Nullable<Int64> return type");
+                $"{Method.DeclaringClass.FullName}.{Method.Name}: expected a nullable return type");
         string ct = CppTypes.Of(nullableType);
         string tmp = NewTemp(ct);
         Emit($"{tmp}.{hvField} = ({hasValueExpr});");
