@@ -656,6 +656,18 @@ internal static class CoreIntrinsicTypeMaps
     public static bool IsStringSequenceJoin(string declType, string name) =>
         declType == "System.String" && name is "Join" or "Concat" or "JoinCore";
 
+    public static bool IsTaskFactoryApmName(string name) =>
+        name is "FromAsync" or "FromAsyncImpl" or "FromAsyncCoreLogic" or "CheckFromAsyncOptions";
+
+    public static bool IsTaskFactoryApmBody(string name, int count, string? first) => name switch
+    {
+        "FromAsync" => count is 3 or 4 && first == "System.Func`3<System.AsyncCallback,System.Object,System.IAsyncResult>",
+        "FromAsyncImpl" => count == 5 && first == "System.Func`3<System.AsyncCallback,System.Object,System.IAsyncResult>",
+        "FromAsyncCoreLogic" => count == 5 && first == "System.IAsyncResult",
+        "CheckFromAsyncOptions" => count == 2 && first == "System.Threading.Tasks.TaskCreationOptions",
+        _ => false,
+    };
+
     public static bool IsArrayRealBodyMember(string declType, string name, bool hasInt64Parameter) =>
         declType == "System.Array"
         && (name is "get_IsFixedSize" or "get_IsReadOnly" or "get_IsSynchronized" or "get_SyncRoot" or "GetLongLength"

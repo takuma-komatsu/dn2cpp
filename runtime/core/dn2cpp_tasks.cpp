@@ -297,6 +297,16 @@ static decltype(auto) dn2cpp_task_invoke_as(Dn2CppTask* task, Fn&& invoke)
     return invoke();
 }
 
+static Dn2CppTask* dn2cpp_task_attaching_parent(int32_t options)
+{
+    if ((options & DN2CPP_TASK_ATTACHED_TO_PARENT) == 0)
+        return nullptr;
+    const auto* scope = Dn2CppTaskDelegateScope::active;
+    auto* parent = scope != nullptr ? scope->task : nullptr;
+    return parent != nullptr && (parent->creationOptions.load(std::memory_order_relaxed) & DN2CPP_TASK_DENY_CHILD_ATTACH) == 0
+        ? parent : nullptr;
+}
+
 static void dn2cpp_task_init(Dn2CppTask* t, int32_t options, Dn2CppCancelSource* source)
 {
     // Relaxed here and in every other pre-completed mint below: the task is private
@@ -322,15 +332,10 @@ static void dn2cpp_task_init(Dn2CppTask* t, int32_t options, Dn2CppCancelSource*
     t->creationOptions.store(options & DN2CPP_TASK_OPTIONS_MASK, std::memory_order_relaxed);
     dn2cpp_gc_store_ref(&t->cancellationSource, source);
     t->finishProvenance.store(0, std::memory_order_relaxed);
-    if ((options & DN2CPP_TASK_ATTACHED_TO_PARENT) != 0)
+    if (auto* parent = dn2cpp_task_attaching_parent(options))
     {
-        const auto* scope = Dn2CppTaskDelegateScope::active;
-        auto* parent = scope != nullptr ? scope->task : nullptr;
-        if (parent != nullptr && (parent->creationOptions.load(std::memory_order_relaxed) & DN2CPP_TASK_DENY_CHILD_ATTACH) == 0)
-        {
-            t->finishProvenance.store(DN2CPP_TASK_HAS_UNTRACKED_PARENT, std::memory_order_relaxed);
-            parent->finishProvenance.fetch_or(DN2CPP_TASK_HAS_UNTRACKED_CHILD, std::memory_order_release);
-        }
+        t->finishProvenance.store(DN2CPP_TASK_HAS_UNTRACKED_PARENT, std::memory_order_relaxed);
+        parent->finishProvenance.fetch_or(DN2CPP_TASK_HAS_UNTRACKED_CHILD, std::memory_order_release);
     }
 }
 
@@ -387,7 +392,7 @@ void dn2cpp_task_init_promise(Dn2CppTask* task, Dn2CppObject* state, int32_t opt
     dn2cpp_null_check(task);
     if ((options & ~0x44) != 0)
         dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ARGUMENT_OUT_OF_RANGE, "creationOptions");
-    if ((options & 0x04) != 0)
+    if (dn2cpp_task_attaching_parent(options) != nullptr)
         dn2cpp_throw_platform_not_supported("Task promise attachment requires parent-task tracking");
     // Keep the allocating subtype's header and fields. Ordinary continuations
     // already queue to their owner scheduler, including the asynchronous option.
@@ -1646,8 +1651,8 @@ static bool dn2cpp_task_finish_recorded(Dn2CppTask* t, int32_t status, uint64_t 
     return true;
 }
 
-static bool dn2cpp_task_finish_canceled_promise(Dn2CppTask* task, uint64_t result,
-    Dn2CppCancelSource* source, Dn2CppObject* exception, Dn2CppObject* dispatch = nullptr)
+bool dn2cpp_task_finish_canceled_promise(Dn2CppTask* task, uint64_t result,
+    Dn2CppCancelSource* source, Dn2CppObject* exception, Dn2CppObject* dispatch)
 {
     // TrySetCanceled records the winning cancellation payload, but does not
     // run delegate Finish arbitration against previously recorded faults.

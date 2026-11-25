@@ -706,6 +706,12 @@ internal sealed partial class MethodCompiler
     /// call on the constant). Returns false if the declaring type isn't one.</summary>
     private bool TryIntrinsicStaticField(FieldInfo fld, bool wantAddress, int token)
     {
+        if (!wantAddress && fld.Name == "s_asyncDebuggingEnabled" && fld.DeclaringClass.FullName == "System.Threading.Tasks.Task"
+            && CoreIntrinsics.IsTaskFactoryApmBody(Method))
+        {
+            PushI4Const(0);
+            return true;
+        }
         // ResourceManager has no generated field storage. Its wire-header values
         // agree with the runtime-owned reflection rows; addresses are refused at resolution.
         if (CoreIntrinsics.IsResourceManagerHeaderField(fld))

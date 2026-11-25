@@ -5603,7 +5603,7 @@ internal sealed partial class Compilation
             if (IsTypedGCHandle(spec))
                 CompleteTypedGCHandleInterfaces(spec);
             if (CoreIntrinsics.IsTaskLifecycleOwner(spec) || spec.FullName == "System.Threading.Tasks.TaskScheduler"
-                || CoreIntrinsics.IsTaskCompletionSourceOwner(spec))
+                || CoreIntrinsics.IsTaskCompletionSourceOwner(spec) || CoreIntrinsics.IsTaskFactoryOwner(spec))
                 CompleteTaskLifecycleMembers(spec);
             return;
         }
@@ -6251,7 +6251,7 @@ internal sealed partial class Compilation
         {
             // The lowered body's completion catch registers OperationCanceledException;
             // unreached, a canceled body would settle its task faulted.
-            if (m.IsRuntimeAsync)
+            if (m.IsRuntimeAsync || m.Name == "FromAsyncCoreLogic" && CoreIntrinsics.IsTaskFactoryApmBody(m))
                 ReachCancellationException();
             ReachArraySortFactory(m);
             var insns = ILDecoder.Decode(body.GetILBytes()!.ToImmutableArrayCompat());

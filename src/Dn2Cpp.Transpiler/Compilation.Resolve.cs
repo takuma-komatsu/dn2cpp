@@ -94,6 +94,7 @@ internal sealed partial class Compilation
     /// when it is an intrinsic / external (TypeRef-based) reference.</summary>
     private MethodInfo? ResolveCallTarget(Module module, EntityHandle handle, GenericContext ctx)
     {
+        if (TryResolveTaskFactoryApm(module, handle, ctx) is { } apm) return apm;
         switch (handle.Kind)
         {
             case HandleKind.MethodDefinition:

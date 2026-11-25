@@ -5,6 +5,19 @@ namespace Dn2Cpp;
 
 internal static partial class CoreIntrinsics
 {
+    internal static bool IsTaskFactoryOwner(ClassInfo owner) =>
+        owner.IntrinsicCppName == "Dn2CppTaskFactory*" && owner.Module.AssemblyName == "System.Private.CoreLib";
+
+    internal static bool IsTaskFactoryApmBody(MethodInfo method) =>
+        CoreIntrinsicTypeMaps.IsTaskFactoryApmName(method.Name)
+        && IsTaskFactoryOwner(method.DeclaringClass)
+        && !method.Handle.IsNil && IsTaskFactoryApmSignature(method.Name, method.Module.Reader.GetMethodDefinition(method.Handle)
+            .DecodeSignature(RawSignatureProvider.Instance, null));
+
+    internal static bool IsTaskFactoryApmSignature(string name, MethodSignature<string> signature) =>
+        CoreIntrinsicTypeMaps.IsTaskFactoryApmBody(name, signature.ParameterTypes.Length,
+            signature.ParameterTypes.Length == 0 ? null : signature.ParameterTypes[0]);
+
     internal static bool IsTaskCompletionSourceOwner(ClassInfo owner) =>
         owner.Module.AssemblyName == "System.Private.CoreLib"
         && (owner.FullName == "System.Threading.Tasks.TaskCompletionSource"
@@ -141,7 +154,7 @@ internal static partial class CoreIntrinsics
         && method.Module.Reader.GetBlobReader(method.Module.Reader.GetMethodDefinition(method.Handle).Signature).Length == 4;
 
     internal static bool IsTaskManagedForwarder(MethodInfo method) =>
-        IsManagedTaskEvent(method) || IsTaskSchedulerId(method) || IsTaskSchedulerDequeue(method) || IsTaskSchedulerExecute(method) ||
+        IsTaskFactoryApmBody(method) || IsManagedTaskEvent(method) || IsTaskSchedulerId(method) || IsTaskSchedulerDequeue(method) || IsTaskSchedulerExecute(method) ||
         method.Name == ".ctor" && method.DeclaringClass.GenericArity == 1 && IsTaskLifecycle(method)
         || IsTaskAddExceptionForwarder(method);
 

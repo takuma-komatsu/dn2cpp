@@ -127,5 +127,23 @@ namespace TaskFactorySubset
                 && typed?.GetType() == typeof(TaskFactory<string>) && ReferenceEquals(factory, Task.Factory)
                 && ReferenceEquals(typed, Task<string>.Factory) && !ReferenceEquals(typed, Task<object>.Factory)));
         }
+
+        internal static void RunFromAsync()
+        {
+            var state = new object();
+            var source = new TaskCompletionSource<int>(state);
+            AsyncCallback? complete = null;
+            int ends = 0;
+            var task = Task<int>.Factory.FromAsync((callback, _) =>
+            {
+                complete = callback;
+                return source.Task;
+            }, result => { ends++; return ((Task<int>)result).Result; }, state);
+            bool pending = !task.IsCompleted;
+            source.SetResult(42);
+            complete!(source.Task);
+            Console.WriteLine("factory Begin/End: " + (pending && ends == 1 && task.Result == 42
+                && ReferenceEquals(task.AsyncState, state)));
+        }
     }
 }

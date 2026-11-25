@@ -33,11 +33,24 @@ internal sealed partial class Compilation
     private void CompleteTaskLifecycleMembers(ClassInfo owner)
     {
         var reader = owner.Module.Reader;
+        if (owner.IntrinsicCppName == "Dn2CppTaskFactory*")
+        {
+            foreach (var handle in reader.GetTypeDefinition(owner.Handle).GetFields())
+            {
+                var field = reader.GetFieldDefinition(handle);
+                if (reader.StringComparer.Equals(field.Name, "m_defaultCreationOptions"))
+                    owner.Fields.Add(new FieldInfo { DeclaringClass = owner, Name = "m_defaultCreationOptions",
+                        Handle = handle, Attributes = field.Attributes });
+            }
+        }
         foreach (var handle in reader.GetTypeDefinition(owner.Handle).GetMethods())
         {
             var definition = reader.GetMethodDefinition(handle);
             string name = reader.GetString(definition.Name);
-            if (CoreIntrinsics.IsTaskCompletionSourceOwner(owner)
+            if (owner.IntrinsicCppName == "Dn2CppTaskFactory*"
+                ? !(CoreIntrinsicTypeMaps.IsTaskFactoryApmName(name) && CoreIntrinsics.IsTaskFactoryApmSignature(name,
+                    definition.DecodeSignature(RawSignatureProvider.Instance, null)))
+                : CoreIntrinsics.IsTaskCompletionSourceOwner(owner)
                 ? name is not ("SetFromTask" or "TrySetFromTask")
                 : owner.FullName == "System.Threading.Tasks.TaskScheduler"
                 ? !(CoreIntrinsics.IsTaskSchedulerMemberName(owner.FullName, name) || CoreIntrinsics.IsManagedTaskEventName(name))
@@ -52,6 +65,27 @@ internal sealed partial class Compilation
             owner.Methods.Add(method);
             owner.MethodByTemplate.Add(handle, method);
         }
+    }
+
+    internal MethodInfo? TryResolveTaskFactoryApm(Module module, EntityHandle token, GenericContext context)
+    {
+        var reader = module.Reader;
+        var member = token.Kind == HandleKind.MethodSpecification
+            ? reader.GetMethodSpecification((MethodSpecificationHandle)token).Method : token;
+        if (member.Kind != HandleKind.MemberReference && member.Kind != HandleKind.MethodDefinition) return null;
+        var name = CallTargetMethodName(module, member);
+        if (name is null || !CoreIntrinsicTypeMaps.IsTaskFactoryApmName(name)
+            || DeclaringDefinitionOf(module, member) is not { } owner || owner.Module.AssemblyName != "System.Private.CoreLib") return null;
+        var definition = owner.Module.Reader.GetTypeDefinition(owner.Handle);
+        var names = owner.Module.Reader.StringComparer;
+        if (!names.Equals(definition.Namespace, "System.Threading.Tasks")
+            || !(names.Equals(definition.Name, "TaskFactory") || names.Equals(definition.Name, "TaskFactory`1"))) return null;
+        var signature = member.Kind == HandleKind.MethodDefinition
+            ? reader.GetMethodDefinition((MethodDefinitionHandle)member).DecodeSignature(RawSignatureProvider.Instance, null)
+            : reader.GetMemberReference((MemberReferenceHandle)member).DecodeMethodSignature(RawSignatureProvider.Instance, null);
+        if (!CoreIntrinsics.IsTaskFactoryApmSignature(name, signature)) return null;
+        var target = ResolveMethodHandle(module, token, context);
+        return target is not null && CoreIntrinsics.IsTaskFactoryApmBody(target) ? target : null;
     }
 
     private void NoteUnobservedTaskEventStorage(MethodInfo method)
