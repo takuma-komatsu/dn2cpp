@@ -3849,27 +3849,23 @@ bool dn2cpp_allocation_unsupported(const Dn2CppTypeInfo* ti);
 // carry no code on the taken-never path.
 [[noreturn]] void dn2cpp_throw_divide_by_zero();
 
-// The Dn2CppType receiver's metadata, with the managed-NRE guard the instance
-// call it stands in for would raise. A null Type handle is a NORMAL value in
-// this surface — Type.GetType, Assembly.GetType and GetNestedType all answer
-// null on a miss and library code writes `Type.GetType(n)!` — so every
-// reflection lowering that reads `->typeInfo` off a receiver goes through here
-// rather than dereferencing. Answering a default (an empty member set, a null name)
-// would be a silent wrong answer: from the metadata alone it is indistinguishable
-// from a real one.
-inline const Dn2CppTypeInfo* dn2cpp_type_require(Dn2CppType* t)
+// A managed Type subclass has its own fields after the object header.
+inline const Dn2CppTypeInfo* dn2cpp_type_info_or_null(const Dn2CppType* t)
 {
-    if (t == nullptr || t->typeInfo == nullptr)
-        dn2cpp_throw_null_reference();
+    if (t == nullptr)
+        return nullptr;
+    if (t->type != &dn2cpp_type_type)
+        dn2cpp_throw_platform_not_supported("Reflection requires a runtime Type object.");
     return t->typeInfo;
 }
 
-// The same read for the one member of that surface whose null is an ARGUMENT
-// rather than a receiver: Type.GetTypeCode(Type) is STATIC, and real .NET answers
-// TypeCode.Empty for a null argument instead of throwing.
-inline const Dn2CppTypeInfo* dn2cpp_type_info_or_null(Dn2CppType* t)
+// A lookup miss may supply a null receiver to an instance reflection call.
+inline const Dn2CppTypeInfo* dn2cpp_type_require(const Dn2CppType* t)
 {
-    return t != nullptr ? t->typeInfo : nullptr;
+    const Dn2CppTypeInfo* ti = dn2cpp_type_info_or_null(t);
+    if (ti == nullptr)
+        dn2cpp_throw_null_reference();
+    return ti;
 }
 // Generic typed trap (throw a bare managed exception of `ti`). Shared so the
 // per-namespace intrinsic units (e.g. intrinsics/dn2cpp_system_io.cpp) can raise

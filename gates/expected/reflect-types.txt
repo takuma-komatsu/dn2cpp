@@ -1594,3 +1594,9 @@ delegator=True override=True base=True static=True skip definition=True
 reflected=True/True runtime=True/True/True
 static null=ArgumentNullException/nullableType
 null receiver=NullReferenceException
+== lowered custom Type ==
+equals=PlatformNotSupportedException
+equals Type argument=PlatformNotSupportedException
+equals object argument=False
+handle=PlatformNotSupportedException
+subclass argument=PlatformNotSupportedException

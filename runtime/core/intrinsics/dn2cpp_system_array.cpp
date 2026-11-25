@@ -799,7 +799,7 @@ const Dn2CppTypeInfo* dn2cpp_mdarr_ti(const Dn2CppTypeInfo* elem, int32_t rank)
 
 static const Dn2CppTypeInfo* dn2cpp_array_require_element_type(Dn2CppType* type)
 {
-    const Dn2CppTypeInfo* element = type->typeInfo;
+    const Dn2CppTypeInfo* element = dn2cpp_type_require(type);
     if (dn2cpp_signature_kind(element) == 2)
         dn2cpp_throw_not_supported();
     if (dn2cpp_type_contains_generic_parameters(element) || dn2cpp_type_metadata_only(element))
@@ -936,9 +936,9 @@ Dn2CppObject* dn2cpp_array_create_instance_lengths(Dn2CppType* t, Dn2CppArrayI4*
     if (lengths->length < 1)
         dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_NEED_AT_LEAST_1_RANK);
     dn2cpp_array_check_length_elements(lengths);
-    dn2cpp_array_require_element_type(t);
+    const Dn2CppTypeInfo* element = dn2cpp_array_require_element_type(t);
     if (lengths->length > 32)
-        dn2cpp_array_throw_excess_rank(dn2cpp_type_require(t), lengths->length);
+        dn2cpp_array_throw_excess_rank(element, lengths->length);
     return dn2cpp_array_create_instance_bounds(t, lengths->data, lengths->length,
         lowerBounds != nullptr ? lowerBounds->data : nullptr);
 }
@@ -948,10 +948,9 @@ Dn2CppObject* dn2cpp_array_create_instance_lengths(Dn2CppType* t, Dn2CppArrayI4*
 // type given one length (`singleLength`); a rank a lengths array does not state is
 // the indices-length mismatch, naming nothing. An SZ identity reports arrayRank 1,
 // or 0 for the shared reference-element identity.
-static Dn2CppType* dn2cpp_array_type_element_of_rank(Dn2CppType* arrayType, int32_t rank,
+static Dn2CppType* dn2cpp_array_type_element_of_rank(const Dn2CppTypeInfo* ti, int32_t rank,
                                                      bool singleLength)
 {
-    const Dn2CppTypeInfo* ti = arrayType->typeInfo;
     if ((ti->flags & DN2CPP_TF_ARRAY) == 0 || ti->elementType == nullptr)
         dn2cpp_throw_argument_param(DN2CPP_SR_HAS_TO_BE_ARRAY_CLASS, "arrayType");
     if ((ti->arrayRank > 1 ? ti->arrayRank : 1) != rank)
@@ -975,7 +974,8 @@ Dn2CppObject* dn2cpp_array_create_instance_from_arraytype(Dn2CppType* arrayType,
         if (lengths[i] < 0)
             dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "length",
                 lengths[i]);
-    return dn2cpp_array_create_instance(dn2cpp_array_type_element_of_rank(arrayType, rank, true),
+    const Dn2CppTypeInfo* ti = dn2cpp_type_require(arrayType);
+    return dn2cpp_array_create_instance(dn2cpp_array_type_element_of_rank(ti, rank, true),
                                         lengths, rank);
 }
 
@@ -995,8 +995,9 @@ Dn2CppObject* dn2cpp_array_create_instance_from_arraytype_lengths(Dn2CppType* ar
         dn2cpp_throw_argument_null_param("lowerBounds");
     if (lowerBounds != nullptr && lowerBounds->length != lengths->length)
         dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_RANKS_AND_BOUNDS);
-    Dn2CppType* elem = dn2cpp_array_type_element_of_rank(arrayType, lengths->length, false);
-    bool sz = dn2cpp_is_sz_array(arrayType->typeInfo);
+    const Dn2CppTypeInfo* ti = dn2cpp_type_require(arrayType);
+    Dn2CppType* elem = dn2cpp_array_type_element_of_rank(ti, lengths->length, false);
+    bool sz = dn2cpp_is_sz_array(ti);
     if (sz && lowerBounds != nullptr && lowerBounds->data[0] != 0)
         dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_NON_ZERO_LOWER_BOUND);
     dn2cpp_array_check_length_elements(lengths);

@@ -83,5 +83,16 @@ public static class Program
         catch (ArgumentNullException e) { Console.WriteLine("static null=" + e.GetType().Name + "/" + e.ParamName); }
         try { Underlying(null); }
         catch (NullReferenceException) { Console.WriteLine("null receiver=NullReferenceException"); }
+
+        Console.WriteLine("== lowered custom Type ==");
+        try { Console.WriteLine("equals=" + delegator.Equals(typeof(long?))); }
+        catch (PlatformNotSupportedException) { Console.WriteLine("equals=PlatformNotSupportedException"); }
+        try { Console.WriteLine("equals Type argument=" + typeof(long?).Equals(delegator)); }
+        catch (PlatformNotSupportedException) { Console.WriteLine("equals Type argument=PlatformNotSupportedException"); }
+        Console.WriteLine("equals object argument=" + typeof(long?).Equals((object)delegator));
+        try { Console.WriteLine("handle=" + delegator.TypeHandle.Equals(typeof(long?).TypeHandle)); }
+        catch (PlatformNotSupportedException) { Console.WriteLine("handle=PlatformNotSupportedException"); }
+        try { Console.WriteLine("subclass argument=" + typeof(string).IsSubclassOf(delegator)); }
+        catch (PlatformNotSupportedException) { Console.WriteLine("subclass argument=PlatformNotSupportedException"); }
     }
 }

@@ -203,12 +203,7 @@ static int32_t dn2cpp_marshal_require_copyable(const Dn2CppTypeInfo* ti)
 
 int32_t dn2cpp_marshal_sizeof(const Dn2CppType* t)
 {
-    if (t == nullptr)
-        dn2cpp_throw_argument_null_param("t");
-    // The argument-null test comes first, as in .NET — a null Type handle has no layout
-    // to ask about. Everything else is the shared verdict above, dn2cpp_require_layout
-    // included.
-    return dn2cpp_marshal_require_size(t->typeInfo);
+    return dn2cpp_marshal_require_size(dn2cpp_type_info_or_null(t));
 }
 
 Dn2CppObject* dn2cpp_marshal_ptr_to_structure(const void* ptr, const Dn2CppType* t)
@@ -220,16 +215,17 @@ Dn2CppObject* dn2cpp_marshal_ptr_to_structure(const void* ptr, const Dn2CppType*
     // The COPY verdict, then the REPRESENTATION size for the copy: past that verdict the
     // two layouts agree for every type that reaches here, and the box has to be the
     // representation because emitted code reads the boxed payload as one.
-    dn2cpp_marshal_require_copyable(t->typeInfo);
-    if ((t->typeInfo->reflection().activation & DN2CPP_TA_UNALLOCATED) != 0)
+    const Dn2CppTypeInfo* ti = dn2cpp_type_require(t);
+    dn2cpp_marshal_require_copyable(ti);
+    if ((ti->reflection().activation & DN2CPP_TA_UNALLOCATED) != 0)
     {
         const std::string message = std::string("Marshal.PtrToStructure(IntPtr, Type) boxes '")
-            + (t->typeInfo->name != nullptr ? t->typeInfo->name : "<unnamed type>")
+            + (ti->name != nullptr ? ti->name : "<unnamed type>")
             + "', whose box is not prepared; pass a statically known typeof(T) at the call "
               "site or preserve the whole struct type with [Preserve] or link.xml.";
         dn2cpp_throw_platform_not_supported(message.c_str());
     }
-    return dn2cpp_box(t->typeInfo, ptr, static_cast<size_t>(t->typeInfo->instanceSize));
+    return dn2cpp_box(ti, ptr, static_cast<size_t>(ti->instanceSize));
 }
 
 void dn2cpp_marshal_structure_to_ptr(Dn2CppObject* structure, void* ptr)

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Type.GetNullableUnderlyingType preserves formal identity and managed Type overrides.
+# Lowered Type operations reject managed Type receivers and arguments at the native boundary.
 # Member metadata-definition identity ignores generic instantiation and reflected views without conflating definitions.
 # Method attribute inheritance honors override chains and AttributeUsage without constructing IsDefined results.
 # Type.GetType(name, throwOnError, ignoreCase) keeps caller/CoreLib lookup and case-collision order.
@@ -393,12 +394,20 @@ gate_intrinsic_template_row_asserts() {
         || { echo 'FAIL: runtime intrinsic argument must retain its static-name remedy' >&2; return 1; }
 }
 gate_extra_asserts() {
+    local custom_type='== lowered custom Type =='
     gate_string_clone_prefix_asserts "$1"
     gate_type_gettype_ignorecase_asserts "$1"
     gate_intrinsic_template_row_asserts "$1"
     gate_capture_ok "$1/closed-constraints-oracle" run_bounded dotnet "$_CG_APP" closed-constraints
     gate_capture_ok "$1/closed-constraints-native" run_bounded "$1/ReflectTypes$EXE_EXT" closed-constraints
-    gate_output compare "$1/closed-constraints-native.stdout" "$1/closed-constraints-oracle.stdout" --policy crlf
+    gate_output select "$1/closed-constraints-native.stdout" "$1/closed-constraints-native.prefix" --before "$custom_type" --policy crlf
+    gate_output select "$1/closed-constraints-oracle.stdout" "$1/closed-constraints-oracle.prefix" --before "$custom_type" --policy crlf
+    gate_output compare "$1/closed-constraints-native.prefix" "$1/closed-constraints-oracle.prefix" --policy crlf
+    gate_output select "$EXPFILE" "$1/custom-type-native.expected" --from "$custom_type" --policy crlf
+    gate_output suffix "$1/closed-constraints-native.stdout" "$1/custom-type-native.expected" --policy crlf
+    printf '%s\n' 'equals=True' 'equals Type argument=True' 'equals object argument=False' \
+        'handle=True' 'subclass argument=False' > "$1/custom-type-oracle.expected"
+    gate_output suffix "$1/closed-constraints-oracle.stdout" "$1/custom-type-oracle.expected" --after "$custom_type" --policy crlf
     gate_output witness "$1/closed-constraints-native.stdout" 'closed generic constraints end' --count 1 --policy crlf
     gate_output witness "$1/closed-constraints-native.stdout" '== Type.GetNullableUnderlyingType ==' --count 1 --policy crlf
     gate_capture_ok "$1/open-interfaces-oracle" run_bounded dotnet "$_CG_APP" open-interfaces

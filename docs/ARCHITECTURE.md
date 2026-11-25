@@ -710,6 +710,12 @@ Members, signatures and field types are decoded **on demand**; read
 4. Add a minimal case to `samples/dotnet/HelloWorld`; green
    `./gates/build-and-run-sample.sh`.
 
+Lowered intrinsics check the canonical `dn2cpp_type_type` object header before
+reading `Dn2CppType::typeInfo` from a receiver or a `Type` argument, including
+elements of `Type[]`. Managed `Type` subclasses have their own field layouts.
+An intrinsic that needs the native payload throws `PlatformNotSupportedException`
+for those objects.
+
 The virtual `Type.GetNullableUnderlyingType()` returns the underlying argument on
 a runtime Nullable type, including its interned formal on the open definition.
 Managed Type subclasses use their own virtual slot. The CoreLib static

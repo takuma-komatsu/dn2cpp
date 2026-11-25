@@ -602,14 +602,14 @@ Dn2CppType* dn2cpp_type_make_generic(Dn2CppType* def, Dn2CppArrayRef* args)
     bool metadataOnly = false;
     for (int32_t i = 0; i < argc; i++)
     {
-        auto* a = reinterpret_cast<Dn2CppType*>(args->data[i]);
-        if (a->typeInfo == nullptr) { haveArgs = false; continue; }
-        if (a->typeInfo == &dn2cpp_void_type || dn2cpp_signature_kind(a->typeInfo) != 0)
+        const auto* argument = dn2cpp_type_info_or_null(reinterpret_cast<Dn2CppType*>(args->data[i]));
+        if (argument == nullptr) { haveArgs = false; continue; }
+        if (argument == &dn2cpp_void_type || dn2cpp_signature_kind(argument) != 0)
             dn2cpp_throw_sr1(&dn2cpp_argument_exception_type,
-                DN2CPP_SR_NEVER_VALID_GENERIC_ARGUMENT, dn2cpp_type_tostring(a->typeInfo));
-        open |= dn2cpp_type_contains_generic_parameters(a->typeInfo);
-        metadataOnly |= dn2cpp_type_metadata_only(a->typeInfo);
-        argv[i] = a->typeInfo;
+                DN2CPP_SR_NEVER_VALID_GENERIC_ARGUMENT, dn2cpp_type_tostring(argument));
+        open |= dn2cpp_type_contains_generic_parameters(argument);
+        metadataOnly |= dn2cpp_type_metadata_only(argument);
+        argv[i] = argument;
     }
     if (open)
         return dn2cpp_get_type_from_handle(dn2cpp_open_generic_type(defTi, argv));
@@ -990,7 +990,7 @@ Dn2CppObject* dn2cpp_get_uninitialized_object(Dn2CppType* t)
 {
     if (t == nullptr)
         dn2cpp_throw_argument_null_param("type");
-    const Dn2CppTypeInfo* ti = t->typeInfo;
+    const Dn2CppTypeInfo* ti = dn2cpp_type_require(t);
     if (dn2cpp_signature_kind(ti) != 0)
         dn2cpp_throw_argument_msg("Type is not supported.");
     if ((ti->flags & DN2CPP_TF_GENERICPARAM) == 0 && dn2cpp_type_contains_generic_parameters(ti))
@@ -1069,9 +1069,10 @@ static const Dn2CppTypeInfo* dn2cpp_enum_type_require(Dn2CppType* t)
 {
     if (t == nullptr)
         dn2cpp_throw_argument_null_param("enumType");
-    if ((t->typeInfo->flags & DN2CPP_TF_ENUM) == 0)
+    const auto* ti = dn2cpp_type_require(t);
+    if ((ti->flags & DN2CPP_TF_ENUM) == 0)
         dn2cpp_throw_argument_param(DN2CPP_SR_MUST_BE_ENUM, "enumType");
-    return t->typeInfo;
+    return ti;
 }
 
 // Enum.GetUnderlyingType(Type): the enum's underlying primitive type (defaulting to
@@ -1196,27 +1197,18 @@ static bool dn2cpp_is_nullable_definition(const Dn2CppTypeInfo* ti)
         && std::strcmp(dn2cpp_ti_assembly_name(ti), "System.Private.CoreLib") == 0;
 }
 
-// Only a RuntimeType facade carries native TypeInfo after the object header.
-static const Dn2CppTypeInfo* dn2cpp_nullable_receiver_info(Dn2CppType* type)
-{
-    dn2cpp_null_check(type);
-    if (type->type != &dn2cpp_type_type)
-        dn2cpp_throw_not_supported();
-    return dn2cpp_type_require(type);
-}
-
 // Without CoreLib IL the static Nullable API still excludes the generic definition.
 Dn2CppType* dn2cpp_nullable_get_underlying(Dn2CppType* t)
 {
     if (t == nullptr)
         dn2cpp_throw_argument_null_param("nullableType");
-    const auto* underlying = dn2cpp_nullable_underlying_ti(dn2cpp_nullable_receiver_info(t));
+    const auto* underlying = dn2cpp_nullable_underlying_ti(dn2cpp_type_require(t));
     return underlying == nullptr ? nullptr : dn2cpp_get_type_from_handle(underlying);
 }
 
 Dn2CppType* dn2cpp_runtime_type_nullable_underlying(Dn2CppObject* receiver)
 {
-    const auto* ti = dn2cpp_nullable_receiver_info(static_cast<Dn2CppType*>(receiver));
+    const auto* ti = dn2cpp_type_require(static_cast<Dn2CppType*>(receiver));
     if ((ti->flags & DN2CPP_TF_GENERICDEF) != 0)
     {
         if (!dn2cpp_is_nullable_definition(ti))
@@ -1231,7 +1223,7 @@ Dn2CppType* dn2cpp_runtime_type_nullable_underlying(Dn2CppObject* receiver)
 
 int32_t dn2cpp_runtime_type_is_generic_definition(Dn2CppObject* receiver)
 {
-    return dn2cpp_type_is_generic_type_definition(dn2cpp_nullable_receiver_info(static_cast<Dn2CppType*>(receiver)));
+    return dn2cpp_type_is_generic_type_definition(dn2cpp_type_require(static_cast<Dn2CppType*>(receiver)));
 }
 
 void* dn2cpp_runtime_virtual_address(Dn2CppObject* receiver, int32_t slot,
@@ -2442,7 +2434,23 @@ Dn2CppString* dn2cpp_memberinfo_name(Dn2CppObject* m)
         nm = reinterpret_cast<Dn2CppEventRef*>(m)->event->name;
     if (nm != nullptr)
         return dn2cpp_string_from_utf8(nm, static_cast<int32_t>(std::strlen(nm)));
-    return dn2cpp_type_name(reinterpret_cast<Dn2CppType*>(m)->typeInfo);
+    return dn2cpp_type_name(dn2cpp_type_require(reinterpret_cast<Dn2CppType*>(m)));
+}
+
+static bool dn2cpp_type_is_a(const Dn2CppTypeInfo* sub, const Dn2CppTypeInfo* super)
+{
+    for (const Dn2CppTypeInfo* t = sub; t != nullptr; t = t->base)
+        if (t == super)
+            return true;
+    return false;
+}
+
+// A managed Type is a MemberInfo too, but only RuntimeType exposes native metadata.
+static const Dn2CppTypeInfo* dn2cpp_member_type_info(Dn2CppObject* member)
+{
+    if (member->type != &dn2cpp_type_type && !dn2cpp_type_is_a(member->type, &dn2cpp_public_type_type))
+        return nullptr;
+    return dn2cpp_type_require(static_cast<Dn2CppType*>(member));
 }
 
 Dn2CppType* dn2cpp_memberinfo_declaring_type(Dn2CppObject* m)
@@ -2468,9 +2476,8 @@ Dn2CppType* dn2cpp_memberinfo_declaring_type(Dn2CppObject* m)
         auto* event = reinterpret_cast<Dn2CppEventRef*>(m);
         return dn2cpp_get_type_from_handle(dn2cpp_invoke_declaring(event->event->declaringType, event->reflectedType));
     }
-    if (m->type == &dn2cpp_type_type)
+    if (const auto* ti = dn2cpp_member_type_info(m))
     {
-        const auto* ti = reinterpret_cast<Dn2CppType*>(m)->typeInfo;
         if ((ti->flags & DN2CPP_TF_GENERICPARAM) != 0)
             return dn2cpp_get_type_from_handle(dn2cpp_type_generic_parameter_declaring_type(ti));
         if ((ti->flags & DN2CPP_TF_NESTED) != 0)
@@ -2504,12 +2511,8 @@ Dn2CppType* dn2cpp_memberinfo_reflected_type(Dn2CppObject* m)
         return dn2cpp_get_type_from_handle(reinterpret_cast<Dn2CppPropRef*>(m)->reflectedType);
     if (m->type == &dn2cpp_eventinfo_type)
         return dn2cpp_get_type_from_handle(reinterpret_cast<Dn2CppEventRef*>(m)->reflectedType);
-    if (m->type == &dn2cpp_type_type)
-    {
-        const auto* ti = reinterpret_cast<Dn2CppType*>(m)->typeInfo;
-        if ((ti->flags & DN2CPP_TF_GENERICPARAM) != 0)
-            return dn2cpp_get_type_from_handle(dn2cpp_type_generic_parameter_declaring_type(ti));
-    }
+    if (const auto* ti = dn2cpp_member_type_info(m); ti != nullptr && (ti->flags & DN2CPP_TF_GENERICPARAM) != 0)
+        return dn2cpp_get_type_from_handle(dn2cpp_type_generic_parameter_declaring_type(ti));
     return nullptr;
 }
 
@@ -3011,14 +3014,15 @@ static bool dn2cpp_params_match_types(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
         return false;
     for (int32_t j = 0; j < types->length; j++)
     {
-        auto* pt = reinterpret_cast<Dn2CppType*>(types->data[j]);
-        if (pt == nullptr)
+        auto* argument = reinterpret_cast<Dn2CppType*>(types->data[j]);
+        if (argument == nullptr)
             dn2cpp_throw_argument_null_param("types");
+        const auto* pt = dn2cpp_type_require(argument);
         const Dn2CppParamInfo param = *row.parameters[j];
         if ((row.declaringType->flags & DN2CPP_TF_GENERICDEF) != 0 && row.definitionSignature != nullptr)
         {
             if (dn2cpp_method_definition_type(mi, "symbolic", param.paramType,
-                dn2cpp_invoke_declaring(row.declaringType, reflected), j) != pt->typeInfo)
+                dn2cpp_invoke_declaring(row.declaringType, reflected), j) != pt)
                 return false;
             continue;
         }
@@ -3026,10 +3030,10 @@ static bool dn2cpp_params_match_types(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
         {
             const int32_t index = dn2cpp_bare_method_parameter_index(
                 param.genericDefinitionKey, row.genericParamCount);
-            if (index < 0 || dn2cpp_method_parameter_type(mi, index) != pt->typeInfo)
+            if (index < 0 || dn2cpp_method_parameter_type(mi, index) != pt)
                 return false;
         }
-        else if (dn2cpp_reflection_parameter_type(param, row.declaringType) != pt->typeInfo)
+        else if (dn2cpp_reflection_parameter_type(param, row.declaringType) != pt)
             return false;
     }
     return true;
@@ -4330,7 +4334,7 @@ static bool dn2cpp_meta_params_match_types(const Dn2CppMetaMember* d, Dn2CppArra
         auto* pt = reinterpret_cast<Dn2CppType*>(types->data[j]);
         if (pt == nullptr)
             dn2cpp_throw_argument_null_param("types");
-        if (d->params[j].paramType != pt->typeInfo)
+        if (d->params[j].paramType != dn2cpp_type_require(pt))
             return false;
     }
     return true;
@@ -5485,11 +5489,12 @@ static Dn2CppObject* dn2cpp_invoke_pass_arg(const Dn2CppParamInfo& param, Dn2Cpp
             void* value = g_pointer_box_read(arg, &type);
             // Public Pointer.Box types use query companions; legacy Invoke boxes
             // keep their ABI identities. Only the full descriptor can equate them.
-            if (type != nullptr && dn2cpp_signature_kind(type->typeInfo) == 1
+            const auto* pointerType = dn2cpp_type_info_or_null(type);
+            if (pointerType != nullptr && dn2cpp_signature_kind(pointerType) == 1
                 && param.reflectionSignature != nullptr
-                && type->typeInfo == dn2cpp_signature_type(param.reflectionSignature, declaring))
+                && pointerType == dn2cpp_signature_type(param.reflectionSignature, declaring))
                 return static_cast<Dn2CppObject*>(value);
-            if (dn2cpp_pointer_box_accepts(type != nullptr ? type->typeInfo : nullptr, t, depth))
+            if (dn2cpp_pointer_box_accepts(pointerType, t, depth))
                 return static_cast<Dn2CppObject*>(value);
         }
         if ((kind & DN2CPP_PASS_FNPTR) == 0 && depth == 1 && t == &dn2cpp_void_type)
@@ -6760,7 +6765,7 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
                 dn2cpp_sr_message(DN2CPP_SR_DELEGATE_BIND, nullptr, 0), 0x80070057u);
         return nullptr;
     };
-    const Dn2CppTypeInfo* dti = dt->typeInfo;
+    const Dn2CppTypeInfo* dti = dn2cpp_type_require(dt);
     if (!dn2cpp_dgbind_delegate_type(dti))
         dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_MUST_BE_DELEGATE,
             typeParam, nullptr, 0, 0x80070057u);
@@ -7310,11 +7315,11 @@ Dn2CppObject* dn2cpp_delegate_create_named(Dn2CppType* dt, Dn2CppObject* target,
         dn2cpp_throw_argument_null_param("target");
     if (name == nullptr)
         dn2cpp_throw_argument_null_param("method");
-    const Dn2CppTypeInfo* queried = staticForm != 0 ? targetType->typeInfo : target->type;
+    const Dn2CppTypeInfo* queried = staticForm != 0 ? dn2cpp_type_require(targetType) : target->type;
     if (staticForm != 0 && dn2cpp_type_contains_generic_parameters(queried))
         dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_UNBOUND_GENERIC,
             "target", nullptr, 0, 0x80070057u);
-    const Dn2CppTypeInfo* dti = dt->typeInfo;
+    const Dn2CppTypeInfo* dti = dn2cpp_type_require(dt);
     if (!dn2cpp_dgbind_delegate_type(dti))
         dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_MUST_BE_DELEGATE,
             "type", nullptr, 0, 0x80070057u);
@@ -8908,7 +8913,7 @@ Dn2CppMethodRef* dn2cpp_type_get_constructor_full(Dn2CppType* t, Dn2CppArrayRef*
             const auto* parameterType = (row->declaringType->flags & DN2CPP_TF_GENERICDEF) != 0 && row->definitionSignature != nullptr
                 ? dn2cpp_method_definition_type(ci, "symbolic", parameter.paramType, ti, j)
                 : dn2cpp_reflection_parameter_type(parameter, ti);
-            if (parameterType != pt->typeInfo)
+            if (parameterType != dn2cpp_type_require(pt))
             {
                 match = false;
                 break;
@@ -8944,7 +8949,7 @@ static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, int32_t nonP
 {
     if (t == nullptr)
         dn2cpp_throw_argument_null_param("type");
-    const Dn2CppTypeInfo* ti = t->typeInfo;
+    const Dn2CppTypeInfo* ti = dn2cpp_type_require(t);
     if (dn2cpp_type_contains_generic_parameters(ti))
         dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_TYPE_NOT_SUPPORTED);
     if (dn2cpp_type_metadata_only(ti))
@@ -9294,12 +9299,12 @@ Dn2CppPropRef* dn2cpp_type_get_property_full(Dn2CppType* t, Dn2CppString* name, 
                 for (int32_t j = 0; j < indexTypes->length; j++)
                 {
                     auto* pt = reinterpret_cast<Dn2CppType*>(indexTypes->data[j]);
-                    if (dn2cpp_property_signature_type(p, t->typeInfo, j) != pt->typeInfo) { match = false; break; }
+                    if (dn2cpp_property_signature_type(p, t->typeInfo, j) != dn2cpp_type_require(pt)) { match = false; break; }
                 }
                 if (!match)
                     continue;
             }
-            if (returnType != nullptr && dn2cpp_property_signature_type(p, t->typeInfo) != returnType->typeInfo)
+            if (returnType != nullptr && dn2cpp_property_signature_type(p, t->typeInfo) != dn2cpp_type_require(returnType))
                 continue;
             cands.push_back(p);
         }
@@ -10269,12 +10274,6 @@ static Dn2CppMetadataTable<Dn2CppAttrInfo> dn2cpp_member_custom_attrs(Dn2CppObje
         return nullptr;
     }
     dn2cpp_memberref_require(m);
-    if (m->type == &dn2cpp_type_type)
-    {
-        const Dn2CppTypeInfo* ti = reinterpret_cast<Dn2CppType*>(m)->typeInfo;
-        *count = ti->reflection().customAttrCount;
-        return ti->reflection().customAttrs;
-    }
     if (m->type == &dn2cpp_fieldinfo_type)
     {
         Dn2CppMetadataHandle<Dn2CppFieldInfo> f = reinterpret_cast<Dn2CppFieldRef*>(m)->field;
@@ -10311,17 +10310,12 @@ static Dn2CppMetadataTable<Dn2CppAttrInfo> dn2cpp_member_custom_attrs(Dn2CppObje
         *count = p->customAttrCount;
         return p->customAttrs;
     }
+    if (const auto* ti = dn2cpp_member_type_info(m))
+    {
+        *count = ti->reflection().customAttrCount;
+        return ti->reflection().customAttrs;
+    }
     return nullptr;
-}
-
-// True if an instance of `sub` is-a `super` (super is sub or one of its bases) — the
-// GetCustomAttributes(attrType) filter, matching .NET's `is attrType` semantics.
-static bool dn2cpp_type_is_a(const Dn2CppTypeInfo* sub, const Dn2CppTypeInfo* super)
-{
-    for (const Dn2CppTypeInfo* t = sub; t != nullptr; t = t->base)
-        if (t == super)
-            return true;
-    return false;
 }
 
 // The element an attribute read was asked of: `member`, or the assembly named
@@ -10517,7 +10511,7 @@ Dn2CppArrayRef* dn2cpp_get_custom_attributes(Dn2CppObject* member, Dn2CppType* a
 {
     int32_t count;
     Dn2CppMetadataTable<Dn2CppAttrInfo> tab = dn2cpp_member_custom_attrs(member, &count);
-    const Dn2CppTypeInfo* filter = (attrType != nullptr) ? attrType->typeInfo : nullptr;
+    const Dn2CppTypeInfo* filter = dn2cpp_type_info_or_null(attrType);
     if (inherit != 0)
     {
         const auto rows = dn2cpp_inherited_attributes(member, filter);
@@ -10544,7 +10538,7 @@ Dn2CppObject* dn2cpp_get_custom_attribute(Dn2CppObject* member, Dn2CppType* attr
 {
     if (attrType == nullptr)
         return nullptr; // named type absent from the reachable set -> no match
-    const Dn2CppTypeInfo* filter = attrType->typeInfo;
+    const Dn2CppTypeInfo* filter = dn2cpp_type_require(attrType);
     int32_t count;
     Dn2CppMetadataTable<Dn2CppAttrInfo> tab = dn2cpp_member_custom_attrs(member, &count);
     if (inherit != 0)
@@ -10559,7 +10553,7 @@ int32_t dn2cpp_is_defined(Dn2CppObject* member, Dn2CppType* attrType, int32_t in
 {
     if (attrType == nullptr)
         return 0; // named type absent from the reachable set -> not defined
-    const Dn2CppTypeInfo* filter = attrType->typeInfo;
+    const Dn2CppTypeInfo* filter = dn2cpp_type_require(attrType);
     if (inherit != 0)
         return dn2cpp_inherited_attributes(member, filter, true).empty() ? 0 : 1;
     int32_t count;
@@ -10593,7 +10587,7 @@ Dn2CppArrayRef* dn2cpp_assembly_get_custom_attributes(const char* name, Dn2CppTy
 {
     int32_t count;
     Dn2CppMetadataTable<Dn2CppAttrInfo> tab = dn2cpp_assembly_custom_attrs(name, &count);
-    const Dn2CppTypeInfo* filter = (attrType != nullptr) ? attrType->typeInfo : nullptr;
+    const Dn2CppTypeInfo* filter = dn2cpp_type_info_or_null(attrType);
     return dn2cpp_attr_table_to_array(tab, count, filter, nullptr, name);
 }
 
@@ -10610,7 +10604,7 @@ Dn2CppObject* dn2cpp_assembly_get_custom_attribute(const char* name, Dn2CppType*
 {
     if (attrType == nullptr)
         return nullptr; // named type absent from the reachable set -> no match
-    const Dn2CppTypeInfo* filter = attrType->typeInfo;
+    const Dn2CppTypeInfo* filter = dn2cpp_type_require(attrType);
     int32_t count;
     Dn2CppMetadataTable<Dn2CppAttrInfo> tab = dn2cpp_assembly_custom_attrs(name, &count);
     return dn2cpp_attr_table_to_single(tab, count, filter, nullptr, name);
@@ -10620,7 +10614,7 @@ int32_t dn2cpp_assembly_is_defined(const char* name, Dn2CppType* attrType)
 {
     if (attrType == nullptr)
         return 0;
-    const Dn2CppTypeInfo* filter = attrType->typeInfo;
+    const Dn2CppTypeInfo* filter = dn2cpp_type_require(attrType);
     int32_t count;
     Dn2CppMetadataTable<Dn2CppAttrInfo> tab = dn2cpp_assembly_custom_attrs(name, &count);
     for (int32_t i = 0; i < count; i++)
@@ -11633,7 +11627,7 @@ int32_t dn2cpp_type_implement_interface(Dn2CppType* t, Dn2CppType* itf)
     if (itf == nullptr)
         return 0;
     dn2cpp_type_ensure_metadata_relations(t->typeInfo);
-    const Dn2CppTypeInfo* target = itf->typeInfo;
+    const Dn2CppTypeInfo* target = dn2cpp_type_require(itf);
     for (const Dn2CppTypeInfo* ti = t->typeInfo; ti != nullptr; ti = ti->base)
     {
         int32_t count;
@@ -11663,10 +11657,10 @@ int32_t dn2cpp_memberinfo_member_type(Dn2CppObject* m)
         return 0x10;
     if (m->type == &dn2cpp_eventinfo_type)
         return 0x02;
-    if (m->type == &dn2cpp_type_type)
+    if (const auto* ti = dn2cpp_member_type_info(m))
     {
         // Formal parameters have a declaring owner but remain TypeInfo members.
-        const int32_t flags = reinterpret_cast<Dn2CppType*>(m)->typeInfo->flags;
+        const int32_t flags = ti->flags;
         return (flags & (DN2CPP_TF_NESTED | DN2CPP_TF_GENERICPARAM)) == DN2CPP_TF_NESTED
             ? 0x80  // MemberTypes.NestedType
             : 0x20; // MemberTypes.TypeInfo
@@ -11687,8 +11681,8 @@ int32_t dn2cpp_memberinfo_metadata_token(Dn2CppObject* m)
         return reinterpret_cast<Dn2CppPropRef*>(m)->prop->metadataToken;
     if (m->type == &dn2cpp_eventinfo_type)
         return reinterpret_cast<Dn2CppEventRef*>(m)->event->metadataToken;
-    if (m->type == &dn2cpp_type_type)
-        return reinterpret_cast<Dn2CppType*>(m)->typeInfo->reflection().metadataToken;
+    if (const auto* ti = dn2cpp_member_type_info(m))
+        return ti->reflection().metadataToken;
     return 0;
 }
 
@@ -11705,8 +11699,8 @@ const char* dn2cpp_memberinfo_module(Dn2CppObject* m)
         ti = reinterpret_cast<Dn2CppPropRef*>(m)->prop->declaringType;
     else if (m->type == &dn2cpp_eventinfo_type)
         ti = reinterpret_cast<Dn2CppEventRef*>(m)->event->declaringType;
-    else if (m->type == &dn2cpp_type_type)
-        ti = reinterpret_cast<Dn2CppType*>(m)->typeInfo;
+    else
+        ti = dn2cpp_member_type_info(m);
     return dn2cpp_ti_assembly_name(ti);
 }
 
@@ -11833,8 +11827,8 @@ Dn2CppMethodRef* dn2cpp_methodref_make_generic(Dn2CppMethodRef* m, Dn2CppArrayRe
         open |= parameter;
         arguments.push_back(type);
     }
-    for (int32_t i = 0; i < argc; i++)
-        if (dn2cpp_signature_kind(reinterpret_cast<Dn2CppType*>(types->data[i])->typeInfo) != 0)
+    for (const auto* argument : arguments)
+        if (dn2cpp_signature_kind(argument) != 0)
             dn2cpp_throw_argument_msg("A pointer, by-reference or function-pointer type cannot be a generic argument.");
     if (open)
         return dn2cpp_make_methodref(dn2cpp_open_method(def,
@@ -11847,14 +11841,11 @@ Dn2CppMethodRef* dn2cpp_methodref_make_generic(Dn2CppMethodRef* m, Dn2CppArrayRe
         const Dn2CppMetaMember* d = dn2cpp_meta_desc_of(def);
         if (d != nullptr)
         {
-            const Dn2CppTypeInfo* ga[DN2CPP_META_MAX_ARITY] = {};
             if (argc > DN2CPP_META_MAX_ARITY)
                 dn2cpp_throw_argument();
-            for (int32_t i = 0; i < argc; i++)
-                ga[i] = dn2cpp_type_require(reinterpret_cast<Dn2CppType*>(types->data[i]));
             // MakeGenericMethod PROPAGATES the receiver's reflected type, as .NET
             // does — here and in the in-image arm below.
-            return dn2cpp_make_methodref(dn2cpp_meta_row(d, def->declaringType, ga, argc),
+            return dn2cpp_make_methodref(dn2cpp_meta_row(d, def->declaringType, arguments.data(), argc),
                                          m->reflectedType);
         }
     }
@@ -11868,7 +11859,7 @@ Dn2CppMethodRef* dn2cpp_methodref_make_generic(Dn2CppMethodRef* m, Dn2CppArrayRe
     {
         if (i > 0)
             closed += ",";
-        closed += dn2cpp_utf8_of(dn2cpp_type_tostring(reinterpret_cast<Dn2CppType*>(types->data[i])->typeInfo));
+        closed += dn2cpp_utf8_of(dn2cpp_type_tostring(arguments[i]));
     }
     dn2cpp_throw_unretained(ti, dn2cpp_unretained_subject(ti, closed + "]"), kDn2CppUnretainedClosedGeneric,
         nullptr, nullptr);
@@ -12772,7 +12763,7 @@ static Dn2CppObject* dn2cpp_nullable_box_payload(const Dn2CppTypeInfo* nullable,
 
 Dn2CppObject* dn2cpp_rebox_to_nullable(Dn2CppObject* value, Dn2CppType* type)
 {
-    const auto* nullable = type != nullptr ? type->typeInfo : nullptr;
+    const auto* nullable = dn2cpp_type_info_or_null(type);
     const auto* underlying = dn2cpp_nullable_underlying_ti(nullable);
     if (underlying == nullptr)
         dn2cpp_throw_invalid_operation_msg("Nullable reboxing requires a closed Nullable<T> runtime type.");
@@ -13408,7 +13399,7 @@ Dn2CppObject* dn2cpp_activator_create_instance_args(Dn2CppType* t, Dn2CppArrayRe
     dn2cpp_reflection_check_binder(binder);
     if (activationAttrs != nullptr && activationAttrs->length > 0)
         dn2cpp_throw_platform_not_supported("Activation Attributes are not supported.");
-    const Dn2CppTypeInfo* ti = t->typeInfo;
+    const Dn2CppTypeInfo* ti = dn2cpp_type_require(t);
     int32_t argc = (args == nullptr) ? 0 : args->length;
     if (dn2cpp_type_contains_generic_parameters(ti))
         dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_TYPE_NOT_SUPPORTED);
