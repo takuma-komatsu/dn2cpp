@@ -652,6 +652,7 @@ internal sealed partial class MethodCompiler : IEvalStack
         ? "Dn2CppString*"
         : cls.IsValueType ? CppTypes.Of(TypeDesc.MakeClass(cls)) + "*"
         : cls.IntrinsicCppName == "Dn2CppTask*" ? "Dn2CppTask*"
+        : CoreIntrinsics.IsTaskCompletionSourceOwner(cls) ? "Dn2CppTaskCompletionSource*"
         : CoreIntrinsics.RuntimeOwnsTypeInfo(cls) ? CppTypes.Of(TypeDesc.MakeClass(cls))
         : cls.CppStructName + "*";
 
@@ -1719,6 +1720,8 @@ internal sealed partial class MethodCompiler : IEvalStack
             }, "CoreCLR type materialization boundary");
         string dispatch = _c.RuntimeInterfaceLowerings.TryGetValue(_method, out var runtimeDispatch)
             ? runtimeDispatch
+            : CoreIntrinsics.IsTaskCompletionTransfer(_method)
+            ? "System.Threading.Tasks.TaskCompletionSource"
             : CoreIntrinsics.IsIntrinsicType(_method.DeclaringClass.FullName)
             ? _method.DeclaringClass.FullName
             : IntrinsicDispatchName(_method.DeclaringClass);

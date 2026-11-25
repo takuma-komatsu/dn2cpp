@@ -956,7 +956,7 @@ internal sealed partial class Compilation
         CoreIntrinsics.ValidateConcreteVectorReduction(target);
         _reflectionSelectionCount++;
         // Reuse the call lowerings without following runtime-owned implementation bodies.
-        if (CoreIntrinsics.IsMathOverflowHelper(target))
+        if (CoreIntrinsics.IsMathOverflowHelper(target) || CoreIntrinsics.IsTaskCompletionTransfer(target))
             NoteIntrinsicFtnTarget(target);
         if (CoreIntrinsics.IsCoreClrFieldDescOperation(target))
             NoteInterceptFtnTarget(target);

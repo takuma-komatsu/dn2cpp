@@ -1875,6 +1875,11 @@ Await observes the holder and replays the first dispatch record. Blocking waits,
 still exposes any recorded faults before its cancellation exception to a blocking
 wait, without reporting a fault from `Task.Exception` or await. Joins and proxy
 tasks transfer dispatch records rather than recapturing their source exceptions.
+`TaskCompletionSource.SetFromTask` and `TrySetFromTask` require a completed
+source. The generic destination copies its result slot on success. A fault
+transfer observes the source even when the destination has already settled.
+Awaiting a transferred cancellation preserves a captured exception or creates
+a fresh `TaskCanceledException` referring to the destination task.
 An already faulted task keeps its original first fault and exposes later records
 without changing its published status or refiring continuations. Its first
 managed holder starts with the settled native fault set and its prior observation

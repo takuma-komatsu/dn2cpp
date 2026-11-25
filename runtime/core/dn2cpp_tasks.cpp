@@ -654,7 +654,7 @@ Dn2CppTaskCompletionSource* dn2cpp_tcs_alloc(const Dn2CppTypeInfo* type,
     return source;
 }
 
-static Dn2CppObject* dn2cpp_make_task_canceled_exception(Dn2CppCancelSource* source = nullptr);
+static Dn2CppObject* dn2cpp_make_task_canceled_exception(Dn2CppTask* task);
 
 static Dn2CppArrayRef* dn2cpp_task_fault_snapshot(Dn2CppTask* t);
 
@@ -695,8 +695,7 @@ void dn2cpp_task_throw_if_faulted(Dn2CppTask* t)
                 dn2cpp_throw_null_reference();
         }
         if (t->status == DN2CPP_TASK_CANCELED && exception == nullptr)
-            dn2cpp_throw(dn2cpp_make_task_canceled_exception(
-                t->cancellationSource.load(std::memory_order_acquire)));
+            dn2cpp_throw(dn2cpp_make_task_canceled_exception(t));
         dn2cpp_rethrow(exception);
     }
 }
@@ -1626,12 +1625,12 @@ static bool dn2cpp_task_finish_recorded(Dn2CppTask* t, int32_t status, uint64_t 
     return true;
 }
 
-static void dn2cpp_task_finish_canceled_promise(Dn2CppTask* task, uint64_t result,
+static bool dn2cpp_task_finish_canceled_promise(Dn2CppTask* task, uint64_t result,
     Dn2CppCancelSource* source, Dn2CppObject* exception, Dn2CppObject* dispatch = nullptr)
 {
     // TrySetCanceled records the winning cancellation payload, but does not
     // run delegate Finish arbitration against previously recorded faults.
-    dn2cpp_task_finish_recorded(task, DN2CPP_TASK_CANCELED, result,
+    return dn2cpp_task_finish_recorded(task, DN2CPP_TASK_CANCELED, result,
         exception, source, nullptr, false, dispatch, Dn2CppTaskFinishKind::PromiseCancellation);
 }
 
@@ -2242,8 +2241,7 @@ static Dn2CppArrayRef* dn2cpp_task_fault_snapshot(Dn2CppTask* t)
             dn2cpp_null_check(exception);
             dn2cpp_gc_store_ref(&inner->data[i], exception);
         }
-        dn2cpp_gc_store_ref(&inner->data[count],
-            dn2cpp_make_task_canceled_exception(t->cancellationSource.load(std::memory_order_acquire)));
+        dn2cpp_gc_store_ref(&inner->data[count], dn2cpp_make_task_canceled_exception(t));
         return inner;
     }
     auto* base = t->exceptionAggregate.load(std::memory_order_acquire);
@@ -2740,11 +2738,16 @@ static Dn2CppCancelSource* dn2cpp_canceled_exception_source(Dn2CppObject* except
 // OperationCanceledException. Null until registered — the fallback is the OCE identity
 // above, so a program whose CoreLib never carried the type still works.
 static std::atomic<const Dn2CppTypeInfo*> s_task_canceled_exc_type{ nullptr };
+static std::atomic<size_t> s_canceled_task_offset{SIZE_MAX};
 
-void dn2cpp_set_task_canceled_exception_type(const Dn2CppTypeInfo* ti)
+void dn2cpp_set_task_canceled_exception_type(const Dn2CppTypeInfo* ti, size_t taskOffset)
 {
     if (ti != nullptr)
+    {
+        if (taskOffset != SIZE_MAX)
+            s_canceled_task_offset.store(taskOffset, std::memory_order_release);
         s_task_canceled_exc_type.store(ti, std::memory_order_release);
+    }
 }
 
 static Dn2CppObject* dn2cpp_make_canceled_exception_of(const Dn2CppTypeInfo* ti,
@@ -2781,12 +2784,21 @@ static Dn2CppObject* dn2cpp_make_canceled_exception(Dn2CppCancelSource* source =
 }
 
 // The task-side TCE, materialized when cancellation is observed.
-static Dn2CppObject* dn2cpp_make_task_canceled_exception(Dn2CppCancelSource* source)
+static Dn2CppObject* dn2cpp_make_task_canceled_exception(Dn2CppTask* task)
 {
+    auto* source = task->cancellationSource.load(std::memory_order_acquire);
     const Dn2CppTypeInfo* ti = s_task_canceled_exc_type.load(std::memory_order_acquire);
     if (ti == nullptr)
         return dn2cpp_make_canceled_exception(source);
-    return dn2cpp_make_canceled_exception_of(ti, "A task was canceled.", source);
+    auto* exception = dn2cpp_make_canceled_exception_of(ti, "A task was canceled.", source);
+    size_t offset = s_canceled_task_offset.load(std::memory_order_acquire);
+    if (offset != SIZE_MAX)
+    {
+        if (offset + sizeof(task) > static_cast<size_t>(ti->instanceSize))
+            dn2cpp_throw_platform_not_supported("TaskCanceledException task layout is unavailable");
+        dn2cpp_gc_store_ref(reinterpret_cast<Dn2CppTask**>(reinterpret_cast<char*>(exception) + offset), task);
+    }
+    return exception;
 }
 
 [[noreturn]] void dn2cpp_throw_canceled(Dn2CppCancelSource* source)
@@ -2972,6 +2984,33 @@ int32_t dn2cpp_tcs_try_set_canceled(Dn2CppTask* t, Dn2CppCancelSource* source)
     return dn2cpp_task_await_winner(t, dn2cpp_task_try_set_canceled(t, source));
 }
 
+int32_t dn2cpp_tcs_try_set_from_task(Dn2CppTaskCompletionSource* source, Dn2CppTask* completed, bool copyResult)
+{
+    if (completed == nullptr)
+        dn2cpp_throw_argument_null_param("completedTask");
+    int32_t status = completed->status.load(std::memory_order_acquire);
+    if (status == DN2CPP_TASK_PENDING)
+        dn2cpp_throw_argument_param(DN2CPP_SR_TASK_MUST_BE_COMPLETED, "completedTask");
+    auto* target = dn2cpp_null_check(source)->task;
+    int32_t won;
+    if (status == DN2CPP_TASK_FAULTED)
+    {
+        // Getting the dispatch records observes the source even when the destination has already settled.
+        Dn2CppForwardedFaults faults;
+        faults.collect(completed);
+        won = faults.finish(dn2cpp_null_check(target));
+    }
+    else if (status == DN2CPP_TASK_CANCELED)
+    {
+        won = dn2cpp_task_finish_canceled_promise(dn2cpp_null_check(target), 0,
+            completed->cancellationSource.load(std::memory_order_acquire), completed->exception,
+            dn2cpp_task_cancellation_dispatch(completed));
+    }
+    else
+        won = dn2cpp_task_try_set_result(dn2cpp_null_check(target), copyResult ? completed->result : 0);
+    return dn2cpp_task_await_winner(target, won);
+}
+
 // The non-Try setters throw when the task has already settled, like real .NET.
 [[noreturn]] static void dn2cpp_tcs_throw_settled()
 {
@@ -2995,6 +3034,12 @@ void dn2cpp_tcs_set_exception(Dn2CppTask* t, Dn2CppObject* exception)
 void dn2cpp_tcs_set_canceled(Dn2CppTask* t, Dn2CppCancelSource* source)
 {
     if (!dn2cpp_tcs_try_set_canceled(t, source))
+        dn2cpp_tcs_throw_settled();
+}
+
+void dn2cpp_tcs_set_from_task(Dn2CppTaskCompletionSource* source, Dn2CppTask* completed, bool copyResult)
+{
+    if (!dn2cpp_tcs_try_set_from_task(source, completed, copyResult))
         dn2cpp_tcs_throw_settled();
 }
 

@@ -37,7 +37,9 @@ internal sealed partial class Compilation
         {
             var definition = reader.GetMethodDefinition(handle);
             string name = reader.GetString(definition.Name);
-            if (owner.FullName == "System.Threading.Tasks.TaskScheduler"
+            if (CoreIntrinsics.IsTaskCompletionSourceOwner(owner)
+                ? name is not ("SetFromTask" or "TrySetFromTask")
+                : owner.FullName == "System.Threading.Tasks.TaskScheduler"
                 ? !(CoreIntrinsics.IsTaskSchedulerMemberName(owner.FullName, name) || CoreIntrinsics.IsManagedTaskEventName(name))
                 : !CoreIntrinsics.IsTaskLifecycleCandidate(name, reader.GetBlobReader(definition.Signature))) continue;
             var method = new MethodInfo

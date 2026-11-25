@@ -2183,7 +2183,7 @@ internal sealed partial class MethodCompiler
             throw new NotSupportedException($"taking the address of {target.DeclaringClass.FullName}::{target.Name}"
                 + $"{SigArgs(target.Signature)} requires unsupported AsAny marshalling");
         _c.NoteInvariantCompareInfoDispatchDemand(target);
-        if (CoreIntrinsics.IsIntrinsicType(target.DeclaringClass.FullName))
+        if (CoreIntrinsics.IsIntrinsicType(target.DeclaringClass.FullName) || CoreIntrinsics.IsTaskCompletionTransfer(target))
         {
             // The real-body members' canonical counterpart is never reached (see the
             // matching guard in TranslateGenericIntrinsic).

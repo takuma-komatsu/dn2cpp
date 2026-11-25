@@ -65,6 +65,36 @@ namespace TaskCancellationTokenSubset
                 && Token(typed) == error.CancellationToken);
         }
 
+        internal static void RunFromTask()
+        {
+            var value = new object();
+            var result = new TaskCompletionSource<object>();
+            Func<Task<object>, bool> transfer = result.TrySetFromTask;
+            Show("TCS from result", transfer(Task.FromResult(value))
+                && ReferenceEquals(value, result.Task.Result) && !transfer(result.Task));
+
+            var first = new Exception("first");
+            var second = new Exception("second");
+            var fault = new TaskCompletionSource();
+            fault.SetFromTask(Task.WhenAll(Task.FromException(first), Task.FromException(second)));
+            var errors = fault.Task.Exception.InnerExceptions;
+            Show("TCS from faults", errors.Count == 2 && ReferenceEquals(first, errors[0])
+                && ReferenceEquals(second, errors[1]));
+
+            var error = new OperationCanceledException(new CancellationToken(true));
+            var canceled = new TaskCompletionSource<int>();
+            canceled.SetFromTask(ThrowAfter(Task.CompletedTask, error));
+            var synthetic = Task.FromCanceled<int>(error.CancellationToken);
+            var copy = new TaskCompletionSource<int>();
+            copy.SetFromTask(synthetic);
+            Show("TCS from cancellation", ReferenceEquals(error, Error(canceled.Task))
+                && Token(canceled.Task) == error.CancellationToken
+                && ReferenceEquals(((TaskCanceledException)Error(copy.Task)).Task, copy.Task));
+
+            try { fault.TrySetFromTask(new TaskCompletionSource().Task); }
+            catch (ArgumentException ex) { Console.WriteLine("TCS from pending: " + ex.ParamName); }
+        }
+
         internal static void Run()
         {
             Console.WriteLine("== task cancellation tokens ==");

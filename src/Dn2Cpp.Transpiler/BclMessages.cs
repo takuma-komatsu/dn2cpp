@@ -153,6 +153,7 @@ internal static class BclMessages
         "SemaphoreSlim_Wait_TimeoutWrong",
         "SemaphoreSlim_Wait_TimeSpanTimeoutWrong",
         "Task_Delay_InvalidMillisecondsDelay",
+        "Task_MustBeCompleted",
         "TaskT_ConfigureAwait_InvalidOptions",
         "Task_InvalidTimerTimeSpan",
         "ThreadState_NotStarted",

@@ -379,6 +379,7 @@ internal sealed partial class CppEmitter
         // such as Equals(null) before touching this. A closed-null binding must
         // enter that body, not be rejected before its argument-dependent branch.
         if (CoreIntrinsics.IsTaskSchedulerInline(m) || CoreIntrinsics.IsTaskSchedulerDequeue(m) || CoreIntrinsics.IsTaskSchedulerExecute(m)
+            || CoreIntrinsics.IsTaskCompletionTransfer(m)
             || CoreIntrinsics.BrDelegateCallable.Matches(m)
             || CoreIntrinsics.BrEnumInstanceFormat.Matches(m) || IsNullTolerantObjectMember(cls, m))
             return NullOnlyScan;

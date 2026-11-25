@@ -2323,6 +2323,7 @@ inline constexpr const char* DN2CPP_SR_LOCK_EXIT = "Lock_Exit_SynchronizationLoc
 inline constexpr const char* DN2CPP_SR_SEMAPHORE_TIMEOUT = "SemaphoreSlim_Wait_TimeoutWrong";
 inline constexpr const char* DN2CPP_SR_SEMAPHORE_TIMESPAN_TIMEOUT = "SemaphoreSlim_Wait_TimeSpanTimeoutWrong";
 inline constexpr const char* DN2CPP_SR_TASK_DELAY_MS = "Task_Delay_InvalidMillisecondsDelay";
+inline constexpr const char* DN2CPP_SR_TASK_MUST_BE_COMPLETED = "Task_MustBeCompleted";
 inline constexpr const char* DN2CPP_SR_TASK_DELAY_SPAN = "Task_InvalidTimerTimeSpan";
 inline constexpr const char* DN2CPP_SR_TASK_START_COMPLETED = "Task_Start_TaskCompleted";
 inline constexpr const char* DN2CPP_SR_TASK_START_PROMISE = "Task_Start_Promise";
@@ -8211,6 +8212,8 @@ void dn2cpp_tcs_set_canceled(Dn2CppTask* t, Dn2CppCancelSource* source = nullptr
 int32_t dn2cpp_tcs_try_set_result(Dn2CppTask* t, uint64_t result);
 int32_t dn2cpp_tcs_try_set_exception(Dn2CppTask* t, Dn2CppObject* exception);
 int32_t dn2cpp_tcs_try_set_canceled(Dn2CppTask* t, Dn2CppCancelSource* source = nullptr);
+int32_t dn2cpp_tcs_try_set_from_task(Dn2CppTaskCompletionSource* source, Dn2CppTask* completed, bool copyResult);
+void dn2cpp_tcs_set_from_task(Dn2CppTaskCompletionSource* source, Dn2CppTask* completed, bool copyResult);
 // Enqueue a resumption on the cooperative run queue.
 void dn2cpp_sched_post(void (*fn)(void*), void* state);
 // State-machine Task.Yield posts immediately to its captured context, when any.
@@ -8359,7 +8362,7 @@ void dn2cpp_set_canceled_exception_type(const Dn2CppTypeInfo* ti, size_t tokenOf
 // token-side throw (ThrowIfCancellationRequested) keeps OperationCanceledException.
 // Unregistered, canceled tasks fall back to the OCE identity above — a program whose
 // CoreLib does not carry the type cannot observe the difference.
-void dn2cpp_set_task_canceled_exception_type(const Dn2CppTypeInfo* ti);
+void dn2cpp_set_task_canceled_exception_type(const Dn2CppTypeInfo* ti, size_t taskOffset = SIZE_MAX);
 // Throw an OperationCanceledException now (CancellationToken.ThrowIfCancellationRequested).
 [[noreturn]] void dn2cpp_throw_canceled(Dn2CppCancelSource* source = nullptr);
 
