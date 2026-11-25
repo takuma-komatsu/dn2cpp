@@ -105,7 +105,8 @@
 # explicit/inherited interface maps, class newslot identities and constrained
 # primitive slots exclude unrelated bodies; ISA guards share the capability verdict.
 # Primary-input CoreLib/runtime identity collisions fail before base-chain walks;
-# embedded internal metadata types and ordinary intrinsic-BCL inputs still run.
+# ref-free patch conversion also refuses them; ordinary CoreLib inputs can
+# still carry embedded metadata types.
 # Validated ordinary cuts exclude body depth summaries while preserving signatures.
 # Measure inventories equality first selected by reflected signature layouts.
 # A closure table's convergence check renders each shared summary term once.
@@ -281,7 +282,7 @@ numerics_dll="$(dirname "$corelib")/System.Runtime.Numerics.dll"
 # gate_cache_check answers that with a warning and no key, which would
 # leave this gate uncacheable since it clears the dirs on every run.
 rm -rf "$out" "$sig_out" "$sig_diet_out" "$cut_out" "$mint_out"; mkdir -p "$out"
-if gate_cache_check "$out" "transpiler-limits|full:$DN2CPP_TRANSPILER_LIMITS_FULL|recursive-body:ildiet+no-ildiet|canonical-cap:no-ildiet:1,2|canonical-refs:none|wrapper-exceptions|mint-cap:no-ildiet|definition-graph-env:default,depth8,depth64,count128,count2m,depth1,count1,deep-default+64,budget-copy,uncalled-virtual,uncalled-interface,unallocated-receiver,construction-accessor,generic-accessor,generic-ctor,executed-generic-argument,event,late-construction-accessor:depth3-success,direct-accessor,direct-event-add,invoke-uncalled-virtual,generic-factory:direct,class,method,identity|unused-copied:low2,default32:ildiet+no-ildiet|ordinary-cut:ildiet+no-ildiet|execution-provenance:base-call,base-ctor,object-slot,primitive-dead-branch,abstract-app,abstract-library,nominal-dead-branch,methodimpl,constrained-primitive,const-getter,unused-default-interface,inherited-interface-map,protected-interface-map,class-newslot-map,isa-getter:Sve+Sve2+Arm64:optimize=true|attributes:unread-ctor,unread-getter,read,generic-read:depth3+depth4-success:field-boxes=ildiet,no-ildiet,no-shared-generics:prefix=before-reflected-field-boxes|late-array-equality:no-ildiet:emit+measure|sig:no-ildiet+ildiet|collision:no-ildiet,corelib+intrinsic|shared-summary-terms:no-ildiet:dump|repeated-alternatives:no-ildiet|cli:$(_gate_cli_hash)|$corelib" \
+if gate_cache_check "$out" "transpiler-limits|full:$DN2CPP_TRANSPILER_LIMITS_FULL|recursive-body:ildiet+no-ildiet|canonical-cap:no-ildiet:1,2|canonical-refs:none|wrapper-exceptions|mint-cap:no-ildiet|definition-graph-env:default,depth8,depth64,count128,count2m,depth1,count1,deep-default+64,budget-copy,uncalled-virtual,uncalled-interface,unallocated-receiver,construction-accessor,generic-accessor,generic-ctor,executed-generic-argument,event,late-construction-accessor:depth3-success,direct-accessor,direct-event-add,invoke-uncalled-virtual,generic-factory:direct,class,method,identity|unused-copied:low2,default32:ildiet+no-ildiet|ordinary-cut:ildiet+no-ildiet|execution-provenance:base-call,base-ctor,object-slot,primitive-dead-branch,abstract-app,abstract-library,nominal-dead-branch,methodimpl,constrained-primitive,const-getter,unused-default-interface,inherited-interface-map,protected-interface-map,class-newslot-map,isa-getter:Sve+Sve2+Arm64:optimize=true|attributes:unread-ctor,unread-getter,read,generic-read:depth3+depth4-success:field-boxes=ildiet,no-ildiet,no-shared-generics:prefix=before-reflected-field-boxes|late-array-equality:no-ildiet:emit+measure|sig:no-ildiet+ildiet|collision:aot-corelib:no-ildiet+patch:no-ref|shared-summary-terms:no-ildiet:dump|repeated-alternatives:no-ildiet|cli:$(_gate_cli_hash)|$corelib" \
         "$rec_app" "$sig_app" "$fld_app" "$afld_app" "$big_app" "$arr_app" "$mint_app" "$tma_app" \
         gates/fixtures/transpiler-limits/CanonicalLink/Program.cs \
         gates/fixtures/transpiler-limits/CanonicalLink/CanonicalLinkBound.csproj \
@@ -295,7 +296,7 @@ if gate_cache_check "$out" "transpiler-limits|full:$DN2CPP_TRANSPILER_LIMITS_FUL
         gates/fixtures/transpiler-limits/RepeatedAlternatives/RepeatedAlternatives.csproj \
         gates/fixtures/transpiler-limits/ReflectionDepthSummary \
         gates/fixtures/transpiler-limits/LateArrayEquality \
-        "$collision_fixture" \
+        "$collision_fixture" "$corelib" \
         "$link_app" "$wrapper_app" "$nest_app" "$summary_app" "$shared_terms_app" "$repeated_app" \
         "${link_app%.dll}.runtimeconfig.json" "${link_app%.dll}.deps.json" \
         "${wrapper_app%.dll}.runtimeconfig.json" "${wrapper_app%.dll}.deps.json" \
@@ -1317,9 +1318,17 @@ fi
 echo "OK (Node's constructor admitted, every site of the chain recognized)"
 
 echo "== CoreLib type identity collisions =="
+collision_root=$(mktemp -d "${out}-collision.XXXXXXXX")
+control_app="$collision_fixture/Control/bin/$CONFIG/$TFM/CollisionControl.dll"
+# The patch model must still reject runtime-owned names without CoreLib.
+# Emit a real ABI from the same control; only the ordinary image needs a link.
+invoke_cli "$control_app" -r "$corelib" --hotupdate-base --no-ildiet -o "$collision_root/base" >/dev/null
+collision_abi="$collision_root/base/base-abi.json"
+[ -s "$collision_abi" ] || { echo "FAIL: collision base ABI was not emitted" >&2; exit 1; }
+
 for shape in Object ValueType Unsafe; do
     collision_app="$collision_fixture/$shape/bin/$CONFIG/$TFM/Collision$shape.dll"
-    collision_oracle="${out:-artifacts/transpiler-limits-observations}/check-collision_oracle-14.stdout"
+    collision_oracle="$collision_root/$shape.clr.stdout"
     gate_capture_ok "${collision_oracle%.stdout}" run_bounded dotnet "$collision_app"
     case "$shape" in
         Object) collision_name=System.Object; collision_expected='application Object: 17' ;;
@@ -1327,39 +1336,37 @@ for shape in Object ValueType Unsafe; do
         Unsafe) collision_name=System.Runtime.CompilerServices.Unsafe; collision_expected='application Unsafe: 123' ;;
     esac
     gate_assert_text "$collision_oracle" "$collision_expected"
-    for axis in corelib intrinsic; do
-        collision_refs=()
-        [ "$axis" != corelib ] || collision_refs=(-r "$corelib")
-        collision_out="${out}-collision-$shape-$axis"
-        rm -rf "$collision_out"
-        collision_rc=0
-        collision_err=$(run_with_watchdog 30 invoke_cli "$collision_app" \
-            ${collision_refs[@]+"${collision_refs[@]}"} --no-ildiet -o "$collision_out" 2>&1 >/dev/null) \
-            || collision_rc=$?
+    for axis in aot patch; do
+        case "$axis" in
+            aot) collision_args=("$collision_app" -r "$corelib" --no-ildiet) ;;
+            patch) collision_args=(--emit-patch "$collision_app" --base-abi "$collision_abi") ;;
+        esac
+        collision_trace="$collision_root/$shape-$axis"
+        collision_out="$collision_trace-out"
+        gate_capture "$collision_trace" run_with_watchdog 30 invoke_cli \
+            "${collision_args[@]}" -o "$collision_out"
+        collision_rc=$(cat "$collision_trace.status")
         if [ "$collision_rc" -ne 2 ] \
-                || ! grep -Fq "input type '$collision_name' in assembly 'Collision$shape' conflicts with a CoreLib/runtime type identity" <<<"$collision_err"; then
+                || ! grep -Fq "input type '$collision_name' in assembly 'Collision$shape' conflicts with a CoreLib/runtime type identity" "$collision_trace.stderr"; then
             echo "FAIL: $shape collision ($axis) was not rejected with its type and assembly (exit $collision_rc):" >&2
-            echo "$collision_err" >&2
+            cat "$collision_trace.stderr" >&2
             exit 1
         fi
-        [ ! -f "$collision_out/generated.cpp" ] \
-            || { echo "FAIL: $shape collision emitted C++ before failing" >&2; exit 1; }
+        if compgen -G "$collision_out/generated*" >/dev/null || compgen -G "$collision_out/*.bpi" >/dev/null; then
+            echo "FAIL: $shape collision ($axis) emitted C++ or BPI before failing" >&2
+            exit 1
+        fi
     done
 done
-control_app="$collision_fixture/Control/bin/$CONFIG/$TFM/CollisionControl.dll"
-control_oracle="${out:-artifacts/transpiler-limits-observations}/check-control_oracle-15.stdout"
+control_oracle="$collision_root/control.clr.stdout"
 gate_capture_ok "${control_oracle%.stdout}" run_bounded dotnet "$control_app"
 gate_assert_text "$control_oracle" "$(printf 'embedded attribute: 5\nordinary body: control-body\nordinary input end')"
-for axis in corelib intrinsic; do
-    collision_refs=()
-    [ "$axis" != corelib ] || collision_refs=(-r "$corelib")
-    control_out="${out}-collision-control-$axis"
-    invoke_cli "$control_app" ${collision_refs[@]+"${collision_refs[@]}"} --no-ildiet -o "$control_out" >/dev/null
-    compile_console "$control_out" CollisionControl
-    control_native="${out:-artifacts/transpiler-limits-observations}/check-control_native-16.stdout"
-    gate_capture_ok "${control_native%.stdout}" run_bounded "./$control_out/CollisionControl"
-    gate_output compare "$control_native" "$control_oracle"
-done
+control_out="$collision_root/control"
+invoke_cli "$control_app" -r "$corelib" --no-ildiet -o "$control_out" >/dev/null
+compile_console "$control_out" CollisionControl
+control_native="$collision_root/control.native.stdout"
+gate_capture_ok "${control_native%.stdout}" run_bounded "./$control_out/CollisionControl"
+gate_output compare "$control_native" "$control_oracle"
 echo "OK (CoreLib identities rejected; embedded metadata, helper polyfill and ordinary input preserved)"
 
 gate_cache_commit
