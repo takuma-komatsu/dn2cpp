@@ -1,9 +1,36 @@
 using System.Globalization;
+using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
+using System.Text.Json;
 
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+if (args.Length == 3 && args[0] == "--check-installed-bcl")
+{
+    string directory = Path.GetDirectoryName(Path.GetFullPath(args[2]))!;
+    using var catalogue = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "Microsoft.NETCore.App.deps.json")));
+    var manifest = catalogue.RootElement;
+    string target = manifest.GetProperty("runtimeTarget").GetProperty("name").GetString()!;
+    string pack = "Microsoft.NETCore.App.Runtime." + target.Split('/')[1] + "/" + Path.GetFileName(directory);
+    var expected = manifest.GetProperty("targets").GetProperty(target).GetProperty(pack).GetProperty("runtime")
+        .EnumerateObject().Select(asset => asset.Name).Where(name => name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+        .ToHashSet(StringComparer.Ordinal);
+    if (!expected.Contains("System.Private.CoreLib.dll"))
+        throw new InvalidDataException("No CoreLib in the runtime catalogue for " + pack);
+
+    var transpiler = Assembly.LoadFrom(Path.GetFullPath(args[1]));
+    var classifier = transpiler.GetType("Dn2Cpp.TargetFrameworkAssets", throwOnError: true)!;
+    var classify = classifier.GetMethod("Classify", BindingFlags.Static | BindingFlags.NonPublic)!;
+    string[] paths = Directory.GetFiles(directory, "*.dll");
+    var indexes = (IEnumerable<int>)classify.Invoke(null, [paths])!;
+    var actual = indexes.Select(i => Path.GetFileName(paths[i])).ToHashSet(StringComparer.Ordinal);
+    Console.WriteLine($"Installed BCL {pack}: classified {actual.Count}/{expected.Count} managed DLLs");
+    if (!expected.SetEquals(actual))
+        throw new InvalidOperationException($"Missing: {string.Join(", ", expected.Except(actual))}. "
+            + $"Unexpected: {string.Join(", ", actual.Except(expected))}.");
+    return;
+}
 if (args.Length == 2 && args[0] == "--check-construction-only")
 {
     using var input = File.OpenRead(args[1]);

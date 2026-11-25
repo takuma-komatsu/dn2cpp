@@ -35,6 +35,7 @@
 # Medium keeps static type closure, including private members and known generic
 # arguments, while metadata-only roots stay inert, the startup pass matches High and
 # executed allocation, dispatch, boxed equality and static reads initialize as High.
+# Medium's installed BCL classification matches the selected runtime catalogue.
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_ildiet.sh"
 # The default profile shares aggregate outputs across runtime and metadata checks.
@@ -220,6 +221,10 @@ compare_dlls() {
 CLI_DLL="${DN2CPP_CLI_DLL:-$PWD/src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}"
 CLI_BIN=$(dirname "$CLI_DLL")
 ILD_DLL="$CLI_BIN/ildiet/ILDiet.dll"
+
+installed_corelib=$(resolve_pinned_corelib)
+dotnet exec "$PROBE" --check-installed-bcl "$CLI_BIN/Dn2Cpp.Transpiler.dll" "$installed_corelib"
+gate_python gates/test-bcl-inventory.py
 
 if preserve_full; then
 echo "== Standalone ILDiet agrees with automatic preprocessing =="
