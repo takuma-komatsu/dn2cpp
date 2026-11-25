@@ -29,6 +29,20 @@ elsewhere (C++17), `cmake` ≥ 3.20 and `ninja`.
 | `Dn2CppCMakeArgs` | (empty) | Extra cmake configure args |
 | `Dn2CppNativeExecutableExtension` | `.exe` on a Windows host; empty otherwise | Override when the native target's executable suffix differs from the host |
 
+A custom, non-empty `Dn2CppExtraArgs` value replaces the default `--auto-ref`.
+For an ordinary native publish with the managed dotnet tool, keep
+`--auto-ref` in that value (for example, `--auto-ref --jobs 2`) to use the
+tool's running .NET 11 framework. Or pass the target .NET 11 runtime's
+implementation `System.Private.CoreLib.dll` explicitly:
+
+```xml
+<Dn2CppExtraArgs>-r &quot;/path/to/target-runtime/System.Private.CoreLib.dll&quot;</Dn2CppExtraArgs>
+```
+
+If `Dn2CppTool` points to the standalone native CLI, use an explicit `-r`
+for CoreLib. `--auto-ref` alone cannot discover CoreLib on that CLI, but it
+can still resolve framework assemblies beside the explicitly selected file.
+
 The publish target always passes `$(MSBuildProjectDirectory)` as a
 `--project-root`, so Unity-format `link.xml` files below the project directory
 participate in stripping without extra configuration. Pass extra descriptors
