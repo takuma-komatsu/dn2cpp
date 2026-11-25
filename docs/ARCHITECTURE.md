@@ -2554,14 +2554,14 @@ CONFIG=Release ./gates/pre-merge.sh    # Release only
 Gate structure, the skip/partial protocol and the result-cache rules are in
 `AGENTS.md`.
 
-`build-and-run-preserve-control.sh` defaults to representative preservation
-witnesses: independent positive and negative fixtures, selected native parity
-checks, and sampled work-budget boundaries. Its graph receipts name the selected
-cases and sharing modes. Set `DN2CPP_PRESERVE_CONTROL_FULL=1` to restore the
-extended native, admission, publication-repeat and exhaustive budget matrices
-when investigating preservation or reachability changes. A representative pass
-does not claim those extended combinations; both profiles retain the managed
-metadata and publication-contract checks they execute.
+`build-and-run-preserve-control.sh` normally checks aggregate preservation,
+High and Medium retention, and native parity after ILDiet rewriting.
+`DN2CPP_PRESERVE_CONTROL_FULL=1` adds isolated native fixtures, raw emission,
+Low input roots and definition-graph checks. The graph uses independent positive
+and negative fixtures, compares both generic-sharing modes for the canonical
+array controls, and samples work-budget cutoffs around the rewrite boundary.
+Its receipts identify the selected cases and budgets. The exhaustive graph can
+be run separately as described in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 The retained managed `RuntimeTypeHandle.GetInterfaces(RuntimeType)` wrapper uses
 native interface rows in their existing order. Formal parameters and compound
