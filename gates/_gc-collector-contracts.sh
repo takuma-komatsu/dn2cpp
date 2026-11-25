@@ -4,7 +4,7 @@
 # gc-write-barrier gate owns the helper's deterministic incremental-GC proof.
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_gc-collector-contracts.sh gates/check-gc-collector-bodies.py gates/fixtures/ldftn-local/BufferReferenceMoveFixture.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ldftn-local/GcCoreLibInputFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|gc-collector:il-wrappers,finalizer-refusal|buffer-reference-moves:internal,batch,overlap,barrier,wrong-count,standalone-clr|gc-corelib-input:collect,memory"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|gc-collector:il-wrappers,finalizer-refusal|buffer-reference-moves:internal,batch,overlap,barrier,wrong-count,standalone-clr|gc-corelib-input:collect,memory,measure"
 
 gc_collector_capture_raw_app() {
     local out="$1"
@@ -63,29 +63,40 @@ gc_collector_asserts() {
 }
 
 gc_missing_corelib_gate() {
-    local out="$1" root mode input method signature
-    root=$(mktemp -d "$out/gc-missing-corelib.XXXXXX")
+    local out="$1" root mode input method signature gap source
+    root=$(mktemp -d "$out/gc-missing-corelib.XXXXXX") || return 1
     echo "GC missing-CoreLib artifacts: $root"
     for mode in collect memory; do
         input="$root/$mode"
-        mkdir -p "$input"
-        cp "$_CG_APP" "$input/SelfHostPrimSubset.dll"
+        mkdir -p "$input" || return 1
+        cp "$_CG_APP" "$input/SelfHostPrimSubset.dll" || return 1
         gate_capture_ok "$input/fixture" run_bounded dotnet \
             "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
-            "--gc-missing-corelib-$mode" "$input/SelfHostPrimSubset.dll" "$_CG_CORELIB"
+            "--gc-missing-corelib-$mode" "$input/SelfHostPrimSubset.dll" "$_CG_CORELIB" || return 1
         method=Collect
         signature='System.Void System.GC::Collect()'
         if [ "$mode" = memory ]; then
             method=GetTotalMemory
             signature='System.Int64 System.GC::GetTotalMemory(System.Boolean)'
         fi
-        gate_assert_text "$input/fixture.stdout" "gc-missing-corelib-fixture:$mode:$signature"
-        gate_assert_text "$input/fixture.stderr" ''
-        # Deliberately omit both -r and --auto-ref: wrapper IL is required input.
-        gate_capture "$input/refusal" invoke_cli "$input/SelfHostPrimSubset.dll" \
-            --no-ildiet -o "$input/emitted"
-        gate_output status "$(cat "$input/refusal.status")" 2
-        gate_assert_text "$input/refusal.stderr" \
-            "error: System.GC.$method requires CoreLib IL; use --auto-ref or -r <path/to/System.Private.CoreLib.dll>."
+        gate_assert_text "$input/fixture.stdout" "gc-missing-corelib-fixture:$mode:$signature" || return 1
+        gate_assert_text "$input/fixture.stderr" '' || return 1
+        # No -r or --auto-ref: measure records the same compiler refusal for
+        # this unresolved MemberRef below ordinary AOT input validation.
+        gate_capture_ok "$input/measure" invoke_cli "$input/SelfHostPrimSubset.dll" \
+            --no-ildiet --measure -o "$input/measured" || return 1
+        gap=$'compile\t<global>\tProgram.Main\tNotSupportedException\t'
+        gap+="System.GC.$method requires CoreLib IL; use --auto-ref or -r <path/to/System.Private.CoreLib.dll>."
+        gate_output witness "$input/measured/s0-gaps.tsv" "$gap" --count 1 --policy crlf || return 1
+        gate_output match-record "$input/measure.stdout" \
+            'dn2cpp --measure: [1-9][0-9]* compile-phase bodies attempted, [0-9]+ compiled OK, [1-9][0-9]* gaps total' \
+            --count 1 --policy crlf || return 1
+        for source in "$input/measured"/*.cpp "$input/measured"/*.h; do
+            if [ -e "$source" ]; then
+                echo "FAIL: --measure emitted C++: $source" >&2
+                return 1
+            fi
+        done
+        echo "OK: $method without CoreLib records the exact compile gap and emits no C++"
     done
 }
