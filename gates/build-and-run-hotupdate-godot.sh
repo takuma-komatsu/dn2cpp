@@ -63,25 +63,26 @@ build_proj samples/godot/HotUpdateGodotSample/HotUpdateGodotSample.csproj
 build_proj samples/dotnet/HotUpdateGodotPatch/HotUpdateGodotPatch.csproj
 build_proj samples/dotnet/HotUpdateGodotBadPatchMathf/HotUpdateGodotBadPatchMathf.csproj
 base_app="samples/godot/HotUpdateGodotSample/bin/$CONFIG/$TFM/HotUpdateGodotSample.dll"
+godot_sharp="samples/godot/HotUpdateGodotSample/bin/$CONFIG/$TFM/GodotSharp.dll"
 patch_app="samples/dotnet/HotUpdateGodotPatch/bin/$CONFIG/$TFM/HotUpdateGodotPatch.dll"
 badmathf_app="samples/dotnet/HotUpdateGodotBadPatchMathf/bin/$CONFIG/$TFM/HotUpdateGodotBadPatchMathf.dll"
 
 echo "== 2/7 Transpiling the base (--gdextension --hotupdate-base) =="
+corelib=$(locate_corelib)
 invoke_cli "$base_app" \
-    -r "samples/godot/HotUpdateGodotSample/bin/$CONFIG/$TFM/GodotSharp.dll" \
+    -r "$godot_sharp" -r "$corelib" \
     -o "$OUT" --gdextension --hotupdate-base \
     --hotupdate-refs samples/godot/HotUpdateGodotSample/hotupdate-refs.txt
 [ -f "$OUT/base-abi.json" ] || { echo "FAIL: base-abi.json sidecar missing" >&2; exit 1; }
 grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
     || { echo "FAIL: dn2cpp_base_image_abi_hash constant missing from generated.cpp" >&2; exit 1; }
 
-# Cache: the base transpile output (incl. base-abi.json) is in the key, and the
-# patch dlls + refs file are keyed too because the BPI bakes in step 4/7 consume
-# them after this point — unchanged inputs mean the compile, both bakes, and
-# both engine runs would only repeat the last green result.
+# Cache: the base transpile output (incl. base-abi.json), its references and
+# extra roots are keyed. The patch DLLs are keyed too: both bakes happen
+# after this check.
 if gate_cache_check "$OUT" \
         "hotupdate-godot|godot=$(or_none "$(first_line "$(run_godot_isolated "$HOTUPDATE_GODOT_USER_ROOT" "$GODOT" --version 2>/dev/null)")")" \
-        "$base_app" "$patch_app" "$badmathf_app" \
+        "$base_app" "$godot_sharp" "$corelib" "$patch_app" "$badmathf_app" \
         samples/godot/HotUpdateGodotSample/hotupdate-refs.txt \
         "$PROJECT"; then
     gate_cache_hit_msg
