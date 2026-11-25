@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Text;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Security.Principal;
 
 namespace HttpReal
 {
@@ -42,14 +43,24 @@ namespace HttpReal
                 Get("default", client, url);
 
             var handler = new SocketsHttpHandler();
+            bool stored;
             using (var client = new HttpClient(handler))
             {
                 Get("explicit", client, url);
                 object settings = GetSettings(handler);
                 Console.WriteLine("handler settings=" + (settings is not null && ReferenceEquals(settings, GetSettings(handler))));
+                ref var level = ref ImpersonationLevel(settings!);
+                var original = level;
+                level = TokenImpersonationLevel.Delegation;
+                stored = ImpersonationLevel(settings!) == TokenImpersonationLevel.Delegation;
+                level = original;
             }
             var cause = new Exception("transport");
             Console.WriteLine("inner exception=" + ReferenceEquals(cause, get_InnerException(new Exception("request failed", cause))));
+            Console.WriteLine("handler field=" + stored);
+            var options = new FieldOptions();
+            Level(options) = TokenImpersonationLevel.Delegation;
+            Console.WriteLine("local volatile field=" + (options.Level == TokenImpersonationLevel.Delegation));
 
             return 0;
         }
@@ -57,6 +68,18 @@ namespace HttpReal
         [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Settings")]
         [return: UnsafeAccessorType("System.Net.Http.HttpConnectionSettings, System.Net.Http")]
         private static extern object GetSettings(SocketsHttpHandler handler);
+
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_impersonationLevel")]
+        private static extern ref TokenImpersonationLevel ImpersonationLevel(
+            [UnsafeAccessorType("System.Net.Http.HttpConnectionSettings, System.Net.Http, Version=11.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a")] object settings);
+
+        private sealed class FieldOptions
+        {
+            public volatile TokenImpersonationLevel Level = TokenImpersonationLevel.None;
+        }
+
+        [UnsafeAccessor(UnsafeAccessorKind.Field)]
+        private static extern ref TokenImpersonationLevel Level([UnsafeAccessorType("HttpReal.Program+FieldOptions")] object options);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         [UnsafeAccessor(UnsafeAccessorKind.Method)]

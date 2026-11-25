@@ -287,7 +287,7 @@ internal sealed partial class Compilation
         }
         if (m.Rva == 0)
         {
-            ReachUnsafeAccessorGetter(m);
+            ReachUnsafeAccessor(m);
             return;
         }
         if (CoreIntrinsics.IsWaitHandleTimeoutConversion(m)
