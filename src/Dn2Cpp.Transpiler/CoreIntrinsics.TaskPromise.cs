@@ -133,7 +133,7 @@ internal static partial class CoreIntrinsics
         && method.Module.Reader.GetBlobReader(method.Module.Reader.GetMethodDefinition(method.Handle).Signature).Length == 4;
 
     internal static bool IsTaskManagedForwarder(MethodInfo method) =>
-        IsManagedTaskEvent(method) || IsTaskSchedulerId(method) || IsTaskSchedulerDequeue(method) ||
+        IsManagedTaskEvent(method) || IsTaskSchedulerId(method) || IsTaskSchedulerDequeue(method) || IsTaskSchedulerExecute(method) ||
         method.Name == ".ctor" && method.DeclaringClass.GenericArity == 1 && IsTaskLifecycle(method)
         || IsTaskAddExceptionForwarder(method);
 

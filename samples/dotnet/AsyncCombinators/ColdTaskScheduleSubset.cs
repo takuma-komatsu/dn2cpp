@@ -27,9 +27,11 @@ internal static class Program
     {
         internal Task Pending;
         internal Exception Refusal;
+        internal Action BeforeQueue;
         internal CancellationTokenSource CancelBeforeRefusal;
         internal bool BaseDequeue(Task task) => base.TryDequeue(task);
         internal bool Dequeue(Task task) => TryDequeue(task);
+        internal bool Execute(Task task) => TryExecuteTask(task);
         protected override bool TryDequeue(Task task)
         {
             if (Pending is null || Pending != task) return false;
@@ -39,6 +41,7 @@ internal static class Program
         protected override IEnumerable<Task> GetScheduledTasks() => Array.Empty<Task>();
         protected override void QueueTask(Task task)
         {
+            BeforeQueue?.Invoke();
             if (CancelBeforeRefusal is not null)
             {
                 Pending = task;
@@ -48,6 +51,16 @@ internal static class Program
             Pending = task;
         }
         protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued) => false;
+    }
+
+    private sealed class CompletionContext : SynchronizationContext
+    {
+        internal bool Cleared;
+        public override void Post(SendOrPostCallback callback, object state)
+        {
+            Cleared = Task.CurrentId is null && TaskScheduler.Current == TaskScheduler.Default;
+            callback(state);
+        }
     }
 
     internal static void RunSchedulerDequeue()
@@ -93,6 +106,61 @@ internal static class Program
                 && ReferenceEquals(removed.Exception?.InnerException?.InnerException, scheduler.Refusal);
         }
         Console.WriteLine("custom Start: rejected after cancellation=" + storedAfterCancellation);
+
+        var owner = new ProbeScheduler();
+        Task<int> outer = null;
+        Task inner = null;
+        bool hidden = false;
+        inner = new Task(() => hidden = TaskScheduler.Current == TaskScheduler.Default && Task.CurrentId == inner.Id,
+            TaskCreationOptions.HideScheduler);
+        outer = new Task<int>(() =>
+        {
+            inner.Start();
+            bool nested = owner.Pending == inner && owner.Execute(inner);
+            return nested && hidden && TaskScheduler.Current == owner && Task.CurrentId == outer.Id ? 42 : 0;
+        });
+        outer.Start(owner);
+        var context = new CompletionContext();
+        var previous = SynchronizationContext.Current;
+        Task observed;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(context);
+            observed = ObserveCompletion(outer);
+        }
+        finally { SynchronizationContext.SetSynchronizationContext(previous); }
+        bool ran = owner.Execute(outer);
+        observed.Wait();
+        Console.WriteLine("custom execute: first=" + ran + " repeat=" + owner.Execute(outer)
+            + " result=" + outer.Result + " restored=" + (TaskScheduler.Current == TaskScheduler.Default && Task.CurrentId is null)
+            + " canceled before rejection=" + scheduler.Execute(removed));
+        Fault("foreign execute", () => scheduler.Execute(outer));
+        Console.WriteLine("custom execute: completion post=" + context.Cleared + " racing refusal=" + RejectRunningTask());
+    }
+
+    private static async Task ObserveCompletion(Task task) => await task;
+
+    private static bool RejectRunningTask()
+    {
+        using var entered = new ManualResetEventSlim();
+        using var finish = new ManualResetEventSlim();
+        var owner = new ProbeScheduler { Refusal = new ApplicationException("queue") };
+        var failure = new FormatException("body");
+        var task = new Task(() => { entered.Set(); finish.Wait(); throw failure; });
+        bool rejectedFinish = false;
+        var worker = new Thread(() =>
+        {
+            try { owner.Execute(task); }
+            catch (InvalidCastException) { rejectedFinish = true; }
+        });
+        owner.BeforeQueue = () => { worker.Start(); entered.Wait(); };
+        try { task.Start(owner); }
+        catch (TaskSchedulerException) { }
+        finally { finish.Set(); }
+        worker.Join();
+        var errors = task.Exception.InnerExceptions;
+        return rejectedFinish && errors.Count == 2 && ReferenceEquals(errors[0].InnerException, owner.Refusal)
+            && ReferenceEquals(errors[1], failure);
     }
 
     internal static void RunSchedulerIds()

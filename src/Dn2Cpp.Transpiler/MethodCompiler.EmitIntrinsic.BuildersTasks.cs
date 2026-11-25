@@ -1042,8 +1042,10 @@ internal sealed partial class MethodCompiler
                 Pop();
                 return true;
             case ("System.Threading.Tasks.TaskScheduler", "get_Default"):
-            case ("System.Threading.Tasks.TaskScheduler", "get_Current"):
                 Push(StackKind.Ref, "Dn2CppObject*", "dn2cpp_taskscheduler_default()");
+                return true;
+            case ("System.Threading.Tasks.TaskScheduler", "get_Current"):
+                Push(StackKind.Ref, "Dn2CppObject*", "dn2cpp_taskscheduler_current()");
                 return true;
             // TaskScheduler.FromCurrentSynchronizationContext — always throws: .NET's
             // own InvalidOperationException with no installed context, NotSupported
@@ -1156,10 +1158,11 @@ internal sealed partial class MethodCompiler
             {
                 string scheduler = sig.ParameterTypes.Length == 1
                     ? Cast(Pop(), "Dn2CppObject*")
-                    : "dn2cpp_taskscheduler_default()";
+                    : "dn2cpp_taskscheduler_current()";
                 var t = Pop();
-                string queue = Comp.TaskSchedulerQueue is { } callbacks && sig.ParameterTypes is [{ Class: { } owner }]
-                    && owner == callbacks.Queue.DeclaringClass ? ", &dn2cpp_image_task_scheduler_queue" : "";
+                string queue = Comp.TaskSchedulerQueue is { } callbacks && (sig.ParameterTypes.Length == 0
+                    || sig.ParameterTypes is [{ Class: { } owner }] && owner == callbacks.Queue.DeclaringClass)
+                    ? ", &dn2cpp_image_task_scheduler_queue" : "";
                 Emit($"dn2cpp_task_start((Dn2CppTask*)({t.Expr}), {scheduler}{queue});");
                 return true;
             }
@@ -1331,6 +1334,21 @@ internal sealed partial class MethodCompiler
             {
                 var t = Pop();
                 Push(StackKind.I4, "int32_t", $"(((Dn2CppTask*)({t.Expr}))->status == DN2CPP_TASK_CANCELED ? 1 : 0)");
+                return true;
+            }
+            case ("System.Threading.Tasks.Task", "get_ExecutingTaskScheduler") when CoreIntrinsics.IsTaskSchedulerExecute(Method):
+                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_task_executing_scheduler((Dn2CppTask*)({Pop().Expr}))");
+                return true;
+            case ("System.Threading.Tasks.Task", "ExecuteEntry") when CoreIntrinsics.IsTaskSchedulerExecute(Method):
+                Push(StackKind.I4, "int32_t", $"dn2cpp_task_execute_entry((Dn2CppTask*)({Pop().Expr}))");
+                return true;
+            case ("System.Threading.Tasks.Task", "get_CurrentId") when sig.Header.RawValue == 0
+                && sig.ParameterTypes.Length == 0
+                && Comp.DeclaringDefinitionOf(Module, SRME.EntityHandle(_callSiteToken))?.Module.AssemblyName == "System.Private.CoreLib":
+            {
+                string id = NewTemp("int32_t");
+                Emit($"{id} = dn2cpp_task_current_id();");
+                PushNullableValue(sig.ReturnType, $"{id} != 0", id);
                 return true;
             }
             // Task.Id: the positive per-task identifier minted at alloc time.

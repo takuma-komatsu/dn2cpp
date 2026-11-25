@@ -5969,6 +5969,7 @@ constexpr int32_t DN2CPP_TASK_OPTIONS_MASK = 0x5f;
 constexpr int32_t DN2CPP_TASK_LONG_RUNNING = 2;
 constexpr int32_t DN2CPP_TASK_ATTACHED_TO_PARENT = 4;
 constexpr int32_t DN2CPP_TASK_DENY_CHILD_ATTACH = 8;
+constexpr int32_t DN2CPP_TASK_HIDE_SCHEDULER = 16;
 constexpr int32_t DN2CPP_TASK_ASYNC_CONTINUATIONS = 64;
 
 Dn2CppTask* dn2cpp_task_run_void(Dn2CppObject* del, int32_t options = DN2CPP_TASK_DENY_CHILD_ATTACH, Dn2CppCancelSource* source = nullptr); // Task.Run(Action)
@@ -7812,6 +7813,10 @@ enum
     DN2CPP_TASK_NOT_STARTED = 0,
     DN2CPP_TASK_SCHEDULED = 1,
     DN2CPP_TASK_INVOKED = 2, // independent of the caller's protected start
+    DN2CPP_TASK_DEFAULT_OWNER = 4,
+    DN2CPP_TASK_CUSTOM_OWNER = 8, // workerKeepAlive holds the assigned scheduler
+    DN2CPP_TASK_CANCELED_BEFORE_REJECTION = 16, // ExecuteEntry still observes cancellation after the queue faults the task
+    DN2CPP_TASK_QUEUE_REJECTED_WHILE_RUNNING = 32,
 };
 
 enum : uint8_t
@@ -7977,6 +7982,10 @@ extern const Dn2CppTypeInfo dn2cpp_taskscheduler_type;
 // when allocated without running their constructor.
 struct Dn2CppTaskScheduler : Dn2CppObject { int32_t id; };
 Dn2CppObject* dn2cpp_taskscheduler_default();
+Dn2CppObject* dn2cpp_taskscheduler_current();
+int32_t dn2cpp_task_current_id();
+Dn2CppObject* dn2cpp_task_executing_scheduler(Dn2CppTask* task);
+int32_t dn2cpp_task_execute_entry(Dn2CppTask* task);
 int32_t dn2cpp_taskscheduler_default_try_dequeue(Dn2CppObject*, Dn2CppTask*);
 int32_t* dn2cpp_taskscheduler_id_counter();
 void dn2cpp_set_taskscheduler_identity_metadata(Dn2CppMetadataTable<Dn2CppMethodInfo> methods,
