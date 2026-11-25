@@ -391,6 +391,8 @@ internal sealed partial class Compilation
         foreach (var type in sig.ParameterTypes) NotePreservedType(type);
         ReachReflectedNetworkFrameworkImport(method);
         Reach(method);
+        if (CoreIntrinsics.IsAssemblyCollectibilitySlot(method) && !IsBoundedMethod(method.DeclaringClass.FullName, method.Name))
+            ReachUsedVirtual(method);
         // Reflection enters a preserved member with no IL caller to trigger its type's
         // initializer, as a run-time root does.
         ReachRootInitializer(method);

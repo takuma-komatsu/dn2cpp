@@ -12,6 +12,14 @@ namespace CollectibilitySubset
 
     public static class Program
     {
+        private class PlainAssembly : Assembly { }
+
+        private sealed class CustomAssembly : PlainAssembly
+        {
+            public override bool IsCollectible => false;
+            public bool BaseValue() => base.IsCollectible;
+        }
+
         private static void Check(string label, bool value)
         {
             Console.WriteLine("collectibility-" + label + ":" + value);
@@ -28,6 +36,14 @@ namespace CollectibilitySubset
             foreach (MemberInfo member in typeof(Owner<int>).GetMembers(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
                 Check("member-" + member.Name, !member.IsCollectible);
             Console.WriteLine("noncollectible reflection types end");
+        }
+
+        internal static void RunAssembly()
+        {
+            static bool Read(Assembly assembly) => assembly.IsCollectible;
+            var custom = new CustomAssembly();
+            Check("assembly", !Read(typeof(Program).Assembly) && Read(new PlainAssembly())
+                && !Read(custom) && custom.BaseValue());
         }
     }
 }

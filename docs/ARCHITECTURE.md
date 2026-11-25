@@ -1009,6 +1009,10 @@ InternalCalls and QCall imports keep their separate binding authority. Under the
 native image's noncollectible policy, function-pointer assembly identity follows
 its return signature recursively without changing its element-type predicates.
 
+Linked RuntimeAssembly instances report `IsCollectible == false` for the
+lifetime of the image. Managed Assembly subclasses use normal virtual dispatch,
+and the default CoreLib implementation of `Assembly.IsCollectible` returns true.
+
 The exact managed `RuntimeTypeHandle.GetInstantiationInternal` and
 `GetInstantiationPublic` wrappers read native formal or constructed type arguments.
 They validate default handles and return null at zero arity. Nonempty results are

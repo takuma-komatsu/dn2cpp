@@ -2311,6 +2311,7 @@ internal sealed partial class CppEmitter
             {
                 bool taskFactory = cls.GenericArity == 0 && CoreIntrinsics.IsTaskFactoryOwner(cls);
                 if (!taskFactory && cls.FullName is not ("System.Type" or "System.RuntimeType" or "System.Reflection.Module" or "System.Reflection.RuntimeModule"
+                    or "System.Reflection.Assembly" or "System.Reflection.RuntimeAssembly"
                     or "System.Reflection.CustomAttributeData" or "System.Reflection.RuntimeCustomAttributeData" or "System.Threading.Tasks.TaskScheduler"))
                     continue;
                 foreach (var method in cls.Methods)
@@ -2320,7 +2321,8 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsTaskSchedulerDequeue(method) || CoreIntrinsics.IsTaskSchedulerExecute(method);
                     bool actionFromAsync = taskFactory && method.Name == "FromAsync" && CoreIntrinsics.IsTaskFactoryApmBody(method)
                         && method.Module.Reader.GetMethodDefinition(method.Handle).GetGenericParameters().Count == 0;
-                    if (!(actionFromAsync || instance && _c.KeepsUnreachedRow(method) || CoreIntrinsics.IsMemberNotFoundExceptionFactory(method))
+                    bool collectibility = method.Name == "get_IsCollectible" && CoreIntrinsics.IsReflectionManagedBody(method);
+                    if (!(collectibility || actionFromAsync || instance && _c.KeepsUnreachedRow(method) || CoreIntrinsics.IsMemberNotFoundExceptionFactory(method))
                         || !IsRetainedOpaqueMemberRow(method))
                         continue;
                     // Delegate.Method and named lookup must hand out the same physical row.
@@ -2331,7 +2333,15 @@ internal sealed partial class CppEmitter
                         if (!_memberAddr.TryGetValue(method, out address))
                             throw new InvalidOperationException($"Retained {cls.FullName}.{method.Name} has no metadata row.");
                     }
-                    _e._namedRuntimeMethodRows.Add(address);
+                    if (collectibility)
+                    {
+                        var property = BuildPropTable(cls, new List<MethodInfo> { method }, "collectibilityprop")
+                            ?? throw new InvalidOperationException($"Retained {cls.FullName}.IsCollectible has no property row.");
+                        _e._assemblyCollectibilityMetadata.Add((cls.Name == "Assembly" ? "dn2cpp_assembly_type" : "dn2cpp_runtime_assembly_type",
+                            address, property.Expr));
+                    }
+                    else
+                        _e._namedRuntimeMethodRows.Add(address);
                 }
             }
         }
@@ -4005,7 +4015,7 @@ internal sealed partial class CppEmitter
                 // An address-taken base body is nonvirtual. Reflection invokes the
                 // runtime override, whose native handle has no generated vtable.
                 if (fnPtr != "nullptr" && invoker != "nullptr"
-                    && (CoreIntrinsics.IsNullableTypeQueryBase(m) || CoreIntrinsics.IsModuleAttributeDataSlot(m)
+                    && (CoreIntrinsics.IsNullableTypeQueryBase(m) || CoreIntrinsics.IsModuleAttributeDataSlot(m) || CoreIntrinsics.IsAssemblyCollectibilitySlot(m)
                         || CoreIntrinsics.IsAttributeArgumentsSlot(m) || CoreIntrinsics.IsTaskSchedulerDequeue(m)))
                 {
                     var target = _c.ReflectionManagedVirtualFallback(m);
@@ -4014,7 +4024,7 @@ internal sealed partial class CppEmitter
                     if (nullable || scheduler || target != m)
                     {
                         string runtimeType = scheduler ? "&dn2cpp_taskscheduler_type" : nullable ? "&dn2cpp_type_type" : CoreIntrinsics.IsModuleAttributeDataSlot(m)
-                            ? "&dn2cpp_runtime_module_type" : "&dn2cpp_customattributedata_type";
+                            ? "&dn2cpp_runtime_module_type" : CoreIntrinsics.IsAssemblyCollectibilitySlot(m) ? "&dn2cpp_runtime_assembly_type" : "&dn2cpp_customattributedata_type";
                         string runtimeTarget = scheduler ? "dn2cpp_taskscheduler_default_try_dequeue"
                             : nullable ? CoreIntrinsics.NullableTypeQueryHelper(m) : target.Emittable.CppName;
                         string thunk = invoker.Substring("(void*)&".Length);
@@ -4165,7 +4175,7 @@ internal sealed partial class CppEmitter
 
         // Accessors refer to retained method-table descriptions; unreachable
         // bodies remain uncallable. Row conditions mirror NoteReflectedMemberTypes.
-        private (string Expr, int Count)? BuildPropTable(ClassInfo cls, List<MethodInfo> methods)
+        private (string Expr, int Count)? BuildPropTable(ClassInfo cls, List<MethodInfo> methods, string prefix = "proptab")
         {
             var byHandle = new Dictionary<MethodDefinitionHandle, MethodInfo>();
             foreach (var m in methods)
@@ -4213,7 +4223,7 @@ internal sealed partial class CppEmitter
             }
             if (rows.Count == 0)
                 return null;
-            string tab = $"proptab_{cls.CppName}";
+            string tab = $"{prefix}_{cls.CppName}";
             _e.EmitMetadataTable(_sb, "Dn2CppPropInfo", tab, rows);
             return (tab, rows.Count);
         }

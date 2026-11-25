@@ -346,6 +346,7 @@ internal enum InterceptEmitArm
     RuntimeTypeHandleDeclaringTypeBody,
     RuntimeTypeCacheGenericDefinitionBody,
     CustomAttributeDataMemberBody,
+    RuntimeAssemblyCollectibilityBody,
     CoreClrActivationInfoBody,
     RuntimeTypeDefaultStructCtorBody,
     DelegateCloneBinding,
@@ -1052,6 +1053,10 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.BodyReplace, InterceptEmitArm.CustomAttributeDataMemberBody,
         typeGate: "System.Reflection.RuntimeCustomAttributeData", nameGate: "get_ConstructorArguments",
         extra: IsReflectionManagedBody);
+
+    public static readonly MethodDefIntercept BrRuntimeAssemblyCollectibility = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeAssemblyCollectibilityBody,
+        typeGate: "System.Reflection.RuntimeAssembly", nameGate: "get_IsCollectible", extra: IsReflectionManagedBody);
 
     internal static bool IsRuntimeTypeCacheGenericDefinition(MethodInfo method)
     {
@@ -4385,6 +4390,8 @@ internal static partial class CoreIntrinsics
             BrModuleAttributeData.TypeGate, BrModuleAttributeData.NameGate);
         CheckRow(nameof(BrAttributeArguments), 0, BrAttributeArguments.EmitArm,
             BrAttributeArguments.TypeGate, BrAttributeArguments.NameGate);
+        CheckRow(nameof(BrRuntimeAssemblyCollectibility), 0, BrRuntimeAssemblyCollectibility.EmitArm,
+            BrRuntimeAssemblyCollectibility.TypeGate, BrRuntimeAssemblyCollectibility.NameGate);
         if (BrCustomAttributeDataMember.CutKind != InterceptCutKind.BodyReplace
             || BrModuleAttributeData.CutKind != InterceptCutKind.BodyReplace
             || BrAttributeArguments.CutKind != InterceptCutKind.BodyReplace)

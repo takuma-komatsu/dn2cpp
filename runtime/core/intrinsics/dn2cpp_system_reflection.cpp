@@ -10687,11 +10687,11 @@ static Dn2CppString* dn2cpp_mod_box_tostring(Dn2CppObject* o)
 
 // The abstract shells: instanceSize 0 is the "never an instance's header word"
 // claim (like MemberInfo/MethodBase in dn2cpp_core.h's Dn2CppTypeInfo note).
-const Dn2CppTypeInfo dn2cpp_assembly_type =
+Dn2CppTypeInfo dn2cpp_assembly_type =
     { "System.Reflection.Assembly", &dn2cpp_object_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr };
 const Dn2CppTypeInfo dn2cpp_module_type =
     { "System.Reflection.Module", &dn2cpp_object_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr };
-const Dn2CppTypeInfo dn2cpp_runtime_assembly_type =
+Dn2CppTypeInfo dn2cpp_runtime_assembly_type =
     { "System.Reflection.RuntimeAssembly", &dn2cpp_assembly_type, nullptr, nullptr, dn2cpp_asm_box_tostring, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppAsmBox), 0, 0, 0, 0, 0, nullptr };
 const Dn2CppTypeInfo dn2cpp_runtime_module_type =
     { "System.Reflection.RuntimeModule", &dn2cpp_module_type, nullptr, nullptr, dn2cpp_mod_box_tostring, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppAsmBox), 0, 0, 0, 0, 0, nullptr };

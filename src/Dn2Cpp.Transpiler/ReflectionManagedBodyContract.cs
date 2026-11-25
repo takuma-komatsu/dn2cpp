@@ -7,6 +7,8 @@ internal static class ReflectionManagedBodyContract
 {
     internal static bool IsName(string? owner, string name) =>
         owner == "System.Reflection.MemberInfo" && name == ".ctor"
+        || owner == "System.Reflection.Assembly" && name is ".ctor" or "get_IsCollectible"
+        || owner == "System.Reflection.RuntimeAssembly" && name == "get_IsCollectible"
         || owner == "System.Type" && name is "get_IsGenericTypeParameter" or "get_IsGenericMethodParameter"
         || owner == "System.Reflection.Module" && name is ".ctor" or "GetCustomAttributesData" or "get_CustomAttributes"
         || owner == "System.Reflection.RuntimeModule" && name == "GetCustomAttributesData"
@@ -14,7 +16,8 @@ internal static class ReflectionManagedBodyContract
         || owner == "System.Reflection.RuntimeCustomAttributeData" && name == "get_ConstructorArguments";
 
     internal static bool IsRuntimeDataReaderName(string? owner, string name) =>
-        owner == "System.Reflection.RuntimeCustomAttributeData" && name is "GetCustomAttributesInternal" or "get_ConstructorArguments";
+        owner == "System.Reflection.RuntimeCustomAttributeData" && name is "GetCustomAttributesInternal" or "get_ConstructorArguments"
+        || owner == "System.Reflection.RuntimeAssembly" && name == "get_IsCollectible";
 
     private static bool ReadClass(MetadataReader reader, ref BlobReader signature, string ns, string name, byte typeCode = 0x12)
     {
@@ -39,6 +42,8 @@ internal static class ReflectionManagedBodyContract
         {
             "System.Type" => "Type",
             "System.Reflection.MemberInfo" => "MemberInfo",
+            "System.Reflection.Assembly" => "Assembly",
+            "System.Reflection.RuntimeAssembly" => "RuntimeAssembly",
             "System.Reflection.Module" => "Module",
             "System.Reflection.RuntimeModule" => "RuntimeModule",
             "System.Reflection.CustomAttributeData" => "CustomAttributeData",
@@ -53,6 +58,11 @@ internal static class ReflectionManagedBodyContract
         var signature = reader.GetBlobReader(method.Signature);
         const MethodAttributes newVirtual = MethodAttributes.Public | MethodAttributes.Virtual
             | MethodAttributes.NewSlot | MethodAttributes.HideBySig;
+        if (name == "get_IsCollectible")
+            return method.Attributes == ((owner == "System.Reflection.Assembly" ? newVirtual : newVirtual & ~MethodAttributes.NewSlot)
+                    | MethodAttributes.SpecialName)
+                && signature.RemainingBytes == 3 && signature.ReadByte() == 0x20
+                && signature.ReadByte() == 0 && signature.ReadByte() == (byte)SignatureTypeCode.Boolean;
         if (name == ".ctor" || typePredicate)
             return method.Attributes == (typePredicate ? newVirtual | MethodAttributes.SpecialName
                     : MethodAttributes.Family | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName)
