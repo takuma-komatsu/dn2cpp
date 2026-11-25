@@ -106,6 +106,7 @@ namespace DateTimeOps
             if (args.Length > 0 && args[0] == "before-dtfi-public-arrays")
                 return;
             DateTimeFormatInfoSubset.Program.RunPublicNameArrays();
+            DateTimeParse.Program.RunGeneralOffset();
         }
     }
 }

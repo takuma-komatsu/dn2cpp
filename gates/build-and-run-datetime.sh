@@ -21,7 +21,7 @@
 # time through the internal TimeOnly.ToDateTime().
 # FromBinary/ToBinary and daylight checks cover kind flags and local-zone overlaps.
 # DateTimeOffset.ToLocalTime preserves the distinct offsets of repeated local clocks.
-# DateTime.ParseExact applies numeric offsets in local or UTC output, with named-zone checks.
+# DateTime general and exact parsing apply numeric offsets in local or UTC output.
 # DTFI names, patterns, private arithmetic and culture-name validation share one
 # image. Private calls/calli and closed span delegates use exact CoreLib
 # declarations; Calendar and Tokenize refusals have an explicitly frozen
@@ -194,7 +194,8 @@ gate_extra_asserts() {
         --before='== DateTime exact offsets ==' --policy crlf
     gate_output compare "$out/exact-offset-prefix.stdout" "$out/exact-offset-before.stdout"
     gate_output byte-witness "$out/native.stdout" 'exact zzz local=True' 'exact zzz universal=True' \
-        'exact K roundtrip=True/True/True' 'exact offset syntax=True/True/True' --count 1 --policy crlf
+        'exact K roundtrip=True/True/True' 'exact offset syntax=True/True/True' \
+        'general offset parse=True/True rejects malformed=True' --count 1 --policy crlf
 
     gate_capture_ok "$out/public-name-arrays-before" run_bounded dotnet "$_CG_APP" before-dtfi-public-arrays
     gate_output select "$out/native.stdout" "$out/public-name-arrays-prefix.stdout" \
