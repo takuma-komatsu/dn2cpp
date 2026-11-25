@@ -1150,19 +1150,17 @@ internal sealed partial class MethodCompiler
                 Emit($"dn2cpp_task_block((Dn2CppTask*)({t.Expr}));");
                 return true;
             }
-            // Task.Start([TaskScheduler]) — submit a cold task's (`new Task(...)`)
-            // work to the worker pool. A second Start, or Start on a task that was
-            // never cold (async-method / Task.Run / settled), throws a catchable
-            // InvalidOperationException at runtime, like real .NET. A supplied null
-            // scheduler is rejected before claiming the task; non-null scheduling
-            // still uses the fixed worker pool.
+            // The native pool owns default starts. A generated scheduler receives its
+            // task through the retained virtual slots from this image.
             case ("System.Threading.Tasks.Task", "Start"):
             {
                 string scheduler = sig.ParameterTypes.Length == 1
                     ? Cast(Pop(), "Dn2CppObject*")
                     : "dn2cpp_taskscheduler_default()";
                 var t = Pop();
-                Emit($"dn2cpp_task_start((Dn2CppTask*)({t.Expr}), {scheduler});");
+                string queue = Comp.TaskSchedulerQueue is { } callbacks && sig.ParameterTypes is [{ Class: { } owner }]
+                    && owner == callbacks.Queue.DeclaringClass ? ", &dn2cpp_image_task_scheduler_queue" : "";
+                Emit($"dn2cpp_task_start((Dn2CppTask*)({t.Expr}), {scheduler}{queue});");
                 return true;
             }
             // Task.RunSynchronously([TaskScheduler]) — claim a cold task's work and

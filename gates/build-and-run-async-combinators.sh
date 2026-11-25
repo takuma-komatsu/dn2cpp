@@ -206,7 +206,9 @@ gate_extra_asserts() {
     for line in '== runtime async ==' 'tasks: 21/40 settled: True/2' 'struct: 5/1' \
         'try: False/45' 'runtime async end' 'runtime async configured contexts: task=True value task=True' \
         'runtime async force after thread exit: True' 'runtime async task Post: True/True' \
-        'scheduler dequeue: False/True/False closed-null=False'; do
+        'scheduler dequeue: False/True/False closed-null=False' \
+        'custom Start: handoff=True canceled=True faulted=True calls=0' \
+        'custom Start: rejected after cancellation=True'; do
         gate_output byte-witness "$native" "$line" --policy crlf || return 1
     done
     # The block's methods are lowered as resumable bodies, not as state machines.

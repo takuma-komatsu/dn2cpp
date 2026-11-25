@@ -1551,7 +1551,7 @@ internal sealed class SummaryInterpreter
             : _r.GetStandaloneSignature(body.LocalSignature).DecodeLocalSignature(RawSignatureProvider.Instance, null);
         int localCount = _localDefaults.Length;
         foreach (var insn in code)
-            if (LocalIndex(insn) is int local && local >= localCount)
+            if (ILDecoder.LocalIndex(insn) is int local && local >= localCount)
                 localCount = local + 1;
         _localPin = new byte[localCount];
         _argPin = new byte[argCount];
@@ -1616,7 +1616,7 @@ internal sealed class SummaryInterpreter
             int handlerEnd = IndexAtOrAfter(region.HandlerOffset + region.HandlerLength);
             for (int i = handler; i < handlerEnd; i++)
             {
-                if (LocalIndex(code[i]) is int local && IsStore(code[i].OpCode) && _localPin[local] == 0)
+                if (ILDecoder.LocalIndex(code[i]) is int local && ILDecoder.IsStoreLocal(code[i].OpCode) && _localPin[local] == 0)
                     _localPin[local] = HandlerPin;
                 if (ArgIndex(code[i]) is int arg && code[i].OpCode is ILOpCode.Starg or ILOpCode.Starg_s
                     && arg < argCount && _argPin[arg] == 0)
@@ -1955,7 +1955,7 @@ internal sealed class SummaryInterpreter
             }
             case ILOpCode.Ldloc_0 or ILOpCode.Ldloc_1 or ILOpCode.Ldloc_2 or ILOpCode.Ldloc_3
                 or ILOpCode.Ldloc_s or ILOpCode.Ldloc:
-                Push(LoadLocal(LocalIndex(insn)!.Value));
+                Push(LoadLocal(ILDecoder.LocalIndex(insn)!.Value));
                 break;
             case ILOpCode.Ldloca or ILOpCode.Ldloca_s:
             {
@@ -1966,7 +1966,7 @@ internal sealed class SummaryInterpreter
             case ILOpCode.Stloc_0 or ILOpCode.Stloc_1 or ILOpCode.Stloc_2 or ILOpCode.Stloc_3
                 or ILOpCode.Stloc_s or ILOpCode.Stloc:
             {
-                int local = LocalIndex(insn)!.Value;
+                int local = ILDecoder.LocalIndex(insn)!.Value;
                 var value = Pop();
                 if (_localPin[local] == 0)
                     _locals[local] = local < _localTypes.Length ? SlotStorageValue(value, _localTypes[local], op) : value;
@@ -4052,20 +4052,6 @@ internal sealed class SummaryInterpreter
         leader[index] = true;
         return true;
     }
-
-    private static bool IsStore(ILOpCode op) => op is ILOpCode.Stloc_0 or ILOpCode.Stloc_1 or ILOpCode.Stloc_2
-        or ILOpCode.Stloc_3 or ILOpCode.Stloc_s or ILOpCode.Stloc;
-
-    private static int? LocalIndex(Instruction insn) => insn.OpCode switch
-    {
-        ILOpCode.Ldloc_0 or ILOpCode.Stloc_0 => 0,
-        ILOpCode.Ldloc_1 or ILOpCode.Stloc_1 => 1,
-        ILOpCode.Ldloc_2 or ILOpCode.Stloc_2 => 2,
-        ILOpCode.Ldloc_3 or ILOpCode.Stloc_3 => 3,
-        ILOpCode.Ldloc_s or ILOpCode.Ldloc or ILOpCode.Stloc_s or ILOpCode.Stloc or ILOpCode.Ldloca_s
-            or ILOpCode.Ldloca => (int)insn.Operand,
-        _ => null,
-    };
 
     private static int? ArgIndex(Instruction insn) => insn.OpCode switch
     {

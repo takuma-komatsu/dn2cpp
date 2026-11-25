@@ -1766,8 +1766,14 @@ field. CoreLib's `TaskScheduler.Id` getter assigns it lazily from its own counte
 independent of task IDs. The default pool claims its ID when the scheduler statics
 are initialized. The protected parameterless base constructor leaves the derived
 instance's ID unassigned. Its CoreLib debugger registration is inactive under
-dn2cpp, where `Debugger.IsAttached` is false. Task dispatch uses the native
-scheduler independently of construction.
+dn2cpp, where `Debugger.IsAttached` is false.
+
+`Task.Start(customScheduler)` hands the started task to the scheduler's virtual
+`QueueTask` on the calling thread. Cancellation asks the assigned scheduler to
+remove pending work through `TryDequeue`. If the queue rejects a pending task,
+`Start` rethrows the `TaskSchedulerException` stored on the faulted task. If the
+queue first cancels the task and then rejects it, that rejection faults the task
+and `Start` raises `InvalidCastException`. The task signals its continuations once.
 
 A direct call to `TaskScheduler.TryDequeue(Task)` runs the CoreLib base body and
 returns false. Virtual calls on generated schedulers use the receiver's override.

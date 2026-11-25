@@ -6035,7 +6035,14 @@ Dn2CppTask* dn2cpp_task_cold_struct_state(Dn2CppObject* del, Dn2CppObject* state
 // Task.Start(): claim the cold work exactly once and submit it to the worker pool.
 // A second Start, or Start on a task that was never cold (an async-method task,
 // Task.Run, a settled task), throws InvalidOperationException like real .NET.
+struct Dn2CppTaskSchedulerQueue
+{
+    int32_t queueSlot;
+    int32_t dequeueSlot;
+    Dn2CppObject* (*wrapException)(Dn2CppObject*);
+};
 void dn2cpp_task_start(Dn2CppTask* t, Dn2CppObject* scheduler);
+void dn2cpp_task_start(Dn2CppTask* t, Dn2CppObject* scheduler, const Dn2CppTaskSchedulerQueue* queue);
 // Task.RunSynchronously(): claim the cold work and run it inline on the calling
 // thread. A fault settles the task FAULTED (observed at Wait/Result/await), it is
 // not re-thrown here — matching real .NET. Same InvalidOperationException rules.
@@ -7785,6 +7792,7 @@ struct Dn2CppCont
 struct Dn2CppTaskCold
 {
     Dn2CppObject* scheduler; // null until Start/RunSynchronously claims the scheduler
+    const Dn2CppTaskSchedulerQueue* customQueue; // image data for managed queue dispatch
     Dn2CppObject* del;
     Dn2CppObject* state;
     uint64_t (*invoke)(Dn2CppObject*);
@@ -7836,7 +7844,7 @@ struct Dn2CppTask : Dn2CppObject
     std::atomic<Dn2CppObject*> exceptionAggregate;
     uint64_t result;           // Task<T> result, reinterpreted by T (0 for Task)
     Dn2CppCont* continuations; // resumptions waiting on this task (fired on complete)
-    void* workerKeepAlive; // scanned delegate or continuation state owned by this task
+    void* workerKeepAlive; // pool work, continuation state, or the custom scheduler owning this task
     Dn2CppTaskCold* cold;      // undispatched work; protected by the task mutex after publication
     // The IValueTaskSource bridge this task fronts, or null for every other task.
     // Written once before the task is published and never cleared: it is what lets a

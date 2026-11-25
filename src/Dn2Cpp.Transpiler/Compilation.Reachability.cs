@@ -474,6 +474,7 @@ internal sealed partial class Compilation
             return;
         _allocatedTypeOrder.Add(c);
         NoteConditionalPreservationUse(c);
+        NoteAllocatedQueueScheduler(c);
         if (c.IsDelegate)
             _allocatedDelegates.Add(c);
         // The runtime reads an exception's Message through the get_Message slot with no IL
@@ -6262,8 +6263,10 @@ internal sealed partial class Compilation
                 tok => ClassifyTypeIdentityCall(module, tok),
                 (tokA, tokB) => TypeEqualityVerdict(module, tokA, tokB, m.Context));
             NoteStaticTypeofMetadata(m, insns, body, liveness);
-            foreach (var insn in insns)
+            HashSet<int>? queueEntries = null;
+            for (int index = 0; index < insns.Count; index++)
             {
+                var insn = insns[index];
                 if (liveness is not null && !liveness.LiveAt(insn.Offset))
                     continue;
                 // Skip non-entity tokens (ldstr carries a UserString handle).
@@ -6752,6 +6755,7 @@ internal sealed partial class Compilation
                         {
                             ReachThreadPoolWorkItemExecute(module, handle, m.Context);
                             ReachSynchronizationContextPost(module, handle);
+                            NoteTaskStartQueue(m, handle, insns, index, body, ref queueEntries);
                         }
                         // A dispatch through (I)EqualityComparer<T> — the GetHashCode/
                         // Equals a Dictionary/HashSet runs on its key — devirtualizes at

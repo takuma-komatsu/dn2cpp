@@ -114,6 +114,20 @@ internal static class ILDecoder
     private static long ReadI64(ImmutableArray<byte> il, int p) =>
         (uint)ReadI32(il, p) | ((long)ReadI32(il, p + 4) << 32);
 
+    public static bool IsStoreLocal(ILOpCode op) => op is ILOpCode.Stloc_0 or ILOpCode.Stloc_1 or ILOpCode.Stloc_2
+        or ILOpCode.Stloc_3 or ILOpCode.Stloc_s or ILOpCode.Stloc;
+
+    public static int? LocalIndex(Instruction insn) => insn.OpCode switch
+    {
+        ILOpCode.Ldloc_0 or ILOpCode.Stloc_0 => 0,
+        ILOpCode.Ldloc_1 or ILOpCode.Stloc_1 => 1,
+        ILOpCode.Ldloc_2 or ILOpCode.Stloc_2 => 2,
+        ILOpCode.Ldloc_3 or ILOpCode.Stloc_3 => 3,
+        ILOpCode.Ldloc_s or ILOpCode.Ldloc or ILOpCode.Stloc_s or ILOpCode.Stloc or ILOpCode.Ldloca_s
+            or ILOpCode.Ldloca => (int)insn.Operand,
+        _ => null,
+    };
+
     public static bool IsBranch(ILOpCode op) => op is
         ILOpCode.Leave or ILOpCode.Leave_s or
         ILOpCode.Br or ILOpCode.Br_s or

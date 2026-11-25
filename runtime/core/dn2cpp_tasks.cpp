@@ -1489,7 +1489,7 @@ static void dn2cpp_task_complete(Dn2CppTask* t, int32_t status, uint64_t result,
     dn2cpp_fire_conts(conts);
 }
 
-enum class Dn2CppTaskFinishKind { Normal, PromiseCancellation, BeforeDelegate, AfterDelegate };
+enum class Dn2CppTaskFinishKind { Normal, PromiseCancellation, BeforeDelegate, AfterDelegate, RejectedAfterCancellation };
 
 // A delegate Finish (and a promise TrySetException) drains previously recorded
 // faults. Direct promise result and cancellation transitions do not.
@@ -1503,7 +1503,8 @@ static bool dn2cpp_task_finish_recorded(Dn2CppTask* t, int32_t status, uint64_t 
     Dn2CppObject* nativeAggregate = payloads == nullptr || hasDispatch
         ? nullptr : dn2cpp_aggregate_exception_new(payloads);
     std::unique_lock<std::mutex> lock(g_task_mtx);
-    if (t->status != DN2CPP_TASK_PENDING || t->exceptionHolderState == DN2CPP_TASK_HOLDER_RESERVED)
+    bool rejectedAfterCancellation = kind == Dn2CppTaskFinishKind::RejectedAfterCancellation && t->status == DN2CPP_TASK_CANCELED;
+    if ((!rejectedAfterCancellation && t->status != DN2CPP_TASK_PENDING) || t->exceptionHolderState == DN2CPP_TASK_HOLDER_RESERVED)
         return false;
     bool explicitFinish = kind == Dn2CppTaskFinishKind::BeforeDelegate || kind == Dn2CppTaskFinishKind::AfterDelegate;
     if (explicitFinish)
@@ -2988,6 +2989,7 @@ struct Dn2CppCancelReg
     Dn2CppTask* task;            // non-null: a pending task to transition to CANCELED
     bool delay;                // only Delay cancellation adds RunContinuationsAsynchronously
     bool delayArmed;           // guarded by g_cts_mtx; consumed by claim or cleanup
+    bool coldTask;             // consult the scheduler before canceling queued work
     Dn2CppObject* callback;      // non-null: an Action to invoke on Cancel()
     Dn2CppObject* stateCallback; // non-null: an Action<object> to invoke with `state`
     Dn2CppObject* tokenCallback; // non-null: an Action<object, CancellationToken>
@@ -3011,6 +3013,51 @@ static bool dn2cpp_delay_claim_cancellation(Dn2CppCancelReg* registration)
         return false;
     registration->delayArmed = false;
     return true;
+}
+
+// A queued task cancels only when its scheduler removes it. The virtual
+// call may reenter the task or the source and cannot run under either lock.
+static void dn2cpp_cancel_cold_task(Dn2CppCancelReg* registration)
+{
+    auto* task = registration->task;
+    Dn2CppTaskCold* work;
+    Dn2CppCont* continuations = nullptr;
+    bool canceled;
+    {
+        std::lock_guard<std::mutex> lock(g_task_mtx);
+        work = task->cold;
+        if (work == nullptr || task->status != DN2CPP_TASK_PENDING)
+            return;
+        canceled = dn2cpp_task_try_complete_locked(task, DN2CPP_TASK_CANCELED, 0, nullptr,
+            nullptr, continuations, registration->source, true);
+        if (canceled)
+            dn2cpp_task_release_action_locked(task);
+        else if (work->customQueue == nullptr)
+            return;
+    }
+    if (!canceled)
+    {
+        auto* scheduler = work->scheduler;
+        auto* queue = work->customQueue;
+        using Dequeue = int32_t (*)(Dn2CppObject*, Dn2CppTask*);
+        auto dequeue = reinterpret_cast<Dequeue>(const_cast<void*>(scheduler->type->vtable[queue->dequeueSlot]));
+        try
+        {
+            if (!dequeue(scheduler, task)) return;
+        }
+        catch (const Dn2CppException& e)
+        {
+            auto* wrapped = queue->wrapException(e.obj);
+            dn2cpp_exc_inflight_pop(e.obj);
+            dn2cpp_throw(wrapped);
+        }
+        std::lock_guard<std::mutex> lock(g_task_mtx);
+        if (task->cold != work || (task->execution & DN2CPP_TASK_INVOKED)) return;
+        if (dn2cpp_task_try_complete_locked(task, DN2CPP_TASK_CANCELED, 0, nullptr,
+            nullptr, continuations, registration->source, false))
+            dn2cpp_task_release_action_locked(task);
+    }
+    dn2cpp_fire_conts(continuations);
 }
 
 // Every CancelAfter timer thread waits here, so a reschedule / Cancel / Dispose on any
@@ -3073,7 +3120,9 @@ void dn2cpp_cts_cancel(Dn2CppCancelSource* src, bool throwOnFirstException)
     {
         try
         {
-            if (r->task != nullptr)
+            if (r->coldTask)
+                dn2cpp_cancel_cold_task(r);
+            else if (r->task != nullptr)
             {
                 // Delay's cancellation callback sets this bit before trying to settle,
                 // even if an in-flight timer completion won the race. WaitAsync does not.
@@ -3549,7 +3598,7 @@ void dn2cpp_cts_cancel_after(Dn2CppCancelSource* src, int64_t ms, const char* pa
 }
 
 // CancellationTokenSource.Dispose(): the source is GC-managed, so there is nothing to
-// free — what Dispose releases is the pending CancelAfter, which real .NET stops (a
+// free. Dispose releases cold-task registrations and stops any pending CancelAfter (a
 // disposed source never fires, and `using (var cts = ...)` around an awaited call relies
 // on exactly that). The timer thread wakes on the flag, exits, and drops its root.
 //
@@ -3566,6 +3615,23 @@ void dn2cpp_cts_dispose(Dn2CppCancelSource* src)
         return;
     {
         std::lock_guard<std::mutex> lk(g_cts_mtx);
+        if (!src->disposed)
+        {
+            // Cancel owns an already-detached list. Drop only cold tasks still
+            // registered on this source, before they can be claimed by Cancel.
+            auto** link = &src->regs;
+            while (auto* registration = *link)
+            {
+                if (!registration->coldTask)
+                {
+                    link = &registration->next;
+                    continue;
+                }
+                dn2cpp_gc_store_ref(link, registration->next);
+                dn2cpp_gc_store_ref(&registration->next, static_cast<Dn2CppCancelReg*>(nullptr));
+                dn2cpp_gc_store_ref(&registration->task, static_cast<Dn2CppTask*>(nullptr));
+            }
+        }
         src->disposed = 1;
         src->timerDueNs = 0;
     }
@@ -5217,6 +5283,35 @@ Dn2CppTask* dn2cpp_task_run_ref_state(Dn2CppObject* del, Dn2CppObject* state, in
 
 // ---- cold tasks: `new Task(...)` / `new Task<T>(...)` + Start / RunSynchronously ----
 
+static void dn2cpp_unregister_cold_cancellation(void* state)
+{
+    dn2cpp_cts_unregister(static_cast<Dn2CppCancelReg*>(state));
+}
+
+static void dn2cpp_register_cold_cancellation(Dn2CppTask* task, Dn2CppCancelSource* source)
+{
+    auto* registration = static_cast<Dn2CppCancelReg*>(dn2cpp_alloc(sizeof(Dn2CppCancelReg)));
+    dn2cpp_gc_store_ref(&registration->task, task);
+    dn2cpp_gc_store_ref(&registration->source, source);
+    registration->coldTask = true;
+    // CoreLib registers during construction. A later user registration must fire
+    // first, even if it was installed before Start assigned the scheduler.
+    bool alreadyCanceled;
+    {
+        std::lock_guard<std::mutex> lock(g_cts_mtx);
+        if (source->disposed) return;
+        alreadyCanceled = source->canceled;
+        if (!alreadyCanceled)
+        {
+            dn2cpp_gc_store_ref(&registration->next, source->regs);
+            dn2cpp_gc_store_ref(&source->regs, registration);
+        }
+    }
+    dn2cpp_task_on_completed_sync(task, &dn2cpp_unregister_cold_cancellation, registration);
+    if (alreadyCanceled)
+        dn2cpp_cancel_cold_task(registration);
+}
+
 static Dn2CppTask* dn2cpp_task_cold(Dn2CppObject* del, Dn2CppObject* state,
                                     uint64_t (*invoke)(Dn2CppObject*),
                                     uint64_t (*invoke2)(Dn2CppObject*, Dn2CppObject*), int32_t options, Dn2CppCancelSource* source)
@@ -5232,11 +5327,14 @@ static Dn2CppTask* dn2cpp_task_cold(Dn2CppObject* del, Dn2CppObject* state,
     }
     auto* c = static_cast<Dn2CppTaskCold*>(dn2cpp_alloc(sizeof(Dn2CppTaskCold)));
     c->scheduler = nullptr;
+    c->customQueue = nullptr;
     dn2cpp_gc_store_ref(&c->del, del);
     dn2cpp_gc_store_ref(&c->state, state);
     c->invoke = invoke;
     c->invoke2 = invoke2;
     dn2cpp_gc_store_ref(&t->cold, c);
+    if (source != nullptr)
+        dn2cpp_register_cold_cancellation(t, source);
     return t;
 }
 
@@ -5269,7 +5367,7 @@ Dn2CppTask* dn2cpp_task_cold_struct_state(Dn2CppObject* del, Dn2CppObject* state
 // lock that serializes completion/await-registration, so two racing Starts see
 // one winner). The origin distinguishes promise, continuation and started tasks.
 static Dn2CppTaskCold* dn2cpp_task_claim_cold(Dn2CppTask* t, bool synchronous,
-                                               Dn2CppObject* scheduler)
+                                               Dn2CppObject* scheduler, const Dn2CppTaskSchedulerQueue* queue = nullptr)
 {
     if (synchronous && scheduler == nullptr)
         dn2cpp_throw_argument_null_param("scheduler");
@@ -5293,7 +5391,7 @@ static Dn2CppTaskCold* dn2cpp_task_claim_cold(Dn2CppTask* t, bool synchronous,
     bool dispatchedUnowned;
     bool finishing;
     {
-        std::lock_guard<std::mutex> lk(g_task_mtx);
+        std::unique_lock<std::mutex> lk(g_task_mtx);
         dispatchedUnowned = t->startKind == DN2CPP_TASK_ORIGIN_UNOWNED_QUEUE;
         finishing = (t->finishProvenance.load(std::memory_order_relaxed) & DN2CPP_TASK_EXPLICIT_FINISH) != 0;
         c = finishing ? nullptr : t->cold;
@@ -5301,10 +5399,22 @@ static Dn2CppTaskCold* dn2cpp_task_claim_cold(Dn2CppTask* t, bool synchronous,
             c = nullptr;
         if (c != nullptr)
         {
+            if (!synchronous && scheduler != dn2cpp_taskscheduler_default())
+            {
+                auto slots = scheduler->type->vtable;
+                if (queue == nullptr || slots == nullptr || slots[queue->queueSlot] == nullptr
+                    || slots[queue->dequeueSlot] == nullptr)
+                {
+                    lk.unlock();
+                    dn2cpp_throw_platform_not_supported("Task.Start requires its custom scheduler queue slots");
+                }
+                c->customQueue = queue;
+                dn2cpp_gc_store_ref(&t->workerKeepAlive, static_cast<void*>(scheduler));
+            }
             dn2cpp_gc_store_ref(&c->scheduler, scheduler);
             marked = dn2cpp_task_mark_started_locked(t);
             // A losing start claim keeps its never-enqueued delegate and thunk.
-            if (marked)
+            if (marked && c->customQueue == nullptr)
                 dn2cpp_gc_store_ref(&t->cold, static_cast<Dn2CppTaskCold*>(nullptr));
         }
     }
@@ -5325,9 +5435,47 @@ static Dn2CppTaskCold* dn2cpp_task_claim_cold(Dn2CppTask* t, bool synchronous,
 
 void dn2cpp_task_start(Dn2CppTask* t, Dn2CppObject* scheduler)
 {
-    Dn2CppTaskCold* c = dn2cpp_task_claim_cold(t, false, scheduler);
-    if (c != nullptr)
+    dn2cpp_task_start(t, scheduler, nullptr);
+}
+
+void dn2cpp_task_start(Dn2CppTask* t, Dn2CppObject* scheduler, const Dn2CppTaskSchedulerQueue* queue)
+{
+    Dn2CppTaskCold* c = dn2cpp_task_claim_cold(t, false, scheduler, queue);
+    if (c == nullptr) return;
+    if (c->customQueue == nullptr)
+    {
         dn2cpp_pool_enqueue(t, c->del, c->state, c->invoke, c->invoke2);
+        return;
+    }
+    using QueueTask = void (*)(Dn2CppObject*, Dn2CppTask*);
+    auto submit = reinterpret_cast<QueueTask>(const_cast<void*>(scheduler->type->vtable[queue->queueSlot]));
+    try
+    {
+        submit(scheduler, t);
+    }
+    catch (const Dn2CppException& e)
+    {
+        auto* wrapped = queue->wrapException(e.obj);
+        dn2cpp_exc_inflight_pop(e.obj);
+        bool canceled;
+        {
+            std::lock_guard<std::mutex> lock(g_task_mtx);
+            canceled = t->status == DN2CPP_TASK_CANCELED;
+            dn2cpp_task_release_action_locked(t);
+        }
+        auto kind = canceled ? Dn2CppTaskFinishKind::RejectedAfterCancellation : Dn2CppTaskFinishKind::Normal;
+        dn2cpp_task_finish_recorded(t, DN2CPP_TASK_FAULTED, 0, wrapped, nullptr, nullptr, false, nullptr, kind);
+        // Cancellation already detached and notified the continuations. CoreLib
+        // publishes the queue's fault, then its second finish raises InvalidCastException.
+        if (canceled)
+            dn2cpp_throw_sr0(&dn2cpp_invalid_cast_exception_type, DN2CPP_SR_INVALID_CAST);
+        if (auto* holder = dn2cpp_task_holder_for_observation(t))
+        {
+            Dn2CppMonitorGuard guard(holder);
+            g_task_holder_observe(holder);
+        }
+        dn2cpp_throw(wrapped);
+    }
 }
 
 static void dn2cpp_task_invoke_cold(Dn2CppTask* t, Dn2CppTaskCold* c)
