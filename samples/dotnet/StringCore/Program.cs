@@ -84,6 +84,7 @@ namespace StringCore
             if (args.Length > 0 && args[0] == "before-null-terminated")
                 return;
             StringNullTerminatedSubset.Program.Run();
+            StringComparisonFoldSubset.Program.RunCharContains();
         }
     }
 }
