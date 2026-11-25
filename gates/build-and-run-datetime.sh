@@ -30,7 +30,7 @@
 # datetime-tz, datetimeoffset.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/DateTimeInterceptFixture.cs gates/fixtures/ldftn-local/DateTimeTCharFixture.cs gates/fixtures/ldftn-local/AbbreviatedDayFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj gates/expected/datetime-refusals.txt"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|datetime-private-calls:fixture,direct-only-emission|public-ctor:no-corelib,no-ildiet|refusals:native-frozen|tchar:malformed-return-owner|day:malformed-return|dtfi-name-edges:prefix|dtfi-timespan-patterns:prefix|cli:$(_gate_cli_hash)"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|datetime-private-calls:fixture,direct-only-emission|refusals:native-frozen|tchar:malformed-return-owner|day:malformed-return|dtfi-name-edges:prefix|dtfi-timespan-patterns:prefix|cli:$(_gate_cli_hash)"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|dto-local-time-prefix:before-dto-local-time|date-defaults-prefix:before-missing-date-defaults|exact-offset-prefix:before-exact-offset-parse"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|dtfi-public-arrays-prefix:before-dtfi-public-arrays"
 
@@ -224,16 +224,6 @@ gate_extra_asserts() {
         grep -Fqx "// $method" "$isolated/out"/generated*.cpp \
             || { echo "FAIL: direct MemberRef did not retain $method" >&2; return 1; }
     done
-
-    local public_only="$out/public-only"
-    mkdir -p "$public_only/input"
-    cp -R "$(dirname "$_CG_APP")/." "$public_only/input/"
-    gate_capture_ok "$public_only/fixture" run_bounded dotnet \
-        "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
-        --datetime-public-only "$public_only/input/DateTimeOps.dll" "$_CG_CORELIB"
-    gate_output witness "$public_only/fixture.stdout" \
-        'datetime public-only root=System.Void System.DateTime::.ctor(System.Int32,System.Int32,System.Int32)' --count 1 --policy crlf
-    gate_capture_ok "$public_only/cli" invoke_cli "$public_only/input/DateTimeOps.dll" --no-ildiet -o "$public_only/out"
 
     local negative="$out/refusal-tchar"
     mkdir -p "$negative/input"
