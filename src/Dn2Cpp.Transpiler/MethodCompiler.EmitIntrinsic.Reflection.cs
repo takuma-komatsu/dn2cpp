@@ -1964,13 +1964,17 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_get_nested_type({Cast(a, "Dn2CppType*")}, {Cast(n, "Dn2CppString*")}, {flags})");
                 return true;
             }
-            // RuntimeType Equals uses object identity; header dispatch rejects a non-Type other.
+            // Equals(Type) can consult the argument's UnderlyingSystemType.
+            // Equals(object) on RuntimeType compares object identity.
             case ("System.Type", "Equals") when sig.ParameterTypes.Length == 1:
             {
                 var other = Pop();
                 var self = Pop();
+                Emit($"dn2cpp_type_require({Cast(self, "Dn2CppType*")});");
+                if (IsSystemTypeParam(sig.ParameterTypes[0]))
+                    Emit($"dn2cpp_type_info_or_null({Cast(other, "Dn2CppType*")});");
                 Push(StackKind.I4, "int32_t",
-                    $"dn2cpp_memberinfo_equals({Cast(self, "Dn2CppObject*")}, {Cast(other, "Dn2CppObject*")})");
+                    $"({Cast(self, "Dn2CppObject*")} == {Cast(other, "Dn2CppObject*")})");
                 return true;
             }
             // Type.UnderlyingSystemType: identity — every runtime Type here IS the

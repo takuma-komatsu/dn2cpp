@@ -563,13 +563,12 @@ internal sealed partial class MethodCompiler
             Emit($"{tmp} = {CppTypes.ZeroInitExpr(ct)};");
             return tmp;
         }
-        // The eventSourceType operand of the static identity helpers, null-checked.
-        string EventSourceTypeArgument()
+        string EventSourceTypeInfo()
         {
             string ty = NewTemp("Dn2CppType*");
             Emit($"{ty} = (Dn2CppType*)({Pop().Expr});");
             Emit($"if ({ty} == nullptr) dn2cpp_throw_argument_null_param(\"eventSourceType\");");
-            return ty;
+            return $"dn2cpp_type_require({ty})";
         }
         switch (name)
         {
@@ -637,17 +636,17 @@ internal sealed partial class MethodCompiler
             // ArgumentNullException naming eventSourceType.
             case "GetName" when sig.ParameterTypes.Length == 1:
             {
-                string ty = EventSourceTypeArgument();
+                string typeInfo = EventSourceTypeInfo();
                 NoteReferenceClass(sig.ReturnType);
                 Push(StackKind.Ref, CppTypes.Of(sig.ReturnType),
-                    $"dn2cpp_eventsource_type_name({ty}->typeInfo)");
+                    $"dn2cpp_eventsource_type_name({typeInfo})");
                 return true;
             }
             case "GetGuid" when sig.ParameterTypes.Length == 1:
             {
-                string ty = EventSourceTypeArgument();
+                string typeInfo = EventSourceTypeInfo();
                 string tmp = GuidOutTemp(sig.ReturnType);
-                Emit($"dn2cpp_eventsource_type_guid({ty}->typeInfo, &{tmp});");
+                Emit($"dn2cpp_eventsource_type_guid({typeInfo}, &{tmp});");
                 Push(CppTypes.KindOf(sig.ReturnType), CppTypes.Of(sig.ReturnType), tmp);
                 return true;
             }

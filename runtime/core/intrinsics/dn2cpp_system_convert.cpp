@@ -414,9 +414,9 @@ static Dn2CppObject* dn2cpp_change_type_to(Dn2CppObject* value, const Dn2CppType
 Dn2CppObject* dn2cpp_convert_change_type(Dn2CppObject* value, Dn2CppType* targetType,
     Dn2CppObject* provider)
 {
-    if (value == nullptr || targetType == nullptr)
+    if (value == nullptr)
         return nullptr;
-    return dn2cpp_change_type_to(value, targetType->typeInfo, provider);
+    return dn2cpp_change_type_to(value, dn2cpp_type_info_or_null(targetType), provider);
 }
 
 // Whether a type implements System.IConvertible. The interface set is walked at

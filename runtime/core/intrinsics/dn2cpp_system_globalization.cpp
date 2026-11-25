@@ -2106,10 +2106,10 @@ Dn2CppObject* dn2cpp_format_provider_get_format(Dn2CppObject* provider, Dn2CppTy
 {
     if (provider == nullptr)
         dn2cpp_throw_null_reference();
-    const Dn2CppTypeInfo* wanted = requested != nullptr ? requested->typeInfo : nullptr;
     const Dn2CppTypeInfo* held = dn2cpp_nfi_box_ti(provider);
     if (held != nullptr)
     {
+        const Dn2CppTypeInfo* wanted = dn2cpp_type_info_or_null(requested);
         const auto* payload = reinterpret_cast<Dn2CppNfiBox*>(provider)->nfi;
         if (wanted == &dn2cpp_numberformatinfo_type
             && (held == &dn2cpp_cultureinfo_type || held == &dn2cpp_numberformatinfo_type))
@@ -2127,7 +2127,7 @@ Dn2CppObject* dn2cpp_format_provider_get_format(Dn2CppObject* provider, Dn2CppTy
     }
     if (provider->type != nullptr && provider->type->name != nullptr
         && std::strcmp(provider->type->name, "System.Globalization.DateTimeFormatInfo") == 0)
-        return wanted == provider->type ? provider : nullptr;
+        return dn2cpp_type_info_or_null(requested) == provider->type ? provider : nullptr;
     if (interfaceType == nullptr)
         dn2cpp_throw_invalid_operation_msg("A numeric provider has no demanded GetFormat slot");
     const void** methods = dn2cpp_resolve_interface(provider->type, interfaceType);

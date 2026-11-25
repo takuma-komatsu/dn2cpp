@@ -1626,22 +1626,24 @@ int32_t dn2cpp_type_get_array_rank(Dn2CppType* a)
     // non-array is the ArgumentException real .NET raises (measured on CoreCLR:
     // "Must be an array type." for typeof(int) and for typeof(string) alike) —
     // catchable: a reflection walk asks this about types it does not control.
-    if ((dn2cpp_type_require(a)->flags & DN2CPP_TF_ARRAY) == 0)
+    const Dn2CppTypeInfo* ti = dn2cpp_type_require(a);
+    if ((ti->flags & DN2CPP_TF_ARRAY) == 0)
         dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_HAS_TO_BE_ARRAY_CLASS);
-    int32_t r = a->typeInfo->arrayRank;
+    int32_t r = ti->arrayRank;
     return r != 0 ? r : 1;
 }
 
 int32_t dn2cpp_type_is_assignable_from(Dn2CppType* a, Dn2CppType* b)
 {
     // The RECEIVER's null is an NRE; the argument's is a plain false, as in .NET.
-    dn2cpp_type_require(a);
-    if (b == nullptr)
+    const Dn2CppTypeInfo* target = dn2cpp_type_require(a);
+    const Dn2CppTypeInfo* source = dn2cpp_type_info_or_null(b);
+    if (source == nullptr)
         return 0;
-    if (a->typeInfo == b->typeInfo || a->typeInfo == &dn2cpp_object_type)
-        return dn2cpp_typeinfo_assignable(b->typeInfo, a->typeInfo);
-    dn2cpp_type_ensure_metadata_assignability(a->typeInfo);
-    dn2cpp_type_ensure_metadata_assignability(b->typeInfo);
+    if (target == source || target == &dn2cpp_object_type)
+        return dn2cpp_typeinfo_assignable(source, target);
+    dn2cpp_type_ensure_metadata_assignability(target);
+    dn2cpp_type_ensure_metadata_assignability(source);
     // ONE rule with isinst (dn2cpp_typeinfo_assignable): a.IsAssignableFrom(b)
     // is exactly "is a b-headed instance an a?", so it must run the same walk a
     // cast runs — base chain + interface rows, generic variance, and the array
@@ -1649,8 +1651,8 @@ int32_t dn2cpp_type_is_assignable_from(Dn2CppType* a, Dn2CppType* b)
     // collection interfaces with element covariance, array-to-array covariance).
     // A private walk here answered arrays with False while the cast succeeded,
     // which mis-classified string[] members in Newtonsoft's contract resolver.
-    return dn2cpp_typeinfo_assignable(b->typeInfo, a->typeInfo) != 0
-        || dn2cpp_is_nullable_of(a->typeInfo, b->typeInfo) ? 1 : 0;
+    return dn2cpp_typeinfo_assignable(source, target) != 0
+        || dn2cpp_is_nullable_of(target, source) ? 1 : 0;
 }
 
 // Raw calls return false for a null source before observing the receiver.
@@ -1678,10 +1680,9 @@ int32_t dn2cpp_type_is_assignable_to(Dn2CppType* t, Dn2CppType* target)
 
 int32_t dn2cpp_type_is_instance_of_type(Dn2CppType* a, Dn2CppObject* obj)
 {
-    dn2cpp_type_require(a);
+    const Dn2CppTypeInfo* ta = dn2cpp_type_require(a);
     if (obj == nullptr)
         return 0;
-    const Dn2CppTypeInfo* ta = a->typeInfo;
     if (dn2cpp_type_contains_generic_parameters(ta))
         return 0;
     dn2cpp_type_ensure_metadata_relations(ta);
@@ -1694,13 +1695,12 @@ int32_t dn2cpp_type_is_instance_of_type(Dn2CppType* a, Dn2CppObject* obj)
 // excluding a itself). Class inheritance only — interfaces don't count (matching .NET).
 int32_t dn2cpp_type_is_subclass_of(Dn2CppType* a, Dn2CppType* c)
 {
-    dn2cpp_type_require(a);
+    const Dn2CppTypeInfo* ta = dn2cpp_type_require(a);
     // Unlike the assignability pair, .NET's IsSubclassOf REJECTS a null argument
     // (ArgumentNullException) rather than answering false.
     if (c == nullptr)
         dn2cpp_throw_argument_null_param("type");
-    const Dn2CppTypeInfo* ta = a->typeInfo;
-    const Dn2CppTypeInfo* tc = c->typeInfo;
+    const Dn2CppTypeInfo* tc = dn2cpp_type_require(c);
     if (ta == tc)
         return 0;
     if ((ta->flags & DN2CPP_TF_GENERICPARAM) != 0 && tc == &dn2cpp_object_type)
