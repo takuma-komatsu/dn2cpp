@@ -502,9 +502,9 @@ for the suite and the merge gate.
 - **What.** Emits `generated.{h,cpp[,cpp,...]}` (large bodies split across
   translation units for parallel compile) and links the `runtime/core/`
   TUs into a native executable.
-- **Invoke.** `dotnet run --project src/Dn2Cpp.Cli -- <input.dll> -o <outdir>`
-  (add `-r <ref.dll>` for extra assemblies, `--auto-ref` to pull the
-  shared-framework closure).
+- **Invoke.** `dotnet run --project src/Dn2Cpp.Cli -- <input.dll> --auto-ref -o <outdir>`
+  (`--auto-ref` uses the installed .NET 11 CoreLib and resolves shared-framework
+  references; add `-r <ref.dll>` for extra assemblies).
 - **GC mode.** Classic stop-the-world by default; override with
   `DN2CPP_GC_INCREMENTAL=1` / `DN2CPP_GC_TIME_LIMIT_MS`.
 
@@ -1164,8 +1164,8 @@ override the attribute or automatic choice for an exact type. Quote selectors
 containing shell punctuation:
 
 ```bash
-dn2cpp app.dll --reflection-metadata 'App.SaveRecord=native'
-dn2cpp app.dll --reflection-metadata 'App::App.Box`1[System.Int32]=packed'
+dn2cpp app.dll --auto-ref --reflection-metadata 'App.SaveRecord=native'
+dn2cpp app.dll --auto-ref --reflection-metadata 'App::App.Box`1[System.Int32]=packed'
 ```
 
 Names use their CLR namespace, `+` between nested types, and backtick arity for
