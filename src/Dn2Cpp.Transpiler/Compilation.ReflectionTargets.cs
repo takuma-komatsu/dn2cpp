@@ -960,6 +960,7 @@ internal sealed partial class Compilation
             NoteIntrinsicFtnTarget(target);
         if (CoreIntrinsics.IsCoreClrFieldDescOperation(target))
             NoteInterceptFtnTarget(target);
+        ReachReflectedNetworkFrameworkImport(target);
         if (target.Rva == 0)
             ReachUnsafeAccessor(target);
         if (CoreIntrinsics.BrDelegateCallable.Matches(target)

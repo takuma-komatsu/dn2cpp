@@ -87,10 +87,11 @@ internal sealed partial class MethodCompiler
     {
         // Address-taken imports use the same managed override as direct calls.
         // The direct-call mouth has already checked this before entering here.
-        if (ftnWrapper && (CoreIntrinsics.PiAbsentGlobalizationNative.Matches(callee)
-                || CoreIntrinsics.PiAbsentCoreClrQCall.Matches(callee))
-            && _c.NativeImplFor(pinv) is { } implementation
-            && !ReferenceEquals(implementation, _method))
+        if (ftnWrapper && _c.NativeImplFor(pinv) is { } implementation
+            && !ReferenceEquals(implementation, _method)
+            && (CoreIntrinsics.PiAbsentGlobalizationNative.Matches(callee)
+                || CoreIntrinsics.PiAbsentCoreClrQCall.Matches(callee)
+                || Compilation.IsNetworkFrameworkObjectImport(callee)))
         {
             EmitNativeImplCall(callee, implementation);
             return;

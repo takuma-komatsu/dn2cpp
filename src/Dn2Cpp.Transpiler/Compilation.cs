@@ -6622,7 +6622,7 @@ internal sealed partial class Compilation
         // remain behind their intrinsic/refusal boundary; absent runtime modules
         // use a callable refusal through this same route.
         if (!IsFrameworkAssemblyName(m.DeclaringClass.Module.AssemblyName)
-            || IsDirectPInvoke(m) || IsAbsentGlobalizationImport(m))
+            || IsDirectPInvoke(m) || IsAbsentGlobalizationImport(m) || IsNetworkFrameworkObjectImport(m))
             return true;
 
         // A concrete cut lowering owns both calls and addresses. The intrinsic-type
@@ -6630,6 +6630,40 @@ internal sealed partial class Compilation
         return IsAbsentCoreClrQCall(m)
             && (!CoreIntrinsics.TryFindCutRow(m, out var row)
                 || row.EmitArm == InterceptEmitArm.IntrinsicDispatch);
+    }
+
+    // dyld supplies these ownership operations only on Apple platforms. Binding the
+    // original absolute path on first use also honors the declaring assembly's resolver.
+    internal static bool IsNetworkFrameworkObjectImport(MethodInfo method)
+    {
+        if (method.PInvoke is not { ModuleName: "/System/Library/Frameworks/Network.framework/Network" } import
+            || method.Module.AssemblyName != "System.Net.Security" || method.Rva != 0 || !method.IsStatic
+            || method.Handle.IsNil || import.ReturnMarshalAs is not null || import.ParamMarshalAs.Count != 0)
+            return false;
+        bool retain = method.Name == "Retain" && import.RawEntryPoint == "nw_retain";
+        if (!retain && !(method.Name == "Release" && import.RawEntryPoint == "nw_release"))
+            return false;
+        var reader = method.Module.Reader;
+        var definition = reader.GetMethodDefinition(method.Handle);
+        if (RawSignatureProvider.TypeDefinitionName(reader, definition.GetDeclaringType()) != "Interop+NetworkFramework")
+            return false;
+        var signature = reader.GetBlobReader(definition.Signature);
+        var assembly = reader.GetAssemblyDefinition();
+        return signature.RemainingBytes == 4 && signature.ReadByte() == 0 && signature.ReadByte() == 1
+            && signature.ReadByte() == (byte)(retain ? SignatureTypeCode.IntPtr : SignatureTypeCode.Void)
+            && signature.ReadByte() == (byte)SignatureTypeCode.IntPtr
+            && (definition.ImplAttributes & MethodImplAttributes.PreserveSig) != 0
+            && assembly.Culture.IsNil && (assembly.Flags & AssemblyFlags.PublicKey) != 0
+            && TargetFrameworkAssets.PublicKeyToken(reader, assembly) == 0xb03f5f7f11d50a3aUL;
+    }
+
+    private void ReachReflectedNetworkFrameworkImport(MethodInfo method)
+    {
+        if (!IsNetworkFrameworkObjectImport(method) || IsBoundedMethod(method.DeclaringClass.FullName, method.Name))
+            return;
+        NotePInvokeFtnTarget(method);
+        if (NativeImplFor(method.PInvoke!) is { } implementation)
+            ReachEntered(implementation);
     }
 
     // Invariant globalization has no ICU PAL. Keep retained imports callable,
