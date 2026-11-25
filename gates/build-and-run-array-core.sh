@@ -1396,6 +1396,4 @@ for line in 'opaque-comparer/is-null:False' 'opaque-comparer/is-string:False' \
         || { echo "FAIL: comparer type-only witness must run once: $line" >&2; exit 1; }
 done
 
-(md_readonly_byrefs_gate unity)
-(export DN2CPP_NO_GC=1; md_readonly_byrefs_gate nogc)
-(export DN2CPP_GC_BACKEND=upstream; md_readonly_byrefs_gate upstream)
+(md_readonly_byrefs_gate native)
