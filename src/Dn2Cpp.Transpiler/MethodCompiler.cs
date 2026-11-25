@@ -1784,6 +1784,16 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// intrinsic table names. Null when no Cut row answers the method.</summary>
     internal string? CompileInterceptWrapper()
     {
+        if (_c.UnsafeAccessorGetters.TryGetValue(_method, out var getter))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                var receiver = _stack[^1];
+                Emit($"(void)dn2cpp_null_check({receiver.Expr});");
+                _stack[^1] = receiver with { NonNull = true };
+                _callIsVirtual = true;
+                EmitCallTarget(getter.Handle, isCallvirt: true, getter);
+                return true;
+            }, "UnsafeAccessor instance getter");
         if (!CoreIntrinsics.TryFindCutRow(_method, out var row))
             return null;
         return SynthesizeWrapperBody(

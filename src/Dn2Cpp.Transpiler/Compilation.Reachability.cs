@@ -280,7 +280,10 @@ internal sealed partial class Compilation
             return;
         }
         if (m.Rva == 0)
+        {
+            ReachUnsafeAccessorGetter(m);
             return;
+        }
         if (CoreIntrinsics.IsWaitHandleTimeoutConversion(m)
             || CoreIntrinsics.IsDateTimeCultureManagedBody(m)
             || CoreIntrinsics.IsReflectionManagedBody(m)
