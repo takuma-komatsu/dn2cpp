@@ -8,7 +8,7 @@ internal static partial class CoreIntrinsics
     // Identity is independent of the numeric admission and Numerics-only policies.
     internal static bool IsFixedVectorValueOwner(ClassInfo owner) => FixedVectorValueOwnerWidth(owner) != 0;
 
-    private static int FixedVectorValueOwnerWidth(ClassInfo owner)
+    internal static int FixedVectorValueOwnerWidth(ClassInfo owner)
     {
         if (owner.Handle.IsNil || owner.Module.AssemblyName != "System.Private.CoreLib") return 0;
         var reader = owner.Module.Reader;

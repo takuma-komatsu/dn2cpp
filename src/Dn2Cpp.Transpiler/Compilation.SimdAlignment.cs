@@ -261,7 +261,8 @@ internal sealed partial class Compilation
         foreach (var pair in _simdAlignmentBodies)
             if (pair.Value == method)
             {
-                ValidateSimdAlignmentOwner(pair.Key.Owner);
+                ValidateSimdAlignmentOwner(pair.Key.Owner,
+                    requireNumeric: !CoreIntrinsics.IsOrderedUnsupportedAlignedVector(pair.Key.Owner));
                 ValidateSimdAlignmentBodyDefinition(pair.Key.Owner, pair.Key.Definition);
                 ValidateSimdAlignmentBodyModel(method, pair.Key.Owner, pair.Key.Definition);
                 return;
@@ -298,7 +299,7 @@ internal sealed partial class Compilation
             // its 128-bit register). Any positive power of two up to the width is a
             // valid alignment; every other body is refused.
             int alignment = SimdAlignmentConstant(bytes);
-            if (alignment <= 0 || alignment > CoreIntrinsics.VectorValueWidth(vector) || (alignment & (alignment - 1)) != 0)
+            if (alignment <= 0 || alignment > CoreIntrinsics.FixedVectorValueOwnerWidth(vector) || (alignment & (alignment - 1)) != 0)
                 throw SimdAlignmentUnsupported();
         }
     }

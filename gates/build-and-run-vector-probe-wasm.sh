@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # IEEE vector arithmetic on EMU128 and Web SIMD, plus value-method and managed
-# unsupported-element ABI parity on wasm32 using the same default image.
+# unsupported-element ABI and aligned-memory exception order on the same default wasm32 image.
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_vector-floating-point.sh"
 source "$(dirname "$0")/_vector-corelib-checks.sh"
+source "$(dirname "$0")/_vector-alignment-probe.sh"
 
 dn2cpp_emsdk_resolve --no-bundled
 for tool in em++ emcmake node; do
@@ -11,4 +12,5 @@ for tool in em++ emcmake node; do
 done
 export WASM=1
 unset SCALAR HIGHWAY DN2CPP_WASM_SIMD
+vector_alignment_setup
 vector_floating_wasm_gate

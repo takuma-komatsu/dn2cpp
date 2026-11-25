@@ -23,6 +23,7 @@
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_vector-floating-point.sh"
 source "$(dirname "$0")/_vector-corelib-checks.sh"
+source "$(dirname "$0")/_vector-alignment-probe.sh"
 
 # dn2cpp fixes Vector<T> at 128 bits. Keep the hardware-dependent real-.NET
 # oracle at that width so exact output remains host-independent.
@@ -32,36 +33,13 @@ export DN2CPP_GATE_EXTRA_INPUTS="gates/_vector-floating-point.sh gates/_vector-c
 
 source "$(dirname "$0")/_vector-regression-checks.sh"
 
-unsupported_aligned_fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll"
-build_gate_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
-DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS $unsupported_aligned_fixture"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|unsupported-aligned-boundary"
-gate_prepare_app() {
-    local project="$1" out="$2" prepared stable file
-    [ "$project" = VectorProbe ] || return 0
-    mkdir -p "$out"
-    prepared=$(mktemp -d "$out/unsupported-aligned-app.XXXXXX")
-    gate_capture_ok "$prepared/rewrite" run_bounded dotnet "$unsupported_aligned_fixture" \
-        --unsupported-aligned "$_CG_APP" "$prepared/VectorProbe.dll" "$_CG_CORELIB"
-    cp "${_CG_APP%.dll}.runtimeconfig.json" "$prepared/VectorProbe.runtimeconfig.json"
-    cp "${_CG_APP%.dll}.deps.json" "$prepared/VectorProbe.deps.json"
-    # The cache hashes paths as well as bytes. Keep fresh rewrite evidence but
-    # publish the app at a stable path, preserving identical existing files.
-    stable="$out/unsupported-aligned-app"
-    mkdir -p "$stable"
-    for file in VectorProbe.dll VectorProbe.runtimeconfig.json VectorProbe.deps.json; do
-        if ! cmp -s "$prepared/$file" "$stable/$file"; then
-            cp "$prepared/$file" "$stable/$file.tmp"
-            mv "$stable/$file.tmp" "$stable/$file"
-        fi
-    done
-    _CG_APP="$stable/VectorProbe.dll"
-}
-
-corelib_diff_gate VectorProbe
+vector_alignment_setup
+DN2CPP_STRICT_COMPLETION=1 corelib_diff_gate VectorProbe
 unset -f gate_prepare_app
+vector_aligned_parity "$_CG_OUT" "./$_CG_OUT/VectorProbe$EXE_EXT"
+DN2CPP_STRICT_COMPLETION=1 vector_aligned_full "$_CG_OUT"
 gate_capture_ok "$_CG_OUT/unsupported-aligned" run_bounded "./$_CG_OUT/VectorProbe$EXE_EXT" unsupported-aligned-boundary
-for closure in 'Vector<decimal>' 'Vector<char>' 'Vector64<Int128>' 'Vector128<char>' 'Vector256<UInt128>' 'Vector512<decimal>'; do
+for closure in 'Vector<char>' 'Vector512<decimal>'; do
     for mode in 0 2; do
         for route in direct address; do
             gate_output witness "$_CG_OUT/unsupported-aligned.stdout" \
@@ -86,10 +64,9 @@ vector_fma_branches "$_CG_APP"
 # Backend-independent, so only this gate runs these checks.
 vector_refusals() {
     local out=artifacts/vector-refusals
-    local fixture="gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll"
-    build_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+    local fixture="$vector_aligned_fixture"
     mkdir -p "$out"
-    if gate_cache_check "$out" "vector-refusals|$_CG_CORELIB|cli:$(_gate_cli_hash)" \
+    if gate_cache_check "$out" "vector-refusals|$_CG_CORELIB|full:$DN2CPP_VECTOR_FULL|cli:$vector_aligned_cli" \
             "$fixture" gates/fixtures/vector-alignment/check-generated.py; then
         gate_cache_hit_msg
         return 0
@@ -97,6 +74,10 @@ vector_refusals() {
     local mode expected run
     run=$(mktemp -d "$out/run.XXXXXX")
     while IFS='|' read -r mode expected; do
+        if [ "$mode" = unsupported-alignment-foreign-caller ] && [ "$DN2CPP_VECTOR_FULL" != 1 ]; then
+            echo 'Vector foreign-caller refusal: skipped (not selected); not counted as passed'
+            continue
+        fi
         gate_capture_ok "$run/$mode-generate" run_bounded dotnet "$fixture" --vector-refusal "$run/$mode.dll" "$_CG_CORELIB" "$mode"
         gate_capture "$run/$mode" invoke_cli "$run/$mode.dll" -r "$_CG_CORELIB" --no-ildiet -o "$run/$mode-emit"
         gate_output status "$(cat "$run/$mode.status")" 2
@@ -118,6 +99,7 @@ unsupported-alignment-methodspec|Unsupported aligned defaults require their exac
 unsupported-alignment-signature|Unsupported aligned defaults require their exact closed CoreLib declaration and signature
 unsupported-alignment-context|Unsupported aligned defaults require their exact closed CoreLib declaration and signature
 unsupported-alignment-owner|Unsupported aligned defaults require their exact closed CoreLib declaration and signature
+unsupported-alignment-foreign-caller|ISimdVector.Alignment requires its exact CoreLib slot, numeric closure and concrete managed MethodImpl
 alignment-helper|Fixture.Program.Main: ISimdVector.Alignment requires its exact CoreLib slot, numeric closure and concrete managed MethodImpl
 as|Vector reinterpretation requires an exact closed CoreLib declaration and unmodified MethodSpec
 reduction|Concrete vector reduction requires an exact nongeneric CoreLib declaration and unmodified reference

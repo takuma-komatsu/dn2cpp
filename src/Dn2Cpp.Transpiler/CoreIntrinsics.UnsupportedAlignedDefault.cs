@@ -56,6 +56,13 @@ internal static partial class CoreIntrinsics
         return true;
     }
 
+    internal static bool IsOrderedUnsupportedAlignedVector(ClassInfo vector)
+    {
+        if (vector.Context.TypeArgs is not [var element] || !IsUnsupportedAlignedElement(element)) return false;
+        bool isDecimal = element.Class?.FullName == "System.Decimal";
+        return IsVectorExplicitOwner(vector) ? isDecimal : IsFixedVectorValueOwner(vector) && !isDecimal;
+    }
+
     internal static bool IsUnsupportedAlignedCandidate(ClassInfo owner, string name) =>
         IsUnsupportedAlignedName(name) && IsSimdDefaultOwner(owner)
         && owner.Context.TypeArgs is [var self, var element]

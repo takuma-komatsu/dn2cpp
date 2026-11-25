@@ -1579,7 +1579,7 @@ capability reporting retain their existing policies.
 
 #### SIMD alignment defaults
 
-Retained `ISimdVector<TSelf,T>` aligned-memory defaults resolve their alignment
+Ordinary constrained calls to `ISimdVector<TSelf,T>.get_Alignment` resolve the
 slot only for authenticated closed numeric vector owners. The exact private
 `MethodImpl` body is materialized without opening the mapped owner's full method
 catalog. Fixed widths execute their installed constants; `Vector<T>` retains the
@@ -1591,16 +1591,19 @@ The default body's alignment check and genuine `ThrowAccessViolationException`
 body remain managed IL, preserving exception type, argument order and memory
 effects without substituting the public aligned-memory facades.
 
-Exception ordering for unsupported aligned-memory defaults is outside this
-contract. Authenticated `ISimdVector<TVector,T>` aligned load/store defaults for
-`Vector<T>` and `Vector64/128/256/512<T>` over `decimal`, `char`, `Int128` or
-`UInt128` retain callable bodies that throw `PlatformNotSupportedException`
-before touching memory. Other default bodies, concrete overrides and public
-facades are unchanged. Callers' argument evaluation is preserved, but
-unsupported-element alignment exception ordering is not emulated. These bounded
-closures keep their existing managed or intrinsic storage without gaining numeric
-lane support. Supported numeric memory operations keep their managed alignment
-guards; unknown element types are not admitted by this boundary.
+For `Vector<decimal>` and fixed-width vectors over `char`, `Int128` or `UInt128`,
+the retained aligned load/store default executes its CoreLib alignment branch.
+Only its two authenticated constrained calls may use the concrete alignment
+getter and the unsupported-element exception. The terminal call follows the
+exact unsafe slot, its vector implementation and the facade's leading type
+guard to the CoreLib resource-bearing exception. It cannot read or write the
+pointee. Fixed-width alignment comes from the installed getter, including
+images that cap a wide vector's required alignment below its size.
+
+The remaining authenticated aligned defaults over `decimal`, `char`, `Int128`
+and `UInt128` raise `PlatformNotSupportedException`. Callers evaluate their
+arguments before entering either body. Public facades, other default methods
+and direct calls to the alignment slot retain their existing admission rules.
 
 #### Unmapped vector value methods
 

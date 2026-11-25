@@ -118,7 +118,7 @@ internal sealed partial class Compilation
                 throw GuardedVectorAsUnsupported();
     }
 
-    private void ValidateVectorAsSupportedWhitelist(MethodInfo getter)
+    private void ValidateVectorAsSupportedWhitelist(MethodInfo getter, bool aligned = false)
     {
         // Vector<T> owns no element whitelist; it forwards to Scalar<T>'s.
         if (CoreIntrinsics.IsVectorExplicitOwner(getter.DeclaringClass))
@@ -130,17 +130,17 @@ internal sealed partial class Compilation
                 throw GuardedVectorAsUnsupported();
             getter = ResolveVectorScalarGetter(getter.Module, forward[0].Token, "get_IsSupported", 0x13, getter.Context, lane);
         }
-        else if (!getter.Module.Reader.StringComparer.Equals(
-                getter.Module.Reader.GetTypeDefinition(getter.DeclaringClass.Handle).Name, "Vector64`1")
-            || !CoreIntrinsics.IsFixedVectorManagedValueClass(getter.DeclaringClass))
+        else if (aligned ? !CoreIntrinsics.IsOrderedUnsupportedAlignedVector(getter.DeclaringClass)
+            : !getter.Module.Reader.StringComparer.Equals(getter.Module.Reader.GetTypeDefinition(getter.DeclaringClass.Handle).Name, "Vector64`1")
+                || !CoreIntrinsics.IsFixedVectorManagedValueClass(getter.DeclaringClass))
             throw GuardedVectorAsUnsupported();
         ValidateVectorElementWhitelist(getter,
-            new[] { "Byte", "Double", "Int16", "Int32", "Int64", "IntPtr", "SByte", "Single", "UInt16", "UInt32", "UInt64", "UIntPtr" });
+            new[] { "Byte", "Double", "Int16", "Int32", "Int64", "IntPtr", "SByte", "Single", "UInt16", "UInt32", "UInt64", "UIntPtr" }, aligned);
     }
 
     // The getter is true exactly for the listed primitives, so it is false for
     // the admitted managed value element.
-    private void ValidateVectorElementWhitelist(MethodInfo getter, string[] names)
+    private void ValidateVectorElementWhitelist(MethodInfo getter, string[] names, bool allowChar = false)
     {
         var module = getter.Module;
         var reader = module.Reader;
@@ -148,7 +148,9 @@ internal sealed partial class Compilation
         int end = names.Length * 6;
         if (il.Count != end + 2 || !module.PE.GetMethodBody(getter.Rva).LocalSignature.IsNil
             || il[end - 1].OpCode != ILOpCode.Ret || il[end].OpCode != ILOpCode.Ldc_i4_1 || il[end + 1].OpCode != ILOpCode.Ret
-            || getter.Context.TypeArgs is not [{ Kind: TypeKind.Class, IsCanonPlaceholder: false, Class: { } element }])
+            || getter.Context.TypeArgs is not [var lane] || lane.IsCanonPlaceholder
+            || !(lane is { Kind: TypeKind.Class, Class: not null }
+                || allowChar && lane is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char }))
             throw GuardedVectorAsUnsupported();
         for (int index = 0; index < names.Length; index++)
         {
@@ -170,7 +172,8 @@ internal sealed partial class Compilation
             if (!definition.GetDeclaringType().IsNil || definition.GetGenericParameters().Count != 0
                 || !reader.StringComparer.Equals(definition.Namespace, "System")
                 || !reader.StringComparer.Equals(definition.Name, names[index])
-                || element.Module == module && element.Handle == (TypeDefinitionHandle)type)
+                || lane.Class is { } element && element.Module == module && element.Handle == (TypeDefinitionHandle)type
+                || lane.Kind == TypeKind.Primitive && names[index] == "Char")
                 throw GuardedVectorAsUnsupported();
             ValidateVectorAsTypeOperation(module, il[start + 1].Token, false);
             ValidateVectorAsTypeOperation(module, il[start + 4].Token, true);

@@ -177,6 +177,7 @@ DN2CPP_TRIM_REFLECTION_FULL=1 CONFIG=Debug bash gates/build-and-run-trim-reflect
 DN2CPP_OBFUSCATION_FULL=1 CONFIG=Debug bash gates/build-and-run-obfuscation.sh
 DN2CPP_WASM_CONSOLE_FULL=1 CONFIG=Debug bash gates/build-and-run-wasm-console.sh
 DN2CPP_PLATFORM_ISA_FULL=1 CONFIG=Debug bash gates/build-and-run-platform-isa-native.sh
+DN2CPP_VECTOR_FULL=1 CONFIG=Debug bash gates/build-and-run-vector-probe.sh
 DN2CPP_DEFAULT_CULTURE_FULL=1 CONFIG=Debug bash gates/build-and-run-default-culture.sh
 ```
 
