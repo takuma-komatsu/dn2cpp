@@ -389,6 +389,7 @@ internal sealed partial class Compilation
         var sig = method.Signature;
         NotePreservedType(sig.ReturnType);
         foreach (var type in sig.ParameterTypes) NotePreservedType(type);
+        ReachReflectedNetworkFrameworkImport(method);
         Reach(method);
         // Reflection enters a preserved member with no IL caller to trigger its type's
         // initializer, as a run-time root does.

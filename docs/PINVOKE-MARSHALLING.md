@@ -16,7 +16,9 @@ run the resolver again.
 `--direct-pinvoke <module[!entrypoint]>` keeps a
 selected import on the static-link path, and `--direct-pinvoke '*'` selects all
 imports for static-only targets. Framework imports retain their intrinsic/refusal
-boundary unless the runtime provides their module or a direct selector admits them.
+boundary unless the runtime supplies the import or a direct selector admits it.
+The macOS `System.Net.Security` imports for `nw_retain` and `nw_release` bind
+lazily to the absolute Network.framework path declared in the assembly.
 The wildcard never admits CoreLib's private `QCall` module, which no target can
 link; only a selector naming the module or its entry point does.
 Matching is ordinal and exact. Only direct imports are written to `pinvoke-libs.txt`

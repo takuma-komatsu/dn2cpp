@@ -152,20 +152,26 @@ internal static class TargetFrameworkAssets
         if (!reader.StringComparer.Equals(definition.Name, file[..^4]) || !definition.Culture.IsNil
             || asset is not null && definition.Version.ToString() != asset.String("assemblyVersion")
             || (definition.Flags & AssemblyFlags.PublicKey) == 0) return false;
-        byte[] key = reader.GetBlobBytes(definition.PublicKey);
-        if (key.Length == 0) return false;
         // These are the signing identities used by the FrameworkVersion runtime pack.
         // A token is an assembly identity check; not signature authentication.
-        byte[] hash = SHA1.HashData(key);
-        ulong token = 0;
-        for (int i = hash.Length - 1; i >= hash.Length - 8; i--)
-            token = (token << 8) | hash[i];
+        ulong token = PublicKeyToken(reader, definition);
         if (file == CoreLib ? token != CoreLibKey
                 : token is not (0xb03f5f7f11d50a3aUL or 0xcc7b13ffcd2ddd51UL
                     or 0xb77a5c561934e089UL or 0x31bf3856ad364e35UL
                     or 0xadb9793829ddae60UL)) return false;
         return asset is null
             || FileVersion(reader, definition) is { } version && version == asset.String("fileVersion");
+    }
+
+    internal static ulong PublicKeyToken(MetadataReader reader, AssemblyDefinition definition)
+    {
+        byte[] key = reader.GetBlobBytes(definition.PublicKey);
+        if (key.Length == 0) return 0;
+        byte[] hash = SHA1.HashData(key);
+        ulong token = 0;
+        for (int i = hash.Length - 1; i >= hash.Length - 8; i--)
+            token = (token << 8) | hash[i];
+        return token;
     }
 
     private static string? FileVersion(MetadataReader reader, AssemblyDefinition assembly)

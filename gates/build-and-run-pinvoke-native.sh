@@ -122,7 +122,7 @@ if [ "$DN2CPP_OS" = macos ]; then
     build_gate_proj gates/fixtures/pinvoke-framework/FrameworkProbe.csproj
     framework_app="gates/fixtures/pinvoke-framework/bin/$CONFIG/$TFM/FrameworkProbe.dll"
     framework_out="artifacts/pinvokenative-framework-$CONFIG"
-    invoke_cli "$framework_app" -r "$corelib" \
+    invoke_cli "$framework_app" -r "$corelib" -r "$(dirname "$corelib")/System.Net.Security.dll" --auto-ref \
         --direct-pinvoke '/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation' \
         -o "$framework_out"
     [ ! -e "$framework_out/pinvoke-libs.txt" ] && [ ! -e "$framework_out/pinvoke-symbols.txt" ] \
@@ -131,7 +131,7 @@ if [ "$DN2CPP_OS" = macos ]; then
     gate_capture_ok "$framework_out/native" run_bounded "$framework_out/FrameworkProbe$EXE_EXT"
     gate_capture_ok "$framework_out/oracle" run_bounded dotnet exec "$framework_app"
     gate_output compare "$framework_out/native.stdout" "$framework_out/oracle.stdout"
-    gate_assert_text "$framework_out/native.stdout" 'core-foundation=True'
+    gate_assert_text "$framework_out/native.stdout" $'core-foundation=True\nnetwork-ownership=True'
 fi
 
 echo "== 6/11 Asserting the ByValTStr struct-field crossing refuses at transpile =="
