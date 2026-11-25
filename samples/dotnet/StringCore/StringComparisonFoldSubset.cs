@@ -117,6 +117,13 @@ namespace StringComparisonFoldSubset
             return (StringComparison)6;
         }
 
+        internal static void RunCharContains()
+        {
+            const string text = "\u03a3x";
+            Console.WriteLine("char contains=" + text.Contains('\u03c3', StringComparison.OrdinalIgnoreCase)
+                + ":" + text.Contains('\u03c3', StringComparison.Ordinal));
+        }
+
         private static void Fault(string label, Func<int> call)
         {
             try

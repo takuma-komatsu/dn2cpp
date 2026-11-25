@@ -849,18 +849,16 @@ internal sealed partial class MethodCompiler
                     $"dn2cpp_str_indexof_char_range({Cast(s, "Dn2CppString*")}, (char16_t)({ch.Expr}), {Cast(start, "int32_t")}, {Cast(count, "int32_t")})");
                 return true;
             }
-            // IndexOf(char, StringComparison): Ordinal/OrdinalIgnoreCase (culture
-            // values fold onto them in the helper, like the other comparison
-            // overloads — dn2cpp_str_comparison_fold).
-            case ("System.String", "IndexOf")
+            // CoreLib implements Contains(char, StringComparison) as IndexOf(char, comparison) >= 0.
+            case ("System.String", "IndexOf" or "Contains")
                 when sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char },
-                    { Kind: TypeKind.Class, Class.IsEnum: true }]:
+                    var comparisonType] && comparisonType.ToString() == "System.StringComparison":
             {
                 var cmp = Pop();
                 var ch = Pop();
                 var s = Pop();
-                Push(StackKind.I4, "int32_t",
-                    $"dn2cpp_str_indexof_char_cmp({Cast(s, "Dn2CppString*")}, (char16_t)({ch.Expr}), {cmp.Expr})");
+                string index = $"dn2cpp_str_indexof_char_cmp({Cast(s, "Dn2CppString*")}, (char16_t)({ch.Expr}), {cmp.Expr})";
+                Push(StackKind.I4, "int32_t", name == "Contains" ? $"({index} >= 0)" : index);
                 return true;
             }
             // IndexOf(string), ordinal. (.NET's 1-arg default is CurrentCulture;
