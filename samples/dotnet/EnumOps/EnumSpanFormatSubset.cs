@@ -51,6 +51,21 @@ namespace EnumSpanFormatSubset
     //    uppercase hex ("x" is uppercase too, as .NET does).
     internal static class Program
     {
+        private delegate bool FormatPermissions(BytePerm value, Span<char> destination,
+            out int written, ReadOnlySpan<char> format);
+
+        internal static void RunFormatDelegate()
+        {
+            FormatPermissions format = Enum.TryFormat<BytePerm>;
+            var method = format.Method;
+            bool concrete = method.DeclaringType == typeof(Enum)
+                && method.GetGenericArguments()[0] == typeof(BytePerm)
+                && method.GetParameters()[0].ParameterType == typeof(BytePerm);
+            char[] buffer = new char[2];
+            bool success = format(BytePerm.Read | BytePerm.Write, buffer, out int written, "X".AsSpan());
+            Console.WriteLine("enum TryFormat delegate=" + concrete + ":" + (success ? new string(buffer, 0, written) : "failed"));
+        }
+
         private static void SpanTry(string label, string s)
         {
             object v;

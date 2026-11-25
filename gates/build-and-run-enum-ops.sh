@@ -129,7 +129,7 @@ gate_extra_asserts() {
     gate_output select "$native" "$out/enum-values-prefix.stdout" --before '== enum values lookup ==' --policy crlf
     gate_output compare "$out/enum-values-prefix.stdout" "$out/enum-values-before.stdout" --policy crlf
     gate_output witness "$native" 'enum values lookup end' 'dynamic-enumerated:0,65535,65535,' \
-        'field-only:0,0,65535,' --count 1 --policy crlf
+        'field-only:0,0,65535,' 'enum TryFormat delegate=True:03' --count 1 --policy crlf
 
     narrow_enum_storage_asserts "$out"
 }
