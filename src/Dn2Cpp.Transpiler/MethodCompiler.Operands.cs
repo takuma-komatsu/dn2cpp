@@ -196,6 +196,8 @@ internal sealed partial class MethodCompiler
     /// a writable lvalue of the field's declared width.</summary>
     private string? RuntimeValueFieldLValue(ClassInfo cls, FieldInfo fld, StackEntry obj)
     {
+        if (fld.Name == "m_defaultCreationOptions" && CoreIntrinsics.IsTaskFactoryOwner(cls))
+            return $"((Dn2CppTaskFactory*)({NullCheckReceiver(obj)}))->defaultCreationOptions";
         if (cls.FullName == "System.DateTimeOffset" && fld.Name is "_dateTime" or "_offsetMinutes")
             throw new NotSupportedException($"{cls.FullName}.{fld.Name} has no writable runtime field");
         if (cls.FullName == "System.AggregateException" && fld.Name == "_innerExceptions")

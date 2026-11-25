@@ -1115,6 +1115,40 @@ internal sealed partial class MethodCompiler
                 }
                 return true;
             }
+            case ("System.Threading.Tasks.Task", "TrySetCanceled") when CoreIntrinsics.IsTaskFactoryApmBody(Method)
+                && sig.ParameterTypes.Length == 2:
+            {
+                // FromAsync passes the caught OCE itself, alongside its token.
+                var exception = Pop();
+                var token = Pop();
+                var task = Pop();
+                EmitCanceledExcRegistration();
+                Push(StackKind.I4, "int32_t", $"dn2cpp_task_finish_canceled_promise((Dn2CppTask*)({task.Expr}), 0, ({token.Expr}).source, (Dn2CppObject*)({exception.Expr}))");
+                return true;
+            }
+            case ("System.Threading.Tasks.Task", "TrySetException") when CoreIntrinsics.IsTaskFactoryApmBody(Method)
+                && sig.ParameterTypes.Length == 1:
+            {
+                var exception = Pop();
+                var task = Pop();
+                Push(StackKind.I4, "int32_t", $"dn2cpp_task_try_set_exception((Dn2CppTask*)({task.Expr}), (Dn2CppObject*)({exception.Expr}))");
+                return true;
+            }
+            case ("System.Threading.Tasks.Task", "DangerousSetResult") when CoreIntrinsics.IsTaskFactoryApmBody(Method)
+                && sig.ParameterTypes.Length == 1:
+            {
+                string result = EmitTaskResultStore(Pop());
+                var task = Pop();
+                Emit($"dn2cpp_task_try_set_result((Dn2CppTask*)({task.Expr}), {result});");
+                return true;
+            }
+            case ("System.Threading.Tasks.Task", "AddToActiveTasks") when CoreIntrinsics.IsTaskFactoryApmBody(Method):
+                Pop();
+                PushI4Const(0);
+                return true;
+            case ("System.Threading.Tasks.Task", "RemoveFromActiveTasks") when CoreIntrinsics.IsTaskFactoryApmBody(Method):
+                Pop();
+                return true;
             case ("System.Threading.Tasks.Task", "GetAwaiter"):
             {
                 var t = Pop();

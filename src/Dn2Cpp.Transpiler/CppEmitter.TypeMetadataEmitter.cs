@@ -1465,10 +1465,15 @@ internal sealed partial class CppEmitter
             foreach (var c in _e._referencedIntrinsicTis)
             {
                 var helperRows = ReferencedIntrinsicHelperRows(c).ToList();
+                // Each closed owner with callable rows needs its own registered table extent.
+                if (helperRows.Count != 0)
+                    _e.BeginMetadataBlock(_c.UsesNativeReflectionMetadata(c));
                 var helperTable = BuildMemberTable(c, helperRows.Where(m => m.Name != ".ctor").ToList(),
                     c.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler" ? "interpolationhelpertab"
                     : CoreIntrinsics.IsTaskCompletionSourceOwner(c) ? "tcstransfertab" : "methtab");
                 var helperConstructors = BuildMemberTable(c, helperRows.Where(m => m.Name == ".ctor").ToList(), "ctortab");
+                if (helperRows.Count != 0)
+                    _e.EndMetadataBlock(_sb);
                 bool isTask = _c.GenericDefFullName(c) == "System.Threading.Tasks.Task";
                 string interfaces = "nullptr";
                 int interfaceCount = 0;
@@ -2304,7 +2309,8 @@ internal sealed partial class CppEmitter
         {
             foreach (var cls in _c.Classes.ToList())
             {
-                if (cls.FullName is not ("System.Type" or "System.RuntimeType" or "System.Reflection.Module" or "System.Reflection.RuntimeModule"
+                bool taskFactory = cls.GenericArity == 0 && CoreIntrinsics.IsTaskFactoryOwner(cls);
+                if (!taskFactory && cls.FullName is not ("System.Type" or "System.RuntimeType" or "System.Reflection.Module" or "System.Reflection.RuntimeModule"
                     or "System.Reflection.CustomAttributeData" or "System.Reflection.RuntimeCustomAttributeData" or "System.Threading.Tasks.TaskScheduler"))
                     continue;
                 foreach (var method in cls.Methods)
@@ -2312,13 +2318,16 @@ internal sealed partial class CppEmitter
                     bool instance = method.Name == "GetNullableUnderlyingType" && CoreIntrinsics.IsNullableTypeQuery(method)
                         || method.Name is "GetCustomAttributesData" or "get_ConstructorArguments" && CoreIntrinsics.IsReflectionManagedBody(method)
                         || CoreIntrinsics.IsTaskSchedulerDequeue(method) || CoreIntrinsics.IsTaskSchedulerExecute(method);
-                    if (!(instance && _c.KeepsUnreachedRow(method) || CoreIntrinsics.IsMemberNotFoundExceptionFactory(method))
+                    bool actionFromAsync = taskFactory && method.Name == "FromAsync" && CoreIntrinsics.IsTaskFactoryApmBody(method)
+                        && method.Module.Reader.GetMethodDefinition(method.Handle).GetGenericParameters().Count == 0;
+                    if (!(actionFromAsync || instance && _c.KeepsUnreachedRow(method) || CoreIntrinsics.IsMemberNotFoundExceptionFactory(method))
                         || !IsRetainedOpaqueMemberRow(method))
                         continue;
                     // Delegate.Method and named lookup must hand out the same physical row.
                     if (!_memberAddr.TryGetValue(method, out var address))
                     {
-                        BuildMemberTable(cls, new List<MethodInfo> { method }, "namedruntimetab_" + method.Name);
+                        string suffix = actionFromAsync ? method.CppName : method.Name;
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "namedruntimetab_" + suffix);
                         if (!_memberAddr.TryGetValue(method, out address))
                             throw new InvalidOperationException($"Retained {cls.FullName}.{method.Name} has no metadata row.");
                     }
@@ -4223,7 +4232,8 @@ internal sealed partial class CppEmitter
         private static bool IsReferencedIntrinsicHelperOwner(ClassInfo owner)
         {
             if (owner.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
-                || CoreIntrinsics.IsTaskLifecycleOwner(owner) || CoreIntrinsics.IsTaskCompletionSourceOwner(owner))
+                || CoreIntrinsics.IsTaskLifecycleOwner(owner) || CoreIntrinsics.IsTaskCompletionSourceOwner(owner)
+                || CoreIntrinsics.IsTaskFactoryOwner(owner))
                 return true;
             if (owner.FullName != "System.Runtime.InteropServices.GCHandle"
                 || owner.Module.AssemblyName != "System.Private.CoreLib" || owner.Handle.IsNil
@@ -4260,7 +4270,8 @@ internal sealed partial class CppEmitter
             method.DeclaringClass.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler"
                 ? IsInterpolationHelperRow(method)
                 : (CoreIntrinsics.BrGCHandleCheckUninitialized.Matches(method) || CoreIntrinsics.IsTaskLifecycle(method)
-                    || CoreIntrinsics.IsTaskCompletionTransfer(method))
+                    || CoreIntrinsics.IsTaskCompletionTransfer(method)
+                    || method.Name == "FromAsync" && CoreIntrinsics.IsTaskFactoryApmBody(method))
                     && IsRetainedOpaqueMemberRow(method);
 
         private bool IsRetainedOpaqueMemberRow(MethodInfo method) =>

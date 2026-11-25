@@ -141,6 +141,7 @@ namespace AsyncCombinators
             ColdTaskScheduleSubset.Program.RunCustomStart();
             TaskCancellationTokenSubset.Program.RunFromTask();
             TaskFactorySubset.Program.RunFactoryIdentity();
+            TaskFactorySubset.Program.RunFromAsync();
         }
     }
 }

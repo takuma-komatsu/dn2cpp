@@ -650,6 +650,7 @@ internal sealed partial class MethodCompiler
             // Retained mapped bodies use the callable declaration's receiver ABI,
             // not an emitted managed struct layout.
             string receiverType = CoreIntrinsics.IsScalarNumericLeaf(callee)
+                || CoreIntrinsics.IsTaskFactoryApmBody(callee)
                 || CoreIntrinsics.IsTaskLifecycle(callee)
                 || CoreIntrinsics.IsDateTimeCultureManagedBody(callee)
                 || CoreIntrinsics.IsReflectionManagedBody(callee)

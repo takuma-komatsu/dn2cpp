@@ -653,6 +653,7 @@ internal sealed partial class MethodCompiler : IEvalStack
         : cls.IsValueType ? CppTypes.Of(TypeDesc.MakeClass(cls)) + "*"
         : cls.IntrinsicCppName == "Dn2CppTask*" ? "Dn2CppTask*"
         : CoreIntrinsics.IsTaskCompletionSourceOwner(cls) ? "Dn2CppTaskCompletionSource*"
+        : CoreIntrinsics.IsTaskFactoryOwner(cls) ? "Dn2CppTaskFactory*"
         : CoreIntrinsics.RuntimeOwnsTypeInfo(cls) ? CppTypes.Of(TypeDesc.MakeClass(cls))
         : cls.CppStructName + "*";
 

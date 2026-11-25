@@ -559,6 +559,12 @@ internal sealed partial class AssemblyDiet
             || IsCopiedCancellationInvoke(method, owner)
             || IsCopiedKnownConstant(method, owner) || IsCopiedVectorManagedThrowHelper(method, owner))
             traverse = true;
+        else if (owner is ("System.Threading.Tasks.TaskFactory" or "System.Threading.Tasks.TaskFactory`1")
+            && method.Module.Assembly?.Name.Name == "System.Private.CoreLib"
+            && CoreIntrinsicTypeMaps.IsTaskFactoryApmName(method.Name)
+            && CoreIntrinsicTypeMaps.IsTaskFactoryApmBody(method.Name, method.Parameters.Count,
+                method.Parameters.Count == 0 ? null : method.Parameters[0].ParameterType.FullName))
+            traverse = true;
         else if (CoreIntrinsicTypeMaps.IsStringSequenceJoin(owner, method.Name) && method.GenericParameters.Count == 1)
             traverse = true;
         else if (owner is "System.Array" or "System.Delegate")

@@ -8206,6 +8206,8 @@ int32_t dn2cpp_task_try_set_result(Dn2CppTask* t, uint64_t result);
 void dn2cpp_task_try_set_result_deferred(Dn2CppTask* t, uint64_t result, Dn2CppCont** batch);
 void dn2cpp_task_dispatch_deferred(Dn2CppCont* batch);
 int32_t dn2cpp_task_try_set_exception(Dn2CppTask* t, Dn2CppObject* exception);
+bool dn2cpp_task_finish_canceled_promise(Dn2CppTask* task, uint64_t result,
+    Dn2CppCancelSource* source, Dn2CppObject* exception, Dn2CppObject* dispatch = nullptr);
 int32_t dn2cpp_task_try_set_canceled(Dn2CppTask* t, Dn2CppCancelSource* source = nullptr);
 void dn2cpp_tcs_set_result(Dn2CppTask* t, uint64_t result);
 void dn2cpp_tcs_set_exception(Dn2CppTask* t, Dn2CppObject* exception);

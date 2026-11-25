@@ -1773,6 +1773,10 @@ Other direct awaiter and `IValueTaskSource` registrations are unchanged.
 `Task.Factory` and each closed `Task<TResult>.Factory` keep one GC-rooted
 instance of their declared factory type. The default constructor leaves the
 cancellation token, scheduler and options at their zero values.
+`FromAsync` with a Begin delegate taking only the callback and state retains
+CoreLib's Begin/End bridge. The returned `IAsyncResult.CompletedSynchronously`
+selects whether the caller or the callback runs End. Both complete the same
+typed promise, including the exception and token of a canceled End.
 
 The default scheduler and generated scheduler subclasses share a native identity
 field. CoreLib's `TaskScheduler.Id` getter assigns it lazily from its own counter,
@@ -1916,10 +1920,12 @@ Generic promise constructors retain their CoreLib forwarding IL; the non-generic
 constructors and `TrySetResult` enter the native task lifecycle. Only those
 method declarations are modeled on the otherwise opaque generic task owner.
 The state object is retained, and completion and await dispatch use the same
-rules as other native tasks. Private promise construction
-rejects `AttachedToParent` because the runtime does not track a current parent
-task. Public delegate constructors and completion-source options keep their
-independent contracts. Stripping levels change retention, not this layout.
+rules as other native tasks. Private promise construction accepts
+`AttachedToParent` when there is no eligible parent. An active parent that
+allows attachment requires child-completion tracking and raises
+`PlatformNotSupportedException`. Public delegate constructors and
+completion-source options keep their independent contracts. Stripping levels
+change retention, not this layout.
 
 SemaphoreSlim's retained private async-waiter add/remove helpers operate on the
 native semaphore's queue and actual TaskNode links. The scanned semaphore keeps

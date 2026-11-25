@@ -431,6 +431,11 @@ internal sealed partial class MethodCompiler
         TaintCanonicalFixedVectorValueOperation(handle);
         if (_constrained?.Class is { } vectorReceiver) TaintCanonicalVectorOwner(vectorReceiver);
         EnsureCallCctorBefore(handle);
+        if (Comp.TryResolveTaskFactoryApm(Module, handle, Method.Context) is { } apm)
+        {
+            EmitManagedCall(apm, isCallvirt);
+            return;
+        }
         // Enum.HasFlag(flag): both the receiver and the flag arrive as boxed Enum
         // values; the call is non-virtual (HasFlag is sealed on Enum). Test the bits
         // inline rather than reaching the real (GetMethodTable/InternalCall) body.
