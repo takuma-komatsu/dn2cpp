@@ -181,6 +181,20 @@ DN2CPP_VECTOR_FULL=1 CONFIG=Debug bash gates/build-and-run-vector-probe.sh
 DN2CPP_DEFAULT_CULTURE_FULL=1 CONFIG=Debug bash gates/build-and-run-default-culture.sh
 ```
 
+The full preservation gate samples the definition graph. For every graph case,
+sharing mode, publication repeat and budget cutoff, run the graph driver on its
+own. With the Debug outputs from the preservation gate above, set `corelib` to
+the path on its `corlib:` line and run from the repository root.
+
+```bash
+graph_fixture=gates/fixtures/ildiet-metadata-validation
+debug_bin=bin/Debug/net11.0
+DN2CPP_PRESERVE_CONTROL_FULL=1 bash -c 'source gates/_python.sh && gate_python "$@"' -- \
+    "$graph_fixture/check-graph.py" "src/Dn2Cpp.Cli/$debug_bin/ildiet/ILDiet.dll" \
+    "$graph_fixture/$debug_bin/MetadataValidation.dll" \
+    "$corelib" "$(mktemp -d artifacts/ildiet-graph-exhaustive.XXXXXX)"
+```
+
 ## What to work on
 
 When choosing backlog work, use [GitHub Issues](https://github.com/takuma-komatsu/dn2cpp/issues?q=is%3Aissue%20is%3Aopen).

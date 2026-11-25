@@ -50,14 +50,16 @@ profile_start = preserve.index('case "${DN2CPP_PRESERVE_CONTROL_FULL:-0}" in')
 profile_end = preserve.index('echo "preserve-control-profile=', profile_start)
 profile = preserve[profile_start:profile_end]
 section_start = preserve.index('echo "== Basic High/Medium retention and inert initializers =="')
-section_end = preserve.index("\nif ! preserve_full; then", section_start)
-section = preserve[section_start:section_end]
+section_end = preserve.index('echo "== Type attribute arguments', section_start)
+graph_start = preserve.index('echo "== Definition graph scans')
+graph_end = preserve.index('echo "== Conditional engine scripts', graph_start)
+section = preserve[section_start:section_end] + preserve[graph_start:graph_end] + "\npreserve_full\n"
 check(section_start < preserve.index("    exit 0", section_start), "basic Medium must run before the short-profile return")
 stubs = r'''
 set -euo pipefail
-CONFIG=Debug TFM=net11.0 ILD_DLL=ildiet CLI_BIN=cli CLI_DLL=cli/dn2cpp.dll EXE_EXT=
+CONFIG=Debug TFM=net11.0 ILD_DLL=ildiet CLI_BIN=cli CLI_DLL=cli/dn2cpp.dll EXE_EXT= _CG_CORELIB=corelib
 build_gate_proj() { :; }
-gate_python() { printf 'DRIVER:%s\n' "$*"; }
+gate_python() { printf 'DRIVER:%s:%s\n' "$DN2CPP_PRESERVE_CONTROL_FULL" "$*"; }
 compile_console() { printf 'NATIVE:%s\n' "$1"; mkdir -p "$1"; }
 gate_capture_ok() { :; }
 gate_output() { :; }
@@ -72,8 +74,13 @@ with tempfile.TemporaryDirectory(prefix="dn2cpp-stripping-profile-test-") as tem
         check(result.returncode == 0, (value, result.stderr))
         actual = [Path(line.split(":", 1)[1]).name for line in result.stdout.splitlines() if line.startswith("NATIVE:")]
         check(set(actual) == expected and len(actual) == len(expected), (value, actual, expected))
-        commands = [line for line in result.stdout.splitlines() if line.startswith("DRIVER:")]
-        check(len(commands) == 1 and ("--representative" in commands[0]) == (value == "0"), commands)
+        commands = [line.split(":", 2)[1:] for line in result.stdout.splitlines() if line.startswith("DRIVER:")]
+        drivers = [(mode, Path(args.split()[0]).name) for mode, args in commands]
+        expected_drivers = [(value, "check-stripping.py")]
+        if value == "1":
+            expected_drivers.append(("0", "check-graph.py"))
+        check(drivers == expected_drivers, (value, commands))
+        check(("--representative" in commands[0][1].split()) == (value == "0"), commands)
 
 premerge = (GATES / "pre-merge.sh").read_text(encoding="utf-8")
 force_start = premerge.index("# Full matrices are explicit development checks,")

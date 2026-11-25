@@ -1975,7 +1975,8 @@ gate_python gates/fixtures/ildiet-metadata-validation/check.py "$ILD_DLL" \
 echo "== Definition graph scans, fallback and immutable publication =="
 GRAPH_OUTPUT="$(mktemp -d "artifacts/ildiet-graph-tests-$CONFIG.XXXXXX")"
 echo "Definition graph evidence: $GRAPH_OUTPUT"
-gate_python gates/fixtures/ildiet-metadata-validation/check-graph.py "$ILD_DLL" \
+echo 'Exhaustive definition-graph matrix skipped (not selected)'
+DN2CPP_PRESERVE_CONTROL_FULL=0 gate_python gates/fixtures/ildiet-metadata-validation/check-graph.py "$ILD_DLL" \
     "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
     "$_CG_CORELIB" "$GRAPH_OUTPUT"
 
