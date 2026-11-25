@@ -1389,24 +1389,12 @@ internal sealed partial class MethodCompiler
                 // shape-total-throw of TryEmitEncodingGetString (it has no false path).
                 if (TryEmitMemberRefIntercept(CoreIntrinsics.MrEncodingGetString, mr, mrParent, mrName, Sig))
                     return;
-                // System.Console.Error is the stderr TextWriter (System.Console
-                // is an intrinsic type, so get_Error already routes to EmitIntrinsic). The
-                // TextWriter it returns is modeled as Dn2CppTextWriter*; intercept its
-                // Write/WriteLine before real resolution so the real SyncTextWriter body
-                // never executes on it. Receiver-sensitive: only a receiver that is
-                // statically the Dn2CppTextWriter* Console.get_Error produced routes to the
-                // intrinsic — a real writer (e.g. the StreamWriter File.CreateText returns,
-                // whose file-I/O bodies transpile) falls through to the normal
-                // virtual dispatch below.
+                // Only a statically known Console.Error singleton can write straight
+                // to stderr. A TextWriter local or another writer needs its vtable.
                 if (mrParent == "System.IO.TextWriter"
                     && mrName is "Write" or "WriteLine")
                 {
                     var twSig = Sig();
-                    // The fast path fires only for a receiver that is statically the
-                    // Console.get_Error singleton (its C++ type is Dn2CppConsoleWriter*);
-                    // a spilled base System.IO.TextWriter* local falls through to the real
-                    // vtable dispatch below. ConsoleErrorWriterCppType is set the
-                    // moment get_Error ran, which any TextWriter receiver here came from.
                     if (_c.ConsoleErrorWriterCppType is { } ewCpp
                         && _stack[_stack.Count - 1 - twSig.ParameterTypes.Length].CppType == ewCpp)
                     {

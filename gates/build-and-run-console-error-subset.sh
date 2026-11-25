@@ -9,11 +9,6 @@
 # (stderr). This closes the last own-code console self-host gap: dn2cpp's own
 # TranspileDriver.Run reports errors via `Console.Error.WriteLine(...)`.
 #
-# This gate runs the CoreLib-full shape, which is the only one that can host the managed
-# subtype. The CoreLib-LESS fallback to the header-less runtime writer is a different
-# posture and is asserted by the "CoreLib-less Console.Error" section of
-# gates/build-and-run-hotupdate-subset.sh.
-#
 # The sample writes a stdout marker AND a battery of Console.Error overloads. This gate
 # captures the program's STDOUT and STDERR *separately* and exact-diffs each against real
 # .NET — so a leak between streams, a wrong newline, or a formatting drift all fail loudly.

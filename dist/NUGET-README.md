@@ -28,8 +28,11 @@ cmake --build out/build
 ./out/build/MyApp
 ```
 
-`MyApp.dll` is your project's build output (`dotnet build` is enough; the IL is
-the input, not a published app).
+`dotnet build` produces the input assembly `MyApp.dll`. AOT compilation requires the
+target runtime's `System.Private.CoreLib` implementation. The command above
+uses the tool's running framework. To select another runtime, add
+`-r "/path/to/target-runtime/System.Private.CoreLib.dll"`. With that reference,
+`--auto-ref` resolves framework dependencies beside the selected CoreLib.
 
 ## Beyond console apps
 

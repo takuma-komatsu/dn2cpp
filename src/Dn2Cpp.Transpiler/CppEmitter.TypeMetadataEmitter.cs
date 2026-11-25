@@ -2347,15 +2347,7 @@ internal sealed partial class CppEmitter
                     : $"{{ (void*)&{entry}, &{_c.NoteDelegateIdentity(method, false)} }}";
             var getter = _c.HotUpdateGetType;
             string getType = ObjectEntry(getter, getter?.Emittable.CppName ?? "");
-            string toString;
-            if (_c.HotUpdateToString is { } text)
-                toString = ObjectEntry(text, MethodCompiler.ObjectToStringBody);
-            else
-            {
-                // The synthetic no-CoreLib ldftn has the same Object descriptor.
-                _sb.AppendLine($"static const Dn2CppDelegateMethodIdentity patch_object_text_id = {{ &dn2cpp_object_type, {RuntimeObjectToken("ToString")} }};");
-                toString = $"{{ (void*)&{MethodCompiler.ObjectToStringBody}, &patch_object_text_id }}";
-            }
+            string toString = ObjectEntry(_c.HotUpdateToString, MethodCompiler.ObjectToStringBody);
             _sb.AppendLine($"extern \"C\" const Dn2CppInterpDelegateEntry dn2cpp_interp_object_gettype_delegate = {getType};");
             _sb.AppendLine($"extern \"C\" const Dn2CppInterpDelegateEntry dn2cpp_interp_object_tostring_delegate = {toString};");
             int count = _hotUpdateDelegateAdapters.Count;

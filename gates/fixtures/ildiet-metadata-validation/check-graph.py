@@ -445,6 +445,18 @@ print("graph-validation=nominal-definition-generic-argument,closed-argument-cont
 
 from canonical_admission import LOADSET_MODES as loadset_modes, loadset_references, check_loadset_inventory, check_identical_loadset_inputs, loadset_closure_arguments, check_loadset_closure_marker
 
+
+def check_loadset_primary(mode, original, published):
+    # The original pair is byte-identical. Use the other AOT run to check the
+    # assemblies ILDiet published while it could not resolve CoreLib.
+    if mode.endswith("-unknown"):
+        inputs, source = published, "ildiet-publication-without-corelib"
+    else:
+        inputs, source = original, "original"
+    check_primary_admission(cli, inputs, corelib, directory / ("loadset-primary-" + mode), mode)
+    print(f"graph-loadset-primary={mode}:input={source},aot=explicit-corelib", flush=True)
+
+
 loadset_inputs = {}
 for mode in loadset_modes:
     original = directory / ("uncertainty-input-" + mode)
@@ -480,8 +492,8 @@ for mode, original in loadset_inputs.items():
         before = set(run(probe, "--relations", original / filename).stdout.splitlines())
         after = set(run(probe, "--relations", published / filename).stdout.splitlines())
         assert after and after <= before, "primitive loadset changed an original relation: " + mode
-    check_primary_admission(cli, original, corelib, directory / ("loadset-primary-" + mode), mode)
-print("graph-validation=primitive-field-owner,missing-corelib-uncertainty,explicit-corelib-control,identical-inputs,exact-reference-and-assembly-inventory,actual-primary-loadset-admission,unknown-no-body,provider-nonexecution", flush=True)
+    check_loadset_primary(mode, original, published)
+print("graph-validation=primitive-field-owner,missing-corelib-uncertainty,explicit-corelib-control,identical-inputs,exact-reference-and-assembly-inventory,aot-with-explicit-corelib,unknown-no-body,provider-nonexecution", flush=True)
 
 from canonical_admission import MODIFIER_LOADSET_MODES as modifier_loadset_modes
 
@@ -520,8 +532,8 @@ for mode, original in modifier_inputs.items():
         before = set(run(probe, "--relations", original / filename).stdout.splitlines())
         after = set(run(probe, "--relations", published / filename).stdout.splitlines())
         assert after and after <= before, "modified primitive changed an original relation: " + mode
-    check_primary_admission(cli, original, corelib, directory / ("loadset-primary-" + mode), mode)
-print("graph-validation=volatile-modreq-primitive-owner,modifier-normalization,missing-corelib-uncertainty,explicit-corelib-control,identical-inputs,exact-reference-and-assembly-inventory,scoped-external-corelib-token-inspection,actual-primary-loadset-admission,unknown-no-body,provider-nonexecution", flush=True)
+    check_loadset_primary(mode, original, published)
+print("graph-validation=volatile-modreq-primitive-owner,modifier-normalization,missing-corelib-uncertainty,explicit-corelib-control,identical-inputs,exact-reference-and-assembly-inventory,scoped-external-corelib-token-inspection,aot-with-explicit-corelib,unknown-no-body,provider-nonexecution", flush=True)
 
 from scope_admission import check_scope_admission
 

@@ -113,18 +113,9 @@ internal sealed partial class MethodCompiler
             throw new NotSupportedException($"Console.{(newline ? "WriteLine" : "Write")}({p}) is not supported yet");
     }
 
-    /// <summary>Pops the receiver of a fast-path <c>System.IO.TextWriter</c> call and
-    /// returns the <c>Dn2CppTextWriter*</c> stderr stream to write to. dn2cpp models exactly
-    /// one TextWriter — the Console.Error writer (the managed <c>Dn2CppConsoleWriter</c>
-    /// singleton produced by <c>Console.get_Error</c>). The managed receiver object is
-    /// discarded here: the fast path writes straight to the stderr stream
-    /// (<c>dn2cpp_console_error()</c>). Any other receiver is a loud
-    /// <see cref="NotSupportedException"/>, never a silent miscompile — the caller
-    /// (Call.cs) only reaches this after matching the singleton's C++ type.
-    /// <para>In a CoreLib-less load set there is no managed writer at all and
-    /// <c>get_Error</c> pushes the runtime writer itself, so that is the receiver
-    /// shape to accept there. The two are never both live: which one <c>get_Error</c>
-    /// pushes is decided once per Compilation.</para></summary>
+    /// <summary>Only the known <c>Console.Error</c> receiver may use the stderr
+    /// stream directly. Measuring a body without CoreLib supplies the raw stream
+    /// handle here.</summary>
     private string PopTextWriterReceiver()
     {
         var recv = Pop();

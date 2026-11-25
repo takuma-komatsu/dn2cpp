@@ -73,13 +73,13 @@ that diffs native output against real .NET.
 
 ## For C# developers
 
-**What dn2cpp reads is IL, so the C# language version is your SDK's
-business, not dn2cpp's.** What it transpiles *alongside* your assembly is
-always the real **.NET 11** `System.Private.CoreLib` and its
-shared-framework closure — `--auto-ref` resolves that from the running
-framework. Your project's own target framework is its own affair: the
-Godot .NET samples under `samples/godot-dotnet/` are `net8.0` (what
-`Godot.NET.Sdk` picks) and transpile against that closure just the same.
+**dn2cpp reads IL, so your SDK determines the C# language version.** AOT
+compilation requires the target runtime's **.NET 11** `System.Private.CoreLib`.
+Pass it with `-r` or use the managed CLI's `--auto-ref` to select the CoreLib
+from its running framework. With `--auto-ref`, framework dependencies are
+resolved beside the selected CoreLib. Your project can target an earlier
+framework. The Godot .NET samples under `samples/godot-dotnet/` target
+the `net8.0` chosen by `Godot.NET.Sdk` and transpile against .NET 11.
 The exception is C# 15 `union` types and `closed` classes: they need the
 attribute and interface types that the .NET 11 CoreLib provides, so a
 project that uses them must target `net11.0`. A project on an older
@@ -468,9 +468,12 @@ cmake --build out/build
 ./out/build/MyApp
 ```
 
-`--auto-ref` resolves framework references beside the selected CoreLib.
-An explicit `-r` CoreLib takes precedence over the managed CLI's running
-framework. Other explicit `-r` references keep their precedence.
+AOT compilation requires the target runtime's implementation of
+`System.Private.CoreLib`. With the managed CLI, `--auto-ref` selects the
+running framework's CoreLib. To target another runtime or use the
+standalone native CLI, pass `-r "/path/to/target-runtime/System.Private.CoreLib.dll"`.
+With that reference, `--auto-ref` resolves dependencies beside the selected
+CoreLib. Explicit `-r` references take precedence.
 
 Once published, the same thing without a checkout will read
 `dotnet tool install -g dn2cpp`, then `dn2cpp MyApp.dll -o out --auto-ref`

@@ -51,6 +51,12 @@ input .NET assembly (+ reference assemblies via -r)
         └─ clang++ + runtime/core (+ runtime/godot) → native binary / .dylib
 ```
 
+For C++ emission, including a hot-update base, `TranspileDriver` requires
+`AssemblyLoadSet.CoreLibPath` after reference resolution and before ILDiet or
+output changes. The assembly manifest identifies `System.Private.CoreLib`.
+`--measure` and `--dump-isa-surface` can inspect a partial reference set.
+`--emit-patch` uses the base ABI and the patch's own references.
+
 `TranspileOptions.FloatingPointMode` records `strict` or `precise` in
 `generated-fp-mode.txt`. CMake consumes it for the MSVC application target;
 the runtime libraries keep their own options, and FastMath translation units
@@ -547,9 +553,6 @@ Core invariants:
   generation queries, memory-query stabilization, pause-duration wrappers and
   full-GC notification validation retain their managed bodies. Their native
   leaves use the collector's whole-heap collection, accounting and pause clock.
-  Public `Collect` and `GetTotalMemory` require CoreLib input (`--auto-ref` or
-  `-r <path/to/System.Private.CoreLib.dll>`); neither has a native fallback when
-  CoreLib is absent.
   Boehm has a single logical generation; full-GC notifications are unavailable.
   The private CoreCLR `RunFinalizers` worker retains a callable signature but
   throws `PlatformNotSupportedException`, including reflection invocation.

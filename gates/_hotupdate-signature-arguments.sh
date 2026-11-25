@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Imports preserve generic storage and managed provider parameter/return/field identity.
 hotupdate_signature_argument_roundtrip() {
-    local base="$1" patch="$2" out="$3" address="$4" encoding metadata expected previous arm owner
+    local base="$1" patch="$2" out="$3" address="$4" corelib="$5" encoding metadata expected previous arm owner
     local int_owner='SignatureArgumentImports.Cell`1[System.Int32]'
     local string_owner='SignatureArgumentImports.Cell`1[System.String]'
     mkdir -p "$out"
@@ -83,7 +83,7 @@ imported managed providers end'
     gate_assert_text "$out/address.stdout" '1'
     for metadata in packed native; do
         arm="$out/$metadata"
-        invoke_cli "$base" -r "$(locate_corelib)" --hotupdate-base --reflection-metadata "$int_owner=$metadata" \
+        invoke_cli "$base" -r "$corelib" --hotupdate-base --reflection-metadata "$int_owner=$metadata" \
             --reflection-metadata "$string_owner=$metadata" -o "$arm"
         local table=md_record_fldtab
         [ "$metadata" != native ] || table=md_native_fldtab
