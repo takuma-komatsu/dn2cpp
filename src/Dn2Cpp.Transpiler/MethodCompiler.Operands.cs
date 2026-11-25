@@ -140,6 +140,27 @@ internal sealed partial class MethodCompiler
         };
     }
 
+    private void EmitLayoutFieldAddress(ClassInfo cls, FieldInfo fld)
+    {
+        NoteFieldOwnerLayout(cls);
+        var obj = Pop();
+        string wantPtr = CppTypes.FieldOf(fld) + "*";
+        string addr;
+        if (NeedsVectorStorageFieldCopy(cls, fld))
+            addr = $"(({wantPtr}){VectorStorageFieldAddress(cls, fld, obj)})";
+        else
+        {
+            if (obj.Kind == StackKind.Struct) obj = obj with { Expr = StructLValue(obj) };
+            // An inline buffer needs an element pointer, not a pointer to the whole C array.
+            string element = cls.InlineArrayLength > 0 ? "[0]" : "";
+            addr = $"&({FieldAccess(cls, fld, obj)}{element})";
+            // A shared-layout field can have an erased pointer type at this call site.
+            if (LayoutFieldType(cls, fld) != CppTypes.FieldOf(fld)) addr = $"(({wantPtr}){addr})";
+        }
+        Push(StackKind.Ptr, wantPtr, addr);
+        Top = Top with { StaticType = TypeDesc.MakeByRef(fld.Type) };
+    }
+
     /// <summary>Field access expression for a struct value, managed pointer,
     /// or object reference receiver. The non-struct (pointer) form casts the receiver to
     /// <c>(t_cls*)</c> and so names <c>t_cls</c> as a C++ type — recorded for the named-struct

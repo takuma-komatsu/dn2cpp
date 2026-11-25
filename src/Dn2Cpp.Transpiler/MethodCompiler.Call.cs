@@ -2615,7 +2615,7 @@ internal sealed partial class MethodCompiler
         // A direct call to a body-less method (InternalCall/extern/abstract that
         // wasn't intrinsic-mapped) would link against a missing symbol; surface
         // it as a precise, actionable error instead.
-        if (callee.Rva == 0 && !(isCallvirt && callee.IsVirtual) && !_c.UnsafeAccessorGetters.ContainsKey(callee))
+        if (callee.Rva == 0 && !(isCallvirt && callee.IsVirtual) && !_c.UnsafeAccessorTargets.ContainsKey(callee))
             throw new NotSupportedException(
                 $"{_method.DeclaringClass.FullName}.{_method.Name}: {callee.DeclaringClass.FullName}::{callee.Name} " +
                 $"is an InternalCall/extern method with no IL body and no intrinsic mapping [chain: {_c.ReachChain(_method)}]");

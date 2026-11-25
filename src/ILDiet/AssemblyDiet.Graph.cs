@@ -180,7 +180,7 @@ internal sealed partial class AssemblyDiet
             state = (state & ~MethodState.Body) | MethodState.Metadata;
         }
         if ((state & MethodState.Body) != 0)
-            ReachUnsafeAccessorGetter(method);
+        ReachUnsafeAccessor(method);
         if (UsesReachedCopyTraversal(method.DeclaringType)
             && ((state & MethodState.Body) == 0 || !TraverseCopiedBody(method))) return;
         if (state != MethodState.None && (method.HasGenericParameters || method.DeclaringType.HasGenericParameters))

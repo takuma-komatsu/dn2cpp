@@ -1787,7 +1787,15 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// intrinsic table names. Null when no Cut row answers the method.</summary>
     internal string? CompileInterceptWrapper()
     {
-        if (_c.UnsafeAccessorGetters.TryGetValue(_method, out var getter))
+        if (_c.UnsafeAccessorTargets.TryGetValue(_method, out var accessor))
+        {
+            if (accessor.Field is { } field)
+                return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+                {
+                    EmitLayoutFieldAddress(field.DeclaringClass, field);
+                    return true;
+                }, "UnsafeAccessor instance field");
+            var getter = accessor.Getter!;
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
             {
                 var receiver = _stack[^1];
@@ -1797,6 +1805,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 EmitCallTarget(getter.Handle, isCallvirt: true, getter);
                 return true;
             }, "UnsafeAccessor instance getter");
+        }
         if (!CoreIntrinsics.TryFindCutRow(_method, out var row))
             return null;
         return SynthesizeWrapperBody(
@@ -3336,38 +3345,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     Top = Top with { StaticType = TypeDesc.MakeByRef(fld.Type) };
                     break;
                 }
-                NoteFieldOwnerLayout(cls);
-                var obj = Pop();
-                // The address of a shared-layout member has the owner's erased
-                // pointer type; cast it to this site's real spelling (same
-                // object width — the canonicalization is layout-preserving).
-                string wantPtr = CppTypes.FieldOf(fld) + "*";
-                if (NeedsVectorStorageFieldCopy(cls, fld))
-                {
-                    Push(StackKind.Ptr, wantPtr, $"(({wantPtr}){VectorStorageFieldAddress(cls, fld, obj)})");
-                    Top = Top with { StaticType = TypeDesc.MakeByRef(fld.Type) };
-                    break;
-                }
-                bool erasedMember = LayoutFieldType(cls, fld) != CppTypes.FieldOf(fld);
-                // ldflda of an [InlineArray] buffer's element field: the field is
-                // emitted as a C array, so decay to the first element's address —
-                // `&arr` would be a whole-array pointer (T(*)[N]), not the T* the
-                // span-window call sites expect.
-                string elemDecay = cls.InlineArrayLength > 0 ? "[0]" : "";
-                if (obj.Kind == StackKind.Struct)
-                {
-                    // ldflda of a field of a by-value struct: take the address of the
-                    // field inside the struct's addressable temp. The pointer type
-                    // mirrors the struct body's field layout (CppTypes.FieldOf), so it
-                    // stays consistent with the existing managed-pointer path below.
-                    string saddr = $"&({FieldAccess(cls, fld, obj with { Expr = StructLValue(obj) })}{elemDecay})";
-                    Push(StackKind.Ptr, wantPtr, erasedMember ? $"(({wantPtr}){saddr})" : saddr);
-                    _stack[^1] = _stack[^1] with { StaticType = TypeDesc.MakeByRef(fld.Type) };
-                    break;
-                }
-                string addr = $"&({FieldAccess(cls, fld, obj)}{elemDecay})";
-                Push(StackKind.Ptr, wantPtr, erasedMember ? $"(({wantPtr}){addr})" : addr);
-                _stack[^1] = _stack[^1] with { StaticType = TypeDesc.MakeByRef(fld.Type) };
+                EmitLayoutFieldAddress(cls, fld);
                 break;
             }
             case ILOpCode.Ldsflda:

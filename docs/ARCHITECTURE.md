@@ -2657,3 +2657,12 @@ names the getter's result type and its defining or forwarding assembly by
 simple name. ILDiet and the compiler resolve the getter on demand. The
 callable wrapper checks the receiver and uses the same managed body or
 native lowering as an ordinary call to that getter.
+
+A static `UnsafeAccessor(Field)` can return a reference to an enum field of a
+nongeneric managed class. Its sole `object` parameter names that class through
+`UnsafeAccessorType`. An owner name without an assembly is resolved in the
+accessor's assembly, then CoreLib. Assembly references for the accessor, owner,
+enum and any type forwarders must resolve to manifests with a compatible
+version and culture. The field and the byref return must resolve to the same
+enum definition. A volatile field yields the same ordinary field address, so a
+write through the returned reference updates that receiver.

@@ -1695,7 +1695,7 @@ internal sealed partial class Compilation
             }
         }
         if (resolved.Rva == 0 && resolved.IsStatic && resolved.PInvoke is null)
-            ValidateUnsafeAccessorGetterReference(resolved, reader.GetBlobReader(mr.Signature), sig);
+            ValidateUnsafeAccessorReference(module, mr, resolved, sig);
         if (DelegateCallableBodyContract.IsName(cls.FullName, name)
             && !CoreIntrinsics.IsDelegateCallableReference(resolved, sig, reader.GetBlobReader(mr.Signature)))
             throw new NotSupportedException("Delegate callable member requires its exact CoreLib reference and declaration");
