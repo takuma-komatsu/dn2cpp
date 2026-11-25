@@ -65,6 +65,26 @@ internal sealed partial class BranchLiveness
         _windowBranches = windowBranches;
     }
 
+    internal static HashSet<int> NonFallthroughEntries(List<Instruction> insns, MethodBodyBlock body)
+    {
+        var targets = new HashSet<int>();
+        foreach (var insn in insns)
+        {
+            if (insn.SwitchTargets is not null)
+                foreach (int t in insn.SwitchTargets)
+                    targets.Add(t);
+            else if (ILDecoder.IsBranch(insn.OpCode))
+                targets.Add((int)insn.Operand);
+        }
+        foreach (var region in body.ExceptionRegions)
+        {
+            targets.Add(region.HandlerOffset);
+            if (region.Kind == ExceptionRegionKind.Filter)
+                targets.Add(region.FilterOffset);
+        }
+        return targets;
+    }
+
     public bool LiveAt(int offset) => _liveOffsets.Contains(offset);
 
     /// <summary>For a brtrue/brfalse whose operand is a folded constant: whether
@@ -150,21 +170,7 @@ internal sealed partial class BranchLiveness
         HashSet<int>? windowBranches = null;
         if (windows is not null)
         {
-            var targets = new HashSet<int>();
-            foreach (var insn in insns)
-            {
-                if (insn.SwitchTargets is not null)
-                    foreach (int t in insn.SwitchTargets)
-                        targets.Add(t);
-                else if (ILDecoder.IsBranch(insn.OpCode))
-                    targets.Add((int)insn.Operand);
-            }
-            foreach (var region in body.ExceptionRegions)
-            {
-                targets.Add(region.HandlerOffset);
-                if (region.Kind == ExceptionRegionKind.Filter)
-                    targets.Add(region.FilterOffset);
-            }
+            var targets = NonFallthroughEntries(insns, body);
             foreach (var (start, branch) in windows)
             {
                 bool enteredMidWindow = false;

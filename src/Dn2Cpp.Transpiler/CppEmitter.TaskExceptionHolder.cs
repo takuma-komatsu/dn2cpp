@@ -2,6 +2,22 @@ namespace Dn2Cpp;
 
 internal sealed partial class CppEmitter
 {
+    private void EmitTaskSchedulerQueue(CppOutput output)
+    {
+        if (_c.TaskSchedulerQueue is not { } queue) return;
+        var ctor = queue.ExceptionConstructor;
+        var exception = ctor.DeclaringClass;
+        output.Header.AppendLine("extern const Dn2CppTaskSchedulerQueue dn2cpp_image_task_scheduler_queue;");
+        var text = output.Data;
+        text.AppendLine("static Dn2CppObject* dn2cpp_image_wrap_scheduler_exception(Dn2CppObject* inner)");
+        text.AppendLine("{");
+        text.AppendLine($"    auto* error = dn2cpp_exception_new(&{exception.CppTypeInfoName}, nullptr, nullptr);");
+        text.AppendLine($"    {ctor.Emittable.CppName}(({exception.CppStructName}*)error, ({CppTypes.Of(ctor.Signature.ParameterTypes[0])})inner);");
+        text.AppendLine("    return error;");
+        text.AppendLine("}");
+        text.AppendLine($"extern const Dn2CppTaskSchedulerQueue dn2cpp_image_task_scheduler_queue = {{ {queue.Queue.VtableSlot}, {queue.Dequeue.VtableSlot}, &dn2cpp_image_wrap_scheduler_exception }};");
+    }
+
     private void EmitTaskExceptionHolderHooks(CppOutput output)
     {
         if (_c.TaskExceptionHolderBridge is not { } bridge) return;

@@ -26,6 +26,8 @@ internal static class Program
     private sealed class ProbeScheduler : TaskScheduler
     {
         internal Task Pending;
+        internal Exception Refusal;
+        internal CancellationTokenSource CancelBeforeRefusal;
         internal bool BaseDequeue(Task task) => base.TryDequeue(task);
         internal bool Dequeue(Task task) => TryDequeue(task);
         protected override bool TryDequeue(Task task)
@@ -35,7 +37,16 @@ internal static class Program
             return true;
         }
         protected override IEnumerable<Task> GetScheduledTasks() => Array.Empty<Task>();
-        protected override void QueueTask(Task task) => throw new NotSupportedException();
+        protected override void QueueTask(Task task)
+        {
+            if (CancelBeforeRefusal is not null)
+            {
+                Pending = task;
+                CancelBeforeRefusal.Cancel();
+            }
+            if (Refusal is not null) throw Refusal;
+            Pending = task;
+        }
         protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued) => false;
     }
 
@@ -47,6 +58,41 @@ internal static class Program
         var closedNull = (Func<Task, bool>)method.CreateDelegate(typeof(Func<Task, bool>), null);
         Console.WriteLine("scheduler dequeue: " + scheduler.BaseDequeue(task) + "/"
             + scheduler.Dequeue(task) + "/" + scheduler.Dequeue(task) + " closed-null=" + closedNull(task));
+    }
+
+    internal static void RunCustomStart()
+    {
+        using var source = new CancellationTokenSource();
+        int calls = 0;
+        var task = new Task(() => calls++, source.Token);
+        var scheduler = new ProbeScheduler();
+        task.Start(scheduler);
+        bool handedOff = scheduler.Pending == task && task.Status == TaskStatus.WaitingToRun;
+        source.Cancel();
+        bool canceled = scheduler.Pending is null && task.IsCanceled;
+
+        scheduler.Refusal = new FormatException("queue refused");
+        var refused = new Task(() => calls++);
+        bool faulted = false;
+        try { refused.Start(scheduler); }
+        catch (TaskSchedulerException e)
+        {
+            faulted = ReferenceEquals(e.InnerException, scheduler.Refusal)
+                && ReferenceEquals(refused.Exception.InnerException, e);
+        }
+        Console.WriteLine("custom Start: handoff=" + handedOff + " canceled=" + canceled + " faulted=" + faulted + " calls=" + calls);
+
+        using var duringQueue = new CancellationTokenSource();
+        scheduler.CancelBeforeRefusal = duringQueue;
+        var removed = new Task(() => calls++, duringQueue.Token);
+        bool storedAfterCancellation = false;
+        try { removed.Start(scheduler); }
+        catch (Exception e)
+        {
+            storedAfterCancellation = e is InvalidCastException && removed.IsFaulted
+                && ReferenceEquals(removed.Exception?.InnerException?.InnerException, scheduler.Refusal);
+        }
+        Console.WriteLine("custom Start: rejected after cancellation=" + storedAfterCancellation);
     }
 
     internal static void RunSchedulerIds()

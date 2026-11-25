@@ -1042,6 +1042,7 @@ internal sealed partial class CppEmitter
         EmitConsoleErrorWriterAccessor(o);
         EmitInvariantCompareInfoFactories(o);
         EmitTaskExceptionHolderHooks(o);
+        EmitTaskSchedulerQueue(o);
         // Hot-update base build: hash the canonical ABI contract over the emitted
         // classes (now final — bodies compiled, opaque fill done) into the base
         // binary, pre-emit the N2M vtable trampolines the patch loader installs
