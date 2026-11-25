@@ -26,6 +26,19 @@ internal sealed class RawAssemblyTypeResolver<TModule> where TModule : notnull
         }
     }
 
+    // A serialized assembly name has no signed TypeRef scope from which to infer a missing facade.
+    public bool ForwardsTo(string assembly, string ns, string name, string definition)
+    {
+        for (int hops = 0; hops < _modules.Count; hops++)
+        {
+            if (!_loadedAssemblyNames.TryGetValue(assembly, out var canonical)
+                || !_typeForwarders.TryGetValue((canonical, ns, name), out var forwarded)) return false;
+            assembly = forwarded.Reader.GetString(forwarded.Reader.GetAssemblyReference(forwarded.Scope).Name);
+            if (assembly.Equals(definition, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+
     public (TModule Module, TypeDefinitionHandle Handle)? Resolve(string assembly, string ns, string name,
         IEnumerable<(TModule Module, TypeDefinitionHandle Handle)> candidates, MetadataReader scopeReader, AssemblyReferenceHandle scope)
     {

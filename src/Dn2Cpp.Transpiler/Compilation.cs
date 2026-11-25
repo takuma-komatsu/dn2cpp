@@ -1747,12 +1747,13 @@ internal sealed partial class Compilation
     }
 
     private RawAssemblyTypeResolver<Module>? _assemblyTypeResolver;
+    private RawAssemblyTypeResolver<Module> AssemblyTypeResolver =>
+        _assemblyTypeResolver ??= new RawAssemblyTypeResolver<Module>(Modules.Select(m => (m, m.AssemblyName, m.Reader)));
 
     private TypeDesc? ResolveAssemblyType(string assembly, string ns, string name,
         List<(Module, TypeDefinitionHandle)> candidates, Module scopeModule, AssemblyReferenceHandle scope)
     {
-        _assemblyTypeResolver ??= new RawAssemblyTypeResolver<Module>(Modules.Select(m => (m, m.AssemblyName, m.Reader)));
-        return _assemblyTypeResolver.Resolve(assembly, ns, name, candidates, scopeModule.Reader, scope) is { } target
+        return AssemblyTypeResolver.Resolve(assembly, ns, name, candidates, scopeModule.Reader, scope) is { } target
             ? MakeTypeDescFor(target.Module, target.Handle) : null;
     }
 

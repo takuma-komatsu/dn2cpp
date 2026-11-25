@@ -2,6 +2,7 @@ using System;
 using System.Net.Http;
 using System.Text;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 
 namespace HttpReal
 {
@@ -9,8 +10,8 @@ namespace HttpReal
     // actual SocketsHttpHandler; transpiled with -r DnHttp it runs on the libcurl-backed
     // DnHttp transport (SocketsHttpHandler.Send is intercepted). Both hit the SAME local
     // server, so the printed status / body / content-type are identical and the gate diffs
-    // them byte for byte. Everything printed is response-derived and deterministic — no
-    // Date/Server header, no client IP, no absolute path.
+    // them byte for byte. The explicit handler also exposes its per-instance settings
+    // through the same accessor ABI as HttpWebRequest.
     internal static class Program
     {
         private static int Main(string[] args) => Run(args);
@@ -40,11 +41,27 @@ namespace HttpReal
             using (var client = new HttpClient())
                 Get("default", client, url);
 
-            using (var client = new HttpClient(new SocketsHttpHandler()))
+            var handler = new SocketsHttpHandler();
+            using (var client = new HttpClient(handler))
+            {
                 Get("explicit", client, url);
+                object settings = GetSettings(handler);
+                Console.WriteLine("handler settings=" + (settings is not null && ReferenceEquals(settings, GetSettings(handler))));
+            }
+            var cause = new Exception("transport");
+            Console.WriteLine("inner exception=" + ReferenceEquals(cause, get_InnerException(new Exception("request failed", cause))));
 
             return 0;
         }
+
+        [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Settings")]
+        [return: UnsafeAccessorType("System.Net.Http.HttpConnectionSettings, System.Net.Http")]
+        private static extern object GetSettings(SocketsHttpHandler handler);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [UnsafeAccessor(UnsafeAccessorKind.Method)]
+        [return: UnsafeAccessorType("System.Exception, System.Runtime")]
+        private static extern object get_InnerException(Exception exception);
 
         private static void Get(string label, HttpClient client, string url)
         {

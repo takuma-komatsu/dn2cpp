@@ -537,11 +537,16 @@ internal sealed partial class MethodCompiler
             _stack[recvIdx] = new StackEntry($"(*({rct}*)({byref.Expr}))", StackKind.Ref, rct);
             _constrained = null;
         }
+        EmitCallTarget(handle, isCallvirt);
+    }
+
+    private void EmitCallTarget(EntityHandle handle, bool isCallvirt, MethodInfo? definition = null)
+    {
         switch (handle.Kind)
         {
             case HandleKind.MethodDefinition:
             {
-                var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
+                var callee = definition ?? ResolveMethodDef((MethodDefinitionHandle)handle);
                 CoreIntrinsics.ValidateTaskLifecycle(callee);
                 CoreIntrinsics.ValidateThreadingPrivate(callee);
                 CoreIntrinsics.ValidateConcreteVectorElement(callee);
@@ -2609,7 +2614,7 @@ internal sealed partial class MethodCompiler
         // A direct call to a body-less method (InternalCall/extern/abstract that
         // wasn't intrinsic-mapped) would link against a missing symbol; surface
         // it as a precise, actionable error instead.
-        if (callee.Rva == 0 && !(isCallvirt && callee.IsVirtual))
+        if (callee.Rva == 0 && !(isCallvirt && callee.IsVirtual) && !_c.UnsafeAccessorGetters.ContainsKey(callee))
             throw new NotSupportedException(
                 $"{_method.DeclaringClass.FullName}.{_method.Name}: {callee.DeclaringClass.FullName}::{callee.Name} " +
                 $"is an InternalCall/extern method with no IL body and no intrinsic mapping [chain: {_c.ReachChain(_method)}]");

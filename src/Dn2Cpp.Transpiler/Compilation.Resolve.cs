@@ -1694,6 +1694,8 @@ internal sealed partial class Compilation
                     : candidates.FirstOrDefault(x => ParameterIdentityKey(x.Signature.ParameterTypes) == want) ?? candidates[0];
             }
         }
+        if (resolved.Rva == 0 && resolved.IsStatic && resolved.PInvoke is null)
+            ValidateUnsafeAccessorGetterReference(resolved, reader.GetBlobReader(mr.Signature), sig);
         if (DelegateCallableBodyContract.IsName(cls.FullName, name)
             && !CoreIntrinsics.IsDelegateCallableReference(resolved, sig, reader.GetBlobReader(mr.Signature)))
             throw new NotSupportedException("Delegate callable member requires its exact CoreLib reference and declaration");

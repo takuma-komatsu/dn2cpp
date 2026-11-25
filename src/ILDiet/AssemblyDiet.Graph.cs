@@ -179,6 +179,8 @@ internal sealed partial class AssemblyDiet
             // bounds the original body even when a call or policy reaches it.
             state = (state & ~MethodState.Body) | MethodState.Metadata;
         }
+        if ((state & MethodState.Body) != 0)
+            ReachUnsafeAccessorGetter(method);
         if (UsesReachedCopyTraversal(method.DeclaringType)
             && ((state & MethodState.Body) == 0 || !TraverseCopiedBody(method))) return;
         if (state != MethodState.None && (method.HasGenericParameters || method.DeclaringType.HasGenericParameters))

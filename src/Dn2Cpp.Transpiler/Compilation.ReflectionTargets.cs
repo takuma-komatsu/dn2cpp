@@ -960,6 +960,8 @@ internal sealed partial class Compilation
             NoteIntrinsicFtnTarget(target);
         if (CoreIntrinsics.IsCoreClrFieldDescOperation(target))
             NoteInterceptFtnTarget(target);
+        if (target.Rva == 0)
+            ReachUnsafeAccessorGetter(target);
         if (CoreIntrinsics.BrDelegateCallable.Matches(target)
             || CoreIntrinsics.IsCoreClrGcMemoryQuery(target)
             || CoreIntrinsics.IsCoreClrFinalizerWorker(target)

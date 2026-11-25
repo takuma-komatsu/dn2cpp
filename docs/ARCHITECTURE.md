@@ -2643,3 +2643,14 @@ merely because Claims metadata was loaded. The ignored static-target marker
 still evaluates normally. The real factory owns identity, roles and freshness;
 AppDomain policy branches and explicit principals keep their managed behavior.
 Other UnsafeAccessor shapes are not generalized by this bridge.
+
+A nongeneric static `UnsafeAccessor(Method)` on a nongeneric type can forward
+to a parameterless, nonvirtual managed property getter on its single class
+argument. The method name comes from the attribute's `Name` or the accessor's
+own name. The receiver and getter result are named, nongeneric reference types,
+including `string` and `object` results.
+The accessor returns `object` and its `UnsafeAccessorType` return annotation
+names the getter's result type and its defining or forwarding assembly by
+simple name. ILDiet and the compiler resolve the getter on demand. The
+callable wrapper checks the receiver and uses the same managed body or
+native lowering as an ordinary call to that getter.
