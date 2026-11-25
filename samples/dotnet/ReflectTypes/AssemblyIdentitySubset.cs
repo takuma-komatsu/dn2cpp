@@ -28,6 +28,8 @@ namespace AssemblyIdentitySubset
             Console.WriteLine("== assembly/module identity ==");
             Assembly app = typeof(Program).Assembly;
             Module mod = typeof(Program).Module;
+            if (typeof(Assembly).GetProperty(nameof(Assembly.IsCollectible))?.DeclaringType != typeof(Assembly))
+                throw new InvalidOperationException("Assembly.IsCollectible declaring type");
 
             // The object view preserves the runtime type and its ToString override.
             object oa = app;

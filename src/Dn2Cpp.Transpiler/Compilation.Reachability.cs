@@ -162,6 +162,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.BrCustomAttributeDataMember.Matches(m)
             || CoreIntrinsics.BrModuleAttributeData.Matches(m)
             || CoreIntrinsics.BrAttributeArguments.Matches(m)
+            || CoreIntrinsics.BrRuntimeAssemblyCollectibility.Matches(m)
             || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(m)
             || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(m)
             || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(m)
@@ -2239,7 +2240,7 @@ internal sealed partial class Compilation
     {
         if (!_usedVirtualDecls.Add(decl))
             return;
-        if (decl.Name is "GetCustomAttributesData" or "get_ConstructorArguments" && RuntimeReflectionOverride(decl) is { } runtimeOverride)
+        if (decl.Name is "GetCustomAttributesData" or "get_ConstructorArguments" or "get_IsCollectible" && RuntimeReflectionOverride(decl) is { } runtimeOverride)
             Reach(runtimeOverride);
         RegisterVirtualDemand(decl);
         NoteRuntimeRaisedHeirs(decl.DeclaringClass);

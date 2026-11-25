@@ -63,5 +63,6 @@ static class Program
         var required = context.Create(fields.GetField(nameof(AnnotatedFields<string, string>.Required))!);
         var loose = context.Create(fields.GetField(nameof(AnnotatedFields<string, string>.Loose))!);
         Console.WriteLine("field nullability=" + optional.WriteState + "/" + required.ReadState + "/" + required.WriteState + "/" + loose.WriteState);
+        CollectibilitySubset.Program.RunAssembly();
     }
 }

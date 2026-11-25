@@ -1493,6 +1493,14 @@ internal sealed partial class MethodCompiler : IEvalStack
                 Push(StackKind.Ref, result, $"({result})dn2cpp_attrdata_constructor_arguments({Cast(Pop(), "Dn2CppObject*")})");
                 return true;
             }, "custom attribute constructor arguments");
+        if (CoreIntrinsics.BrRuntimeAssemblyCollectibility.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                // RuntimeAssembly boxes belong to the linked image for its entire lifetime.
+                Emit($"dn2cpp_null_check<Dn2CppObject>({Cast(Pop(), "Dn2CppObject*")});");
+                Push(StackKind.I4, "int32_t", "0");
+                return true;
+            }, "runtime assembly collectibility");
         if (CoreIntrinsics.BrCustomAttributeDataMember.Matches(_method) || CoreIntrinsics.BrModuleAttributeData.Matches(_method))
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
             {

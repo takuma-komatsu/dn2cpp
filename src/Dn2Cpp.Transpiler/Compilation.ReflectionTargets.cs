@@ -520,6 +520,13 @@ internal sealed partial class Compilation
                 else if (IsOpenGenericMethod(method))
                     _reflectionListedDefinitions.Add((method.DeclaringClass, method.Handle));
             }
+            else if (e.Kind == REntityKind.Property && e.Text == "IsCollectible")
+            {
+                foreach (var getter in AccessorsOf(e, ReflectionAccessor.Getter))
+                    if ((CoreIntrinsics.IsAssemblyCollectibilitySlot(getter) || CoreIntrinsics.BrRuntimeAssemblyCollectibility.Matches(getter))
+                        && !IsBoundedMethod(getter.DeclaringClass.FullName, getter.Name))
+                        _reflectionListedRows.Add(getter);
+            }
             if (e.Kind is REntityKind.Method or REntityKind.Field or REntityKind.Property or REntityKind.Event
                 && e.Owner is { IntrinsicCppName: null } owner && !CoreIntrinsics.IsIntrinsicType(owner.FullName)
                 && !ContainsCanonPlaceholder(owner) && !ContainsGenericVar(owner))
@@ -1016,6 +1023,7 @@ internal sealed partial class Compilation
             Reach(target);
         if (target.IsVirtual && !target.IsStatic && (CarriesReflectedSlots(cls) || CoreIntrinsics.IsNullableTypeQueryBase(target)
             || CoreIntrinsics.IsModuleAttributeDataSlot(target) || CoreIntrinsics.IsAttributeArgumentsSlot(target)
+            || CoreIntrinsics.IsAssemblyCollectibilitySlot(target)
             || CoreIntrinsics.IsTaskSchedulerDequeue(target)))
         {
             if (IsGvmCall(target))

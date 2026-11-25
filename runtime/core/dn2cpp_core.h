@@ -884,10 +884,10 @@ Dn2CppObject* dn2cpp_headerless_escape(const char* managedTypeName);
 // The public abstract shells: never an instance's header word (instanceSize 0),
 // carried so typeof(Assembly)/typeof(Module) and isinst/castclass name a real
 // identity the box's base chain reaches.
-extern const Dn2CppTypeInfo dn2cpp_assembly_type;
+extern Dn2CppTypeInfo dn2cpp_assembly_type;
 extern const Dn2CppTypeInfo dn2cpp_module_type;
 // The box header identities (base = the shell above).
-extern const Dn2CppTypeInfo dn2cpp_runtime_assembly_type;
+extern Dn2CppTypeInfo dn2cpp_runtime_assembly_type;
 extern const Dn2CppTypeInfo dn2cpp_runtime_module_type;
 
 #define DN2CPP_ASM_KIND_ASSEMBLY 0

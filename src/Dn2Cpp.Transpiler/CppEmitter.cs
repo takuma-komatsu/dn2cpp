@@ -2127,6 +2127,7 @@ internal sealed partial class CppEmitter
         || CoreIntrinsics.BrCustomAttributeDataMember.Matches(m)
         || CoreIntrinsics.BrModuleAttributeData.Matches(m)
         || CoreIntrinsics.BrAttributeArguments.Matches(m)
+        || CoreIntrinsics.BrRuntimeAssemblyCollectibility.Matches(m)
         || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(m)
         || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(m)
         || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(m)
@@ -2655,6 +2656,7 @@ internal sealed partial class CppEmitter
                                 || CoreIntrinsics.BrCustomAttributeDataMember.Matches(m)
                                 || CoreIntrinsics.BrModuleAttributeData.Matches(m)
                                 || CoreIntrinsics.BrAttributeArguments.Matches(m)
+                                || CoreIntrinsics.BrRuntimeAssemblyCollectibility.Matches(m)
                                 || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(m)
                                 || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(m)
                                 || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(m)
@@ -3220,6 +3222,11 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    dn2cpp_set_culture_name_validator_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({cultureNameValidatorRow}));");
         if (_schedulerIdentityMetadata is { } schedulerIdentity)
             sb.AppendLine($"    dn2cpp_set_taskscheduler_identity_metadata({schedulerIdentity.Methods}, {schedulerIdentity.Props}, {schedulerIdentity.PropertyCount});");
+        foreach (var (assembly, getter, property) in _assemblyCollectibilityMetadata)
+        {
+            sb.AppendLine($"    static const Dn2CppTypeReflection {assembly}_reflection = {{ nullptr, 0, Dn2CppMetadataTable<Dn2CppMethodInfo>::from_raw({getter}), 1, nullptr, 0, {property}, 1 }};");
+            sb.AppendLine($"    {assembly}.reflectionData = &{assembly}_reflection;");
+        }
         for (int i = 0; i < _taskSchedulerRows.Length; i++)
             if (_taskSchedulerRows[i] is { } taskSchedulerRow)
                 sb.AppendLine($"    dn2cpp_set_task_scheduler_row({i}, Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({taskSchedulerRow}));");
@@ -4023,6 +4030,7 @@ internal sealed partial class CppEmitter
     private readonly string?[] _taskPrivateRows = new string?[4];
     private readonly string?[] _taskSchedulerRows = new string?[2];
     private (string Methods, string Props, int PropertyCount)? _schedulerIdentityMetadata;
+    private readonly List<(string Assembly, string Getter, string Property)> _assemblyCollectibilityMetadata = new();
     private string? _cultureNameValidatorRow;
     private string? _stringRawByteReferenceRow;
     private string? _stringNullTerminatedLengthRow;
