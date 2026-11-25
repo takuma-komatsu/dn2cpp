@@ -522,7 +522,17 @@ template; the fork changes editor tooling only.**
   via `calli`, so no `extension_api.json` intrinsics are involved. Script
   semantics survive: `res://Player.cs` attached to a node resolves through
   the managed script bridge, so existing scenes bind as they are.
-- **Invoke.** `dotnet run --project src/Dn2Cpp.Cli -- <input.dll> --dotnet-module -o <outdir>`.
+- **Invoke.** From the repository root:
+
+  ```bash
+  dotnet run --project src/Dn2Cpp.Cli -- "input.dll" --dotnet-module \
+    -r "/path/to/target/System.Private.CoreLib.dll" \
+    -r "/path/to/GodotSharp/Api/Release/GodotSharp.dll" --auto-ref -o "outdir"
+  ```
+
+  Use the target's .NET 11 implementation CoreLib and the real GodotSharp
+  from the ABI-matched Godot .NET editor. `--auto-ref` resolves framework
+  references beside the explicit CoreLib. Pass other game dependencies with `-r`.
   Runtime backend: `runtime/dotnetmodule/`, CMake `DN2CPP_DOTNET_MODULE`.
 - **ABI pin — read this before shipping.** `godotengine/godot ed1daf0bf0`
   (4.7.2-stable). The emitted library indexes the interop table **by
@@ -595,8 +605,18 @@ register in ClassDB as GDExtension classes rather than as C# scripts.
   (`_Ready`, `_Process`, `_Notification`, and every `_*` whose signature the
   codec models — reverse-dispatch trampolines are generated per class from
   the API dump, not just the lifecycle/input set).
-- **Invoke.** `dotnet run --project src/Dn2Cpp.Cli -- <input.dll> --gdextension -o <outdir>`,
-  then compile as a shared library. Ship `dn2cpp.gdextension` next to it —
+- **Invoke.** From the repository root, with an app built against the shim:
+
+  ```bash
+  dotnet run --project src/Dn2Cpp.Cli -- "input.dll" --gdextension \
+    -r "/path/to/shim/GodotSharp.dll" -r "/path/to/target/System.Private.CoreLib.dll" \
+    --godot-api "extension_api.json" -o "outdir"
+  ```
+
+  Use the target's .NET 11 implementation CoreLib and the same
+  `extension_api.json` that generated the shim. Generate the dump with
+  `godot --headless --dump-extension-api`. Then compile as a shared library.
+  Ship `dn2cpp.gdextension` next to it —
   copy `samples/godot/godot-project/dn2cpp.gdextension`, whose `[libraries]`
   already name the fixed library. Because both that name and `entry_symbol`
   are fixed, one project carries at most one dn2cpp GDExtension.

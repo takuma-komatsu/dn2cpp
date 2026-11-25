@@ -19,10 +19,12 @@ gate_add_exit_hook sdk_sample_cleanup
 echo "== 1/6 Building sample C# assembly (against the GodotSharp shim) =="
 build_proj "$SAMPLE/SdkSample.csproj"
 
-echo "== 2/6 Transpiling IL -> C++ (GDExtension mode, shim passed as reference) =="
+echo "== 2/6 Transpiling IL -> C++ (GDExtension mode, shim + tree-shaken CoreLib) =="
+corelib=$(locate_corelib)
 invoke_cli \
     "$SAMPLE/bin/$CONFIG/$TFM/SdkSample.dll" \
     -r "$SAMPLE/bin/$CONFIG/$TFM/GodotSharp.dll" \
+    -r "$corelib" \
     -o "$OUT" --gdextension
 
 # Cache: with the generated output, the input dlls, the engine version, and
@@ -32,6 +34,7 @@ if gate_cache_check "$OUT" \
         "sdk-sample|godot=$(or_none "$(first_line "$(run_godot_isolated "$SDK_GODOT_USER_ROOT" "$GODOT" --version 2>/dev/null)")")" \
         "$SAMPLE/bin/$CONFIG/$TFM/SdkSample.dll" \
         "$SAMPLE/bin/$CONFIG/$TFM/GodotSharp.dll" \
+        "$corelib" \
         "$PROJECT"; then
     gate_cache_hit_msg
     exit 0
