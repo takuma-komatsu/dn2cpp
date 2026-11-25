@@ -282,7 +282,7 @@ numerics_dll="$(dirname "$corelib")/System.Runtime.Numerics.dll"
 # gate_cache_check answers that with a warning and no key, which would
 # leave this gate uncacheable since it clears the dirs on every run.
 rm -rf "$out" "$sig_out" "$sig_diet_out" "$cut_out" "$mint_out"; mkdir -p "$out"
-if gate_cache_check "$out" "transpiler-limits|full:$DN2CPP_TRANSPILER_LIMITS_FULL|recursive-body:ildiet+no-ildiet|canonical-cap:no-ildiet:1,2|canonical-refs:none|wrapper-exceptions|mint-cap:no-ildiet|definition-graph-env:default,depth8,depth64,count128,count2m,depth1,count1,deep-default+64,budget-copy,uncalled-virtual,uncalled-interface,unallocated-receiver,construction-accessor,generic-accessor,generic-ctor,executed-generic-argument,event,late-construction-accessor:depth3-success,direct-accessor,direct-event-add,invoke-uncalled-virtual,generic-factory:direct,class,method,identity|unused-copied:low2,default32:ildiet+no-ildiet|ordinary-cut:ildiet+no-ildiet|execution-provenance:base-call,base-ctor,object-slot,primitive-dead-branch,abstract-app,abstract-library,nominal-dead-branch,methodimpl,constrained-primitive,const-getter,unused-default-interface,inherited-interface-map,protected-interface-map,class-newslot-map,isa-getter:Sve+Sve2+Arm64:optimize=true|attributes:unread-ctor,unread-getter,read,generic-read:depth3+depth4-success:field-boxes=ildiet,no-ildiet,no-shared-generics:prefix=before-reflected-field-boxes|late-array-equality:no-ildiet:emit+measure|sig:no-ildiet+ildiet|collision:aot-corelib:no-ildiet+patch:no-ref|shared-summary-terms:no-ildiet:dump|repeated-alternatives:no-ildiet|cli:$(_gate_cli_hash)|$corelib" \
+if gate_cache_check "$out" "transpiler-limits|full:$DN2CPP_TRANSPILER_LIMITS_FULL|recursive-body:ildiet+no-ildiet|canonical-cap:model-emit+cli-measure:no-diet:1,2|canonical-refs:none|wrapper-exceptions|mint-cap:no-ildiet|definition-graph-env:default,depth8,depth64,count128,count2m,depth1,count1,deep-default+64,budget-copy,uncalled-virtual,uncalled-interface,unallocated-receiver,construction-accessor,generic-accessor,generic-ctor,executed-generic-argument,event,late-construction-accessor:depth3-success,direct-accessor,direct-event-add,invoke-uncalled-virtual,generic-factory:direct,class,method,identity|unused-copied:low2,default32:ildiet+no-ildiet|ordinary-cut:ildiet+no-ildiet|execution-provenance:base-call,base-ctor,object-slot,primitive-dead-branch,abstract-app,abstract-library,nominal-dead-branch,methodimpl,constrained-primitive,const-getter,unused-default-interface,inherited-interface-map,protected-interface-map,class-newslot-map,isa-getter:Sve+Sve2+Arm64:optimize=true|attributes:unread-ctor,unread-getter,read,generic-read:depth3+depth4-success:field-boxes=ildiet,no-ildiet,no-shared-generics:prefix=before-reflected-field-boxes|late-array-equality:no-ildiet:emit+measure|sig:no-ildiet+ildiet|collision:aot-corelib:no-ildiet+patch:no-ref|shared-summary-terms:no-ildiet:dump|repeated-alternatives:no-ildiet|cli:$(_gate_cli_hash)|$corelib" \
         "$rec_app" "$sig_app" "$fld_app" "$afld_app" "$big_app" "$arr_app" "$mint_app" "$tma_app" \
         gates/fixtures/transpiler-limits/CanonicalLink/Program.cs \
         gates/fixtures/transpiler-limits/CanonicalLink/CanonicalLinkBound.csproj \
@@ -638,36 +638,43 @@ gate_output status "$mint_native_rc" "$mint_expected_rc"
 echo "OK (and the shared body's array-to-collection boundary runs — output matches real .NET)"
 
 echo "== 3e/9 Canonical linking must preserve the instantiation bound =="
-# No BCL reference: the only instantiations are Id<string> and its canonical
-# Id<CnRef>. The second mint occurs inside canonical linking's fallback arm.
-for mode in "" "--measure"; do
-    label=${mode:-emit}
-    link_dir="$out/canonical-${label#--}"
-    link_so="$out/canonical-${label#--}.stdout"
-    link_se="$out/canonical-${label#--}.stderr"
-    link_rc=0
-    (export DN2CPP_MAX_INSTANTIATIONS=1
-     invoke_cli "$link_app" --no-ildiet $mode -o "$link_dir") >"$link_so" 2>"$link_se" || link_rc=$?
+# CoreLib mints closed types before linking Id<CnRef>. Exercise emission below
+# the CLI's load-set boundary so this budget covers just Id<string> and Id<CnRef>.
+prepare_cli
+link_transpiler="$(dirname "$DN2CPP_CLI_DLL")/Dn2Cpp.Transpiler.dll"
+link_run() (
+    export DN2CPP_MAX_INSTANTIATIONS="$2"
+    if [ "$1" = emit ]; then
+        dotnet exec "$wrapper_app" "$link_transpiler" canonical-link "$link_app" "$3"
+    else
+        invoke_cli "$link_app" --no-ildiet --measure -o "$3"
+    fi
+)
+for label in emit measure; do
+    link_fail="$out/canonical-$label-1"
+    link_ok="$out/canonical-$label-2"
+    gate_capture "$link_fail" link_run "$label" 1 "$link_fail" || exit 1
+    link_rc=$(cat "$link_fail.status")
     if [ "$link_rc" -ne 2 ] \
-            || ! grep -q 'instantiation count passed the 1 limit while instantiating CanonicalLinkBound.Program::Id<CnRef>' "$link_se" \
-            || ! grep -q 'DN2CPP_MAX_INSTANTIATIONS' "$link_se" \
-            || grep -q 'instantiation count passed' "$link_so"; then
-        echo "FAIL: canonical linking ($label) must fail with exit 2 and the count-bound diagnostic; got $link_rc" >&2
-        cat "$link_so" "$link_se" >&2
+            || ! grep -Fq 'instantiation count passed the 1 limit while instantiating CanonicalLinkBound.Program::Id<CnRef>' "$link_fail.stderr" \
+            || ! grep -Fq 'DN2CPP_MAX_INSTANTIATIONS' "$link_fail.stderr" \
+            || grep -Fq 'instantiation count passed' "$link_fail.stdout" \
+            || [ -e "$link_fail" ]; then
+        echo "FAIL: canonical linking ($label) must refuse with exit 2, the count-bound diagnostic and no output; got $link_rc" >&2
+        cat "$link_fail.stdout" "$link_fail.stderr" >&2
         exit 1
     fi
 
-    (export DN2CPP_MAX_INSTANTIATIONS=2
-     invoke_cli "$link_app" --no-ildiet $mode -o "$link_dir") >"$link_so" 2>"$link_se"
-    if [ -z "$mode" ]; then
-        if ! grep -Eq '^inline .* Program_Id_TisCnRef_m[0-9]+\([^;]*\)$' "$link_dir/generated.h"; then
+    gate_capture_ok "$link_ok" link_run "$label" 2 "$link_ok" || exit 1
+    if [ "$label" = emit ]; then
+        if ! grep -Eq '^inline .* Program_Id_TisCnRef_m[0-9]+\([^;]*\)$' "$link_ok/generated.h"; then
             echo "FAIL: raising the bound did not produce the canonical Id<CnRef> body" >&2
             exit 1
         fi
-    elif ! grep -q '0 gaps total' "$link_so" \
-            || [ ! -f "$link_dir/s0-gaps.tsv" ] || [ -s "$link_dir/s0-gaps.tsv" ]; then
+    elif ! grep -Fq '0 gaps total' "$link_ok.stdout" \
+            || [ ! -f "$link_ok/s0-gaps.tsv" ] || [ -s "$link_ok/s0-gaps.tsv" ]; then
         echo "FAIL: raising the canonical-link bound did not produce a clean measure report" >&2
-        cat "$link_so" "$link_se" >&2
+        cat "$link_ok.stdout" "$link_ok.stderr" >&2
         exit 1
     fi
     echo "OK ($label: canonical-link bound escaped; raising it permits canonical sharing)"
