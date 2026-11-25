@@ -628,7 +628,9 @@ register in ClassDB as GDExtension classes rather than as C# scripts.
   types (dynamic vtable patch, N2M trampolines, patch-derived `Node`
   instances) **without any runtime code generation** — so it works on iOS
   and consoles.
-- **Invoke** (base): `dn2cpp <input.dll> --hotupdate-base [--hotupdate-refs <roots.txt>]`.
+- **Invoke** (base): `dn2cpp "input.dll" -r "/path/to/System.Private.CoreLib.dll" --hotupdate-base`.
+  Use the .NET 11 CoreLib for the target platform. Add `--hotupdate-refs "roots.txt"`
+  to pre-emit generic instantiations the patch needs.
   **Invoke** (patch): `dn2cpp --emit-patch <patch.dll> --base-abi <base-abi.json> [--patch-version N]`.
 - **Deploy.** `Dn2Cpp.Runtime.HotUpdate.LoadDirectory("<dir>")` applies
   BPIs in `(patchVersion, filename)` order; header-stale BPIs are logged to
