@@ -193,4 +193,16 @@ static class Program
             && !DateTime.TryParseExact(text + "+14:01", format + "zzz", ci, adjust, out _);
         Console.WriteLine("exact offset syntax=" + shortHour + "/" + twoHours + "/" + invalid);
     }
+
+    internal static void RunGeneralOffset()
+    {
+        const string text = "2026-11-26T02:30:40.0069010+09:00";
+        var expected = new DateTime(2026, 11, 25, 17, 30, 40, DateTimeKind.Utc).AddTicks(69010);
+        var local = DateTime.Parse(text, ci);
+        bool parsed = DateTime.TryParse(text, ci, DateTimeStyles.AdjustToUniversal, out var utc);
+        bool rejectsMalformed = !DateTime.TryParse("2026-011-26+09:00", ci, DateTimeStyles.None, out _)
+            && !DateTime.TryParse("11/26/2026/ 02:30+09:00", ci, DateTimeStyles.None, out _);
+        Console.WriteLine("general offset parse=" + (local.Kind == DateTimeKind.Local && local.ToUniversalTime() == expected)
+            + "/" + (parsed && utc.Kind == DateTimeKind.Utc && utc == expected) + " rejects malformed=" + rejectsMalformed);
+    }
 }
