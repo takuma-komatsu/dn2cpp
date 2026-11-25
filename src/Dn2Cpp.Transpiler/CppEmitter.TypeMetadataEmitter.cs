@@ -668,6 +668,11 @@ internal sealed partial class CppEmitter
         public ReflectionLayoutType GetPinnedType(ReflectionLayoutType elementType) => elementType;
     }
 
+    // A shared body's method arguments have no runtime identity. Its concrete
+    // instantiations supply the method rows, including for Delegate.Method.
+    private bool HasReflectableMethodArguments(MethodInfo method) =>
+        !_c.SharedGenericsEnabled || !method.Context.MethodArgs.Any(Compilation.ContainsCanonPlaceholder);
+
     // Cache only raw definitions: planning may still add closed rows to cls.Methods.
     private List<MethodInfo> ReflectionMethods(ClassInfo cls)
     {
@@ -695,8 +700,7 @@ internal sealed partial class CppEmitter
             }
             _reflectionDefinitions[cls] = definitions;
         }
-        var methods = cls.Methods.Where(m => !(_c.SharedGenericsEnabled
-            && m.Context.MethodArgs.Any(Compilation.ContainsCanonPlaceholder))).ToList();
+        var methods = cls.Methods.Where(HasReflectableMethodArguments).ToList();
         if (definitions.Count == 0)
             return methods;
         // A kept closed row stands for its definition; one the trim drops stands for none.
@@ -717,7 +721,7 @@ internal sealed partial class CppEmitter
         bool initializer = method.Name == ".cctor" && method.IsStatic && _c.NamedDelegateBindingUsed;
         if (!ctor && (!_c.KeepsReflectionMetadata(cls)
             || (!initializer && (method.Name == ".ctor" || method.Name == ".cctor"))
-            || (_c.SharedGenericsEnabled && method.Context.MethodArgs.Any(Compilation.ContainsCanonPlaceholder))))
+            || !HasReflectableMethodArguments(method)))
             return false;
         if (cls.Module != _c.AppModule && !_hotUpdateBase && method.Rva != 0
             && !_c.Reachable.Contains(method) && !_c.KeepsUnreachedRow(method)
@@ -2410,7 +2414,8 @@ internal sealed partial class CppEmitter
                         if (target.DeclaringClass == cls && !methods.Contains(target))
                             methods.Add(target);
                 }
-                methods = methods.OrderBy(m => m.CppName, System.StringComparer.Ordinal).ToList();
+                methods = methods.Where(_e.HasReflectableMethodArguments)
+                    .OrderBy(m => m.CppName, System.StringComparer.Ordinal).ToList();
                 if (BuildMemberTable(cls, methods, "delegatetab") is { } table)
                 {
                     entries.Add($"{{ {_e.TypeInfoRef(cls, "delegate-only method owner")}, {table.Expr}, {table.Count} }}");

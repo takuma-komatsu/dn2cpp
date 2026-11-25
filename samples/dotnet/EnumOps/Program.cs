@@ -52,6 +52,7 @@ namespace EnumOps
             if (args.Length > 0 && args[0] == "before-enum-values")
                 return;
             EnumLookupSubset.ValueLookup.Run();
+            EnumSpanFormatSubset.Program.RunFormatDelegate();
         }
     }
 }
