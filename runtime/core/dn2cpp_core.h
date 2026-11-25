@@ -7978,6 +7978,7 @@ void dn2cpp_lock_scope_dispose(Dn2CppLockScope* scope);
 struct Dn2CppSbChunkEnum { Dn2CppString* snapshot; int32_t state; };
 
 extern Dn2CppTypeInfo dn2cpp_task_type;
+extern const Dn2CppTypeInfo dn2cpp_task_factory_type;
 extern const Dn2CppTypeInfo dn2cpp_taskscheduler_type;
 // Managed subclasses must keep this prefix before their own fields, including
 // when allocated without running their constructor.
@@ -8300,6 +8301,17 @@ struct Dn2CppCancelToken
 {
     Dn2CppCancelSource* source;
 };
+
+// Both TaskFactory constructors used by Task.Factory leave their fields zeroed.
+struct Dn2CppTaskFactory : Dn2CppObject
+{
+    Dn2CppCancelToken defaultCancellationToken;
+    Dn2CppObject* defaultScheduler;
+    int32_t defaultCreationOptions;
+    int32_t defaultContinuationOptions;
+};
+Dn2CppTaskFactory* dn2cpp_default_task_factory(const Dn2CppTypeInfo* type);
+
 Dn2CppCancelSource* dn2cpp_cts_new();
 // new CancellationTokenSource(delay): a fresh source already armed to cancel after `ms`
 // (dn2cpp_cts_cancel_after's rules, including the negative-delay contract).

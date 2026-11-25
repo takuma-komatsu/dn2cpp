@@ -4001,6 +4001,7 @@ internal sealed partial class CppEmitter
         var admitted = new List<(string Handle, ClassInfo Cls)>();
         foreach (string handle in handles)
             if (RelationRepresentative(namesByHandle[handle]) is { } cls
+                && CoreIntrinsics.RuntimeTypeInfoSymbol(cls) == handle
                 && !cls.IsInterface && cls.GenericArity == 0 && !_typeBinds.Contains(cls)
                 && cls.FullName is not ("System.Object" or "System.Enum"))
                 admitted.Add((handle, cls));

@@ -927,6 +927,7 @@ internal static partial class CoreIntrinsics
         ["System.Object"] = "&dn2cpp_object_type",
         ["System.String"] = "&dn2cpp_string_type",
         ["System.Threading.Tasks.Task"] = "&dn2cpp_task_type",
+        ["System.Threading.Tasks.TaskFactory"] = "&dn2cpp_task_factory_type",
         ["System.Threading.Tasks.TaskScheduler"] = "&dn2cpp_taskscheduler_type",
         ["System.Void"] = "&dn2cpp_void_type",
         // The primitives. The runtime handle carries DN2CPP_TF_PRIMITIVE, which the class
@@ -1176,8 +1177,20 @@ internal static partial class CoreIntrinsics
         : s_runtimeOwnedTypeInfo.TryGetValue(fullTypeName, out var ow) ? ow
         : null;
 
+    private static string? RuntimeTypeName(ClassInfo cls)
+    {
+        string name = cls.FullName;
+        return name == "System.Threading.Tasks.TaskFactory" && cls.Module.AssemblyName is not ("System.Private.CoreLib" or "mscorlib")
+            ? null : name;
+    }
+
+    internal static string? ExternalRuntimeTypeInfoSymbol(TypeDesc type) =>
+        type.ExternalName == "System.Threading.Tasks.TaskFactory"
+            && (type.ExternalModule is not { } module || !module.Owner.AssemblyTypeResolver.CanBindUnresolvedCoreType(module, type.ExternalHandle))
+            ? null : RuntimeTypeInfoSymbol(type.ExternalName);
+
     public static string? RuntimeTypeInfoSymbol(ClassInfo cls) =>
-        RuntimeTypeInfoSymbol(cls.FullName) ?? RuntimeOwnedNestedHandle(cls);
+        RuntimeTypeInfoSymbol(RuntimeTypeName(cls)) ?? RuntimeOwnedNestedHandle(cls);
 
     /// <summary>Whether the runtime OWNS this type's metadata, i.e. the emitter must define
     /// no type-info for it at all. False both for a type with no runtime handle (its emitted
@@ -1188,7 +1201,7 @@ internal static partial class CoreIntrinsics
         fullTypeName is not null && s_runtimeOwnedTypeInfo.ContainsKey(fullTypeName);
 
     public static bool RuntimeOwnsTypeInfo(ClassInfo cls) =>
-        RuntimeOwnsTypeInfo(cls.FullName) || RuntimeOwnedNestedHandle(cls) is not null;
+        RuntimeOwnsTypeInfo(RuntimeTypeName(cls)) || RuntimeOwnedNestedHandle(cls) is not null;
 
     /// <summary>Whether an UNLOADED (External) type name is a BCL exception type —
     /// <c>System.Exception</c> itself or any <c>System.*</c> type whose name carries

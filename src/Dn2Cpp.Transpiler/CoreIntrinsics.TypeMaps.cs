@@ -419,13 +419,8 @@ internal static class CoreIntrinsicTypeMaps
         // of which exists here; its calls are answered over the native task model
         // instead (MethodCompiler.RuntimeAsync.cs).
         "System.Runtime.CompilerServices.AsyncHelpers",
-        // Task.get_Factory is an opaque nullptr sentinel; TaskScheduler.Default/Current
-        // share a runtime singleton so explicit null schedulers remain distinguishable.
-        // factory.StartNew dispatches to the same worker pool as Task.Run (the
-        // TaskCreationOptions/scheduler selection are hints dn2cpp's fixed pool does not
-        // model). Keeps the real TPL scheduler machinery out of the tree —
-        // the default scheduler and debugger registration would otherwise reach
-        // ThreadPoolTaskScheduler and ConditionalWeakTable/DependentHandle.
+        // Factories and schedulers have native identities. StartNew dispatches
+        // through the native task pool without rooting the CoreCLR TPL machinery.
         "System.Threading.Tasks.TaskFactory",
         "System.Threading.Tasks.TaskScheduler",
         // Cancellation. CancellationTokenSource is a runtime object with a canceled
@@ -608,10 +603,7 @@ internal static class CoreIntrinsicTypeMaps
         // machine identically; only its ends differ (no observable Task; SetException
         // re-raises off the synchronous stack). See s_intrinsicTypes.
         ["System.Runtime.CompilerServices.AsyncVoidMethodBuilder"] = "Dn2CppAsyncBuilder",
-        // Task.Factory is an opaque nullptr sentinel; TaskScheduler.Default/Current
-        // share a runtime object. StartNew is intercepted at the call site, so a
-        // Dn2CppObject* handle suffices for both types.
-        ["System.Threading.Tasks.TaskFactory"] = "Dn2CppObject*",
+        ["System.Threading.Tasks.TaskFactory"] = "Dn2CppTaskFactory*",
         ["System.Threading.Tasks.TaskScheduler"] = "Dn2CppObject*",
         // Cancellation: the source is a runtime reference object, the token a value
         // struct holding the source pointer.

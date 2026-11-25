@@ -1770,6 +1770,10 @@ captured or host context on a threaded target, queues its resumption on the
 pool. Non-generic `SuppressThrowing` observes a failure without raising it.
 Other direct awaiter and `IValueTaskSource` registrations are unchanged.
 
+`Task.Factory` and each closed `Task<TResult>.Factory` keep one GC-rooted
+instance of their declared factory type. The default constructor leaves the
+cancellation token, scheduler and options at their zero values.
+
 The default scheduler and generated scheduler subclasses share a native identity
 field. CoreLib's `TaskScheduler.Id` getter assigns it lazily from its own counter,
 independent of task IDs. The default pool claims its ID when the scheduler statics

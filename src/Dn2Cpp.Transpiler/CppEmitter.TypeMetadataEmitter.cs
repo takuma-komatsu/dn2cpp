@@ -1484,7 +1484,7 @@ internal sealed partial class CppEmitter
                     : isTask
                         ? "&dn2cpp_task_type"
                         : "&dn2cpp_object_type";
-                string size = c.IntrinsicCppName is "Dn2CppThreadLocal*" or "Dn2CppBlockingCollection*"
+                string size = c.IntrinsicCppName is "Dn2CppThreadLocal*" or "Dn2CppBlockingCollection*" or "Dn2CppTaskFactory*"
                     ? $"(int32_t)sizeof({c.IntrinsicCppName.Substring(0, c.IntrinsicCppName.Length - 1)})"
                     : c.IntrinsicCppName == "Dn2CppTask*"
                     ? "(int32_t)sizeof(Dn2CppTask)"

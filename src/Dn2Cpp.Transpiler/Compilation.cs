@@ -1747,7 +1747,7 @@ internal sealed partial class Compilation
     }
 
     private RawAssemblyTypeResolver<Module>? _assemblyTypeResolver;
-    private RawAssemblyTypeResolver<Module> AssemblyTypeResolver =>
+    internal RawAssemblyTypeResolver<Module> AssemblyTypeResolver =>
         _assemblyTypeResolver ??= new RawAssemblyTypeResolver<Module>(Modules.Select(m => (m, m.AssemblyName, m.Reader)));
 
     private TypeDesc? ResolveAssemblyType(string assembly, string ns, string name,

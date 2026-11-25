@@ -39,6 +39,24 @@ internal sealed class RawAssemblyTypeResolver<TModule> where TModule : notnull
         return false;
     }
 
+    // After definition lookup failed, a supplied manifest can only contribute
+    // a runtime handle by actually forwarding this type into an omitted CoreLib.
+    public bool CanBindUnresolvedCoreType(TModule module, EntityHandle token)
+    {
+        if (token.Kind != HandleKind.TypeReference || token.IsNil) return false;
+        var reader = _modules[module].Reader;
+        var type = reader.GetTypeReference((TypeReferenceHandle)token);
+        if (type.ResolutionScope.Kind != HandleKind.AssemblyReference) return false;
+        var scope = (AssemblyReferenceHandle)type.ResolutionScope;
+        string assembly = reader.GetString(reader.GetAssemblyReference(scope).Name);
+        if (!_loadedAssemblyNames.ContainsKey(assembly))
+            return IsSignedStandardFacadeScope(reader, scope, assembly);
+
+        string ns = reader.GetString(type.Namespace), name = reader.GetString(type.Name);
+        return !_loadedAssemblyNames.ContainsKey("System.Private.CoreLib") && ForwardsTo(assembly, ns, name, "System.Private.CoreLib")
+            || !_loadedAssemblyNames.ContainsKey("mscorlib") && ForwardsTo(assembly, ns, name, "mscorlib");
+    }
+
     public (TModule Module, TypeDefinitionHandle Type)? ResolveNamed(TModule source, string? assembly, string fullName,
         Func<string, string, IEnumerable<(TModule Module, TypeDefinitionHandle Handle)>> candidates)
     {

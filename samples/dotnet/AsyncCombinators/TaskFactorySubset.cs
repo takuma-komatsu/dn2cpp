@@ -5,11 +5,7 @@ using System.Threading.Tasks;
 
 namespace TaskFactorySubset
 {
-    // Task.Factory.StartNew + TaskScheduler.Default. Task.get_Factory and
-    // TaskScheduler.get_Default are opaque sentinels; every StartNew form
-    // dispatches to the same worker pool as Task.Run, and the trailing
-    // CancellationToken / TaskCreationOptions / TaskScheduler arguments are
-    // scheduling hints only. Covers the Action form, the Action<object>+state
+    // Task.Factory.StartNew + TaskScheduler.Default. Covers the Action form, the Action<object>+state
     // form, the generic Func<TResult> form, the fully-hinted shape the base
     // Stream.FlushAsync compiles, the no-unwrap rule (StartNew(async ...)
     // returns a nested task, unlike Task.Run) with async bodies that really
@@ -121,6 +117,15 @@ namespace TaskFactorySubset
         internal static void __GateEntry()
         {
             Console.WriteLine(Run().Result); // 11,22,33,44,55,66,InvalidOperationException:inner-boom,InvalidOperationException:boom
+        }
+
+        internal static void RunFactoryIdentity()
+        {
+            var factory = Task.Factory;
+            var typed = Task<string>.Factory;
+            Console.WriteLine("task factories: " + (factory?.GetType() == typeof(TaskFactory)
+                && typed?.GetType() == typeof(TaskFactory<string>) && ReferenceEquals(factory, Task.Factory)
+                && ReferenceEquals(typed, Task<string>.Factory) && !ReferenceEquals(typed, Task<object>.Factory)));
         }
     }
 }

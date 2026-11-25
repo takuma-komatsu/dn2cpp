@@ -2141,7 +2141,7 @@ internal sealed partial class MethodCompiler
             if (hasState)
                 state = Pop();
             var fdel = Pop(); // Func<TResult> or Func<object?, TResult>
-            Pop();            // receiver — the Task.Factory nullptr sentinel
+            Pop();            // factory receiver
             EmitArgumentRequired(fdel, "function");
             if (schedulerHint is { } sh)
                 EmitArgumentRequired(sh, "scheduler");
