@@ -412,6 +412,7 @@ static const char* dn2cpp_default_message_key(const Dn2CppTypeInfo* ti)
     if (ti == &dn2cpp_argument_out_of_range_exception_type) return DN2CPP_SR_ARGUMENT_OUT_OF_RANGE;
     if (ti == &dn2cpp_argument_null_exception_type) return DN2CPP_SR_ARGUMENT_NULL;
     if (ti == &dn2cpp_invalid_operation_exception_type) return DN2CPP_SR_INVALID_OPERATION;
+    if (ti == &dn2cpp_invalid_program_exception_type) return DN2CPP_SR_INVALID_PROGRAM;
     if (ti == &dn2cpp_timeout_exception_type) return DN2CPP_SR_TIMEOUT;
     if (ti == &dn2cpp_object_disposed_exception_type) return DN2CPP_SR_OBJECT_DISPOSED;
     if (ti == &dn2cpp_arithmetic_exception_type) return DN2CPP_SR_ARITHMETIC;
@@ -1109,6 +1110,7 @@ static int32_t dn2cpp_exception_default_hresult(const Dn2CppTypeInfo* ti)
         { &dn2cpp_member_access_exception_type, 0x8013151Au },
         { &dn2cpp_field_access_exception_type, 0x80131507u },
         { &dn2cpp_bad_image_format_exception_type, 0x8007000Bu },
+        { &dn2cpp_invalid_program_exception_type, 0x8013153Au },
         { &dn2cpp_missing_manifest_resource_exception_type, 0x80131532u },
         { &dn2cpp_null_reference_exception_type, 0x80004003u },
         { &dn2cpp_divide_by_zero_exception_type, 0x80020012u },

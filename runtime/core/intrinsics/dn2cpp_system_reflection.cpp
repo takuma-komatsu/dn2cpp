@@ -8,6 +8,7 @@
 #include "dn2cpp_core.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
@@ -2005,6 +2006,7 @@ Dn2CppType* dn2cpp_type_get_by_name(Dn2CppString* name, int32_t throwOnError,
 #define DN2CPP_BF_PUBLIC       0x10
 #define DN2CPP_BF_NONPUBLIC    0x20
 #define DN2CPP_BF_FLATTEN      0x40
+#define DN2CPP_BF_EXACT_BINDING 0x10000
 #define DN2CPP_BF_DO_NOT_WRAP_EXCEPTIONS 0x02000000
 
 // Whole-string compare of a managed UTF-16 string against an ASCII C string.
@@ -6291,6 +6293,17 @@ static Dn2CppObject* dn2cpp_invoke_answer(Dn2CppMetadataHandle<Dn2CppMethodInfo>
     }
 }
 
+static Dn2CppObject* dn2cpp_ranked_array_ctor_invoker(void* arity, Dn2CppObject*, Dn2CppObject** args,
+    const Dn2CppTypeInfo* declaring)
+{
+    return dn2cpp_array_construct_ranked(declaring, args, *static_cast<int32_t*>(arity) != declaring->arrayRank);
+}
+
+static bool dn2cpp_is_ranked_array_ctor(void* invoker)
+{
+    return invoker == reinterpret_cast<void*>(dn2cpp_ranked_array_ctor_invoker);
+}
+
 static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
     const Dn2CppInvokePlan& row, Dn2CppObject* obj, Dn2CppObject** args, int32_t argc, bool wrapExceptions,
     Dn2CppInvokeMode mode, const Dn2CppTypeInfo* reflected)
@@ -6359,7 +6372,18 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
     else if (obj != nullptr && row.gvmDispatcher != nullptr)
         fn = row.gvmDispatcher;
     if (fn == nullptr)
+    {
+        // An array constructor allocates its receiver. Calling it on an existing array is invalid IL.
+        if (invoke && dn2cpp_is_ranked_array_ctor(row.invoker))
+        {
+            Dn2CppString* message = nullptr;
+#ifndef _WIN32
+            message = dn2cpp_sr_message(DN2CPP_SR_INVALID_PROGRAM_NON_STATIC, nullptr, 0);
+#endif
+            dn2cpp_throw_invoke_wrapped(&dn2cpp_invalid_program_exception_type, message, 0x8013153Au, wrapExceptions);
+        }
         dn2cpp_throw_invoke_unavailable(mi, reflected);
+    }
     Dn2CppObject* self = obj;
     if (!isStatic && obj != nullptr && (declaring->flags & DN2CPP_TF_VALUETYPE) != 0 && !objectVirtualInvoker)
         self = reinterpret_cast<Dn2CppObject*>(reinterpret_cast<char*>(obj) + sizeof(Dn2CppObject));
@@ -8738,6 +8762,69 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
 
 // ---- reflection: constructors ----
 
+// Arrays have no constructor MethodDefs. Share the Int32 parameters and display by arity;
+// a delta supplies the exact declaring type and stable member identity for each queried array.
+static Dn2CppTypeReflection dn2cpp_constructor_metadata(const Dn2CppTypeInfo* ti)
+{
+    auto reflection = ti->reflection();
+    if (!dn2cpp_is_md_array(ti) || ti->elementType == nullptr || ti->arrayRank < 1 || ti->arrayRank > 32
+        || reflection.ctorCount != 0 || dn2cpp_type_contains_generic_parameters(ti))
+        return reflection;
+    struct Signature
+    {
+        Dn2CppMethodInfo row{};
+        std::vector<Dn2CppParamInfo> parameters;
+        std::string display;
+
+        explicit Signature(int32_t arity) : parameters(arity), display("Void .ctor(")
+        {
+            for (auto& parameter : parameters)
+            {
+                parameter.paramType = &dn2cpp_int32_type;
+                parameter.customModifiersKnown = 1;
+                parameter.display = "Int32";
+                display += "Int32, ";
+            }
+            display.resize(display.size() - 2);
+            display += ')';
+            row.name = ".ctor";
+            row.returnType = &dn2cpp_void_type;
+            row.parameters = parameters.data();
+            row.paramCount = arity;
+            row.attrs = DN2CPP_MTHA_PUBLIC;
+            row.vtableSlot = -1;
+            row.invoker = reinterpret_cast<void*>(dn2cpp_ranked_array_ctor_invoker);
+            row.ilAttrs = 0x1006; // Public | RTSpecialName
+            row.metadataToken = 0x06000000; // mdMethodDefNil
+            row.display = display.c_str();
+            row.returnCustomModifiersKnown = 1;
+        }
+    };
+    using Signatures = std::unordered_map<int32_t, Signature>;
+    using Constructors = std::array<Dn2CppMethodDelta, 2>;
+    using Arrays = std::unordered_map<const Dn2CppTypeInfo*, Constructors>;
+    static auto& signatures = dn2cpp_never_destroyed<Signatures>();
+    static auto& arrays = dn2cpp_never_destroyed<Arrays>();
+    static auto& mutex = dn2cpp_never_destroyed<std::mutex>();
+    std::lock_guard<std::mutex> lock(mutex);
+    auto found = arrays.find(ti);
+    if (found == arrays.end())
+    {
+        Constructors ctors{};
+        for (int32_t i = 0; i < 2; i++)
+        {
+            int32_t arity = (i + 1) * ti->arrayRank;
+            auto signature = signatures.try_emplace(arity, arity).first;
+            ctors[i].original = &signature->second.row;
+            ctors[i].declaringType = ti;
+        }
+        found = arrays.emplace(ti, ctors).first;
+    }
+    reflection.ctors = Dn2CppMetadataTable<Dn2CppMethodInfo>::from_raw(found->second.data());
+    reflection.ctorCount = 2;
+    return reflection;
+}
+
 // Allocates a fresh instance of mi->declaringType (a boxed payload for a value type),
 // runs the ctor through its invoker thunk (instance, void return), and returns it.
 static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, Dn2CppObject** args, int32_t argc, bool wrapExceptions)
@@ -8760,6 +8847,9 @@ static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodIn
                         plan.declaringType)
                     : dn2cpp_invoke_check_args(mi, plan.checkedTypes(), args, argc, &defaultCopyBack,
                         plan.declaringType);
+    // The array allocator chooses the layout and can return an SZ array for rank one.
+    if (dn2cpp_is_ranked_array_ctor(plan.invoker))
+        return dn2cpp_invoke_target(plan.invoker, &argc, nullptr, args, plan.declaringType, wrapExceptions);
     // The image refuses only a call .NET would make, before anything is allocated.
     if (plan.invoker == nullptr || plan.fnPtr == nullptr)
         dn2cpp_throw_invoke_unavailable(mi, plan.declaringType);
@@ -8853,7 +8943,7 @@ void dn2cpp_array_initialize(Dn2CppObject* a)
 static int32_t dn2cpp_collect_ctors(const Dn2CppTypeInfo* ti, int32_t flags, Dn2CppObject** out)
 {
     int32_t n = 0;
-    const auto reflection = ti->reflection();
+    const auto reflection = dn2cpp_constructor_metadata(ti);
     for (int32_t i = 0; i < reflection.ctorCount; i++)
     {
         const auto ci = reflection.ctors[i];
@@ -8898,7 +8988,7 @@ Dn2CppMethodRef* dn2cpp_type_get_constructor_full(Dn2CppType* t, Dn2CppArrayRef*
         && dn2cpp_member_matches(localConstructor->attrs, bindingFlags, false)
         && dn2cpp_params_match_types(localConstructor, paramTypes, ti))
         return dn2cpp_make_methodref(localConstructor, ti);
-    const auto reflection = ti->reflection();
+    const auto reflection = dn2cpp_constructor_metadata(ti);
     for (int32_t i = 0; i < reflection.ctorCount; i++)
     {
         const auto ci = reflection.ctors[i];
@@ -8913,11 +9003,16 @@ Dn2CppMethodRef* dn2cpp_type_get_constructor_full(Dn2CppType* t, Dn2CppArrayRef*
             const auto* parameterType = (row->declaringType->flags & DN2CPP_TF_GENERICDEF) != 0 && row->definitionSignature != nullptr
                 ? dn2cpp_method_definition_type(ci, "symbolic", parameter.paramType, ti, j)
                 : dn2cpp_reflection_parameter_type(parameter, ti);
-            if (parameterType != dn2cpp_type_require(pt))
-            {
-                match = false;
-                break;
-            }
+            const auto* argument = dn2cpp_type_require(pt);
+            if (parameterType == argument)
+                continue;
+            if (dn2cpp_is_ranked_array_ctor(row->invoker)
+                && (bindingFlags & DN2CPP_BF_EXACT_BINDING) == 0
+                && dn2cpp_prim_widens(dn2cpp_prim_code(dn2cpp_enum_underlying_or_self(argument)),
+                                      dn2cpp_prim_code(parameterType)))
+                continue;
+            match = false;
+            break;
         }
         if (match)
             return dn2cpp_make_methodref(ci, ti);
@@ -9739,7 +9834,7 @@ static int32_t dn2cpp_collect_member_matches(const Dn2CppTypeInfo* type, Dn2CppS
     }
     if (memberTypes & DN2CPP_MT_CONSTRUCTOR)
     {
-        const auto reflection = type->reflection();
+        const auto reflection = dn2cpp_constructor_metadata(type);
         for (int32_t i = 0; i < reflection.ctorCount; i++)
         {
             const auto ci = reflection.ctors[i];
@@ -10080,6 +10175,10 @@ int32_t dn2cpp_memberinfo_has_same_metadata(Dn2CppObject* member, Dn2CppObject* 
             dn2cpp_metadata_definition_unavailable();
         const Dn2CppMethodInfo ar = *a;
         const Dn2CppMethodInfo br = *b;
+        // Synthesized array constructors share the typed-nil MethodDef token in their leaf module.
+        if (dn2cpp_is_ranked_array_ctor(ar.invoker) || dn2cpp_is_ranked_array_ctor(br.invoker))
+            return ar.invoker == br.invoker && dn2cpp_same_recorded_metadata_def(
+                ar.metadataToken, ar.declaringType, br.metadataToken, br.declaringType);
         const auto* ao = dn2cpp_metadata_type_definition(ar.declaringType);
         const auto* bo = dn2cpp_metadata_type_definition(br.declaringType);
         if (!dn2cpp_recorded_type_definition(ao) || !dn2cpp_recorded_type_definition(bo))
@@ -10151,12 +10250,13 @@ Dn2CppObject* dn2cpp_type_get_member_same_metadata(Dn2CppType* t, Dn2CppObject* 
     {
         Dn2CppMetadataHandle<Dn2CppMethodInfo> m = reinterpret_cast<Dn2CppMethodRef*>(member)->method;
         const auto memberRow = m.operator->();
+        const bool rankedConstructor = dn2cpp_is_ranked_array_ctor(memberRow->invoker);
         const char* assembly = memberRow->declaringType != nullptr
             ? memberRow->declaringType->reflection().assemblyName : nullptr;
         for (const Dn2CppTypeInfo* ti = t->typeInfo; ti != nullptr; ti = dn2cpp_reflection_base(ti))
         {
             dn2cpp_require_metadata(ti);
-            const auto reflection = ti->reflection();
+            const auto reflection = rankedConstructor ? dn2cpp_constructor_metadata(ti) : ti->reflection();
             for (int32_t i = 0; i < reflection.methodCount; i++)
             {
                 const auto mi = reflection.methods[i];
@@ -10169,8 +10269,13 @@ Dn2CppObject* dn2cpp_type_get_member_same_metadata(Dn2CppType* t, Dn2CppObject* 
             for (int32_t i = 0; i < reflection.ctorCount; i++)
             {
                 const auto ci = reflection.ctors[i];
-                if (ci == m || dn2cpp_same_metadata_def(
-                        ci->metadataToken, reflection.assemblyName, memberRow->metadataToken, assembly))
+                const auto candidate = ci.operator->();
+                const bool same = rankedConstructor && dn2cpp_is_ranked_array_ctor(candidate->invoker)
+                    ? dn2cpp_same_recorded_metadata_def(candidate->metadataToken, ti,
+                        memberRow->metadataToken, memberRow->declaringType)
+                    : dn2cpp_same_metadata_def(candidate->metadataToken, reflection.assemblyName,
+                        memberRow->metadataToken, assembly);
+                if (ci == m || same)
                     return reinterpret_cast<Dn2CppObject*>(
                         dn2cpp_make_methodref(ci, t->typeInfo));
             }
@@ -13415,9 +13520,10 @@ Dn2CppObject* dn2cpp_activator_create_instance_args(Dn2CppType* t, Dn2CppArrayRe
         dn2cpp_throw_platform_not_supported("Activator: more than 30 constructor arguments");
     Dn2CppMethodCandidates cands;
     bool arityMatched = false;
-    for (int32_t c = 0; c < ti->reflection().ctorCount; c++)
+    const auto reflection = dn2cpp_constructor_metadata(ti);
+    for (int32_t c = 0; c < reflection.ctorCount; c++)
     {
-        Dn2CppMetadataHandle<Dn2CppMethodInfo> ci = ti->reflection().ctors[c];
+        Dn2CppMetadataHandle<Dn2CppMethodInfo> ci = reflection.ctors[c];
         if (!dn2cpp_member_matches(ci->attrs, bindingFlags, false) || ci->paramCount != argc)
             continue;
         arityMatched = true;

@@ -811,6 +811,13 @@ static const Dn2CppTypeInfo* dn2cpp_array_require_element_type(Dn2CppType* type)
     return element;
 }
 
+static void dn2cpp_array_check_upper_bound(int32_t lowerBound, int32_t length)
+{
+    if (static_cast<int64_t>(lowerBound) + length - 1 > INT32_MAX)
+        dn2cpp_throw_argument_text(&dn2cpp_argument_out_of_range_exception_type,
+            "Higher indices will exceed Int32.MaxValue because of large lower bound and/or length.", nullptr);
+}
+
 // Array.CreateInstance(Type, lengths...): allocate under the element's storage
 // rep (packed int32 / element-sized / reference), tagged with the (possibly
 // fabricated) precise array identity. Matches real .NET's exceptions, in its
@@ -839,9 +846,7 @@ static Dn2CppObject* dn2cpp_array_create_instance_bounds(Dn2CppType* t, const in
         dn2cpp_throw_type_load();
     if (lowerBounds != nullptr)
         for (int32_t i = 0; i < rank; i++)
-            if (static_cast<int64_t>(lowerBounds[i]) + lengths[i] - 1 > INT32_MAX)
-                dn2cpp_throw_argument_text(&dn2cpp_argument_out_of_range_exception_type,
-                    "Higher indices will exceed Int32.MaxValue because of large lower bound and/or length.", nullptr);
+            dn2cpp_array_check_upper_bound(lowerBounds[i], lengths[i]);
     bool isRef = dn2cpp_array_element_is_reference(el);
     bool isPointer = dn2cpp_signature_kind(el) != 0;
     bool isEnum = (el->flags & DN2CPP_TF_ENUM) != 0;
@@ -886,6 +891,53 @@ static Dn2CppObject* dn2cpp_array_create_instance_bounds(Dn2CppType* t, const in
 Dn2CppObject* dn2cpp_array_create_instance(Dn2CppType* t, const int32_t* lengths, int32_t rank)
 {
     return dn2cpp_array_create_instance_bounds(t, lengths, rank, nullptr);
+}
+
+[[noreturn]] static void dn2cpp_array_throw_dimensions_exceeded()
+{
+    // This message belongs to the 64-bit CoreCLR VM resource table.
+    if (sizeof(void*) == 8)
+        dn2cpp_throw_of_msg(&dn2cpp_out_of_memory_exception_type, "Array dimensions exceeded supported range.");
+    dn2cpp_throw_out_of_memory();
+}
+
+// Ranked array constructors take lengths, or interleaved (lower bound, length) pairs.
+// Reflection's binder has already converted each argument to Int32; null denotes zero.
+Dn2CppObject* dn2cpp_array_construct_ranked(const Dn2CppTypeInfo* arrayType, Dn2CppObject** args,
+                                           bool hasBounds)
+{
+    const int32_t rank = arrayType->arrayRank;
+    if (rank < 1 || rank > 32)
+        dn2cpp_throw_invalid_operation();
+    int32_t lengths[32];
+    int32_t bounds[32];
+    auto argument = [args](int32_t index) {
+        int32_t value = 0;
+        if (args[index] != nullptr)
+            std::memcpy(&value, args[index] + 1, sizeof(value));
+        return value;
+    };
+    uint64_t count = 1;
+    bool dimensionTooLong = false;
+    for (int32_t i = 0; i < rank; i++)
+    {
+        bounds[i] = hasBounds ? argument(2 * i) : 0;
+        lengths[i] = argument(hasBounds ? 2 * i + 1 : i);
+        if (lengths[i] < 0)
+            dn2cpp_overflow();
+        // The CLR reports Array.MaxLength only after validating all bounds.
+        dimensionTooLong |= lengths[i] > 0x7FFFFFC7;
+        dn2cpp_array_check_upper_bound(bounds[i], lengths[i]);
+        count *= static_cast<uint32_t>(lengths[i]);
+        if (count > UINT32_MAX)
+            dn2cpp_array_throw_dimensions_exceeded();
+    }
+    if (dimensionTooLong)
+        dn2cpp_array_throw_dimensions_exceeded();
+    if (count > INT32_MAX)
+        dn2cpp_throw_out_of_memory();
+    return dn2cpp_array_create_instance_bounds(dn2cpp_get_type_from_handle(arrayType->elementType),
+        lengths, rank, hasBounds ? bounds : nullptr);
 }
 
 // A negative element of a lengths array: .NET names the element, "lengths[i]".

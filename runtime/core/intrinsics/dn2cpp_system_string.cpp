@@ -1875,6 +1875,13 @@ Dn2CppString* dn2cpp_string_join_ref_range(Dn2CppString* sep, Dn2CppArrayRef* a,
     return dn2cpp_join_strings(sep, e, count);
 }
 
+static size_t dn2cpp_array_allocation_size(size_t header, uint32_t length, uint32_t stride)
+{
+    if (sizeof(size_t) == 4 && length != 0 && stride > (SIZE_MAX - header) / length)
+        dn2cpp_throw_out_of_memory();
+    return header + static_cast<size_t>(length) * stride;
+}
+
 // Typed array allocation: set the array header to a precise per-element
 // type-info (ti_arr_<T>) so arr.GetType() reports the exact array type — backing
 // Type.GetElementType()/GetArrayRank() and precise array covariance. The untyped
@@ -1886,7 +1893,7 @@ Dn2CppArrayI4* dn2cpp_newarr_i4_t(int32_t length, const Dn2CppTypeInfo* ti)
 {
     if (length < 0)
         dn2cpp_overflow();
-    size_t size = sizeof(Dn2CppArray) + static_cast<size_t>(length) * sizeof(int32_t);
+    size_t size = dn2cpp_array_allocation_size(sizeof(Dn2CppArray), length, sizeof(int32_t));
     if (size < sizeof(Dn2CppArrayI4))
         size = sizeof(Dn2CppArrayI4);
     // int32 storage holds no managed pointers, so allocate it unscanned. The
@@ -1904,7 +1911,7 @@ Dn2CppArrayRef* dn2cpp_newarr_ref_t(int32_t length, const Dn2CppTypeInfo* ti)
 {
     if (length < 0)
         dn2cpp_overflow();
-    size_t size = sizeof(Dn2CppArray) + static_cast<size_t>(length) * sizeof(Dn2CppObject*);
+    size_t size = dn2cpp_array_allocation_size(sizeof(Dn2CppArray), length, sizeof(Dn2CppObject*));
     if (size < sizeof(Dn2CppArrayRef))
         size = sizeof(Dn2CppArrayRef);
     auto* arr = static_cast<Dn2CppArrayRef*>(dn2cpp_alloc(size));
@@ -1919,7 +1926,7 @@ Dn2CppArrayN* dn2cpp_newarr_n_t(int32_t length, int32_t elemSize, const Dn2CppTy
         dn2cpp_overflow();
     // Header size up to the element storage (data is over-aligned to 16).
     size_t header = (sizeof(Dn2CppArray) + sizeof(int32_t) + 15u) & ~static_cast<size_t>(15u);
-    size_t size = header + static_cast<size_t>(length) * elemSize;
+    size_t size = dn2cpp_array_allocation_size(header, length, elemSize);
     if (size < sizeof(Dn2CppArrayN))
         size = sizeof(Dn2CppArrayN);
     auto* arr = static_cast<Dn2CppArrayN*>(dn2cpp_alloc(size));
@@ -1942,7 +1949,7 @@ Dn2CppArrayN* dn2cpp_newarr_n_atomic_t(int32_t length, int32_t elemSize, const D
         dn2cpp_overflow();
     // Header size up to the element storage (data is over-aligned to 16).
     size_t header = (sizeof(Dn2CppArray) + sizeof(int32_t) + 15u) & ~static_cast<size_t>(15u);
-    size_t size = header + static_cast<size_t>(length) * elemSize;
+    size_t size = dn2cpp_array_allocation_size(header, length, elemSize);
     if (size < sizeof(Dn2CppArrayN))
         size = sizeof(Dn2CppArrayN);
     auto* arr = static_cast<Dn2CppArrayN*>(dn2cpp_alloc_atomic(size));
@@ -2077,13 +2084,8 @@ Dn2CppObject* dn2cpp_array_clone_dyn(Dn2CppObject* src)
     {
         auto* mdSrc = reinterpret_cast<Dn2CppMDArray*>(src);
         Dn2CppMDArray* dst = dn2cpp_newmdarr(mdSrc->type, mdSrc->rank, mdSrc->lengths, mdSrc->elemSize, mdSrc->lowerBounds);
-        int32_t total = 1;
-        for (int32_t i = 0; i < mdSrc->rank; i++)
-        {
-            total *= mdSrc->lengths[i];
-        }
         dn2cpp_gc_memmove_refs(dst->data, mdSrc->data,
-            static_cast<size_t>(total) * static_cast<size_t>(mdSrc->elemSize));
+            static_cast<size_t>(dn2cpp_md_total_length(mdSrc)) * static_cast<size_t>(mdSrc->elemSize));
         return dst;
     }
     const Dn2CppTypeInfo* el = t->elementType;
@@ -2373,19 +2375,21 @@ Dn2CppMDArray* dn2cpp_newmdarr(const Dn2CppTypeInfo* ti, int32_t rank, const int
 {
     if (rank < 0)
         dn2cpp_fail("ArgumentOutOfRangeException (negative rank)");
-    int32_t totalLength = 1;
+    uint32_t totalLength = 1;
     for (int32_t i = 0; i < rank; i++)
     {
         if (lengths[i] < 0)
             dn2cpp_overflow();
-        if (lengths[i] > 0 && totalLength > 0x7fffffff / lengths[i])
+        const uint32_t length = static_cast<uint32_t>(lengths[i]);
+        if (length != 0 && totalLength > UINT32_MAX / length)
             dn2cpp_overflow();
-        totalLength *= lengths[i];
+        totalLength *= length;
     }
-    
+    if (totalLength > INT32_MAX)
+        dn2cpp_overflow();
+
     size_t lengthsSize = rank * sizeof(int32_t);
     size_t boundsSize = rank * sizeof(int32_t);
-    size_t dataSize = static_cast<size_t>(totalLength) * elemSize;
     
     size_t totalAllocSize = sizeof(Dn2CppMDArray);
     size_t lengthsOffset = totalAllocSize;
@@ -2396,7 +2400,7 @@ Dn2CppMDArray* dn2cpp_newmdarr(const Dn2CppTypeInfo* ti, int32_t rank, const int
     
     size_t dataAlignment = (elemSize >= 8) ? 8 : (elemSize >= 4 ? 4 : 1);
     size_t dataOffset = (totalAllocSize + dataAlignment - 1) & ~(dataAlignment - 1);
-    totalAllocSize = dataOffset + dataSize;
+    totalAllocSize = dn2cpp_array_allocation_size(dataOffset, totalLength, elemSize);
     
     bool atomic = ti != nullptr && dn2cpp_signature_kind(ti->elementType) != 0;
     bool rawReference = ti != nullptr && dn2cpp_array_has_raw_ref_element(ti->elementType);

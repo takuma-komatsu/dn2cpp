@@ -856,6 +856,7 @@ internal static partial class CoreIntrinsics
         ["System.FieldAccessException"] = "&dn2cpp_field_access_exception_type",
         // MethodBase.Invoke's fault on a static abstract interface member.
         ["System.BadImageFormatException"] = "&dn2cpp_bad_image_format_exception_type",
+        ["System.InvalidProgramException"] = "&dn2cpp_invalid_program_exception_type",
         // ResourceManager's missing-set diagnosis. The .NET documentation tells a caller to
         // write `catch (MissingManifestResourceException)`, and a clause bound to an emitted
         // ti_System_Resources_MissingManifestResourceException would compile, link, and not

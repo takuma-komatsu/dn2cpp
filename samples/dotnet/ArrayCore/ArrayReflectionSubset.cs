@@ -2,6 +2,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Runtime.InteropServices;
 
 namespace ArrayReflectionSubset
@@ -248,6 +249,42 @@ namespace ArrayReflectionSubset
             public int Calls;
             public new bool Equals(object? x, object? y) => object.Equals(x, y);
             public int GetHashCode(object obj) { Calls++; return (int)obj; }
+        }
+
+        internal static void RunRankedConstructors()
+        {
+            Console.WriteLine("== ranked array constructors ==");
+            Type type = typeof(object).MakeArrayType(1);
+            var constructor = type.GetConstructor(new[] { typeof(int) })!;
+            var constructors = type.GetConstructors();
+            var vector = (Array)constructor.Invoke(new object[] { 3 });
+            Console.WriteLine($"length ctor={constructors.Length}/{constructor == constructors[0]}/{constructor.DeclaringType == type}/{vector.GetType() == typeof(object[])}/{vector.Length}");
+            var bounded = (Array)constructors[1].Invoke(new object[] { -2, 3 });
+            Console.WriteLine($"bound ctor={bounded.GetType() == type}/{bounded.GetLowerBound(0)}/{bounded.GetLength(0)}");
+
+            Type rectangle = typeof(int[,]);
+            var ctor = rectangle.GetConstructor(new[] { typeof(short), typeof(int), typeof(int), typeof(int) })!;
+            var array = (int[,])ctor.Invoke(new object[] { (short)-3, 2, 5, 4 });
+            array[-2, 8] = 17;
+            Console.WriteLine($"rectangle={array.GetLowerBound(0)}/{array.GetLength(0)}/{array.GetLowerBound(1)}/{array.GetLength(1)}/{array[-2, 8]}");
+            Console.WriteLine($"visibility={type.GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic).Length}/{type.GetMember(".ctor").Length}");
+            try { constructor.Invoke(new object[] { -1 }); }
+            catch (TargetInvocationException e) { Console.WriteLine("negative length=" + e.InnerException!.GetType().Name); }
+            var sizes = rectangle.GetConstructor(new[] { typeof(int), typeof(int) })!;
+            try { sizes.Invoke(BindingFlags.DoNotWrapExceptions, null, new object[] { 65536, 65536 }, null); }
+            catch (OutOfMemoryException e) { Console.WriteLine($"dimension product={e.GetType().Name}/{e.Message}"); }
+            var empty = (int[,,,])typeof(int[,,,]).GetConstructors()[0].Invoke(new object[] { 50000, 50000, 1, 0 });
+            Console.WriteLine("zero last dimension=" + empty.Length);
+            Console.WriteLine($"ctor definition={constructor.HasSameMetadataDefinitionAs(ctor)}/{constructor.HasSameMetadataDefinitionAs(typeof(Pt[,]).GetConstructors()[0])}/{rectangle.GetMemberWithSameMetadataDefinitionAs(constructors[1]) == sizes}");
+            MethodBase method = constructor;
+            try { method.Invoke(bounded, new object[] { 3 }); }
+            catch (TargetInvocationException e) { Console.WriteLine("existing receiver=" + e.InnerException!.GetType().Name); }
+            try { method.Invoke(bounded, BindingFlags.DoNotWrapExceptions, null, new object[] { 3 }, null); }
+            catch (InvalidProgramException e) { Console.WriteLine($"unwrapped receiver={e.HResult:X8}/{e.Message}"); }
+            var clone = (int[,,,])empty.Clone();
+            try { Console.WriteLine(clone[49999, 0, 0, 0]); }
+            catch (IndexOutOfRangeException) { Console.WriteLine("empty index=IndexOutOfRangeException"); }
+            Console.WriteLine("ranked array constructors end");
         }
 
         internal static void RunLowerBounds()

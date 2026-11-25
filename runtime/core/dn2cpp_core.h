@@ -2217,6 +2217,8 @@ inline constexpr const char* DN2CPP_SR_EMPTY_WAITHANDLE_ARRAY = "Argument_EmptyW
 inline constexpr const char* DN2CPP_SR_ARGUMENT_NULL_ARRAY_ELEMENT = "ArgumentNull_ArrayElement";
 inline constexpr const char* DN2CPP_SR_ARGUMENT_NULL = "ArgumentNull_Generic";
 inline constexpr const char* DN2CPP_SR_INVALID_OPERATION = "Arg_InvalidOperationException";
+inline constexpr const char* DN2CPP_SR_INVALID_PROGRAM = "InvalidProgram_Default";
+inline constexpr const char* DN2CPP_SR_INVALID_PROGRAM_NON_STATIC = "InvalidProgram_NonStaticMethod";
 inline constexpr const char* DN2CPP_SR_TIMEOUT = "Arg_TimeoutException";
 inline constexpr const char* DN2CPP_SR_MUST_BE_DELEGATE = "Arg_MustBeDelegate";
 inline constexpr const char* DN2CPP_SR_MUST_BE_ENUM = "Arg_MustBeEnum";
@@ -2711,6 +2713,9 @@ void dn2cpp_array_set_value_indices(Dn2CppObject* a, Dn2CppObject* value, Dn2Cpp
 Dn2CppObject* dn2cpp_array_get_value_fixed(Dn2CppObject* a, const int32_t* idx, int32_t n);
 void dn2cpp_array_set_value_fixed(Dn2CppObject* a, Dn2CppObject* value, const int32_t* idx, int32_t n);
 Dn2CppObject* dn2cpp_array_create_instance(Dn2CppType* t, const int32_t* lengths, int32_t rank);
+// Allocating Invoke on a closed ranked array with converted Int32 arguments.
+Dn2CppObject* dn2cpp_array_construct_ranked(const Dn2CppTypeInfo* arrayType, Dn2CppObject** args,
+                                           bool hasBounds);
 // hasBounds tells the (Type, int[], int[]) form's null lowerBounds (ArgumentNullException)
 // from the (Type, int[]) form's absent one.
 Dn2CppObject* dn2cpp_array_create_instance_lengths(Dn2CppType* t, Dn2CppArrayI4* lengths,
@@ -3339,6 +3344,7 @@ extern Dn2CppTypeInfo dn2cpp_field_access_exception_type;
 // System.BadImageFormatException: raised by MethodBase.Invoke on a static abstract
 // interface member.
 extern Dn2CppTypeInfo dn2cpp_bad_image_format_exception_type;
+extern Dn2CppTypeInfo dn2cpp_invalid_program_exception_type;
 extern Dn2CppTypeInfo dn2cpp_dll_not_found_exception_type;
 extern Dn2CppTypeInfo dn2cpp_entry_point_not_found_exception_type;
 // System.Resources.MissingManifestResourceException: raised by ResourceManager when
@@ -7352,10 +7358,10 @@ inline int32_t dn2cpp_md_total_length(Dn2CppMDArray* arr)
 {
     if (arr == nullptr)
         dn2cpp_throw_null_reference();
-    int32_t total = 1;
+    uint32_t total = 1;
     for (int32_t i = 0; i < arr->rank; i++)
-        total *= arr->lengths[i];
-    return total;
+        total *= static_cast<uint32_t>(arr->lengths[i]);
+    return static_cast<int32_t>(total);
 }
 
 // Rank / GetLength / GetLowerBound / GetUpperBound on a receiver statically known to
@@ -7704,9 +7710,13 @@ inline int32_t dn2cpp_md_flat_index(Dn2CppMDArray* arr, const int32_t* indices)
 {
     if (arr == nullptr)
         dn2cpp_throw_null_reference();
+    // An empty trailing dimension can follow dimensions whose product exceeds Int32.
+    // Validate every index before computing an offset into the allocated storage.
+    for (int32_t i = 0; i < arr->rank; i++)
+        dn2cpp_md_offset(arr, i, indices[i]);
     int32_t flat = 0;
     for (int32_t i = 0; i < arr->rank; i++)
-        flat = flat * arr->lengths[i] + dn2cpp_md_offset(arr, i, indices[i]);
+        flat = flat * arr->lengths[i] + (indices[i] - arr->lowerBounds[i]);
     return flat;
 }
 

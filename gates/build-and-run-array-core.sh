@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Explicit lower bounds preserve array shape, absolute indices, payloads and store fault order.
+# Reflected ranked array constructors allocate with their lengths and interleaved bounds.
 # Non-generic sort and search use absolute indices, including negative hits and insertion points.
 # Finite local value-array searches retain only their elements' equality bodies.
 # Wrapped range checks preserve noops and default primitive search slice faults.
@@ -510,6 +511,13 @@ array_core_tail_asserts() {
     local out="$1" capture="$2" array_output="$2.stdout" line label name result
     local witnesses=()
     gate_output view "$array_output" "$array_output.records" --policy crlf
+    array_core_prefix "$array_output" '== ranked array constructors ==' run_bounded dotnet "$_CG_APP" before-ranked-constructors || return $?
+    array_core_witnesses "$array_output" 1 'length ctor=2/True/True/True/3' 'bound ctor=True/-2/3' \
+        'rectangle=-3/2/5/4/17' 'visibility=0/2' 'negative length=OverflowException' \
+        'zero last dimension=0' 'ctor definition=True/False/True' \
+        'existing receiver=InvalidProgramException' 'empty index=IndexOutOfRangeException' 'ranked array constructors end' || return $?
+    gate_output match-record "$array_output" '^dimension product=OutOfMemoryException/.+$' --count 1 --policy crlf || return $?
+    gate_output match-record "$array_output" '^unwrapped receiver=8013153A/.+$' --count 1 --policy crlf || return $?
     array_core_prefix "$array_output" '== finite local array searches ==' run_bounded dotnet "$_CG_APP" before-finite-local-searches
     array_core_prefix "$array_output" '== finite local array searches ==' run_bounded "./$out/ArrayCore$EXE_EXT" before-finite-local-searches
     gate_output witness "$array_output" 'finite local array searches end' --count 1 --policy crlf \

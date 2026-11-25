@@ -88,6 +88,8 @@ internal static class BclMessages
         "Arg_ArgumentOutOfRangeException",
         "ArgumentNull_Generic",
         "Arg_InvalidOperationException",
+        "InvalidProgram_Default",
+        "InvalidProgram_NonStaticMethod",
         "Arg_TimeoutException",
         "RFLCT_Targ_StatFldReqTarg",
         "Arg_FieldDeclTarget",

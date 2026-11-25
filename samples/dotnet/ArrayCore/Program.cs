@@ -137,6 +137,9 @@ namespace ArrayCore
                 return;
             ArrayNativeLengthSubset.Program.Run();
             ArrayElementEqualitySubset.Program.RunNullableInlineArraySearch();
+            if (args.Length > 0 && args[0] == "before-ranked-constructors")
+                return;
+            ArrayReflectionSubset.Program.RunRankedConstructors();
 #endif
         }
     }
