@@ -1,5 +1,6 @@
 """Compare emitted bytes after validating output-relative publication paths."""
 from pathlib import Path
+import os
 import re
 import sys
 from tempfile import TemporaryDirectory
@@ -90,9 +91,10 @@ def self_test():
                           input=str(generation / "App.dll"), preservation=str(generation / "preservation.xml"),
                           fallback="none", contract="0000000000000000", cutsValidated="true",
                           constructorRegistriesRewritten="false")
-        for name in ("RefA", "RefB"):
+        references = ("RefA", "System.Private.CoreLib")
+        for name in references:
             ET.SubElement(root, "reference", path=str(generation / (name + ".dll")))
-        for name in ("App", "RefA", "RefB"):
+        for name in ("App", *references):
             body = name.encode("utf-8")
             (generation / (name + ".dll")).write_bytes(body)
             ET.SubElement(root, "assembly", name=name, mode="rewritten", hash=fnv1a(body),
@@ -102,7 +104,7 @@ def self_test():
         ET.ElementTree(root).write(result, encoding="utf-8")
         return result, generation
 
-    cases = ("malformed", "generation-escape", "hash", "counter", "contract", "reference-order",
+    cases = ("malformed", "generation-escape", "hash", "cached-corelib", "counter", "contract", "reference-order",
              "assembly-body", "preservation", "generated-body", "report", "extra-file", "xml-format")
     with TemporaryDirectory(prefix="dn2cpp-emit-compare-") as temporary:
         base = Path(temporary).resolve()
@@ -117,6 +119,14 @@ def self_test():
                 root.set("input", str(left / "ildiet" / generation.name / "App.dll"))
             elif case == "hash":
                 (generation / "App.dll").write_bytes(b"changed")
+            elif case == "cached-corelib":
+                # Self-comparison makes the manifest hash the only check that can catch the mutation.
+                left = right
+                manifest(right / "ildiet")
+                corelib = generation / "System.Private.CoreLib.dll"
+                stamp = corelib.stat()
+                corelib.write_bytes(corelib.read_bytes()[::-1])
+                os.utime(corelib, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
             elif case == "counter":
                 root.find("counters").set("work", "2")
             elif case == "contract":
