@@ -30,6 +30,8 @@ public class PatchedKernel : Kernel
         return acc + (long)d;
     }
 
+    // AOT callers are invisible to patch reachability; keep the private callees.
+    [Dn2Cpp.Scripting.Preserve]
     public override long Calls(int iters)
     {
         long acc = 1;

@@ -53,7 +53,8 @@ base_app="samples/dotnet/InterpBench/bin/$CONFIG/$TFM/InterpBench.dll"
 patch_app="samples/dotnet/InterpBenchPatch/bin/$CONFIG/$TFM/InterpBenchPatch.dll"
 
 echo "== 2/4 Transpiling base (--hotupdate-base) + baking the patch BPIs (stack + reg) =="
-invoke_cli "$base_app" --hotupdate-base -o "$OUT"
+CORELIB=$(locate_corelib)
+invoke_cli "$base_app" -r "$CORELIB" --hotupdate-base -o "$OUT"
 invoke_cli --emit-patch "$patch_app" --base-abi "$OUT/base-abi.json" --patch-stackcode -o "$OUT"
 invoke_cli --emit-patch "$patch_app" --base-abi "$OUT/base-abi.json" --patch-regcode -o "$OUT/reg"
 
