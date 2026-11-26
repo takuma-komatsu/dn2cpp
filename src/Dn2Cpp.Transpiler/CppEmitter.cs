@@ -1094,7 +1094,7 @@ internal sealed partial class CppEmitter
         }
         EmitAssemblyRegistry(o);
         _c.ValidateReflectionMetadataFormats();
-        FinishMetadataEncoding(o.Data);
+        FinishMetadataEncoding(o);
         EmitStringLiterals(o);
         // Enum Object.ToString bodies, after the literal table they reference.
         if (_enumToStringFns.Length > 0)
