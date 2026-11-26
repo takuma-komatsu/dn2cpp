@@ -396,19 +396,29 @@ construction and attribute instantiation reach the selected bodies, boxes and
 type initializers; a constant field's access reaches no initializer, and a
 construction whose flags set no lookup bit (`0xFF`) selects as
 `Public | Instance`, as .NET's `Activator` does.
-The `PublicFields` bit of a `DynamicallyAccessedMembers` annotation on a
-`System.Type` parameter retains public fields of each statically known closed
-type passed at a reachable call. As in NativeAOT, the annotation matches by
-namespace and name, including compatibility definitions in libraries.
-Each selected nonliteral static field keeps its declaring type's initializer,
-including when the field is inherited. The first-use guard controls execution.
-`RuntimeHelpers.GetUninitializedObject` allocates a known type and reaches the
-precise-init initializers on its base chain but no constructor, and an unknown
-operand reports with a constructor remedy. Selections over generic
-definitions re-apply as new instantiations appear, inside the discovery fixpoint
-and each compile round. `ReflectionSummary.cs` interprets one method body over
-SRM and `ILDecoder`, and `ReflectionApis.cs` classifies the API and its operand
-slots; both are free of model types and linked into ILDiet, so ILDiet and
+A `DynamicallyAccessedMembers` annotation on a `System.Type` parameter
+applies its member mask to each statically known closed type passed at a
+reachable call. ILDiet retains the definitions and bodies needed by the
+transpiler. Both match the attribute by namespace and name, including
+compatibility definitions in libraries. Unknown type arguments add no roots.
+The mask selects constructors, methods, fields, properties, events, nested
+types and implemented interfaces with ILLink's visibility and inheritance
+rules. `PublicParameterlessConstructor` selects only the public default
+constructor. The `WithInherited` flags extend selection to the declaring
+base types, including their private members where requested. Selected
+properties and events keep their accessors. A selected nested type keeps
+all its members. `All` recurses through nested types, base types and
+implemented interfaces. Each selected nonliteral static field keeps its
+declaring type's initializer under the first-use guard.
+`RuntimeHelpers.GetUninitializedObject` allocates a known type without invoking
+an instance constructor. It reaches the precise-init initializers on the base
+chain. Its annotated `Type` parameter keeps instance constructors callable
+through reflection. An unknown operand reports with a constructor remedy.
+Selections over generic definitions re-apply as new instantiations appear,
+inside the discovery fixpoint and each compile round. `ReflectionSummary.cs`
+interprets one method body over SRM and `ILDecoder`, and `ReflectionApis.cs`
+classifies the API and its operand slots. Both are free of model types
+and linked into ILDiet, so ILDiet and
 emission classify the same overloads. A `box` whose token may name a reference
 type passes the object through, so its `GetType` is the token's type only when
 no type derives from it, and a box of `Nullable<T>` holds a `T`. An `isinst`

@@ -449,6 +449,10 @@ namespace ReflectDelegateSubset
 
     static class Program
     {
+        // A known owner passed to named CreateDelegate retains AllMethods. Keep
+        // that owner opaque when checking a runtime template's named binding.
+        private static Type RuntimeOwner(Type owner) => owner;
+
         private static string SignatureOutcome(Func<Delegate?> bind)
         {
             try
@@ -592,7 +596,7 @@ namespace ReflectDelegateSubset
             SignaturePair("template known return mismatch", typeof(SignatureGuidNestedFunctionText), template, "NestedArgument");
             SignaturePair("template known argument mismatch", typeof(SignatureGuidMixedFunctionArg), template, "MixedArgument");
             var fixedFunction = template.GetMethod("Fixed")!.CreateDelegate<NameFunctionReturn>();
-            var fixedNamed = (NameFunctionReturn)Delegate.CreateDelegate(typeof(NameFunctionReturn), template, "Fixed");
+            var fixedNamed = (NameFunctionReturn)Delegate.CreateDelegate(typeof(NameFunctionReturn), RuntimeOwner(template), "Fixed");
             var fixedNested = template.GetMethod("FixedNested")!.CreateDelegate<SignatureNestedFunction>();
             var fixedArgument = template.GetMethod("FixedNestedArgument")!.CreateDelegate<SignatureNestedFunctionArg>();
             Console.WriteLine($"signature template fixed => {(nint)fixedFunction(1536)}/{(nint)fixedNamed(1792)}/{(nint)fixedNested(2048)}/{fixedArgument((delegate*<int>*)(nint)2304)}/{fixedFunction.Method.DeclaringType == template}");
@@ -610,7 +614,7 @@ namespace ReflectDelegateSubset
             SignaturePair("template matching nested return", typeof(SignatureGuidNestedFunction), template, "Nested");
             SignaturePair("template matching nested argument", typeof(SignatureGuidNestedFunctionArg), template, "NestedArgument");
             Console.WriteLine("signature template missing => "
-                + SignatureOutcome(() => Delegate.CreateDelegate(typeof(SignatureGuidFunction), template, "Missing", false, false)));
+                + SignatureOutcome(() => Delegate.CreateDelegate(typeof(SignatureGuidFunction), RuntimeOwner(template), "Missing", false, false)));
             Type opaque = typeof(SignatureOpaqueTarget);
             Console.WriteLine("signature opaque return invoke => " + OpaqueInvokeOutcome(opaque.GetMethod("TokenReturn")!, null));
             Console.WriteLine("signature opaque argument invoke => " + OpaqueInvokeOutcome(opaque.GetMethod("TokenArgument")!, new object[] { "wrong" }));
@@ -649,7 +653,7 @@ namespace ReflectDelegateSubset
             SignaturePair("ordinary class return matching", typeof(SignatureRefStringReturn), classes, "Return");
             SignaturePair("ordinary class return mismatch", typeof(SignatureRefObjectReturn), classes, "Return");
             Console.WriteLine("signature ordinary template missing => "
-                + SignatureOutcome(() => Delegate.CreateDelegate(typeof(SignatureGuidRef), refs, "Missing", false, false)));
+                + SignatureOutcome(() => Delegate.CreateDelegate(typeof(SignatureGuidRef), RuntimeOwner(refs), "Missing", false, false)));
             Console.WriteLine("signature ordinary ref invoke => " + OpaqueInvokeOutcome(refs.GetMethod("Ref")!, new object[] { Guid.Empty }));
             Console.WriteLine("signature ordinary pointer invoke => " + OpaqueInvokeOutcome(pointers.GetMethod("Pointer")!, new object[] { (nint)0 }));
             Console.WriteLine("ordinary runtime delegate signature boundaries end");
@@ -684,7 +688,7 @@ namespace ReflectDelegateSubset
             {
                 Type owner = typeof(SignatureAliasGeneric<>).MakeGenericType(typeof(Guid));
                 var direct = owner.GetMethod("Alias")!.CreateDelegate<SignatureGuidAlias>();
-                var named = (SignatureGuidAlias)Delegate.CreateDelegate(typeof(SignatureGuidAlias), owner, "Alias");
+                var named = (SignatureGuidAlias)Delegate.CreateDelegate(typeof(SignatureGuidAlias), RuntimeOwner(owner), "Alias");
                 Guid value = Guid.Empty;
                 Guid replacement = new Guid("01234567-89ab-cdef-0123-456789abcdef");
                 ref Guid first = ref direct(ref value);
@@ -697,28 +701,28 @@ namespace ReflectDelegateSubset
             Console.WriteLine("signature substituted pointer calls => " + TemplateCall(() =>
             {
                 var direct = pointers.GetMethod("Pointer")!.CreateDelegate<SignatureGuidPointer>();
-                var named = (SignatureGuidPointer)Delegate.CreateDelegate(typeof(SignatureGuidPointer), pointers, "Pointer");
+                var named = (SignatureGuidPointer)Delegate.CreateDelegate(typeof(SignatureGuidPointer), RuntimeOwner(pointers), "Pointer");
                 Guid* value = (Guid*)(nint)256;
                 return $"{(nint)direct(value)}/{(nint)named(value)}";
             }));
             Console.WriteLine("signature substituted function calls => " + TemplateCall(() =>
             {
                 var direct = functions.GetMethod("Function")!.CreateDelegate<SignatureGuidFunction>();
-                var named = (SignatureGuidNestedFunction)Delegate.CreateDelegate(typeof(SignatureGuidNestedFunction), functions, "Nested");
+                var named = (SignatureGuidNestedFunction)Delegate.CreateDelegate(typeof(SignatureGuidNestedFunction), RuntimeOwner(functions), "Nested");
                 return $"{(nint)direct(512)}/{(nint)named(768)}";
             }));
             Console.WriteLine("signature substituted nested calls => " + TemplateCall(() =>
             {
                 int before = SignatureTarget.NestedArgumentCalls;
                 var direct = functions.GetMethod("NestedArgument")!.CreateDelegate<SignatureGuidNestedFunctionArg>();
-                var named = (SignatureGuidNestedFunctionArg)Delegate.CreateDelegate(typeof(SignatureGuidNestedFunctionArg), functions, "NestedArgument");
+                var named = (SignatureGuidNestedFunctionArg)Delegate.CreateDelegate(typeof(SignatureGuidNestedFunctionArg), RuntimeOwner(functions), "NestedArgument");
                 var value = (delegate*<Guid>*)(nint)1024;
                 return $"{direct(value)}/{named(value)}/{SignatureTarget.NestedArgumentCalls - before}";
             }));
             Console.WriteLine("signature substituted inherited => " + TemplateCall(() =>
             {
                 Type owner = typeof(SignatureOverloadDerived<,>).MakeGenericType(typeof(Guid), typeof(int));
-                var target = (NameRef)Delegate.CreateDelegate(typeof(NameRef), owner, "Ref");
+                var target = (NameRef)Delegate.CreateDelegate(typeof(NameRef), RuntimeOwner(owner), "Ref");
                 int value = 10;
                 return $"{target(ref value)}/{value}/{target.Method.DeclaringType == owner.BaseType}";
             }));
@@ -733,7 +737,7 @@ namespace ReflectDelegateSubset
                 {
                     Type owner = i % 2 == 0 ? guid : integer;
                     Type signature = i % 2 == 0 ? typeof(SignatureGuidAlias) : typeof(NameRefReturn);
-                    Delegate target = Delegate.CreateDelegate(signature, owner, "Alias");
+                    Delegate target = Delegate.CreateDelegate(signature, RuntimeOwner(owner), "Alias");
                     if (target.Method.DeclaringType != owner)
                         Interlocked.Increment(ref failures);
                 });
@@ -778,7 +782,7 @@ namespace ReflectDelegateSubset
         {
             Console.WriteLine("== ordinary runtime delegate signature controls ==");
             Type refs = typeof(SignatureRefGeneric<>).MakeGenericType(typeof(Guid));
-            Type pointers = typeof(SignaturePointerGeneric<>).MakeGenericType(typeof(Guid));
+            Type pointers = typeof(SignaturePointerGeneric<>).MakeGenericType(typeof(int));
             SignaturePair("ordinary known return mismatch", typeof(NameRef), refs, "Ref");
             SignaturePair("ordinary known argument mismatch", typeof(SignatureMixedRef), refs, "Mixed");
             SignaturePair("ordinary known shape mismatch", typeof(Action<Guid>), refs, "Ref");

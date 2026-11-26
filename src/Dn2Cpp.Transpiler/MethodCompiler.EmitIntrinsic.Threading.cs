@@ -6,6 +6,11 @@ namespace Dn2Cpp;
 
 internal sealed partial class MethodCompiler
 {
+    private static bool IsUnnamedEventConstructor(MethodSignature<TypeDesc> sig) =>
+        sig.Header.IsInstance && sig.GenericParameterCount == 0 && sig.ReturnType.IsVoid
+        && sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }, { } mode]
+        && (mode.Class?.FullName ?? mode.ExternalName) == "System.Threading.EventResetMode";
+
     private bool TryEmitThreadingIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
         switch (declType, name)
@@ -382,6 +387,15 @@ internal sealed partial class MethodCompiler
                 }
                 var o = Pop();
                 PushStampedTask($"dn2cpp_semaphore_wait_async((Dn2CppObject*)({o.Expr}), {cancelable})", sig.ReturnType);
+                return true;
+            }
+            case ("System.Threading.EventWaitHandle", ".ctor") when IsUnnamedEventConstructor(sig):
+            {
+                var mode = Pop();
+                var initial = Pop();
+                var receiver = Pop();
+                _c.NoteIntrinsicInterfaces("System.Threading.WaitHandle");
+                Emit($"dn2cpp_event_init((Dn2CppObject*)({receiver.Expr}), {initial.Expr}, {mode.Expr});");
                 return true;
             }
             // ---- ManualResetEvent(Slim) / AutoResetEvent ----

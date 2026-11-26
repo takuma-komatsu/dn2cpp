@@ -1,7 +1,9 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Reflection;
 using ILDietControlLib;
+using MemberTypes = System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes;
 
 namespace ILDietControl;
 
@@ -111,7 +113,63 @@ internal static class Program
         Report("invoke-default",
             () => typeof(Invoked).InvokeMember("", BindingFlags.InvokeMethod, null, invoked, new object[] { 2 }));
         Console.WriteLine("constant-name InvokeMember end");
+        if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_ANNOTATED_TYPE_PARAMETERS") == "1")
+            return;
+        Console.WriteLine("== annotated Type parameters ==");
+        Report("annotated accessors", () => AnnotatedAccessors(typeof(AnnotatedMembers),
+            typeof(AnnotatedMembers).GetProperty("Value")!));
+        Report("annotated inherited", () => AnnotatedInherited(typeof(AnnotatedMembers),
+            typeof(AnnotatedBase).GetNestedType("Nested")!));
+        Report("annotated methods", () => AnnotatedMethods(typeof(AnnotatedMethodOwner)));
+        Report("annotated interface body", () => AnnotatedInterface(typeof(IAnnotatedChild),
+            typeof(IAnnotatedChild).GetInterfaces()[0]));
+        Report("annotated value", () => CreateAnnotatedValue(
+            Type.GetType("ILDietControlLib.AnnotatedValue, ILDietControlLib")!));
+        Console.WriteLine("annotated Type parameters end");
     }
+
+    private static string AnnotatedAccessors(
+        [DynamicallyAccessedMembers(MemberTypes.PublicParameterlessConstructor | MemberTypes.PublicProperties
+            | MemberTypes.NonPublicEvents | MemberTypes.Interfaces)] Type type, PropertyInfo property)
+    {
+        object instance = Activator.CreateInstance(type)!;
+        object? initial = property.GetValue(instance);
+        property.SetValue(instance, 11);
+        const BindingFlags accessor = BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.InvokeMethod;
+        object?[] argument = { null };
+        type.InvokeMember("add_Changed", accessor, null, instance, argument);
+        type.InvokeMember("remove_Changed", accessor, null, instance, argument);
+        return initial + "/" + property.GetValue(instance) + "/" + typeof(IAnnotatedContract).IsAssignableFrom(type);
+    }
+
+    private static string AnnotatedInherited(
+        [DynamicallyAccessedMembers(MemberTypes.NonPublicConstructorsWithInherited
+            | MemberTypes.NonPublicFieldsWithInherited | MemberTypes.PublicNestedTypesWithInherited)] Type type,
+        Type nested)
+    {
+        const BindingFlags hidden = BindingFlags.NonPublic | BindingFlags.Instance;
+        Type parent = type.BaseType!;
+        object instance = Activator.CreateInstance(parent, hidden, null, new object[] { 19 }, null)!;
+        return parent.InvokeMember("_seed", hidden | BindingFlags.GetField, null, instance, null) + "/"
+            + nested.InvokeMember("Read", BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.InvokeMethod,
+                null, null, null);
+    }
+
+    private static string AnnotatedMethods([DynamicallyAccessedMembers(MemberTypes.AllMethods)] Type type)
+    {
+        const BindingFlags method = BindingFlags.Static | BindingFlags.InvokeMethod;
+        return type.BaseType!.InvokeMember("Hidden", method | BindingFlags.NonPublic, null, null, null) + "/"
+            + type.InvokeMember("Visible", method | BindingFlags.Public, null, null, null);
+    }
+
+    private static object? AnnotatedInterface([DynamicallyAccessedMembers(MemberTypes.All)] Type type, Type parent) =>
+        parent.IsAssignableFrom(type)
+            ? parent.InvokeMember("Identifier", BindingFlags.InvokeMethod | BindingFlags.Static | BindingFlags.Public,
+                null, null, null)
+            : null;
+
+    private static object? CreateAnnotatedValue([DynamicallyAccessedMembers(MemberTypes.PublicParameterlessConstructor)] Type type) =>
+        Activator.CreateInstance(type);
 
     private static int RunStatic<T>(int value) where T : IStatic<T> => T.Evaluate(value);
 

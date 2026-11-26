@@ -378,6 +378,9 @@
     <type fullname="ReflectDelegateSubset.SignatureOverload`1">
       <method name="Ref" />
     </type>
+    <type fullname="ReflectDelegateSubset.SignatureOverloadBase`2">
+      <method name="Ref" />
+    </type>
     <type fullname="ReflectDelegateSubset.SignatureComposedOverload`2">
       <method name="Ref" />
     </type>
