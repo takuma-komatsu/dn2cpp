@@ -46,7 +46,7 @@ definitions.extend(match.group(0) for match in string_methods)
 # Array forwarding thunks differ only in the interface cast and in which of
 # these byte-identical cursor factories they call.
 array_factory = re.compile(
-    r"inline t_System_Collections_\w+\* "
+    r"(?:inline )?t_System_Collections_\w+\* "
     r"(SZArrayEnumerable_1_(?:System_Collections_IEnumerable_)?GetEnumerator_m\d+)"
     r"\(t_Dn2Cpp_Runtime_SZArrayEnumerable_\w+\* a0\)\n\{(.*?)\n\}", re.S)
 factory_groups = {}
