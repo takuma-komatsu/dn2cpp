@@ -5,11 +5,10 @@ namespace Dn2Cpp;
 
 /// <summary>Emits the generated C++ sources: a shared <c>generated.h</c> header (managed
 /// type layouts + external-linkage declarations) and one-or-more translation units
-/// (<c>generated.cpp</c> with the global data + entry point, plus <c>generated_N.cpp</c>
-/// method-body chunks once the bodies exceed a per-file byte budget, for parallel
-/// compilation). Target-specific output (console entry point vs. Godot GDExtension tables)
-/// is delegated to an <see cref="IEmitBackend"/>, keeping this core emitter free of any
-/// Godot knowledge.</summary>
+/// (<c>generated.cpp</c> with the registries and entry point, plus chunks for method
+/// bodies, class metadata and array/assembly data). Target-specific output (console entry
+/// point vs. Godot GDExtension tables) is delegated to an <see cref="IEmitBackend"/>,
+/// keeping this core emitter free of any Godot knowledge.</summary>
 internal sealed partial class CppEmitter
 {
     private readonly Compilation _c;
@@ -688,7 +687,7 @@ internal sealed partial class CppEmitter
         cls.IsDelegate && !IsCanonicalWorld(cls) && !IsOpaque(cls);
 
     /// <summary>Emits the whole program. <paramref name="writeChunk"/> takes each
-    /// body/metadata translation unit (fileName, text) the instant it is sealed —
+    /// chunk (fileName, text) the instant it is sealed —
     /// emission streams them out rather than holding the program's text to the end (see
     /// <see cref="CppOutput"/>) — and the returned <see cref="EmittedSources"/> carries
     /// only what is left: generated.h and generated.cpp.</summary>
@@ -1093,7 +1092,7 @@ internal sealed partial class CppEmitter
             baseAbiJson = AbiContract.ManifestJson(abiHash, vtableClasses, itfClasses,
                 genericInstantiations, _c.DefaultRefRecord);
         }
-        EmitAssemblyRegistry(o.Data);
+        EmitAssemblyRegistry(o);
         _c.ValidateReflectionMetadataFormats();
         FinishMetadataEncoding(o.Data);
         EmitStringLiterals(o);
@@ -1182,7 +1181,7 @@ internal sealed partial class CppEmitter
         // AssertNamedTypeInfosDefined for exactly that reason.
         AssertArrayTypeInfoDegradesWithinCap();
 
-        // Every chunk but the last of each stream is already on disk; flush those two.
+        // Flush the last chunk of each stream.
         // Header and Data stay as builders — the driver ToString()s and releases them
         // one at a time rather than holding both final strings at once.
         o.SealChunks();
@@ -1202,7 +1201,7 @@ internal sealed partial class CppEmitter
         if (_c.ObfuscationEnabled)
             writeChunk("obfuscation-targets.json", BuildObfuscationTargets());
         ReportParallelBodyStats();
-        return new EmittedSources(o.Header, o.Data, o.BodyChunks, o.MetadataChunks, o.HotChunks,
+        return new EmittedSources(o.Header, o.Data, o.BodyChunks, o.MetadataChunks, o.DataChunks, o.HotChunks,
             o.HotFastChunks, baseAbiJson);
     }
 
@@ -1233,7 +1232,7 @@ internal sealed partial class CppEmitter
             o.Header.Length, o.Data.Length, _literals.Literals.Count, litChars,
             _literals.Blobs.Count, blobBytes, _enumToStringFns.Length,
             _c.NamedBodySymbols is { } nb ? nb.Count : 0, defBodyCount, defBodyChars,
-            _definedTypeInfoSyms.Count, defTiChars, o.BodyChunks, o.MetadataChunks);
+            _definedTypeInfoSyms.Count, defTiChars, o.BodyChunks, o.MetadataChunks, o.DataChunks);
     }
 
     /// <summary>Debug backstop for shared generics (on in DEBUG builds or with
@@ -1505,10 +1504,9 @@ internal sealed partial class CppEmitter
     /// <c>TypeMetadataEmitter.NoteDefinedTypeInfo</c> applies to the defined half.</para>
     ///
     /// <para>The <c>ti_arr_&lt;elem&gt;</c> handles are in scope too, through
-    /// <see cref="ArrayTypeInfoDeclared"/>: the recorded set is exactly the DECLARED one (the
-    /// declaration loop notes the entries present when the header externs are written), so a
-    /// late-noted element is correctly answered "no" — it gets a definition but no extern, and
-    /// a metadata chunk TU naming it would fail the C++ compile.</para></summary>
+    /// <see cref="ArrayTypeInfoDeclared"/>. Reflected members use the declaration snapshot
+    /// taken before their metadata is rendered. A later array declaration exposes its
+    /// definition to the primary registry.</para></summary>
     private bool TypeInfoSymbolDefined(string sym) =>
         !sym.StartsWith("ti_", StringComparison.Ordinal)
         || _definedTypeInfoSyms.Contains(sym);
@@ -3628,11 +3626,13 @@ internal sealed partial class CppEmitter
     private readonly Dictionary<MethodInfo, string> _delegateMetadataMethods = new();
 
     private string EmitInterfaceMethodTargets(StringBuilder sb, string symbol, int slotCount,
-        IReadOnlyList<(MethodInfo Decl, MethodInfo Impl)> methods, bool array = false)
+        IReadOnlyList<(MethodInfo Decl, MethodInfo Impl)> methods, bool array = false,
+        StringBuilder? directMetadataOwner = null)
     {
         if (!_c.ReadsDelegateMethod && !_c.NeedsReflectionDelegateBind)
             return "nullptr";
         var targets = Enumerable.Repeat("{ nullptr, 0 }", slotCount).ToArray();
+        bool hasDirectMetadata = false;
         foreach (var (declaration, implementation) in methods)
         {
             if (declaration.VtableSlot < 0 || !_c.Reachable.Contains(implementation))
@@ -3644,11 +3644,20 @@ internal sealed partial class CppEmitter
             int token = target.Handle.IsNil ? 0 : System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(target.Handle);
             string direct = array && _delegateMetadataMethods.TryGetValue(target, out var address)
                 ? $", Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({address})" : "";
+            hasDirectMetadata |= direct.Length != 0;
             targets[declaration.VtableSlot] = $"{{ {TypeInfoRef(target.DeclaringClass, "interface selected method owner")}, {token}{direct} }}";
         }
         if (targets.Length == 0)
             return "nullptr";
-        sb.AppendLine($"static const Dn2CppInterfaceMethodTarget {symbol}[] = {{ {string.Join(", ", targets)} }};");
+        // Direct handles may point into private method records in the primary unit.
+        // Keep these target tables with the records, not the split dispatch maps.
+        if (hasDirectMetadata && directMetadataOwner is not null)
+        {
+            sb.AppendLine($"extern const Dn2CppInterfaceMethodTarget {symbol}[];");
+            directMetadataOwner.AppendLine($"extern const Dn2CppInterfaceMethodTarget {symbol}[] = {{ {string.Join(", ", targets)} }};");
+        }
+        else
+            sb.AppendLine($"static const Dn2CppInterfaceMethodTarget {symbol}[] = {{ {string.Join(", ", targets)} }};");
         return symbol;
     }
 
@@ -4152,18 +4161,15 @@ internal sealed partial class CppEmitter
     /// interface-dispatch map whose <c>GetEnumerator</c> wraps the array into the
     /// <c>SZArrayEnumerable&lt;T&gt;</c> enumerator — so the cast/foreach resolve on the
     /// array itself (the precise per-element identity makes this sound).</summary>
-    private void EmitArrayTypeInfos(StringBuilder sb, HashSet<ClassInfo> emittedEnums)
+    private void EmitArrayTypeInfos(CppOutput output, HashSet<ClassInfo> emittedEnums)
     {
         if (_c.ArrayElementTypes.Count == 0 && _c.MdArrayTypes.Count == 0)
             return;
-        sb.AppendLine("// ---- per-element array type-infos ----");
-        // Content-intern pool for the SZArray dispatch tables (arritfpool_):
-        // every map below is emitted into this single TU, so unlike the
-        // class-metadata pools it never rolls. Address-sharing is safe for the
-        // same reason as itfpool_ (dispatch compares .itf, only indexes .slots).
+        output.Data.AppendLine("// ---- per-element array type-infos ----");
+        // Intern only within a TU: dispatch never compares slot-table addresses.
         var arrItfPools = new Dictionary<string, string>(System.StringComparer.Ordinal);
         // Named trap stubs for unreached dispatch-table slots (see EmitArrayEnumerableMap);
-        // pooled alongside for the same single-TU reason.
+        // pooled alongside the TU-local slot tables.
         var arrSlotStubs = new Dictionary<string, string>(System.StringComparer.Ordinal);
         // elementType for an entry representing element[]: the element's own ti_, or — for
         // a jagged element (itself an array) — the inner array's ti_arr_/ti_md_ handle
@@ -4183,7 +4189,9 @@ internal sealed partial class CppEmitter
         // identity stay one.
         foreach (var (key, md) in _c.MdArrayTypes.OrderBy(kv => kv.Key, System.StringComparer.Ordinal))
         {
+            var sb = output.BeginDataBlock();
             string clr = ArrayClrName(md);
+            DeclareLateArrayHandles(output, "md_" + key);
             EmitTypeInfo(sb, $"ti_md_{key}", new TypeMetadata {
                 Native = _c.UsesNativeReflectionMetadata(md),
                 Name = clr, Flags = "DN2CPP_TF_ARRAY | DN2CPP_TF_SEALED"
@@ -4195,8 +4203,15 @@ internal sealed partial class CppEmitter
         }
         foreach (var (key, element) in _c.ArrayElementTypes.OrderBy(kv => kv.Key, System.StringComparer.Ordinal))
         {
+            if (output.DataWillRoll)
+            {
+                arrItfPools.Clear();
+                arrSlotStubs.Clear();
+            }
+            var sb = output.BeginDataBlock();
             string sym = "ti_arr_" + key;
             string clrName = ArrayClrName(element) + "[]";
+            DeclareLateArrayHandles(output, "arr_" + key);
             // SZArray interface dispatch map: wired only when an array of this
             // element is actually used as a collection interface at runtime AND the wrapper
             // resolved. Carries the full CLR SZArray interface set (IEnumerable<T>/ICollection
@@ -4204,7 +4219,8 @@ internal sealed partial class CppEmitter
             // IList), each forwarding through a fresh SZArrayEnumerable<T>.
             string itfsExpr = "nullptr", itfCount = "0";
             if (_c.ArrayEnumerableElementTypes.TryGetValue(key, out var aei)
-                && EmitArrayEnumerableMap(sb, key, aei, arrItfPools, arrSlotStubs) is { } map)
+                && EmitArrayEnumerableMap(sb, key, aei, arrItfPools, arrSlotStubs,
+                    output.SplitData && IsReferenceFallbackArray(aei), output.SplitData ? output.Data : null) is { } map)
             {
                 itfsExpr = map.Sym;
                 itfCount = map.Count.ToString();
@@ -4213,7 +4229,7 @@ internal sealed partial class CppEmitter
                 // (dn2cpp_array_set_ref_fallback_interfaces) so ANY reference-element
                 // rank-1 array can service a collection-interface call it was reached
                 // into through `object`, with no per-element map of its own.
-                if (aei.Elem is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object })
+                if (IsReferenceFallbackArray(aei))
                     _arrayRefFallbackItfMap = (map.Sym, map.Count);
             }
             else if (_c.ArrayGenericItfRowElements.TryGetValue(key, out var rowItfs))
@@ -4240,6 +4256,19 @@ internal sealed partial class CppEmitter
         }
     }
 
+    private void DeclareLateArrayHandles(CppOutput output, string suffix)
+    {
+        if (!output.SplitData || TypeInfoSymbolDefined("ti_" + suffix))
+            return;
+        // The primary registry still names late arrays. Don't broaden the earlier
+        // declaration snapshot used to decide which reflected members may name them.
+        output.Header.AppendLine($"extern const Dn2CppTypeInfo ti_{suffix};");
+        output.Header.AppendLine($"extern const Dn2CppType ty_{suffix};");
+    }
+
+    private static bool IsReferenceFallbackArray(Compilation.ArrayEnumerableInfo info) =>
+        info.Elem is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object };
+
     /// <summary>Emits an array's SZArray interface-dispatch table: one
     /// <c>Dn2CppInterfaceEntry</c> per interface the array implements (IEnumerable&lt;T&gt;/
     /// ICollection&lt;T&gt;/IList&lt;T&gt;/IReadOnly{List,Collection}&lt;T&gt; + non-generic
@@ -4255,7 +4284,8 @@ internal sealed partial class CppEmitter
     /// emitted (defensive — then the array keeps no map).
     /// </summary>
     private (string Sym, int Count)? EmitArrayEnumerableMap(StringBuilder sb, string key, Compilation.ArrayEnumerableInfo aei,
-        Dictionary<string, string> arrItfPools, Dictionary<string, string> arrSlotStubs)
+        Dictionary<string, string> arrItfPools, Dictionary<string, string> arrSlotStubs, bool externalMap,
+        StringBuilder? directMetadataOwner)
     {
         if (!_emit.Contains(aei.Szae) || !_c.Reachable.Contains(aei.Ctor) || aei.Dispatches.Count == 0)
             return null;
@@ -4263,8 +4293,7 @@ internal sealed partial class CppEmitter
         string arrClr = ArrayClrName(aei.Elem) + "[]";
         // A per-slot named trap: aborts via dn2cpp_itf_slot_missing_named with the
         // (array, interface, method) descriptor baked in. Same shape as
-        // TypeMetadataEmitter.SlotMissStub, but pooled per EmitArrayTypeInfos run —
-        // these tables all live in the one metadata section that calls this.
+        // TypeMetadataEmitter.SlotMissStub, pooled within the current data chunk.
         string SlotMissStub(string desc, MethodInfo decl)
         {
             string key = SlotStubKey(desc, decl);
@@ -4349,11 +4378,8 @@ internal sealed partial class CppEmitter
                 sb.AppendLine("}");
                 slots[decl.VtableSlot] = $"(const void*)&{thunk}";
             }
-            // Intern byte-identical dispatch tables (the pool spans this whole
-            // single-TU section; a table carrying reached thunks embeds this
-            // key's thunk symbols and stays unique by construction). Pool size
-            // doubles as the name counter — entries are never removed, so it is
-            // monotonic and deterministic.
+            // Intern byte-identical dispatch tables. A table carrying a reached
+            // thunk embeds its array key and does not alias another array's thunk.
             string slotsInit = string.Join(", ", slots);
             if (!arrItfPools.TryGetValue(slotsInit, out var slotSym))
             {
@@ -4361,7 +4387,8 @@ internal sealed partial class CppEmitter
                 sb.AppendLine($"static const void* {slotSym}[] = {{ {slotsInit} }};");
                 arrItfPools[slotsInit] = slotSym;
             }
-            string methods = EmitInterfaceMethodTargets(sb, $"arr_itf_methods_{key}_{i}", slotCount, disp.Methods, array: true);
+            string methods = EmitInterfaceMethodTargets(sb, $"arr_itf_methods_{key}_{i}", slotCount, disp.Methods,
+                array: true, directMetadataOwner: directMetadataOwner);
             entries.Add($"{{ {TypeInfoRef(disp.Itf, "SZArray interface-dispatch map")}, {slotSym}, {methods} }}");
             // Canonical alias row (shared generics): a shared body enumerating
             // an enum-element array through the canonical interface handle must
@@ -4370,8 +4397,11 @@ internal sealed partial class CppEmitter
                 entries.Add($"{{ {TypeInfoRef(citf, "SZArray interface-dispatch map (canonical alias row)")}, {slotSym}, {methods} }}");
             i++;
         }
-        sb.AppendLine($"static const Dn2CppInterfaceEntry arr_itfs_{key}[] = {{ {string.Join(", ", entries)} }};");
-        return ("arr_itfs_" + key, entries.Count);
+        string map = "arr_itfs_" + key;
+        if (externalMap)
+            _metadataHeader.AppendLine($"extern const Dn2CppInterfaceEntry {map}[];");
+        sb.AppendLine($"{(externalMap ? "extern" : "static")} const Dn2CppInterfaceEntry {map}[] = {{ {string.Join(", ", entries)} }};");
+        return (map, entries.Count);
     }
 
     /// <summary>Emits the lazy, cached <c>Console.Error</c> managed-writer singleton
@@ -6651,8 +6681,9 @@ internal sealed partial class CppEmitter
     /// conditional bound as the member tables: an attribute renders only when its ctor
     /// was reached (a recognized attribute read selects it), so a program that never
     /// reflects attributes gets name-only rows.</summary>
-    private void EmitAssemblyRegistry(StringBuilder sb)
+    private void EmitAssemblyRegistry(CppOutput output)
     {
+        var sb = output.Data;
         sb.AppendLine("// ---- assembly registry (Assembly identity + assembly-level custom attributes) ----");
         var rows = new List<string>();
         var seen = new HashSet<string>(System.StringComparer.Ordinal);
@@ -6661,8 +6692,9 @@ internal sealed partial class CppEmitter
             string name = module.AssemblyName;
             if (name.Length == 0 || !seen.Add(name))
                 continue;
+            var definitions = output.BeginDataBlock();
             (string Expr, int Count) ca = ("nullptr", 0);
-            var moduleAttributes = BuildAttrTable(sb, $"module{module.Index}", module,
+            var moduleAttributes = BuildAttrTable(definitions, $"module{module.Index}", module,
                 module.Reader.GetModuleDefinition().GetCustomAttributes());
             // Identity pieces for the .NET display name (Assembly.FullName /
             // Type.AssemblyQualifiedName / AssemblyName): the metadata version,
@@ -6673,7 +6705,7 @@ internal sealed partial class CppEmitter
             try
             {
                 var def = module.Reader.GetAssemblyDefinition();
-                ca = BuildAttrTable(sb, $"assembly{module.Index}", module,
+                ca = BuildAttrTable(definitions, $"assembly{module.Index}", module,
                     def.GetCustomAttributes());
                 version = $"\"{def.Version.Major}.{def.Version.Minor}.{def.Version.Build}.{def.Version.Revision}\"";
                 string cultureName = module.Reader.GetString(def.Culture);
@@ -6685,7 +6717,7 @@ internal sealed partial class CppEmitter
             {
                 // A module without a decodable assembly definition keeps a name-only row.
             }
-            var res = BuildManifestResourceTable(sb, module);
+            var res = BuildManifestResourceTable(definitions, module, output.SplitData);
             // [assembly: NeutralResourcesLanguage(...)], read only when the program reads
             // manifest resources at all: EVERY BCL assembly declares this attribute, so an
             // unconditional read would lengthen the registry row of every program to carry
@@ -6717,9 +6749,8 @@ internal sealed partial class CppEmitter
 
     /// <summary>Emits one module's embedded manifest-resource blobs as file-local
     /// <c>.rodata</c> byte arrays plus the <c>Dn2CppManifestResource</c> table that
-    /// names them (into <paramref name="sb"/>, right before the registry row that
-    /// points at it — same TU, so the file-local symbols always resolve), returning
-    /// the table expression and its length. Serves
+    /// names them. In split output the table has external linkage for the primary
+    /// assembly registry. Serves
     /// <c>Assembly.GetManifestResourceStream</c> / <c>GetManifestResourceNames</c> /
     /// <c>GetManifestResourceInfo</c>.
     ///
@@ -6739,7 +6770,7 @@ internal sealed partial class CppEmitter
     /// with or without the flag, so its null/empty stays truthful and needs no
     /// throw.</para></summary>
     private (string Expr, int Count, bool Dropped) BuildManifestResourceTable(
-        StringBuilder sb, Module module)
+        StringBuilder sb, Module module, bool external)
     {
         if (!_c.ManifestResourcesUsed)
             return ("nullptr", 0, false);
@@ -6790,7 +6821,9 @@ internal sealed partial class CppEmitter
             rows.Add($"{{ {CppUtf8Literal(name)}, {data}, {bytes.Length} }}");
         }
         string tab = $"restab_assembly{module.Index}";
-        sb.AppendLine($"static const Dn2CppManifestResource {tab}[] = {{ {string.Join(", ", rows)} }};");
+        if (external)
+            _metadataHeader.AppendLine($"extern const Dn2CppManifestResource {tab}[];");
+        sb.AppendLine($"{(external ? "extern" : "static")} const Dn2CppManifestResource {tab}[] = {{ {string.Join(", ", rows)} }};");
         return (tab, rows.Count, dropped);
     }
 
@@ -9781,13 +9814,14 @@ internal sealed record MeasureResult(int Attempted, int Compiled, List<MeasureGa
 /// <summary>Sink for the multi-file C++ emission. Splits the program across:
 /// <see cref="Header"/> (generated.h — managed type layouts plus external-linkage
 /// declarations of every symbol method bodies reference across translation units),
-/// the primary <see cref="Data"/> TU (generated.cpp — the global data definitions, the
-/// first slice of method bodies and the backend entry point), and zero or more overflow
-/// TUs. Method bodies are appended via <see cref="AppendBody"/>, which peels the
-/// overflow past a byte budget into body chunks; per-class metadata blocks are appended
+/// the primary <see cref="Data"/> TU (generated.cpp — global data and the backend
+/// entry point), and zero or more overflow TUs. Method bodies are appended via
+/// <see cref="AppendBody"/>, which peels the overflow past a byte budget into body
+/// chunks; per-class metadata blocks are appended
 /// via <see cref="AppendMetadata"/>, which peels into its own chunk stream — so a large
 /// program compiles both its bodies and its reflection metadata as parallel translation
-/// units.
+/// units. Array types and per-assembly definitions stream into independent
+/// <c>generated_data_{n}.cpp</c> chunks.
 ///
 /// <para>A chunk is WRITTEN AND RELEASED the moment it is sealed — as soon as the next
 /// one opens, since nothing ever appends to a chunk again. Nearly all of a large
@@ -9795,11 +9829,8 @@ internal sealed record MeasureResult(int Attempted, int Compiled, List<MeasureGa
 /// generated program on the heap at once, in UTF-16, at twice its byte size. At most one
 /// chunk of each stream is live, whatever the size of the program.</para>
 ///
-/// <para>That is what forces the naming: a single shared number sequence cannot be
-/// assigned until BOTH streams are finished, while metadata is emitted first in time. Two
-/// disjoint name spaces (<c>generated_b{k}.cpp</c>, <c>generated_m{j}.cpp</c>) name a
-/// chunk at the instant it is sealed, in any emission order. Both still match the build's
-/// <c>generated*.cpp</c> glob.</para>
+/// <para>Each stream numbers its own chunks so a sealed translation unit can be named
+/// and written while the other streams are still open.</para>
 ///
 /// <para>The roll boundaries are a pure function of deterministic text sizes, so the
 /// managed and self-hosted transpilers still peel chunks identically — the self-host
@@ -9821,6 +9852,8 @@ internal sealed class CppOutput
     private int _bodyBytes;
     private StringBuilder? _metaCur;
     private int _metaBytes;
+    private StringBuilder? _dataCur;
+    private int _dataHeaderLength;
     // The two [HotPath] TUs; buffered whole until SealChunks (see AppendHotBody).
     // They partition the marked set — FastMath routes here, everything else to
     // _hotCur — so no body is ever defined in both.
@@ -9838,6 +9871,28 @@ internal sealed class CppOutput
 
     /// <summary>Metadata-only translation units peeled so far (generated_m1..J.cpp).</summary>
     public int MetadataChunks { get; private set; }
+    public int DataChunks { get; private set; }
+    public bool SplitData => _splitBytes > 0;
+    public bool DataWillRoll => SplitData && (_dataCur is null || _dataCur.Length - _dataHeaderLength > _splitBytes);
+
+    private static string DataName(int index) => $"generated_data_{index}.cpp";
+
+    // Call once per definition group so its file-local helpers never straddle a boundary.
+    public StringBuilder BeginDataBlock()
+    {
+        if (!SplitData)
+            return Data;
+        if (DataWillRoll)
+        {
+            if (_dataCur is not null)
+                _write(DataName(DataChunks), _dataCur.ToString());
+            _dataCur = new StringBuilder();
+            _dataCur.AppendLine("#include \"generated.h\"");
+            _dataHeaderLength = _dataCur.Length;
+            DataChunks++;
+        }
+        return _dataCur!;
+    }
 
     /// <summary>1 once a [HotPath] TU (generated_hot.cpp) has been opened, else 0.</summary>
     public int HotChunks { get; private set; }
@@ -9960,6 +10015,14 @@ internal sealed class CppOutput
             _write(MetadataName(MetadataChunks), _metaCur.ToString());
             _metaCur = null;
         }
+        if (_dataCur is not null)
+        {
+            if (_dataCur.Length != _dataHeaderLength)
+                _write(DataName(DataChunks), _dataCur.ToString());
+            else
+                DataChunks--;
+            _dataCur = null;
+        }
         if (_hotCur is not null)
         {
             _write("generated_hot.cpp", _hotCur.ToString());
@@ -9976,8 +10039,7 @@ internal sealed class CppOutput
 /// <summary>What <see cref="CppEmitter.Emit"/> leaves for the driver to write: the
 /// shared <c>generated.h</c> and the primary <c>generated.cpp</c>, both still
 /// unmaterialized builders (the driver ToString()s and releases one at a time), plus how
-/// many chunks Emit already streamed out — the driver needs the counts only to sweep any
-/// stale chunk a previous, larger run left behind.
+/// many chunks Emit wrote for the driver's output summary.
 /// <para><paramref name="HotChunks"/> is 1 when a <c>[HotPath]</c> TU
 /// (generated_hot.cpp) was written, <paramref name="HotFastChunks"/> 1 when the
 /// <c>[HotPath(FastMath)]</c> TU (generated_hot_fast.cpp) was. Both sweeps are
@@ -9986,5 +10048,5 @@ internal sealed class CppOutput
 /// <para><paramref name="BaseAbiJson"/> is the base-abi.json sidecar body of a
 /// <c>--hotupdate-base</c> build (null otherwise).</para></summary>
 internal sealed record EmittedSources(
-    StringBuilder Header, StringBuilder Data, int BodyChunks, int MetadataChunks,
+    StringBuilder Header, StringBuilder Data, int BodyChunks, int MetadataChunks, int DataChunks,
     int HotChunks = 0, int HotFastChunks = 0, string? BaseAbiJson = null);

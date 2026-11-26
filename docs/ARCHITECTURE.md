@@ -46,8 +46,9 @@ input .NET assembly (+ reference assemblies via -r)
   │     └─ IEmitBackend  … emits the tail (main or the GDExtension registration table)
   └─ generated.h  (type layouts + external-linkage declarations)
      + generated.cpp  (data definitions + entry point)
-     [ + generated_N.cpp ]  (bodies split past ~1MB; only cross-TU symbols get
-       external linkage, TUs compile in parallel)
+     [ + generated_bN.cpp / generated_mN.cpp / generated_data_N.cpp ]
+       (method bodies, class metadata, and array/assembly data respectively;
+       an individual definition group stays with its private helpers)
         └─ clang++ + runtime/core (+ runtime/godot) → native binary / .dylib
 ```
 

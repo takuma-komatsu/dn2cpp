@@ -1698,11 +1698,8 @@ internal sealed partial class CppEmitter
                 _o.Header.AppendLine($"extern const Dn2CppType ty_md_{kv.Key};");
                 NoteDefinedTypeInfo("ti_md_" + kv.Key);
             }
-            // NoteDefinedTypeInfo above IS the declared-handle snapshot the two array-naming
-            // mouths key on (CppEmitter.ArrayTypeInfoDeclared): an element noted after this
-            // point (an attribute decode inside the class-major loop) still gets its ti_arr_
-            // definition from EmitArrayTypeInfos, but no header extern — so member types must
-            // never name it, and it is correctly absent from the recorded set.
+            // ArrayTypeInfoDeclared uses this snapshot for reflected members.
+            // EmitArrayTypeInfos may later declare more handles for the primary registry.
             // Referenced intrinsic type-infos: a `typeof`/`isinst`/`castclass`/`box`/array-
             // covariance lowering names an intrinsic-modeled type's own `&ti_<T>` (StringBuilder,
             // CultureInfo, the SIMD vectors, IFormatProvider, …), but the opaque referenced-type
@@ -2053,7 +2050,7 @@ internal sealed partial class CppEmitter
             EmitTaskMarkStartedRow();
             EmitAdditionalTaskPrivateRows();
             EmitTaskSchedulerRows();
-            _e.EmitArrayTypeInfos(_sb, _emittedEnums);
+            _e.EmitArrayTypeInfos(_o, _emittedEnums);
             _e.EmitMdArrayItfMap(_sb);
             _e.EmitArrayNongenericItfRows(_sb);
             _e.EmitStringInterfaceMap(_sb);
