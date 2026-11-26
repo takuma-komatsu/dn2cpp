@@ -1,4 +1,5 @@
 using Mono.Cecil;
+using MetadataTokens = System.Reflection.Metadata.Ecma335.MetadataTokens;
 
 namespace Dn2Cpp;
 
@@ -382,6 +383,14 @@ internal sealed partial class AssemblyDiet
         {
             KeepReflectionBox(reference);
             demands &= ~Demand.Boxed;
+            if (demands == Demand.None) return;
+        }
+        if ((demands & Demand.PublicFields) != 0)
+        {
+            if (reference is not TypeSpecification or GenericInstanceType && Resolve(reference) is { } owner)
+                MarkPublicReflectionFields(owner);
+            // The contract is for the type itself, not its generic or element types.
+            demands &= ~Demand.PublicFields;
             if (demands == Demand.None) return;
         }
         if ((demands & Demand.Metadata) != 0) MarkSignatureType(reference);
@@ -1557,6 +1566,14 @@ internal sealed partial class AssemblyDiet
                 RegisterSelectedAttributeSite(caller, summary, site);
         ApplySelectedAttributeSites(metadataOnly: true);
         _summaryValues.Clear();
+        foreach (var site in summary.TypeArgumentSites)
+        {
+            Spend();
+            if (SummaryToken(caller, site.Token) is not MethodReference target || !RequiresPublicFields(target, site.Parameter))
+                continue;
+            foreach (var type in SummaryValueOf(caller, summary, site.Argument).Types)
+                QueueDemand(type, Demand.PublicFields);
+        }
         foreach (var site in summary.Sites)
         {
             Spend();
@@ -1664,6 +1681,31 @@ internal sealed partial class AssemblyDiet
                 if (!executes && api.Kind is ReflectionOpKind.Lookup or ReflectionOpKind.Enumerate) UnknownMembers();
             }
         }
+    }
+
+    private bool RequiresPublicFields(MethodReference reference, int parameter)
+    {
+        if (ResolveMember(reference) is not MethodDefinition declaration || !_byModule.ContainsKey(declaration.Module))
+            return false;
+        return GetReflectionSummarizer(declaration.Module)
+            .RequiresPublicFields(MetadataTokens.MethodDefinitionHandle((int)declaration.MetadataToken.RID), parameter);
+    }
+
+    private void MarkPublicReflectionFields(TypeDefinition type)
+    {
+        foreach (var owner in Ancestors(type))
+            foreach (var field in owner.Fields)
+            {
+                Spend();
+                if (!field.IsPublic) continue;
+                NoteCopiedListedOwner(owner);
+                Require(owner, TypeState.Metadata);
+                _fields.Add(field);
+                MarkSignatureType(field.FieldType);
+                if (field.IsLiteral) continue;
+                QueueDemand(field.FieldType, Demand.Boxed);
+                if (field.IsStatic) MarkPreservedInitializer(owner);
+            }
     }
 
     private string? DefaultMemberName(TypeDefinition type)

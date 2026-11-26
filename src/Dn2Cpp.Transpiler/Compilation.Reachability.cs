@@ -6072,17 +6072,17 @@ internal sealed partial class Compilation
     }
 
     private long _reflectionSummaryMs;
-    private RuntimeTypeMakeGenericTypePlan? _makeGenericTypePlan;
-    private bool _makeGenericTypePlanInitialized;
+    private ReflectionCoreContracts? _reflectionCoreContracts;
+    private bool _reflectionCoreContractsInitialized;
 
     private ReflectionSummarizer GetReflectionSummarizer(Module module)
     {
-        if (!_makeGenericTypePlanInitialized)
+        if (!_reflectionCoreContractsInitialized)
         {
-            _makeGenericTypePlanInitialized = true;
-            _makeGenericTypePlan = new RuntimeTypeMakeGenericTypePlan(Modules.Select(m => m.Reader));
+            _reflectionCoreContractsInitialized = true;
+            _reflectionCoreContracts = new ReflectionCoreContracts(Modules.Select(m => m.Reader));
         }
-        return module.ReflectionSummarizer ??= new ReflectionSummarizer(module.Reader, module.PE, _makeGenericTypePlan);
+        return module.ReflectionSummarizer ??= new ReflectionSummarizer(module.Reader, module.PE, _reflectionCoreContracts);
     }
 
 

@@ -41,5 +41,15 @@ namespace TypeConverterSrSubset
                 Console.WriteLine(e.Message);
             }
         }
+
+        internal static void RunDefaultConverter()
+        {
+            var converter = TypeDescriptor.GetConverter(typeof(PlainSettings));
+            Console.WriteLine("Default type converter: " + converter.GetType().FullName);
+        }
+
+        private sealed class PlainSettings
+        {
+        }
     }
 }

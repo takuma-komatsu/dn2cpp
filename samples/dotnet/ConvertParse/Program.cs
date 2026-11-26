@@ -81,6 +81,9 @@ namespace ConvertParse
                 return;
             NumberStylesSubset.Program.RunCurrencySymbol();
             NumberStylesSubset.Program.RunHexFloat();
+            if (args.Length > 0 && args[0] == "before-default-type-converter")
+                return;
+            TypeConverterSrSubset.Program.RunDefaultConverter();
         }
     }
 }

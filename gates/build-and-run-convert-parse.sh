@@ -10,6 +10,8 @@
 # System.ComponentModel.TypeConverter — its methods open with the BCL's
 # bool-returning SR.UsingResourceKeys() guard, asserting the SR intrinsic
 # pushes a bool for it instead of dropping the return value.
+# TypeDescriptor's default attribute lookup also exercises an annotated
+# parameter that retains a public static field's type initializer.
 #
 # Also integer-primitive TryFormat (TryFormatSubset, folded in from its own gate,
 # with the three sections it already drove from its own tail). dn2cpp's own
@@ -55,7 +57,7 @@
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_numeric-signatures.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_numeric-signatures.sh gates/fixtures/numeric-signatures"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|integer-utf8-prefix:before-invalid-integer-utf8|currency-prefix:before-currency-symbol|cli:$(_gate_cli_hash)"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|integer-utf8-prefix:before-invalid-integer-utf8|currency-prefix:before-currency-symbol|converter-prefix:before-default-type-converter|cli:$(_gate_cli_hash)"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
@@ -238,10 +240,17 @@ gate_extra_asserts() {
         'currency duplicate = False:0' 'currency disallowed = False:0' --count 1 --policy crlf
     gate_output byte-witness "$native" 'HexFloat parse=3/3' --count 1 --policy crlf
 
+    gate_capture_ok "$out/converter-before" run_bounded dotnet "$_CG_APP" before-default-type-converter
+    gate_output select "$native" "$out/converter-prefix.stdout" \
+        --before 'Default type converter: System.ComponentModel.TypeConverter' --policy crlf
+    gate_output compare "$out/converter-prefix.stdout" "$out/converter-before.stdout"
+    gate_output byte-witness "$native" 'Default type converter: System.ComponentModel.TypeConverter' \
+        --count 1 --policy crlf
+
     numeric_signature_regressions checked
 }
 
-corelib_diff_gate ConvertParse System.Private.Uri System.ComponentModel.TypeConverter
+corelib_diff_gate ConvertParse System.Private.Uri System.ComponentModel.TypeConverter --auto-ref
 
 (
     gate_extra_asserts() {

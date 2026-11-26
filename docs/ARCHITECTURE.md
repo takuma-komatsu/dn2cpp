@@ -396,6 +396,12 @@ construction and attribute instantiation reach the selected bodies, boxes and
 type initializers; a constant field's access reaches no initializer, and a
 construction whose flags set no lookup bit (`0xFF`) selects as
 `Public | Instance`, as .NET's `Activator` does.
+The `PublicFields` bit of a `DynamicallyAccessedMembers` annotation on a
+`System.Type` parameter retains public fields of each statically known closed
+type passed at a reachable call. As in NativeAOT, the annotation matches by
+namespace and name, including compatibility definitions in libraries.
+Each selected nonliteral static field keeps its declaring type's initializer,
+including when the field is inherited. The first-use guard controls execution.
 `RuntimeHelpers.GetUninitializedObject` allocates a known type and reaches the
 precise-init initializers on its base chain but no constructor, and an unknown
 operand reports with a constructor remedy. Selections over generic

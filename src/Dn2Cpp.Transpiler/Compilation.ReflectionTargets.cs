@@ -557,7 +557,10 @@ internal sealed partial class Compilation
     private void ApplyReflectionSummary(MethodInfo m, ReflectionSummary summary, BranchLiveness? liveness)
     {
         if (summary.Sites.Length == 0)
+        {
+            ApplyPublicFieldArguments(m, summary, liveness);
             return;
+        }
         var app = new ReflectionApplication
         {
             Method = m, Summary = summary, Canonical = ContextIsCanonical(m.Context),
@@ -576,6 +579,57 @@ internal sealed partial class Compilation
                 // A member that does not decode is not reflectively reachable either.
             }
         }
+        ApplyPublicFieldArguments(m, summary, liveness);
+    }
+
+    private void ApplyPublicFieldArguments(MethodInfo method, ReflectionSummary summary, BranchLiveness? liveness)
+    {
+        if (summary.TypeArgumentSites.Length == 0) return;
+        var app = new ReflectionApplication
+        {
+            Method = method, Summary = summary, Canonical = ContextIsCanonical(method.Context),
+        };
+        foreach (var argument in summary.TypeArgumentSites)
+        {
+            if (liveness is not null && !liveness.LiveAt(argument.Offset))
+                continue;
+            try
+            {
+                ApplyPublicFieldArgument(app, argument);
+            }
+            catch (NotSupportedException e) when (!IsMustEscape(e))
+            {
+                // Unresolvable call signatures cannot supply a field contract.
+            }
+        }
+    }
+
+    private void ApplyPublicFieldArgument(ReflectionApplication app, RTypeArgumentSite argument)
+    {
+        var caller = app.Method;
+        var callee = ResolveMethodHandle(caller.Module, SRME.EntityHandle(argument.Token), caller.Context, caller.DeclaringClass);
+        if (callee is null || callee.Handle.IsNil
+            || !GetReflectionSummarizer(callee.Module).RequiresPublicFields(callee.Handle, argument.Parameter))
+            return;
+
+        const int flags = ReflectionApis.Public | ReflectionApis.Instance | ReflectionApis.Static | ReflectionApis.FlattenHierarchy;
+        foreach (var owner in ClassesOf(Resolve(app, argument.Argument)))
+        {
+            if (ContainsCanonPlaceholder(owner) || ContainsGenericVar(owner))
+                continue;
+            NoteReflectionMetadataOwner(owner);
+            foreach (var selected in NoteListedRows(SelectMembers(owner, LookupMemberKind.Field, null, flags, null, -1)))
+                if (selected.Field is { } field)
+                    ReachReflectedField(field, reads: true);
+        }
+    }
+
+    private void ReachReflectedField(FieldInfo field, bool reads)
+    {
+        // Literal fields answer from metadata and never run a class initializer.
+        if (field.IsLiteral) return;
+        if (reads) NoteReflectionBoxed(field.Type);
+        if (field.IsStatic) ReachCctor(field.DeclaringClass);
     }
 
     private static bool ContextIsCanonical(GenericContext ctx)
@@ -797,11 +851,7 @@ internal sealed partial class Compilation
                     if (e.Kind == REntityKind.Field && e.Field is { } f)
                     {
                         _reflectionSelectionCount++;
-                        if (api.Op == ReflectionOp.FieldGet && !f.IsLiteral)
-                            NoteReflectionBoxed(f.Type);
-                        // A constant answers from metadata without running the initializer.
-                        if (f.IsStatic && !f.IsLiteral)
-                            ReachCctor(f.DeclaringClass);
+                        ReachReflectedField(f, api.Op == ReflectionOp.FieldGet);
                     }
                     else if (e is { Kind: REntityKind.TemplateMember,
                                  Lookup: { Kind: LookupMemberKind.Field or null } })
