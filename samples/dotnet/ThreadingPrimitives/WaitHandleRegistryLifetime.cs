@@ -64,6 +64,25 @@ internal static class Program
             + " donor closed=" + donor.SafeWaitHandle.IsClosed);
     }
 
+    internal static void RunDisposedEvent()
+    {
+        var targets = new WeakReference[2];
+        // A joined thread leaves no stale event or wrapper on a scanned stack.
+        var creator = new Thread(() =>
+        {
+            using var handle = new EventWaitHandle(false, EventResetMode.AutoReset);
+            targets[0] = new WeakReference(handle);
+            targets[1] = new WeakReference(handle.SafeWaitHandle);
+        });
+        creator.Start();
+        creator.Join();
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Console.WriteLine("disposed event collected=" + !targets[0].IsAlive
+            + " safe=" + !targets[1].IsAlive);
+    }
+
     internal static void __GateEntry()
     {
         Console.WriteLine("== wait handle key lifetime ==");

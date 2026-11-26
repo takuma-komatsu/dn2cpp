@@ -61,8 +61,6 @@ internal static class Program
         Console.WriteLine("rel mre<-ewh=" + typeof(ManualResetEvent).IsAssignableFrom(typeof(EventWaitHandle)));
         Console.WriteLine("rel wh<-slim=" + typeof(WaitHandle).IsAssignableFrom(typeof(ManualResetEventSlim)));
 
-        // Signalling must still work: the type-info and the event state are one memory
-        // write apart in dn2cpp_event_new.
         var m = new ManualResetEvent(false);
         Console.WriteLine("work mre initial=" + m.WaitOne(0));
         m.Set();
@@ -110,9 +108,8 @@ internal static class Program
         Console.WriteLine("safe waitany attached="
             + WaitHandle.WaitAny(new WaitHandle[] { anyAttached, anyDonor }));
 
-        // The nullable setter clears the association. Its getter lazily supplies an
-        // invalid wrapper rather than returning null, and that wrapper remains a normal
-        // SafeHandle for close/ref-count operations.
+        // After the nullable setter clears the association, the getter supplies
+        // an invalid wrapper that still supports SafeHandle's lifetime operations.
         anyAttached.SafeWaitHandle = null!;
         SafeWaitHandle cleared = anyAttached.SafeWaitHandle!;
         Console.WriteLine("safe cleared nonnull=" + (cleared is not null)
