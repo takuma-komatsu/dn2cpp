@@ -11,7 +11,7 @@ internal sealed partial class AssemblyDiet
     [Flags]
     private enum MethodState : byte { None = 0, Metadata = 1, Body = 2 }
     [Flags]
-    private enum Demand : ushort { None = 0, DefaultCtor = 1, Ctors = 2, Members = 4, MethodBodies = 8, AccessorBodies = 16, OpaqueData = 32, Runtime = 64, Boxed = 128, FieldRead = 256, Metadata = 512, DefaultCtorAnyVisibility = 1024, ArrayLayout = 2048, FrameworkAttributeNamed = 4096, PreservedUse = 8192, TypeWide = 16384, PassiveMetadata = 32768 }
+    private enum Demand : uint { None = 0, DefaultCtor = 1, Ctors = 2, Members = 4, MethodBodies = 8, AccessorBodies = 16, OpaqueData = 32, Runtime = 64, Boxed = 128, FieldRead = 256, Metadata = 512, DefaultCtorAnyVisibility = 1024, ArrayLayout = 2048, FrameworkAttributeNamed = 4096, PreservedUse = 8192, TypeWide = 16384, PassiveMetadata = 32768, PublicFields = 65536 }
 
     private sealed class TypeNode
     {
@@ -495,21 +495,21 @@ internal sealed partial class AssemblyDiet
         };
     }
 
-    private RuntimeTypeMakeGenericTypePlan? _makeGenericTypePlan;
-    private bool _makeGenericTypePlanInitialized;
+    private ReflectionCoreContracts? _reflectionCoreContracts;
+    private bool _reflectionCoreContractsInitialized;
 
     private ReflectionSummarizer GetReflectionSummarizer(ModuleDefinition module)
     {
-        if (!_makeGenericTypePlanInitialized)
+        if (!_reflectionCoreContractsInitialized)
         {
-            _makeGenericTypePlanInitialized = true;
-            _makeGenericTypePlan = new RuntimeTypeMakeGenericTypePlan(_assemblies.Select(a =>
+            _reflectionCoreContractsInitialized = true;
+            _reflectionCoreContracts = new ReflectionCoreContracts(_assemblies.Select(a =>
                 System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(a.PE)));
         }
         if (!_summarizers.TryGetValue(module, out var summarizer))
         {
             var assembly = _byModule[module];
-            _summarizers.Add(module, summarizer = new ReflectionSummarizer(System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(assembly.PE), assembly.PE, _makeGenericTypePlan));
+            _summarizers.Add(module, summarizer = new ReflectionSummarizer(System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(assembly.PE), assembly.PE, _reflectionCoreContracts));
         }
         return summarizer;
     }
@@ -522,8 +522,23 @@ internal sealed partial class AssemblyDiet
         result.ReflectionPrepared = true;
         bool reflection = false;
         foreach (var operand in result.Operands)
-            if (operand.Operand is MethodReference target && ClassifyReflectionTarget(target) is { Kind: not ReflectionOpKind.Transfer })
+        {
+            if (operand.Operand is not MethodReference target) continue;
+            if (ClassifyReflectionTarget(target) is { Kind: not ReflectionOpKind.Transfer })
+            {
                 reflection = true;
+                break;
+            }
+            if (operand.Op is not (Code.Call or Code.Callvirt or Code.Newobj)) continue;
+            for (int parameter = 0; parameter < target.Parameters.Count; parameter++)
+                if (target.Parameters[parameter].ParameterType.FullName == "System.Type"
+                    && RequiresPublicFields(target, parameter))
+                {
+                    reflection = true;
+                    break;
+                }
+            if (reflection) break;
+        }
         if (reflection && method.RVA != 0 && _byModule.TryGetValue(method.Module, out var assembly))
         {
             var summarizer = GetReflectionSummarizer(method.Module);

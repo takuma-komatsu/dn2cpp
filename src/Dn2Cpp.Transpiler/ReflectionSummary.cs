@@ -197,6 +197,8 @@ internal readonly struct RSite
     }
 }
 
+internal readonly record struct RTypeArgumentSite(int Offset, int Token, int Parameter, RValue Argument);
+
 internal sealed class RTerm
 {
     public TermKind Kind;
@@ -239,6 +241,8 @@ internal sealed class ReflectionSummary
     public RSite[] Sites = Array.Empty<RSite>();
     /// <summary>Runtime array types at non-generic searches, in ascending IL offset.</summary>
     public (int Offset, RValue Types)[] ArraySearchSites = Array.Empty<(int, RValue)>();
+    /// <summary>Known values passed to explicit Type parameters, in IL order.</summary>
+    public RTypeArgumentSite[] TypeArgumentSites = Array.Empty<RTypeArgumentSite>();
     public RUnknown[] Unknowns = Array.Empty<RUnknown>();
     /// <summary>Whether the body held a site and was interpreted.</summary>
     public bool Interpreted;
@@ -726,7 +730,7 @@ internal sealed class ReflectionSummarizer
 
     internal readonly MetadataReader Reader;
     private readonly PEReader _pe;
-    private readonly RuntimeTypeMakeGenericTypePlan? _makeGenericTypePlan;
+    private readonly ReflectionCoreContracts? _contracts;
     private readonly Dictionary<int, CallInfo?> _calls = new();
     private readonly Dictionary<int, byte> _compilerClasses = new();
     private readonly Dictionary<int, FieldShape> _shapes = new();
@@ -734,12 +738,15 @@ internal sealed class ReflectionSummarizer
     private readonly Dictionary<int, FieldTable> _tables = new();
     private int _tableDepth;
 
-    public ReflectionSummarizer(MetadataReader reader, PEReader pe, RuntimeTypeMakeGenericTypePlan? makeGenericTypePlan = null)
+    public ReflectionSummarizer(MetadataReader reader, PEReader pe, ReflectionCoreContracts? contracts = null)
     {
         Reader = reader;
         _pe = pe;
-        _makeGenericTypePlan = makeGenericTypePlan;
+        _contracts = contracts;
     }
+
+    internal bool RequiresPublicFields(MethodDefinitionHandle method, int parameter) =>
+        _contracts?.RequiresPublicFields(Reader, method, parameter) == true;
 
     /// <summary>Summarizes <paramref name="method"/>, whose decoded body is
     /// <paramref name="code"/>. Never throws on well-formed metadata.</summary>
@@ -753,7 +760,8 @@ internal sealed class ReflectionSummarizer
                 or ILOpCode.Ldvirtftn))
                 continue;
             if (Call(code[i].Token) is { } call
-                && (call.Api is { Kind: not ReflectionOpKind.Transfer } || call.ArraySearch))
+                && (call.Api is { Kind: not ReflectionOpKind.Transfer } || call.ArraySearch
+                    || (op is ILOpCode.Call or ILOpCode.Callvirt or ILOpCode.Newobj && call.HasTypeParameters)))
                 (sites ??= new List<int>()).Add(i);
         }
         if (sites is null)
@@ -777,6 +785,7 @@ internal sealed class ReflectionSummarizer
         public string[]? TypeArguments;
         public ReflectionApi? Api;
         public bool ArraySearch;
+        public bool HasTypeParameters;
     }
 
     internal CallInfo? Call(int token)
@@ -845,6 +854,7 @@ internal sealed class ReflectionSummarizer
         else
             return null;
         info.Parameters = ToArray(signature.ParameterTypes);
+        info.HasTypeParameters = Array.IndexOf(info.Parameters, "System.Type") >= 0;
         info.HasThis = signature.Header.IsInstance;
         info.ReturnsVoid = signature.ReturnType == "System.Void";
         info.ReturnsString = signature.ReturnType == "System.String";
@@ -855,7 +865,7 @@ internal sealed class ReflectionSummarizer
         {
             // Only the validated CoreLib override shares Type's construction planner.
             string parent = info.Parent == "System.RuntimeType" && info.Name == "MakeGenericType"
-                && typeArguments is null && _makeGenericTypePlan?.IsTarget(Reader, handle) == true
+                && typeArguments is null && _contracts?.IsMakeGenericTypeTarget(Reader, handle) == true
                 ? "System.Type" : info.Parent;
             info.Api = ReflectionApis.Classify(parent, info.Name, info.Parameters, info.HasThis,
                 signature.GenericParameterCount);
@@ -1510,6 +1520,7 @@ internal sealed class SummaryInterpreter
     private Dictionary<int, Allocation> _allocations = new();
     private Dictionary<int, RSite> _recorded = new();
     private Dictionary<int, RValue> _arraySearchTypes = new();
+    private Dictionary<int, RValue[]>? _typeArguments;
     private Dictionary<string, RValue> _fieldReads = new();
     private bool _budget, _stackShape, _newEscape, _heapChanged;
     private int _visits, _reruns, _null = -1;
@@ -1742,6 +1753,7 @@ internal sealed class SummaryInterpreter
         _allocations = new Dictionary<int, Allocation>();
         _recorded = new Dictionary<int, RSite>();
         _arraySearchTypes = new Dictionary<int, RValue>();
+        _typeArguments = null;
         _fieldReads = new Dictionary<string, RValue>();
         _sink?.Clear();
         _newEscape = false;
@@ -2139,7 +2151,7 @@ internal sealed class SummaryInterpreter
                 Call(i, insn);
                 break;
             case ILOpCode.Newobj:
-                NewObject(insn);
+                NewObject(i, insn);
                 break;
             case ILOpCode.Calli:
                 Calli(insn);
@@ -2294,12 +2306,13 @@ internal sealed class SummaryInterpreter
         var receiver = call.HasThis ? Pop() : RValue.None;
         if (call.ArraySearch)
             _arraySearchTypes[i] = TypeOfObject(args[0], insn.Token);
+        RecordTypeArguments(i, call, args);
         var result = Invoke(i, insn, call, receiver, args);
         if (!call.ReturnsVoid)
             Push(result);
     }
 
-    private void NewObject(Instruction insn)
+    private void NewObject(int i, Instruction insn)
     {
         var call = _s.Call(insn.Token);
         if (call is null)
@@ -2308,6 +2321,7 @@ internal sealed class SummaryInterpreter
             return;
         }
         var args = PopArguments(call.Parameters.Length);
+        RecordTypeArguments(i, call, args);
         if (call.Parameters.Length == 2 && call.Parameters[0] == "System.Object" && call.Parameters[1] == "System.IntPtr")
         {
             Escape(args[0]);
@@ -2734,15 +2748,35 @@ internal sealed class SummaryInterpreter
             operands, TypeArgument(insn.Token));
     }
 
+    private void RecordTypeArguments(int i, ReflectionSummarizer.CallInfo call, RValue[] args)
+    {
+        if (!call.HasTypeParameters || _sink is not null)
+            return;
+        RValue[]? types = null;
+        for (int k = 0; k < args.Length; k++)
+            if (call.Parameters[k] == "System.Type" && args[k].Count > 0)
+                (types ??= new RValue[args.Length])[k] = Snapshot(args[k]);
+        if (types is not null)
+            (_typeArguments ??= new Dictionary<int, RValue[]>())[i] = types;
+        else
+            _typeArguments?.Remove(i);
+    }
+
     private ReflectionSummary Build()
     {
         var sites = new List<RSite>();
         var arraySites = new List<(int Offset, RValue Types)>();
+        List<RTypeArgumentSite>? typeArgumentSites = null;
         for (int k = 0; k < _siteIndexes.Count; k++)
         {
             int i = _siteIndexes[k];
             var insn = _code[i];
             var call = _s.Call(insn.Token)!;
+            if (!_budget && !_stackShape && _typeArguments is not null && _typeArguments.TryGetValue(i, out var typesAtCall))
+                for (int parameter = 0; parameter < typesAtCall.Length; parameter++)
+                    if (typesAtCall[parameter].Count > 0)
+                        (typeArgumentSites ??= new List<RTypeArgumentSite>())
+                            .Add(new RTypeArgumentSite(insn.Offset, insn.Token, parameter, typesAtCall[parameter]));
             if (call.ArraySearch)
             {
                 RValue types = _budget ? Unknown(UnknownReason.Budget)
@@ -2752,7 +2786,8 @@ internal sealed class SummaryInterpreter
                 arraySites.Add((insn.Offset, types));
                 continue;
             }
-            var api = call.Api!.Value;
+            if (call.Api is not { Kind: not ReflectionOpKind.Transfer } api)
+                continue;
             if (_budget)
                 sites.Add(Opaque(insn, call, api, UnknownReason.Budget));
             else if (_stackShape)
@@ -2767,6 +2802,7 @@ internal sealed class SummaryInterpreter
         return new ReflectionSummary
         {
             Terms = Terms.ToArray(), Sites = sites.ToArray(), ArraySearchSites = arraySites.ToArray(),
+            TypeArgumentSites = typeArgumentSites?.ToArray() ?? Array.Empty<RTypeArgumentSite>(),
             Unknowns = _unknowns.ToArray(), Interpreted = true,
             OverBudget = _budget, StackShapeMismatch = _stackShape, BlockVisits = _visits, Reruns = _reruns,
         };
@@ -4064,15 +4100,18 @@ internal sealed class SummaryInterpreter
     };
 }
 
-// Raw metadata keeps this planner adapter independent of either reachability model.
-// A similarly named method, or a signature naming another assembly's Type, is not the adapter.
-internal sealed class RuntimeTypeMakeGenericTypePlan
+// Decode reflection contracts from raw metadata before either model acts on them.
+internal sealed class ReflectionCoreContracts
 {
+    private const string DiagnosticsNamespace = "System.Diagnostics.CodeAnalysis";
+    private const string AccessedMembersAttribute = "DynamicallyAccessedMembersAttribute";
+    private const int PublicFields = 0x20;
     private readonly bool _available;
     private readonly RawAssemblyTypeResolver<MetadataReader> _resolver;
     private readonly Dictionary<string, List<(MetadataReader Module, TypeDefinitionHandle Handle)>> _candidates = new(StringComparer.Ordinal);
+    private readonly Dictionary<(MetadataReader, MethodDefinitionHandle), int[]> _publicFieldParameters = new();
 
-    public RuntimeTypeMakeGenericTypePlan(IEnumerable<MetadataReader> modules)
+    public ReflectionCoreContracts(IEnumerable<MetadataReader> modules)
     {
         var readers = modules.Where(m => m.IsAssembly).ToArray();
         _resolver = new RawAssemblyTypeResolver<MetadataReader>(readers.Select(m => (m, m.GetString(m.GetAssemblyDefinition().Name), m)));
@@ -4100,7 +4139,7 @@ internal sealed class RuntimeTypeMakeGenericTypePlan
         }
     }
 
-    public bool IsTarget(MetadataReader reader, EntityHandle handle)
+    public bool IsMakeGenericTypeTarget(MetadataReader reader, EntityHandle handle)
     {
         if (!_available) return false;
         if (handle.Kind == HandleKind.MethodDefinition)
@@ -4114,6 +4153,62 @@ internal sealed class RuntimeTypeMakeGenericTypePlan
 
     private static bool IsCoreLib(MetadataReader reader) => reader.IsAssembly
         && reader.StringComparer.Equals(reader.GetAssemblyDefinition().Name, "System.Private.CoreLib");
+
+    public bool RequiresPublicFields(MetadataReader reader, MethodDefinitionHandle method, int parameter)
+    {
+        if (!_publicFieldParameters.TryGetValue((reader, method), out var slots))
+        {
+            List<int>? selected = null;
+            foreach (var handle in reader.GetMethodDefinition(method).GetParameters())
+            {
+                var row = reader.GetParameter(handle);
+                if (row.SequenceNumber != 0 && HasPublicFieldsAnnotation(reader, row))
+                    (selected ??= new List<int>()).Add(row.SequenceNumber - 1);
+            }
+            slots = selected?.ToArray() ?? Array.Empty<int>();
+            _publicFieldParameters.Add((reader, method), slots);
+        }
+        return Array.IndexOf(slots, parameter) >= 0;
+    }
+
+    private static bool HasPublicFieldsAnnotation(MetadataReader reader, Parameter parameter)
+    {
+        foreach (var handle in parameter.GetCustomAttributes())
+        {
+            var attribute = reader.GetCustomAttribute(handle);
+            var owner = attribute.Constructor.Kind switch
+            {
+                HandleKind.MethodDefinition => (EntityHandle)reader.GetMethodDefinition((MethodDefinitionHandle)attribute.Constructor).GetDeclaringType(),
+                HandleKind.MemberReference => reader.GetMemberReference((MemberReferenceHandle)attribute.Constructor).Parent,
+                _ => default,
+            };
+            if (!IsAccessedMembersAttribute(reader, owner))
+                continue;
+            var value = reader.GetBlobReader(attribute.Value);
+            if (value.Length == 8 && value.ReadUInt16() == 1 && (value.ReadInt32() & PublicFields) != 0
+                && value.ReadUInt16() == 0)
+                return true;
+        }
+        return false;
+    }
+
+    private static bool IsAccessedMembersAttribute(MetadataReader reader, EntityHandle owner)
+    {
+        // NativeAOT recognizes library-local backports by name.
+        if (owner.Kind == HandleKind.TypeDefinition)
+        {
+            var type = reader.GetTypeDefinition((TypeDefinitionHandle)owner);
+            return reader.StringComparer.Equals(type.Namespace, DiagnosticsNamespace)
+                && reader.StringComparer.Equals(type.Name, AccessedMembersAttribute);
+        }
+        if (owner.Kind == HandleKind.TypeReference)
+        {
+            var type = reader.GetTypeReference((TypeReferenceHandle)owner);
+            return reader.StringComparer.Equals(type.Namespace, DiagnosticsNamespace)
+                && reader.StringComparer.Equals(type.Name, AccessedMembersAttribute);
+        }
+        return false;
+    }
 
     private bool IsDefinition(MetadataReader reader, MethodDefinitionHandle handle)
     {
