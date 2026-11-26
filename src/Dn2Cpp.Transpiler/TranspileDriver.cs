@@ -367,7 +367,7 @@ public static class TranspileDriver
             // printed after the output is already written.
             int emitted = compilation.Reachable.Count(m => m.Rva != 0);
             string asms = paths.Count == 1 ? "1 assembly" : $"{paths.Count} assemblies";
-            int chunks = sources.BodyChunks + sources.MetadataChunks + sources.HotChunks
+            int chunks = sources.BodyChunks + sources.MetadataChunks + sources.DataChunks + sources.HotChunks
                 + sources.HotFastChunks;
             string splitNote = chunks > 0 ? $" (+{chunks} split TUs, generated.h)" : " (+generated.h)";
             Console.WriteLine($"dn2cpp: {asms}, {compilation.Classes.Count} types, {emitted} reachable methods -> {outPath}{splitNote}");
@@ -561,9 +561,11 @@ public static class TranspileDriver
     /// chunks never compile against an earlier run's header.</summary>
     private static void RemoveGeneratedSources(string outDir)
     {
-        RemoveStaleChunks(outDir, "generated_b", ".cpp");
-        RemoveStaleChunks(outDir, "generated_m", ".cpp");
-        RemoveStaleChunks(outDir, "generated_", ".cpp");
+        // An interrupted cleanup can leave gaps in any chunk family.
+        foreach (string path in Directory.GetFiles(outDir, "generated_*.cpp"))
+            if (IsNumberedChunk(Path.GetFileName(path)))
+                File.Delete(path);
+
         foreach (string fixedName in new[]
             {
                 "generated_hot.cpp", "generated_hot_fast.cpp", "generated_platform_isa.cpp",
@@ -576,17 +578,17 @@ public static class TranspileDriver
         }
     }
 
-    /// <summary>Deletes <c>{prefix}1{suffix}</c>, <c>{prefix}2{suffix}</c>, … until the
-    /// first gap. Chunk numbering is contiguous by construction, so the first missing
-    /// index means there is nothing above it either.</summary>
-    private static void RemoveStaleChunks(string outDir, string prefix, string suffix)
+    private static bool IsNumberedChunk(string name)
     {
-        for (int n = 1; ; n++)
-        {
-            string path = Path.Combine(outDir, prefix + n + suffix);
-            if (!File.Exists(path))
-                return;
-            File.Delete(path);
-        }
+        const string extension = ".cpp";
+        if (!name.EndsWith(extension, StringComparison.Ordinal))
+            return false;
+        int end = name.Length - extension.Length;
+        int start = end;
+        while (start > 0 && char.IsAsciiDigit(name[start - 1]))
+            start--;
+        return start < end && name[start] != '0'
+            && name[..start] is "generated_b" or "generated_m" or "generated_data_" or "generated_"
+            && int.TryParse(name[start..end], out _);
     }
 }

@@ -62,14 +62,13 @@ internal static class EmitCensus
 
     /// <summary>What emission still holds when <c>CppEmitter.Emit</c> returns: the two
     /// builders the driver has yet to write, and the pools that fed them. This is the set
-    /// that stands at the peak. The chunk streams are absent by construction — each
-    /// body/metadata TU is written and dropped as the next one opens.</summary>
+    /// that stands at the peak. Sealing a chunk releases its builder.</summary>
     internal static void ReportEmission(
         long headerChars, long dataChars, int literals, long literalChars,
         int blobs, long blobBytes, long enumToStringChars,
         int namedBodySyms, int definedBodySyms, long definedBodySymChars,
         int definedTypeInfoSyms, long definedTypeInfoSymChars,
-        int bodyChunks, int metadataChunks)
+        int bodyChunks, int metadataChunks, int dataChunks)
     {
         Head("emission complete (what the driver still has to write)");
         Row("generated.h", 1, headerChars, "StringBuilder; ToString()d at write-files");
@@ -82,6 +81,6 @@ internal static class EmitCensus
             "cut-implies-route backstop, ti_ half");
         Console.Error.WriteLine($"  blobs {blobs} ({blobBytes} bytes of RVA data)"
                                 + $"   namedBodySymbols {namedBodySyms} entries"
-                                + $"   chunks already streamed: {bodyChunks} body + {metadataChunks} metadata");
+                                + $"   chunks already streamed: {bodyChunks} body + {metadataChunks} metadata + {dataChunks} data");
     }
 }

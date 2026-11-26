@@ -1,25 +1,9 @@
 #!/usr/bin/env bash
-# Multi-file split gate: forces the C++ emitter to split method bodies across several
-# small translation units (DN2CPP_SPLIT_BYTES) and verifies the parallel-compiled,
-# multi-TU native binary links and produces output byte-identical to real .NET.
-#
-# Exercises the external-linkage split path end to end — generated.h (type layouts +
-# external declarations) + generated.cpp (data + entry point) + generated_b{k}.cpp (method
-# body chunks) + generated_m{j}.cpp (per-class reflection metadata) — by reusing the
-# ArrayCore program (already proven to match real .NET in build-and-run-array-core.sh)
-# against the tree-shaken real CoreLib. A tiny per-TU budget guarantees the program spills
-# into multiple chunks rather than staying a single generated.cpp; the assertion below
-# fails the gate if it does not actually split.
-#
-# The chunks carry disjoint name spaces because emission STREAMS them — each is written
-# the instant it is sealed, so it must be nameable then, and the two streams interleave in
-# time. Also asserted here: a re-transpile into a directory holding a previous, larger
-# run's chunks sweeps them, so the build glob cannot pick up a leftover TU and fail to link
-# on its duplicate definitions.
+# Split method bodies, class metadata and array data must link and preserve ArrayCore's
+# exact CLR output. Re-emitting into the same directory must clear stale chunks even
+# when an earlier cleanup stopped partway through.
 source "$(dirname "$0")/_common.sh"
 
-# ~100 KB per TU: ArrayCore + real CoreLib emit well over that, so the body chunks split
-# into a handful of generated_N.cpp units that compile in parallel.
 export DN2CPP_SPLIT_BYTES=100000
 
 # ArrayCore is also transpiled by build-and-run-array-core.sh; claim a distinct
@@ -33,48 +17,39 @@ export DN2CPP_OUT_SUFFIX=-split
 # above by construction and disagree with the wrapper's -hwy/-scalar axes, which is how
 # a chunk-count assert ends up reading another build's directory.
 gate_extra_asserts() {
-    local out="$1" n left sweep chunk_files
+    local out="$1" n left sweep chunk chunk_files
     n=$(ls "$out"/generated*.cpp 2>/dev/null | wc -l | tr -d ' ')
-    if [ ! -f "$out/generated_b1.cpp" ] || [ ! -f "$out/generated_m1.cpp" ]; then
-        echo "FAIL: DN2CPP_SPLIT_BYTES=$DN2CPP_SPLIT_BYTES did not split bodies AND metadata (found $n TU)" >&2
-        ls "$out"/generated* >&2
-        exit 1
-    fi
+    for chunk in generated_b1.cpp generated_m1.cpp generated_data_1.cpp generated_data_2.cpp; do
+        if [ ! -s "$out/$chunk" ]; then
+            echo "FAIL: DN2CPP_SPLIT_BYTES=$DN2CPP_SPLIT_BYTES expected $chunk (found $n TUs)" >&2
+            exit 1
+        fi
+    done
     echo "OK: split into $n translation units; parallel multi-TU build matches real .NET"
 
-    # Stale-chunk sweep. A re-transpile must remove the chunks a previous, larger run
-    # left, or the `generated*.cpp` glob would compile a leftover and the link would die
-    # on its duplicate definitions. The realistic shape of that: a directory holding many
-    # chunks; re-transpile the same program with splitting OFF, which produces none at
-    # all, and every one of them must be gone. A legacy generated_N.cpp is planted
-    # alongside, so an output directory written by an older dn2cpp cannot poison the build
-    # either.
-    #
-    # It runs in a SIBLING directory seeded with a copy of the chunks, never in OUT.
-    # OUT is the directory the cache key hashed (`_gate_surface_lines`), and this section
-    # used to re-transpile straight into it: the key was computed from the pre-sweep
-    # surface and committed after that surface had been replaced by a DIFFERENT program's
-    # output. Nothing ever went red, because the next run's step 3 rewrites OUT before the
-    # key is read again — a property nobody had written down, true only while the
-    # re-transpile stays the last thing the gate does, and silently false the moment an
-    # assert is appended after it. A gate must not mutate the directory its own green was
-    # keyed on; seeding a copy asserts exactly the same thing and cannot.
+    # Seed a sibling directory so the split output hashed by the gate cache stays intact.
+    # Dropping the first data chunk models an interrupted cleanup.
     sweep="$out-sweep"
     rm -rf "$sweep"; mkdir -p "$sweep"
     cp "$out"/generated* "$sweep/"
-    touch "$sweep/generated_1.cpp"
+    rm "$sweep/generated_data_1.cpp"
+    touch "$sweep/generated_1.cpp" "$sweep/generated_data_custom.cpp"
     ( export DN2CPP_SPLIT_BYTES=0
       invoke_cli "samples/dotnet/ArrayCore/bin/$CONFIG/$TFM/ArrayCore.dll" \
           -r "$(locate_corelib)" -r "$(dirname "$(locate_corelib)")/System.Collections.dll" -o "$sweep" > /dev/null )
-    # Only the numeric body/metadata namespaces and the legacy numeric namespace
+    # Only the numeric body/metadata/data namespaces and the legacy numeric namespace
     # are chunks. Fixed optional TUs also begin with generated_ and may correctly
     # be recreated by the unsplit run.
     chunk_files=$(find "$sweep" -maxdepth 1 -type f -name 'generated*.cpp' \
-        | awk '/\/generated_(b|m)?[0-9]+\.cpp$/')
+        | awk '/\/generated_(b|m|data_)?[0-9]+\.cpp$/')
     left=$(grep -c . <<<"$chunk_files" || true)
     if [ "$left" -ne 0 ]; then
         echo "FAIL: an unsplit re-transpile left $left stale chunk(s) behind:" >&2
         printf '%s\n' "$chunk_files" >&2
+        exit 1
+    fi
+    if [ ! -f "$sweep/generated_data_custom.cpp" ]; then
+        echo "FAIL: re-transpile removed a non-chunk source" >&2
         exit 1
     fi
     echo "OK: stale chunks from a previous run are swept before the new ones land"
