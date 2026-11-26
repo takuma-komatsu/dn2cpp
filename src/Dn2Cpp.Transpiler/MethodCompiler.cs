@@ -641,11 +641,17 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// runtime-async body stays out of line as well: this verdict is a property of
     /// the method, and only compiling the body finds whether a suspension site adds
     /// a frame and resume trampoline beside the function, which the shared header
-    /// cannot carry.</summary>
+    /// cannot carry. Array collection adapters stay out of line: interface
+    /// dispatch does not see their bodies, and value-element specializations
+    /// would put a separate copy of each body in the shared header.</summary>
     public static bool EmitsInline(MethodInfo m)
         => (m.IsAggressiveInlining && m.IsSmallIlBody || m.IsTinyIlBody)
             && !m.IsNoInlining && !m.IsObfuscationTarget && !m.IsUnmanagedCallersOnly && !m.IsHotPath
-            && !m.IsRuntimeAsync;
+            && !m.IsRuntimeAsync && !IsArrayCollectionAdapter(m.DeclaringClass);
+
+    private static bool IsArrayCollectionAdapter(ClassInfo cls)
+        => cls.GenericArity == 1 && cls.Module.AssemblyName == "Dn2Cpp.Runtime"
+            && cls.Module.Owner.GenericDefFullName(cls) == "Dn2Cpp.Runtime.SZArrayEnumerable";
 
     // Address-taken methods use the runtime receiver ABI when no managed layout exists.
     internal static string ReceiverCppType(ClassInfo cls) => cls.FullName == "System.String"
