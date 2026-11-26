@@ -28,6 +28,7 @@ internal static class Program
         private DerivedEventWaitHandle()
             : base(false, EventResetMode.ManualReset)
         {
+            Sentinel = 42;
         }
     }
 
@@ -37,6 +38,30 @@ internal static class Program
         var attached = new AttachedWaitHandle(donorSafe);
         GC.SuppressFinalize(attached);
         GC.KeepAlive(attached);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static DerivedEventWaitHandle ConstructEvent(Type type) =>
+        (DerivedEventWaitHandle)Activator.CreateInstance(type, nonPublic: true)!;
+
+    internal static void RunConstructedEvent()
+    {
+        var derived = ConstructEvent(typeof(DerivedEventWaitHandle));
+        var safe = derived.SafeWaitHandle;
+        bool initial = derived.WaitOne(0);
+        derived.Set();
+        bool signaled = derived.WaitOne(0) && derived.WaitOne(0);
+        derived.Reset();
+        bool reset = derived.WaitOne(0);
+        using var donor = new ManualResetEvent(true);
+        derived.SafeWaitHandle = donor.SafeWaitHandle;
+        bool reassigned = derived.WaitOne(0);
+        derived.SafeWaitHandle = safe;
+        derived.Close();
+        Console.WriteLine("constructed event field=" + derived.Sentinel
+            + " initial=" + initial + " signaled=" + signaled + " after reset=" + reset
+            + " reassigned=" + reassigned + " closed=" + safe.IsClosed
+            + " donor closed=" + donor.SafeWaitHandle.IsClosed);
     }
 
     internal static void __GateEntry()

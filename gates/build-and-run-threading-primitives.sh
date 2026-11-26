@@ -6,6 +6,7 @@
 # across collection and address reuse. Primitive observations are single-threaded;
 # cancellation callback faults run on a joined worker and a controlled timer.
 # WaitHandle multiple waits cover atomic auto-reset consumption and timeout results.
+# A reflected EventWaitHandle subclass exercises its native base constructor and disposal.
 # Deterministic output is diffed exact vs real .NET (corelib_diff_gate).
 # Also covers the two lowerings of the `lock` STATEMENT, single-threaded and so
 # equally deterministic: LockSubset (`lock (object)` -> Monitor.Enter(ref taken) /
@@ -150,6 +151,8 @@ gate_extra_asserts() {
     gate_output compare "$out/prefix-multiple-waits.stdout" "$out/before-multiple-waits.stdout"
     gate_output witness "$native" 'all partial=False/True' 'all infinite=True/False/True' \
         'any context=258/258' 'all alias=duplicate/waitHandles[1]' 'WaitHandle multiple waits end' --count 1 --policy crlf
+    gate_output witness "$native" 'constructed event field=42 initial=False signaled=True after reset=False reassigned=True closed=True donor closed=False' \
+        --count 1 --policy crlf
     if [[ "${OS:-}" == Windows_NT ]]; then
         gate_output witness "$native" 'mixed priority=0' 'mixed partial=False' 'mixed success=True/False/False' \
             --count 1 --policy crlf

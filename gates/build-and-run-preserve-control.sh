@@ -25,6 +25,7 @@
 # constant name, and Type attribute arguments retain their types without a descriptor.
 # Constant-name InvokeMember keeps the bodies of the method, accessor and default
 # member it selects while unselected siblings stay signature-only stubs.
+# Annotated Type arguments retain callable library members through inherited and nested scopes.
 # Conditional field signatures activate earlier, later and closed generic owners.
 # Local and captured interface arrays supply null defaults without a base type row.
 # Typed loads recover external enum zero defaults; untyped defaults stay unknown.
@@ -64,6 +65,7 @@ if preserve_full; then
 fi
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|return-parameter-prefix:${DN2CPP_BEFORE_RETURN_PARAMETER_ATTRIBUTES:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|invoke-member-prefix:${DN2CPP_BEFORE_INVOKE_MEMBER:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|annotated-type-prefix:${DN2CPP_BEFORE_ANNOTATED_TYPE_PARAMETERS:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/ReturnParameterAttributesSubset.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.Intercepts.cs gates/fixtures/ildiet-metadata-validation/intercept_retention.py"
 gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for ILDiet validation"
@@ -463,6 +465,18 @@ gate_extra_asserts() {
     gate_output compare "$out/invoke-member-prefix.native.stdout" "$before.stdout"
     gate_output byte-witness "$native" --count 1 --policy crlf '== constant-name InvokeMember ==' \
         'invoke-method=21' 'invoke-property=8' 'invoke-field=6' 'invoke-default=pick:2' 'constant-name InvokeMember end'
+    before="$out/annotated-type-before.native"
+    DN2CPP_BEFORE_ANNOTATED_TYPE_PARAMETERS=1 gate_capture_ok "$before" run_bounded "$out/ILDietControl$EXE_EXT"
+    gate_output select "$native" "$out/annotated-type-prefix.stdout" --before '== annotated Type parameters ==' --policy crlf
+    gate_output compare "$out/annotated-type-prefix.stdout" "$before.stdout"
+    gate_output byte-witness "$native" --count 1 --policy crlf '== annotated Type parameters ==' \
+        'annotated accessors=1/15/True' 'annotated inherited=19/nested' \
+        'annotated methods=13/17' 'annotated interface body=31' 'annotated value=initialized value' \
+        'annotated Type parameters end'
+    if grep -Eqw 'AnnotatedMembers_UnrequestedOverload_m[0-9]+' "$out"/generated*.cpp "$out"/generated.h; then
+        echo 'FAIL: the parameterless constructor annotation retained the other public overload' >&2
+        return 1
+    fi
 }
 # Construct(Type) activates attribute-carried types no analyzable site names; their
 # constructors are preserved explicitly.

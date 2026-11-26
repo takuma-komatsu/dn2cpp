@@ -663,7 +663,8 @@ struct Dn2CppObject
 // bump AbiContract.LayoutPolicyVersion when its layout changes.
 struct Dn2CppWaitHandle : Dn2CppObject
 {
-    Dn2CppObject* safeHandle;
+    // A SafeWaitHandle or the native event owned by an emitted EventWaitHandle subclass.
+    Dn2CppObject* association;
 };
 
 // A boxed value type's payload sits immediately after the object header. Used by
@@ -6272,6 +6273,7 @@ Dn2CppTask* dn2cpp_semaphore_create_async_waiter(Dn2CppObject* semaphore,
 int32_t dn2cpp_semaphore_remove_async_waiter(Dn2CppObject* semaphore, Dn2CppTask* node,
     size_t previousOffset, size_t nextOffset);
 Dn2CppObject* dn2cpp_event_new(int32_t initial, int32_t manualReset, const Dn2CppTypeInfo* ti);
+void dn2cpp_event_init(Dn2CppObject* receiver, int32_t initial, int32_t manualReset);
 Dn2CppObject* dn2cpp_safewaithandle_new(intptr_t handle, int32_t ownsHandle);
 Dn2CppObject* dn2cpp_waithandle_get_safe(Dn2CppObject* waitHandle);
 void dn2cpp_waithandle_set_safe(Dn2CppObject* waitHandle, Dn2CppObject* safeHandle);

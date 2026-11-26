@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
@@ -745,8 +746,8 @@ internal sealed class ReflectionSummarizer
         _contracts = contracts;
     }
 
-    internal bool RequiresPublicFields(MethodDefinitionHandle method, int parameter) =>
-        _contracts?.RequiresPublicFields(Reader, method, parameter) == true;
+    internal DynamicallyAccessedMemberTypes GetDynamicallyAccessedMemberTypes(MethodDefinitionHandle method, int parameter) =>
+        _contracts?.GetDynamicallyAccessedMemberTypes(Reader, method, parameter) ?? DynamicallyAccessedMemberTypes.None;
 
     /// <summary>Summarizes <paramref name="method"/>, whose decoded body is
     /// <paramref name="code"/>. Never throws on well-formed metadata.</summary>
@@ -4105,11 +4106,10 @@ internal sealed class ReflectionCoreContracts
 {
     private const string DiagnosticsNamespace = "System.Diagnostics.CodeAnalysis";
     private const string AccessedMembersAttribute = "DynamicallyAccessedMembersAttribute";
-    private const int PublicFields = 0x20;
     private readonly bool _available;
     private readonly RawAssemblyTypeResolver<MetadataReader> _resolver;
     private readonly Dictionary<string, List<(MetadataReader Module, TypeDefinitionHandle Handle)>> _candidates = new(StringComparer.Ordinal);
-    private readonly Dictionary<(MetadataReader, MethodDefinitionHandle), int[]> _publicFieldParameters = new();
+    private readonly Dictionary<(MetadataReader, MethodDefinitionHandle), DynamicallyAccessedMemberTypes[]> _parameterContracts = new();
 
     public ReflectionCoreContracts(IEnumerable<MetadataReader> modules)
     {
@@ -4154,24 +4154,29 @@ internal sealed class ReflectionCoreContracts
     private static bool IsCoreLib(MetadataReader reader) => reader.IsAssembly
         && reader.StringComparer.Equals(reader.GetAssemblyDefinition().Name, "System.Private.CoreLib");
 
-    public bool RequiresPublicFields(MetadataReader reader, MethodDefinitionHandle method, int parameter)
+    public DynamicallyAccessedMemberTypes GetDynamicallyAccessedMemberTypes(MetadataReader reader, MethodDefinitionHandle method, int parameter)
     {
-        if (!_publicFieldParameters.TryGetValue((reader, method), out var slots))
+        if (!_parameterContracts.TryGetValue((reader, method), out var slots))
         {
-            List<int>? selected = null;
-            foreach (var handle in reader.GetMethodDefinition(method).GetParameters())
+            slots = Array.Empty<DynamicallyAccessedMemberTypes>();
+            var parameters = reader.GetMethodDefinition(method).GetParameters();
+            foreach (var handle in parameters)
             {
                 var row = reader.GetParameter(handle);
-                if (row.SequenceNumber != 0 && HasPublicFieldsAnnotation(reader, row))
-                    (selected ??= new List<int>()).Add(row.SequenceNumber - 1);
+                if (row.SequenceNumber == 0) continue;
+                var members = ReadAccessedMembers(reader, row);
+                if (members == DynamicallyAccessedMemberTypes.None) continue;
+                // Parameters without metadata rows leave gaps in the sequence numbers.
+                if (row.SequenceNumber > slots.Length)
+                    Array.Resize(ref slots, row.SequenceNumber);
+                slots[row.SequenceNumber - 1] = members;
             }
-            slots = selected?.ToArray() ?? Array.Empty<int>();
-            _publicFieldParameters.Add((reader, method), slots);
+            _parameterContracts.Add((reader, method), slots);
         }
-        return Array.IndexOf(slots, parameter) >= 0;
+        return (uint)parameter < (uint)slots.Length ? slots[parameter] : DynamicallyAccessedMemberTypes.None;
     }
 
-    private static bool HasPublicFieldsAnnotation(MetadataReader reader, Parameter parameter)
+    private static DynamicallyAccessedMemberTypes ReadAccessedMembers(MetadataReader reader, Parameter parameter)
     {
         foreach (var handle in parameter.GetCustomAttributes())
         {
@@ -4185,11 +4190,12 @@ internal sealed class ReflectionCoreContracts
             if (!IsAccessedMembersAttribute(reader, owner))
                 continue;
             var value = reader.GetBlobReader(attribute.Value);
-            if (value.Length == 8 && value.ReadUInt16() == 1 && (value.ReadInt32() & PublicFields) != 0
-                && value.ReadUInt16() == 0)
-                return true;
+            if (value.Length != 8 || value.ReadUInt16() != 1) continue;
+            var members = (DynamicallyAccessedMemberTypes)value.ReadInt32();
+            if (value.ReadUInt16() == 0)
+                return members;
         }
-        return false;
+        return DynamicallyAccessedMemberTypes.None;
     }
 
     private static bool IsAccessedMembersAttribute(MetadataReader reader, EntityHandle owner)

@@ -79,7 +79,7 @@ internal sealed partial class AssemblyDiet
     private void ApplyProjection(ProjectionNode node)
     {
         RequireCompletedModelActivation("ApplyProjection");
-        var delta = node.Demands & ~node.Applied;
+        var delta = UnappliedDemands(node.Demands, node.Applied);
         if (delta == Demand.None) return;
         Spend();
         _demandRules++;

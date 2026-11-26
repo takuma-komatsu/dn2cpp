@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Text;
+using AccessedMembers = System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes;
 using SRME = System.Reflection.Metadata.Ecma335.MetadataTokens;
 
 namespace Dn2Cpp;
@@ -558,7 +559,7 @@ internal sealed partial class Compilation
     {
         if (summary.Sites.Length == 0)
         {
-            ApplyPublicFieldArguments(m, summary, liveness);
+            ApplyAnnotatedTypeArguments(m, summary, liveness);
             return;
         }
         var app = new ReflectionApplication
@@ -579,10 +580,10 @@ internal sealed partial class Compilation
                 // A member that does not decode is not reflectively reachable either.
             }
         }
-        ApplyPublicFieldArguments(m, summary, liveness);
+        ApplyAnnotatedTypeArguments(m, summary, liveness);
     }
 
-    private void ApplyPublicFieldArguments(MethodInfo method, ReflectionSummary summary, BranchLiveness? liveness)
+    private void ApplyAnnotatedTypeArguments(MethodInfo method, ReflectionSummary summary, BranchLiveness? liveness)
     {
         if (summary.TypeArgumentSites.Length == 0) return;
         var app = new ReflectionApplication
@@ -595,32 +596,126 @@ internal sealed partial class Compilation
                 continue;
             try
             {
-                ApplyPublicFieldArgument(app, argument);
+                ApplyAnnotatedTypeArgument(app, argument);
             }
             catch (NotSupportedException e) when (!IsMustEscape(e))
             {
-                // Unresolvable call signatures cannot supply a field contract.
+                // An unresolved declaration supplies no parameter contract.
             }
         }
     }
 
-    private void ApplyPublicFieldArgument(ReflectionApplication app, RTypeArgumentSite argument)
+    private void ApplyAnnotatedTypeArgument(ReflectionApplication app, RTypeArgumentSite argument)
     {
         var caller = app.Method;
         var callee = ResolveMethodHandle(caller.Module, SRME.EntityHandle(argument.Token), caller.Context, caller.DeclaringClass);
-        if (callee is null || callee.Handle.IsNil
-            || !GetReflectionSummarizer(callee.Module).RequiresPublicFields(callee.Handle, argument.Parameter))
+        if (callee is null || callee.Handle.IsNil)
             return;
-
-        const int flags = ReflectionApis.Public | ReflectionApis.Instance | ReflectionApis.Static | ReflectionApis.FlattenHierarchy;
-        foreach (var owner in ClassesOf(Resolve(app, argument.Argument)))
+        var members = GetReflectionSummarizer(callee.Module).GetDynamicallyAccessedMemberTypes(callee.Handle, argument.Parameter);
+        if (members == AccessedMembers.None)
+            return;
+        foreach (var entity in Resolve(app, argument.Argument).Items)
         {
-            if (ContainsCanonPlaceholder(owner) || ContainsGenericVar(owner))
+            if (entity.Inherited)
                 continue;
-            NoteReflectionMetadataOwner(owner);
-            foreach (var selected in NoteListedRows(SelectMembers(owner, LookupMemberKind.Field, null, flags, null, -1)))
-                if (selected.Field is { } field)
-                    ReachReflectedField(field, reads: true);
+            var type = entity.Kind == REntityKind.Template ? ExactTemplateType(entity)
+                : entity.Kind == REntityKind.Type ? entity.Type : null;
+            if (type is { Kind: TypeKind.Class, Class: { } cls })
+                ReachAccessedMembers(cls, members);
+            else if (type?.Kind is TypeKind.SZArray or TypeKind.MDArray && FindClassByFullName("System.Array") is { } array)
+                ReachAccessedMembers(array, members, inheritedOwner: true);
+        }
+    }
+
+    private static readonly LookupMemberKind[] AccessedMemberKinds = {
+        LookupMemberKind.Constructor, LookupMemberKind.Method, LookupMemberKind.Field,
+        LookupMemberKind.Property, LookupMemberKind.Event, LookupMemberKind.NestedType,
+    };
+    private readonly HashSet<(ClassInfo, AccessedMembers, bool)> _accessedMembers = new();
+    private readonly HashSet<(Module, TypeDefinitionHandle)> _accessedGenericDefinitions = new();
+    private readonly HashSet<(ClassInfo, MethodDefinitionHandle)> _accessedGenericMethods = new();
+    private int _accessedMethodCursor;
+
+    private void ReachAccessedMembers(ClassInfo owner, AccessedMembers members, bool inheritedOwner = false)
+    {
+        if (ContainsCanonPlaceholder(owner) || ContainsGenericVar(owner)
+            || !_accessedMembers.Add((owner, members, inheritedOwner)))
+            return;
+        NoteReflectionMetadataOwner(owner);
+        if ((members & AccessedMembers.Interfaces) != 0)
+            foreach (var itf in ReflectedInterfaces(owner))
+            {
+                NoteTypeIdentityClosure(TypeDesc.MakeClass(itf), keepSeed: false);
+                if (members == AccessedMembers.All)
+                    ReachAccessedMembers(itf, members);
+            }
+
+        foreach (var kind in AccessedMemberKinds)
+        {
+            if (!ReflectionLookupRules.MatchesAccessedMember(members, kind, LookupVisibility.Public, inheritedOwner, parameterless: true)
+                && !ReflectionLookupRules.MatchesAccessedMember(members, kind, LookupVisibility.NonPublic, inheritedOwner))
+                continue;
+            var selected = SelectMembers(owner, kind, null, 0, null, -1, accessedMembers: members, inheritedOwner: inheritedOwner);
+            foreach (var row in NoteListedRows(selected))
+            {
+                if (row.Type is { Kind: TypeKind.Class, Class: { } nested })
+                    ReachAccessedMembers(nested, AccessedMembers.All);
+                else if (row.Kind == REntityKind.Definition && row.Assembly is { } module)
+                    ReachAccessedGenericDefinition(module, row.Definition);
+                else if (row.Method is { Name: ".ctor" } ctor)
+                    ConstructSelected(ctor);
+                else if (row.Method is { } generic && IsOpenGenericMethod(generic))
+                {
+                    if (_accessedGenericMethods.Add((generic.DeclaringClass, generic.Handle)))
+                        foreach (var instance in MethodInstancesFor(generic.Module, generic.Handle).Values.ToList())
+                            ReachAccessedMethodInstance(instance);
+                }
+                else
+                    InvokeSelectedMember(row, ReflectionAccessor.All, includeOtherAccessors: true);
+            }
+            if (kind == LookupMemberKind.Constructor && !inheritedOwner && EnsureShape(owner).IsValueType
+                && (members & AccessedMembers.PublicParameterlessConstructor) != 0)
+            {
+                // Activator also constructs value types with an implicit default constructor.
+                NoteReflectionBoxed(owner);
+                ReachCctor(owner);
+            }
+        }
+    }
+
+    private bool ReachAccessedMethodInstance(MethodInfo method)
+    {
+        if (!_accessedGenericMethods.Contains((method.DeclaringClass, method.Handle)) || ContextIsCanonical(method.Context))
+            return false;
+        InvokeTarget(method);
+        return true;
+    }
+
+    private void ReachAccessedGenericDefinition(Module module, TypeDefinitionHandle def)
+    {
+        if (!_accessedGenericDefinitions.Add((module, def)))
+            return;
+        // Reflection returns an open nested definition even on a closed declaring type.
+        // Its members can execute on each concrete instantiation the program forms.
+        var view = CompleteReflectionDefinitionOwner(ReflectionDefinitionOwner(module, def, null));
+        foreach (var row in SelectNestedTypes(module, def, null, ReflectionApis.Public | ReflectionApis.NonPublic, false, true))
+            if (row.Kind == REntityKind.Definition)
+                ReachAccessedGenericDefinition(module, row.Definition);
+            else if (row.Type?.Class is { } nested)
+                ReachAccessedMembers(nested, AccessedMembers.All);
+        if (view.BaseClass is { } parent)
+            ReachRelation(parent);
+        foreach (var itf in view.Interfaces.ToList())
+            ReachRelation(itf);
+        foreach (var instance in InstancesFor(module, def).Values.ToList())
+            ReachAccessedMembers(instance, AccessedMembers.All);
+
+        void ReachRelation(ClassInfo relation)
+        {
+            if (ContainsGenericVar(relation))
+                ReachAccessedGenericDefinition(relation.Module, relation.Handle);
+            else if (ExecutableDefinitionType(TypeDesc.MakeClass(relation))?.Class is { } closed)
+                ReachAccessedMembers(closed, AccessedMembers.All);
         }
     }
 
@@ -963,21 +1058,6 @@ internal sealed partial class Compilation
     {
         switch (e.Kind)
         {
-            case REntityKind.Method:
-                InvokeTarget(e.Method!);
-                break;
-            case REntityKind.Property:
-            case REntityKind.Event:
-                foreach (var accessorMethod in AccessorsOf(e, accessor == ReflectionAccessor.None ? ReflectionAccessor.All : accessor,
-                             publicAccessors))
-                    InvokeTarget(accessorMethod);
-                break;
-            case REntityKind.Field when e.Field is { } f:
-                if (!f.IsLiteral)
-                    NoteReflectionBoxed(f.Type);
-                if (f.IsStatic && !f.IsLiteral)
-                    ReachCctor(f.DeclaringClass);
-                break;
             case REntityKind.Delegate when e.Targets is { } targets:
                 foreach (var t in targets.Items)
                     InvokeSelected(t, app, accessor);
@@ -986,7 +1066,23 @@ internal sealed partial class Compilation
                 SelectTemplateMember(e, lookup, e.Number != 0 ? (ReflectionAccessor)e.Number : accessor,
                     lookup.Kind == LookupMemberKind.Constructor, -1, app, e.PublicAccessors || publicAccessors);
                 break;
+            default:
+                InvokeSelectedMember(e, accessor, publicAccessors);
+                break;
         }
+    }
+
+    private void InvokeSelectedMember(REntity e, ReflectionAccessor accessor, bool publicAccessors = false,
+        bool includeOtherAccessors = false)
+    {
+        if (e.Method is { } method && e.Kind == REntityKind.Method)
+            InvokeTarget(method);
+        else if (e.Kind is REntityKind.Property or REntityKind.Event)
+            foreach (var accessorMethod in AccessorsOf(e, accessor == ReflectionAccessor.None ? ReflectionAccessor.All : accessor,
+                         publicAccessors, includeOtherAccessors))
+                InvokeTarget(accessorMethod);
+        else if (e.Field is { } field && e.Kind == REntityKind.Field)
+            ReachReflectedField(field, reads: true);
     }
 
     /// <summary>Set while a delegate binding selects its targets: binding runs no body, so
@@ -2681,12 +2777,17 @@ internal sealed partial class Compilation
             if ((md.Attributes & (MethodAttributes.Static | MethodAttributes.MemberAccessMask)) != MethodAttributes.Public
                 || !reader.StringComparer.Equals(md.Name, ".ctor"))
                 continue;
-            var blob = reader.GetBlobReader(md.Signature);
-            blob.ReadSignatureHeader();
-            if (blob.ReadCompressedInteger() == 0)
+            if (IsParameterlessSignature(reader.GetBlobReader(md.Signature)))
                 return true;
         }
         return false;
+    }
+
+    private static bool IsParameterlessSignature(BlobReader signature)
+    {
+        if (signature.ReadSignatureHeader().IsGeneric)
+            signature.ReadCompressedInteger();
+        return signature.ReadCompressedInteger() == 0;
     }
 
     private static string BacktickFullName(Module module, TypeDefinitionHandle def)
@@ -2696,18 +2797,26 @@ internal sealed partial class Compilation
     /// the last visit. Driven by discovery's fixpoint.</summary>
     internal bool ApplyPendingReflectionSelections()
     {
-        if (_pendingReflectionSelections.Count == 0)
+        if (_pendingReflectionSelections.Count == 0 && _accessedGenericDefinitions.Count == 0 && _accessedGenericMethods.Count == 0)
         {
             _pendingSelectionClassCursor = Classes.Count;
+            _accessedMethodCursor = _methodInstanceOrder.Count;
             return false;
         }
         int reached = Reachable.Count;
         bool applied = false;
+        while (_accessedMethodCursor < _methodInstanceOrder.Count)
+            applied |= ReachAccessedMethodInstance(_methodInstanceOrder[_accessedMethodCursor++]);
         while (_pendingSelectionClassCursor < Classes.Count)
         {
             var cls = Classes[_pendingSelectionClassCursor++];
             if (cls.GenericArity == 0 || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls))
                 continue;
+            if (_accessedGenericDefinitions.Contains((cls.Module, cls.Handle)))
+            {
+                ReachAccessedMembers(cls, AccessedMembers.All);
+                applied = true;
+            }
             int token = SRME.GetToken(cls.Handle);
             foreach (var pending in _pendingReflectionSelections.ToList())
             {
@@ -2888,7 +2997,8 @@ internal sealed partial class Compilation
     /// <paramref name="allowPrefix"/> reads the name as
     /// <see cref="ReflectionLookupRules.LookupName"/> does.</summary>
     private List<REntity> SelectMembers(ClassInfo owner, LookupMemberKind? kind, string? name, int flags,
-        RResolved? types, int arity, bool allowPrefix = false, RResolved? returns = null)
+        RResolved? types, int arity, bool allowPrefix = false, RResolved? returns = null,
+        AccessedMembers accessedMembers = AccessedMembers.None, bool inheritedOwner = false)
     {
         var selected = new List<REntity>();
         CompleteReflectionDefinitionOwner(owner);
@@ -2902,7 +3012,7 @@ internal sealed partial class Compilation
         var seenNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var c in owner.IsInterface ? new List<ClassInfo> { owner } : BaseChain(owner))
         {
-            bool declared = c == owner;
+            bool declared = c == owner && !inheritedOwner;
             if (c.Handle.IsNil)
                 continue;
             EnsureCompleted(c);
@@ -2913,20 +3023,24 @@ internal sealed partial class Compilation
                     var memberKind = ctor ? LookupMemberKind.Constructor : LookupMemberKind.Method;
                     if (kind is not null && kind != memberKind || method.IsSynthetic)
                         continue;
-                    if (kind == LookupMemberKind.Constructor && method.Name == ".cctor" != (flags == ReflectionApis.TypeInitializerLookup))
+                    if (accessedMembers == AccessedMembers.None && kind == LookupMemberKind.Constructor
+                        && method.Name == ".cctor" != (flags == ReflectionApis.TypeInitializerLookup))
                         continue;
                     if (name is not null && !ReflectionLookupRules.NameMatches(method.Name, name, flags, prefix))
                         continue;
                     var row = new LookupRow(method.Name, memberKind, MethodVisibility(method.Attributes), method.IsStatic);
-                    if (!ReflectionLookupRules.Admits(row, flags, declared))
+                    bool publicDefault = ctor && declared && row.Visibility == LookupVisibility.Public
+                        && (accessedMembers & AccessedMembers.PublicConstructors) == AccessedMembers.PublicParameterlessConstructor
+                        && IsParameterlessSignature(c.Module.Reader.GetBlobReader(c.Module.Reader.GetMethodDefinition(method.Handle).Signature));
+                    if (!ReflectionLookupRules.Admits(row, flags, declared, accessedMembers, publicDefault))
                         continue;
                     if (arity >= 0 && GenericParameterCount(method) != arity)
                         continue;
                     if (types is not null && !MayBindParameters(method, types))
                         continue;
-                    if (method.IsVirtual && method.VtableSlot >= 0 && !c.IsInterface && !seenSlots.Add(method.VtableSlot))
+                    if (accessedMembers == AccessedMembers.None && method.IsVirtual && method.VtableSlot >= 0 && !c.IsInterface && !seenSlots.Add(method.VtableSlot))
                         continue;
-                    if (method.IsVirtual && _reflectionMetadataViews.Contains(owner) && !c.IsInterface)
+                    if (accessedMembers == AccessedMembers.None && method.IsVirtual && _reflectionMetadataViews.Contains(owner) && !c.IsInterface)
                     {
                         string key = method.Name + "\0" + ReflectionOverrideSignature(method);
                         if (overridden.Contains(key))
@@ -2943,7 +3057,7 @@ internal sealed partial class Compilation
                         continue;
                     var visibility = field.IsPublic ? LookupVisibility.Public
                         : field.IsPrivate ? LookupVisibility.Private : LookupVisibility.NonPublic;
-                    if (!ReflectionLookupRules.Admits(new LookupRow(field.Name, LookupMemberKind.Field, visibility, field.IsStatic), flags, declared))
+                    if (!ReflectionLookupRules.Admits(new LookupRow(field.Name, LookupMemberKind.Field, visibility, field.IsStatic), flags, declared, accessedMembers))
                         continue;
                     selected.Add(new REntity { Kind = REntityKind.Field, Field = field, Owner = c });
                 }
@@ -2957,18 +3071,19 @@ internal sealed partial class Compilation
                     if (name is not null && !ReflectionLookupRules.NameMatches(propertyName, name, flags, prefix))
                         continue;
                     var accessors = property.GetAccessors();
-                    if (!AdmitsAccessorMember(c, propertyName, LookupMemberKind.Property, flags, declared, accessors.Getter, accessors.Setter))
+                    if (!AdmitsAccessorMember(c, propertyName, LookupMemberKind.Property, flags, declared, accessors.Getter, accessors.Setter, accessedMembers))
                         continue;
                     // A nearer property hides an inherited one only by name and signature, so
                     // an inherited indexer overload stays visible.
-                    if (!seenNames.Add("p:" + propertyName + "\0" + PropertySignatureKey(property)) && !declared)
+                    if (accessedMembers == AccessedMembers.None && !seenNames.Add("p:" + propertyName + "\0" + PropertySignatureKey(property)) && !declared)
                         continue;
                     if (types is not null && BindsByArity(types)
                         && !MayBindTypes(ReflectionPropertySignature(c, property).ParameterTypes, types))
                         continue;
                     selected.Add(new REntity
                     {
-                        Kind = REntityKind.Property, Owner = c, Member = ph, Text = propertyName, InheritedMember = !declared,
+                        Kind = REntityKind.Property, Owner = c, Member = ph, Text = propertyName,
+                        InheritedMember = !declared && accessedMembers == AccessedMembers.None,
                     });
                 }
             if (kind is null or LookupMemberKind.Event)
@@ -2979,19 +3094,18 @@ internal sealed partial class Compilation
                     if (name is not null && !ReflectionLookupRules.NameMatches(eventName, name, flags, prefix))
                         continue;
                     var accessors = ev.GetAccessors();
-                    if (!AdmitsAccessorMember(c, eventName, LookupMemberKind.Event, flags, declared, accessors.Adder, accessors.Remover))
+                    if (!AdmitsAccessorMember(c, eventName, LookupMemberKind.Event, flags, declared, accessors.Adder, accessors.Remover, accessedMembers))
                         continue;
-                    if (!declared && !seenNames.Add("e:" + eventName))
+                    if (accessedMembers == AccessedMembers.None && !seenNames.Add("e:" + eventName) && !declared)
                         continue;
-                    if (declared)
-                        seenNames.Add("e:" + eventName);
                     selected.Add(new REntity
                     {
-                        Kind = REntityKind.Event, Owner = c, Member = eh, Text = eventName, InheritedMember = !declared,
+                        Kind = REntityKind.Event, Owner = c, Member = eh, Text = eventName,
+                        InheritedMember = !declared && accessedMembers == AccessedMembers.None,
                     });
                 }
             if (kind is null or LookupMemberKind.NestedType)
-                selected.AddRange(SelectNestedTypes(c.Module, c.Handle, name, flags, prefix, declared));
+                selected.AddRange(SelectNestedTypes(c.Module, c.Handle, name, flags, prefix, declared, accessedMembers));
         }
         if (types is not null && kind is LookupMemberKind.Method or LookupMemberKind.Constructor && selected.Count > 1)
             KeepBinderChoices(selected, types);
@@ -3004,7 +3118,7 @@ internal sealed partial class Compilation
     /// <paramref name="name"/>, already read by <see cref="ReflectionLookupRules.LookupName"/>:
     /// generic definitions under a generic owner, as .NET returns them.</summary>
     private List<REntity> SelectNestedTypes(Module module, TypeDefinitionHandle owner, string? name, int flags, bool prefix,
-        bool declared)
+        bool declared, AccessedMembers accessedMembers = AccessedMembers.None)
     {
         var selected = new List<REntity>();
         var reader = module.Reader;
@@ -3018,7 +3132,7 @@ internal sealed partial class Compilation
                 ? LookupVisibility.Public
                 : (nested.Attributes & TypeAttributes.VisibilityMask) == TypeAttributes.NestedPrivate
                     ? LookupVisibility.Private : LookupVisibility.NonPublic;
-            if (!ReflectionLookupRules.Admits(new LookupRow(nestedName, LookupMemberKind.NestedType, visibility, false), flags, declared))
+            if (!ReflectionLookupRules.Admits(new LookupRow(nestedName, LookupMemberKind.NestedType, visibility, false), flags, declared, accessedMembers))
                 continue;
             var entity = DefinitionEntity(module, nh);
             if (entity.Type is { } type)
@@ -3358,7 +3472,7 @@ internal sealed partial class Compilation
     }
 
     private bool AdmitsAccessorMember(ClassInfo c, string name, LookupMemberKind kind, int flags, bool declared,
-        MethodDefinitionHandle first, MethodDefinitionHandle second)
+        MethodDefinitionHandle first, MethodDefinitionHandle second, AccessedMembers accessedMembers = AccessedMembers.None)
     {
         var reader = c.Module.Reader;
         bool anyPublic = false, allPrivate = true, isStatic = false, any = false;
@@ -3373,10 +3487,10 @@ internal sealed partial class Compilation
             allPrivate &= access == MethodAttributes.Private;
             isStatic |= (md.Attributes & MethodAttributes.Static) != 0;
         }
-        if (!any)
+        if (!any && accessedMembers == AccessedMembers.None)
             return false;
         var visibility = anyPublic ? LookupVisibility.Public : allPrivate ? LookupVisibility.Private : LookupVisibility.NonPublic;
-        return ReflectionLookupRules.Admits(new LookupRow(name, kind, visibility, isStatic), flags, declared);
+        return ReflectionLookupRules.Admits(new LookupRow(name, kind, visibility, isStatic), flags, declared, accessedMembers);
     }
 
     /// <summary>A property's signature as .NET compares it for hiding: the raw metadata
@@ -3662,7 +3776,8 @@ internal sealed partial class Compilation
     /// them: a member inherited from a base exposes no private accessor, and
     /// <paramref name="publicOnly"/> keeps only public ones, as an accessor read without
     /// nonPublic returns.</summary>
-    private List<MethodInfo> AccessorsOf(REntity e, ReflectionAccessor which, bool publicOnly = false)
+    private List<MethodInfo> AccessorsOf(REntity e, ReflectionAccessor which, bool publicOnly = false,
+        bool includeOtherAccessors = false)
     {
         var result = new List<MethodInfo>();
         if (e.Owner is not { } owner)
@@ -3676,6 +3791,8 @@ internal sealed partial class Compilation
                 handles.Add(accessors.Getter);
             if (which is ReflectionAccessor.Setter or ReflectionAccessor.All)
                 handles.Add(accessors.Setter);
+            if (includeOtherAccessors)
+                handles.AddRange(accessors.Others);
         }
         else if (e.Kind == REntityKind.Event)
         {
@@ -3686,6 +3803,8 @@ internal sealed partial class Compilation
                 handles.Add(accessors.Remover);
             if (which is ReflectionAccessor.Raiser or ReflectionAccessor.All)
                 handles.Add(accessors.Raiser);
+            if (includeOtherAccessors)
+                handles.AddRange(accessors.Others);
         }
         foreach (var h in handles)
         {

@@ -47,6 +47,7 @@ namespace ThreadingPrimitives
             if (args.Length != 0 && args[0] == "before-multiple-waits")
                 return;
             WaitHandleWaitAny.Program.RunMultiple();
+            WaitHandleRegistryLifetime.Program.RunConstructedEvent();
         }
     }
 }

@@ -204,3 +204,53 @@ public enum ArrayBindingFlags
 {
     Default,
 }
+
+public interface IAnnotatedContract
+{
+    public static int Identifier() => 31;
+}
+
+public interface IAnnotatedChild : IAnnotatedContract { }
+
+public class AnnotatedBase
+{
+    private readonly int _seed;
+
+    protected AnnotatedBase() { }
+    private AnnotatedBase(int seed) => _seed = seed;
+    private static int Hidden() => 13;
+
+    public class Nested
+    {
+        private static string Read() => "nested";
+    }
+}
+
+public sealed class AnnotatedMembers : AnnotatedBase, IAnnotatedContract
+{
+    private int _value;
+
+    public AnnotatedMembers() => _value = 1;
+    public AnnotatedMembers(int value) => _value = UnrequestedOverload(value);
+    private static int UnrequestedOverload(int value) => value;
+
+    public int Value { get => _value; private set => _value = value; }
+
+    private event Action Changed
+    {
+        add => _value += 7;
+        remove => _value -= 3;
+    }
+}
+
+public sealed class AnnotatedMethodOwner : AnnotatedBase
+{
+    public static int Visible() => 17;
+}
+
+public struct AnnotatedValue
+{
+    private static readonly string Label;
+    static AnnotatedValue() => Label = "initialized value";
+    public override string ToString() => Label;
+}

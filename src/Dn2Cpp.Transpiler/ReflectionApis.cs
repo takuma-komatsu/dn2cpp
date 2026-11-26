@@ -1,3 +1,5 @@
+using AccessedMembers = System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes;
+
 namespace Dn2Cpp;
 
 // The reflection API table. Emission, transpiler admission and ILDiet classify a call
@@ -966,12 +968,43 @@ internal readonly record struct LookupRow(string Name, LookupMemberKind Kind, Lo
 /// the most derived of the rows that share a name and signature.</summary>
 internal static class ReflectionLookupRules
 {
+    /// <summary>ILLink selects declarations, including hidden and overridden members.
+    /// Private base members, base constructors and base nested types need the corresponding
+    /// WithInherited bit. PublicConstructors includes PublicParameterlessConstructor.</summary>
+    internal static bool MatchesAccessedMember(AccessedMembers members, LookupMemberKind kind,
+        LookupVisibility visibility, bool inherited, bool parameterless = false)
+    {
+        bool isPublic = visibility == LookupVisibility.Public;
+        bool privateBase = inherited && visibility == LookupVisibility.Private;
+        var required = kind switch
+        {
+            LookupMemberKind.Constructor when isPublic => inherited ? AccessedMembers.PublicConstructorsWithInherited
+                : parameterless ? AccessedMembers.PublicParameterlessConstructor : AccessedMembers.PublicConstructors,
+            LookupMemberKind.Constructor => inherited ? AccessedMembers.NonPublicConstructorsWithInherited : AccessedMembers.NonPublicConstructors,
+            LookupMemberKind.NestedType when isPublic => inherited ? AccessedMembers.PublicNestedTypesWithInherited : AccessedMembers.PublicNestedTypes,
+            LookupMemberKind.NestedType => inherited ? AccessedMembers.NonPublicNestedTypesWithInherited : AccessedMembers.NonPublicNestedTypes,
+            LookupMemberKind.Method => isPublic ? AccessedMembers.PublicMethods
+                : privateBase ? AccessedMembers.NonPublicMethodsWithInherited : AccessedMembers.NonPublicMethods,
+            LookupMemberKind.Field => isPublic ? AccessedMembers.PublicFields
+                : privateBase ? AccessedMembers.NonPublicFieldsWithInherited : AccessedMembers.NonPublicFields,
+            LookupMemberKind.Property => isPublic ? AccessedMembers.PublicProperties
+                : privateBase ? AccessedMembers.NonPublicPropertiesWithInherited : AccessedMembers.NonPublicProperties,
+            LookupMemberKind.Event => isPublic ? AccessedMembers.PublicEvents
+                : privateBase ? AccessedMembers.NonPublicEventsWithInherited : AccessedMembers.NonPublicEvents,
+            _ => throw new InvalidOperationException(),
+        };
+        return (members & required) == required;
+    }
+
     /// <summary>Whether <paramref name="row"/>, declared on the reflected type or inherited
     /// from a base, passes <paramref name="flags"/>. Nested types and constructors are
     /// never inherited, nested types ignore Instance and Static, inherited statics need
     /// FlattenHierarchy, and an inherited private member is never returned.</summary>
-    internal static bool Admits(in LookupRow row, int flags, bool declaredOnReflectedType)
+    internal static bool Admits(in LookupRow row, int flags, bool declaredOnReflectedType,
+        AccessedMembers accessedMembers = AccessedMembers.None, bool parameterless = false)
     {
+        if (accessedMembers != AccessedMembers.None)
+            return MatchesAccessedMember(accessedMembers, row.Kind, row.Visibility, !declaredOnReflectedType, parameterless);
         bool isPublic = row.Visibility == LookupVisibility.Public;
         if ((flags & (isPublic ? ReflectionApis.Public : ReflectionApis.NonPublic)) == 0)
             return false;

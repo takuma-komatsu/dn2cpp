@@ -1192,7 +1192,7 @@ internal sealed partial class MethodCompiler
         // hand back something that looks like it worked and shares nothing.
         if (NewobjTypeName(handle) == "System.Threading.EventWaitHandle"
             && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition
-            && DecodeCtorSignature(handle).ParameterTypes is [{ Primitive: PrimitiveTypeCode.Boolean }, _])
+            && IsUnnamedEventConstructor(DecodeCtorSignature(handle)))
         {
             var mode = Pop();     // EventResetMode
             var ewhInit = Pop();  // bool initialState
