@@ -48,6 +48,7 @@ namespace ThreadingPrimitives
                 return;
             WaitHandleWaitAny.Program.RunMultiple();
             WaitHandleRegistryLifetime.Program.RunConstructedEvent();
+            WaitHandleRegistryLifetime.Program.RunDisposedEvent();
         }
     }
 }
