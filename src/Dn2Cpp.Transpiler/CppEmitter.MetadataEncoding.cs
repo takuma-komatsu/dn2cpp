@@ -125,10 +125,11 @@ internal sealed partial class CppEmitter
         sb.AppendLine($"extern const void* const {symbol}[] = {{ {string.Join(", ", values)} }};");
     }
 
-    private void FinishMetadataEncoding(StringBuilder sb)
+    private void FinishMetadataEncoding(CppOutput output)
     {
+        var sb = output.Data;
         _ = RootMetadataBlock;
-        FinishMetadataStrings(sb);
+        FinishMetadataStrings(output);
         EmitMetadataPointers(sb, RootMetadataBlock);
         foreach (var ctors in _metadataCtorRanges)
             if (ctors.Size != 0)

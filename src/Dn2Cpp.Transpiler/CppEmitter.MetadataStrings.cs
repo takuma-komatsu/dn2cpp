@@ -105,7 +105,7 @@ internal sealed partial class CppEmitter
         internal MetadataDisplayRow(int[] tokens) => Tokens = tokens;
     }
 
-    private void FinishMetadataStrings(StringBuilder sb)
+    private void FinishMetadataStrings(CppOutput output)
     {
         var tokenIds = new Dictionary<string, int>(System.StringComparer.Ordinal);
         var tokens = new List<string>();
@@ -159,7 +159,8 @@ internal sealed partial class CppEmitter
             var pointers = new List<string>();
             foreach (string token in tokens)
                 pointers.Add(InternMetadataName(token));
-            sb.AppendLine($"static const char* const md_display_tokens[] = {{ {string.Join(", ", pointers)} }};");
+            // The private dictionary is referenced by the primary metadata block registry.
+            output.Data.AppendLine($"static const char* const md_display_tokens[] = {{ {string.Join(", ", pointers)} }};");
         }
         for (int i = 0; i < _metadataDisplays.Count; i++)
         {
@@ -187,6 +188,7 @@ internal sealed partial class CppEmitter
             if (bytes is not null)
             {
                 _metadataHeader.AppendLine($"extern const char md_display_{i}[{bytes.Count}];");
+                var sb = output.BeginDataBlock();
                 sb.Append($"extern const char md_display_{i}[] = {{ ");
                 for (int j = 0; j < bytes.Count; j++)
                 {
@@ -205,13 +207,15 @@ internal sealed partial class CppEmitter
         for (int i = 0; i < _metadataNames.Count; i++)
             aliases.AppendLine($"[[maybe_unused]] static constexpr const char* md_name_{i} = md_name_pool + {layout.Offsets[i]};");
         _metadataHeader.Insert(_metadataStringHeaderOffset, aliases.ToString());
-        sb.AppendLine("extern const char md_name_pool[] =");
+        // Keep the suffix-folded pool contiguous so shared offsets remain valid.
+        var pool = output.BeginDataBlock();
+        pool.AppendLine("extern const char md_name_pool[] =");
         if (layout.Roots.Count == 0)
-            sb.AppendLine("    \"\"");
+            pool.AppendLine("    \"\"");
         for (int i = 0; i < layout.Roots.Count; i++)
-            sb.AppendLine("    \"" + CLiteral(_metadataNames[layout.Roots[i]])
+            pool.AppendLine("    \"" + CLiteral(_metadataNames[layout.Roots[i]])
                 + (i + 1 < layout.Roots.Count ? "\\0" : "") + "\"");
-        sb.AppendLine(";");
+        pool.AppendLine(";");
     }
 
     private int _metadataStringHeaderOffset;

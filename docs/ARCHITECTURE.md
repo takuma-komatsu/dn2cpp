@@ -47,8 +47,8 @@ input .NET assembly (+ reference assemblies via -r)
   └─ generated.h  (type layouts + external-linkage declarations)
      + generated.cpp  (data definitions + entry point)
      [ + generated_bN.cpp / generated_mN.cpp / generated_data_N.cpp ]
-       (method bodies, class metadata, and array/assembly data respectively;
-       an individual definition group stays with its private helpers)
+       (method bodies, class metadata, and array, assembly, and shared reflection
+       string data; an individual definition group stays with its private helpers)
         └─ clang++ + runtime/core (+ runtime/godot) → native binary / .dylib
 ```
 
