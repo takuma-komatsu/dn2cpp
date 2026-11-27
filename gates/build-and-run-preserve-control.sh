@@ -1080,6 +1080,7 @@ echo "== Constructor-only reflection constructs signature-selected types and kee
             gate_output witness "$native" "$row" --count any --policy crlf \
                 || { echo "FAIL: repeated array section did not run: $row" >&2; return 1; }
         done
+        gate_output witness "$native" 'boxed flags constructor' 'boxed nonPublic constructor' --policy crlf || return $?
         for type in RepeatedLocalTarget RepeatedPublishedTarget RepeatedCopiedTarget RepeatedIdentityTarget; do
             grep -Eqw "${type}_SelectedDefault_m[0-9]+" "$out"/generated*.cpp "$out"/generated.h \
                 || { echo "FAIL: repeated allocation lost $type's selected constructor body" >&2; return 1; }

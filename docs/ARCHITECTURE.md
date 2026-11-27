@@ -403,8 +403,10 @@ construction whose flags set no lookup bit (`0xFF`) selects as
 `Public | Instance`, as .NET's `Activator` does.
 A `DynamicallyAccessedMembers` annotation on a `System.Type` parameter
 applies its member mask to each statically known closed type passed at a
-reachable call. ILDiet retains the definitions and bodies needed by the
-transpiler. Both match the attribute by namespace and name, including
+reachable call. For recognized CoreLib `Activator.CreateInstance(Type, ...)`
+overloads, the construction site supplies the constructor demand using the
+binding flags and argument count. ILDiet retains the definitions and bodies
+needed by the transpiler. Both match the attribute by namespace and name, including
 compatibility definitions in libraries. Unknown type arguments add no roots.
 Reading an annotated Type field does not prove its stored value reached a
 member mask. Execution diagnostics for a member obtained from that field

@@ -1358,7 +1358,10 @@ internal sealed partial class Compilation
             arguments = 0;
         bool nonPublic = false;
         if (api.NonPublic >= 0)
-            nonPublic = MayBeTrue(Operand(app, site, api.NonPublic));
+        {
+            var choices = BooleanAlternatives(Operand(app, site, api.NonPublic), out bool complete);
+            nonPublic = !complete || choices.Count == 0 || choices.Contains(true);
+        }
         if (api.Op == ReflectionOp.RuntimeTypeDefaultCtor)
         {
             var publicOnly = BooleanAlternatives(Operand(app, site, 0), out bool complete);
@@ -5627,8 +5630,12 @@ internal sealed partial class Compilation
             return flags;
         }
         foreach (var e in value.Items)
-            if (e.Kind == REntityKind.Int && !flags.Contains((int)e.Number))
+        {
+            if (e.Kind != REntityKind.Int)
+                known = false;
+            else if (!flags.Contains((int)e.Number))
                 flags.Add((int)e.Number);
+        }
         if (!known && !flags.Contains(AnyLookup))
             flags.Add(AnyLookup);
         return flags;

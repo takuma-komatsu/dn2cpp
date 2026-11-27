@@ -1312,15 +1312,26 @@ internal sealed partial class AssemblyDiet
         return scope.ToArray();
     }
 
-    private static bool CompleteNames(SummaryValue value) => !value.Unknown && value.Strings.Count != 0
-        && value.Types.Count == 0 && value.Members.Count == 0 && value.Assemblies.Count == 0 && value.Integers.Count == 0
+    private static bool OnlyScalarValues(SummaryValue value) => !value.Unknown
+        && value.Types.Count == 0 && value.Members.Count == 0 && value.Assemblies.Count == 0
         && value.TypeArrays.Count == 0 && value.SymbolicGenericArrays.Count == 0
         && value.WrittenSymbolicGenericArrays.Count == 0 && value.SymbolicAssemblyOwners.Count == 0;
+
+    private static bool CompleteNames(SummaryValue value) => OnlyScalarValues(value)
+        && value.Strings.Count != 0 && value.Integers.Count == 0;
+
+    private static bool OnlyIntegerValues(SummaryValue value) => OnlyScalarValues(value)
+        && value.Strings.Count == 0 && !value.HasNullValues;
+
+    private static bool MayHaveBooleanValue(SummaryValue value, bool expected) => !OnlyIntegerValues(value)
+        || value.Integers.Count == 0 || value.Integers.Any(number => (number != 0) == expected);
 
     private void SelectMembers(SummaryValue result, SummaryValue owners, SummaryValue names, ReflectionOp op,
         SummaryValue flags, SummaryValue parameterTypes, SummaryValue arity, bool hasName, bool flagsAffectUncertainty = true)
     {
         owners = SelectedAttributeOwners(owners);
+        // A boxed flags value supplies its type but no known integer bits.
+        flags.Unknown = !OnlyIntegerValues(flags);
         result.HasOpenTypeSignatures = owners.HasOpenTypeSignatures;
         result.HasOpenMethodSignatures = owners.HasOpenMethodSignatures;
         result.Unknown = owners.HasUnknownOwner || hasName && !CompleteNames(names) || flagsAffectUncertainty && flags.Unknown;
@@ -1626,13 +1637,13 @@ internal sealed partial class AssemblyDiet
                     if (api.Op == ReflectionOp.RuntimeTypeDefaultCtor)
                     {
                         var publicOnly = SummaryValueOf(caller, summary, SiteOperand(site, 0));
-                        if (publicOnly.Unknown || publicOnly.Integers.Count == 0 || publicOnly.Integers.Any(value => value == 0))
+                        if (MayHaveBooleanValue(publicOnly, false))
                             flags.Integers.Add(api.DefaultFlags | ReflectionApis.NonPublic);
                     }
                     if (api.NonPublic >= 0)
                     {
                         var nonPublic = SummaryValueOf(caller, summary, SiteOperand(site, api.NonPublic));
-                        if (nonPublic.Unknown || nonPublic.Integers.Any(value => value != 0))
+                        if (MayHaveBooleanValue(nonPublic, true))
                             flags.Integers.Add(api.DefaultFlags | ReflectionApis.NonPublic);
                     }
                 }
