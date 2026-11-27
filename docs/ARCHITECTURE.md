@@ -45,12 +45,17 @@ input .NET assembly (+ reference assemblies via -r)
   └─ CppEmitter          … structs/vtables/type infos/string literals + all bodies
   │     └─ IEmitBackend  … emits the tail (main or the GDExtension registration table)
   └─ generated.h  (type layouts + external-linkage declarations)
-     + generated.cpp  (data definitions + entry point)
+     + generated.cpp  (shared initialization, backend entry point and remaining globals)
      [ + generated_bN.cpp / generated_mN.cpp / generated_data_N.cpp ]
-       (method bodies, class metadata, and array, assembly, and shared reflection
-       string data; an individual definition group stays with its private helpers)
+       (method bodies, class metadata, and global data grouped with its private helpers)
         └─ clang++ + runtime/core (+ runtime/godot) → native binary / .dylib
 ```
+
+Data chunks hold array and assembly metadata, shared reflection strings, managed
+string literals, the virtual method index, the type name registry, static fields,
+generic context tables, and RVA blobs. The string initializer shares a translation
+unit with its UTF-16 backing arrays. The type name registry shares one with its
+private forwarder table when present.
 
 For C++ emission, including a hot-update base, `TranspileDriver` requires
 `AssemblyLoadSet.CoreLibPath` after reference resolution and before ILDiet or

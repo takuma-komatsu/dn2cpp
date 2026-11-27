@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Split method bodies, class metadata and array data must link and preserve ArrayCore's
+# Split method bodies, class metadata and global data must link and preserve ArrayCore's
 # exact CLR output. Re-emitting into the same directory must clear stale chunks even
 # when an earlier cleanup stopped partway through.
 source "$(dirname "$0")/_common.sh"
@@ -10,7 +10,7 @@ export DN2CPP_SPLIT_BYTES=100000
 # artifacts dir so the two gates don't clobber each other under the parallel runner.
 export DN2CPP_OUT_SUFFIX=-split
 
-# Both asserts run INSIDE the wrapper's cached region, through the gate_extra_asserts
+# The asserts run INSIDE the wrapper's cached region, through the gate_extra_asserts
 # hook (`gates/_common.sh`), so a warm hit replays a green that includes them instead
 # of re-running them against a build this run did not make. $1 is the OUT the wrapper
 # transpiled into: spelling that path out again would agree with the DN2CPP_OUT_SUFFIX
@@ -53,6 +53,28 @@ gate_extra_asserts() {
         exit 1
     fi
     echo "OK: stale chunks from a previous run are swept before the new ones land"
+
+    local definition
+    local definitions=(
+        '^static const char16_t str_data_[0-9]+\[\] ='
+        '^Dn2CppString\* str_[0-9]+;'
+        '^(static )?void dn2cpp_init_strings\(\)[[:space:]]*$'
+        ' dn2cpp_virtual_method_targets\[\] =' ' dn2cpp_virtual_method_target_count ='
+        ' dn2cpp_type_registry\[\] =' ' dn2cpp_type_registry_count ='
+        '^(DN2CPP_GC_STATIC_ROOT )?\[\[maybe_unused\]\] [^=]+ sf_[^ =]+ ='
+        '^const void\* const rgctx_' '^const uint8_t blob_[0-9]+\[\] ='
+    )
+    if grep -Fq ' dn2cpp_type_forwarders[] =' "$sweep/generated.cpp"; then
+        definitions+=(' dn2cpp_type_forwarders\[\] =')
+    fi
+    for definition in "${definitions[@]}"; do
+        if grep -Eq "$definition" "$out/generated.cpp" ||
+            ! grep -Eq "$definition" "$out"/generated_data_[0-9]*.cpp ||
+            ! grep -Eq "$definition" "$sweep/generated.cpp"; then
+            echo "FAIL: expected $definition in split data chunks and the unsplit primary TU" >&2
+            return 1
+        fi
+    done
 }
 
 # The sweep runs the CLI a SECOND time, and what it asserts — that a re-transpile deletes

@@ -1699,7 +1699,7 @@ internal sealed partial class CppEmitter
                 NoteDefinedTypeInfo("ti_md_" + kv.Key);
             }
             // ArrayTypeInfoDeclared uses this snapshot for reflected members.
-            // EmitArrayTypeInfos may later declare more handles for the primary registry.
+            // EmitArrayTypeInfos may later declare more handles for the type-name registry.
             // Referenced intrinsic type-infos: a `typeof`/`isinst`/`castclass`/`box`/array-
             // covariance lowering names an intrinsic-modeled type's own `&ti_<T>` (StringBuilder,
             // CultureInfo, the SIMD vectors, IFormatProvider, …), but the opaque referenced-type
@@ -1927,7 +1927,7 @@ internal sealed partial class CppEmitter
                     foreach (var e in entries)
                         _e.RequireRenderedTypeInfoDefined(e, "rgctx type slot", user);
                     _o.Header.AppendLine($"extern const void* const rgctx_{user.CppName}[];");
-                    _sb.AppendLine($"const void* const rgctx_{user.CppName}[] = {{ "
+                    _o.BeginDataBlock().AppendLine($"const void* const rgctx_{user.CppName}[] = {{ "
                         + string.Join(", ", entries.Select(e => $"(const void*)({e})")) + " };");
                     _rgctxTableSyms.Add(user);
                 }
@@ -1943,7 +1943,7 @@ internal sealed partial class CppEmitter
                         _e.RequireRenderedTypeInfoDefined(e, "rgctx method-dimension type slot",
                             user.DeclaringClass);
                     _o.Header.AppendLine($"extern const void* const rgctx_{user.CppName}[];");
-                    _sb.AppendLine($"const void* const rgctx_{user.CppName}[] = {{ "
+                    _o.BeginDataBlock().AppendLine($"const void* const rgctx_{user.CppName}[] = {{ "
                         + string.Join(", ", entries.Select(e => $"(const void*)({e})")) + " };");
                     methodTables++;
                 }
@@ -3069,13 +3069,14 @@ internal sealed partial class CppEmitter
         // must not borrow a base table's implementation identity.
         private void EmitVirtualMethodTargets()
         {
-            _sb.AppendLine("extern const Dn2CppVirtualMethodTarget* const dn2cpp_virtual_method_targets[] = {");
+            var sb = _o.BeginDataBlock();
+            sb.AppendLine("extern const Dn2CppVirtualMethodTarget* const dn2cpp_virtual_method_targets[] = {");
             foreach (var target in _virtualMethodTargets)
-                _sb.AppendLine($"    {target},");
+                sb.AppendLine($"    {target},");
             if (_virtualMethodTargets.Count == 0)
-                _sb.AppendLine("    nullptr,");
-            _sb.AppendLine("};");
-            _sb.AppendLine($"extern const int32_t dn2cpp_virtual_method_target_count = {_virtualMethodTargets.Count};");
+                sb.AppendLine("    nullptr,");
+            sb.AppendLine("};");
+            sb.AppendLine($"extern const int32_t dn2cpp_virtual_method_target_count = {_virtualMethodTargets.Count};");
         }
 
         // Interface dispatch tables: one per (concrete class, interface),
