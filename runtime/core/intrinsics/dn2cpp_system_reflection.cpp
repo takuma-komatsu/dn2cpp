@@ -9033,14 +9033,10 @@ Dn2CppObject* dn2cpp_ctorref_invoke(Dn2CppMethodRef* c, Dn2CppArrayRef* args, bo
 
 [[noreturn]] static void dn2cpp_throw_missing_constructor(const Dn2CppTypeInfo* ti, bool bound);
 
-// Activator.CreateInstance(Type[, bool nonPublic]): the parameterless form.
-// Matches real .NET's exceptions: an abstract class or interface throws
-// MissingMethodException, and so does a type whose only
-// parameterless ctor is non-public when nonPublic wasn't requested — the
-// parameterless CreateInstance(Type) binds PUBLIC ctors only. A value type
-// with no explicit parameterless ctor yields the zero-initialized boxed value.
-static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, int32_t nonPublic,
-    bool wrapExceptions, bool binderMessage)
+// CreateInstance(Type, bool) always admits public constructors. The BindingFlags
+// overload chooses each visibility independently.
+static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, bool allowPublic,
+    bool allowNonPublic, bool wrapExceptions, bool binderMessage)
 {
     if (t == nullptr)
         dn2cpp_throw_argument_null_param("type");
@@ -9051,43 +9047,45 @@ static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, int32_t nonP
         dn2cpp_throw_platform_not_supported("Reflection: the constraint type has no runtime layout");
     if ((ti->flags & (DN2CPP_TF_ABSTRACT | DN2CPP_TF_INTERFACE)) != 0)
         dn2cpp_throw_missing_method("Cannot create an instance of an abstract class or interface");
-    // Whatever constructor it declares, a by-ref-like value is never boxed.
-    if ((ti->flags & DN2CPP_TF_BYREFLIKE) != 0)
-        dn2cpp_throw_invoke_not_supported("Cannot create boxed ByRef-like values.");
     const auto reflection = ti->reflection();
-    bool hasDefaultConstructor = (reflection.activation &
-        (DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR | DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR)) != 0;
+    const bool omittedPublic = (reflection.activation & DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR) != 0;
+    const bool omittedNonPublic = (reflection.activation & DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR) != 0;
+    bool hasDefaultConstructor = omittedPublic || omittedNonPublic;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> selected;
     for (int32_t i = 0; i < reflection.ctorCount; i++)
     {
         const auto ci = reflection.ctors[i];
         const auto row = ci.operator->();
-        hasDefaultConstructor |= row->paramCount == 0;
-        // The constructor row's initializer hook runs inside the constructor's exception
-        // wrap, where the CLR reports a failed initializer.
-        if (row->paramCount == 0
-            && (nonPublic != 0 || (row->attrs & DN2CPP_MTHA_PUBLIC) != 0))
-            return dn2cpp_ctor_invoke_argv(ci, nullptr, 0, wrapExceptions);
+        if (row->paramCount != 0)
+            continue;
+        hasDefaultConstructor = true;
+        if ((row->attrs & DN2CPP_MTHA_PUBLIC) != 0 ? allowPublic : allowNonPublic)
+        {
+            selected = ci;
+            break;
+        }
     }
-    // A row whose body the image did not retain refuses in dn2cpp_ctor_invoke_argv; a
-    // visible parameterless constructor whose row the image omits refuses here.
-    if ((reflection.activation & (nonPublic != 0
-            ? DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR | DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR
-            : DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR)) != 0)
-        dn2cpp_throw_omitted_ctor(ti, "Void .ctor()");
-    // A value type with no explicit parameterless ctor: zero-initialized boxed value.
-    // Running no constructor, it triggers no initializer, as on the CLR.
-    if ((ti->flags & DN2CPP_TF_VALUETYPE) != 0)
+    const bool selectedOmitted = (allowPublic && omittedPublic) || (allowNonPublic && omittedNonPublic);
+    const bool canDefaultValue = allowPublic && (ti->flags & DN2CPP_TF_VALUETYPE) != 0;
+    if (!selected && !selectedOmitted && !canDefaultValue)
     {
-        if (dn2cpp_unallocated(ti))
-            dn2cpp_throw_unallocated(ti, dn2cpp_unretained_subject(ti, "Void .ctor()"), "constructing it");
-        auto* obj = static_cast<Dn2CppObject*>(
-            dn2cpp_alloc(sizeof(Dn2CppObject) + static_cast<size_t>(ti->instanceSize)));
-        obj->type = ti;
-        return dn2cpp_rebox_from_nullable(obj);
+        if (binderMessage)
+            dn2cpp_throw_missing_constructor(ti, false);
+        dn2cpp_throw_missing_default_constructor(ti, hasDefaultConstructor);
     }
-    if (binderMessage)
-        dn2cpp_throw_missing_constructor(ti, false);
-    dn2cpp_throw_missing_default_constructor(ti, hasDefaultConstructor);
+    if ((ti->flags & DN2CPP_TF_BYREFLIKE) != 0)
+        dn2cpp_throw_invoke_not_supported("Cannot create boxed ByRef-like values.");
+    if (selected)
+        return dn2cpp_ctor_invoke_argv(selected, nullptr, 0, wrapExceptions);
+    if (selectedOmitted)
+        dn2cpp_throw_omitted_ctor(ti, "Void .ctor()");
+    // Implicit value construction zero-initializes the box without running an initializer.
+    if (dn2cpp_unallocated(ti))
+        dn2cpp_throw_unallocated(ti, dn2cpp_unretained_subject(ti, "Void .ctor()"), "constructing it");
+    auto* obj = static_cast<Dn2CppObject*>(
+        dn2cpp_alloc(sizeof(Dn2CppObject) + static_cast<size_t>(ti->instanceSize)));
+    obj->type = ti;
+    return dn2cpp_rebox_from_nullable(obj);
 }
 
 [[noreturn]] void dn2cpp_throw_missing_default_constructor(const Dn2CppTypeInfo* ti,
@@ -9107,7 +9105,7 @@ Dn2CppObject* dn2cpp_activator_create_instance_wrapped(Dn2CppType* t, int32_t no
         dn2cpp_throw_argument_null_param("type");
     if (t->type != &dn2cpp_type_type)
         dn2cpp_throw_platform_not_supported("Activator: custom Type construction is not supported");
-    return dn2cpp_activator_create_default(t, nonPublic, wrapExceptions != 0, false);
+    return dn2cpp_activator_create_default(t, true, nonPublic != 0, wrapExceptions != 0, false);
 }
 
 Dn2CppObject* dn2cpp_activator_create_instance_default_ctor(Dn2CppType* t, int32_t publicOnly, int32_t wrapExceptions)
@@ -9199,7 +9197,7 @@ void dn2cpp_runtime_type_call_default_struct_constructor(Dn2CppType* t, uint8_t*
 
 Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t nonPublic)
 {
-    return dn2cpp_activator_create_default(t, nonPublic, true, false);
+    return dn2cpp_activator_create_default(t, true, nonPublic != 0, true, false);
 }
 
 Dn2CppObject* dn2cpp_activator_create_instance(Dn2CppType* t)
@@ -13512,8 +13510,16 @@ Dn2CppObject* dn2cpp_activator_create_instance_args(Dn2CppType* t, Dn2CppArrayRe
         dn2cpp_throw_platform_not_supported("Reflection: the constraint type has no runtime layout");
     const bool wrapExceptions = (bindingFlags & DN2CPP_BF_DO_NOT_WRAP_EXCEPTIONS) == 0;
     if (argc == 0)
-        return dn2cpp_activator_create_default(
-            t, (bindingFlags & DN2CPP_BF_NONPUBLIC) != 0 ? 1 : 0, wrapExceptions, true);
+    {
+        const bool nonPublic = (bindingFlags & DN2CPP_BF_NONPUBLIC) != 0;
+        // A .cctor candidate can activate either instance visibility. Its declaration
+        // is not always present in the image's reflection metadata.
+        const bool maySelectInitializer = nonPublic && (bindingFlags & DN2CPP_BF_STATIC) != 0;
+        if (!maySelectInitializer && (bindingFlags & DN2CPP_BF_INSTANCE) == 0)
+            dn2cpp_throw_missing_constructor(ti, false);
+        const bool allowPublic = maySelectInitializer || (bindingFlags & DN2CPP_BF_PUBLIC) != 0;
+        return dn2cpp_activator_create_default(t, allowPublic, nonPublic, wrapExceptions, true);
+    }
     if ((ti->flags & (DN2CPP_TF_ABSTRACT | DN2CPP_TF_INTERFACE)) != 0)
         dn2cpp_throw_missing_method("Cannot create an instance of an abstract class or interface");
     if (argc > 30)

@@ -472,8 +472,10 @@ void check_constructor_binding()
             == &dn2cpp_target_parameter_count_exception_type,
         "direct constructor invocation checks its argument count before its missing body");
     require(activator_fault(&split_type, nullptr, publicInstance, "Void .ctor()")
-            == &dn2cpp_platform_not_supported_exception_type,
-        "an omitted public parameterless constructor still refuses with its remedy");
+            == &dn2cpp_platform_not_supported_exception_type
+        && activator_fault(&split_type, nullptr, nonPublicInstance, "Void .ctor()")
+            == &dn2cpp_missing_method_exception_type,
+        "an omitted public parameterless constructor refuses only when visible");
     require(activator_fault(&overloaded_type, nullptr, publicInstance, "Void .ctor()")
             == &dn2cpp_missing_method_exception_type,
         "a type without a parameterless constructor reports a genuine miss");

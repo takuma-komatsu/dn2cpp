@@ -252,5 +252,14 @@ namespace ReflectActivatorSubset
             cifat.SetValue(5, 1);
             Console.WriteLine($"CreateInstanceFromArrayType {cifat.GetType()} len={cifat.Length} [1]={cifat.GetValue(1)}");
         }
+
+        internal static void RunDefaultConstructorVisibility()
+        {
+            const BindingFlags publicInstance = BindingFlags.Public | BindingFlags.Instance;
+            const BindingFlags nonPublicInstance = BindingFlags.NonPublic | BindingFlags.Instance;
+            Show("public default, nonpublic flags", () => Activator.CreateInstance(typeof(P), nonPublicInstance, null, null, null));
+            Show("public default, public flags", () => Activator.CreateInstance(typeof(P), publicInstance, null, null, null));
+            Show("private default, nonpublic flags", () => Activator.CreateInstance(typeof(R), nonPublicInstance, null, null, null));
+        }
     }
 }

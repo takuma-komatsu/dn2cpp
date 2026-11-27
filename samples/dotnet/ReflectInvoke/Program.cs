@@ -425,6 +425,7 @@ namespace ReflectInvoke
         if (args.Length > 0 && args[0] == "before-invoke-member")
             return;
         InvokeMemberSubset.Program.Run();
+        ReflectActivatorSubset.Program.RunDefaultConstructorVisibility();
         }
     }
 }

@@ -43,6 +43,7 @@
 # null-bound delegates, DynamicInvoke and catchable stripped-body refusals, which a
 # nested reflective call raises to the outer call as a fault of its target.
 # DefaultBinder primitive widening and specificity differ from Invoke's ushort-to-char policy.
+# Parameterless Activator binding respects public and non-public constructor visibility.
 # The metadata codec probe checks shared missing-body/invoker refusals through every entry.
 # Generic method lookups and enumeration return one definition with stable parameter identities.
 # Formal parameters retain their typical declaring methods, defining assembly and allocation guards.
@@ -2368,7 +2369,9 @@ for axis in native dotnet; do
         'get static field default flags = 3' 'set field widen = 8' 'field falls to property = 5' \
         'field falls to method = 2' 'set property = 11' 'put dispatch property = 12' 'set indexer = 9' \
         'create = Target!' 'create with arguments = 33' \
-        'IntPtr.Size matches direct = True' 'UIntPtr.Size matches direct = True'
+        'IntPtr.Size matches direct = True' 'UIntPtr.Size matches direct = True' \
+        'public default, nonpublic flags => threw MissingMethodException' \
+        'public default, public flags => P()' 'private default, nonpublic flags => R(private)'
 done
 gate_assert_text "$_CG_OUT/invoke-member-boundaries.dotnet.stdout" "$(printf '%s\n' \
     '== Type.InvokeMember AOT boundaries ==' \
