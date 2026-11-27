@@ -1854,19 +1854,41 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_string_from_wcs((const char16_t*)({ptr.Expr}))");
                 return;
             }
-            // new string(sbyte* value) — a NUL-terminated run of narrow bytes, decoded
-            // through the system ANSI code page (dn2cpp_string_from_mbs -> the ANSI PAL
-            // seam: CP_ACP on Windows, UTF-8 on POSIX), which is what the real ctor
-            // does — NOT Encoding.Default, which .NET Core reports as UTF-8 even where
-            // the ACP is not (probe-confirmed on a CP932 host; see dn2cpp.h). Reached on
-            // Windows by NameResolutionPal.GetHostName, stringifying the buffer
-            // gethostname(2) filled. The (sbyte*, int, int[, Encoding]) siblings still
-            // fall through to the loud NotSupportedException below.
+            // The single-pointer form reads through the first NUL. A counted slice
+            // can contain NULs and an explicit Encoding supplies its own decoder.
             if (sps is [{ Kind: TypeKind.Pointer,
                           Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.SByte } }])
             {
                 var ptr = Pop();
                 Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_string_from_mbs((const char*)({ptr.Expr}))");
+                return;
+            }
+            if (sps.Length is 3 or 4
+                && sps[0] is { Kind: TypeKind.Pointer, Element.Primitive: PrimitiveTypeCode.SByte }
+                && sps[1].Primitive == PrimitiveTypeCode.Int32 && sps[2].Primitive == PrimitiveTypeCode.Int32
+                && (sps.Length == 3 || sps[3].Class is { FullName: "System.Text.Encoding", Module.AssemblyName: "System.Private.CoreLib" }))
+            {
+                string? encoding = sps.Length == 4 ? Cast(Pop(), CppTypes.Of(sps[3])) : null;
+                string length = Pop().Expr;
+                string start = Pop().Expr;
+                string pointer = Pop().Expr;
+                string bytes = NewTemp("const char*");
+                string explicitEncoding = encoding is null ? "false" : $"{encoding} != nullptr";
+                Emit($"{bytes} = dn2cpp_string_mbs_slice((const char*)({pointer}), {start}, {length}, {explicitEncoding});");
+                string decode = $"dn2cpp_string_from_mbs_bytes({bytes}, {length})";
+                if (encoding is not null)
+                {
+                    var body = Comp.ReachStringStaticMethod("CreateStringFromEncoding", p =>
+                        p is [{ Kind: TypeKind.Pointer, Element.Primitive: PrimitiveTypeCode.Byte },
+                            { Primitive: PrimitiveTypeCode.Int32 }, { Class.FullName: "System.Text.Encoding" }])
+                        ?? throw new NotSupportedException("String construction with Encoding requires its CoreLib decoder");
+                    // Encoding.GetString(span) pins an empty span at address 1. A custom
+                    // GetCharCount can observe that call even with zero input bytes.
+                    string data = $"({length} == 0 ? (void*)1 : (void*){bytes})";
+                    string encoded = DirectCall(body, new[] { data, length, encoding });
+                    decode = $"{explicitEncoding} && {bytes} != nullptr ? {encoded} : {decode}";
+                }
+                Push(StackKind.Ref, "Dn2CppString*", decode);
                 return;
             }
             // new string(char* value, int startIndex, int length) — copy

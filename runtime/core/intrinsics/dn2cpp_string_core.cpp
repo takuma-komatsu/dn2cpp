@@ -157,14 +157,43 @@ Dn2CppString* dn2cpp_string_from_wcs(const char16_t* value)
     return dn2cpp_string_from_chars(value, length);
 }
 
-// `new string(sbyte* value)` — likewise extern in the real BCL. Decodes through
-// the system ANSI code page (CP_ACP on Windows, UTF-8 on POSIX), NOT as
-// Encoding.Default. A null pointer yields Empty, matching _from_wcs.
 Dn2CppString* dn2cpp_string_from_mbs(const char* value)
 {
+    return dn2cpp_string_from_mbs_bytes(value, value == nullptr ? 0 : static_cast<int32_t>(std::strlen(value)));
+}
+
+Dn2CppString* dn2cpp_string_from_mbs_bytes(const char* bytes, int32_t length)
+{
+    if (length == 0)
+        return dn2cpp_string_literal(u"", 0);
+#ifdef _WIN32
+    return dn2cpp_string_from_ansi(bytes, length);
+#else
+    return dn2cpp_string_decode_utf8(bytes, length);
+#endif
+}
+
+const char* dn2cpp_string_mbs_slice(const char* value, int32_t start, int32_t length, bool explicitEncoding)
+{
+    // The encoding overload checks length first and delegates when its Encoding is null.
+    if (explicitEncoding && length < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "length", length);
+    if (start < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "startIndex", start);
+    if (length < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "length", length);
     if (value == nullptr)
-        return dn2cpp_string_from_chars(nullptr, 0);
-    return dn2cpp_string_from_ansi(value, static_cast<int32_t>(std::strlen(value)));
+    {
+        if (length == 0)
+            return nullptr;
+        dn2cpp_throw_argument_null_param("value");
+    }
+    uintptr_t addr = reinterpret_cast<uintptr_t>(value);
+    uintptr_t offset = addr + static_cast<uint32_t>(start);
+    if (offset < addr)
+        dn2cpp_throw_argument_out_of_range_param("ArgumentOutOfRange_PartialWCHAR",
+                                                explicitEncoding ? "startIndex" : "value");
+    return reinterpret_cast<const char*>(offset);
 }
 
 // `new string(char c, int count)` — a string of `count` copies of `c`.

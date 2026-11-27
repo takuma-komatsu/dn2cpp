@@ -85,6 +85,10 @@ namespace StringCore
                 return;
             StringNullTerminatedSubset.Program.Run();
             StringComparisonFoldSubset.Program.RunCharContains();
+            if (args.Length > 0 && args[0] == "before-span-and-rune-split")
+                return;
+            StringSplitMoreSubset.Program.RunSpanAndRune();
+            StringSurfaceCoverageSubset.Run();
         }
     }
 }

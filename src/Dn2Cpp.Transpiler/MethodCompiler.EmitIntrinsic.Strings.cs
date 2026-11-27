@@ -18,6 +18,8 @@ internal sealed partial class MethodCompiler
         // NumberStyles/provider/span shape) — consolidated below the switch.
         if (TryEmitParseIntrinsic(declType, name, sig))
             return true;
+        if (declType == "System.String" && TryEmitStringSurface(name, sig))
+            return true;
         switch (declType, name)
         {
 
@@ -910,7 +912,8 @@ internal sealed partial class MethodCompiler
                     $"dn2cpp_str_contains_cmp({Cast(s, "Dn2CppString*")}, {Cast(sub, "Dn2CppString*")}, {cmp.Expr})");
                 return true;
             }
-            case ("System.String", "Contains") when sig.ParameterTypes.Length == 1:
+            case ("System.String", "Contains") when sig.ParameterTypes is [{ IsString: true }]
+                                                 or [{ Primitive: PrimitiveTypeCode.Char }]:
             {
                 var arg = Pop();
                 var s = Pop();
@@ -1225,7 +1228,7 @@ internal sealed partial class MethodCompiler
                 return true;
             }
             case ("System.String", "Replace")
-                when sig.ParameterTypes.Length == 2 && !sig.ParameterTypes[0].IsString:
+                when sig.ParameterTypes is [{ Primitive: PrimitiveTypeCode.Char }, { Primitive: PrimitiveTypeCode.Char }]:
             {
                 var newc = Pop();
                 var oldc = Pop();
@@ -1497,8 +1500,8 @@ internal sealed partial class MethodCompiler
                 string opts = sig.ParameterTypes.Length == 2 ? Pop().Expr : "0";
                 var sep = Pop();
                 var s = Pop();
-                PushStringSplitResult(
-                    $"dn2cpp_str_split_char({Cast(s, "Dn2CppString*")}, (char16_t)({sep.Expr}), 2147483647, {opts})");
+                PushStringSplitResult("dn2cpp_str_split_char",
+                    $"{Cast(s, "Dn2CppString*")}, (char16_t)({sep.Expr}), 2147483647, {opts}");
                 return true;
             }
             // Split(char, int count [, StringSplitOptions]).
@@ -1510,8 +1513,30 @@ internal sealed partial class MethodCompiler
                 var count = Pop();
                 var sep = Pop();
                 var s = Pop();
-                PushStringSplitResult(
-                    $"dn2cpp_str_split_char({Cast(s, "Dn2CppString*")}, (char16_t)({sep.Expr}), {Cast(count, "int32_t")}, {opts})");
+                PushStringSplitResult("dn2cpp_str_split_char",
+                    $"{Cast(s, "Dn2CppString*")}, (char16_t)({sep.Expr}), {Cast(count, "int32_t")}, {opts}");
+                return true;
+            }
+            case ("System.String", "Split")
+                when sig.ParameterTypes is [var span] && IsReadOnlySpanChar(span):
+            {
+                string sep = PopSpanTemp(span);
+                var s = Pop();
+                PushStringSplitResult("dn2cpp_str_split",
+                    $"{Cast(s, "Dn2CppString*")}, {sep}.f__reference, {sep}.f__length, nullptr, 2147483647, 0");
+                return true;
+            }
+            case ("System.String", "Split")
+                when sig.ParameterTypes.Length is 2 or 3
+                    && sig.ParameterTypes[0].Class is { FullName: "System.Text.Rune", Module.AssemblyName: "System.Private.CoreLib" }
+                    && sig.ParameterTypes[^1].Class is { FullName: "System.StringSplitOptions", Module.AssemblyName: "System.Private.CoreLib" }
+                    && (sig.ParameterTypes.Length == 2 || sig.ParameterTypes[1].Primitive == PrimitiveTypeCode.Int32):
+            {
+                var (count, opts) = PopSplitCountOptions(sig);
+                string scalar = StringRuneScalar(sig.ParameterTypes[0], Pop());
+                var s = Pop();
+                PushStringSplitResult("dn2cpp_str_split_rune",
+                    $"{Cast(s, "Dn2CppString*")}, {scalar}, {count}, {opts}");
                 return true;
             }
             // Split(params char[]), Split(char[], int), Split(char[],
@@ -1527,8 +1552,8 @@ internal sealed partial class MethodCompiler
                 var s = Pop();
                 string at = NewTemp("Dn2CppArrayN*");
                 Emit($"{at} = (Dn2CppArrayN*)({arr.Expr});");
-                PushStringSplitResult(
-                    $"dn2cpp_str_split({Cast(s, "Dn2CppString*")}, {at} != nullptr ? (const char16_t*)({at}->data) : nullptr, {at} != nullptr ? {at}->length : 0, nullptr, {count2}, {opts2})");
+                PushStringSplitResult("dn2cpp_str_split",
+                    $"{Cast(s, "Dn2CppString*")}, {at} != nullptr ? (const char16_t*)({at}->data) : nullptr, {at} != nullptr ? {at}->length : 0, nullptr, {count2}, {opts2}");
                 return true;
             }
             // Split(string, StringSplitOptions), Split(string, int [,
@@ -1541,8 +1566,8 @@ internal sealed partial class MethodCompiler
                 var (count3, opts3) = PopSplitCountOptions(sig);
                 var sep = Pop();
                 var s = Pop();
-                PushStringSplitResult(
-                    $"dn2cpp_str_split_str({Cast(s, "Dn2CppString*")}, {Cast(sep, "Dn2CppString*")}, {count3}, {opts3})");
+                PushStringSplitResult("dn2cpp_str_split_str",
+                    $"{Cast(s, "Dn2CppString*")}, {Cast(sep, "Dn2CppString*")}, {count3}, {opts3}");
                 return true;
             }
             // Split(string[], StringSplitOptions), Split(string[], int,
@@ -1556,8 +1581,8 @@ internal sealed partial class MethodCompiler
                 var (count4, opts4) = PopSplitCountOptions(sig);
                 var arr = Pop();
                 var s = Pop();
-                PushStringSplitResult(
-                    $"dn2cpp_str_split({Cast(s, "Dn2CppString*")}, nullptr, 0, (Dn2CppArrayRef*)({arr.Expr}), {count4}, {opts4})");
+                PushStringSplitResult("dn2cpp_str_split",
+                    $"{Cast(s, "Dn2CppString*")}, nullptr, 0, (Dn2CppArrayRef*)({arr.Expr}), {count4}, {opts4}");
                 return true;
             }
             case ("System.String", "IsNullOrEmpty"):
@@ -1800,18 +1825,14 @@ internal sealed partial class MethodCompiler
         }
     }
 
-    /// <summary>Pushes a String.Split runtime-call result. Split returns string[]; the
-    /// result is stamped with the precise ti_arr_String handle (its SZArray interface map)
-    /// so a foreach / LINQ over it dispatches IEnumerable&lt;string&gt; on the array itself —
-    /// the shared object[] handle the runtime stamps carries no interface map. The static
-    /// type is set to string[] so downstream sees the precise element type.</summary>
-    private void PushStringSplitResult(string callExpr)
+    /// <summary>Split needs the precise string[] type for its interface map and for
+    /// its Array.Empty&lt;string&gt; singleton.</summary>
+    private void PushStringSplitResult(string function, string args)
     {
         var splitElem = TypeDesc.MakePrimitive(PrimitiveTypeCode.String);
         Comp.NoteArrayEnumerableElement(splitElem);
         string splitTmp = NewTemp("Dn2CppArrayRef*");
-        Emit($"{splitTmp} = {callExpr};");
-        Emit($"if ({splitTmp} != nullptr) ((Dn2CppObject*){splitTmp})->type = {PreciseArrayTypeInfoExpr(splitElem)};");
+        Emit($"{splitTmp} = {function}({args}, {PreciseArrayTypeInfoExpr(splitElem)});");
         PushEntry(new StackEntry(splitTmp, StackKind.Ref, "Dn2CppArrayRef*",
             StaticType: TypeDesc.MakeSZArray(splitElem)));
     }
