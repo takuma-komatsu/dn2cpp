@@ -53,7 +53,7 @@ internal enum ReflectionOp : byte
     CreateDelegate, CreateDelegateNamed, DynamicInvoke, DelegateMethod,
     GetCustomAttributes, IsDefined, GetCustomAttributesData,
     RunClassConstructor, TypeInfoView, SequenceElement, TypeHandle, GetUninitializedObject,
-    MarshalPtrToStructure,
+    MarshalPtrToStructure, TypeDescriptorGetConverter,
 }
 
 /// <summary>Which accessor an <see cref="ReflectionOp.Accessor"/> call selects.</summary>
@@ -145,6 +145,10 @@ internal static class ReflectionApis
     private const string TFlags = "System.Reflection.BindingFlags", TBinder = "System.Reflection.Binder";
     private const string TCulture = "System.Globalization.CultureInfo";
     private const string TModifiers = "System.Reflection.ParameterModifier[]";
+    internal const string ComponentModelAssembly = "System.ComponentModel.TypeConverter";
+    internal const string TypeConverterAttributeAssembly = "System.ObjectModel";
+    internal const string TypeConverterAttributeName = "System.ComponentModel.TypeConverterAttribute";
+
     private const string TMethodInfo = "System.Reflection.MethodInfo", TDelegate = "System.Delegate";
 
     /// <summary>The lookup slot of one parameter type name, or None outside the vocabulary.</summary>
@@ -191,7 +195,7 @@ internal static class ReflectionApis
         or "CreateInstance" or "CreateInstanceDefaultCtor" or "CreateInstanceOfT" or "CallDefaultStructConstructor" or "CreateDelegate" or "DynamicInvoke" or "get_Method"
         or "GetCustomAttributes" or "GetCustomAttribute" or "IsDefined" or "GetCustomAttributesData"
         or "get_CustomAttributes" or "RunClassConstructor" or "GetUninitializedObject"
-        or "PtrToStructure";
+        or "PtrToStructure" or "GetConverter";
 
     /// <summary>Classifies a call to <paramref name="parent"/>::<paramref name="name"/>, or
     /// null when it is no reflection API. A member of a known family whose parameter list
@@ -242,6 +246,8 @@ internal static class ReflectionApis
             "System.Runtime.InteropServices.Marshal" when name == "PtrToStructure"
                 && onStatic && Sig(ps, "System.IntPtr", TType) =>
                 OnOperand(ReflectionOp.MarshalPtrToStructure, ReflectionOpKind.Construct, 1),
+            "System.ComponentModel.TypeDescriptor" when name == "GetConverter" && onStatic && Sig(ps, TType) =>
+                OnOperand(ReflectionOp.TypeDescriptorGetConverter, ReflectionOpKind.AttributeInstances, 0),
             TObject when name == "GetType" => OnReceiver(ReflectionOp.ObjectGetType, ReflectionOpKind.TypeIdentity, ps, plain),
             "System.Linq.Enumerable" => Enumerable(name, ps, hasThis, methodArity),
             "System.Collections.Generic.IEnumerable`1" or "System.Collections.IEnumerable"

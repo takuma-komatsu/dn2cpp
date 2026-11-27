@@ -5285,10 +5285,11 @@ internal sealed partial class Compilation
             || filter == AttributeRows.NullableContext && (!fieldNullability || ca.Parent.Kind != HandleKind.TypeDefinition
                 || AttributeTypeName(module.Reader, ca) != NullableContextAttributeName))
             return null;
-        MethodInfo? ctor = ResolveAttributeConstructor(module, ca.Constructor, fieldNullability);
+        bool scopedFrameworkRow = _selectedConverterAttributes.Contains((module, handle));
+        MethodInfo? ctor = ResolveAttributeConstructor(module, ca.Constructor, fieldNullability, scopedFrameworkRow);
         if (ctor is null
             || (IsFrameworkAssemblyName(ctor.DeclaringClass.Module.AssemblyName)
-                && !fieldNullability && !IsUserTypeofNamedFrameworkType(ctor.DeclaringClass.FullName))
+                && !fieldNullability && !scopedFrameworkRow && !IsUserTypeofNamedFrameworkType(ctor.DeclaringClass.FullName))
             || filter == AttributeRows.ReachedConstructors && !Reachable.Contains(ctor))
             return null;
         CustomAttributeValue<TypeDesc> val;
@@ -5303,10 +5304,11 @@ internal sealed partial class Compilation
         };
     }
 
-    private MethodInfo? ResolveAttributeConstructor(Module module, EntityHandle handle, bool fieldNullability = false) => handle.Kind switch
+    private MethodInfo? ResolveAttributeConstructor(Module module, EntityHandle handle,
+        bool fieldNullability = false, bool scopedFrameworkRow = false) => handle.Kind switch
     {
         HandleKind.MethodDefinition => module.MethodMap.GetValueOrDefault((MethodDefinitionHandle)handle),
-        HandleKind.MemberReference => ResolveAttrCtorRef(module, (MemberReferenceHandle)handle, fieldNullability),
+        HandleKind.MemberReference => ResolveAttrCtorRef(module, (MemberReferenceHandle)handle, fieldNullability, scopedFrameworkRow),
         _ => null,
     };
 
@@ -5323,7 +5325,7 @@ internal sealed partial class Compilation
     /// the runtime's pointer-identity match works unchanged). The ctor is then picked by
     /// decoded parameter arity + type shape. Null when the class isn't loaded or no overload
     /// matches.</summary>
-    private MethodInfo? ResolveAttrCtorRef(Module module, MemberReferenceHandle handle, bool fieldNullability)
+    private MethodInfo? ResolveAttrCtorRef(Module module, MemberReferenceHandle handle, bool fieldNullability, bool scopedFrameworkRow)
     {
         ClassInfo cls;
         MethodSignature<TypeDesc> sig;
@@ -5352,7 +5354,7 @@ internal sealed partial class Compilation
                 // is skipped before resolving its declaring type unless observed by
                 // a user type token or the field nullability reader.
                 var tref = reader.GetTypeReference((TypeReferenceHandle)mr.Parent);
-                if (!fieldNullability && tref.ResolutionScope.Kind == HandleKind.AssemblyReference
+                if (!fieldNullability && !scopedFrameworkRow && tref.ResolutionScope.Kind == HandleKind.AssemblyReference
                     && IsFrameworkAssemblyName(reader.GetString(
                         reader.GetAssemblyReference((AssemblyReferenceHandle)tref.ResolutionScope).Name))
                     // The name-set probe is behind the emptiness test so the common
@@ -5363,7 +5365,7 @@ internal sealed partial class Compilation
                     return null;
                 string full = TypeRefFullName(reader, (TypeReferenceHandle)mr.Parent);
                 // Keep the recorded assembly identity across forwarding facades.
-                var found = fieldNullability || _strippingLevel.UsesTypeWideRetention() && full == DebuggerProxyRetention.AttributeName
+                var found = fieldNullability || scopedFrameworkRow || _strippingLevel.UsesTypeWideRetention() && full == DebuggerProxyRetention.AttributeName
                     ? ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class : FindClassByFullName(full);
                 if (found is null)
                     return null;

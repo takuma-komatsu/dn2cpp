@@ -247,6 +247,13 @@ gate_extra_asserts() {
     gate_output byte-witness "$native" 'Default type converter: System.ComponentModel.TypeConverter' \
         --count 1 --policy crlf
 
+    gate_capture_ok "$out/annotated-attributes-before" run_bounded dotnet "$_CG_APP" before-annotated-attributes
+    gate_output select "$native" "$out/annotated-attributes-prefix.stdout" \
+        --before 'Annotated converter: SettingsConverter' --policy crlf
+    gate_output compare "$out/annotated-attributes-prefix.stdout" "$out/annotated-attributes-before.stdout"
+    gate_output byte-witness "$native" 'Annotated converter: SettingsConverter' \
+        'Attribute fixed: FixedPayload' 'Attribute named: NamedPayload' --count 1 --policy crlf
+
     numeric_signature_regressions checked
 }
 

@@ -15,6 +15,31 @@ internal sealed partial class AssemblyDiet
         return (Demand)((ulong)(uint)members << AccessedMembersShift);
     }
 
+    private void MarkAttributeAccessedMembers(CustomAttributeArgument argument, Demand demand)
+    {
+        if (demand == Demand.None || argument.Value is not TypeReference type || !IsClosedAttributeType(type)) return;
+        QueueDemand(type, demand);
+    }
+
+    private bool IsClosedAttributeType(TypeReference type) => type switch
+    {
+        GenericParameter => false,
+        GenericInstanceType generic => generic.GenericArguments.All(IsClosedAttributeType),
+        ArrayType array => IsClosedAttributeType(array.ElementType),
+        TypeSpecification => false,
+        _ => Resolve(type) is { HasGenericParameters: false },
+    };
+
+    private Demand AttributePropertyDemand(PropertyDefinition property, MethodDefinition setter)
+    {
+        if (property.PropertyType.FullName != "System.Type" || !_byModule.ContainsKey(property.Module))
+            return Demand.None;
+        var reader = GetReflectionSummarizer(property.Module).Reader;
+        var handle = MetadataTokens.PropertyDefinitionHandle((int)property.MetadataToken.RID);
+        var members = ReflectionCoreContracts.ReadAccessedMembers(reader, reader.GetPropertyDefinition(handle).GetCustomAttributes());
+        return (Demand)((ulong)(uint)members << AccessedMembersShift) | AccessedMemberDemand(setter, 0);
+    }
+
     private static Demand UnappliedDemands(Demand demands, Demand applied)
     {
         var delta = demands & ~applied;

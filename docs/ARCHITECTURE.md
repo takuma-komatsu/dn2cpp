@@ -410,6 +410,12 @@ properties and events keep their accessors. A selected nested type keeps
 all its members. `All` recurses through nested types, base types and
 implemented interfaces. Each selected nonliteral static field keeps its
 declaring type's initializer under the first-use guard.
+Constructing a custom attribute applies the same mask to closed `Type`
+values in annotated constructor parameters and named properties, including
+inherited setters. Reading an attribute row as metadata does not apply its
+constructor or setter contracts. `TypeDescriptor.GetConverter(Type)` on a
+known type admits its selected Type-valued framework converter attribute
+without admitting other framework attributes.
 `RuntimeHelpers.GetUninitializedObject` allocates a known type without invoking
 an instance constructor. It reaches the precise-init initializers on the base
 chain. Its annotated `Type` parameter keeps instance constructors callable
