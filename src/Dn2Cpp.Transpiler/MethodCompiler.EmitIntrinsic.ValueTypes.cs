@@ -860,7 +860,7 @@ internal sealed partial class MethodCompiler
     /// C++ expression constructing the Dn2CppDateTime. A trailing DateTimeKind arg
     /// disambiguates the 7-arg (…,Kind) form from the 7-int (…,millisecond) form, and
     /// leading DateOnly/TimeOnly args the (date, time[, kind]) forms from the
-    /// integer ones; Calendar overloads are carve-outs (NotSupported).</summary>
+    /// integer ones.</summary>
     private string EmitDateTimeCtorExpr(MethodSignature<TypeDesc> sig)
     {
         if (CoreIntrinsics.IsPotentialDateTimeManagedConstructor(sig))
@@ -871,6 +871,36 @@ internal sealed partial class MethodCompiler
         string I(int i) => $"(int32_t)({args[i].Expr})";
         bool lastKind = ps.Length > 0 && IsDateTimeKind(ps[^1]);
         string kind = lastKind ? $"(int32_t)({args[^1].Expr})" : "0";
+        int calendarIndex = ps.Length - (lastKind ? 2 : 1);
+        if ((lastKind ? calendarIndex is 7 or 8 : calendarIndex is 3 or 6 or 7 or 8)
+            && ps.Take(calendarIndex).All(t => t is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 })
+            && ps[calendarIndex] is
+            { Kind: TypeKind.Class, Class: { FullName: "System.Globalization.Calendar", Module.AssemblyName: "System.Private.CoreLib" } calendar })
+        {
+            var conversion = Comp.ReachManagedMethod(calendar, "ToDateTime", static p =>
+                p.Length == 7 && p.All(t => t is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }),
+                virtualDispatch: true)
+                ?? throw new NotSupportedException("Missing CoreLib Calendar.ToDateTime");
+            string receiver = NewTemp(CppTypes.Of(ps[calendarIndex]));
+            Emit($"{receiver} = {Cast(args[calendarIndex], CppTypes.Of(ps[calendarIndex]))};");
+            Emit($"if ({receiver} == nullptr) dn2cpp_throw_argument_null_param(\"calendar\");");
+            // The microsecond overload without a Kind also uses the Kind-taking
+            // millisecond overload and therefore checks millisecond before conversion.
+            if (lastKind || calendarIndex == 8)
+            {
+                Emit($"dn2cpp_datetime_check_millisecond({I(6)});");
+                if (lastKind)
+                    Emit($"(void)dn2cpp_datetime_from_ticks(0, {kind});");
+            }
+            Push(StackKind.Ref, CppTypes.Of(ps[calendarIndex]), receiver);
+            for (int i = 0; i < 7; ++i)
+                Push(StackKind.I4, "int32_t", i < calendarIndex ? I(i) : "0");
+            EmitManagedCall(conversion, isCallvirt: true);
+            string converted = DTVal(Pop());
+            return calendarIndex == 8
+                ? $"dn2cpp_datetime_add_constructor_microseconds({converted}, {I(7)}, {kind})"
+                : $"dn2cpp_datetime_from_ticks(({converted}).ticks(), {kind})";
+        }
         bool dateAndTime = ps.Length >= 2 && IsDateOnly(ps[0]) && IsTimeOnly(ps[1]);
         string DateAndTimeTicks() =>
             $"(int64_t)({DOnlyVal(args[0])}).dayNumber * 864000000000LL + ({TOnlyVal(args[1])}).ticks";
@@ -1109,6 +1139,47 @@ internal sealed partial class MethodCompiler
         return styles;
     }
 
+    private bool TryEmitDateTimeFormatArrayParse(string name, MethodSignature<TypeDesc> sig, bool offset)
+    {
+        var ps = sig.ParameterTypes;
+        bool isTry = name == "TryParseExact";
+        if (sig.Header.IsInstance || (name != "ParseExact" && !isTry)
+            || ps.Length != (isTry ? 5 : 4)
+            || (!ps[0].IsString && !IsReadOnlySpanChar(ps[0]))
+            || ps[1] is not { Kind: TypeKind.SZArray, Element.IsString: true }
+            || !IsFormatProvider(ps[2])
+            || ps[3] is not ({ Kind: TypeKind.Class, Class.FullName: "System.Globalization.DateTimeStyles" }
+                or { Kind: TypeKind.External, ExternalName: "System.Globalization.DateTimeStyles" })
+            || (isTry && (ps[4] is not { Kind: TypeKind.ByRef, Element: { } result }
+                || !(offset ? IsDateTimeOffset(result) : IsDateTime(result)))))
+            return false;
+        var outAddr = isTry ? Pop() : default;
+        string styles = PopDateTimeParseStyles(ps, 2, 3);
+        var formats = Pop();
+        var input = Pop();
+        string value;
+        if (ps[0].IsString)
+            value = Cast(input, "Dn2CppString*");
+        else
+        {
+            string sp = SpanPtr(input, CppTypes.Of(ps[0]));
+            value = $"dn2cpp_string_from_charspan((const char16_t*){sp}->f__reference, {sp}->f__length)";
+        }
+
+        string formatsPtr = Cast(formats, "Dn2CppArrayRef*");
+        string nativeType = offset ? "Dn2CppDateTimeOffset" : "Dn2CppDateTime";
+        string helper = offset ? "dn2cpp_datetimeoffset" : "dn2cpp_datetime";
+        if (isTry)
+        {
+            string destination = Cast(outAddr!, nativeType + "*");
+            Push(StackKind.I4, "int32_t",
+                $"{helper}_try_parse_exact_multi({value}, {formatsPtr}, {destination}, {styles})");
+        }
+        else
+            Push(StackKind.Struct, nativeType, $"{helper}_parse_exact_multi({value}, {formatsPtr}, {styles})");
+        return true;
+    }
+
     /// <summary>Lowers a System.DateTime member to its Dn2CppDateTime runtime helper.
     /// Returns false if unmapped so the caller reports a clear error.</summary>
     private bool TryEmitDateTimeIntrinsic(string name, MethodSignature<TypeDesc> sig)
@@ -1140,6 +1211,12 @@ internal sealed partial class MethodCompiler
         // Static helpers.
         switch (name)
         {
+            case "FromOADate" when ps.Length == 1:
+            { var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_from_oadate((double)({a.Expr}))"); return true; }
+            case "ToOADate" when ps.Length == 0:
+            { var a = Pop(); Push(StackKind.R8, "double", $"dn2cpp_datetime_to_oadate({DTVal(a)})"); return true; }
+            case "Equals" when !sig.Header.IsInstance && ps.Length == 2 && IsDateTime(ps[0]) && IsDateTime(ps[1]):
+            { var b = Pop(); var a = Pop(); Push(StackKind.I4, "int32_t", $"dn2cpp_datetime_cmp({DTVal(a)}, {DTVal(b)}) == 0"); return true; }
             case "FromBinary" when ps.Length == 1:
             { var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_from_binary((int64_t)({a.Expr}))"); return true; }
             case "ToBinary" when ps.Length == 0:
@@ -1161,8 +1238,9 @@ internal sealed partial class MethodCompiler
             { var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_to_local(dn2cpp_datetime_from_file_time_utc((int64_t)({a.Expr})))"); return true; }
         }
 
+        if (TryEmitDateTimeFormatArrayParse(name, sig, offset: false))
+            return true;
         // Parse / TryParse / ParseExact share string and character-span parsers.
-        // Format arrays remain unsupported.
         // Provider is ignored (invariant); the out result is the last param (a ByRef).
         if (name == "Parse" && ps.Length >= 1 && (ps[0].IsString || IsReadOnlySpanChar(ps[0])))
         {
@@ -1233,6 +1311,8 @@ internal sealed partial class MethodCompiler
             case "get_Minute": { var r = Pop(); Push(StackKind.I4, "int32_t", $"dn2cpp_datetime_minute({DTVal(r)})"); return true; }
             case "get_Second": { var r = Pop(); Push(StackKind.I4, "int32_t", $"dn2cpp_datetime_second({DTVal(r)})"); return true; }
             case "get_Millisecond": { var r = Pop(); Push(StackKind.I4, "int32_t", $"dn2cpp_datetime_millisecond({DTVal(r)})"); return true; }
+            case "get_Microsecond": { var r = Pop(); Push(StackKind.I4, "int32_t", $"(int32_t)(({DTVal(r)}).ticks() / 10 % 1000)"); return true; }
+            case "get_Nanosecond": { var r = Pop(); Push(StackKind.I4, "int32_t", $"(int32_t)(({DTVal(r)}).ticks() % 10 * 100)"); return true; }
             case "get_DayOfWeek": { var r = Pop(); Push(StackKind.I4, "int32_t", $"dn2cpp_datetime_dayofweek({DTVal(r)})"); return true; }
             case "get_DayOfYear": { var r = Pop(); Push(StackKind.I4, "int32_t", $"dn2cpp_datetime_dayofyear({DTVal(r)})"); return true; }
             case "get_Kind": { var r = Pop(); Push(StackKind.I4, "int32_t", $"({DTVal(r)}).kind()"); return true; }
@@ -1251,7 +1331,7 @@ internal sealed partial class MethodCompiler
         {
             "AddDays" => "864000000000LL", "AddHours" => "36000000000LL",
             "AddMinutes" => "600000000LL", "AddSeconds" => "10000000LL",
-            "AddMilliseconds" => "10000LL", _ => null,
+            "AddMilliseconds" => "10000LL", "AddMicroseconds" => "10LL", _ => null,
         };
         if (addUnit is not null && ps.Length == 1)
         {
@@ -1294,7 +1374,27 @@ internal sealed partial class MethodCompiler
             { var b = Pop(); var a = Pop(); Push(StackKind.I4, "int32_t", $"(dn2cpp_datetime_cmp({DTVal(a)}, {DTVal(b)}) == 0 ? 1 : 0)"); return true; }
             case "GetHashCode" when ps.Length == 0:
             { var a = Pop(); Push(StackKind.I4, "int32_t", $"dn2cpp_datetime_hash({DTVal(a)})"); return true; }
-            case "GetDate" when ps.Length == 3:
+            case "CompareTo" or "Equals" when sig.Header.IsInstance && ps is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }]:
+            {
+                var other = Pop(); var self = Pop();
+                string helper = name == "CompareTo" ? "dn2cpp_datetime_compare_object" : "dn2cpp_datetime_equals_object";
+                Push(StackKind.I4, "int32_t", $"{helper}({DTVal(self)}, {Cast(other, "Dn2CppObject*")})");
+                return true;
+            }
+            case "GetTypeCode" when ps.Length == 0:
+                Pop(); Push(StackKind.I4, "int32_t", "16"); return true; // TypeCode.DateTime
+            case "Deconstruct" when ps is [{ Kind: TypeKind.ByRef, Element: { } date }, { Kind: TypeKind.ByRef, Element: { } time }]
+                && IsDateOnly(date) && IsTimeOnly(time):
+            {
+                var t = Pop(); var d = Pop(); var self = Pop();
+                string ticks = NewTemp("int64_t");
+                Emit($"{ticks} = ({DTVal(self)}).ticks();");
+                Emit($"*({Cast(d, "Dn2CppDateOnly*")}) = Dn2CppDateOnly{{(int32_t)({ticks} / {TPD})}};");
+                Emit($"*({Cast(t, "Dn2CppTimeOnly*")}) = Dn2CppTimeOnly{{{ticks} % {TPD}}};");
+                return true;
+            }
+            case "GetDate" or "Deconstruct" when ps.Length == 3 && ps.All(p => p is
+                { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 } }):
             {
                 var d = Pop(); var m = Pop(); var y = Pop(); var a = Pop();
                 Emit($"dn2cpp_datetime_get_date({DTVal(a)}, {Cast(y, "int32_t*")}, {Cast(m, "int32_t*")}, {Cast(d, "int32_t*")});");
@@ -1360,6 +1460,26 @@ internal sealed partial class MethodCompiler
                 else
                     Push(StackKind.I4, "int32_t",
                         $"dn2cpp_string_try_copy_to_span({sv}, (char16_t*){dPtr}->f__reference, {dPtr}->f__length, {wrote})");
+                return true;
+            }
+            case "GetDateTimeFormats" when ps.Length == 0
+                || (ps.Length == 1 && (ps[0].Primitive == PrimitiveTypeCode.Char || IsFormatProvider(ps[0])))
+                || (ps.Length == 2 && ps[0].Primitive == PrimitiveTypeCode.Char && IsFormatProvider(ps[1])):
+            {
+                // Follow the existing DateTime formatter's invariant-culture policy.
+                if (ps.Length != 0 && IsFormatProvider(ps[^1])) Pop();
+                bool withFormat = ps.Length != 0 && ps[0].Primitive == PrimitiveTypeCode.Char;
+                string format = withFormat ? $"(int32_t)({Pop().Expr})" : "-1";
+                var value = Pop();
+                string arrayType = PreciseArrayTypeInfoExpr(sig.ReturnType.Element!);
+                Push(StackKind.Ref, "Dn2CppArrayRef*", $"dn2cpp_datetime_get_formats({DTVal(value)}, {format}, {arrayType})");
+                return true;
+            }
+            case "ToShortDateString" or "ToLongDateString" or "ToShortTimeString" or "ToLongTimeString" when ps.Length == 0:
+            {
+                string format = name switch { "ToShortDateString" => "d", "ToLongDateString" => "D", "ToShortTimeString" => "t", _ => "T" };
+                var a = Pop();
+                Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_datetime_format({DTVal(a)}, {Literals.GetOrAdd(format)})");
                 return true;
             }
             case "ToString":
@@ -1822,6 +1942,8 @@ internal sealed partial class MethodCompiler
             { var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTimeOffset", $"dn2cpp_datetimeoffset_from_datetime({DTVal(a)})"); return true; }
         }
 
+        if (TryEmitDateTimeFormatArrayParse(name, sig, offset: true))
+            return true;
         // Parsing uses invariant formats; TryParseExact accepts string/span inputs and
         // single/array formats. Providers are ignored; the exact parser rejects NoCurrentDateDefault.
         // The out result of the Try* forms is the last param (a ByRef).
@@ -1868,26 +1990,6 @@ internal sealed partial class MethodCompiler
             string sv = NewTemp("Dn2CppString*");
             Emit($"{sv} = dn2cpp_string_from_chars((const char16_t*){sPtr}->f__reference, {sPtr}->f__length);");
             Push(StackKind.I4, "int32_t", $"dn2cpp_datetimeoffset_try_parse_exact({sv}, {f}, {Cast(outAddr, "Dn2CppDateTimeOffset*")}, {styles})");
-            return true;
-        }
-        // String and span inputs share the same format-array validation and result reset.
-        if (name == "TryParseExact" && ps.Length >= 3 && (ps[0].IsString || IsReadOnlySpanChar(ps[0]))
-            && ps[1] is { Kind: TypeKind.SZArray, Element.IsString: true })
-        {
-            var outAddr = Pop();
-            string styles = PopDateTimeParseStyles(ps, 2, ps.Length - 2);
-            var formats = Pop();
-            var input = Pop();
-            string value;
-            if (ps[0].IsString)
-                value = Cast(input, "Dn2CppString*");
-            else
-            {
-                string pointer = SpanPtr(input, CppTypes.Of(ps[0]));
-                value = NewTemp("Dn2CppString*");
-                Emit($"{value} = dn2cpp_string_from_chars((const char16_t*){pointer}->f__reference, {pointer}->f__length);");
-            }
-            Push(StackKind.I4, "int32_t", $"dn2cpp_datetimeoffset_try_parse_exact_multi({value}, {Cast(formats, "Dn2CppArrayRef*")}, {Cast(outAddr, "Dn2CppDateTimeOffset*")}, {styles})");
             return true;
         }
 

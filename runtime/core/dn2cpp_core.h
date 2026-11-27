@@ -2197,6 +2197,9 @@ inline constexpr const char* DN2CPP_SR_FILE_TIME_INVALID = "ArgumentOutOfRange_F
 inline constexpr const char* DN2CPP_SR_FORMAT_OFFSET_OUT_OF_RANGE = "Format_OffsetOutOfRange";
 inline constexpr const char* DN2CPP_SR_FORMAT_DATE_OUT_OF_RANGE = "Format_DateOutOfRange";
 inline constexpr const char* DN2CPP_SR_FORMAT_UTC_OUT_OF_RANGE = "Format_UTCOutOfRange";
+inline constexpr const char* DN2CPP_SR_DATE_TIME_INVALID_STYLES = "Argument_InvalidDateTimeStyles";
+inline constexpr const char* DN2CPP_SR_DATE_TIME_CONFLICTING_STYLES = "Argument_ConflictingDateTimeStyles";
+inline constexpr const char* DN2CPP_SR_DATE_TIME_ROUNDTRIP_STYLES = "Argument_ConflictingDateTimeRoundtripStyles";
 inline constexpr const char* DN2CPP_SR_DATE_TIME_OFFSET_INVALID_STYLES = "Argument_DateTimeOffsetInvalidDateTimeStyles";
 inline constexpr const char* DN2CPP_SR_FORMAT_MISSING_INCOMPLETE_DATE = "Format_MissingIncompleteDate";
 inline constexpr const char* DN2CPP_SR_INVALID_DATE_TIME_KIND = "Argument_InvalidDateTimeKind";
@@ -2287,6 +2290,7 @@ inline constexpr const char* DN2CPP_SR_FORMAT_INVALID_STRING = "Format_InvalidSt
 inline constexpr const char* DN2CPP_SR_FORMAT_INVALID_STRING_WITH_VALUE = "Format_InvalidStringWithValue";
 inline constexpr const char* DN2CPP_SR_BAD_DATETIME = "Format_BadDateTime";
 inline constexpr const char* DN2CPP_SR_BAD_FORMAT_SPECIFIER = "Format_BadFormatSpecifier";
+inline constexpr const char* DN2CPP_SR_NO_FORMAT_SPECIFIER = "Format_NoFormatSpecifier";
 inline constexpr const char* DN2CPP_SR_DELEGATE_TYPE = "Arg_DlgtTypeMis";
 inline constexpr const char* DN2CPP_SR_BAD_BOOLEAN = "Format_BadBoolean";
 inline constexpr const char* DN2CPP_SR_ENUM_ILLEGAL_VALUE = "Arg_EnumIllegalVal";
@@ -2372,6 +2376,8 @@ inline constexpr const char* DN2CPP_SR_MUST_BE_INTPTR = "Arg_MustBeIntPtr";
 inline constexpr const char* DN2CPP_SR_MUST_BE_UINTPTR = "Arg_MustBeUIntPtr";
 inline constexpr const char* DN2CPP_SR_MUST_BE_DECIMAL = "Arg_MustBeDecimal";
 inline constexpr const char* DN2CPP_SR_MUST_BE_DATETIME = "Arg_MustBeDateTime";
+inline constexpr const char* DN2CPP_SR_OA_INVALID = "Arg_OleAutDateInvalid";
+inline constexpr const char* DN2CPP_SR_OA_SCALE = "Arg_OleAutDateScale";
 inline constexpr const char* DN2CPP_SR_MUST_BE_TIMESPAN = "Arg_MustBeTimeSpan";
 inline constexpr const char* DN2CPP_SR_MUST_BE_DATETIMEOFFSET = "Arg_MustBeDateTimeOffset";
 inline constexpr const char* DN2CPP_SR_MUST_BE_DATEONLY = "Arg_MustBeDateOnly";
@@ -9028,6 +9034,14 @@ Dn2CppDateTime dn2cpp_datetime_ymdhms(int32_t y, int32_t mo, int32_t d, int32_t 
 Dn2CppDateTime dn2cpp_datetime_ymdhmsms(int32_t y, int32_t mo, int32_t d, int32_t h, int32_t mi, int32_t s, int32_t ms, int32_t kind);
 Dn2CppDateTime dn2cpp_datetime_ymdhmsmsus(int32_t y, int32_t mo, int32_t d, int32_t h,
     int32_t mi, int32_t s, int32_t ms, int32_t us, int32_t kind);
+void dn2cpp_datetime_check_millisecond(int32_t ms);
+Dn2CppDateTime dn2cpp_datetime_add_constructor_microseconds(Dn2CppDateTime a, int32_t us, int32_t kind);
+Dn2CppDateTime dn2cpp_datetime_from_oadate(double value);
+double dn2cpp_datetime_to_oadate(Dn2CppDateTime a);
+int32_t dn2cpp_datetime_compare_object(Dn2CppDateTime a, Dn2CppObject* b);
+int32_t dn2cpp_datetime_equals_object(Dn2CppDateTime a, Dn2CppObject* b);
+Dn2CppArrayRef* dn2cpp_datetime_get_formats(Dn2CppDateTime a, int32_t format, const Dn2CppTypeInfo* arrType);
+bool dn2cpp_datetime_try_parse_exact_multi(Dn2CppString* s, Dn2CppArrayRef* formats, Dn2CppDateTime* out, int32_t styles);
 int32_t dn2cpp_datetime_year(Dn2CppDateTime a);
 int32_t dn2cpp_datetime_month(Dn2CppDateTime a);
 int32_t dn2cpp_datetime_day(Dn2CppDateTime a);
@@ -9070,6 +9084,7 @@ bool dn2cpp_datetime_try_parse(Dn2CppString* s, Dn2CppDateTime* out, int32_t sty
 bool dn2cpp_datetime_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, Dn2CppDateTime* out, int32_t styles = 0);
 Dn2CppDateTime dn2cpp_datetime_parse(Dn2CppString* s, int32_t styles = 0);
 Dn2CppDateTime dn2cpp_datetime_parse_exact(Dn2CppString* s, Dn2CppString* fmt, int32_t styles = 0);
+Dn2CppDateTime dn2cpp_datetime_parse_exact_multi(Dn2CppString* s, Dn2CppArrayRef* formats, int32_t styles);
 // Convert.ToDateTime(string/object): null -> DateTime.MinValue; a string parses
 // (catchable FormatException on bad input), a boxed DateTime passes through.
 Dn2CppDateTime dn2cpp_convert_str_to_datetime(Dn2CppString* s);
@@ -9140,6 +9155,7 @@ Dn2CppArrayRef* dn2cpp_dtfi_invariant_patterns(const Dn2CppTypeInfo* arrType, in
 Dn2CppArrayRef* dn2cpp_dtfi_invariant_abbrev_day_names(const Dn2CppTypeInfo* arrType);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse(Dn2CppString* s);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse_exact(Dn2CppString* s, Dn2CppString* fmt, int32_t styles = 0);
+Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse_exact_multi(Dn2CppString* s, Dn2CppArrayRef* formats, int32_t styles);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_add_ticks(Dn2CppDateTimeOffset d, int64_t ticks, const char* paramName);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_subtract_ticks(Dn2CppDateTimeOffset d, int64_t ticks, const char* paramName);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_add_unit(Dn2CppDateTimeOffset d, double value, int64_t ticksPerUnit);
