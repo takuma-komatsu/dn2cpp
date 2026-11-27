@@ -63,6 +63,7 @@
 # Type.InvokeMember binds methods, accessors, fields, default members and
 # constructors with .NET's flag checks and exceptions; a custom Binder, named
 # arguments, array-field indexing and a non-constant name refuse catchably.
+# Reflected IntPtr.Size and UIntPtr.Size agree with their direct getters.
 # Consolidated reflection-invocation gate. Merges the former reflect dynamic-use
 # subset gates into one multi-section program, transpiled once against the
 # tree-shaken real CoreLib and diffed exactly against real .NET. Covers:
@@ -2366,7 +2367,8 @@ for axis in native dotnet; do
         'default member = pick4' 'inherited default member = pick5' 'default indexer = 2' \
         'get static field default flags = 3' 'set field widen = 8' 'field falls to property = 5' \
         'field falls to method = 2' 'set property = 11' 'put dispatch property = 12' 'set indexer = 9' \
-        'create = Target!' 'create with arguments = 33'
+        'create = Target!' 'create with arguments = 33' \
+        'IntPtr.Size matches direct = True' 'UIntPtr.Size matches direct = True'
 done
 gate_assert_text "$_CG_OUT/invoke-member-boundaries.dotnet.stdout" "$(printf '%s\n' \
     '== Type.InvokeMember AOT boundaries ==' \

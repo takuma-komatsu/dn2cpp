@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Reflection;
 
@@ -292,6 +293,18 @@ internal static class Program
             () => typeof(Open<>).GetGenericArguments()[0].InvokeMember("Clear", IM, null, null, null));
         Show("open generic", () => typeof(Open<>).InvokeMember("Clear", IM | PI, null, null, null));
         Console.WriteLine("Type.InvokeMember end");
+
+        Show("IntPtr.Size matches direct", () => SizeMatchesDirect(typeof(IntPtr), IntPtr.Size));
+        Show("UIntPtr.Size matches direct", () => SizeMatchesDirect(typeof(UIntPtr), UIntPtr.Size));
+    }
+
+    private static bool SizeMatchesDirect(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type type, int directSize)
+    {
+        const BindingFlags flags = BindingFlags.Public | BindingFlags.Static;
+        int size = (int)type.InvokeMember("Size", flags | GetProperty, null, null, null);
+        MethodInfo getter = type.GetProperty("Size", flags).GetGetMethod();
+        return size == directSize && getter.DeclaringType == type && (int)getter.Invoke(null, null) == directSize;
     }
 
     // .NET runs these; AOT-compiled code refuses each with a catchable
