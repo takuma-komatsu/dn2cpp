@@ -109,7 +109,10 @@ internal sealed partial class AssemblyDiet
                         && method.Module.Assembly.Name.Name == ReflectionApis.ComponentModelAssembly)
                         foreach (var candidate in owners.AttributeTypes)
                             foreach (var source in SelectedAttributeSources(candidate))
-                                if (source is not ArrayType && IsClosedAttributeType(source) && Resolve(source) is { } owner)
+                                // The converter row belongs to the generic definition even if
+                                // this site still uses symbolic arguments.
+                                if (source is not ArrayType && (source is GenericInstanceType || IsClosedAttributeType(source))
+                                    && Resolve(source) is { } owner)
                                     SelectTypeConverterAttribute(owner);
                     continue;
                 }

@@ -59,6 +59,18 @@ namespace TypeConverterSrSubset
             Console.WriteLine("Attribute named: " + Activator.CreateInstance(contract.Named).GetType().Name);
         }
 
+        internal static void RunGenericConverter()
+        {
+            Console.WriteLine("Generic converter: " + GetGenericConverter<int>().GetType().Name);
+        }
+
+        private static TypeConverter GetGenericConverter<T>() => TypeDescriptor.GetConverter(typeof(GenericSettings<T>));
+
+        [TypeConverter(typeof(GenericSettingsConverter))]
+        private sealed class GenericSettings<T> { }
+
+        private sealed class GenericSettingsConverter : TypeConverter { public GenericSettingsConverter() { } }
+
         [TypeConverter(typeof(SettingsConverter))]
         [ConstructorContract(typeof(FixedPayload), Named = typeof(NamedPayload))]
         private sealed class AnnotatedSettings { }

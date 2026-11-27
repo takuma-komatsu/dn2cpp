@@ -254,6 +254,12 @@ gate_extra_asserts() {
     gate_output byte-witness "$native" 'Annotated converter: SettingsConverter' \
         'Attribute fixed: FixedPayload' 'Attribute named: NamedPayload' --count 1 --policy crlf
 
+    gate_capture_ok "$out/generic-converter-before" run_bounded dotnet "$_CG_APP" before-generic-type-converter
+    gate_output select "$native" "$out/generic-converter-prefix.stdout" \
+        --before 'Generic converter: GenericSettingsConverter' --policy crlf
+    gate_output compare "$out/generic-converter-prefix.stdout" "$out/generic-converter-before.stdout"
+    gate_output byte-witness "$native" 'Generic converter: GenericSettingsConverter' --count 1 --policy crlf
+
     numeric_signature_regressions checked
 }
 
