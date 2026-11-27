@@ -430,6 +430,13 @@ instance can select that row because the row belongs to its type definition.
 an instance constructor. It reaches the precise-init initializers on the base
 chain. Its annotated `Type` parameter keeps instance constructors callable
 through reflection. An unknown operand reports with a constructor remedy.
+Generic type and method parameter annotations apply the same masks to the
+concrete arguments of reachable uses, including method and field signatures
+and their base types and interfaces. A recognized `MakeGenericMethod`
+applies the mask when it forms a closed method. A runtime template applies
+the masks to a known argument tuple at each projected base. Canonical
+sharing keeps the obligations of each concrete user. A placeholder or an
+unused definition supplies no concrete use.
 Selections over generic definitions re-apply as new instantiations appear,
 inside the discovery fixpoint and each compile round. `ReflectionSummary.cs`
 interprets one method body over SRM and `ILDecoder`, and `ReflectionApis.cs`

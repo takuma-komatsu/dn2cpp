@@ -639,11 +639,14 @@ internal sealed partial class Compilation
 
     private void ReachAccessedType(TypeDesc? type, AccessedMembers members)
     {
-        if (members == AccessedMembers.None) return;
-        if (type is { Kind: TypeKind.Class, Class: { } cls })
-            ReachAccessedMembers(cls, members);
-        else if (type?.Kind is TypeKind.SZArray or TypeKind.MDArray && FindClassByFullName("System.Array") is { } array)
-            ReachAccessedMembers(array, members, inheritedOwner: true);
+        if (members != AccessedMembers.None && AccessedTypeOwner(type, out bool inherited) is { } cls)
+            ReachAccessedMembers(cls, members, inherited);
+    }
+
+    private ClassInfo? AccessedTypeOwner(TypeDesc? type, out bool inherited)
+    {
+        inherited = type?.Kind is TypeKind.SZArray or TypeKind.MDArray;
+        return inherited ? FindClassByFullName("System.Array") : OwnerClass(type);
     }
 
     private AccessedMembers AttributeParameterMembers(MethodInfo target, int index)
@@ -1815,8 +1818,11 @@ internal sealed partial class Compilation
                             {
                                 Kind = REntityKind.Template, Assembly = module, Definition = e.Definition, Tuple = tuple,
                             });
-                            if (ClosedTemplateBase(module, e.Definition, tuple) is { } inherited)
+                            if (ClosedTemplateBase(module, e.Definition, tuple, noteContracts: true) is { } inherited)
+                            {
+                                NoteGenericParameterContracts(inherited);
                                 result.Add(new REntity { Kind = REntityKind.Type, Type = TypeDesc.MakeClass(inherited), Inherited = true });
+                            }
                             continue;
                         }
                         if (admitted is null)
@@ -1894,12 +1900,14 @@ internal sealed partial class Compilation
     /// <paramref name="def"/> over <paramref name="tuple"/> that the image already has: the
     /// clone inherits that class's members, so lookups on it select them there. Null when
     /// every base is a template level or the matching closed class does not exist.</summary>
-    private ClassInfo? ClosedTemplateBase(Module module, TypeDefinitionHandle def, TypeDesc[] tuple)
+    private ClassInfo? ClosedTemplateBase(Module module, TypeDefinitionHandle def, TypeDesc[] tuple, bool noteContracts = false)
     {
         try
         {
             for (var (m, h, args) = (module, def, tuple); ;)
             {
+                if (noteContracts)
+                    NoteGenericParameterContracts(m, h, args);
                 var baseHandle = m.Reader.GetTypeDefinition(h).BaseType;
                 if (baseHandle.IsNil)
                     return null;
@@ -2055,7 +2063,10 @@ internal sealed partial class Compilation
                     var instance = metadata ? ReflectionDefinitionMethod(generic, tuple)
                         : InstantiateMethodOnClass(generic.DeclaringClass, generic.Module, generic.Handle, tuple);
                     if (!metadata)
+                    {
+                        NoteGenericParameterContracts(generic.Module, generic.Handle, tuple);
                         _reflectionListedRows.Add(instance);
+                    }
                     made.Add(instance);
                     break;
                 case null:

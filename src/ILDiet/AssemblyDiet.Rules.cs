@@ -47,7 +47,7 @@ internal sealed partial class AssemblyDiet
             CopiedLayoutBindingChanged(node.Parameter);
             ReplayAttributeIdentityBinding(node.Parameter, argument);
             AttributeBindingsChanged();
-            QueueDemand(argument, node.Demands);
+            QueueDemand(argument, node.Demands | GenericAccessedMemberDemand(node.Parameter));
             foreach (var projection in node.Projections.ToArray()) QueueProjectionSource(projection, argument);
             foreach (var alias in node.Aliases.ToArray()) QueueOrdinaryBinding(alias, argument);
         }

@@ -7,6 +7,7 @@ internal sealed partial class AssemblyDiet
     private readonly Dictionary<TypeReference, byte> _attributeTypeIdentities = new();
     private readonly Dictionary<GenericParameter, byte> _attributeIdentityParameters = new();
     private readonly Dictionary<ProjectionNode, byte> _attributeIdentityProjections = new();
+    private readonly HashSet<string> _readAttributeContractTypes = new(StringComparer.Ordinal);
 
     private void ObserveAttributeTypeIdentity(TypeReference reference, bool read)
     {
@@ -48,6 +49,7 @@ internal sealed partial class AssemblyDiet
         if (reference is TypeSpecification && reference is not GenericInstanceType) return;
         if (Resolve(reference) is { } type && CoreIntrinsicTypeMaps.WellKnownPrimitiveCode(Name(type)) is null)
             ApplyConditionalPolicy(type);
+        if (read && IsClosedAttributeType(reference)) ApplyReadAttributeContracts(reference, null, new());
         if (reference is GenericInstanceType generic)
         {
             // Read-promoted copied generic identities retain the existing opaque
@@ -59,6 +61,65 @@ internal sealed partial class AssemblyDiet
                 ObserveAttributeTypeIdentity(argument, read);
             }
         }
+    }
+
+    private void ApplyReadAttributeContracts(TypeReference reference, GenericInstanceType? context, HashSet<TypeReference> path)
+    {
+        if (reference is ArrayType array)
+        {
+            ApplyReadAttributeContracts(array.ElementType, context, path);
+            return;
+        }
+        // A formal's actual has already been visited where it entered this
+        // hierarchy. Only the inherited declaration contributes a new mask.
+        if (IsSymbolic(reference) || reference is TypeSpecification && reference is not GenericInstanceType
+            || Resolve(reference) is not { } type || CloseAttributeArgument(reference, context) is not { } closed) return;
+        string key = ArgumentKey(closed);
+        if (_readAttributeContractTypes.Contains(key)) return;
+        Spend();
+        var instance = closed as GenericInstanceType;
+        if (instance is not null)
+        {
+            for (int i = 0; i < type.GenericParameters.Count && i < instance.GenericArguments.Count; i++)
+                QueueDemand(instance.GenericArguments[i], GenericAccessedMemberDemand(type.GenericParameters[i]));
+        }
+        // Recursive interface arguments can grow at each substitution. Expand
+        // an original signature once per ancestry path, including diamond arms.
+        if (!path.Add(reference)) return;
+        _readAttributeContractTypes.Add(key);
+        if (reference is GenericInstanceType generic)
+            foreach (var argument in generic.GenericArguments) ApplyReadAttributeContracts(argument, context, path);
+        if (type.BaseType is { } parent) ApplyReadAttributeContracts(parent, instance, path);
+        foreach (var implementation in type.Interfaces)
+            ApplyReadAttributeContracts(implementation.InterfaceType, instance, path);
+        path.Remove(reference);
+    }
+
+    private TypeReference? CloseAttributeArgument(TypeReference reference, GenericInstanceType? context)
+    {
+        if (IsClosedAttributeType(reference)) return reference;
+        if (context is null) return null;
+        if (reference is GenericParameter parameter)
+            return parameter.Type == GenericParameterType.Type && (uint)parameter.Position < (uint)context.GenericArguments.Count
+                ? context.GenericArguments[parameter.Position] : null;
+        if (reference is GenericInstanceType generic)
+        {
+            var closed = new GenericInstanceType(generic.ElementType);
+            foreach (var argument in generic.GenericArguments)
+            {
+                if (CloseAttributeArgument(argument, context) is not { } actual) return null;
+                closed.GenericArguments.Add(actual);
+            }
+            return closed;
+        }
+        if (reference is ArrayType array && CloseAttributeArgument(array.ElementType, context) is { } element)
+        {
+            if (array.IsVector) return new ArrayType(element);
+            var closed = new ArrayType(element, array.Rank);
+            for (int i = 0; i < array.Rank; i++) closed.Dimensions[i] = array.Dimensions[i];
+            return closed;
+        }
+        return null;
     }
 
     private void ReplayAttributeIdentityBinding(GenericParameter parameter, TypeReference argument)

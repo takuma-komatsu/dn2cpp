@@ -136,6 +136,10 @@ internal static class Program
         unprovedField = typeof(UnprovedFieldCustomer);
         if (Environment.GetEnvironmentVariable("DN2CPP_READ_UNPROVED_FIELD") == "1")
             Report("unproved annotated field", () => ReadUnprovedField(new UnprovedFieldCustomer()));
+
+        if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_GENERIC_PARAMETER_CONTRACTS") == "1")
+            return;
+        GenericParameterContracts.Run();
     }
 
     private sealed class AnnotatedFieldCustomer { public int FieldRetentionWitness => 42; }
