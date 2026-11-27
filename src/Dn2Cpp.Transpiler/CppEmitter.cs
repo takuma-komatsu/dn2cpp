@@ -1034,7 +1034,9 @@ internal sealed partial class CppEmitter
         // emission forward-declares (EmittedClasses) — else an undeclared t_ at the C++ compile.
         AssertNamedStructsDefined();
         Timing.Mark("emit-typeinfos");
-        EmitTypeRegistry(o.Data);
+        EmitTypeRegistry(o.BeginDataBlock());
+        EmitBindingStandIns(o.Data);
+        EmitRuntimeTemplates(o.Data);
         EmitTypeBinds(o.Data);
         // The Console.Error managed-writer singleton accessor: after the type
         // infos (ti_ handles) and method forward decls (the ctor prototype) it references.
@@ -1506,7 +1508,7 @@ internal sealed partial class CppEmitter
     /// <para>The <c>ti_arr_&lt;elem&gt;</c> handles are in scope too, through
     /// <see cref="ArrayTypeInfoDeclared"/>. Reflected members use the declaration snapshot
     /// taken before their metadata is rendered. A later array declaration exposes its
-    /// definition to the primary registry.</para></summary>
+    /// definition to the type-name registry.</para></summary>
     private bool TypeInfoSymbolDefined(string sym) =>
         !sym.StartsWith("ti_", StringComparison.Ordinal)
         || _definedTypeInfoSyms.Contains(sym);
@@ -4260,7 +4262,7 @@ internal sealed partial class CppEmitter
     {
         if (!output.SplitData || TypeInfoSymbolDefined("ti_" + suffix))
             return;
-        // The primary registry still names late arrays. Don't broaden the earlier
+        // The type-name registry still names late arrays. Don't broaden the earlier
         // declaration snapshot used to decide which reflected members may name them.
         output.Header.AppendLine($"extern const Dn2CppTypeInfo ti_{suffix};");
         output.Header.AppendLine($"extern const Dn2CppType ty_{suffix};");
@@ -6320,27 +6322,33 @@ internal sealed partial class CppEmitter
         foreach (var (name, handle) in _arrayTypeSyms)
             Add(name, handle);
         var forwarders = BuildTypeForwarders(caseRanks,
-                new HashSet<string>(seen.Select(entry => entry.Name), StringComparer.OrdinalIgnoreCase))
-            .Select(row => $"{{ {CppUtf8Literal(row.Name)}, {CppUtf8Literal(row.Source)}, "
-                + $"{CppUtf8Literal(row.Target)}, {row.Rank}, "
-                + (ParentWinner(row.Name, row.Source) ? "true" : "false") + " }")
-            .ToArray();
-        if (forwarders.Length != 0)
-            sb.AppendLine($"static const Dn2CppTypeForwarder dn2cpp_type_forwarders[] = {{ {string.Join(", ", forwarders)} }};");
-        var registryRows = new List<string>(rows.Count);
+            new HashSet<string>(seen.Select(entry => entry.Name), StringComparer.OrdinalIgnoreCase));
+        if (forwarders.Count != 0)
+        {
+            sb.Append("static const Dn2CppTypeForwarder dn2cpp_type_forwarders[] = { ");
+            for (int i = 0; i < forwarders.Count; i++)
+            {
+                var row = forwarders[i];
+                if (i != 0) sb.Append(", ");
+                sb.Append($"{{ {CppUtf8Literal(row.Name)}, {CppUtf8Literal(row.Source)}, "
+                    + $"{CppUtf8Literal(row.Target)}, {row.Rank}, "
+                    + (ParentWinner(row.Name, row.Source) ? "true" : "false") + " }");
+            }
+            sb.AppendLine(" };");
+        }
+        sb.Append("const Dn2CppTypeRegEntry dn2cpp_type_registry[] = { ");
         for (int i = 0; i < rows.Count; i++)
         {
             var row = rows[i];
-            string forwarding = i == 0 && forwarders.Length != 0
-                ? $", dn2cpp_type_forwarders, {forwarders.Length}" : "";
-            registryRows.Add($"{{ \"{row.Name}\", {row.Handle}, {row.Rank}, "
+            if (i != 0) sb.Append(", ");
+            string forwarding = i == 0 && forwarders.Count != 0
+                ? $", dn2cpp_type_forwarders, {forwarders.Count}" : "";
+            sb.Append($"{{ \"{row.Name}\", {row.Handle}, {row.Rank}, "
                 + (row.ParentWinner ? "true" : "false") + forwarding + " }");
         }
-        sb.AppendLine($"const Dn2CppTypeRegEntry dn2cpp_type_registry[] = {{ {string.Join(", ", registryRows)} }};");
+        sb.AppendLine(" };");
         sb.AppendLine($"const int32_t dn2cpp_type_registry_count = {rows.Count};");
         sb.AppendLine();
-        EmitBindingStandIns(sb);
-        EmitRuntimeTemplates(sb);
     }
 
     /// <summary>Runtime-instantiation template rows: one per eligible template
@@ -9142,7 +9150,7 @@ internal sealed partial class CppEmitter
             // scanned bytes.
             string root = !f.IsThreadStatic && f.Type.ContainsGcReferences() ? "DN2CPP_GC_STATIC_ROOT " : "";
             o.Header.AppendLine($"extern {storage}{t} {f.CppStaticName};");
-            o.Data.AppendLine($"{root}[[maybe_unused]] {storage}{t} {f.CppStaticName} = {CppTypes.ZeroInit(t)};");
+            o.BeginDataBlock().AppendLine($"{root}[[maybe_unused]] {storage}{t} {f.CppStaticName} = {CppTypes.ZeroInit(t)};");
         }
         if (gcThreadStatics.Count > 0)
         {
@@ -9547,7 +9555,15 @@ internal sealed partial class CppEmitter
         for (int i = 0; i < _literals.Blobs.Count; i++)
         {
             o.Header.AppendLine($"extern const uint8_t blob_{i}[];");
-            o.Data.AppendLine($"const uint8_t blob_{i}[] = {{ {string.Join(", ", _literals.Blobs[i].Select(b => "0x" + b.ToString("x2")))} }};");
+            var sb = o.BeginDataBlock();
+            sb.Append($"const uint8_t blob_{i}[] = {{ ");
+            var bytes = _literals.Blobs[i];
+            for (int j = 0; j < bytes.Length; j++)
+            {
+                if (j != 0) sb.Append(", ");
+                sb.Append("0x").Append(bytes[j].ToString("x2"));
+            }
+            sb.AppendLine(" };");
         }
         o.Header.AppendLine();
         o.Data.AppendLine();
@@ -9555,12 +9571,11 @@ internal sealed partial class CppEmitter
 
     private void EmitStringLiterals(CppOutput o)
     {
-        var sb = o.Data;
-        // .NET strings are UTF-16; emit each literal as a static char16_t array
-        // of code units (a numeric initializer sidesteps escaping concerns). The raw
-        // str_data_N arrays and the init function are referenced only within this data TU,
-        // so they stay file-local; the resulting str_N pointers are read by method bodies
-        // in any TU, so they get external linkage + a header declaration.
+        // The initializer alone names the private UTF-16 storage. Keep it with the
+        // literals; only the primary TU needs its declaration.
+        var sb = o.BeginDataBlock();
+        if (o.SplitData)
+            o.Data.AppendLine("void dn2cpp_init_strings();");
         o.Header.AppendLine("// ---- string literals ----");
         for (int i = 0; i < _literals.Literals.Count; i++)
             o.Header.AppendLine($"extern Dn2CppString* str_{i};");
@@ -9577,7 +9592,9 @@ internal sealed partial class CppEmitter
         for (int i = 0; i < _literals.Literals.Count; i++)
             sb.AppendLine($"Dn2CppString* str_{i};");
         sb.AppendLine();
-        sb.AppendLine("static void dn2cpp_init_strings()");
+        if (!o.SplitData)
+            sb.Append("static ");
+        sb.AppendLine("void dn2cpp_init_strings()");
         sb.AppendLine("{");
         for (int i = 0; i < _literals.Literals.Count; i++)
             sb.AppendLine($"    str_{i} = dn2cpp_string_literal(str_data_{i}, {_literals.Literals[i].Length});");
@@ -9820,7 +9837,7 @@ internal sealed record MeasureResult(int Attempted, int Compiled, List<MeasureGa
 /// chunks; per-class metadata blocks are appended
 /// via <see cref="AppendMetadata"/>, which peels into its own chunk stream — so a large
 /// program compiles both its bodies and its reflection metadata as parallel translation
-/// units. Array types and per-assembly definitions stream into independent
+/// units. Self-contained data definitions stream into independent
 /// <c>generated_data_{n}.cpp</c> chunks.
 ///
 /// <para>A chunk is WRITTEN AND RELEASED the moment it is sealed — as soon as the next

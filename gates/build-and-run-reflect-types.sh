@@ -354,7 +354,7 @@ gate_string_clone_prefix_asserts() {
     gate_output compare "$out/string-clone-prefix.stdout" "$out/string-clone-expected.stdout" --policy crlf
 }
 gate_type_gettype_ignorecase_asserts() {
-    local out="$1" native before prefix expected
+    local out="$1" native before prefix expected registry
     native="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-native-2.stdout"
     gate_capture_ok "${native%.stdout}" run_bounded "$out/ReflectTypes$EXE_EXT" string-clone-copies || return $?
     prefix="$native.before"
@@ -369,18 +369,20 @@ gate_type_gettype_ignorecase_asserts() {
     gate_output compare "$native" "$expected" || return $?
     gate_output witness "$native" 'Type.GetType throwOnError and ignoreCase end' --count any --policy crlf \
         || { echo 'FAIL: Type.GetType ignoreCase section did not run' >&2; return 1; }
-    grep -Fq '{ "DelegateBaseTypeSubset.GenericOwner`1+Handler`1",' "$out/generated.cpp" \
+    registry=$(grep -hF 'const Dn2CppTypeRegEntry dn2cpp_type_registry[] =' "$out"/generated*.cpp) \
+        || { echo 'FAIL: type name registry missing' >&2; return 1; }
+    grep -Fq '{ "DelegateBaseTypeSubset.GenericOwner`1+Handler`1",' <<< "$registry" \
         || { echo 'FAIL: nested definition registry row missing' >&2; return 1; }
-    if grep -Fq '{ "DelegateBaseTypeSubset.GenericOwner`1",' "$out/generated.cpp"; then
+    if grep -Fq '{ "DelegateBaseTypeSubset.GenericOwner`1",' <<< "$registry"; then
         echo 'FAIL: nested-name direct lookup no longer needs its missing-outer regression' >&2
         return 1
     fi
     for name in 'Q.Alpha`1+Mid`1+Leaf`1' 'Q.aLpha`1+Mid`1+Leaf`1'; do
-        grep -Fq "{ \"$name\"," "$out/generated.cpp" \
+        grep -Fq "{ \"$name\"," <<< "$registry" \
             || { echo "FAIL: nested collision leaf row missing: $name" >&2; return 1; }
     done
     for name in 'Q.Alpha`1' 'Q.Alpha`1+Mid`1' 'Q.aLpha`1' 'Q.aLpha`1+Mid`1'; do
-        if grep -Fq "{ \"$name\"," "$out/generated.cpp"; then
+        if grep -Fq "{ \"$name\"," <<< "$registry"; then
             echo "FAIL: nested collision enclosing row unexpectedly retained: $name" >&2
             return 1
         fi
@@ -446,7 +448,7 @@ DN2CPP_SKIP_BUILD=1 DN2CPP_OUT_SUFFIX=-diet corelib_diff_gate TypeGetTypeIgnoreC
 unset -f gate_extra_asserts
 
 gate_extra_asserts() {
-    local native
+    local native registry
     native="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-native-6.stdout"
     gate_capture_ok "${native%.stdout}" run_bounded "$1/TypeGetTypeIgnoreCaseForwarded$EXE_EXT" || return $?
     gate_output witness "$native" 'forwarded folded target=True' --count any --policy crlf \
@@ -457,12 +459,14 @@ gate_extra_asserts() {
         || { echo 'FAIL: losing nested forwarder displaced the source leaf' >&2; return 1; }
     gate_output witness "$native" 'nested folded forwarded=False' --count any --policy crlf \
         || { echo 'FAIL: losing nested forwarder was selected' >&2; return 1; }
+    registry=$(grep -hF 'const Dn2CppTypeRegEntry dn2cpp_type_registry[] =' "$1"/generated*.cpp) \
+        || { echo 'FAIL: staged type name registry missing' >&2; return 1; }
     for name in 'Q.Alpha`1+Mid`1+Leaf`1' 'Q.aLpha`1+Mid`1+Leaf`1'; do
-        grep -Fq "{ \"$name\"," "$1/generated.cpp" \
+        grep -Fq "{ \"$name\"," <<< "$registry" \
             || { echo "FAIL: staged nested leaf row missing: $name" >&2; return 1; }
     done
     for name in 'Q.Alpha`1' 'Q.Alpha`1+Mid`1' 'Q.aLpha`1' 'Q.aLpha`1+Mid`1'; do
-        if grep -Fq "{ \"$name\"," "$1/generated.cpp"; then
+        if grep -Fq "{ \"$name\"," <<< "$registry"; then
             echo "FAIL: staged nested enclosing row unexpectedly retained: $name" >&2
             return 1
         fi
