@@ -250,10 +250,10 @@ internal static class Program
         return attributes.Length == 0 ? "none" : ((CommandAttribute)attributes[0]).Name;
     }
 
-    // Each exact instantiation binds a name known only at run time on its own owner, so
-    // the one site's fix preserves every owner.
+    // Bind a boxed receiver: the Type overload roots all its methods, which
+    // would hide the missing-body case for a runtime name.
     private static Delegate BindNamed<T>(string name) where T : struct =>
-        Delegate.CreateDelegate(typeof(Func<string>), typeof(T), name);
+        Delegate.CreateDelegate(typeof(Func<string>), (object)default(T), name);
 
     // The allocated type arrives as a parameter, and nothing else allocates it, so only
     // an image that allocates it dispatches the override.
@@ -375,12 +375,12 @@ internal sealed class CommandDerived : CommandBase
 
 internal struct MergedA
 {
-    public static string Run() => "merged a";
+    public string Run() => "merged a";
 }
 
 internal struct MergedB
 {
-    public static string Run() => "merged b";
+    public string Run() => "merged b";
 }
 
 internal sealed class BlankTarget
