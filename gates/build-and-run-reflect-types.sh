@@ -1331,6 +1331,10 @@ gate_extra_asserts() {
         grep -Fwq -- "// $symbol" "$out"/generated*.cpp "$out/generated.h" \
             || { echo "FAIL: allocated template body control missing: $symbol" >&2; return 1; }
     done
+    if grep -Ewq 'ti_Dn2Cpp_SignatureConstructedPayload_(String|Int32)' "$out/generated.h"; then
+        echo 'FAIL: template allocation probe used a static closed payload' >&2
+        return 1
+    fi
     for symbol in 'Dn2Cpp.SignatureOnlyPayload_$CnAny0::Describe' \
         'Dn2Cpp.SignatureMetadataOwner_$CnAny0::Describe' \
         'Dn2Cpp.SignatureStaticOwner_$CnAny0::Describe' \
@@ -1342,7 +1346,7 @@ gate_extra_asserts() {
     done
     native="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-native-49.stdout"
     gate_capture_ok "${native%.stdout}" run_bounded "$out/TemplateSignatureAllocationOnly$EXE_EXT" uninitialized-template-outcomes || return $?
-    for line in '== uninitialized template outcomes ==' \
+    for line in 'constructed dispatch=constructed:Int32' '== uninitialized template outcomes ==' \
         'static-only blank=PlatformNotSupportedException' 'static-only remedy=True:True:True' \
         'constructed blank=constructed:String' 'uninitialized template outcomes end'; do
         gate_output witness "$native" "$line" --count any --policy crlf \

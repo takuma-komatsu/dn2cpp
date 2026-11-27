@@ -46,8 +46,9 @@ internal static class TemplateSignatureAllocationProgram
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
-        Run();
-        if (args.Length > 0 && args[0] == "uninitialized-template-outcomes")
+        bool uninitialized = args.Length > 0 && args[0] == "uninitialized-template-outcomes";
+        Run(useInt32: uninitialized);
+        if (uninitialized)
         {
             Console.WriteLine("== uninitialized template outcomes ==");
             ReadUninitialized(typeof(SignatureStaticOwner<>).MakeGenericType(typeof(string)), "static-only");
@@ -57,7 +58,7 @@ internal static class TemplateSignatureAllocationProgram
         return;
     }
 
-    internal static void Run()
+    internal static void Run(bool useInt32 = false)
     {
         Console.WriteLine("== template signature allocation ==");
         Console.WriteLine("ordinary dispatch=" + Dispatch(new SignatureAllocationBase()));
@@ -65,8 +66,10 @@ internal static class TemplateSignatureAllocationProgram
         MethodInfo[] rows = metadata.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
         Console.WriteLine("metadata rows=" + rows.Length);
         Console.WriteLine("signature row=" + metadata.GetMethod("Payload")!.Name);
-        Type constructed = typeof(SignatureConstructedPayload<>).MakeGenericType(typeof(string));
-        var instance = (SignatureAllocationBase)Activator.CreateInstance(constructed)!;
+        Type argument = useInt32 ? typeof(int) : typeof(string);
+        Type constructed = typeof(SignatureConstructedPayload<>).MakeGenericType(argument);
+        // Activator's annotated Type parameter would root each closed payload.
+        var instance = (SignatureAllocationBase)constructed.GetConstructor(Type.EmptyTypes)!.Invoke(null);
         Console.WriteLine("constructed dispatch=" + Dispatch(instance));
         Type staticOwner = typeof(SignatureStaticOwner<>).MakeGenericType(typeof(string));
         Console.WriteLine("static call=" + staticOwner.GetMethod("Call")!.Invoke(null, null));
