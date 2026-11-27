@@ -1,4 +1,15 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace ILDietControlLib;
+
+public interface IAttributeContract<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] T> { }
+public class AttributeContractBase<T, U> : IAttributeContract<T> where U : new()
+{
+    public static U Create() => new U();
+}
+public sealed class AttributeContractTarget { }
+public sealed class AttributeContractUnused { }
+public sealed class AttributeContractDerived : AttributeContractBase<AttributeContractTarget, AttributeContractUnused> { }
 
 // Only ILDietLibraryOwnerOnly names these types, through reflection that selects
 // members on a base type or on a type named by a constant string.

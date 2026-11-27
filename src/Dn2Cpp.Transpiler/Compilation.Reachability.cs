@@ -484,6 +484,7 @@ internal sealed partial class Compilation
         if (!_allocatedRefTypes.Add(c))
             return;
         _allocatedTypeOrder.Add(c);
+        NoteGenericParameterContracts(c);
         NoteConditionalPreservationUse(c);
         NoteAllocatedQueueScheduler(c);
         if (c.IsDelegate)
@@ -1255,18 +1256,18 @@ internal sealed partial class Compilation
         return c.BaseClass is null && c.ExternalBaseName == "System.Diagnostics.Tracing.EventSource";
     }
 
-    /// <summary>Resolves the declaring type of a static field access seen during
-    /// the reachability scan to its loaded ClassInfo, or null when it does not
-    /// resolve to a loaded class (e.g. a primitive/external parent). Used to reach
-    /// the type's static initializer so a never-allocated, only-static-read type
-    /// (SZGenericArrayEnumerator&lt;T&gt;.Empty) is still emitted/initialized.</summary>
-    private ClassInfo? ResolveStaticFieldClass(Module module, EntityHandle handle, GenericContext ctx)
+    /// <summary>The loaded owner of a field access in this method's specialization.</summary>
+    private ClassInfo? ResolveFieldClass(MethodInfo method, EntityHandle handle)
     {
+        var module = method.Module;
         var reader = module.Reader;
         switch (handle.Kind)
         {
             case HandleKind.FieldDefinition:
-                return GetClass(module, reader.GetFieldDefinition((FieldDefinitionHandle)handle).GetDeclaringType());
+            {
+                var owner = reader.GetFieldDefinition((FieldDefinitionHandle)handle).GetDeclaringType();
+                return method.DeclaringClass.Handle == owner ? method.DeclaringClass : GetClass(module, owner);
+            }
             case HandleKind.MemberReference:
             {
                 var mr = reader.GetMemberReference((MemberReferenceHandle)handle);
@@ -1275,7 +1276,7 @@ internal sealed partial class Compilation
                     // An unloaded base-image generic owner has no local initializer.
                     // Its imported field accessor owns the runtime cctor guard.
                     HandleKind.TypeSpecification => reader.GetTypeSpecification((TypeSpecificationHandle)mr.Parent)
-                        .DecodeSignature(SigProvider, ctx).Class,
+                        .DecodeSignature(SigProvider, method.Context).Class,
                     HandleKind.TypeDefinition => GetClass(module, (TypeDefinitionHandle)mr.Parent),
                     HandleKind.TypeReference => ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent) is { Kind: TypeKind.Class } t ? t.Class : null,
                     _ => null,
@@ -7021,6 +7022,9 @@ internal sealed partial class Compilation
                         }
                         continue;
                     }
+                    case ILOpCode.Ldfld:
+                    case ILOpCode.Ldflda:
+                    case ILOpCode.Stfld:
                     case ILOpCode.Ldsfld:
                     case ILOpCode.Ldsflda:
                     case ILOpCode.Stsfld:
@@ -7037,14 +7041,21 @@ internal sealed partial class Compilation
                         // allocates the type, pulls its layout + used virtual slots.
                         // Intrinsic/bounded declaring types are cut by ReachCctor ->
                         // Reach, so this does not drag their initializers in.
-                        if (ResolveStaticFieldClass(module, handle, m.Context) is { } fc)
+                        bool isStatic = insn.OpCode is ILOpCode.Ldsfld or ILOpCode.Ldsflda or ILOpCode.Stsfld;
+                        if (ResolveFieldClass(m, handle) is { } fc)
                         {
                             string name = handle.Kind == HandleKind.MemberReference
                                 ? reader.GetString(reader.GetMemberReference((MemberReferenceHandle)handle).Name)
                                 : reader.GetString(reader.GetFieldDefinition((FieldDefinitionHandle)handle).Name);
-                            ReachCctor(ReflectionStaticFieldOwner(fc, name));
+                            NoteGenericParameterContracts(fc);
+                            if (EnsureShape(fc).Fields.FirstOrDefault(f => f.Name == name) is { } field)
+                                NoteGenericContractType(field.Type);
+                            if (isStatic)
+                                ReachCctor(ReflectionStaticFieldOwner(fc, name));
                         }
-                        continue;
+                        if (isStatic)
+                            continue;
+                        break;
                     }
                 }
 

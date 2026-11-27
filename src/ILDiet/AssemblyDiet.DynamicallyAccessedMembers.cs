@@ -143,4 +143,18 @@ internal sealed partial class AssemblyDiet
                 QueueDemand(nested, Demand.AccessedMembers);
             }
     }
+
+    private readonly Dictionary<GenericParameter, Demand> _genericAccessedMemberDemands = new();
+
+    private Demand GenericAccessedMemberDemand(GenericParameter parameter)
+    {
+        if (_genericAccessedMemberDemands.TryGetValue(parameter, out var demand))
+            return demand;
+        if (parameter.Module is not { } module || !_byModule.ContainsKey(module) || parameter.MetadataToken.RID == 0)
+            return Demand.None;
+        var reader = GetReflectionSummarizer(module).Reader;
+        var handle = MetadataTokens.GenericParameterHandle((int)parameter.MetadataToken.RID);
+        var members = ReflectionCoreContracts.ReadAccessedMembers(reader, reader.GetGenericParameter(handle).GetCustomAttributes());
+        return _genericAccessedMemberDemands[parameter] = (Demand)((ulong)(uint)members << AccessedMembersShift);
+    }
 }

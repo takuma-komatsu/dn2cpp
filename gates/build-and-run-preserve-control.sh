@@ -26,6 +26,7 @@
 # Constant-name InvokeMember keeps the bodies of the method, accessor and default
 # member it selects while unselected siblings stay signature-only stubs.
 # Annotated Type arguments retain callable library members through inherited and nested scopes.
+# Generic parameter annotations preserve the requested members of each concrete argument.
 # Conditional field signatures activate earlier, later and closed generic owners.
 # Local and captured interface arrays supply null defaults without a base type row.
 # Typed loads recover external enum zero defaults; untyped defaults stay unknown.
@@ -66,6 +67,7 @@ fi
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|return-parameter-prefix:${DN2CPP_BEFORE_RETURN_PARAMETER_ATTRIBUTES:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|invoke-member-prefix:${DN2CPP_BEFORE_INVOKE_MEMBER:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|annotated-type-prefix:${DN2CPP_BEFORE_ANNOTATED_TYPE_PARAMETERS:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|generic-parameter-prefix:${DN2CPP_BEFORE_GENERIC_PARAMETER_CONTRACTS:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/ReturnParameterAttributesSubset.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.Intercepts.cs gates/fixtures/ildiet-metadata-validation/intercept_retention.py"
 gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for ILDiet validation"
@@ -489,6 +491,21 @@ gate_extra_asserts() {
     DN2CPP_READ_UNPROVED_FIELD=1 gate_capture_ok "$out/unproved-field.native" run_bounded "$out/ILDietControl$EXE_EXT"
     gate_output byte-witness "$out/unproved-field.native.stdout" --count 1 --policy crlf \
         'unproved annotated field=PlatformNotSupportedException'
+
+    before="$out/generic-parameter-contracts-before.native"
+    DN2CPP_BEFORE_GENERIC_PARAMETER_CONTRACTS=1 gate_capture_ok "$before" run_bounded "$out/ILDietControl$EXE_EXT"
+    gate_output select "$native" "$out/generic-parameter-contracts-prefix.stdout" --before 'generic type contracts=type-one/type-two' --policy crlf
+    gate_output compare "$out/generic-parameter-contracts-prefix.stdout" "$before.stdout"
+    gate_output byte-witness "$native" --count 1 --policy crlf \
+        'generic type contracts=type-one/type-two' 'generic method contracts=method-one/method-two' \
+        'generic field contract=initialized' 'generic primitive nested field=True' \
+        'generic signature contracts=SignatureTarget/FieldSignatureTarget' 'generic inherited interface=InterfaceTarget' \
+        'generic template contracts=TemplateTarget/TemplateBaseTarget' 'generic reflected method=MethodIdentityTarget' \
+        'unannotated generic argument=UnannotatedTarget' 'generic attribute base=AttributeContractTarget'
+    if grep -Eq '^// .*UnannotatedTarget::\.ctor' "$out"/generated*.cpp "$out"/generated.h; then
+        echo 'FAIL: an unannotated generic argument retained an unused constructor' >&2
+        return 1
+    fi
     if grep -Eqw 'AnnotatedMembers_UnrequestedOverload_m[0-9]+' "$out"/generated*.cpp "$out"/generated.h; then
         echo 'FAIL: the parameterless constructor annotation retained the other public overload' >&2
         return 1
@@ -543,6 +560,7 @@ for row in 'method ILDietControlLib.Base::Foo' \
         || { echo "FAIL: ILDiet lost a runtime or layout dependency: $row" >&2; exit 1; }
 done
 for row in 'method ILDietControlLib.Base::UnusedPrivate' \
+        'method ILDietControlLib.AttributeContractUnused::.ctor' \
         'type ILDietControlLib.UnusedType' \
         'type ILDietControlLib.ConstructorOnlyDependency'; do
     if grep -Fxq "$row" <<<"$diet_metadata"; then

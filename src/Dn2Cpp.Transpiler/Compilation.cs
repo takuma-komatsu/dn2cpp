@@ -987,6 +987,7 @@ internal sealed partial class Compilation
         if (ReferencedTypes.Add(cls))
             NoteConditionalPreservationUse(cls);
         _identityOnlyReferences.Remove(cls);
+        NoteGenericParameterContracts(cls);
     }
 
     /// <summary>The <see cref="ReferencedTypes"/> members only an identity handle names:
@@ -1443,7 +1444,10 @@ internal sealed partial class Compilation
     public void NoteForceEmit(ClassInfo? cls)
     {
         if (cls is not null && ForceEmittedClasses.Add(cls))
+        {
             NoteConditionalPreservationUse(cls);
+            NoteGenericParameterContracts(cls);
+        }
     }
 
     /// <summary>Static constructors an emitted guard or initializer hook names: a trigger
@@ -5998,6 +6002,8 @@ internal sealed partial class Compilation
             if (ReachPendingRuntimeRaisedHeirs())
                 progress = true;
             if (ReachPendingBackendDemands())
+                progress = true;
+            if (ApplyPendingGenericParameterContracts())
                 progress = true;
             if (ActivateConditionalPreservationPolicies())
                 progress = true;
