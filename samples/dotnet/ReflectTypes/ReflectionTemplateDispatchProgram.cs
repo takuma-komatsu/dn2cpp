@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Reflection;
+using System.Threading.Tasks;
 
 namespace Dn2Cpp;
 
@@ -127,6 +128,11 @@ internal sealed class ConsumerNamed<T> : IConsumerNamed
 
 internal static class ReflectionTemplateDispatchProgram
 {
+    private abstract class ProductComparer : EqualityComparer<ConsumerProduct> { }
+
+    public static Task<ConsumerProduct>[,]? TaskMatrix() => null;
+    public static EqualityComparer<ConsumerProduct>[,]? ComparerMatrix() => null;
+
     private static void Main(string[] args)
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -195,6 +201,15 @@ internal static class ReflectionTemplateDispatchProgram
         ReflectGenericSubset.Program.RunOpenInterfaces();
         ReflectGenericSubset.Program.RunClosedConstraints();
         ReflectRuntimeInstantiationSubset.Program.RunArraySignatures();
+        Type matrix = typeof(ReflectionTemplateDispatchProgram).GetMethod(nameof(TaskMatrix))!.ReturnType;
+        Type? element = matrix.GetElementType();
+        Console.WriteLine("task matrix element=" + (element is { IsGenericType: true }
+            && element.GetGenericArguments()[0] == typeof(ConsumerProduct))
+            + " object=" + (matrix == new object[1, 1].GetType()));
+        Type? comparer = typeof(ReflectionTemplateDispatchProgram).GetMethod(nameof(ComparerMatrix))!
+            .ReturnType.GetElementType();
+        Console.WriteLine("comparer matrix base=" + (comparer is { IsGenericType: true }
+            && comparer == typeof(ProductComparer).BaseType));
     }
 
     private static void RunTemplateConsumers()
