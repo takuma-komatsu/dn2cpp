@@ -4757,7 +4757,9 @@ internal sealed partial class CppEmitter
             if (_referencedIntrinsicTis.Contains(fc))
                 return TypeInfoRef(fc, "reflected signature custom modifier");
             if (fc.IsEnum) return emittedEnums.Contains(fc) ? TypeInfoRef(fc, "reflected member type (enum)") : "&dn2cpp_object_type";
-            return _emit.Contains(fc) ? TypeInfoRef(fc, "reflected member type") : "&dn2cpp_object_type";
+            // TopoOrder also declares bases pulled in by a derived type's layout.
+            return _emit.Contains(fc) || TypeInfoSymbolDefined(fc.CppTypeInfoName)
+                ? TypeInfoRef(fc, "reflected member type") : "&dn2cpp_object_type";
         }
         return MethodCompiler.TypeInfoExprOf(t) ?? "&dn2cpp_object_type";
     }

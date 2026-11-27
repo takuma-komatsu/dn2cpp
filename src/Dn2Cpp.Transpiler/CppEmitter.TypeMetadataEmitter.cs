@@ -1185,6 +1185,26 @@ internal sealed partial class CppEmitter
             return result.OrderBy(c => c.CppName, System.StringComparer.Ordinal).ToList();
         }
 
+        // The array interner keys on the element handle. A missing signature
+        // leaf must never publish another type under System.Object's handle.
+        private bool TryNoteArrayElementIdentity(TypeDesc type)
+        {
+            if (type.Kind is TypeKind.SZArray or TypeKind.MDArray)
+                return TryNoteArrayElementIdentity(type.Element!);
+            if (type.Kind == TypeKind.External && _c.ResolveExternalClass(type) is { } resolved)
+                type = TypeDesc.MakeClass(resolved);
+            type = _e.ReflectionIdentityType(type);
+            if (type.Class is not { } cls)
+                return MethodCompiler.TypeInfoExprOf(type) is not null;
+            if (CoreIntrinsics.RuntimeTypeInfoSymbol(cls) is null
+                && MethodCompiler.TypeInfoExprOf(type) != "&" + cls.CppTypeInfoName)
+                return false;
+            if (!cls.Context.TypeArgs.All(TryNoteArrayElementIdentity))
+                return false;
+            _e.NoteQueryIdentity(type);
+            return true;
+        }
+
         /// <summary>One type the reflection tables will name by its type-info: a member's
         /// type, a closed generic argument, or an array member's element. An enum is noted
         /// referenced so its own <c>ti_</c> is emitted by the referenced-enum loops below:
@@ -1193,8 +1213,9 @@ internal sealed partial class CppEmitter
         /// noted it. An SZArray records its element (<see cref="Compilation.NoteArrayElementType"/>
         /// — the same route every <c>newarr</c>/<c>typeof(T[])</c> site takes) so the precise
         /// <c>ti_arr_&lt;elem&gt;</c> handle the SZArray arm names is forward-declared and
-        /// emitted. Element kinds mirror the <c>ldtoken typeof(T[])</c> arm, a cross-assembly
-        /// name is promoted as FieldTypeInfoExpr promotes it. Additional definitions
+        /// emitted. Concrete MDArray types register their element and rank together so
+        /// member rows can name the same static handle as the runtime array interner.
+        /// A cross-assembly name is promoted as FieldTypeInfoExpr promotes it. Additional definitions
         /// record concrete intrinsic signature identities for the minimal type-info pass.</summary>
         private void NoteReflectedType(TypeDesc t, bool definitionSignature = false)
         {
@@ -1238,6 +1259,13 @@ internal sealed partial class CppEmitter
                     _c.NoteReferencedType(en);
                 return;
             }
+            if (t is { Kind: TypeKind.MDArray, Element: { } mdElement }
+                && !HasSignatureShape(t) && !Compilation.ContainsGenericVar(t))
+            {
+                if (TryNoteArrayElementIdentity(mdElement))
+                    _c.NoteMdArrayType(t);
+                return;
+            }
             if (t is not { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive or TypeKind.Class or TypeKind.External or TypeKind.SZArray or TypeKind.MDArray } el })
                 return;
             _c.NoteArrayElementType(el);
@@ -1252,7 +1280,7 @@ internal sealed partial class CppEmitter
         /// (<see cref="RenderTypeInfo"/>) — by mirroring those emitters' class/member
         /// filters, so it reads exactly the member types they read (the trim rule is applied
         /// before any signature is touched, like BuildMemberTable's row loop). MUST run
-        /// before the forward-declaration loops in <see cref="Emit"/>: the ti_arr_/enum-ti_
+        /// before the forward-declaration loops in <see cref="Emit"/>: the ti_arr_/ti_md_/enum-ti_
         /// externs — and with them the declared-handle record
         /// <see cref="CppEmitter.ArrayTypeInfoDeclared"/> answers from — are taken there, and
         /// a type noted later can no longer be named by a member row. Each mirrored emitter

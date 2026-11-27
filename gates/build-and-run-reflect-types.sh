@@ -1296,6 +1296,8 @@ gate_extra_asserts() {
             || { echo "FAIL: invocation diagnosis block missing: $line" >&2; return 1; }
     done
     gate_output witness "$out/native.stdout" 'template array signatures end' --count 1 --policy crlf
+    gate_output witness "$out/native.stdout" 'task matrix element=True object=False' --count 1 --policy crlf
+    gate_output witness "$out/native.stdout" 'comparer matrix base=True' --count 1 --policy crlf
     if grep -Eq '^struct t_ReflectRuntimeInstantiationSubset_ArrayTemplate_(Int32|String) ' "$out/generated.h"; then
         echo 'FAIL: array signature probe used a static closed owner' >&2
         return 1
