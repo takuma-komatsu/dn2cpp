@@ -115,10 +115,6 @@ jobs:
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: '"$GODOT" --headless --dump-extension-api'
 
-      - name: Verify smoke runner
-        if: github.event_name == 'pull_request' || github.event_name == 'push'
-        run: ./gates/ci-smoke.sh --self-test
-
       - name: Run selected smoke profile
         run: |
           export TMPDIR="$(cygpath -m "$RUNNER_TEMP/dn2cpp-gate-output")"

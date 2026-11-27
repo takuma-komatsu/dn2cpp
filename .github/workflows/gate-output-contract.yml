@@ -44,6 +44,10 @@ jobs:
           chmod +x "$shim_dir/shasum"
           echo "$shim_dir" >> "$GITHUB_PATH"
 
+      - name: Verify Windows smoke runner
+        if: runner.os == 'Windows' && (github.event_name == 'pull_request' || github.event_name == 'push')
+        run: bash gates/ci-smoke.sh --self-test
+
       - name: Check byte and record policies
         run: python gates/test-gate-output.py
       - name: Check Bash capture and common gate contracts

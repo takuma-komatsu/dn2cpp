@@ -17,12 +17,17 @@ The hosted smoke workflows (`.github/workflows/linux-smoke.yml`,
 basic regression checks on every pull request and push to `main`.
 `gates/ci-smoke.sh` selects the same fixed, uncached Debug allowlist on Linux,
 Windows/MSVC and macOS. Each OS balances the full allowlist across disjoint
-core, array/collection/numeric and runtime/limits partitions. The checks cover
+core, array/text/collection/numeric and runtime/limits partitions. The checks cover
 language, primitive values, arrays, strings, collections, generics, async,
 threads and GC barriers.
 It also checks OS APIs through filesystem, environment, synchronization,
 memory-mapped file and native interop tests. Every selected gate must run. Gate
 logs are uploaded, and the basic profile publishes timings in the job summary.
+The fast sample checks the console pipeline and default FP mode; the full sample
+also checks incremental FP-mode changes. The wider suite retains the full
+Convert/Parse, Math, async combinator, custom-task, file I/O, thread-local storage,
+timer and thread-pool gates. Windows checks the smoke runner once in the
+required output-contract job rather than repeating it in every partition.
 
 `culture-info-api` is an optional strict reference check, excluded from default
 pre-merge and hosted smoke CI (including the wider scheduled/manual profile).
