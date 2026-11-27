@@ -29,7 +29,9 @@ AGENTS.md、CONTRIBUTING.md、[README.md](../README.md)、
 
 依頼から問題、範囲、受け入れ条件、検証方法を確認する。対象 Issue があれば
 本文と関連する Issue・PR を読み、不足する情報を対象 Issue に追記する。
-`status:in-progress` が付いていない Issue を選び、着手時にこのラベルを付け、完了時または担当を離れるときに外す。
+新たに着手する対象は、ステータスが `Backlog`、`Todo`、未設定のいずれかの open Issue から選ぶ。
+着手時に Issue のステータスを `In progress` にし、PR をレビューに出したら `In review` にする。
+担当を離れるときは、Issue が open で、後任もその Issue を扱う open な非ドラフト PR もない場合だけ `Todo` に戻す。
 Issue がない明確な変更依頼は、その範囲で進めてよい。変更依頼では方針の
 提示だけで止まらず実装へ進む。
 
@@ -136,8 +138,8 @@ keyword は merge 時点で完全に解決する対象だけに付ける。
 必要なローカル検証、最終 head の必須 CI 成功、最終差分に対する独立 reviewer
 の指摘ゼロを確認してから rebase merge する。hosted smoke CI だけを merge の
 根拠にしない。skip や中断を pass と扱わない。実際に MERGED になったことを
-確認する。PR が自動 close しない対象も、必要な検証を確認してから解決した
-Issue だけを閉じる。単発の merge 依頼はここで完了する。
+確認する。PR の merge で自動的に閉じなかった Issue は、必要な検証が終わり、
+解決したものだけを `Done` にする。単発の merge 依頼はここで完了する。
 
 ## 継続的な Issue 対応
 
