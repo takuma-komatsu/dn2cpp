@@ -126,7 +126,43 @@ internal static class Program
         Report("annotated value", () => CreateAnnotatedValue(
             Type.GetType("ILDietControlLib.AnnotatedValue, ILDietControlLib")!));
         Console.WriteLine("annotated Type parameters end");
+
+        var customer = new AnnotatedFieldCustomer();
+        var view = new AnnotatedFieldView(typeof(AnnotatedFieldCustomer));
+        Report("annotated field", () => view.Read(customer));
+        Report("ordinary field", () => new OrdinaryFieldView().Read(customer));
+        Report("mixed field", () => view.ReadMixed(
+            Environment.GetEnvironmentVariable("DN2CPP_READ_UNPROVED_FIELD") == "1", customer));
+        unprovedField = typeof(UnprovedFieldCustomer);
+        if (Environment.GetEnvironmentVariable("DN2CPP_READ_UNPROVED_FIELD") == "1")
+            Report("unproved annotated field", () => ReadUnprovedField(new UnprovedFieldCustomer()));
     }
+
+    private sealed class AnnotatedFieldCustomer { public int FieldRetentionWitness => 42; }
+    private sealed class UnprovedFieldCustomer { public int FieldRetentionWitness => 43; }
+
+    private sealed class AnnotatedFieldView
+    {
+        [DynamicallyAccessedMembers(MemberTypes.PublicProperties)]
+        private readonly Type type;
+        private readonly Type ordinary = typeof(AnnotatedFieldCustomer);
+
+        public AnnotatedFieldView([DynamicallyAccessedMembers(MemberTypes.PublicProperties)] Type type) => this.type = type;
+        public object? Read(object target) => type.InvokeMember("FieldRetentionWitness", BindingFlags.GetProperty, null, target, null);
+        public object? ReadMixed(bool useOrdinary, object target) =>
+            (useOrdinary ? ordinary : type).InvokeMember("FieldRetentionWitness", BindingFlags.GetProperty, null, target, null);
+    }
+
+    private sealed class OrdinaryFieldView
+    {
+        private readonly Type type = typeof(AnnotatedFieldCustomer);
+        public object? Read(object target) => type.InvokeMember("FieldRetentionWitness", BindingFlags.GetProperty, null, target, null);
+    }
+
+    [DynamicallyAccessedMembers(MemberTypes.PublicProperties)]
+    private static Type unprovedField = null!;
+    private static object? ReadUnprovedField(object target) =>
+        unprovedField.InvokeMember("FieldRetentionWitness", BindingFlags.GetProperty, null, target, null);
 
     private static string AnnotatedAccessors(
         [DynamicallyAccessedMembers(MemberTypes.PublicParameterlessConstructor | MemberTypes.PublicProperties
