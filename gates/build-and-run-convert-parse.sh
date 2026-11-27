@@ -12,6 +12,8 @@
 # pushes a bool for it instead of dropping the return value.
 # TypeDescriptor's default attribute lookup also exercises an annotated
 # parameter that retains a public static field's type initializer.
+# A value-type converter lookup applies that parameter's member mask to a
+# closed value type and converts through the found converter.
 #
 # Also integer-primitive TryFormat (TryFormatSubset, folded in from its own gate,
 # with the three sections it already drove from its own tail). dn2cpp's own
@@ -259,6 +261,12 @@ gate_extra_asserts() {
         --before 'Generic converter: GenericSettingsConverter' --policy crlf
     gate_output compare "$out/generic-converter-prefix.stdout" "$out/generic-converter-before.stdout"
     gate_output byte-witness "$native" 'Generic converter: GenericSettingsConverter' --count 1 --policy crlf
+
+    gate_capture_ok "$out/value-type-converter-before" run_bounded dotnet "$_CG_APP" before-value-type-converter
+    gate_output select "$native" "$out/value-type-converter-prefix.stdout" \
+        --before 'Value type converter: Int32Converter 42' --policy crlf
+    gate_output compare "$out/value-type-converter-prefix.stdout" "$out/value-type-converter-before.stdout"
+    gate_output byte-witness "$native" 'Value type converter: Int32Converter 42' --count 1 --policy crlf
 
     numeric_signature_regressions checked
 }

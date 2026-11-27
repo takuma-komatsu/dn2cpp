@@ -66,6 +66,13 @@ namespace TypeConverterSrSubset
 
         private static TypeConverter GetGenericConverter<T>() => TypeDescriptor.GetConverter(typeof(GenericSettings<T>));
 
+        // The annotated lookup over a value type retains System.Enum's internal identity checks.
+        internal static void RunValueTypeConverter()
+        {
+            var converter = TypeDescriptor.GetConverter(typeof(int));
+            Console.WriteLine("Value type converter: " + converter.GetType().Name + " " + converter.ConvertFromInvariantString("42"));
+        }
+
         [TypeConverter(typeof(GenericSettingsConverter))]
         private sealed class GenericSettings<T> { }
 

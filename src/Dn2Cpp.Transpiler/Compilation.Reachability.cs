@@ -169,6 +169,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.BrCoreClrActivationInfo.Matches(m)
             || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(m)
             || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(m)
+            || CoreIntrinsics.BrRuntimeTypeActualEnum.Matches(m)
             || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(m)
             || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(m)
             || CoreIntrinsics.BrUnsupportedAlignedDefault.Matches(m)

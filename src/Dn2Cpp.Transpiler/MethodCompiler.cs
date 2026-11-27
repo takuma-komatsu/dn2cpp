@@ -1637,6 +1637,13 @@ internal sealed partial class MethodCompiler : IEvalStack
                     $"dn2cpp_activator_create_instance_default_ctor({Cast(type, "Dn2CppType*")}, 1, 1)");
                 return true;
             }, "RuntimeType public parameterless construction");
+        if (CoreIntrinsics.BrRuntimeTypeActualEnum.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                var type = Pop();
+                Push(StackKind.I4, "int32_t", $"dn2cpp_type_is_enum(dn2cpp_type_require({Cast(type, "Dn2CppType*")}))");
+                return true;
+            }, "RuntimeType concrete enum identity");
         if (CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(_method))
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
             {

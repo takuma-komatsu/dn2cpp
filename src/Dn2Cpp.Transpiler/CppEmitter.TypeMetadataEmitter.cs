@@ -4359,6 +4359,7 @@ internal sealed partial class CppEmitter
                 || CoreIntrinsics.BrCoreClrActivationInfo.Matches(method)
                 || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(method)
                 || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(method)
+                || CoreIntrinsics.BrRuntimeTypeActualEnum.Matches(method)
                 || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(method)
                 || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(method)
                 || CoreIntrinsics.BrStringRawByteReference.Matches(method)

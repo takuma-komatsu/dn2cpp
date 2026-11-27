@@ -90,6 +90,9 @@ namespace ConvertParse
             if (args.Length > 0 && args[0] == "before-generic-type-converter")
                 return;
             TypeConverterSrSubset.Program.RunGenericConverter();
+            if (args.Length > 0 && args[0] == "before-value-type-converter")
+                return;
+            TypeConverterSrSubset.Program.RunValueTypeConverter();
         }
     }
 }
