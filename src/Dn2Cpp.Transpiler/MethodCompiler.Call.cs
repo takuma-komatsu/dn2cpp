@@ -626,6 +626,7 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.BrCoreClrActivationInfo.Matches(callee)
                     || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(callee)
                     || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(callee)
+                    || CoreIntrinsics.BrRuntimeTypeActualEnum.Matches(callee)
                     || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(callee)
                     || CoreIntrinsics.BrRuntimeTypeGenericFactory.Matches(callee)
                     || CoreIntrinsics.BrStringRawByteReference.Matches(callee)

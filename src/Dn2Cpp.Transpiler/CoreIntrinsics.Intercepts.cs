@@ -342,6 +342,7 @@ internal enum InterceptEmitArm
     ArrayNativeLengthBody,
     GCHandleCheckUninitializedBody,
     RuntimeTypeCreateInstanceOfTBody,
+    RuntimeTypeActualEnumBody,
     RuntimeTypeHandleConstructNameBody,
     RuntimeTypeHandleDeclaringTypeBody,
     RuntimeTypeCacheGenericDefinitionBody,
@@ -1221,6 +1222,28 @@ internal static partial class CoreIntrinsics
     public static readonly MethodDefIntercept BrRuntimeTypeCreateInstanceOfT = new(
         InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeTypeCreateInstanceOfTBody,
         typeGate: "System.RuntimeType", nameGate: "CreateInstanceOfT", extra: static m => IsRuntimeTypeCreateInstanceOfT(m));
+
+    internal static bool IsRuntimeTypeActualEnum(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib" || method.IsSynthetic || method.Handle.IsNil
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "get_IsActualEnum"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig
+                | System.Reflection.MethodAttributes.SpecialName)
+            || method.Rva == 0 || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        var blob = method.Module.Reader.GetBlobReader(method.Module.Reader.GetMethodDefinition(method.Handle).Signature);
+        return blob.RemainingBytes == 3 && blob.ReadByte() == 0x20 && blob.ReadByte() == 0
+            && blob.ReadByte() == (byte)SignatureTypeCode.Boolean;
+    }
+
+    /// <summary>Concrete enum identity reads the native enum flag; the CoreCLR
+    /// MethodTable parent comparison is never scanned.</summary>
+    public static readonly MethodDefIntercept BrRuntimeTypeActualEnum = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeTypeActualEnumBody,
+        typeGate: "System.RuntimeType", nameGate: "get_IsActualEnum", extra: static m => IsRuntimeTypeActualEnum(m));
 
     /// <summary>Replaces only the managed RuntimeType-object wrappers, never the
     /// private QCall handle ABI. Every callable route executes the same native factory.</summary>

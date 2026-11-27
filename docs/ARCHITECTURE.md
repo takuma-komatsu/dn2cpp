@@ -1148,6 +1148,12 @@ aliases. A raw retained call checks null value before dereferencing its receiver
 callvirt and virtual address binding check the receiver before entry. This
 adapter does not widen custom Type dispatch or CoreCLR enum table support.
 
+The exact internal `RuntimeType.IsActualEnum` getter reads the native enum flag.
+Only an enum type answers true; `System.Enum`, `System.ValueType`, element-bearing
+types, Nullable wrappers and formal parameters constrained to `System.Enum` answer
+false. Its replaced body serves direct calls, address bindings and reflection
+invocation, so CoreCLR's MethodTable parent comparison is never scanned.
+
 The exact public `RuntimeType.MakeGenericType(Type[])` override shares the existing
 native `Type.MakeGenericType` AOT, open-type and template policy. Its retained body,
 direct calls and address bindings never enter CoreCLR's instantiating loader.
