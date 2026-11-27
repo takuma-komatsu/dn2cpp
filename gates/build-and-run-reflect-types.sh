@@ -244,13 +244,12 @@
 # ResourceManager, WaitHandle, each row with its FieldType, DeclaringType, flag triple,
 # raw attributes word and VALUE — all match real .NET, and pin values that nothing else
 # in the tree states twice (DateTime.UnixEpoch's tick count and Utc kind,
-# Decimal.MaxValue's 96-bit mantissa, TimeSpan's tick constants). Its
-# "DIVERGES" lines are the DECLINED half, asserted so the decision is visible
-# rather than silent: Type/Module carry no field table (their values are MemberFilter/
-# TypeFilter delegates and Missing.Value), and no owned handle carries a method or
-# property table (its members are intrinsic — lowered at the call site, with no C++ body
-# an invoker could name). Its interface lines ask named membership, which matches .NET:
-# an owned handle enumerates the interfaces of its CLR type that the image defines.
+# Decimal.MaxValue's 96-bit mantissa, TimeSpan's tick constants).
+# The "DIVERGES" lines cover the omitted Type and Module field tables
+# (MemberFilter/TypeFilter delegates and Missing.Value). Runtime-owned types
+# expose intrinsic methods and properties through explicitly registered rows.
+# The interface lines check membership by name. An owned handle enumerates
+# the interfaces of its CLR type that the image defines.
 # Delete the DIVERGES lines and the boundary becomes a silence again.
 #
 # That section's TAIL has a fourth subject again — an SZArray's interface ENUMERATION —

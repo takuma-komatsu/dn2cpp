@@ -571,16 +571,44 @@ DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_uint64_type_reflection, dn2cpp_primflds_uin
 const Dn2CppTypeInfo dn2cpp_uint64_type =
     dn2cpp_ti_with_typeobject({ "System.UInt64", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_uint64_type_reflection }, &dn2cpp_uint64_type_obj);
 const Dn2CppType dn2cpp_uint64_type_obj = { { &dn2cpp_type_type }, &dn2cpp_uint64_type };
-// IntPtr/UIntPtr: an 8-byte intptr_t payload (CppTypes.Of), read like int64/uint64.
-// IntPtr ToStrings signed, UIntPtr unsigned. GetType().FullName reports
-// "System.IntPtr"/"System.UIntPtr" (the box type-info name).
+// CoreLib folds Size for its own architecture. The reflected getter needs the target width.
+static int32_t dn2cpp_nativeint_get_size()
+{
+    return static_cast<int32_t>(sizeof(intptr_t));
+}
+
+static Dn2CppObject* dn2cpp_nativeint_size_invoker(void* fn, Dn2CppObject*,
+    Dn2CppObject**, const Dn2CppTypeInfo*)
+{
+    int32_t result = reinterpret_cast<int32_t (*)()>(fn)();
+    return dn2cpp_box(&dn2cpp_int32_type, &result, sizeof(result));
+}
+
+template<const Dn2CppTypeInfo& Owner>
+static const Dn2CppMethodInfo dn2cpp_nativeint_size_getter = {
+    "get_Size", &Owner, &dn2cpp_int32_type, {}, 0,
+    DN2CPP_MTHA_PUBLIC | DN2CPP_MTHA_STATIC | DN2CPP_MTHA_SPECIALNAME, -1,
+    reinterpret_cast<void*>(&dn2cpp_nativeint_get_size),
+    reinterpret_cast<void*>(&dn2cpp_nativeint_size_invoker), {}, 0,
+    nullptr, 0x0896, 0, 0, 0, nullptr, nullptr, 0, 0, nullptr, 0, 1,
+    "Int32 get_Size()", nullptr, "Int32" };
+
+template<const Dn2CppTypeInfo& Owner>
+static constexpr Dn2CppPropInfo dn2cpp_nativeint_size_property = {
+    "Size", &Owner, &dn2cpp_int32_type, &dn2cpp_nativeint_size_getter<Owner>, {},
+    DN2CPP_MTHA_PUBLIC | DN2CPP_MTHA_STATIC, {}, 0, 0, "Int32 Size" };
+
 extern const Dn2CppType dn2cpp_intptr_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_intptr_type_reflection, dn2cpp_primflds_intptr, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_intptr_type_reflection,
+    dn2cpp_primflds_intptr, 1, &dn2cpp_nativeint_size_getter<dn2cpp_intptr_type>, 1, 0, 0,
+    &dn2cpp_nativeint_size_property<dn2cpp_intptr_type>, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_intptr_type =
     dn2cpp_ti_with_typeobject({ "System.IntPtr", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(intptr_t), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_intptr_type_reflection }, &dn2cpp_intptr_type_obj);
 const Dn2CppType dn2cpp_intptr_type_obj = { { &dn2cpp_type_type }, &dn2cpp_intptr_type };
 extern const Dn2CppType dn2cpp_uintptr_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_uintptr_type_reflection, dn2cpp_primflds_uintptr, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_uintptr_type_reflection,
+    dn2cpp_primflds_uintptr, 1, &dn2cpp_nativeint_size_getter<dn2cpp_uintptr_type>, 1, 0, 0,
+    &dn2cpp_nativeint_size_property<dn2cpp_uintptr_type>, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_uintptr_type =
     dn2cpp_ti_with_typeobject({ "System.UIntPtr", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(intptr_t), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_uintptr_type_reflection }, &dn2cpp_uintptr_type_obj);
 const Dn2CppType dn2cpp_uintptr_type_obj = { { &dn2cpp_type_type }, &dn2cpp_uintptr_type };
