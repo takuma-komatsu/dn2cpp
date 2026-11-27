@@ -11,7 +11,7 @@ internal sealed partial class AssemblyDiet
         internal required CustomAttribute Attribute;
         internal required ICustomAttributeProvider Provider;
         internal bool Observed, RetentionRequested, MetadataKept, MetadataObserved, ArgumentsObserved, ConstructRequested, Constructed;
-        internal bool ProviderKept, ClassIdentityObserved, ArgumentIdentitiesObserved;
+        internal bool ProviderKept, ClassIdentityObserved, ArgumentIdentitiesObserved, ConverterLookup;
         internal bool ModelClassIdentityPromoted, ModelArgumentIdentitiesPromoted;
     }
 
@@ -102,6 +102,17 @@ internal sealed partial class AssemblyDiet
                 _summaryValues.Clear();
                 var api = read.Site.Api;
                 var owners = SummaryValueOf(read.Caller, read.Summary, SiteOperand(read.Site, api.Target));
+                if (api.Op == ReflectionOp.TypeDescriptorGetConverter)
+                {
+                    if (!metadataOnly && SummaryToken(read.Caller, read.Site.Token) is MethodReference reference
+                        && ResolveMember(reference) is MethodDefinition method
+                        && method.Module.Assembly.Name.Name == ReflectionApis.ComponentModelAssembly)
+                        foreach (var candidate in owners.AttributeTypes)
+                            foreach (var source in SelectedAttributeSources(candidate))
+                                if (source is not ArrayType && IsClosedAttributeType(source) && Resolve(source) is { } owner)
+                                    SelectTypeConverterAttribute(owner);
+                    continue;
+                }
                 var filters = SummaryValueOf(read.Caller, read.Summary, SiteOperand(read.Site, api.AttributeType));
                 var classes = new HashSet<TypeDefinition>();
                 bool open = api.AttributeType == ReflectionApi.Absent || filters.HasUnknownOwner;
@@ -184,6 +195,28 @@ internal sealed partial class AssemblyDiet
             KeepMethodSignature(returnMethod);
     }
 
+    private void SelectTypeConverterAttribute(TypeDefinition type)
+    {
+        foreach (var owner in Ancestors(type))
+            foreach (var attribute in owner.CustomAttributes)
+            {
+                if (attribute.AttributeType.FullName != ReflectionApis.TypeConverterAttributeName
+                    || Resolve(attribute.AttributeType)?.Module.Assembly.Name.Name != ReflectionApis.TypeConverterAttributeAssembly)
+                    continue;
+                if (attribute.Constructor.Parameters is not [{ ParameterType.FullName: "System.Type" }]
+                    || AccessedMemberDemand(attribute.Constructor, 0) == Demand.None)
+                    return;
+                var row = AttributeRowFor(owner, attribute);
+                if (row.ConverterLookup) return;
+                row.ConverterLookup = row.RetentionRequested = row.Observed = row.ConstructRequested = true;
+                KeepSelectedAttributeMetadata(attribute);
+                ObserveSelectedAttribute(row);
+                ConstructSelectedAttribute(row);
+                KeepAttributeProvider(owner);
+                return;
+            }
+    }
+
     private bool UsesSelectedAttributeRetention(CustomAttribute attribute, ICustomAttributeProvider provider)
     {
         if (!_selectedAttributeRows.TryGetValue(attribute, out var row) || !row.RetentionRequested) return false;
@@ -262,7 +295,8 @@ internal sealed partial class AssemblyDiet
     {
         type = Resolve(attribute.AttributeType);
         return type is not null && (!PreservationReader.IsFrameworkAssemblyName(type.Module.Assembly.Name.Name)
-            || IsFrameworkAttributeNamed(type));
+            || IsFrameworkAttributeNamed(type)
+            || _selectedAttributeRows.TryGetValue(attribute, out var row) && row.ConverterLookup);
     }
 
     private void ObserveSelectedAttribute(SelectedAttributeRow row)
@@ -377,7 +411,15 @@ internal sealed partial class AssemblyDiet
         if (ResolveMember(attribute.Constructor) is MethodDefinition constructor) NoteReflectionInvokeBoxes(constructor);
         try
         {
-            foreach (var argument in EffectiveAttributeArguments(attribute)) MarkFixedAttributeArgument(attribute, argument);
+            int index = 0;
+            foreach (var argument in EffectiveAttributeArguments(attribute))
+            {
+                MarkFixedAttributeArgument(attribute, argument);
+                if (argument.Value is TypeReference && index < attribute.Constructor.Parameters.Count
+                    && attribute.Constructor.Parameters[index].ParameterType.FullName == "System.Type")
+                    MarkAttributeAccessedMembers(argument, AccessedMemberDemand(attribute.Constructor, index));
+                index++;
+            }
             foreach (var argument in attribute.Fields)
             {
                 MarkArgument(argument.Argument);
@@ -396,6 +438,10 @@ internal sealed partial class AssemblyDiet
                     {
                         MarkMethod(setter);
                         NoteReflectionInvokeBoxes(setter);
+                        if (argument.Argument.Value is TypeReference
+                            && AttributeNamedProperty(type!, argument.Name) is { } property
+                            && property.SetMethod == setter)
+                            MarkAttributeAccessedMembers(argument.Argument, AttributePropertyDemand(property, setter));
                         break;
                     }
             }

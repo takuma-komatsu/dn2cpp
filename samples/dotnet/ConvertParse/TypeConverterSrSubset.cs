@@ -2,6 +2,8 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 
 namespace TypeConverterSrSubset
 {
@@ -46,6 +48,37 @@ namespace TypeConverterSrSubset
         {
             var converter = TypeDescriptor.GetConverter(typeof(PlainSettings));
             Console.WriteLine("Default type converter: " + converter.GetType().FullName);
+        }
+
+        internal static void RunAnnotatedAttributes()
+        {
+            var converter = TypeDescriptor.GetConverter(typeof(AnnotatedSettings));
+            Console.WriteLine("Annotated converter: " + converter.GetType().Name);
+            var contract = typeof(AnnotatedSettings).GetCustomAttribute<ConstructorContractAttribute>();
+            Console.WriteLine("Attribute fixed: " + Activator.CreateInstance(contract.Fixed).GetType().Name);
+            Console.WriteLine("Attribute named: " + Activator.CreateInstance(contract.Named).GetType().Name);
+        }
+
+        [TypeConverter(typeof(SettingsConverter))]
+        [ConstructorContract(typeof(FixedPayload), Named = typeof(NamedPayload))]
+        private sealed class AnnotatedSettings { }
+
+        private sealed class SettingsConverter : TypeConverter { public SettingsConverter() { } }
+        private sealed class FixedPayload { public FixedPayload() { } }
+        private sealed class NamedPayload { public NamedPayload() { } }
+
+        private class ContractBaseAttribute : Attribute
+        {
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
+            public Type Named { get; set; }
+        }
+
+        private sealed class ConstructorContractAttribute : ContractBaseAttribute
+        {
+            public Type Fixed { get; }
+            public ConstructorContractAttribute(
+                [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] Type value)
+                => Fixed = value;
         }
 
         private sealed class PlainSettings

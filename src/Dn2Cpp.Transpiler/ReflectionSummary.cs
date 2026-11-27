@@ -4164,7 +4164,7 @@ internal sealed class ReflectionCoreContracts
             {
                 var row = reader.GetParameter(handle);
                 if (row.SequenceNumber == 0) continue;
-                var members = ReadAccessedMembers(reader, row);
+                var members = ReadAccessedMembers(reader, row.GetCustomAttributes());
                 if (members == DynamicallyAccessedMemberTypes.None) continue;
                 // Parameters without metadata rows leave gaps in the sequence numbers.
                 if (row.SequenceNumber > slots.Length)
@@ -4176,9 +4176,9 @@ internal sealed class ReflectionCoreContracts
         return (uint)parameter < (uint)slots.Length ? slots[parameter] : DynamicallyAccessedMemberTypes.None;
     }
 
-    private static DynamicallyAccessedMemberTypes ReadAccessedMembers(MetadataReader reader, Parameter parameter)
+    internal static DynamicallyAccessedMemberTypes ReadAccessedMembers(MetadataReader reader, CustomAttributeHandleCollection attributes)
     {
-        foreach (var handle in parameter.GetCustomAttributes())
+        foreach (var handle in attributes)
         {
             var attribute = reader.GetCustomAttribute(handle);
             var owner = attribute.Constructor.Kind switch

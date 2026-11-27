@@ -620,11 +620,38 @@ internal sealed partial class Compilation
                 continue;
             var type = entity.Kind == REntityKind.Template ? ExactTemplateType(entity)
                 : entity.Kind == REntityKind.Type ? entity.Type : null;
-            if (type is { Kind: TypeKind.Class, Class: { } cls })
-                ReachAccessedMembers(cls, members);
-            else if (type?.Kind is TypeKind.SZArray or TypeKind.MDArray && FindClassByFullName("System.Array") is { } array)
-                ReachAccessedMembers(array, members, inheritedOwner: true);
+            ReachAccessedType(type, members);
         }
+    }
+
+    private void ReachAccessedType(TypeDesc? type, AccessedMembers members)
+    {
+        if (members == AccessedMembers.None) return;
+        if (type is { Kind: TypeKind.Class, Class: { } cls })
+            ReachAccessedMembers(cls, members);
+        else if (type?.Kind is TypeKind.SZArray or TypeKind.MDArray && FindClassByFullName("System.Array") is { } array)
+            ReachAccessedMembers(array, members, inheritedOwner: true);
+    }
+
+    private AccessedMembers AttributeParameterMembers(MethodInfo target, int index)
+        => !target.Handle.IsNil && (uint)index < (uint)target.Signature.ParameterTypes.Length
+            && AttrProvider.IsSystemType(target.Signature.ParameterTypes[index])
+            ? GetReflectionSummarizer(target.Module).GetDynamicallyAccessedMemberTypes(target.Handle, index)
+            : AccessedMembers.None;
+
+    private AccessedMembers AttributePropertyMembers(MethodInfo setter)
+    {
+        if (setter.Handle.IsNil || setter.Signature.ParameterTypes is not [{ } type] || !AttrProvider.IsSystemType(type))
+            return AccessedMembers.None;
+        var reader = setter.Module.Reader;
+        foreach (var handle in reader.GetTypeDefinition(setter.DeclaringClass.Handle).GetProperties())
+        {
+            var property = reader.GetPropertyDefinition(handle);
+            if (property.GetAccessors().Setter == setter.Handle)
+                return AttributeParameterMembers(setter, 0)
+                    | ReflectionCoreContracts.ReadAccessedMembers(reader, property.GetCustomAttributes());
+        }
+        return AccessedMembers.None;
     }
 
     private static readonly LookupMemberKind[] AccessedMemberKinds = {
@@ -744,6 +771,19 @@ internal sealed partial class Compilation
         var api = site.Api;
         var m = app.Method;
         app.Site = index;
+        if (api.Op == ReflectionOp.TypeDescriptorGetConverter)
+        {
+            var method = ResolveMethodHandle(m.Module, SRME.EntityHandle(site.Token), m.Context, m.DeclaringClass);
+            if (method?.Module.AssemblyName == ReflectionApis.ComponentModelAssembly)
+            {
+                NoteReflectionCapability(api, m.Module);
+                foreach (var owner in Operand(app, site, api.Target).Items)
+                    if (!owner.Inherited && owner is { Kind: REntityKind.Type, Type.Class: { } cls }
+                        && !ContainsGenericVar(cls) && !ContainsCanonPlaceholder(cls))
+                        ReachTypeConverterAttribute(cls);
+            }
+            return;
+        }
         NoteReflectionCapability(api, m.Module);
         if (!api.Recognized)
         {
@@ -1606,6 +1646,39 @@ internal sealed partial class Compilation
                 seen.Add(row.AttrClass);
     }
 
+    // TypeDescriptor reads converter attributes behind an opaque framework call.
+    // Admit only the row selected for this statically known type.
+    private readonly HashSet<(Module, CustomAttributeHandle)> _selectedConverterAttributes = new();
+
+    private void ReachTypeConverterAttribute(ClassInfo type)
+    {
+        for (ClassInfo? owner = type; owner is { Handle.IsNil: false }; owner = EnsureShape(owner).BaseClass)
+        {
+            var module = owner.Module;
+            var reader = module.Reader;
+            foreach (var handle in reader.GetTypeDefinition(owner.Handle).GetCustomAttributes())
+            {
+                var row = reader.GetCustomAttribute(handle);
+                if (AttributeTypeName(reader, row) != ReflectionApis.TypeConverterAttributeName)
+                    continue;
+                var constructor = ResolveAttributeConstructor(module, row.Constructor, scopedFrameworkRow: true);
+                if (constructor?.Module.AssemblyName != ReflectionApis.TypeConverterAttributeAssembly)
+                    continue;
+                // A string-valued overload shadows an inherited attribute too,
+                // but does not supply a closed Type-valued contract.
+                if (AttributeParameterMembers(constructor, 0) == AccessedMembers.None)
+                    return;
+                if (_selectedConverterAttributes.Add((module, handle))
+                    && DecodeCustomAttribute(module, handle, AttributeRows.All) is { } attribute)
+                {
+                    NoteReflectionMetadataOwner(owner);
+                    ConstructAttributeRow(attribute);
+                }
+                return;
+            }
+        }
+    }
+
     private static bool Admits(List<ClassInfo>? admitted, ClassInfo attribute)
     {
         if (admitted is null)
@@ -1627,7 +1700,12 @@ internal sealed partial class Compilation
             ReachAllocatedType(da.AttrClass);
         var ps = da.Ctor.Signature.ParameterTypes;
         for (int i = 0; i < da.Fixed.Length; i++)
-            NoteAttrArg(da.Fixed[i].Type, da.Fixed[i].Value, i < ps.Length && ps[i].IsObject, true);
+        {
+            var argument = da.Fixed[i];
+            NoteAttrArg(argument.Type, argument.Value, i < ps.Length && ps[i].IsObject, true);
+            if (argument.Value is TypeDesc type)
+                ReachAccessedType(type, AttributeParameterMembers(da.Ctor, i));
+        }
         foreach (var na in da.Named)
         {
             bool boxed = false;
@@ -1635,6 +1713,8 @@ internal sealed partial class Compilation
                 && da.AttrClass.InstanceMethodOnBaseChain("set_" + pn) is { } sm)
             {
                 Reach(sm);
+                if (na.Value is TypeDesc type)
+                    ReachAccessedType(type, AttributePropertyMembers(sm));
                 boxed = sm.Signature.ParameterTypes.Length > 0 && sm.Signature.ParameterTypes[0].IsObject;
             }
             else if (na.Kind == CustomAttributeNamedArgumentKind.Field && na.Name is { } fn
