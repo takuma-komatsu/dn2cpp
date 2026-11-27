@@ -107,6 +107,8 @@ namespace DateTimeOps
                 return;
             DateTimeFormatInfoSubset.Program.RunPublicNameArrays();
             DateTimeParse.Program.RunGeneralOffset();
+            DateTimeExactFormatsSubset.Run();
+            DateTimePublicSurfaceSubset.Run();
         }
     }
 }

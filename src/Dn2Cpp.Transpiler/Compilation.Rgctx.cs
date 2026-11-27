@@ -684,6 +684,8 @@ internal sealed partial class Compilation
         "dn2cpp_char_to_string(",
         "dn2cpp_decimal_to_string(",
         "dn2cpp_datetime_to_string(",
+        "dn2cpp_datetime_get_formats(",
+        "dn2cpp_datetime_format(",
         "dn2cpp_datetimeoffset_to_string(",
         "dn2cpp_dateonly_to_string(",
         "dn2cpp_timeonly_to_string(",

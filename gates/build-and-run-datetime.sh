@@ -213,6 +213,9 @@ gate_extra_asserts() {
         done
     done
 
+    gate_output witness "$out/native.stdout" 'DateTime exact format arrays end' --count 1 --policy crlf
+    gate_output witness "$out/native.stdout" 'DateTime public surface end' --count 1 --policy crlf
+
     local isolated="$out/direct-only" method
     mkdir -p "$isolated/input"
     cp -R "$(dirname "$_CG_APP")/." "$isolated/input/"

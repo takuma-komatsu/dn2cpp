@@ -1399,6 +1399,14 @@ boundary: it throws PlatformNotSupportedException without reading parser state
 or changing output references. Ordinary callvirt still checks its receiver.
 Retaining that callable body does not make token-table parsing functional.
 
+DateTime constructors taking a Calendar call that instance's managed conversion
+and apply the constructor's Kind to the result. DateTime.GetDateTimeFormats uses
+the native invariant patterns. For both DateTime and DateTimeOffset, ParseExact
+and TryParseExact with a format array try invariant formats in order for string
+and character-span inputs. The first match wins. A null or empty candidate
+before a match ends the search. ParseExact throws FormatException and
+TryParseExact returns false with a default result.
+
 DateOnly.Deconstruct and the selected private DateTime arithmetic helpers retain
 their original IL over the mapped day-number and date-data value fields.
 The native date model does not represent leap seconds. Its Windows CoreLib
