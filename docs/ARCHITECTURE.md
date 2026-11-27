@@ -401,6 +401,10 @@ applies its member mask to each statically known closed type passed at a
 reachable call. ILDiet retains the definitions and bodies needed by the
 transpiler. Both match the attribute by namespace and name, including
 compatibility definitions in libraries. Unknown type arguments add no roots.
+Reading an annotated Type field does not prove its stored value reached a
+member mask. Execution diagnostics for a member obtained from that field
+keep the warning and point to the store's contract instead of asserting that
+the method body was stripped.
 The mask selects constructors, methods, fields, properties, events, nested
 types and implemented interfaces with ILLink's visibility and inheritance
 rules. `PublicParameterlessConstructor` selects only the public default

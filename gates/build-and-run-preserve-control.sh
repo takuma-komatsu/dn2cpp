@@ -473,6 +473,22 @@ gate_extra_asserts() {
         'annotated accessors=1/15/True' 'annotated inherited=19/nested' \
         'annotated methods=13/17' 'annotated interface body=31' 'annotated value=initialized value' \
         'annotated Type parameters end'
+    gate_output byte-witness "$native" --count 1 --policy crlf 'annotated field=42' 'ordinary field=42' 'mixed field=42'
+    local field_report="$out/reflection-unrecognized.tsv"
+    awk -F '\t' '
+        /AnnotatedFieldView::Read\(/ && $6 ~ /field .*AnnotatedFieldView::type/ { annotated++; condition += ($6 ~ /retention depends on the member mask/ && $7 ~ /^verify that every store/) }
+        /OrdinaryFieldView::Read\(/ { ordinary++; unchanged += ($6 ~ /^member comes from field .*OrdinaryFieldView::type$/ && $7 ~ /^\[Preserve\]/) }
+        /::ReadUnprovedField\(/ && $6 ~ /static field .*::unprovedField/ { unproved++; uncertain += ($6 ~ /retention depends on the member mask/ && $7 ~ /^verify that every store/) }
+        /AnnotatedFieldView::ReadMixed\(/ { mixed++; conservative += ($6 ~ /^member comes from field .*AnnotatedFieldView::type$/ && $7 ~ /^\[Preserve\]/) }
+        END { exit !(annotated == 1 && condition == 1 && ordinary == 1 && unchanged == 1 && unproved == 1 && uncertain == 1 && mixed == 1 && conservative == 1) }
+    ' "$field_report" || { echo 'FAIL: annotated and ordinary field diagnostics did not distinguish storage contracts' >&2; return 1; }
+    if grep -Eq '^// .*UnprovedFieldCustomer::get_FieldRetentionWitness( |$)' "$out"/generated*.cpp; then
+        echo 'FAIL: merely storing a type in an annotated field retained a body' >&2
+        return 1
+    fi
+    DN2CPP_READ_UNPROVED_FIELD=1 gate_capture_ok "$out/unproved-field.native" run_bounded "$out/ILDietControl$EXE_EXT"
+    gate_output byte-witness "$out/unproved-field.native.stdout" --count 1 --policy crlf \
+        'unproved annotated field=PlatformNotSupportedException'
     if grep -Eqw 'AnnotatedMembers_UnrequestedOverload_m[0-9]+' "$out"/generated*.cpp "$out"/generated.h; then
         echo 'FAIL: the parameterless constructor annotation retained the other public overload' >&2
         return 1

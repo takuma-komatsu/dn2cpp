@@ -100,7 +100,14 @@ internal sealed partial class Compilation
         private const int IndexedFrom = 16;
 
         public readonly List<REntity> Items = new();
-        public string? Unknown;
+        public string? Unknown
+        {
+            get => _unknown;
+            set { _unknown = value; UnknownFromAnnotatedField = false; }
+        }
+        private string? _unknown;
+        // A field annotation describes the required contract, not what all stores proved.
+        public bool UnknownFromAnnotatedField;
         /// <summary>The member names and preserve-descriptor kind an unknown-owner lookup
         /// selects by exact name, so a remedy names that member instead of preserving the
         /// whole owner; null when any unknown alternative leaves the member open.</summary>
@@ -118,6 +125,7 @@ internal sealed partial class Compilation
             if (Items.Count >= MaxItems)
             {
                 Unknown ??= TooBroad;
+                UnknownFromAnnotatedField = false;
                 UnknownMembers = null;
                 UnknownMemberKind = null;
                 return;
@@ -148,13 +156,18 @@ internal sealed partial class Compilation
             if (Unknown is null)
             {
                 Unknown = other.Unknown;
+                UnknownFromAnnotatedField = other.UnknownFromAnnotatedField;
                 UnknownMembers = other.UnknownMembers;
                 UnknownMemberKind = other.UnknownMemberKind;
             }
-            else if (UnknownMemberKind != other.UnknownMemberKind || !SameNames(UnknownMembers, other.UnknownMembers))
+            else
             {
-                UnknownMembers = null;
-                UnknownMemberKind = null;
+                UnknownFromAnnotatedField &= other.UnknownFromAnnotatedField;
+                if (UnknownMemberKind != other.UnknownMemberKind || !SameNames(UnknownMembers, other.UnknownMembers))
+                {
+                    UnknownMembers = null;
+                    UnknownMemberKind = null;
+                }
             }
         }
 
@@ -294,7 +307,7 @@ internal sealed partial class Compilation
     }
 
     internal sealed record ReflectionDiagnosticVariant(ReflectionDiagnosticKind Kind, string Reason, string? Assembly,
-        string? Owner, List<string>? Names, string? MemberKind);
+        string? Owner, List<string>? Names, string? MemberKind, bool AnnotatedField);
 
     private readonly Dictionary<(int Module, int Token, int Offset), ReflectionDiagnostic> _reflectionDiagnosticIndex = new();
     private readonly List<ReflectionDiagnostic> _reflectionDiagnostics = new();
@@ -1065,9 +1078,13 @@ internal sealed partial class Compilation
                 }
                 string? ownerUnknown = OwnerUnknown(owners);
                 if (ownerUnknown is not null || !namesComplete || !flagsKnown)
+                {
+                    bool annotatedField = IsAnnotatedOwner(owners);
                     RecordReflectionDiagnosticOwners(app, site, ReflectionDiagnosticKind.Execution,
-                        "member comes from " + (ownerUnknown ?? (!namesComplete ? "a name not known statically" : "unknown binding flags")),
-                        owners, namesComplete ? names : null, flagsKnown ? memberKind : null);
+                        "member comes from " + (ownerUnknown ?? (!namesComplete ? "a name not known statically" : "unknown binding flags"))
+                        + (annotatedField ? AnnotatedFieldRetention : ""),
+                        owners, namesComplete ? names : null, flagsKnown ? memberKind : null, annotatedField);
+                }
                 break;
             }
             default:
@@ -1086,8 +1103,9 @@ internal sealed partial class Compilation
                 {
                     string? memberKind = MemberKindOf(api.Op);
                     RecordReflectionDiagnostic(app, site, ReflectionDiagnosticKind.Execution,
-                        Subject(api) + " comes from " + target.Unknown + " — no method body retained",
-                        null, target.UnknownMemberKind == memberKind ? target.UnknownMembers : null, memberKind);
+                        Subject(api) + " comes from " + target.Unknown + UnknownBodySuffix(target),
+                        null, target.UnknownMemberKind == memberKind ? target.UnknownMembers : null, memberKind,
+                        target.UnknownFromAnnotatedField);
                 }
                 break;
             }
@@ -1430,8 +1448,9 @@ internal sealed partial class Compilation
                 InvokeSelected(e, app, ReflectionAccessor.None);
             if (targets.Unknown is not null)
                 RecordReflectionDiagnostic(app, site, ReflectionDiagnosticKind.Execution,
-                    "MethodInfo comes from " + targets.Unknown + " — no method body retained", null,
-                    targets.UnknownMemberKind == "method" ? targets.UnknownMembers : null, "method");
+                    "MethodInfo comes from " + targets.Unknown + UnknownBodySuffix(targets), null,
+                    targets.UnknownMemberKind == "method" ? targets.UnknownMembers : null, "method",
+                    targets.UnknownFromAnnotatedField);
             return;
         }
         var owners = Operand(app, site, api.Target);
@@ -1443,9 +1462,13 @@ internal sealed partial class Compilation
         foreach (var member in selected.Items)
             InvokeSelected(member, app, ReflectionAccessor.None);
         if (owners.Unknown is not null || selected.Unknown is not null || !namesComplete)
+        {
+            bool annotatedField = IsAnnotatedOwner(owners);
             RecordReflectionDiagnosticOwners(app, site, ReflectionDiagnosticKind.Execution,
-                "target comes from " + (owners.Unknown ?? selected.Unknown ?? "a name not known statically") + " — no method body retained",
-                owners, namesComplete ? names : null, "method");
+                "target comes from " + (owners.Unknown ?? selected.Unknown ?? "a name not known statically")
+                + (annotatedField ? AnnotatedFieldRetention : " — no method body retained"),
+                owners, namesComplete ? names : null, "method", annotatedField);
+        }
     }
 
     /// <summary>Execution and Delegate.Method select the same named binding: every
@@ -3926,8 +3949,18 @@ internal sealed partial class Compilation
         var result = new RResolved();
         for (int i = 0; i < value.Count; i++)
             result.Merge(ResolveTerm(app, value.Alternatives![i]));
-        if (value.Unknown >= 0 && result.Unknown is null)
-            result.Unknown = DescribeUnknown(app, app.Summary.Unknowns[value.Unknown]);
+        if (value.Unknown >= 0)
+        {
+            var unknown = app.Summary.Unknowns[value.Unknown];
+            bool annotated = IsAnnotatedFieldRead(app.Method.Module, unknown);
+            if (result.Unknown is null)
+            {
+                result.Unknown = DescribeUnknown(app, unknown);
+                result.UnknownFromAnnotatedField = annotated;
+            }
+            else
+                result.UnknownFromAnnotatedField &= annotated;
+        }
         return result;
     }
 
@@ -4228,7 +4261,13 @@ internal sealed partial class Compilation
                 // elements name.
                 if (of.Unknown is not null)
                 {
-                    result.Unknown ??= of.Unknown;
+                    if (result.Unknown is null)
+                    {
+                        result.Unknown = of.Unknown;
+                        result.UnknownFromAnnotatedField = of.UnknownFromAnnotatedField;
+                    }
+                    else
+                        result.UnknownFromAnnotatedField &= of.UnknownFromAnnotatedField;
                     result.UnknownMembers = null;
                     result.UnknownMemberKind = null;
                 }
@@ -4258,6 +4297,7 @@ internal sealed partial class Compilation
                             Tuple = e.Tuple, Lookup = e.Lookup, Number = t.Number, PublicAccessors = publicOnly,
                         });
                 result.Unknown = of.Unknown is null ? null : "an accessor of a member that comes from " + of.Unknown;
+                result.UnknownFromAnnotatedField = of.UnknownFromAnnotatedField;
                 break;
             }
             case TermKind.MadeGenericMethod:
@@ -5013,6 +5053,7 @@ internal sealed partial class Compilation
         if (OwnerUnknown(owners) is { } ownerUnknown)
         {
             result.Unknown = lookup + " on a Type that comes from " + ownerUnknown;
+            result.UnknownFromAnnotatedField = IsAnnotatedOwner(owners);
             if (names is { Count: > 0 } && namesComplete && flagsKnown && !AnyIgnoreCase(flagSet))
             {
                 result.UnknownMemberKind = kind switch
@@ -5241,6 +5282,7 @@ internal sealed partial class Compilation
         var op = (ReflectionOp)t.Number;
         var owners = Child(app, t, 0);
         result.Unknown = OwnerUnknown(owners) is { } ownerUnknown ? op + "() on a value that comes from " + ownerUnknown : null;
+        result.UnknownFromAnnotatedField = IsAnnotatedOwner(owners);
         if (op is ReflectionOp.GetCustomAttributes or ReflectionOp.GetCustomAttributesData)
         {
             result.Add(new REntity { Kind = REntityKind.Attribute });
@@ -5666,6 +5708,57 @@ internal sealed partial class Compilation
         _ => "method",
     };
 
+    private bool IsAnnotatedFieldRead(Module source, RUnknown unknown)
+    {
+        if (unknown.MultipleOrigins
+            || unknown.Reason is not (UnknownReason.InstanceField or UnknownReason.StaticField) || unknown.Token == 0)
+            return false;
+        try
+        {
+            var handle = SRME.EntityHandle(unknown.Token);
+            var reader = source.Reader;
+            if (handle.Kind == HandleKind.FieldDefinition)
+                return HasAnnotation(reader.GetFieldDefinition((FieldDefinitionHandle)handle), reader);
+            if (handle.Kind != HandleKind.MemberReference)
+                return false;
+            var reference = reader.GetMemberReference((MemberReferenceHandle)handle);
+            if (reference.GetKind() != MemberReferenceKind.Field)
+                return false;
+            var (ownerModule, owner) = ResolveTypeDefRefSpec(source, reference.Parent);
+            if (ownerModule is null || owner.IsNil)
+                return false;
+            string name = reader.GetString(reference.Name);
+            var ownerReader = ownerModule.Reader;
+            FieldDefinitionHandle declaration = default;
+            foreach (var candidate in ownerReader.GetTypeDefinition(owner).GetFields())
+            {
+                if (!ownerReader.StringComparer.Equals(ownerReader.GetFieldDefinition(candidate).Name, name))
+                    continue;
+                if (!declaration.IsNil) return false;
+                declaration = candidate;
+            }
+            return !declaration.IsNil && HasAnnotation(ownerReader.GetFieldDefinition(declaration), ownerReader);
+        }
+        catch (Exception e) when (!IsMustEscape(e) && e is NotSupportedException or BadImageFormatException)
+        {
+            return false;
+        }
+
+        static bool HasAnnotation(FieldDefinition field, MetadataReader reader) =>
+            ReflectionCoreContracts.ReadAccessedMembers(reader, field.GetCustomAttributes()) != AccessedMembers.None
+            && field.DecodeSignature(RawSignatureProvider.Instance, null) == "System.Type";
+    }
+
+    private static bool IsAnnotatedOwner(RResolved owners) =>
+        owners.UnknownFromAnnotatedField && !owners.Items.Any(e => e.Kind == REntityKind.Object);
+
+    private static string UnknownBodySuffix(RResolved value) => value.UnknownFromAnnotatedField
+        ? AnnotatedFieldRetention : " — no method body retained";
+
+    private const string AnnotatedFieldRetention = " — method body retention depends on the member mask applied to the stored type";
+    private const string AnnotatedFieldFix =
+        "verify that every store to the annotated field applies the required member mask to its type";
+
     private string DescribeUnknown(ReflectionApplication app, RUnknown u)
     {
         var reader = app.Method.Module.Reader;
@@ -5696,12 +5789,12 @@ internal sealed partial class Compilation
     }
 
     private void RecordReflectionDiagnostic(ReflectionApplication app, RSite site, ReflectionDiagnosticKind kind,
-        string reason, ClassInfo? owner, List<string>? names, string? memberKind)
+        string reason, ClassInfo? owner, List<string>? names, string? memberKind, bool annotatedField = false)
     {
         var m = app.Method;
         var key = (m.Module.Index, SRME.GetToken(m.Handle), site.Offset);
         var variant = new ReflectionDiagnosticVariant(kind, reason, owner?.Module.AssemblyName,
-            owner is null ? null : PreservationTypeName(owner), names, memberKind);
+            owner is null ? null : PreservationTypeName(owner), names, memberKind, annotatedField);
         // A canonical context cannot name the type arguments a site depends on; only exact
         // contexts report, and a template level body, which no exact context runs for a clone.
         if (app.Canonical)
@@ -5712,7 +5805,7 @@ internal sealed partial class Compilation
                 MergeDiagnosticVariant(known.Diagnostic, variant);
             else
             {
-                var bodyRow = NewReflectionDiagnostic(m, site, kind, reason, owner, names, memberKind);
+                var bodyRow = NewReflectionDiagnostic(m, site, kind, reason, owner, names, memberKind, annotatedField);
                 bodyRow.Variants = new List<ReflectionDiagnosticVariant> { variant };
                 _templateBodyDiagnostics.Add(key, (m, bodyRow));
             }
@@ -5723,7 +5816,7 @@ internal sealed partial class Compilation
             MergeDiagnosticVariant(existing, variant);
             return;
         }
-        var diagnostic = NewReflectionDiagnostic(m, site, kind, reason, owner, names, memberKind);
+        var diagnostic = NewReflectionDiagnostic(m, site, kind, reason, owner, names, memberKind, annotatedField);
         diagnostic.Variants = new List<ReflectionDiagnosticVariant> { variant };
         _reflectionDiagnosticIndex.Add(key, diagnostic);
         _reflectionDiagnostics.Add(diagnostic);
@@ -5731,13 +5824,13 @@ internal sealed partial class Compilation
 
     /// <summary>Records the site once per class a remedy names, so the fix preserves each.</summary>
     private void RecordReflectionDiagnosticOwners(ReflectionApplication app, RSite site, ReflectionDiagnosticKind kind,
-        string reason, RResolved owners, List<string>? names, string? memberKind)
+        string reason, RResolved owners, List<string>? names, string? memberKind, bool annotatedField = false)
     {
         var classes = RemedyOwners(owners);
         if (classes.Count == 0)
-            RecordReflectionDiagnostic(app, site, kind, reason, null, names, memberKind);
+            RecordReflectionDiagnostic(app, site, kind, reason, null, names, memberKind, annotatedField);
         foreach (var cls in classes)
-            RecordReflectionDiagnostic(app, site, kind, reason, cls, names, memberKind);
+            RecordReflectionDiagnostic(app, site, kind, reason, cls, names, memberKind, annotatedField);
     }
 
     /// <summary>Adds what another context asks of a reported site and recomputes the row
@@ -5749,6 +5842,7 @@ internal sealed partial class Compilation
         foreach (var known in variants)
             if (known.Kind == variant.Kind && known.Reason == variant.Reason && known.Assembly == variant.Assembly
                 && known.Owner == variant.Owner && known.MemberKind == variant.MemberKind
+                && known.AnnotatedField == variant.AnnotatedField
                 && (known.Names is null ? variant.Names is null
                     : variant.Names is not null && known.Names.SequenceEqual(variant.Names)))
                 return;
@@ -5784,7 +5878,8 @@ internal sealed partial class Compilation
         string? memberKind = sameMemberKind ? variants[0].MemberKind : null;
         diagnostic.Kind = kind;
         diagnostic.Reason = string.Join("; ", reasons);
-        diagnostic.Fix = MergedFixText(kind, owners, allNamed && memberKind is not null ? names : null, memberKind);
+        diagnostic.Fix = variants.All(v => v.AnnotatedField) ? AnnotatedFieldFix
+            : MergedFixText(kind, owners, allNamed && memberKind is not null ? names : null, memberKind);
         if (kind == ReflectionDiagnosticKind.ClosedGeneric && !sameMemberKind)
         {
             // Every remedy some variant needs, in ordinal order.
@@ -5843,7 +5938,7 @@ internal sealed partial class Compilation
     }
 
     private ReflectionDiagnostic NewReflectionDiagnostic(MethodInfo m, RSite site, ReflectionDiagnosticKind kind,
-        string reason, ClassInfo? owner, List<string>? names, string? memberKind)
+        string reason, ClassInfo? owner, List<string>? names, string? memberKind, bool annotatedField = false)
     {
         var reader = m.Module.Reader;
         var definition = reader.GetMethodDefinition(m.Handle);
@@ -5852,7 +5947,7 @@ internal sealed partial class Compilation
             + reader.GetString(definition.Name) + "(" + string.Join(",", signature.ParameterTypes.ToArray()) + ")";
         string api = ApiDisplay(m.Module, site.Token);
         string assembly = m.Module.AssemblyName;
-        string fix = ReflectionFixText(kind, owner?.Module.AssemblyName,
+        string fix = annotatedField ? AnnotatedFieldFix : ReflectionFixText(kind, owner?.Module.AssemblyName,
             owner is null ? null : PreservationTypeName(owner), names, memberKind);
         return new ReflectionDiagnostic
         {

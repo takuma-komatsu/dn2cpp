@@ -216,11 +216,15 @@ internal readonly struct RUnknown
     public readonly int Token;
     public readonly int Index;
 
-    public RUnknown(UnknownReason reason, int token, int index)
+    // The first reason remains the one displayed even when another unknown path joins it.
+    public readonly bool MultipleOrigins;
+
+    public RUnknown(UnknownReason reason, int token, int index, bool multipleOrigins)
     {
         Reason = reason;
         Token = token;
         Index = index;
+        MultipleOrigins = multipleOrigins;
     }
 }
 
@@ -1514,7 +1518,7 @@ internal sealed class SummaryInterpreter
     private List<Category> _categories = new();
     private Dictionary<string, int> _termIds = new();
     private List<RUnknown> _unknowns = new();
-    private Dictionary<(byte, int, int), int> _unknownIds = new();
+    private Dictionary<(byte, int, int, bool), int> _unknownIds = new();
     private State?[] _in = Array.Empty<State?>();
     private bool[] _pending = Array.Empty<bool>();
     private int _low;
@@ -1747,7 +1751,7 @@ internal sealed class SummaryInterpreter
         _categories = new List<Category>();
         _termIds = new Dictionary<string, int>();
         _unknowns = new List<RUnknown>();
-        _unknownIds = new Dictionary<(byte, int, int), int>();
+        _unknownIds = new Dictionary<(byte, int, int, bool), int>();
         _in = new State?[_blockStart.Length];
         _pending = new bool[_blockStart.Length];
         _low = 0;
@@ -3097,13 +3101,13 @@ internal sealed class SummaryInterpreter
     {
         var u = source._unknowns[unknown];
         if (u.Reason == UnknownReason.Parameter)
-            return UnknownIndex(u.Reason, u.Token != 0 ? u.Token : source._method, u.Index);
+            return UnknownIndex(u.Reason, u.Token != 0 ? u.Token : source._method, u.Index, u.MultipleOrigins);
         return u.Reason is UnknownReason.CallResult or UnknownReason.NonConstantString or UnknownReason.StaticField
             or UnknownReason.InstanceField or UnknownReason.Budget or UnknownReason.ResolverDelegate
             or UnknownReason.NonNullBinder or UnknownReason.UnsupportedOpcode or UnknownReason.CaughtException
             or UnknownReason.VirtualTarget or UnknownReason.ArrayDefault
-            ? UnknownIndex(u.Reason, u.Token, u.Index)
-            : UnknownIndex(reason, field, 0);
+            ? UnknownIndex(u.Reason, u.Token, u.Index, u.MultipleOrigins)
+            : UnknownIndex(reason, field, 0, u.MultipleOrigins);
     }
 
     private int ImportTerm(SummaryInterpreter source, int id, Dictionary<int, int> memo, int field, UnknownReason reason)
@@ -3879,13 +3883,13 @@ internal sealed class SummaryInterpreter
         return _null;
     }
 
-    private int UnknownIndex(UnknownReason reason, int token, int index)
+    private int UnknownIndex(UnknownReason reason, int token, int index, bool multipleOrigins = false)
     {
-        var key = ((byte)reason, token, index);
+        var key = ((byte)reason, token, index, multipleOrigins);
         if (_unknownIds.TryGetValue(key, out int id))
             return id;
         id = _unknowns.Count;
-        _unknowns.Add(new RUnknown(reason, token, index));
+        _unknowns.Add(new RUnknown(reason, token, index, multipleOrigins));
         _unknownIds.Add(key, id);
         return id;
     }
@@ -3980,6 +3984,11 @@ internal sealed class SummaryInterpreter
         int unknown = a.Unknown >= 0 ? a.Unknown : b.Unknown;
         if (alternatives.Length > ReflectionSummarizer.MaxAlternatives || Mixes(alternatives))
             return Unknown(UnknownReason.Budget);
+        if (a.Unknown >= 0 && b.Unknown >= 0 && a.Unknown != b.Unknown)
+        {
+            var representative = _unknowns[unknown];
+            unknown = UnknownIndex(representative.Reason, representative.Token, representative.Index, multipleOrigins: true);
+        }
         return new RValue(alternatives, unknown);
     }
 
