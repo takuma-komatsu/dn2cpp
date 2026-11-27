@@ -39,6 +39,15 @@ namespace SpanOps
                 return;
 
             MemoryMarshalBoundsSubset.Run();
+            if (args.Length > 0 && args[0] == "before-span-numeric-smoke")
+                return;
+
+            Console.WriteLine("== span numeric smoke ==");
+            Console.WriteLine(int.TryParse(" -42 ".AsSpan(), out int signed) && signed == -42);
+            Console.WriteLine(!int.TryParse("2147483648".AsSpan(), out _));
+            Console.WriteLine(double.TryParse("1.25"u8, out double value) && value == 1.25);
+            Console.WriteLine(MathF.Round(2.5f, MidpointRounding.ToEven) == 2.0f);
+            Console.WriteLine("span numeric smoke end");
         }
     }
 }

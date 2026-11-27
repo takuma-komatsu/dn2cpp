@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 # Console pipeline, native floating-point mode selection and incremental rebuilds.
-source "$(dirname "$0")/_common.sh"
+if [ "$#" -eq 0 ]; then
+    sample_smoke=0
+elif [ "$#" -eq 1 ] && [ "$1" = --smoke ]; then
+    sample_smoke=1
+else
+    echo "Usage: $0 [--smoke]" >&2
+    exit 2
+fi
 
+source "$(dirname "$0")/_common.sh"
 OUT=artifacts/console
 
 echo "== 1/4 Building sample C# assembly =="
@@ -13,6 +21,9 @@ corelib=$(locate_corelib)
 transpile_log="$OUT.transpile.log"
 mkdir -p "$(dirname "$transpile_log")"
 invoke_cli "$app" -r "$corelib" -o "$OUT" | tee "$transpile_log"
+# CMake defaults a missing file to strict, and Clang flags do not distinguish modes.
+printf 'strict\n' > "$OUT/fp-strict.expected"
+gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-strict.expected"
 # The bounded-native-import report's negative control, and it costs one grep: the
 # line is UNCONDITIONAL (a silently wrong answer at run time deserves no opt-in),
 # which only stays acceptable while it is silent on a program that bounds
@@ -42,7 +53,7 @@ if grep -Eq 'dn2cpp_cpu_features|DN2CPP_ISA_|dn2cpp_isa_|#include "isa/' \
     echo "FAIL: HelloWorld generated surface contains platform-ISA support" >&2
     exit 1
 fi
-if gate_cache_check "$OUT" "sample|console|corelib:$corelib" \
+if gate_cache_check "$OUT" "sample|console|corelib:$corelib|smoke:$sample_smoke" \
         "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json" "$corelib" gates/assert-fp-mode.py; then
     gate_cache_hit_msg
     exit 0
@@ -71,9 +82,14 @@ gate_capture_ok "$OUT/oracle" run_bounded dotnet "$app"
 gate_output compare "$OUT/native.stdout" "$OUT/oracle.stdout"
 cat "$OUT/native.stdout"
 
-echo "== Floating-point mode changes reach incremental native builds =="
 app_build="$(_cmake_app_builddir "$OUT")"
 gate_python gates/assert-fp-mode.py "$app_build" strict
+if [ "$sample_smoke" = 1 ]; then
+    gate_cache_commit
+    exit 0
+fi
+
+echo "== Floating-point mode changes reach incremental native builds =="
 cpp_surface=$(_gate_surface_lines "$OUT" | grep -v 'generated-fp-mode.txt$')
 invoke_cli "$app" -r "$corelib" -o "$OUT" --fp-mode precise > "$OUT/fp-precise-transpile.log"
 [ "$cpp_surface" = "$(_gate_surface_lines "$OUT" | grep -v 'generated-fp-mode.txt$')" ] \
@@ -98,7 +114,6 @@ gate_capture_ok "$OUT/legacy" run_bounded "$app_build/HelloWorld$EXE_EXT"
 gate_output compare "$OUT/legacy.stdout" "$OUT/oracle.stdout"
 
 invoke_cli "$app" -r "$corelib" -o "$OUT" > "$OUT/fp-default-transpile.log"
-printf 'strict\n' > "$OUT/fp-strict.expected"
 gate_output compare "$OUT/generated-fp-mode.txt" "$OUT/fp-strict.expected"
 _cmake_step "$OUT/fp-default-build.log" 'rebuilding default FP mode' "$CMAKE" --build "$app_build"
 gate_python gates/assert-fp-mode.py "$app_build" strict

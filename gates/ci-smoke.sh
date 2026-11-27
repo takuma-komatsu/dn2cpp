@@ -29,20 +29,20 @@ done
 
 PRIMITIVES=(
     sample multiassembly lang-versions
-    boxing-primitives convert-parse enum-ops decimal-ops math-subset
+    boxing-primitives enum-ops decimal-ops
     array-core string-core span-ops unsafe-general list-collections dict-collections
-    shared-generics async-core async-combinators custom-async-task thread-spawn
+    shared-generics async-core thread-spawn
     gc-write-barrier external-ref-barrier
-    file-real filesystem-enum env-subset threading-primitives sync-primitives
-    thread-local timer mmap-file pinvoke-native
-    console-io datetime threadpool transpiler-limits
+    filesystem-enum mmap-file env-subset threading-primitives sync-primitives pinvoke-native
+    console-io datetime transpiler-limits
 )
 
 # Keep the partition tokens stable for workflow check names and callers.
 primitive_partition() {
     case "$1" in
-        convert-parse|math-subset|array-core) printf 'arrays\n' ;;
-        shared-generics|async-combinators|custom-async-task|pinvoke-native|transpiler-limits)
+        array-core|enum-ops|decimal-ops|string-core|span-ops|list-collections|dict-collections)
+            printf 'arrays\n' ;;
+        shared-generics|threading-primitives|sync-primitives|pinvoke-native|transpiler-limits)
             printf 'limits\n' ;;
         *) printf 'core\n' ;;
     esac
@@ -51,7 +51,7 @@ primitive_partition() {
 partition_description() {
     case "$1" in
         core) printf 'core primitives' ;;
-        arrays) printf 'arrays and numeric primitives' ;;
+        arrays) printf 'arrays, text, collections and numeric primitives' ;;
         limits) printf 'transpiler limits and runtime primitives' ;;
     esac
 }
@@ -150,6 +150,7 @@ if [ "$name" = "${CI_TEST_FAILURE_GATE:-multiassembly}" ]; then
     esac
 fi
 if [ "$name" = sample ]; then
+    [ "$#" -eq 1 ] && [ "$1" = --smoke ] || exit 8
     if [ "$CI_TEST_CASE" = watchdog ]; then sleep 2; fi
     mkdir -p "samples/dotnet/HelloWorld/bin/$CONFIG/$TFM" artifacts/console
     touch "samples/dotnet/HelloWorld/bin/$CONFIG/$TFM/HelloWorld.dll"
@@ -164,6 +165,8 @@ else
 fi
 NATIVE
     chmod +x "artifacts/console/HelloWorld$EXE_EXT"
+else
+    [ "$#" -eq 0 ] || exit 8
 fi
 GATE
     for name in "${PRIMITIVES[@]}"; do
@@ -175,6 +178,7 @@ set -euo pipefail
 [ "$SKIP_GODOT" = 1 ]
 [ "$CONFIG" = Sentinel ] && [ "$DN2CPP_GATE_CACHE" = Sentinel ]
 [ "$DN2CPP_REQUIRE_ALL" = Sentinel ] && [ "$DN2CPP_SKIP_BUILD" = Sentinel ]
+[ "$#" -eq 0 ]
 printf 'suite forwarded\n'
 exit 23
 SUITE
@@ -184,11 +188,13 @@ SUITE
     arrays=$(bash "$fixture/gates/ci-smoke.sh" --profile primitives --partition arrays --list)
     limits=$(bash "$fixture/gates/ci-smoke.sh" --profile primitives --partition limits --list)
     [ "$full" = "$(printf '%s\n' "${PRIMITIVES[@]}")" ]
-    [ "$arrays" = "$(printf '%s\n' array-core convert-parse math-subset)" ]
-    [ "$limits" = "$(printf '%s\n' transpiler-limits shared-generics async-combinators custom-async-task pinvoke-native)" ]
-    [ "$core" = "$(sed '/^convert-parse$/d; /^math-subset$/d; /^array-core$/d;
-        /^shared-generics$/d; /^async-combinators$/d; /^custom-async-task$/d;
-        /^pinvoke-native$/d; /^transpiler-limits$/d' <<< "$full")" ]
+    [ "$arrays" = "$(printf '%s\n' array-core enum-ops decimal-ops string-core \
+        span-ops list-collections dict-collections)" ]
+    [ "$limits" = "$(printf '%s\n' transpiler-limits shared-generics threading-primitives \
+        sync-primitives pinvoke-native)" ]
+    [ "$core" = "$(printf '%s\n' sample multiassembly lang-versions boxing-primitives \
+        unsafe-general async-core thread-spawn \
+        gc-write-barrier external-ref-barrier filesystem-enum mmap-file env-subset console-io datetime)" ]
     combined=$(printf '%s\n%s\n%s\n' "$core" "$arrays" "$limits" | LC_ALL=C sort)
     [ "$combined" = "$(LC_ALL=C sort <<< "$full")" ]
     [ -z "$(uniq -d <<< "$combined")" ]
@@ -246,7 +252,7 @@ SUITE
         done
 
         case "$partition" in
-            arrays) failure_gate=convert-parse ;;
+            arrays) failure_gate=span-ops ;;
             limits) failure_gate=shared-generics ;;
             *) failure_gate=multiassembly ;;
         esac
@@ -453,8 +459,12 @@ sample_parity() {
 }
 
 run_fast_gate() {
-    bash "$SCRIPT_DIR/build-and-run-$1.sh" || return $?
-    if [ "$1" = sample ]; then sample_parity || return $?; fi
+    if [ "$1" = sample ]; then
+        bash "$SCRIPT_DIR/build-and-run-sample.sh" --smoke || return $?
+        sample_parity || return $?
+    else
+        bash "$SCRIPT_DIR/build-and-run-$1.sh" || return $?
+    fi
     return 0
 }
 

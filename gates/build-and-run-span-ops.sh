@@ -34,7 +34,7 @@ source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_memorymarshal-bounds-probe.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_memorymarshal-bounds-probe.sh"
 
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|decimal-layout-prefix:before-decimal-layout"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|decimal-layout-prefix:before-decimal-layout|span-numeric-smoke"
 gate_extra_asserts() {
     local out="$1" output oracle before_native before_oracle prefix line
     output="$out/native.stdout"
@@ -76,6 +76,15 @@ gate_extra_asserts() {
             || { echo "FAIL: overlapping span witness missing: $line" >&2; exit 1; }
     done
     memorymarshal_bounds_asserts "$out"
+    gate_capture_ok "$out/assert-before-numeric" run_bounded dotnet "$_CG_APP" before-span-numeric-smoke || return $?
+    gate_output select "$output" "$out/prefix-span-numeric.stdout" \
+        --before '== span numeric smoke ==' --policy crlf || return $?
+    gate_output compare "$out/prefix-span-numeric.stdout" "$out/assert-before-numeric.stdout" || return $?
+    gate_output select "$output" "$out/span-numeric-smoke.stdout" \
+        --from '== span numeric smoke ==' --through 'span numeric smoke end' --policy crlf || return $?
+    printf '%s\n' '== span numeric smoke ==' True True True True 'span numeric smoke end' \
+        > "$out/span-numeric-smoke.expected"
+    gate_output compare "$out/span-numeric-smoke.stdout" "$out/span-numeric-smoke.expected" --policy crlf
 }
 
 corelib_diff_gate SpanOps
