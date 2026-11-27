@@ -17,9 +17,9 @@ The hosted smoke workflows (`.github/workflows/linux-smoke.yml`,
 basic regression checks on every pull request and push to `main`.
 `gates/ci-smoke.sh` selects the same fixed, uncached Debug allowlist on Linux,
 Windows/MSVC and macOS. Each OS balances the full allowlist across disjoint
-core, array/numeric and runtime/limits partitions. The checks cover language,
-primitive values, arrays, strings, collections, generics, async, threads and GC
-barriers.
+core, array/collection/numeric and runtime/limits partitions. The checks cover
+language, primitive values, arrays, strings, collections, generics, async,
+threads and GC barriers.
 It also checks OS APIs through filesystem, environment, synchronization,
 memory-mapped file and native interop tests. Every selected gate must run. Gate
 logs are uploaded, and the basic profile publishes timings in the job summary.

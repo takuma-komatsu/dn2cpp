@@ -41,8 +41,10 @@ PRIMITIVES=(
 # Keep the partition tokens stable for workflow check names and callers.
 primitive_partition() {
     case "$1" in
-        convert-parse|math-subset|array-core) printf 'arrays\n' ;;
-        shared-generics|async-combinators|custom-async-task|pinvoke-native|transpiler-limits)
+        convert-parse|math-subset|array-core|span-ops|list-collections|dict-collections)
+            printf 'arrays\n' ;;
+        shared-generics|async-combinators|custom-async-task|file-real|threading-primitives|\
+        sync-primitives|thread-local|timer|mmap-file|pinvoke-native|threadpool|transpiler-limits)
             printf 'limits\n' ;;
         *) printf 'core\n' ;;
     esac
@@ -51,8 +53,8 @@ primitive_partition() {
 partition_description() {
     case "$1" in
         core) printf 'core primitives' ;;
-        arrays) printf 'arrays and numeric primitives' ;;
-        limits) printf 'transpiler limits and runtime primitives' ;;
+        arrays) printf 'arrays, collections and numeric primitives' ;;
+        limits) printf 'transpiler limits, IO and runtime primitives' ;;
     esac
 }
 
@@ -184,11 +186,14 @@ SUITE
     arrays=$(bash "$fixture/gates/ci-smoke.sh" --profile primitives --partition arrays --list)
     limits=$(bash "$fixture/gates/ci-smoke.sh" --profile primitives --partition limits --list)
     [ "$full" = "$(printf '%s\n' "${PRIMITIVES[@]}")" ]
-    [ "$arrays" = "$(printf '%s\n' array-core convert-parse math-subset)" ]
-    [ "$limits" = "$(printf '%s\n' transpiler-limits shared-generics async-combinators custom-async-task pinvoke-native)" ]
-    [ "$core" = "$(sed '/^convert-parse$/d; /^math-subset$/d; /^array-core$/d;
-        /^shared-generics$/d; /^async-combinators$/d; /^custom-async-task$/d;
-        /^pinvoke-native$/d; /^transpiler-limits$/d' <<< "$full")" ]
+    [ "$arrays" = "$(printf '%s\n' array-core convert-parse math-subset \
+        span-ops list-collections dict-collections)" ]
+    [ "$limits" = "$(printf '%s\n' transpiler-limits shared-generics async-combinators \
+        custom-async-task file-real threading-primitives sync-primitives thread-local \
+        timer mmap-file pinvoke-native threadpool)" ]
+    [ "$core" = "$(printf '%s\n' sample multiassembly lang-versions boxing-primitives \
+        enum-ops decimal-ops string-core unsafe-general async-core thread-spawn \
+        gc-write-barrier external-ref-barrier filesystem-enum env-subset console-io datetime)" ]
     combined=$(printf '%s\n%s\n%s\n' "$core" "$arrays" "$limits" | LC_ALL=C sort)
     [ "$combined" = "$(LC_ALL=C sort <<< "$full")" ]
     [ -z "$(uniq -d <<< "$combined")" ]
