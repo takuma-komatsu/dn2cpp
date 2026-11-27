@@ -766,7 +766,7 @@ internal sealed class ReflectionSummarizer
                 continue;
             if (Call(code[i].Token) is { } call
                 && (call.Api is { Kind: not ReflectionOpKind.Transfer } || call.ArraySearch
-                    || (op is ILOpCode.Call or ILOpCode.Callvirt or ILOpCode.Newobj && call.HasTypeParameters)))
+                    || (op is ILOpCode.Call or ILOpCode.Callvirt or ILOpCode.Newobj && call.TracksTypeArguments)))
                 (sites ??= new List<int>()).Add(i);
         }
         if (sites is null)
@@ -790,7 +790,7 @@ internal sealed class ReflectionSummarizer
         public string[]? TypeArguments;
         public ReflectionApi? Api;
         public bool ArraySearch;
-        public bool HasTypeParameters;
+        public bool TracksTypeArguments;
     }
 
     internal CallInfo? Call(int token)
@@ -859,7 +859,6 @@ internal sealed class ReflectionSummarizer
         else
             return null;
         info.Parameters = ToArray(signature.ParameterTypes);
-        info.HasTypeParameters = Array.IndexOf(info.Parameters, "System.Type") >= 0;
         info.HasThis = signature.Header.IsInstance;
         info.ReturnsVoid = signature.ReturnType == "System.Void";
         info.ReturnsString = signature.ReturnType == "System.String";
@@ -875,6 +874,11 @@ internal sealed class ReflectionSummarizer
             info.Api = ReflectionApis.Classify(parent, info.Name, info.Parameters, info.HasThis,
                 signature.GenericParameterCount);
         }
+        // A modeled CoreLib Activator call selects constructors by visibility and arity.
+        // Applying its parameter annotation as well would root the excluded overloads.
+        info.TracksTypeArguments = Array.IndexOf(info.Parameters, "System.Type") >= 0
+            && !(info.Api is { Recognized: true, Op: ReflectionOp.ActivatorCreate }
+                && _contracts?.IsCoreType(Reader, SRME.EntityHandle(info.DeclaringType), "Activator") == true);
         return info;
     }
 
@@ -2755,7 +2759,7 @@ internal sealed class SummaryInterpreter
 
     private void RecordTypeArguments(int i, ReflectionSummarizer.CallInfo call, RValue[] args)
     {
-        if (!call.HasTypeParameters || _sink is not null)
+        if (!call.TracksTypeArguments || _sink is not null)
             return;
         RValue[]? types = null;
         for (int k = 0; k < args.Length; k++)
@@ -4124,7 +4128,7 @@ internal sealed class ReflectionCoreContracts
     {
         var readers = modules.Where(m => m.IsAssembly).ToArray();
         _resolver = new RawAssemblyTypeResolver<MetadataReader>(readers.Select(m => (m, m.GetString(m.GetAssemblyDefinition().Name), m)));
-        foreach (string name in new[] { "Type", "RuntimeType" })
+        foreach (string name in new[] { "Type", "RuntimeType", "Activator" })
         {
             var candidates = new List<(MetadataReader, TypeDefinitionHandle)>();
             foreach (var reader in readers)
@@ -4240,7 +4244,7 @@ internal sealed class ReflectionCoreContracts
             && IsSignature(reader, method.Signature);
     }
 
-    private bool IsCoreType(MetadataReader reader, EntityHandle handle, string name)
+    internal bool IsCoreType(MetadataReader reader, EntityHandle handle, string name)
     {
         if (handle.Kind == HandleKind.TypeDefinition)
         {

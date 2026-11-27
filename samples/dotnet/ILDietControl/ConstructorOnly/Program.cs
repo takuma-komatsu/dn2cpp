@@ -81,6 +81,16 @@ internal static class Program
         ReportRepeated("repeated-type", RepeatedArrayType);
         ReportRepeated("acyclic-initialized", AcyclicInitializedFlags);
         Console.WriteLine("repeated array allocations end");
+        ConstructWithBoxedFlags();
+    }
+
+    private static void ConstructWithBoxedFlags()
+    {
+        object flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        Activator.CreateInstance(typeof(BoxedFlagsTarget), (BindingFlags)flags, null,
+            new object[] { "boxed flags constructor" }, null);
+        object nonPublic = true;
+        Activator.CreateInstance(typeof(BoxedNonPublicTarget), (bool)nonPublic);
     }
 
     private static void ReportRepeated(string label, Func<string> run)
@@ -424,6 +434,16 @@ internal sealed class CapturedInitializedTarget
     private CapturedInitializedTarget(string made) => Made = made;
 
     private static string UnselectedCapturedConstructor() => "unselected";
+}
+
+internal sealed class BoxedFlagsTarget
+{
+    private BoxedFlagsTarget(string value) => Console.WriteLine(value);
+}
+
+internal sealed class BoxedNonPublicTarget
+{
+    private BoxedNonPublicTarget() => Console.WriteLine("boxed nonPublic constructor");
 }
 
 internal sealed class ExternalLocalTarget
