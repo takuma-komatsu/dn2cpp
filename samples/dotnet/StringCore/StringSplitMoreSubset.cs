@@ -1,5 +1,6 @@
 #nullable disable
 using System;
+using System.Text;
 
 namespace StringSplitMoreSubset
 {
@@ -26,6 +27,46 @@ namespace StringSplitMoreSubset
         private static void P(string label, string[] a)
         {
             Console.WriteLine(label + " " + Dump(a));
+        }
+
+        internal static void RunSpanAndRune()
+        {
+            Console.WriteLine("== String span and Rune split ==");
+            string[] spanFields = "/a:b::".Split('/', ':');
+            P("span-separators", spanFields);
+            P("span-empty", " a\u00a0b\u3000".Split(ReadOnlySpan<char>.Empty));
+
+            var sep = new Rune(0x1F331);
+            P("rune-bmp", "a::b".Split(new Rune(':')));
+            string[] runeFields = "🌱a🌱🌰🌱".Split(sep);
+            P("rune-surrogates", runeFields);
+            P("rune-count", "a🌱b🌱c".Split(sep, 2));
+            string[] zero = "a🌱b".Split(sep, 0);
+            P("rune-zero", zero);
+            P("rune-one", "a🌱b".Split(sep, 1));
+            P("rune-trim-remove", " a 🌱  🌱 b 🌱 c ".Split(sep, 2,
+                StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
+            Console.WriteLine($"empty fields shared={ReferenceEquals(spanFields[0], string.Empty)}:{ReferenceEquals(runeFields[^1], string.Empty)}");
+            var empty = Array.Empty<string>();
+            Console.WriteLine($"empty arrays shared={ReferenceEquals(zero, empty)}:" +
+                $"{ReferenceEquals("".Split(sep, StringSplitOptions.RemoveEmptyEntries), empty)}:" +
+                $"{ReferenceEquals("🌱".Split(sep, StringSplitOptions.RemoveEmptyEntries), empty)}");
+            try
+            {
+                P("rune-bad-count", "a🌱b".Split(sep, -1, (StringSplitOptions)4));
+            }
+            catch (ArgumentException e)
+            {
+                Console.WriteLine("rune-bad-count " + e.GetType().Name + ":" + e.ParamName);
+            }
+            try
+            {
+                P("rune-bad-options", "a🌱b".Split(sep, 0, (StringSplitOptions)4));
+            }
+            catch (ArgumentException e)
+            {
+                Console.WriteLine("rune-bad-options " + e.GetType().Name + ":" + e.ParamName);
+            }
         }
 
         internal static void Run()

@@ -668,6 +668,7 @@ internal sealed partial class Compilation
         "dn2cpp_str_replace_",      // Replace (char/str/str_cmp)
         "dn2cpp_str_split",         // Split family (+ _char/_str): the array and its parts
         "dn2cpp_str_pad(",
+        "dn2cpp_str_copy(",
         "dn2cpp_str_insert(",
         "dn2cpp_str_remove",        // + _to_end
         "dn2cpp_str_trim",          // Trim/TrimStart/TrimEnd (+ _set)

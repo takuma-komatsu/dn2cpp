@@ -4921,15 +4921,10 @@ int32_t dn2cpp_string_try_copy_to_utf8_span(Dn2CppString* s, uint8_t* dest, int3
 // `new string(char* value)` — NUL-terminated; a null pointer yields Empty (the
 // real BCL's documented behavior for this extern/VM-implemented ctor overload).
 Dn2CppString* dn2cpp_string_from_wcs(const char16_t* value);
-// `new string(sbyte* value)` — the narrow sibling of _from_wcs: a NUL-terminated
-// byte run decoded through the system ANSI code page (CP_ACP on Windows, UTF-8 on
-// POSIX — the dn2cpp_pal_ansi_decode seam), which is what the real ctor does.
-// NOT Encoding.Default: .NET Core reports that as UTF-8 on every OS, yet this ctor
-// still decodes with the CODE PAGE, and on a non-UTF-8 ACP the two genuinely disagree
-// (on a CP932 host the bytes 82 A0 yield U+3042; read as UTF-8 they are mojibake), so
-// decoding as UTF-8 would corrupt non-ASCII text silently. A null pointer yields Empty,
-// like the char* overload.
+// Narrow String constructors use the Windows ANSI code page or UTF-8 on POSIX.
 Dn2CppString* dn2cpp_string_from_mbs(const char* value);
+Dn2CppString* dn2cpp_string_from_mbs_bytes(const char* bytes, int32_t length);
+const char* dn2cpp_string_mbs_slice(const char* value, int32_t start, int32_t length, bool explicitEncoding);
 Dn2CppString* dn2cpp_string_repeat_char(char16_t c, int32_t count);
 
 // String.ToCharArray() — a fresh char[] (a packed Dn2CppArrayN with
@@ -5441,6 +5436,13 @@ Dn2CppString* dn2cpp_str_replace_str_cmp(Dn2CppString* s, Dn2CppString* oldValue
 // is treated as already normalized (returned as-is / true) after the
 // NormalizationForm (1/2/5/6) is validated with a catchable ArgumentException.
 Dn2CppString* dn2cpp_str_normalize(Dn2CppString* s, int32_t form);
+Dn2CppString* dn2cpp_str_copy(Dn2CppString* value);
+int32_t dn2cpp_str_char_ignorecase_range(Dn2CppString* s, char16_t value, int32_t start, int32_t count, bool reverse);
+int32_t dn2cpp_str_scalar_at_edge(Dn2CppString* s, uint32_t scalar, int32_t comparison, bool suffix);
+int32_t dn2cpp_str_rune_search(Dn2CppString* s, uint32_t scalar, int32_t start, int32_t count,
+                               int32_t comparison, bool reverse);
+Dn2CppString* dn2cpp_str_replace_rune(Dn2CppString* s, uint32_t oldValue, uint32_t newValue);
+Dn2CppString* dn2cpp_str_replace_line_endings(Dn2CppString* s, Dn2CppString* replacement, bool useDefault);
 int32_t dn2cpp_str_is_normalized(Dn2CppString* s, int32_t form);
 // ToCharArray(startIndex, length) — substring copy into a fresh char[]; bad
 // start/length raise a catchable ArgumentOutOfRangeException.
@@ -5498,9 +5500,13 @@ Dn2CppString* dn2cpp_string_format_spanobjs_c(Dn2CppObject* provider, Dn2CppStri
 // null/empty single STRING separator yields the whole string as sole entry
 // (only a null/empty separator ARRAY means whitespace mode, like .NET).
 Dn2CppArrayRef* dn2cpp_str_split(Dn2CppString* s, const char16_t* sepChars, int32_t nSepChars,
-                                 Dn2CppArrayRef* sepStrs, int32_t count, int32_t opts);
-Dn2CppArrayRef* dn2cpp_str_split_char(Dn2CppString* s, char16_t sep, int32_t count, int32_t opts);
-Dn2CppArrayRef* dn2cpp_str_split_str(Dn2CppString* s, Dn2CppString* sep, int32_t count, int32_t opts);
+                                 Dn2CppArrayRef* sepStrs, int32_t count, int32_t opts, const Dn2CppTypeInfo* ti);
+Dn2CppArrayRef* dn2cpp_str_split_char(Dn2CppString* s, char16_t sep, int32_t count, int32_t opts,
+                                      const Dn2CppTypeInfo* ti);
+Dn2CppArrayRef* dn2cpp_str_split_rune(Dn2CppString* s, uint32_t scalar, int32_t count, int32_t opts,
+                                      const Dn2CppTypeInfo* ti);
+Dn2CppArrayRef* dn2cpp_str_split_str(Dn2CppString* s, Dn2CppString* sep, int32_t count, int32_t opts,
+                                     const Dn2CppTypeInfo* ti);
 
 // Integer parsing (invariant: optional surrounding whitespace, optional sign,
 // decimal digits). TryParse writes the result and returns 0/1; Parse traps on a

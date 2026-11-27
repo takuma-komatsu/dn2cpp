@@ -36,6 +36,10 @@ Dn2CppString* dn2cpp_str_substring(Dn2CppString* s, int32_t start, int32_t lengt
         dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "length", length);
     if (start > s->length - length)
         dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_LENGTH, "length");
+    if (length == 0)
+        return dn2cpp_string_literal(u"", 0);
+    if (length == s->length)
+        return s;
     char16_t* buf;
     Dn2CppString* r = dn2cpp_string_alloc(&buf, length);
     std::memcpy(buf, s->chars + start, static_cast<size_t>(length) * sizeof(char16_t));
@@ -50,6 +54,9 @@ Dn2CppString* dn2cpp_str_substring_to_end(Dn2CppString* s, int32_t start)
 {
     if (s == nullptr)
         dn2cpp_throw_null_reference();
+    // Substring(0) preserves even a distinct zero-length receiver.
+    if (start == 0)
+        return s;
     return dn2cpp_str_substring(s, start, s->length - start);
 }
 
@@ -299,6 +306,151 @@ static int dn2cpp_str_char_eq_cmp(char16_t a, char16_t b, int32_t comparison)
         return a == b;
     dn2cpp_fail("internal: unfolded StringComparison reached dn2cpp_str_char_eq_cmp");
     return 0;
+}
+
+// Encode one Unicode scalar without allocating a managed separator/needle.
+static int32_t dn2cpp_encode_rune(uint32_t scalar, char16_t (&units)[2])
+{
+    if (scalar <= 0xffffu)
+    {
+        units[0] = static_cast<char16_t>(scalar);
+        return 1;
+    }
+    scalar -= 0x10000u;
+    units[0] = static_cast<char16_t>(0xd800u + (scalar >> 10));
+    units[1] = static_cast<char16_t>(0xdc00u + (scalar & 0x3ffu));
+    return 2;
+}
+
+// The CoreLib ordinal-ignore-case entry points validate the range before
+// scanning the UTF-16 buffer. Reverse search names its computed startSearchAt.
+int32_t dn2cpp_str_char_ignorecase_range(Dn2CppString* s, char16_t value, int32_t start, int32_t count, bool reverse)
+{
+    auto nonnegative = [](int32_t v, const char* parameter) {
+        if (v < 0)
+            dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, parameter, v);
+    };
+    nonnegative(start, "startIndex");
+    if (s == nullptr)
+        dn2cpp_throw_null_reference();
+    if (reverse ? start >= s->length : start > s->length)
+        dn2cpp_throw_argument_out_of_range_param(
+            reverse ? DN2CPP_SR_INDEX_MUST_BE_LESS : DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, "startIndex");
+    nonnegative(count, "count");
+    if (reverse)
+        nonnegative(start + 1 - count, "startSearchAt");
+    else if (count > s->length - start)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_COUNT, "count");
+    for (int32_t i = 0; i < count; i++)
+    {
+        int32_t at = reverse ? start - i : start + i;
+        if (dn2cpp_str_char_eq_cmp(s->chars[at], value, 5))
+            return at;
+    }
+    return -1;
+}
+
+// Supplementary uppercase folds from Rune.ToUpperInvariant in the pinned
+// invariant .NET runtime. The existing BMP fold remains the one-code-unit path.
+static uint32_t dn2cpp_supplementary_upper(uint32_t scalar)
+{
+    struct Range { uint32_t first, last; int32_t delta; };
+    static constexpr Range ranges[] = {
+        {0x10428u, 0x1044fu, -40},
+        {0x104d8u, 0x104fbu, -40},
+        {0x10597u, 0x105a1u, -39},
+        {0x105a3u, 0x105b1u, -39},
+        {0x105b3u, 0x105b9u, -39},
+        {0x105bbu, 0x105bcu, -39},
+        {0x10cc0u, 0x10cf2u, -64},
+        {0x10d70u, 0x10d85u, -32},
+        {0x118c0u, 0x118dfu, -32},
+        {0x16e60u, 0x16e7fu, -32},
+        {0x1e922u, 0x1e943u, -34},
+    };
+    for (const auto& r : ranges)
+    {
+        if (scalar < r.first)
+            break;
+        if (scalar <= r.last)
+            return static_cast<uint32_t>(static_cast<int32_t>(scalar) + r.delta);
+    }
+    return scalar;
+}
+
+struct Dn2CppScalarNeedle
+{
+    char16_t units[2];
+    int32_t width;
+    int32_t comparison;
+    uint32_t upper;
+
+    Dn2CppScalarNeedle(uint32_t scalar, int32_t folded) : comparison(folded), upper(0)
+    {
+        width = dn2cpp_encode_rune(scalar, units);
+        if (width == 2 && comparison == 5)
+            upper = dn2cpp_supplementary_upper(scalar);
+    }
+
+    bool matches(const char16_t* value) const
+    {
+        if (width == 1)
+            return dn2cpp_str_char_eq_cmp(value[0], units[0], comparison);
+        if (comparison == 4)
+            return value[0] == units[0] && value[1] == units[1];
+        uint32_t high = static_cast<uint32_t>(value[0]) - 0xd800u;
+        uint32_t low = static_cast<uint32_t>(value[1]) - 0xdc00u;
+        return high < 0x400u && low < 0x400u
+            && dn2cpp_supplementary_upper(0x10000u + (high << 10) + low) == upper;
+    }
+};
+
+int32_t dn2cpp_str_scalar_at_edge(Dn2CppString* s, uint32_t scalar, int32_t comparison, bool suffix)
+{
+    if (s == nullptr)
+        dn2cpp_throw_null_reference();
+    Dn2CppScalarNeedle needle(scalar, dn2cpp_str_comparison_fold(comparison));
+    return needle.width <= s->length
+        && needle.matches(s->chars + (suffix ? s->length - needle.width : 0));
+}
+
+int32_t dn2cpp_str_rune_search(Dn2CppString* s, uint32_t scalar, int32_t start, int32_t count,
+                               int32_t comparison, bool reverse)
+{
+    if (s == nullptr)
+        dn2cpp_throw_null_reference();
+    if (reverse && s->length == 0)
+        return -1;
+    if (start < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "startIndex", start);
+    if (!reverse && start > s->length)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_LESS_OR_EQUAL, "startIndex", start, s->length);
+    if (count < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "count", count);
+
+    int32_t offset = start;
+    if (reverse)
+    {
+        // CoreLib computes and validates this Int32 expression before the
+        // upper bound on startIndex (including unchecked overflow).
+        offset = static_cast<int32_t>(static_cast<uint32_t>(start) - static_cast<uint32_t>(count) + 1u);
+        if (offset < 0)
+            dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "startIndex - count + 1", offset);
+        if (start >= s->length)
+            dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS, "startIndex");
+    }
+    else if (count > s->length - start)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_LESS_OR_EQUAL, "count", count, s->length - start);
+
+    Dn2CppScalarNeedle needle(scalar, dn2cpp_str_comparison_fold(comparison));
+    int32_t last = count - needle.width;
+    for (int32_t i = 0; i <= last; i++)
+    {
+        int32_t at = offset + (reverse ? last - i : i);
+        if (needle.matches(s->chars + at))
+            return at;
+    }
+    return -1;
 }
 
 int32_t dn2cpp_str_startswith_cmp(Dn2CppString* s, Dn2CppString* prefix, int32_t comparison)
@@ -649,30 +801,20 @@ Dn2CppString* dn2cpp_str_replace_char(Dn2CppString* s, char16_t oldc, char16_t n
     return r;
 }
 
-// String.Replace(string, string): ordinal, all occurrences, left-to-right,
-// non-overlapping (.NET semantics: null oldValue -> ArgumentNullException,
-// empty oldValue -> ArgumentException, null newValue -> treated as empty,
-// no occurrence -> the original instance is returned unchanged).
-Dn2CppString* dn2cpp_str_replace_str(Dn2CppString* s, Dn2CppString* oldValue, Dn2CppString* newValue)
+// Both callers supply a non-empty UTF-16 needle. Advance by its full width
+// after each hit so a supplementary Rune is consumed as one scalar.
+static Dn2CppString* dn2cpp_str_replace_utf16(Dn2CppString* s, const char16_t* oldChars, int32_t oldLen,
+                                             const char16_t* newChars, int32_t newLen)
 {
-    if (s == nullptr)
-        dn2cpp_throw_null_reference();
-    if (oldValue == nullptr)
-        dn2cpp_throw_argument_null_param("oldValue");
-    if (oldValue->length == 0)
-        dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type, dn2cpp_sr_text(DN2CPP_SR_EMPTY_STRING), "oldValue");
-    const char16_t* newChars = newValue != nullptr ? newValue->chars : nullptr;
-    int32_t newLen = newValue != nullptr ? newValue->length : 0;
-
     // Count occurrences first so the result is allocated exactly once.
     int32_t count = 0;
-    for (int32_t i = 0; i + oldValue->length <= s->length;)
+    for (int32_t i = 0; i <= s->length - oldLen;)
     {
-        if (std::memcmp(s->chars + i, oldValue->chars,
-                        static_cast<size_t>(oldValue->length) * sizeof(char16_t)) == 0)
+        if (std::memcmp(s->chars + i, oldChars,
+                        static_cast<size_t>(oldLen) * sizeof(char16_t)) == 0)
         {
             count++;
-            i += oldValue->length;
+            i += oldLen;
         }
         else
         {
@@ -682,20 +824,24 @@ Dn2CppString* dn2cpp_str_replace_str(Dn2CppString* s, Dn2CppString* oldValue, Dn
     if (count == 0)
         return s;
 
-    int64_t total64 = (int64_t)s->length + (int64_t)count * (newLen - oldValue->length);
+    int64_t total64 = (int64_t)s->length + (int64_t)count * (newLen - oldLen);
+    if (total64 > INT32_MAX)
+        dn2cpp_throw_out_of_memory();
+    if (total64 == 0)
+        return dn2cpp_string_literal(u"", 0);
     char16_t* buf;
-    Dn2CppString* r = dn2cpp_string_alloc(&buf, (int32_t)total64);
+    Dn2CppString* r = dn2cpp_string_alloc(&buf, static_cast<int32_t>(total64));
     int32_t pos = 0;
     for (int32_t i = 0; i < s->length;)
     {
-        if (i + oldValue->length <= s->length
-            && std::memcmp(s->chars + i, oldValue->chars,
-                           static_cast<size_t>(oldValue->length) * sizeof(char16_t)) == 0)
+        if (i <= s->length - oldLen
+            && std::memcmp(s->chars + i, oldChars,
+                           static_cast<size_t>(oldLen) * sizeof(char16_t)) == 0)
         {
             if (newLen > 0)
                 std::memcpy(buf + pos, newChars, static_cast<size_t>(newLen) * sizeof(char16_t));
             pos += newLen;
-            i += oldValue->length;
+            i += oldLen;
         }
         else
         {
@@ -703,6 +849,105 @@ Dn2CppString* dn2cpp_str_replace_str(Dn2CppString* s, Dn2CppString* oldValue, Dn
         }
     }
     return r;
+}
+
+Dn2CppString* dn2cpp_str_replace_str(Dn2CppString* s, Dn2CppString* oldValue, Dn2CppString* newValue)
+{
+    if (s == nullptr)
+        dn2cpp_throw_null_reference();
+    if (oldValue == nullptr)
+        dn2cpp_throw_argument_null_param("oldValue");
+    if (oldValue->length == 0)
+        dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type, dn2cpp_sr_text(DN2CPP_SR_EMPTY_STRING), "oldValue");
+    return dn2cpp_str_replace_utf16(s, oldValue->chars, oldValue->length,
+        newValue != nullptr ? newValue->chars : nullptr, newValue != nullptr ? newValue->length : 0);
+}
+
+Dn2CppString* dn2cpp_str_replace_rune(Dn2CppString* s, uint32_t oldValue, uint32_t newValue)
+{
+    if (s == nullptr)
+        dn2cpp_throw_null_reference();
+    // Only the single-char path short-circuits equal runes. A matched pair is copied.
+    if (oldValue <= 0xffffu && oldValue == newValue)
+        return s;
+    char16_t oldUnits[2], newUnits[2];
+    int32_t oldLen = dn2cpp_encode_rune(oldValue, oldUnits);
+    int32_t newLen = dn2cpp_encode_rune(newValue, newUnits);
+    return dn2cpp_str_replace_utf16(s, oldUnits, oldLen, newUnits, newLen);
+}
+
+Dn2CppString* dn2cpp_str_copy(Dn2CppString* value)
+{
+    if (value == nullptr)
+        dn2cpp_throw_argument_null_param("str");
+    char16_t* buf;
+    Dn2CppString* result = dn2cpp_string_alloc(&buf, value->length);
+    std::memcpy(buf, value->chars, static_cast<size_t>(value->length) * sizeof(char16_t));
+    return result;
+}
+
+// CRLF is one newline. FF, NEL, LS and PS are recognized; VT and
+// the information separators U+001C–U+001E are not.
+static int32_t dn2cpp_newline_width(const char16_t* chars, int32_t remaining)
+{
+    switch (chars[0])
+    {
+        case u'\r': return remaining > 1 && chars[1] == u'\n' ? 2 : 1;
+        case u'\n': case u'\f': case u'\u0085': case u'\u2028': case u'\u2029': return 1;
+        default: return 0;
+    }
+}
+
+Dn2CppString* dn2cpp_str_replace_line_endings(Dn2CppString* s, Dn2CppString* replacement, bool useDefault)
+{
+    if (s == nullptr)
+        dn2cpp_throw_null_reference();
+    if (!useDefault && replacement == nullptr)
+        dn2cpp_throw_argument_null_param("replacementText");
+#ifdef _WIN32
+    constexpr char16_t native[] = u"\r\n";
+#else
+    constexpr char16_t native[] = u"\n";
+#endif
+    const char16_t* text = useDefault ? native : replacement->chars;
+    int32_t n = useDefault ? static_cast<int32_t>(sizeof(native) / sizeof(char16_t) - 1) : replacement->length;
+    int64_t length = s->length;
+    bool changed = false;
+    for (int32_t i = 0; i < s->length;)
+    {
+        int32_t width = dn2cpp_newline_width(s->chars + i, s->length - i);
+        if (width == 0)
+        {
+            i++;
+            continue;
+        }
+        length += n - width;
+        changed |= width != n || std::memcmp(s->chars + i, text, static_cast<size_t>(width) * sizeof(char16_t)) != 0;
+        i += width;
+    }
+    if (!changed)
+        return s;
+    if (length > INT32_MAX)
+        dn2cpp_throw_out_of_memory();
+    if (length == 0)
+        return dn2cpp_string_literal(u"", 0);
+    char16_t* buf;
+    Dn2CppString* result = dn2cpp_string_alloc(&buf, static_cast<int32_t>(length));
+    int32_t to = 0;
+    for (int32_t i = 0; i < s->length;)
+    {
+        int32_t width = dn2cpp_newline_width(s->chars + i, s->length - i);
+        if (width == 0)
+        {
+            buf[to++] = s->chars[i++];
+            continue;
+        }
+        if (n != 0)
+            std::memcpy(buf + to, text, static_cast<size_t>(n) * sizeof(char16_t));
+        to += n;
+        i += width;
+    }
+    return result;
 }
 
 // String.Replace(string, string, StringComparison): Ordinal delegates to the ordinal
@@ -958,14 +1203,15 @@ static void dn2cpp_split_trim_seg(Dn2CppString* s, int32_t* start, int32_t* end)
 // CreateSplitArrayOfThisAsSoleValue: the whole string as the single entry,
 // TrimEntries applied; dropped (empty array) when RemoveEmptyEntries removes
 // it. count is already validated non-negative and known nonzero here.
-static Dn2CppArrayRef* dn2cpp_split_sole_value(Dn2CppString* s, bool removeEmpty, bool trim)
+static Dn2CppArrayRef* dn2cpp_split_sole_value(Dn2CppString* s, bool removeEmpty, bool trim,
+                                              const Dn2CppTypeInfo* ti)
 {
     int32_t a = 0, b = s->length;
     if (trim)
         dn2cpp_split_trim_seg(s, &a, &b);
     if (removeEmpty && a == b)
-        return dn2cpp_newarr_ref(0);
-    Dn2CppArrayRef* arr = dn2cpp_newarr_ref(1);
+        return dn2cpp_array_empty_ref(ti);
+    Dn2CppArrayRef* arr = dn2cpp_newarr_ref_t(1, ti);
     Dn2CppString* v = (a == 0 && b == s->length) ? s : dn2cpp_str_substring(s, a, b - a);
     dn2cpp_gc_store_ref(&arr->data[0], reinterpret_cast<Dn2CppObject*>(v));
     return arr;
@@ -976,7 +1222,8 @@ static Dn2CppArrayRef* dn2cpp_split_sole_value(Dn2CppString* s, bool removeEmpty
 // matching entry in array order wins, null/empty entries skipped, the scan
 // resumes after the matched separator — non-overlapping); otherwise char-set
 // mode over `sepChars` (any-of); otherwise (both absent/empty) whitespace mode
-// (any char.IsWhiteSpace char separates). `count` caps the number of KEPT
+// (any char.IsWhiteSpace char separates). A supplementary Rune is one
+// two-code-unit separator, not a set. `count` caps the number of KEPT
 // entries; once count-1 entries are kept the remainder of the string
 // (separators included) is the last entry, except that with RemoveEmptyEntries
 // the entries that would be removed right before the remainder are skipped
@@ -984,8 +1231,9 @@ static Dn2CppArrayRef* dn2cpp_split_sole_value(Dn2CppString* s, bool removeEmpty
 // including the remainder — before the RemoveEmptyEntries check. count < 0
 // throws ArgumentOutOfRangeException, an options value outside [0, 3]
 // ArgumentException (both catchable, validated in that order, like .NET).
-Dn2CppArrayRef* dn2cpp_str_split(Dn2CppString* s, const char16_t* sepChars, int32_t nSepChars,
-                                 Dn2CppArrayRef* sepStrs, int32_t count, int32_t opts)
+static Dn2CppArrayRef* dn2cpp_split_core(Dn2CppString* s, const char16_t* sepChars, int32_t nSepChars,
+                                         Dn2CppArrayRef* sepStrs, int32_t count, int32_t opts,
+                                         const Dn2CppTypeInfo* ti, bool matchPair = false)
 {
     if (s == nullptr)
         dn2cpp_throw_null_reference();
@@ -996,9 +1244,9 @@ Dn2CppArrayRef* dn2cpp_str_split(Dn2CppString* s, const char16_t* sepChars, int3
     bool removeEmpty = (opts & 1) != 0;
     bool trim = (opts & 2) != 0;
     if (count == 0)
-        return dn2cpp_newarr_ref(0);
+        return dn2cpp_array_empty_ref(ti);
     if (count == 1 || s->length == 0)
-        return dn2cpp_split_sole_value(s, removeEmpty, trim);
+        return dn2cpp_split_sole_value(s, removeEmpty, trim, ti);
 
     Dn2CppString* const* strSeps =
         sepStrs != nullptr && sepStrs->length > 0
@@ -1031,6 +1279,15 @@ Dn2CppArrayRef* dn2cpp_str_split(Dn2CppString* s, const char16_t* sepChars, int3
             i += matched != 0 ? matched : 1;
         }
     }
+    else if (matchPair)
+    {
+        for (int32_t i = 0; i + 1 < s->length; i++)
+            if (s->chars[i] == sepChars[0] && s->chars[i + 1] == sepChars[1])
+            {
+                sepPos.push_back(i++);
+                sepLen.push_back(2);
+            }
+    }
     else
     {
         for (int32_t i = 0; i < s->length; i++)
@@ -1056,7 +1313,7 @@ Dn2CppArrayRef* dn2cpp_str_split(Dn2CppString* s, const char16_t* sepChars, int3
         }
     }
     if (sepPos.empty())
-        return dn2cpp_split_sole_value(s, removeEmpty, trim);
+        return dn2cpp_split_sole_value(s, removeEmpty, trim, ti);
 
     // Two deterministic passes over the separator list: count the kept
     // entries, allocate the exact result array, fill it. Each substring is
@@ -1113,15 +1370,31 @@ Dn2CppArrayRef* dn2cpp_str_split(Dn2CppString* s, const char16_t* sepChars, int3
         }
         return kept;
     };
-    Dn2CppArrayRef* arr = dn2cpp_newarr_ref(emitPass(nullptr));
+    // Filtering actual separator matches leaves a fresh array even when all fields are removed.
+    Dn2CppArrayRef* arr = dn2cpp_newarr_ref_t(emitPass(nullptr), ti);
     emitPass(arr);
     return arr;
 }
 
-// Single-char separator: the common `s.Split(',')` shape.
-Dn2CppArrayRef* dn2cpp_str_split_char(Dn2CppString* s, char16_t sep, int32_t count, int32_t opts)
+Dn2CppArrayRef* dn2cpp_str_split(Dn2CppString* s, const char16_t* sepChars, int32_t nSepChars,
+                                 Dn2CppArrayRef* sepStrs, int32_t count, int32_t opts, const Dn2CppTypeInfo* ti)
 {
-    return dn2cpp_str_split(s, &sep, 1, nullptr, count, opts);
+    return dn2cpp_split_core(s, sepChars, nSepChars, sepStrs, count, opts, ti);
+}
+
+// Single-char separator: the common `s.Split(',')` shape.
+Dn2CppArrayRef* dn2cpp_str_split_char(Dn2CppString* s, char16_t sep, int32_t count, int32_t opts,
+                                      const Dn2CppTypeInfo* ti)
+{
+    return dn2cpp_str_split(s, &sep, 1, nullptr, count, opts, ti);
+}
+
+Dn2CppArrayRef* dn2cpp_str_split_rune(Dn2CppString* s, uint32_t scalar, int32_t count, int32_t opts,
+                                      const Dn2CppTypeInfo* ti)
+{
+    char16_t units[2];
+    int32_t n = dn2cpp_encode_rune(scalar, units);
+    return dn2cpp_split_core(s, units, n, nullptr, count, opts, ti, n == 2);
 }
 
 // Single-string separator. A null/empty separator string does NOT mean
@@ -1129,7 +1402,8 @@ Dn2CppArrayRef* dn2cpp_str_split_char(Dn2CppString* s, char16_t sep, int32_t cou
 // treats it as string mode with no separator occurrences, so the whole string
 // comes back as the sole entry. Routing it through the string-array scan with
 // the one (possibly null) entry reproduces exactly that.
-Dn2CppArrayRef* dn2cpp_str_split_str(Dn2CppString* s, Dn2CppString* sep, int32_t count, int32_t opts)
+Dn2CppArrayRef* dn2cpp_str_split_str(Dn2CppString* s, Dn2CppString* sep, int32_t count, int32_t opts,
+                                     const Dn2CppTypeInfo* ti)
 {
     if (s == nullptr)
         dn2cpp_throw_null_reference();
@@ -1138,12 +1412,12 @@ Dn2CppArrayRef* dn2cpp_str_split_str(Dn2CppString* s, Dn2CppString* sep, int32_t
     if (static_cast<uint32_t>(opts) > 3u)
         dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type, dn2cpp_sr_text(DN2CPP_SR_INVALID_FLAG), "options");
     if (count == 0)
-        return dn2cpp_newarr_ref(0);
+        return dn2cpp_array_empty_ref(ti);
     if (sep == nullptr || sep->length == 0)
-        return dn2cpp_split_sole_value(s, (opts & 1) != 0, (opts & 2) != 0);
+        return dn2cpp_split_sole_value(s, (opts & 1) != 0, (opts & 2) != 0, ti);
     Dn2CppArrayRef* one = dn2cpp_newarr_ref(1);
     dn2cpp_gc_store_ref(&one->data[0], reinterpret_cast<Dn2CppObject*>(sep));
-    return dn2cpp_str_split(s, nullptr, 0, one, count, opts);
+    return dn2cpp_str_split(s, nullptr, 0, one, count, opts, ti);
 }
 
 // ---- integer parsing ----
@@ -1869,7 +2143,14 @@ Dn2CppString* dn2cpp_string_join_ref_range(Dn2CppString* sep, Dn2CppArrayRef* a,
     if (startIndex > a->length - count)
         dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_LESS_OR_EQUAL, "startIndex",
             startIndex, a->length - count);
-    auto** e = static_cast<Dn2CppString**>(dn2cpp_alloc(sizeof(Dn2CppString*) * (count > 0 ? count : 1)));
+    if (count == 0)
+        return dn2cpp_string_literal(u"", 0);
+    if (count == 1)
+    {
+        auto* value = reinterpret_cast<Dn2CppString*>(a->data[startIndex]);
+        return value != nullptr ? value : dn2cpp_string_literal(u"", 0);
+    }
+    auto** e = static_cast<Dn2CppString**>(dn2cpp_alloc(sizeof(Dn2CppString*) * count));
     for (int32_t i = 0; i < count; i++)
         dn2cpp_gc_store_ref(&e[i], dn2cpp_object_tostring(a->data[startIndex + i]));
     return dn2cpp_join_strings(sep, e, count);

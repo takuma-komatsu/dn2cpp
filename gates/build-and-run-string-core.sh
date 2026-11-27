@@ -48,11 +48,9 @@
 # Runtime argument messages retain named/boxed operands across Web collections.
 # Null-terminated spans, pinnable byte views and Marshal Uni copies read raw UTF-16.
 source "$(dirname "$0")/_common.sh"
-gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for string call fixtures"
-
 call_app="gates/fixtures/string-comparison-call/bin/$CONFIG/$TFM/StringComparisonCall.dll"
 build_gate_proj gates/fixtures/string-comparison-call/StringComparisonCall.csproj
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $call_app ${call_app%.dll}.runtimeconfig.json ${call_app%.dll}.deps.json gates/fixtures/string-comparison-call/patch-call.py"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $call_app ${call_app%.dll}.runtimeconfig.json ${call_app%.dll}.deps.json ${call_app%/*}/Mono.Cecil.dll"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|string-comparison-call|cli:$(_gate_cli_hash)"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|format-diagnostics-prefix-argv:before-format-diagnostics|argument-roots-prefix-argv:before-argument-roots"
 
@@ -264,7 +262,7 @@ gate_extra_asserts() {
     mkdir -p "$oracle"
     cp "$call_app" "$oracle/StringComparisonCall.dll"
     cp "${call_app%.dll}.runtimeconfig.json" "${call_app%.dll}.deps.json" "$oracle/"
-    gate_python gates/fixtures/string-comparison-call/patch-call.py "$oracle/StringComparisonCall.dll"
+    dotnet "$call_app" "$oracle/StringComparisonCall.dll"
     invoke_cli "$oracle/StringComparisonCall.dll" -r "$_CG_CORELIB" -o "$fixture"
     compile_console "$fixture" StringComparisonCall
     gate_capture_ok "$out/assert-expected-11" run_bounded dotnet "$oracle/StringComparisonCall.dll"
@@ -274,6 +272,7 @@ gate_extra_asserts() {
 
     gate_output compare "$actual" "$expected"
     for line in 'direct both null valid=True' 'direct ignore case=True' \
+        'direct String overrides=True:False:True:abc:True' 'direct span trim=X:Xba:abbaX:X' \
         "direct both null invalid=ArgumentException:The string comparison type passed in is currently not supported. (Parameter 'comparisonType')" \
         "direct same invalid=ArgumentException:The string comparison type passed in is currently not supported. (Parameter 'comparisonType')" \
         'virtual both null valid=NullReferenceException:Object reference not set to an instance of an object.' \
@@ -391,6 +390,14 @@ gate_extra_asserts() {
     gate_output compare "$out/assert-prefix-35.stdout" "$out/assert-before-35.stdout"
     gate_output witness "$native" 'null-terminated string views end' --count 1 --policy crlf \
         || { echo 'FAIL: null-terminated string views did not run' >&2; exit 1; }
+    gate_capture_ok "$out/assert-before-span-and-rune-split" run_bounded dotnet "$_CG_APP" before-span-and-rune-split
+    gate_output select "$native" "$out/span-and-rune-split-prefix.stdout" --before '== String span and Rune split ==' --policy crlf
+    gate_output compare "$out/span-and-rune-split-prefix.stdout" "$out/assert-before-span-and-rune-split.stdout"
+    for line in 'span-separators [5](""|"a"|"b"|""|"")' 'rune-surrogates [4](""|"a"|"🌰"|"")' \
+        'rune-bad-count ArgumentOutOfRangeException:count' 'rune-bad-options ArgumentException:options'; do
+        gate_output witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
+    gate_output witness "$native" 'String public API coverage end' --count 1 --policy crlf
 }
 
 corelib_diff_gate StringCore System.Linq

@@ -142,6 +142,14 @@ internal sealed partial class MethodCompiler
 
     private void EmitLayoutFieldAddress(ClassInfo cls, FieldInfo fld)
     {
+        if (cls is { FullName: "System.String", Module.AssemblyName: "System.Private.CoreLib" }
+            && fld.Name == "_firstChar" && !fld.IsStatic && fld.Type.Primitive == PrimitiveTypeCode.Char)
+        {
+            var str = Pop();
+            Push(StackKind.Ptr, "char16_t*", $"(char16_t*)dn2cpp_null_check({Cast(str, "Dn2CppString*")})->chars");
+            Top = Top with { StaticType = TypeDesc.MakeByRef(fld.Type) };
+            return;
+        }
         NoteFieldOwnerLayout(cls);
         var obj = Pop();
         string wantPtr = CppTypes.FieldOf(fld) + "*";
