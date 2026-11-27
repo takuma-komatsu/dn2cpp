@@ -11,8 +11,8 @@ namespace AmbiguousDefault
     {
     }
 
-    // Named only through typeof, so MakeGenericType synthesizes the receiver
-    // from a runtime template.
+    // Its constructor must stay on the runtime template so the ambiguity
+    // stubs read the closed receiver type synthesized by MakeGenericType.
     public sealed class BothOf<T> : ILeft, IRight
     {
     }
@@ -86,7 +86,7 @@ namespace AmbiguousDefault
 
             Console.WriteLine("== a MakeGenericType receiver ==");
             Type made = typeof(BothOf<>).MakeGenericType(typeof(int));
-            IBase madeValue = (IBase)Activator.CreateInstance(made);
+            IBase madeValue = (IBase)made.GetConstructor(Type.EmptyTypes).Invoke(null);
             Console.WriteLine("made plain: " + madeValue.Plain());
             try
             {
