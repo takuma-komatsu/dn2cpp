@@ -87,6 +87,9 @@ namespace ConvertParse
             if (args.Length > 0 && args[0] == "before-annotated-attributes")
                 return;
             TypeConverterSrSubset.Program.RunAnnotatedAttributes();
+            if (args.Length > 0 && args[0] == "before-generic-type-converter")
+                return;
+            TypeConverterSrSubset.Program.RunGenericConverter();
         }
     }
 }

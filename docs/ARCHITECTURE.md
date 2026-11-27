@@ -415,7 +415,8 @@ values in annotated constructor parameters and named properties, including
 inherited setters. Reading an attribute row as metadata does not apply its
 constructor or setter contracts. `TypeDescriptor.GetConverter(Type)` on a
 known type admits its selected Type-valued framework converter attribute
-without admitting other framework attributes.
+without admitting other framework attributes. In ILDiet, a symbolic generic
+instance can select that row because the row belongs to its type definition.
 `RuntimeHelpers.GetUninitializedObject` allocates a known type without invoking
 an instance constructor. It reaches the precise-init initializers on the base
 chain. Its annotated `Type` parameter keeps instance constructors callable
