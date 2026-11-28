@@ -5,6 +5,8 @@ namespace Dn2Cpp;
 
 internal sealed partial class Compilation
 {
+    internal bool MakesGenericMethods { get; set; }
+
     private readonly Dictionary<string, bool> _reflectionMetadataFormats = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _reflectionMetadataMatches = new(StringComparer.Ordinal);
     private readonly HashSet<string> _nativeReflectionMetadata = new(StringComparer.Ordinal);

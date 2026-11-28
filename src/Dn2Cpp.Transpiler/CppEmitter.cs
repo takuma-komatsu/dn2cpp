@@ -3224,6 +3224,8 @@ internal sealed partial class CppEmitter
         // cache must never hold an answer from before.
         if (_relationRowSets is { } rrs)
             sb.AppendLine($"    dn2cpp_set_relation_rows({rrs.Sym}, {rrs.Count});");
+        if (_methodConstraintDeclarationCount != 0)
+            sb.AppendLine($"    dn2cpp_register_constraint_declarations(method_constraint_declarations, {_methodConstraintDeclarationCount});");
         // The corrected bases the same way: every chain walk must see one chain.
         foreach (var (handle, baseRef) in _runtimeHandleBases)
             sb.AppendLine($"    dn2cpp_intrinsic_set_base({handle}, {baseRef});");

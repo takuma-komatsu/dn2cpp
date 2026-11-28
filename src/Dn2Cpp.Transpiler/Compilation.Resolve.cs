@@ -3871,7 +3871,7 @@ internal sealed partial class Compilation
         }
     }
 
-    private (Module Module, TypeDefinitionHandle Handle)? TypeDefinitionOf(Module module, EntityHandle type)
+    internal (Module Module, TypeDefinitionHandle Handle)? TypeDefinitionOf(Module module, EntityHandle type)
     {
         switch (type.Kind)
         {

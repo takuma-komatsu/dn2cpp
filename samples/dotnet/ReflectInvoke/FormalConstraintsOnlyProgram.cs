@@ -41,6 +41,8 @@ internal static class FormalConstraintsOnlyProgram
         if (args.Length > 0 && args[0] == "open-generic-signatures")
         {
             ReflectGenericMethodSubset.Program.RunOpenSignatures();
+            ReflectInvoke.ClosedMethodConstraints.RunSparseComparable();
+            Console.WriteLine("library nested enum: " + typeof(LibBox<int>.Kind).IsEnum);
             return;
         }
         if (args.Length > 0 && args[0] == "unloaded-open-signatures")

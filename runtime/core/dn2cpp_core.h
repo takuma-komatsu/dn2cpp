@@ -1125,6 +1125,13 @@ struct Dn2CppGenericTypeMetadata
     bool hasParameterCustomAttributes = false;
 };
 
+struct Dn2CppConstraintDeclaration
+{
+    const Dn2CppTypeInfo* type;
+    const Dn2CppGenericTypeMetadata* metadata;
+};
+void dn2cpp_register_constraint_declarations(const Dn2CppConstraintDeclaration* declarations, int32_t count);
+
 // Only a definition with retained attributes needs the table for its formal types.
 struct Dn2CppAnnotatedGenericTypeMetadata : Dn2CppGenericTypeMetadata
 {
@@ -2264,6 +2271,7 @@ inline constexpr const char* DN2CPP_SR_NOT_ENOUGH_GEN_ARGUMENTS = "Argument_NotE
 inline constexpr const char* DN2CPP_SR_MEMBER_INFO_NOT_FOUND = "Arg_MemberInfoNotFound";
 inline constexpr const char* DN2CPP_SR_NOT_GENERIC_TYPE_DEFINITION = "Arg_NotGenericTypeDefinition";
 inline constexpr const char* DN2CPP_SR_GENERIC_ARGS_COUNT = "Argument_GenericArgsCount";
+inline constexpr const char* DN2CPP_SR_GENERIC_CONSTRAINT_VIOLATION = "Argument_GenConstraintViolation";
 inline constexpr const char* DN2CPP_SR_NEVER_VALID_GENERIC_ARGUMENT = "Argument_NeverValidGenericArgument";
 inline constexpr const char* DN2CPP_SR_OBJECT_DISPOSED = "ObjectDisposed_Generic";
 inline constexpr const char* DN2CPP_SR_ACCESSOR_CLOSED = "ObjectDisposed_ViewAccessorClosed";
@@ -2472,8 +2480,8 @@ inline constexpr const char* DN2CPP_SR_NULL_TASK = "Task_MultiTaskContinuation_N
 inline constexpr const char* DN2CPP_SR_EMPTY_TASK_LIST = "Task_MultiTaskContinuation_EmptyTaskList";
 inline constexpr const char* DN2CPP_SR_WAIT_NULL_TASK = "Task_WaitMulti_NullTask";
 const char* dn2cpp_sr_text(const char* key);
-// The key's text with `{0}`..`{argc-1}` replaced by `args` (argc at most 3), or null
-// when the text is absent.
+// Substitute the supplied managed strings for numbered resource placeholders.
+// An image without text for the key returns null.
 Dn2CppString* dn2cpp_sr_message(const char* key, Dn2CppString* const* args, int32_t argc);
 // Dynamic side-chain of the type-name registry: type-infos constructed at run
 // time (the hot-update loader's patch types) registered by CLR FullName.

@@ -566,6 +566,8 @@ namespace ReflectGenericMethodSubset
             DefinitionBoundary("template-unreached", template, "Never", Activator.CreateInstance(template),
                 typeof(string), 8);
             Console.WriteLine("generic method AOT instantiations end");
+
+            ReflectInvoke.ClosedMethodConstraints.Run();
         }
 
         private static void DefinitionBoundary(string label, Type owner, string name, object? receiver,
@@ -1337,6 +1339,50 @@ namespace ReflectGenericMethodSubset
             Console.WriteLine($"basedef-root => {baseW.GetBaseDefinition().DeclaringType!.Name}");
             MethodInfo nv = typeof(DerV).GetMethod("NV")!;
             Console.WriteLine($"basedef-nonvirtual => {nv.GetBaseDefinition().DeclaringType!.Name}");
+        }
+    }
+}
+
+namespace ReflectInvoke
+{
+    using ReflectGenericMethodSubset;
+
+    internal static class ClosedMethodConstraints
+    {
+        public static U Comparable<U>(U value) where U : IComparable<U> => value;
+
+        internal static void Run()
+        {
+            MethodInfo constructor = typeof(DefinitionSignatureOwner).GetMethod(nameof(DefinitionSignatureOwner.NewConstrained))!;
+            MethodInfo comparable = typeof(ClosedMethodConstraints).GetMethod(nameof(Comparable))!;
+            var factory = DefinitionSignatureOwner.NewConstrained(Task.Factory);
+            Check("missing constrained body", constructor, typeof(DefinitionConstraintBase), null);
+            Console.WriteLine("== closed method constraints ==");
+            Check("constructor valid", constructor, typeof(TaskFactory), factory);
+            Check("constructor invalid", constructor, typeof(string), "text");
+            Check("interface invalid", comparable, typeof(object), factory);
+        }
+
+        internal static void RunSparseComparable()
+        {
+            var definition = typeof(ClosedMethodConstraints).GetMethod(nameof(Comparable))!;
+            Check("interface valid", definition, typeof(string), Comparable("text"));
+        }
+
+        private static void Check(string label, MethodInfo definition, Type argument, object? value)
+        {
+            MethodInfo closed;
+            try
+            {
+                closed = definition.MakeGenericMethod(argument);
+            }
+            catch (Exception error)
+            {
+                Console.WriteLine(label + " " + error.GetType().Name + ": " + error.Message);
+                return;
+            }
+            Console.WriteLine(label + " argument=" + (closed.GetGenericArguments()[0] == argument)
+                + " invoke=" + ReferenceEquals(closed.Invoke(null, new[] { value }), value));
         }
     }
 }

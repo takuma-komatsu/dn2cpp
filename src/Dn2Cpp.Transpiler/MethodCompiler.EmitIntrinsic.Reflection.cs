@@ -1090,6 +1090,7 @@ internal sealed partial class MethodCompiler
             // (the AOT boundary, like MakeGenericType).
             case ("System.Reflection.MethodInfo", "MakeGenericMethod") when sig.ParameterTypes.Length == 1:
             {
+                Comp.MakesGenericMethods = true;
                 var types = Pop();
                 var m = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",

@@ -1690,6 +1690,7 @@ internal sealed partial class CppEmitter
             NoteRuntimeObjectDefinitions();
             NoteReflectedMemberTypes();
             _c.NoteNullableContextEnclosureHandles();
+            NoteMethodConstraintDeclarations();
 
             // The note pass also discovers custom-modifier types. Unlike member
             // parameter types, those are erased by the main TypeDesc signature and

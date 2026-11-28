@@ -48,6 +48,7 @@
 # Parameterless Activator binding respects constructor visibility and declared type initializers.
 # The metadata codec probe checks shared missing-body/invoker refusals through every entry.
 # Generic method lookups and enumeration return one definition with stable parameter identities.
+# Closed generic methods check constructor and interface constraints before reporting missing AOT code.
 # Formal parameters retain their typical declaring methods, defining assembly and allocation guards.
 # Open signatures and public compositions preserve formal identities without executable bodies.
 # Formal constraints preserve typical type/method parameters, recursive identities and transitive interfaces.
@@ -1409,6 +1410,8 @@ gate_extra_asserts() {
         boundary_file="$out/generic-method-boundary.$axis.stdout"
         gate_output view "$boundary_file" "$boundary_file.records" --policy crlf
         boundary="$boundary_file.records"
+        gate_output select "$boundary_file" "$out/closed-method-constraints.$axis.stdout" \
+            --from '== closed method constraints ==' --policy crlf || return 1
         reflection_assert_lines "$boundary_file" any \
             '== generic method AOT instantiations ==' 'generic method AOT instantiations end'
         for line in unreached missing-argument template-unreached; do
@@ -1423,8 +1426,18 @@ gate_extra_asserts() {
             reflection_assert_lines "$boundary_file" any \
                 'definition boundary unreached result=never:Int32:8' \
                 'definition boundary missing-argument result=Boolean:8' \
-                'definition boundary template-unreached result=Int64:8'
+                'definition boundary template-unreached result=Int64:8' \
+                'missing constrained body argument=True invoke=True'
+        else
+            gate_output witness "$boundary_file" \
+                'missing constrained body PlatformNotSupportedException: ReflectGenericMethodSubset.DefinitionSignatureOwner::NewConstrained[ReflectGenericMethodSubset.DefinitionConstraintBase] in ReflectInvoke: this closed generic instantiation has no compiled code; fix: name the closed generic instantiation statically' --policy crlf || return 1
         fi
+    done
+    gate_output compare "$out/closed-method-constraints.native.stdout" "$out/closed-method-constraints.dotnet.stdout" --policy crlf || return 1
+    gate_output byte-witness "$out/closed-method-constraints.native.stdout" \
+        'constructor valid argument=True invoke=True' --policy crlf || return 1
+    for line in constructor interface; do
+        gate_output match-record "$out/closed-method-constraints.native.stdout" "^$line invalid ArgumentException: .+" --policy crlf || return 1
     done
 
     if reflection_full_profile; then
