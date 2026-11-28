@@ -92,7 +92,7 @@ e-give:CultureInfo:''
 e-prov:P:CultureInfo
 f-asm:ok
 f-mod:ok
-g-sv:PlatformNotSupportedException
+g-sv:ok
 == span TryFormat provider ==
   d inv@de c=[1,234.50] u8=[1,234.50] okc=True okb=True nc=8 nb=8
   f inv@de c=[1,234.50] u8=[1,234.50] okc=True okb=True nc=8 nb=8

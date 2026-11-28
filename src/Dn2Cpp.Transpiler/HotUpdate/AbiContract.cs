@@ -46,8 +46,9 @@ internal static class AbiContract
     /// 9 = AggregateException subclasses reserve the runtime collection prefix.
     /// 10 = Task async-result state and DateTimeFormatInfo fields use runtime storage.
     /// 11 = delegates track whether a multicast node has snapshotted their binding.
+    /// 12 = SearchValues instances carry a managed object header.
     /// Bump on any future layout-mapping change.</summary>
-    public const int LayoutPolicyVersion = 11;
+    public const int LayoutPolicyVersion = 12;
 
     /// <summary>Serializes canonical contract v1 over the emitted classes. The
     /// serialization is symbolic — type names and base chains, layout

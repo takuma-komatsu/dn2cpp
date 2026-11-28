@@ -15,9 +15,10 @@
 // `hi` overflow array — and the set itself, via a static field — stay reachable; `hi`
 // holds no managed pointers so it uses the atomic (unscanned) heap.
 template <typename T>
-static Dn2CppSearchValues* sv_create(const T* vals, int32_t n)
+static Dn2CppSearchValues* sv_create(const T* vals, int32_t n, const Dn2CppTypeInfo* type)
 {
     Dn2CppSearchValues* sv = static_cast<Dn2CppSearchValues*>(dn2cpp_alloc(sizeof(Dn2CppSearchValues)));
+    sv->type = type;
     int32_t hiN = 0;
     for (int32_t i = 0; i < n; i++)
         if (static_cast<uint32_t>(vals[i]) > 255u) hiN++;
@@ -44,8 +45,8 @@ static Dn2CppSearchValues* sv_create(const T* vals, int32_t n)
     return sv;
 }
 
-Dn2CppSearchValues* dn2cpp_search_values_create_u8(const uint8_t* vals, int32_t n) { return sv_create<uint8_t>(vals, n); }
-Dn2CppSearchValues* dn2cpp_search_values_create_u16(const uint16_t* vals, int32_t n) { return sv_create<uint16_t>(vals, n); }
+Dn2CppSearchValues* dn2cpp_search_values_create_u8(const uint8_t* vals, int32_t n, const Dn2CppTypeInfo* type) { return sv_create(vals, n, type); }
+Dn2CppSearchValues* dn2cpp_search_values_create_u16(const uint16_t* vals, int32_t n, const Dn2CppTypeInfo* type) { return sv_create(vals, n, type); }
 
 static inline bool sv_contains(const Dn2CppSearchValues* sv, uint32_t v)
 {
@@ -98,9 +99,10 @@ int32_t dn2cpp_search_values_contains_u16(uint16_t value, const Dn2CppSearchValu
 // total: an empty candidate makes IndexOfAny answer 0 for EVERY input, the empty
 // span included ("".AsSpan().IndexOfAny(sv) == 0, not -1). The scan below models
 // that by running its start position to n INCLUSIVE.
-Dn2CppSearchValues* dn2cpp_search_values_create_str(Dn2CppString** vals, int32_t n, int32_t ignoreCase)
+Dn2CppSearchValues* dn2cpp_search_values_create_str(Dn2CppString** vals, int32_t n, int32_t ignoreCase, const Dn2CppTypeInfo* type)
 {
     Dn2CppSearchValues* sv = static_cast<Dn2CppSearchValues*>(dn2cpp_alloc(sizeof(Dn2CppSearchValues)));
+    sv->type = type;
     dn2cpp_gc_store_ref(
         &sv->strs,
         static_cast<Dn2CppString**>(dn2cpp_alloc(static_cast<size_t>(n) * sizeof(Dn2CppString*))));

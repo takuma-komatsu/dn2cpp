@@ -1422,9 +1422,11 @@ internal sealed partial class MethodCompiler
                         $"SearchValues.Create<{elemTd}>: only byte/char element types are supported");
                 string ptrCt = suffix == "u8" ? "const uint8_t*" : "const uint16_t*";
                 string sv = SpanValue(Pop(), CppTypes.Of(sig.ParameterTypes[0]));
+                string typeInfo = TypeInfoExpr(sig.ReturnType)
+                    ?? throw new InvalidOperationException("SearchValues.Create requires a closed return type");
                 string r = NewTemp("Dn2CppSearchValues*");
-                Emit($"{r} = dn2cpp_search_values_create_{suffix}(({ptrCt}){sv}.f__reference, {sv}.f__length);");
-                Push(StackKind.Ref, "Dn2CppSearchValues*", r);
+                Emit($"{r} = dn2cpp_search_values_create_{suffix}(({ptrCt}){sv}.f__reference, {sv}.f__length, {typeInfo});");
+                Push(StackKind.Ref, "Dn2CppSearchValues*", r, sig.ReturnType);
                 return true;
             }
             // SearchValues.Create(ReadOnlySpan<string> values, StringComparison) — the
@@ -1438,10 +1440,12 @@ internal sealed partial class MethodCompiler
             {
                 var cmp = Pop();
                 string ssv = SpanValue(Pop(), CppTypes.Of(sig.ParameterTypes[0]));
+                string typeInfo = TypeInfoExpr(sig.ReturnType)
+                    ?? throw new InvalidOperationException("SearchValues.Create requires a closed return type");
                 string r = NewTemp("Dn2CppSearchValues*");
                 Emit($"{r} = dn2cpp_search_values_create_str((Dn2CppString**){ssv}.f__reference, "
-                     + $"{ssv}.f__length, (({cmp.Expr}) == 5 ? 1 : 0));");
-                Push(StackKind.Ref, "Dn2CppSearchValues*", r);
+                     + $"{ssv}.f__length, (({cmp.Expr}) == 5 ? 1 : 0), {typeInfo});");
+                Push(StackKind.Ref, "Dn2CppSearchValues*", r, sig.ReturnType);
                 return true;
             }
             // SearchValues<byte|char>.Contains(value) — the single-element membership

@@ -42,10 +42,7 @@
 # empty" discipline; DateTimeFormatInfo.Calendar's getter and non-null setter trap
 # the same way after .NET's read-only and null checks; and GetCultures / NativeName / DisplayName answer for the
 # invariant culture alone, those being ICU inventory and display-name questions
-# dn2cpp carries no table for. The third belongs to the escape sections below: the
-# loud trap for SearchValues<T> prints a refusal where real .NET prints "ok"
-# (Assembly/Module wrap instead, so their lines print the "ok" real .NET prints).
-# Everything else is byte-identical against real .NET under en_US and de_DE.
+# dn2cpp carries no table for.
 # CoreLib only. An allocated CultureInfo subclass overriding CompareInfo and
 # reached by virtual dispatch is refused at transpile time.
 # The appended culture-name section diffs against live .NET: validation,
@@ -92,11 +89,7 @@
 #     f_method carries one NFI-erased ABI), a `constrained.` GetType in a generic
 #     body, the erased interface slot of a NON-GENERIC implementer (which failed
 #     silently, with an empty CultureInfo.Name), and the reflection Invoke thunk
-#     shape. Its tail asserts the other headerless representations:
-#     Assembly/Module WRAP (f-asm/f-mod print real .NET's "ok"; the deep asserts
-#     are ReflectTypes' AssemblyIdentitySubset), while SearchValues<T> — whose
-#     .NET identity is a private per-shape subclass with no fixed handle to
-#     carry — keeps the LOUD TRAP.
+#     shape. Its tail also checks managed Assembly, Module and SearchValues identity.
 source "$(dirname "$0")/_common.sh"
 
 gate_run_logs_init culture_info_api "CultureInfoApi runs"
