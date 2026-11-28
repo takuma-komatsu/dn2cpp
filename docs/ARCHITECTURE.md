@@ -1906,6 +1906,17 @@ wins while another thread runs the delegate, its later finish raises
 `InvalidCastException` and appends any delegate fault after the rejection.
 The task signals its continuations once.
 
+`Task.Factory.StartNew` assigns the task's closed result type and its scheduler
+before handing it to managed `QueueTask`. A factory task observes cancellation
+when the scheduler executes it, including when its token was already canceled.
+`ContinueWith` waits for its antecedent and applies its outcome filter before
+dispatch. The assigned scheduler receives eligible continuations. A queue
+rejection faults the continuation. Cancellation can withdraw queued continuation work via
+`TryDequeue`. With `ExecuteSynchronously`, the scheduler first receives an inline
+offer unless the pending antecedent required asynchronous continuations.
+`RunSynchronously` also offers inline execution, queues after a refusal, and
+waits for the task to settle.
+
 CoreLib's protected `TaskScheduler.TryExecuteTask(Task)` checks the assigned
 scheduler before claiming its delegate. A managed scheduler runs its queued task
 once on the calling thread. A canceled task returns true to its owner even on

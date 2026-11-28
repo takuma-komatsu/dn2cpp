@@ -145,6 +145,9 @@ namespace AsyncCombinators
             if (args.Length == 1 && args[0] == "before-pool-scheduler")
                 return;
             TaskFactorySubset.Program.RunPoolScheduler();
+            if (args.Length == 1 && args[0] == "before-managed-scheduler")
+                return;
+            ColdTaskScheduleSubset.Program.RunManagedDispatch();
         }
     }
 }

@@ -1095,22 +1095,21 @@ internal sealed partial class MethodCompiler
                 }
                 if (schedulerHint is { } sh)
                     EmitArgumentRequired(sh, "scheduler");
-                string scheduler = TaskSchedulerArgument(schedulerHint);
+                string scheduler = TaskDispatchArgument(schedulerHint, sig.ParameterTypes, sig.ReturnType);
                 EmitCanceledExcRegistration();
                 if (hasState)
                 {
                     var state = Pop(); // object? state (passed to the delegate)
                     var del = Pop();   // Action<object?>
                     Pop();             // factory receiver
-                    PushStampedTask(
-                        $"dn2cpp_task_run_void_state((Dn2CppObject*)({del.Expr}), {Cast(state, "Dn2CppObject*")}, {options}, {source}, {scheduler})",
-                        sig.ReturnType);
+                    Push(StackKind.Ref, "Dn2CppTask*",
+                        $"dn2cpp_task_run_void_state((Dn2CppObject*)({del.Expr}), {Cast(state, "Dn2CppObject*")}, {options}, {source}, {scheduler})");
                 }
                 else
                 {
                     var del = Pop(); // Action
                     Pop();           // factory receiver
-                    PushStampedTask($"dn2cpp_task_run_void((Dn2CppObject*)({del.Expr}), {options}, {source}, {scheduler})", sig.ReturnType);
+                    Push(StackKind.Ref, "Dn2CppTask*", $"dn2cpp_task_run_void((Dn2CppObject*)({del.Expr}), {options}, {source}, {scheduler})");
                 }
                 return true;
             }
@@ -1205,22 +1204,17 @@ internal sealed partial class MethodCompiler
                     ? Cast(Pop(), "Dn2CppObject*")
                     : "dn2cpp_taskscheduler_current()";
                 var t = Pop();
-                string queue = Comp.TaskSchedulerQueue is { } callbacks && (sig.ParameterTypes.Length == 0
-                    || sig.ParameterTypes is [{ Class: { } owner }] && owner == callbacks.Queue.DeclaringClass)
-                    ? ", &dn2cpp_image_task_scheduler_queue" : "";
-                Emit($"dn2cpp_task_start((Dn2CppTask*)({t.Expr}), {scheduler}{queue});");
+                string queue = TaskSchedulerQueueArgument(sig.ParameterTypes);
+                Emit($"dn2cpp_task_start((Dn2CppTask*)({t.Expr}), {scheduler}, {queue});");
                 return true;
             }
-            // Task.RunSynchronously([TaskScheduler]) — claim a cold task's work and
-            // run it inline on the calling thread. A fault settles the task FAULTED
-            // (observed at Wait/Result/await), it is not re-thrown here — matching
-            // real .NET. State-specific InvalidOperationException messages and
-            // validation order are handled by the runtime claim.
             case ("System.Threading.Tasks.Task", "RunSynchronously"):
             {
-                string scheduler = sig.ParameterTypes.Length == 1 ? $", {Cast(Pop(), "Dn2CppObject*")}" : "";
-                var t = Pop();
-                Emit($"dn2cpp_task_run_synchronously((Dn2CppTask*)({t.Expr}){scheduler});");
+                string scheduler = sig.ParameterTypes.Length == 1
+                    ? Cast(Pop(), "Dn2CppObject*")
+                    : "dn2cpp_taskscheduler_current()";
+                var task = Pop();
+                Emit($"dn2cpp_task_run_synchronously((Dn2CppTask*)({task.Expr}), {scheduler}, {TaskSchedulerQueueArgument(sig.ParameterTypes)});");
                 return true;
             }
             // Task.WaitAsync(CancellationToken) -> a task mirroring this one's outcome that
@@ -1278,9 +1272,9 @@ internal sealed partial class MethodCompiler
                     EmitArgumentRequired(cs, "scheduler");
                 string stateExpr = cwState is null ? "nullptr" : Cast(cwState, "Dn2CppObject*");
                 string kind = cwHasState ? "DN2CPP_CONTWITH_VOID_STATE" : "DN2CPP_CONTWITH_VOID";
-                PushStampedTask(
+                Push(StackKind.Ref, "Dn2CppTask*",
                     $"dn2cpp_task_continue_with((Dn2CppTask*)({cwT.Expr}), (Dn2CppObject*)({cwD.Expr}), "
-                    + $"{stateExpr}, {kind}, {cwOpts}, {cwSource}, {ContinuationSchedulerArguments(cwScheduler)})", sig.ReturnType);
+                    + $"{stateExpr}, {kind}, {cwOpts}, {cwSource}, {TaskDispatchArgument(cwScheduler, sig.ParameterTypes, sig.ReturnType)})");
                 return true;
             }
             // ---- TaskCompletionSource(<T>) -----------------------------------------
@@ -1644,11 +1638,17 @@ internal sealed partial class MethodCompiler
     private void EmitArgumentRequired(StackEntry argument, string paramName) =>
         Emit($"if ({Cast(argument, "Dn2CppObject*")} == nullptr) dn2cpp_throw_argument_null_param(\"{paramName}\");");
 
-    private string TaskSchedulerArgument(StackEntry? scheduler) => scheduler is { } s
-        ? Cast(s, "Dn2CppObject*") : "dn2cpp_taskscheduler_current()";
+    private string TaskSchedulerQueueArgument(System.Collections.Immutable.ImmutableArray<TypeDesc> parameters) =>
+        Comp.TaskSchedulerQueue is { } callbacks && (parameters.Length == 0
+            || parameters[^1].Class is not { FullName: "System.Threading.Tasks.TaskScheduler" } owner
+            || owner == callbacks.Queue.DeclaringClass) ? "&dn2cpp_image_task_scheduler_queue" : "nullptr";
 
-    private string ContinuationSchedulerArguments(StackEntry? scheduler) =>
-        $"{(scheduler is null ? "false" : "true")}, {TaskSchedulerArgument(scheduler)}";
+    private string TaskDispatchArgument(StackEntry? scheduler, System.Collections.Immutable.ImmutableArray<TypeDesc> parameters, TypeDesc taskType)
+    {
+        string value = scheduler is { } s ? Cast(s, "Dn2CppObject*") : "dn2cpp_taskscheduler_current()";
+        string queue = TaskSchedulerQueueArgument(parameters);
+        return $"{{ {value}, {queue}, {TaskTypeInfo(taskType)} }}";
+    }
 
     // Callvirt faults after argument evaluation and before the helper validates them.
     private string PopBuilderReceiver()

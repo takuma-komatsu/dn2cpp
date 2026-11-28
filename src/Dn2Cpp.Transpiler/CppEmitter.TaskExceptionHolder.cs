@@ -15,7 +15,7 @@ internal sealed partial class CppEmitter
         text.AppendLine($"    {ctor.Emittable.CppName}(({exception.CppStructName}*)error, ({CppTypes.Of(ctor.Signature.ParameterTypes[0])})inner);");
         text.AppendLine("    return error;");
         text.AppendLine("}");
-        text.AppendLine($"extern const Dn2CppTaskSchedulerQueue dn2cpp_image_task_scheduler_queue = {{ {queue.Queue.VtableSlot}, {queue.Dequeue.VtableSlot}, &dn2cpp_image_wrap_scheduler_exception }};");
+        text.AppendLine($"extern const Dn2CppTaskSchedulerQueue dn2cpp_image_task_scheduler_queue = {{ {queue.Queue.VtableSlot}, {queue.Dequeue.VtableSlot}, &dn2cpp_image_wrap_scheduler_exception, {queue.Inline?.VtableSlot ?? -1} }};");
     }
 
     private void EmitTaskExceptionHolderHooks(CppOutput output)
