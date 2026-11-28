@@ -1036,7 +1036,7 @@ DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_decimal,
 #undef DN2CPP_DECFLD_ROW
 
 extern const Dn2CppType dn2cpp_decimal_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_decimal_type_reflection, dn2cpp_ownflds_decimal, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_decimal_type_reflection, dn2cpp_ownflds_decimal, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, {}, 0, DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR);
 const Dn2CppTypeInfo dn2cpp_decimal_type = dn2cpp_ti_with_formatspec(
     dn2cpp_ti_with_typeobject({ "System.Decimal", nullptr, nullptr, nullptr, &dn2cpp_decimal_box_tostring, &dn2cpp_decimal_box_hash, &dn2cpp_decimal_box_equals, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppDecimal), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_decimal_type_reflection }, &dn2cpp_decimal_type_obj),
     &dn2cpp_decimal_box_formatspec);

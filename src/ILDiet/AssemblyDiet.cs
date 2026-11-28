@@ -311,11 +311,11 @@ internal sealed partial class AssemblyDiet : IDisposable
                 foreach (var method in type.Methods)
                     if (traversedCopy
                         || ((assembly.Index == 0 && !_suppressDefaultSeeds.Contains(type) || type.Name == "<Module>")
-                            && method.IsConstructor && method.IsStatic)
+                            && IsRuntimeStaticCtor(method))
                         || HasAttribute(method, "System.Runtime.InteropServices.UnmanagedCallersOnlyAttribute")
                         || HasAttribute(method, "Dn2Cpp.Runtime.NativeImplementationAttribute")
                         || assembly.Index == 0 && app.EntryPoint is null && PublicType(type)
-                            && !_suppressDefaultSeeds.Contains(type) && (method.IsPublic || method.IsConstructor))
+                            && !_suppressDefaultSeeds.Contains(type) && (method.IsPublic || IsRuntimeCtor(method)))
                         MarkMethod(method);
             }
         }
@@ -326,6 +326,15 @@ internal sealed partial class AssemblyDiet : IDisposable
                 catch (AssemblyResolutionException) { }
             }
     }
+
+    private static bool IsRuntimeInstanceCtor(MethodDefinition method) =>
+        method.IsRuntimeSpecialName && !method.IsStatic && method.Name == ".ctor";
+
+    private static bool IsRuntimeStaticCtor(MethodDefinition method) =>
+        method.IsRuntimeSpecialName && method.IsStatic && method.Name == ".cctor";
+
+    private static bool IsRuntimeCtor(MethodDefinition method) =>
+        IsRuntimeInstanceCtor(method) || IsRuntimeStaticCtor(method);
 
     private static bool PublicType(TypeDefinition type) => type.IsPublic
         || type.IsNestedPublic && type.DeclaringType is not null && PublicType(type.DeclaringType);
@@ -585,7 +594,7 @@ internal sealed partial class AssemblyDiet : IDisposable
             || attribute.AttributeType.FullName != DebuggerProxyRetention.AttributeName
             || attribute.Constructor.Parameters.Count != 1
             || ResolveMember(attribute.Constructor) is not MethodDefinition constructor
-            || !constructor.IsConstructor || constructor.IsStatic || constructor.Parameters.Count != 1) return false;
+            || !IsRuntimeInstanceCtor(constructor) || constructor.Parameters.Count != 1) return false;
         return DebuggerProxyRetention.IsProxyTypeConstructor(constructor.DeclaringType.FullName,
             constructor.Module.Assembly.Name.Name == "System.Private.CoreLib", constructor.Parameters[0].ParameterType.FullName);
     }
@@ -663,7 +672,7 @@ internal sealed partial class AssemblyDiet : IDisposable
         foreach (var method in type.Methods)
             if ((kind & PreserveKind.Methods) != 0 || IsDelegate(type)
                     && !CoreIntrinsicTypeMaps.IsDelegateBaseType(type.FullName) && kind != PreserveKind.None
-                || (kind & PreserveKind.DefaultConstructor) != 0 && method.IsConstructor && !method.IsStatic && method.Parameters.Count == 0
+                || (kind & PreserveKind.DefaultConstructor) != 0 && IsRuntimeInstanceCtor(method) && method.Parameters.Count == 0
                 || methods.Contains(MetadataTokens.MethodDefinitionHandle((int)method.MetadataToken.RID)))
             {
                 MarkPreservedMethod(method);

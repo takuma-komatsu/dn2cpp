@@ -1104,13 +1104,15 @@ internal sealed partial class MethodCompiler : IEvalStack
             return null;
         RequireCoordinator("an entry initializer guard");
         TaintIfCanonical(owner, "type initializer");
-        if (!_c.Reachable.Contains(cc))
+        if (cc != owner.InvalidStaticCctor && cc.Rva != 0 && !_c.Reachable.Contains(cc))
         {
             if (Compilation.IsFrameworkEventSourceProvider(owner))
                 return null;
             throw new InvalidOperationException(
                 $"{owner.FullName}::{method.Name}: a compiled trigger's initializer was not reached");
         }
+        if (cc.Rva == 0 && Compilation.IsFrameworkEventSourceProvider(owner))
+            return null;
         NoteCctorEnsure(cc);
         return cc.CppName + "__ensure";
     }
@@ -1139,7 +1141,7 @@ internal sealed partial class MethodCompiler : IEvalStack
         if (_async is not null)
             return RenderRuntimeAsyncBody(signature, rgctxAnchor, entryGuard);
         var sb = new StringBuilder();
-        sb.AppendLine($"// {_method.DeclaringClass.FullName}::{_method.Name}");
+        sb.AppendLine($"// {SingleLineComment(_method.DeclaringClass.FullName)}::{SingleLineComment(_method.Name)}");
         // External linkage (no `static`): the body may live in a different translation unit
         // than its callers once the output is split across files; the header carries the
         // forward declaration. Unused external functions don't warn, so no [[maybe_unused]].
@@ -1338,11 +1340,14 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// header declaration, the hoisted temp declarations, and the emitted body. Shared by
     /// every synthesized-body path (the wrapper synthesizers here, the ValueEquality field
     /// walks, the HTTP shim).</summary>
+    internal static string SingleLineComment(string text) =>
+        text.Replace("\r", "\\r").Replace("\n", "\\n");
+
     private string RenderWrapperBody(string tag)
     {
         string? entryGuard = InitializerEntryGuard(_method);
         var sb = new StringBuilder();
-        sb.AppendLine($"// {_method.DeclaringClass.FullName}::{_method.Name} ({tag})");
+        sb.AppendLine($"// {SingleLineComment(_method.DeclaringClass.FullName)}::{SingleLineComment(_method.Name)} ({tag})");
         sb.AppendLine($"{Signature(_method)}");
         sb.AppendLine("{");
         if (entryGuard is not null)
@@ -2343,10 +2348,11 @@ internal sealed partial class MethodCompiler : IEvalStack
     {
         if (cls is null || cls.IntrinsicCppName is not null)
             return; // intrinsic types have no emitted cctor / no real static storage
-        if (ReferenceEquals(cls, _method.DeclaringClass) && _method.Name == ".cctor")
+        if (ReferenceEquals(cls, _method.DeclaringClass) && _method.IsStatic && _method.Name == ".cctor"
+            && (_method.Attributes & System.Reflection.MethodAttributes.RTSpecialName) != 0)
             return; // the initializing cctor's own statics: currently initializing
-        var cc = cls.StaticCctor;
-        if (cc is null)
+        var cc = cls.DeclaredStaticCctor;
+        if (cc is null || cc.Rva == 0 && Compilation.IsFrameworkEventSourceProvider(cls))
             return; // no static constructor — nothing to order
         NoteCctorEnsure(cc);
         Emit($"{cc.CppName}__ensure();");
@@ -2368,9 +2374,11 @@ internal sealed partial class MethodCompiler : IEvalStack
     {
         if (fld.IsThreadStatic)
             ThrowSharedTaint("statics", $"{fld.DeclaringClass.FullName}.{fld.Name} (thread-static)");
-        var cc = fld.DeclaringClass.StaticCctor;
+        var cc = fld.DeclaringClass.DeclaredStaticCctor;
         if (cc is not null
-            && !(ReferenceEquals(fld.DeclaringClass, _method.DeclaringClass) && _method.Name == ".cctor"))
+            && !(ReferenceEquals(fld.DeclaringClass, _method.DeclaringClass) && _method.IsStatic
+                && _method.Name == ".cctor"
+                && (_method.Attributes & System.Reflection.MethodAttributes.RTSpecialName) != 0))
             Emit($"((void(*)()){RgctxSlotAccess(RgctxSlotKind.CctorEnsureFn, token, "statics", fld.Name)})();");
         string addr = RgctxSlotAccess(RgctxSlotKind.StaticFieldAddr, token, "statics", fld.Name);
         // The rgctx slot is a void* to the real sf_ storage, so the cast must name the

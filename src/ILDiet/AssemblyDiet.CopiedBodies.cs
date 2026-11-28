@@ -693,7 +693,7 @@ internal sealed partial class AssemblyDiet
 
     private bool CopiedInterfaceImplementation(MethodDefinition method)
     {
-        if (method.IsStatic || method.IsConstructor) return false;
+        if (method.IsStatic || IsRuntimeCtor(method)) return false;
         foreach (var declaration in method.Overrides)
             if (Resolve(declaration.DeclaringType) is { IsInterface: true }) return true;
         if (!method.IsPublic) return false;
@@ -795,7 +795,7 @@ internal sealed partial class AssemblyDiet
         bool implicitVirtuals = type.FullName != "System.TypedReference"
             || Resolve(type.Module.TypeSystem.TypedReference) != type;
         foreach (var method in type.Methods)
-            if (method.IsConstructor && method.IsStatic
+            if (IsRuntimeStaticCtor(method)
                 || implicitVirtuals && (method.IsVirtual || method.HasOverrides
                     || type.IsInterface || IsDelegate(type))) MarkMethod(method);
     }

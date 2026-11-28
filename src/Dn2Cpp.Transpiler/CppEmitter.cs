@@ -1153,12 +1153,26 @@ internal sealed partial class CppEmitter
         // dependency points from a referencing assembly into its references, never back, so
         // ordering them by assembly-reference depth (CoreLib 0, the entry assembly deepest)
         // runs a library's initializer before those of the assemblies that use it.
-        var allCctors = compiledMethods.Where(m => m.Name == ".cctor" && m.IsStatic).ToList();
+        var allCctors = compiledMethods
+            .Where(m => m.IsStatic && m.Name == ".cctor" && m == m.DeclaringClass.StaticCctor)
+            .ToList();
+        var cctorSet = new HashSet<MethodInfo>(allCctors);
+        foreach (var cls in _c.Classes
+            .Where(c => c.Name == "<Module>" && c.MembersReady
+                && !Compilation.IsFrameworkAssemblyName(c.Module.AssemblyName)
+                && (c.InvalidStaticCctor ?? c.BodilessStaticCctor) is not null)
+            .OrderBy(c => (c.InvalidStaticCctor ?? c.BodilessStaticCctor)!.CppName, StringComparer.Ordinal))
+        {
+            var cc = (cls.InvalidStaticCctor ?? cls.BodilessStaticCctor)!;
+            if (cctorSet.Add(cc))
+                allCctors.Add(cc);
+        }
         var modDepth = ModuleInitDepths();
         var startupCctors = allCctors
             .Where(m => m.DeclaringClass.Name == "<Module>"
                 && !Compilation.IsFrameworkAssemblyName(m.DeclaringClass.Module.AssemblyName))
             .OrderBy(m => modDepth.GetValueOrDefault(m.DeclaringClass.Module, 0))
+            .ThenBy(m => m.CppName, StringComparer.Ordinal)
             .ToList();
         // The entry type's guard joins the wrappers below; its main runs it before Main.
         EntryInitializer = _c.EntryPoint is { } entry && _c.Reachable.Contains(entry) ? InitializerGuard(entry) : null;
@@ -1898,7 +1912,7 @@ internal sealed partial class CppEmitter
                 call = MethodCompiler.ErasedBoundaryCast(call, erasedRet, m.Signature.ReturnType, realRet);
         }
         var sb = new StringBuilder();
-        sb.AppendLine($"// {m.DeclaringClass.FullName}::{m.Name} -> shared body + this instantiation's rgctx table");
+        sb.AppendLine($"// {MethodCompiler.SingleLineComment(m.DeclaringClass.FullName)}::{MethodCompiler.SingleLineComment(m.Name)} -> shared body + this instantiation's rgctx table");
         sb.AppendLine(MethodCompiler.Signature(m));
         sb.AppendLine("{");
         sb.AppendLine(m.Signature.ReturnType.IsVoid ? $"    {call};" : $"    return {call};");
@@ -3170,6 +3184,13 @@ internal sealed partial class CppEmitter
                 + $"offsetof({canceledTask.DeclaringClass.CppStructName}, {canceledTask.CppName}));");
         sb.AppendLine("    dn2cpp_set_culture_exception_store(&dn2cpp_image_culture_exception_store);");
         sb.AppendLine("    dn2cpp_set_type_initialization_exception_store(&dn2cpp_image_type_initialization_exception_store);");
+        if (BoundInstanceField("System.TypeLoadException", "_className") is var (loadException, className))
+        {
+            sb.AppendLine("    dn2cpp_set_type_load_name_store([](Dn2CppObject* e, Dn2CppString* name) {");
+            sb.AppendLine($"        if (e->type->instanceSize >= (int32_t)sizeof({loadException.CppStructName}))");
+            sb.AppendLine($"            dn2cpp_gc_store_ref(&(({loadException.CppStructName}*)e)->{className.CppName}, name);");
+            sb.AppendLine("    });");
+        }
         // The image's per-signature vtable trap thunks, so dn2cpp_exception_message can
         // recognise a trapped get_Message slot without calling it. Before any managed
         // code, like every install below.
@@ -3228,7 +3249,8 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    dn2cpp_set_taskscheduler_identity_metadata({schedulerIdentity.Methods}, {schedulerIdentity.Props}, {schedulerIdentity.PropertyCount});");
         foreach (var (assembly, getter, property) in _assemblyCollectibilityMetadata)
         {
-            sb.AppendLine($"    static const Dn2CppTypeReflection {assembly}_reflection = {{ nullptr, 0, Dn2CppMetadataTable<Dn2CppMethodInfo>::from_raw({getter}), 1, nullptr, 0, {property}, 1 }};");
+            sb.AppendLine($"    static Dn2CppTypeReflection {assembly}_reflection = {{ nullptr, 0, Dn2CppMetadataTable<Dn2CppMethodInfo>::from_raw({getter}), 1, nullptr, 0, {property}, 1 }};");
+            sb.AppendLine($"    {assembly}_reflection.activation = {assembly}.reflection().activation;");
             sb.AppendLine($"    {assembly}.reflectionData = &{assembly}_reflection;");
         }
         for (int i = 0; i < _taskSchedulerRows.Length; i++)
@@ -3345,10 +3367,24 @@ internal sealed partial class CppEmitter
     internal string? InitializerEnsure(ClassInfo cls)
     {
         if (cls.IntrinsicCppName is not null || Compilation.ContainsCanonPlaceholder(cls)
-            || Compilation.ContainsGenericVar(cls) || cls.StaticCctor is not { } cc || !_c.Reachable.Contains(cc))
+            || Compilation.ContainsGenericVar(cls))
             return null;
-        _c.NoteCctorEnsure(cc);
-        return cc.CppName + "__ensure";
+        if (cls.InvalidStaticCctor is { } icc)
+        {
+            _c.NoteCctorEnsure(icc);
+            return icc.CppName + "__ensure";
+        }
+        if (cls.StaticCctor is { } cc && _c.Reachable.Contains(cc))
+        {
+            _c.NoteCctorEnsure(cc);
+            return cc.CppName + "__ensure";
+        }
+        if (cls.BodilessStaticCctor is { } bcc && !Compilation.IsFrameworkEventSourceProvider(cls))
+        {
+            _c.NoteCctorEnsure(bcc);
+            return bcc.CppName + "__ensure";
+        }
+        return null;
     }
 
     /// <summary>The initializer guard an emitted entry into <paramref name="m"/> runs before
@@ -3411,14 +3447,28 @@ internal sealed partial class CppEmitter
         o.Header.AppendLine("// ---- static-constructor first-use guards ----");
         foreach (var cc in targets)
         {
+            if (cc == cc.DeclaringClass.InvalidStaticCctor)
+            {
+                var owner = cc.DeclaringClass;
+                var invalidDefinition = owner.Module.Reader.GetTypeDefinition(owner.Handle);
+                string invalidName = owner.Module.Reader.GetString(invalidDefinition.Name);
+                string invalidNs = owner.Module.Reader.GetString(invalidDefinition.Namespace);
+                string fullName = invalidNs.Length == 0 ? invalidName : invalidNs + "." + invalidName;
+                o.Header.AppendLine($"inline void {cc.CppName}__ensure() {{ dn2cpp_throw_invalid_initializer("
+                    + $"{CppUtf8Literal(fullName)}, {CppUtf8Literal(owner.Module.AssemblyName)}, {(owner.IsEnum ? "true" : "false")}); }}");
+                continue;
+            }
             bool compiled = compiledSet.Contains(cc);
+            bool bodiless = !compiled && cc.Rva == 0;
             o.Header.AppendLine($"extern std::atomic<int8_t> {cc.CppName}__done;");
             // Forward-declare the cctor body so the inline wrapper can name it wherever
             // the method's own prototype lands in the header (a redundant declaration is
             // harmless); a tree-shaken cctor has no body to declare or run.
             if (compiled)
                 o.Header.AppendLine($"void {cc.CppName}();");
-            string body = compiled ? $"&{cc.CppName}" : "nullptr";
+            else if (bodiless)
+                o.Header.AppendLine($"[[noreturn]] void {cc.CppName}__bodiless();");
+            string body = compiled ? $"&{cc.CppName}" : bodiless ? $"&{cc.CppName}__bodiless" : "nullptr";
             // CLR initializer failures name the TypeDef, without enclosing types or
             // constructed generic arguments; the arity suffix remains part of its name.
             var reader = cc.DeclaringClass.Module.Reader;
@@ -3434,7 +3484,21 @@ internal sealed partial class CppEmitter
 
         o.Data.AppendLine("// ---- static-constructor first-use guards ----");
         foreach (var cc in targets)
+        {
+            if (cc == cc.DeclaringClass.InvalidStaticCctor)
+                continue;
             o.Data.AppendLine($"std::atomic<int8_t> {cc.CppName}__done{{0}};");
+            if (!compiledSet.Contains(cc) && cc.Rva == 0)
+            {
+                var reader = cc.DeclaringClass.Module.Reader;
+                var definition = reader.GetTypeDefinition(cc.DeclaringClass.Handle);
+                string ns = reader.GetString(definition.Namespace);
+                string name = reader.GetString(definition.Name);
+                string typeName = string.IsNullOrEmpty(ns) ? name : ns + "." + name;
+                o.Data.AppendLine(
+                    $"[[noreturn]] void {cc.CppName}__bodiless() {{ dn2cpp_throw_platform_not_supported({CppUtf8Literal(typeName + "::.cctor has no IL body")}); }}");
+            }
+        }
         o.Data.AppendLine();
     }
 
@@ -5071,6 +5135,10 @@ internal sealed partial class CppEmitter
             p => p.Kind == TypeKind.ByRef
                 ? ReflectionSignatureType(p.Element!) + " ByRef"
                 : ReflectionSignatureType(p)));
+        if (!m.Handle.IsNil && m.Module.Reader.GetBlobReader(
+                m.Module.Reader.GetMethodDefinition(m.Handle).Signature).ReadSignatureHeader().CallingConvention
+            == SignatureCallingConvention.VarArgs)
+            ps = ps.Length == 0 ? "..." : ps + ", ...";
         return ret + " " + name + "(" + ps + ")";
     }
 
@@ -6349,7 +6417,7 @@ internal sealed partial class CppEmitter
             if (i != 0) sb.Append(", ");
             string forwarding = i == 0 && forwarders.Count != 0
                 ? $", dn2cpp_type_forwarders, {forwarders.Count}" : "";
-            sb.Append($"{{ \"{row.Name}\", {row.Handle}, {row.Rank}, "
+            sb.Append($"{{ {CppUtf8Literal(row.Name)}, {row.Handle}, {row.Rank}, "
                 + (row.ParentWinner ? "true" : "false") + forwarding + " }");
         }
         sb.AppendLine(" };");
@@ -6916,7 +6984,7 @@ internal sealed partial class CppEmitter
     /// Everything outside printable ASCII — and the two characters a literal cannot
     /// carry raw — goes out as a three-digit OCTAL escape: <c>\xNN</c> is greedy in
     /// C++ (a following hex digit would join the escape), three-digit octal is not.</summary>
-    private static string CppUtf8Literal(string s)
+    internal static string CppUtf8Literal(string s)
     {
         var sb = new StringBuilder(s.Length + 2);
         sb.Append('"');
@@ -6930,6 +6998,29 @@ internal sealed partial class CppEmitter
                 // the self-host corpus already carries.
                 sb.Append('\\').Append((char)('0' + (b >> 6)))
                     .Append((char)('0' + ((b >> 3) & 7))).Append((char)('0' + (b & 7)));
+        }
+        sb.Append('"');
+        return sb.ToString();
+    }
+
+    // Unevaluated string literals (static_assert) reject numeric escapes in modern Clang.
+    private static string CppUnevaluatedStringLiteral(string s)
+    {
+        var sb = new StringBuilder(s.Length + 2);
+        sb.Append('"');
+        foreach (char ch in s)
+        {
+            switch (ch)
+            {
+                case '\\': sb.Append(@"\\"); break;
+                case '"': sb.Append("\\\""); break;
+                case '\n': sb.Append(@"\n"); break;
+                case '\r': sb.Append(@"\r"); break;
+                case '\t': sb.Append(@"\t"); break;
+                default:
+                    sb.Append(ch is >= ' ' and < '\x7F' ? ch : '?');
+                    break;
+            }
         }
         sb.Append('"');
         return sb.ToString();
@@ -7384,7 +7475,7 @@ internal sealed partial class CppEmitter
             string pool = $"g_dn2cpp_fnptr_dgs_{cls.CppName}";
             string thunks = $"g_dn2cpp_fnptr_thunks_{cls.CppName}";
             string poolLock = $"g_dn2cpp_fnptr_lock_{cls.CppName}";
-            sb.AppendLine($"// {cls.FullName}: {poolSize}-slot delegate pool + per-slot C-ABI thunks.");
+            sb.AppendLine($"// {MethodCompiler.SingleLineComment(cls.FullName)}: {poolSize}-slot delegate pool + per-slot C-ABI thunks.");
             sb.AppendLine($"static DN2CPP_GC_STATIC_ROOT Dn2CppObject* {pool}[{poolSize}];");
             sb.AppendLine($"static std::atomic_flag {poolLock} = ATOMIC_FLAG_INIT;");
             var thunkAddrs = new List<string>();
@@ -7857,11 +7948,8 @@ internal sealed partial class CppEmitter
     /// C++ signature when it renders — the wasm type-immediate rule above — and
     /// degrades to the historical <c>void()</c> form when it cannot. The stub passes
     /// its own address, as <see cref="SlotTrapThunk"/>'s thunks do.</summary>
-    internal string NamedSlotMissStubDef(string name, string reporter, string desc, MethodInfo decl)
-    {
-        string lit = desc.Replace("\\", "\\\\").Replace("\"", "\\\"");
-        return SlotStubDef(name, $"{reporter}(\"{lit}\", (const void*)&{name});", decl);
-    }
+    internal string NamedSlotMissStubDef(string name, string reporter, string desc, MethodInfo decl) =>
+        SlotStubDef(name, $"{reporter}({CppUtf8Literal(desc)}, (const void*)&{name});", decl);
 
     /// <summary>The statement raising .NET's AmbiguousImplementationException
     /// for <paramref name="receiver"/>. A non-null <paramref name="self"/> is
@@ -8107,7 +8195,7 @@ internal sealed partial class CppEmitter
     /// layout of <c>tn_&lt;Name&gt;</c>.</summary>
     private static string MarshalLayoutAssert(ModeledSize m, string measured, string what) =>
         $"static_assert({(m.Guarded ? "sizeof(void*) != 8 || " : "")}{measured} == {m.Text}, "
-        + $"\"{what} disagrees with Compilation.MarshalLayout\");";
+        + $"{CppUnevaluatedStringLiteral(what + " disagrees with Compilation.MarshalLayout")});";
 
     /// <summary>The marshal-in statement for one struct field (managed src -> native dst).</summary>
     private static string MarshalInField(FieldInfo f, bool unicode)
@@ -8622,7 +8710,7 @@ internal sealed partial class CppEmitter
         // Unguarded at every width: the body emission refuses a total it cannot write in
         // sizeof(void*), so a guarded size never reaches here.
         if (explicitSize is { } esz && cls.IsValueType)
-            sb.AppendLine($"static_assert(sizeof({cls.CppStructName}) == {esz.Text}, \"explicit layout size mismatch: {cls.FullName}\");");
+            sb.AppendLine($"static_assert(sizeof({cls.CppStructName}) == {esz.Text}, {CppUnevaluatedStringLiteral("explicit layout size mismatch: " + cls.FullName)});");
         // Safety net: every value type lays out at real storage width, and the
         // extent model (TryStructExtent) mirrors the emitted body — pin the C++
         // compiler to the modeled size so a divergence (an alignment rule the
@@ -8635,7 +8723,7 @@ internal sealed partial class CppEmitter
         else if (!IsOpaque(cls) && cls.IsValueType && TryStructExtent(cls, PointerWidth.Bytes64) is { } ext)
         {
             var sz = PointerWidth.Model(ext.Size, TryStructExtent(cls, PointerWidth.Bytes32)?.Size);
-            sb.AppendLine($"static_assert({(sz.Guarded ? "sizeof(void*) != 8 || " : "")}sizeof({cls.CppStructName}) == {sz.Text}, \"sequential layout size mismatch: {cls.FullName}\");");
+            sb.AppendLine($"static_assert({(sz.Guarded ? "sizeof(void*) != 8 || " : "")}sizeof({cls.CppStructName}) == {sz.Text}, {CppUnevaluatedStringLiteral("sequential layout size mismatch: " + cls.FullName)});");
         }
     }
 

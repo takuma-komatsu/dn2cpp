@@ -383,7 +383,7 @@ internal sealed partial class AssemblyDiet
             foreach (var implementation in type.Interfaces) MarkType(implementation.InterfaceType);
             foreach (var method in type.Methods)
                 if (method.IsVirtual || method.HasOverrides || type.IsInterface || IsDelegate(type)
-                    || method.IsConstructor && method.IsStatic) MarkMethod(method);
+                    || IsRuntimeStaticCtor(method)) MarkMethod(method);
             if (type.HasInterfaces) KeepInterfaceHierarchy(type);
             if (_conditionalOwnMembers.Contains(type)) KeepOwnMembers(type);
             if (_initializesArrays) KeepArrayInitializer(type);

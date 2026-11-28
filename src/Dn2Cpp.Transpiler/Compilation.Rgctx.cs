@@ -1757,9 +1757,10 @@ internal sealed partial class Compilation
             var lookup = selection.Lookup;
             if (selection.Construct)
             {
-                foreach (var e in SelectMembers(tmpl, LookupMemberKind.Constructor, ".ctor", lookup.Flags | ReflectionApis.Instance,
+                foreach (var e in SelectMembers(tmpl, LookupMemberKind.Constructor, ".ctor", lookup.Flags,
                              lookup.Types, -1))
                     if (e.Method is { Name: ".ctor", IsStatic: false } ctor && ctor.Rva != 0
+                        && (ctor.Attributes & System.Reflection.MethodAttributes.RTSpecialName) != 0
                         && ActivationArguments(ctor, selection.Arguments, lookup.Flags, out var paramsElement, out bool needsMissing) == ActivationMatch.Body)
                     {
                         NoteActivationArguments(paramsElement, needsMissing);
@@ -2070,7 +2071,7 @@ internal sealed partial class Compilation
                 if (lv.IntrinsicCppName is not null)
                     return false;
                 lv.EnsureMembers();
-                if (lv.StaticCctor is not null)
+                if (lv.DeclaredStaticCctor is not null)
                     return false;
                 foreach (var f in lv.Fields)
                 {
@@ -2304,11 +2305,12 @@ internal sealed partial class Compilation
             case RgctxSlotKind.CctorEnsureFn:
             {
                 var (cls, _) = RgctxResolveField(module, handle, ctx, scope);
-                var cc = cls.EnsureMembers().StaticCctor   // its .cctor is a member
+                var cc = cls.EnsureMembers().DeclaredStaticCctor   // its .cctor is a member
                     ?? throw new NotSupportedException($"rgctx: {cls.FullName} has no static constructor");
                 NoteForceEmit(cls);
                 NoteCctorEnsure(cc);
-                Reach(cc);
+                if (cc != cls.InvalidStaticCctor)
+                    Reach(cc);
                 return "&" + cc.CppName + "__ensure";
             }
             case RgctxSlotKind.ComparerDefault:

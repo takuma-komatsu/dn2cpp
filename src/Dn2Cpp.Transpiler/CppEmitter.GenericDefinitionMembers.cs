@@ -121,11 +121,16 @@ internal sealed partial class CppEmitter
             var constructors = new List<MetadataRow>();
             var addresses = new Dictionary<MethodDefinitionHandle, string>();
             var provider = new ConstraintProvider(_c);
+            var lastBareCtor = TypeNameSnapshot.LastBareDefaultCtorHandle(reader, owner.Handle);
             foreach (var handle in definition.GetMethods())
             {
                 var method = reader.GetMethodDefinition(handle);
                 string name = reader.GetString(method.Name);
-                bool constructor = name is ".ctor" or ".cctor";
+                bool rtSpecial = (method.Attributes & System.Reflection.MethodAttributes.RTSpecialName) != 0;
+                bool isStatic = (method.Attributes & System.Reflection.MethodAttributes.Static) != 0;
+                bool instanceCtor = rtSpecial && !isStatic && name == ".ctor";
+                bool initializer = rtSpecial && isStatic && name == ".cctor";
+                bool constructor = instanceCtor || initializer;
                 if (!available && !constructor)
                     continue;
                 var signature = method.DecodeSignature(provider, null);
@@ -167,14 +172,21 @@ internal sealed partial class CppEmitter
                 string parameterTypes = RenderConstraintVector(signature.ParameterTypes.ToArray());
                 _sb.AppendLine($"static const Dn2CppMethodDefinitionSignature {symbol}_signature = {{ {returnType}, {parameterTypes}, {signature.ParameterTypes.Length} }};");
                 string returnDisplay = SymbolicDisplay(signature.ReturnType, typeNames, methodNames);
+                string paramDisplay = string.Join(", ", signature.ParameterTypes.Select(p => SymbolicDisplay(p, typeNames, methodNames, true)));
+                if (!method.Signature.IsNil && reader.GetBlobReader(method.Signature).ReadSignatureHeader().CallingConvention
+                    == SignatureCallingConvention.VarArgs)
+                    paramDisplay = paramDisplay.Length == 0 ? "..." : paramDisplay + ", ...";
                 string display = (constructor ? "Void" : returnDisplay) + " " + name
                     + (methodNames.Length == 0 ? "" : "[" + string.Join(",", methodNames) + "]")
-                    + "(" + string.Join(", ", signature.ParameterTypes.Select(p => SymbolicDisplay(p, typeNames, methodNames, true))) + ")";
+                    + "(" + paramDisplay + ")";
                 var rows = constructor ? constructors : methods;
                 if (!constructor)
                     addresses[handle] = rows.Count.ToString();
                 int attrs = MetadataMemberAttrs((int)method.Attributes) | (methodNames.Length == 0 ? 0 : 0x40)
                     | ((method.Attributes & System.Reflection.MethodAttributes.SpecialName) != 0 ? 0x20 : 0);
+                if (instanceCtor && !method.Signature.IsNil && signature.ParameterTypes.Length == 0
+                    && handle != lastBareCtor)
+                    attrs |= 0x8;
                 rows.Add(new MetadataRow(new[] {
                     MetadataValue.Text(name), MetadataValue.Ref(declaring), MetadataValue.Ref("&dn2cpp_object_type"), MetadataValue.Ref(parameterTable),
                     MetadataValue.Signed(signature.ParameterTypes.Length), MetadataValue.ExplicitSigned(attrs), MetadataValue.Signed(-1), MetadataValue.Ref("nullptr"), MetadataValue.Ref("nullptr"),

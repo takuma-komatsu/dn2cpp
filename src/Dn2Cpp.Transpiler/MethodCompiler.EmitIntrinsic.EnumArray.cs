@@ -423,7 +423,7 @@ internal sealed partial class MethodCompiler
                     // Statics (and their initialization) stay per real
                     // instantiation — a shared body must not run the owner's.
                     TaintIfCanonical(rc, "statics");
-                    var cc = rc.StaticCctor;
+                    var cc = rc.DeclaredStaticCctor;
                     if (cc is not null)
                     {
                         NoteCctorEnsure(cc);
@@ -1099,20 +1099,30 @@ internal sealed partial class MethodCompiler
             return;
         }
         TaintIfCanonical(elem, "array-initialize");
-        var ctor = elem is { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false } cls }
-            ? Comp.ReachManagedMethod(cls, ".ctor", static ps => ps.Length == 0)
-            : null;
-        if (ctor is null)
+        var elemCls = elem is { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false } cls } ? cls : null;
+        var ctorHandle = elemCls is not null ? Compilation.ParameterlessCtorHandle(elemCls) : default;
+        if (ctorHandle.IsNil)
         {
             Emit($"dn2cpp_null_check({Cast(arr, "Dn2CppObject*")});");
             return;
         }
-        Comp.ReachLoweredInitializer(ctor);
         string cpp = md ? "Dn2CppMDArray*" : "Dn2CppArrayN*";
         string a = NewTemp(cpp);
         Emit($"{a} = ({cpp})dn2cpp_null_check({Cast(arr, "Dn2CppObject*")});");
-        string n = NewTemp("int32_t"), i = NewTemp("int32_t");
+        string n = NewTemp("int32_t");
         Emit($"{n} = {(md ? $"dn2cpp_md_total_length({a})" : $"{a}->length")};");
+        if (elemCls!.Module.Reader.GetMethodDefinition(ctorHandle).RelativeVirtualAddress == 0)
+        {
+            string msg = CppEmitter.CppUtf8Literal(
+                $"{Compilation.ReflectionTypeName(elemCls)}::Void .ctor(): constructor has no IL body");
+            Emit($"if ({n} != 0) dn2cpp_throw_platform_not_supported({msg});");
+            return;
+        }
+        var ctor = Comp.ReachBareParameterlessCtor(elemCls);
+        if (ctor is null)
+            return;
+        Comp.ReachLoweredInitializer(ctor);
+        string i = NewTemp("int32_t");
         string self = $"({ctor.DeclaringClass.CppStructName}*)({a}->data + (size_t){i} * {a}->elemSize)";
         Emit($"for ({i} = 0; {i} < {n}; {i}++)");
         Emit($"    {GuardEnteredCall(ctor, DirectCall(ctor, new List<string> { self }))};");

@@ -364,9 +364,10 @@ internal sealed partial class MethodCompiler
     /// call; the reachability scan reaches it from the same binding.</summary>
     private void EnsureTriggeredCctorBefore(ClassInfo owner)
     {
-        if (owner is not { IsBeforeFieldInit: false, IntrinsicCppName: null })
+        if (owner is null || owner.IntrinsicCppName is not null
+            || (owner.IsBeforeFieldInit && owner.InvalidStaticCctor is null))
             return;
-        if (owner.StaticCctor is not null)
+        if (owner.DeclaredStaticCctor is not null)
             TaintIfCanonical(owner, "type initializer");
         EnsureCctorBefore(owner);
     }
@@ -380,17 +381,20 @@ internal sealed partial class MethodCompiler
     private string GuardEnteredCall(MethodInfo target, string call)
     {
         var owner = target.DeclaringClass;
-        if (!_c.IsInitializerTrigger(target) || owner.StaticCctor is not { } cc
-            || (ReferenceEquals(owner, _method.DeclaringClass) && _method.Name == ".cctor"))
+        if (!_c.IsInitializerTrigger(target) || owner.DeclaredStaticCctor is not { } cc
+            || (ReferenceEquals(owner, _method.DeclaringClass) && _method.IsStatic && _method.Name == ".cctor"
+                && (_method.Attributes & System.Reflection.MethodAttributes.RTSpecialName) != 0))
             return call;
         TaintIfCanonical(owner, "type initializer");
-        if (!_c.Reachable.Contains(cc))
+        if (cc != owner.InvalidStaticCctor && cc.Rva != 0 && !_c.Reachable.Contains(cc))
         {
             if (Compilation.IsFrameworkEventSourceProvider(owner))
                 return call;
             throw new InvalidOperationException(
                 $"{owner.FullName}::{target.Name}: a lowered call enters a trigger whose initializer reachability did not reach");
         }
+        if (cc.Rva == 0 && Compilation.IsFrameworkEventSourceProvider(owner))
+            return call;
         NoteCctorEnsure(cc);
         return $"({cc.CppName}__ensure(), {call})";
     }
@@ -404,7 +408,7 @@ internal sealed partial class MethodCompiler
     private MethodInfo? AdapterEnteredTrigger(MethodInfo target)
     {
         if (target.IsStatic || !target.DeclaringClass.IsValueType || !_c.IsInitializerTrigger(target)
-            || target.DeclaringClass.StaticCctor is null)
+            || target.DeclaringClass.DeclaredStaticCctor is null)
             return null;
         TaintIfCanonical(target.DeclaringClass, "type initializer");
         return target;
@@ -5309,7 +5313,7 @@ internal sealed partial class MethodCompiler
             return false;
 
         // Never fold across a type-initialization trigger.
-        if (callee.DeclaringClass.StaticCctor is not null)
+        if (callee.DeclaringClass.DeclaredStaticCctor is not null)
             return false;
 
         MethodBodyBlock body;

@@ -4747,7 +4747,7 @@ internal sealed partial class Compilation
                 || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls))
                 continue;
             var ctor = ParameterlessCtorHandle(cls);
-            if (ctor.IsNil)
+            if (ctor.IsNil || cls.Module.Reader.GetMethodDefinition(ctor).RelativeVirtualAddress == 0)
                 continue;
             EnsureCompleted(cls);
             foreach (var m in cls.Methods)
@@ -4763,27 +4763,74 @@ internal sealed partial class Compilation
             DrainReachability();
     }
 
-    /// <summary>The parameterless instance constructor with a body that
-    /// <paramref name="cls"/>'s definition declares, or a nil handle. Read from metadata:
-    /// a specialization's members are completed only when it has one, and no other
-    /// constructor's signature is decoded, since one naming a deeper instantiation of its
-    /// own type would feed this walk forever.</summary>
-    private static MethodDefinitionHandle ParameterlessCtorHandle(ClassInfo cls)
+    private TypeNameSnapshot? _preservationTypeNames;
+    private bool _preservationTypeNamesChecked;
+
+    internal TypeNameSnapshot? TryPreservationTypeNames()
     {
-        if (cls.Handle.IsNil)
-            return default;
-        var reader = cls.Module.Reader;
-        foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetMethods())
-        {
-            var md = reader.GetMethodDefinition(handle);
-            if ((md.Attributes & MethodAttributes.Static) != 0 || md.RelativeVirtualAddress == 0
-                || !reader.StringComparer.Equals(md.Name, ".ctor"))
-                continue;
-            if (IsParameterlessSignature(reader.GetBlobReader(md.Signature), allowVarArgs: false))
-                return handle;
-        }
-        return default;
+        if (_preservationTypeNamesChecked)
+            return _preservationTypeNames;
+        _preservationTypeNamesChecked = true;
+        string loadedDirectory = Path.GetDirectoryName(Modules[0].Path)!;
+        string preservation = Path.Combine(loadedDirectory, "preservation.xml");
+        _preservationTypeNames = TypeNameSnapshot.FromPreservation(preservation);
+        return _preservationTypeNames;
     }
+
+    internal bool TryPreservationActivationBits(Module module, TypeDefinitionHandle handle, out int bits)
+    {
+        bits = 0;
+        if (handle.IsNil || TryPreservationTypeNames() is not { } snapshot
+            || !snapshot.TryGet(module.AssemblyName, out var source))
+            return false;
+        source.Initializers.TryGetValue(TypeNameSnapshot.RawTypeDefKey(module.Reader, handle), out bits);
+        return true;
+    }
+
+    internal bool HasInvalidStaticCctor(Module module, TypeDefinitionHandle handle)
+    {
+        if (handle.IsNil)
+            return false;
+        int bits = TryPreservationActivationBits(module, handle, out int snapshot)
+            ? snapshot
+            : TypeNameSnapshot.ReadActivationDeclarations(module.Reader, handle);
+        return (bits & TypeNameSnapshot.InvalidCctor) != 0;
+    }
+
+    // Matches CoreCLR's loader-selected last bare void () .ctor, consulting pre-strip
+    // preservation metadata when ILDiet stripped constructors from the loaded module.
+    internal bool HasPublicBareDefaultCtor(Module module, TypeDefinitionHandle handle)
+    {
+        if (handle.IsNil)
+            return false;
+        if (TryPreservationActivationBits(module, handle, out int bits))
+            return (bits & (TypeNameSnapshot.DefaultPublicCtor | TypeNameSnapshot.BodilessPublicCtor)) != 0;
+        var last = TypeNameSnapshot.LastBareDefaultCtorHandle(module.Reader, handle);
+        if (last.IsNil)
+            return false;
+        var md = module.Reader.GetMethodDefinition(last);
+        return (md.Attributes & MethodAttributes.MemberAccessMask) == MethodAttributes.Public;
+    }
+
+    internal MethodInfo? ReachBareParameterlessCtor(ClassInfo cls)
+    {
+        var handle = ParameterlessCtorHandle(cls);
+        if (handle.IsNil || cls.Module.Reader.GetMethodDefinition(handle).RelativeVirtualAddress == 0)
+            return null;
+        var m = cls.EnsureMembers().Methods.FirstOrDefault(method => method.Handle == handle);
+        if (m is null)
+            return null;
+        Reach(m);
+        DrainReachability();
+        return m;
+    }
+
+    /// <summary>The loader-selected last bare parameterless instance constructor
+    /// <paramref name="cls"/>'s definition declares (including RVA 0), or a nil handle.
+    /// Read from metadata: a specialization's members are completed only when it has one,
+    /// and no other constructor's signature is decoded.</summary>
+    internal static MethodDefinitionHandle ParameterlessCtorHandle(ClassInfo cls) =>
+        cls.Handle.IsNil ? default : TypeNameSnapshot.LastBareDefaultCtorHandle(cls.Module.Reader, cls.Handle);
 
     internal static bool HasParameterlessCtorDefinition(ClassInfo cls)
     {
@@ -4794,9 +4841,10 @@ internal sealed partial class Compilation
         {
             var md = reader.GetMethodDefinition(handle);
             if ((md.Attributes & MethodAttributes.Static) != 0
+                || (md.Attributes & MethodAttributes.RTSpecialName) == 0
                 || !reader.StringComparer.Equals(md.Name, ".ctor"))
                 continue;
-            if (IsParameterlessSignature(reader.GetBlobReader(md.Signature), allowVarArgs: false))
+            if (TypeNameSnapshot.IsBareDefaultCtorSignature(reader.GetBlobReader(md.Signature)))
                 return true;
         }
         return false;
@@ -5321,9 +5369,8 @@ internal sealed partial class Compilation
             if (cls.Name != "<Module>" || IsFrameworkAssemblyName(cls.Module.AssemblyName)
                 || !cls.MembersReady)
                 continue;
-            foreach (var m in cls.Methods)
-                if (m.Name == ".cctor" && m.IsStatic && m.Rva != 0)
-                    Reach(m);
+            if (cls.StaticCctor is { } cc)
+                Reach(cc);
         }
 
         // [UnmanagedCallersOnly] methods are native entry points: native code takes

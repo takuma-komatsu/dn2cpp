@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Preserved reflection-created boxes retain interface dispatch after write-back.
+# Static-only activation keeps the selected instance constructor. An extern constructor
+# still reports its missing IL body after its method row is stripped.
 # Full mode also exercises the isolated routing, preprocessing and Low input-root variants.
 # Managed DLL stripping and explicit preservation: unreachable metadata is removed,
 # while PreserveAttribute and merged Unity-format link.xml keep selected bodies.
@@ -191,6 +193,7 @@ stripped_lib=$(dotnet exec "$PROBE" "$(ildiet_generation "$OUT/ildiet")/Preserve
 original_app=$(dotnet exec "$PROBE" "$APP")
 stripped_app=$(dotnet exec "$PROBE" "$(ildiet_generation "$OUT/ildiet")/$PROJECT.dll")
 for row in 'method PreserveControlLib.Live::UnusedPublic' \
+        'method PreserveControlLib.BodilessExternStrippedCtor::.ctor' \
         'type PreserveControlLib.UnusedType' \
         'type PreserveControlLib.ConditionalUnused'; do
     grep -Fxq "$row" <<<"$original_lib" \
@@ -202,9 +205,11 @@ done
 grep -Fxq 'method PreserveControlLib.AttributeMembers::BuiltInMethod' <<<"$stripped_lib" \
     || { echo "FAIL: ILDiet removed an attributed method" >&2; exit 1; }
 # A constant-name lookup that runs nothing keeps the row it selects without its body.
-looked_up=$(dotnet exec "$PROBE" --method-stubs "$(ildiet_generation "$OUT/ildiet")/PreserveControlLib.dll" \
-    PreserveControlLib.AttributeMembers::DroppedMethod)
-assert_output "$(strip_cr_win "$looked_up")" 'PreserveControlLib.AttributeMembers::DroppedMethod stub=True'
+gate_capture_ok "$OUT/method-stubs" dotnet exec "$PROBE" --method-stubs \
+    "$(ildiet_generation "$OUT/ildiet")/PreserveControlLib.dll" \
+    PreserveControlLib.AttributeMembers::DroppedMethod PreserveControlLib.BodilessExternCtor::.ctor
+gate_assert_text "$OUT/method-stubs.stdout" \
+    $'PreserveControlLib.AttributeMembers::DroppedMethod stub=True\nPreserveControlLib.BodilessExternCtor::.ctor bodyless'
 grep -Fxq 'type PreserveControl.UnusedAppType' <<<"$original_app" \
     || { echo "FAIL: original unused-public application fixture is missing" >&2; exit 1; }
 if grep -Fxq 'type PreserveControl.UnusedAppType' <<<"$stripped_app"; then
@@ -334,7 +339,7 @@ echo "cut-contract=kept-original-body,no-cut-absence,repeat-byte-identical,inval
     || { echo "FAIL: ILDiet changed an input DLL" >&2; exit 1; }
 
 echo "== Explicit stripped inputs and bypass produce the same C++ =="
-grep -Fq '<!--dn2cpp-type-names-v1:' "$(ildiet_generation "$OUT/ildiet")/preservation.xml" \
+grep -Fq '<!--dn2cpp-type-names-v2:' "$(ildiet_generation "$OUT/ildiet")/preservation.xml" \
     || { echo "FAIL: ILDiet did not publish original type-name resolution metadata" >&2; exit 1; }
 MANUAL="$STALE_ROOT/manual-cpp"
 invoke_cli "$(ildiet_generation "$OUT/ildiet")/$PROJECT.dll" \
@@ -381,7 +386,7 @@ fi
 [ "$INPUT_HASHES" = "$(shasum -a 256 "$APP" "$LIBDLL" "$ASSEMBLYDLL")" ] \
     || { echo "FAIL: ILDiet changed an input DLL" >&2; exit 1; }
 
-if gate_cache_check "$OUT" "preserve-control|full:$DN2CPP_PRESERVE_CONTROL_FULL|ildiet|com|trim-reflection|cut=none|preserved-box-prefix:${DN2CPP_BEFORE_PRESERVED_BOXES:-}|conditional-fields-prefix:${DN2CPP_BEFORE_CONDITIONAL_FIELDS:-}" \
+if gate_cache_check "$OUT" "preserve-control|full:$DN2CPP_PRESERVE_CONTROL_FULL|ildiet|com|trim-reflection|cut=none|preserved-box-prefix:${DN2CPP_BEFORE_PRESERVED_BOXES:-}|conditional-fields-prefix:${DN2CPP_BEFORE_CONDITIONAL_FIELDS:-}|activator-ctors-prefix:${DN2CPP_BEFORE_ACTIVATOR_CTORS:-}" \
         "$APP" "$LIBDLL" "$ASSEMBLYDLL" "$ROOT/link.xml" "$ROOT/Nested/link.xml" \
         gates/expected/preserve-control.txt; then
     gate_cache_hit_msg
@@ -402,6 +407,12 @@ else
     gate_output compare "$prefix" "$before" --policy crlf
     gate_output witness "$native" 'conditional field chains end' --count any --policy crlf \
         || { echo 'FAIL: conditional field chains section did not run' >&2; exit 1; }
+    before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-activator-ctors.stdout"
+    DN2CPP_BEFORE_ACTIVATOR_CTORS=1 gate_capture_ok "${before%.stdout}" run_bounded "./$OUT/$PROJECT$EXE_EXT"
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== Activator constructor retention ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf
+    gate_output witness "$native" 'Activator constructor retention end' --policy crlf
     gate_cache_commit
 fi
 

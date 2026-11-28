@@ -215,7 +215,7 @@ internal sealed partial class MethodCompiler
         // Everything the frame carries besides its own bookkeeping, in save order.
         var saved = new List<(string Type, string Name)>();
         var sb = new StringBuilder();
-        sb.AppendLine($"// {_method.DeclaringClass.FullName}::{_method.Name}");
+        sb.AppendLine($"// {SingleLineComment(_method.DeclaringClass.FullName)}::{SingleLineComment(_method.Name)}");
         sb.AppendLine(signature);
         sb.AppendLine("{");
         if (entryGuard is not null)

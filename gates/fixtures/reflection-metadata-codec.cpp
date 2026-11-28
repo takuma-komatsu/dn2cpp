@@ -114,7 +114,16 @@ constexpr auto packed_initializer_type = Dn2CppMetadataHandle<Dn2CppTypeReflecti
 DN2CPP_NATIVE_METADATA_STORAGE(local_type);
 constexpr auto packed_local_type = Dn2CppMetadataHandle<Dn2CppTypeReflection>::from_static(local_type_storage.records.data());
 constexpr int32_t packed_activation_bits = static_cast<int32_t>(0x80000000u
-    | DN2CPP_TA_UNALLOCATED | DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR);
+    | DN2CPP_TA_UNALLOCATED | DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR
+    | DN2CPP_TA_DECLARED_PUBLIC_CCTOR | DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR
+    | DN2CPP_TA_PUB_CCTOR_BEFORE_PUB_CTOR | DN2CPP_TA_PUB_CCTOR_BEFORE_NONPUB_CTOR
+    | DN2CPP_TA_NONPUB_CCTOR_BEFORE_PUB_CTOR | DN2CPP_TA_NONPUB_CCTOR_BEFORE_NONPUB_CTOR
+    | DN2CPP_TA_BODILESS_PUBLIC_DEFAULT_CTOR | DN2CPP_TA_BODILESS_NONPUBLIC_DEFAULT_CTOR
+    | DN2CPP_TA_MULTIPLE_PUBLIC_DEFAULT_CTOR | DN2CPP_TA_MULTIPLE_NONPUBLIC_DEFAULT_CTOR
+    | DN2CPP_TA_MULTIPLE_PUBLIC_CCTOR | DN2CPP_TA_MULTIPLE_NONPUBLIC_CCTOR
+    | DN2CPP_TA_MODIFIED_PUBLIC_ZERO_ARG_CTOR | DN2CPP_TA_MODIFIED_NONPUBLIC_ZERO_ARG_CTOR
+    | DN2CPP_TA_FIRST_PUB_CTOR_VARARG | DN2CPP_TA_FIRST_NONPUB_CTOR_VARARG
+    | DN2CPP_TA_NONPUB_CTOR_BEFORE_PUB_CTOR | DN2CPP_TA_INVALID_CCTOR);
 DN2CPP_NATIVE_TYPE_REFLECTION(activation_type,
     nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0,
     nullptr, 0, nullptr, 0, 0, nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0,
@@ -378,6 +387,253 @@ const Dn2CppTypeInfo private_default_type = [] {
     return type;
 }();
 
+Dn2CppTypeReflection constructor_metadata(int32_t activation,
+    const Dn2CppMethodInfo* constructors = nullptr, int32_t count = 0)
+{
+    Dn2CppTypeReflection reflection{};
+    reflection.activation = activation;
+    reflection.ctors = constructors;
+    reflection.ctorCount = count;
+    reflection.assemblyName = "BinderFixture";
+    return reflection;
+}
+
+Dn2CppTypeInfo constructor_owner(const char* name, const Dn2CppTypeReflection& reflection)
+{
+    Dn2CppTypeInfo type{ name, &dn2cpp_object_type };
+    type.instanceSize = static_cast<int32_t>(sizeof(Dn2CppObject));
+    type.reflectionData = &reflection;
+    return type;
+}
+
+Dn2CppMethodInfo public_default_ctor_row(const Dn2CppTypeInfo& owner)
+{
+    Dn2CppMethodInfo row{};
+    row.name = ".ctor";
+    row.display = "Void .ctor()";
+    row.declaringType = &owner;
+    row.returnType = &dn2cpp_void_type;
+    row.attrs = DN2CPP_MTHA_PUBLIC;
+    row.ilAttrs = 0x1886;
+    row.vtableSlot = -1;
+    return row;
+}
+
+const Dn2CppTypeReflection cctor_omitted_reflection = constructor_metadata(
+    DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR | DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR);
+const Dn2CppTypeInfo cctor_omitted_type = constructor_owner(
+    "BinderFixture.CctorOmitted", cctor_omitted_reflection);
+
+const Dn2CppTypeReflection public_cctor_omitted_reflection = constructor_metadata(
+    DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR | DN2CPP_TA_DECLARED_PUBLIC_CCTOR);
+const Dn2CppTypeInfo public_cctor_omitted_type = constructor_owner(
+    "BinderFixture.PublicCctorOmitted", public_cctor_omitted_reflection);
+
+extern const Dn2CppTypeInfo cctor_bodiless_row_type;
+const Dn2CppMethodInfo cctor_bodiless_row_ctors[] = { public_default_ctor_row(cctor_bodiless_row_type) };
+const Dn2CppTypeReflection cctor_bodiless_row_reflection = constructor_metadata(
+    DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR, cctor_bodiless_row_ctors, 1);
+const Dn2CppTypeInfo cctor_bodiless_row_type = constructor_owner(
+    "BinderFixture.CctorBodilessRow", cctor_bodiless_row_reflection);
+
+const Dn2CppTypeInfo private_default_struct_type = [] {
+    Dn2CppTypeInfo type{ "BinderFixture.PrivateDefaultStruct", nullptr };
+    type.instanceSize = static_cast<int32_t>(sizeof(int32_t));
+    type.flags = DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED;
+    type.reflectionData = &private_default_reflection;
+    return type;
+}();
+
+const Dn2CppTypeReflection cctor_first_omitted_reflection = constructor_metadata(
+    DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR
+        | DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR | DN2CPP_TA_NONPUB_CCTOR_BEFORE_PUB_CTOR);
+const Dn2CppTypeInfo cctor_first_omitted_type = constructor_owner(
+    "BinderFixture.CctorFirstOmitted", cctor_first_omitted_reflection);
+
+extern const Dn2CppTypeInfo fake_cctor_type;
+const Dn2CppMethodInfo fake_cctor_row = [] {
+    Dn2CppMethodInfo row{};
+    row.name = ".cctor";
+    row.declaringType = &fake_cctor_type;
+    row.returnType = &dn2cpp_void_type;
+    row.attrs = DN2CPP_MTHA_STATIC | DN2CPP_MTHA_PRIVATE;
+    row.vtableSlot = -1;
+    row.ilAttrs = 0x0896; // SpecialName without RTSpecialName (0x1000)
+    row.display = "Void .cctor()";
+    return row;
+}();
+const Dn2CppTypeReflection fake_cctor_reflection = [] {
+    auto reflection = constructor_metadata(DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR);
+    reflection.initializer = &fake_cctor_row;
+    return reflection;
+}();
+const Dn2CppTypeInfo fake_cctor_type = constructor_owner(
+    "BinderFixture.FakeCctor", fake_cctor_reflection);
+
+extern const Dn2CppTypeInfo fake_ctor_type;
+const Dn2CppMethodInfo fake_ctor_rows[] = { [] {
+    Dn2CppMethodInfo row = public_default_ctor_row(fake_ctor_type);
+    row.ilAttrs = 0x0886; // SpecialName without RTSpecialName (0x1000)
+    return row;
+}() };
+const Dn2CppTypeReflection fake_ctor_reflection = [] {
+    auto reflection = constructor_metadata(0, fake_ctor_rows, 1);
+    reflection.methods = fake_ctor_rows;
+    reflection.methodCount = 1;
+    return reflection;
+}();
+const Dn2CppTypeInfo fake_ctor_type = constructor_owner(
+    "BinderFixture.FakeCtor", fake_ctor_reflection);
+
+const Dn2CppTypeReflection bodiless_default_reflection = constructor_metadata(
+    DN2CPP_TA_BODILESS_PUBLIC_DEFAULT_CTOR);
+const Dn2CppTypeInfo bodiless_default_type = constructor_owner(
+    "BinderFixture.BodilessDefault", bodiless_default_reflection);
+
+const Dn2CppTypeReflection multiple_default_reflection = constructor_metadata(
+    DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR | DN2CPP_TA_MULTIPLE_PUBLIC_DEFAULT_CTOR);
+const Dn2CppTypeInfo multiple_default_type = constructor_owner(
+    "BinderFixture.MultipleDefault", multiple_default_reflection);
+
+// Binding counts a return-modified constructor, then the default factory invokes the bare one.
+int32_t private_default_called = 0;
+int32_t modopt_default_called = 0;
+void private_default_ctor(Dn2CppObject*) { private_default_called++; }
+void modopt_default_ctor(Dn2CppObject*) { modopt_default_called++; }
+Dn2CppObject* default_ctor_thunk(void* fn, Dn2CppObject* self, Dn2CppObject**, const Dn2CppTypeInfo*)
+{
+    reinterpret_cast<void (*)(Dn2CppObject*)>(fn)(self);
+    return nullptr;
+}
+const Dn2CppTypeInfo* const modopt_return_modifiers[] = { &dn2cpp_object_type };
+extern const Dn2CppTypeInfo modopt_pub_first_type;
+const Dn2CppMethodInfo modopt_pub_first_ctors[] = { [] {
+    Dn2CppMethodInfo row = public_default_ctor_row(modopt_pub_first_type);
+    row.fnPtr = reinterpret_cast<void*>(&modopt_default_ctor);
+    row.invoker = reinterpret_cast<void*>(&default_ctor_thunk);
+    row.returnOptionalCustomModifiers = modopt_return_modifiers;
+    row.returnOptionalCustomModifierCount = 1;
+    row.returnCustomModifiersKnown = 1;
+    return row;
+}(), [] {
+    Dn2CppMethodInfo row = public_default_ctor_row(modopt_pub_first_type);
+    row.attrs = DN2CPP_MTHA_PRIVATE;
+    row.fnPtr = reinterpret_cast<void*>(&private_default_ctor);
+    row.invoker = reinterpret_cast<void*>(&default_ctor_thunk);
+    row.ilAttrs = 0x1881;
+    row.returnCustomModifiersKnown = 1;
+    return row;
+}() };
+const Dn2CppTypeReflection modopt_pub_first_reflection = constructor_metadata(
+    DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR, modopt_pub_first_ctors, 2);
+const Dn2CppTypeInfo modopt_pub_first_type = constructor_owner(
+    "BinderFixture.ModOptPubFirst", modopt_pub_first_reflection);
+
+extern const Dn2CppTypeInfo only_modopt_row_type;
+const Dn2CppMethodInfo only_modopt_row_ctors[] = { [] {
+    Dn2CppMethodInfo row = modopt_pub_first_ctors[0];
+    row.declaringType = &only_modopt_row_type;
+    return row;
+}() };
+const Dn2CppTypeReflection only_modopt_row_reflection = constructor_metadata(
+    0, only_modopt_row_ctors, 1);
+const Dn2CppTypeInfo only_modopt_row_type = constructor_owner(
+    "BinderFixture.OnlyModOptRow", only_modopt_row_reflection);
+
+const Dn2CppTypeReflection only_modopt_bit_reflection = constructor_metadata(
+    DN2CPP_TA_MODIFIED_PUBLIC_ZERO_ARG_CTOR);
+const Dn2CppTypeInfo only_modopt_bit_type = constructor_owner(
+    "BinderFixture.OnlyModOptBit", only_modopt_bit_reflection);
+
+// Vararg constructors take part in binding but cannot serve as default constructors.
+int32_t vararg_ctor_called = 0;
+int32_t vararg_bare_called = 0;
+void vararg_default_ctor(Dn2CppObject*) { vararg_ctor_called++; }
+void vararg_bare_ctor(Dn2CppObject*) { vararg_bare_called++; }
+extern const Dn2CppTypeInfo vararg_pub_first_type;
+const Dn2CppMethodInfo vararg_pub_first_ctors[] = { [] {
+    Dn2CppMethodInfo row = public_default_ctor_row(vararg_pub_first_type);
+    row.attrs = DN2CPP_MTHA_PUBLIC | DN2CPP_MTHA_NONBARE_CTOR;
+    row.constructorBinding = DN2CPP_CTOR_VARARGS;
+    row.fnPtr = reinterpret_cast<void*>(&vararg_default_ctor);
+    row.invoker = reinterpret_cast<void*>(&default_ctor_thunk);
+    row.display = "Void .ctor(...)";
+    return row;
+}(), [] {
+    Dn2CppMethodInfo row = public_default_ctor_row(vararg_pub_first_type);
+    row.attrs = DN2CPP_MTHA_PRIVATE;
+    row.fnPtr = reinterpret_cast<void*>(&vararg_bare_ctor);
+    row.invoker = reinterpret_cast<void*>(&default_ctor_thunk);
+    row.ilAttrs = 0x1881;
+    return row;
+}() };
+const Dn2CppTypeReflection vararg_pub_first_reflection = constructor_metadata(
+    DN2CPP_TA_FIRST_PUB_CTOR_VARARG, vararg_pub_first_ctors, 2);
+const Dn2CppTypeInfo vararg_pub_first_type = constructor_owner(
+    "BinderFixture.VarargPubFirst", vararg_pub_first_reflection);
+
+extern const Dn2CppTypeInfo vararg_only_struct_type;
+const Dn2CppMethodInfo vararg_only_struct_ctors[] = { [] {
+    Dn2CppMethodInfo row = vararg_pub_first_ctors[0];
+    row.declaringType = &vararg_only_struct_type;
+    return row;
+}() };
+const Dn2CppTypeReflection vararg_only_struct_reflection = constructor_metadata(
+    0, vararg_only_struct_ctors, 1);
+const Dn2CppTypeInfo vararg_only_struct_type = [] {
+    Dn2CppTypeInfo type{ "BinderFixture.VarargOnlyStruct", nullptr };
+    type.instanceSize = static_cast<int32_t>(sizeof(int32_t));
+    type.flags = DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED;
+    type.reflectionData = &vararg_only_struct_reflection;
+    return type;
+}();
+const Dn2CppTypeInfo vararg_only_struct_array_type = [] {
+    Dn2CppTypeInfo type{ "BinderFixture.VarargOnlyStruct[]", &dn2cpp_array_n_type };
+    type.elementType = &vararg_only_struct_type;
+    type.flags = DN2CPP_TF_ARRAY;
+    type.arrayRank = 1;
+    return type;
+}();
+
+// Per-visibility order: private .ctor(), public .cctor(), public .ctor().
+const Dn2CppTypeReflection mixed_order_reflection = constructor_metadata(
+    DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR
+        | DN2CPP_TA_DECLARED_PUBLIC_CCTOR | DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR
+        | DN2CPP_TA_PUB_CCTOR_BEFORE_PUB_CTOR);
+const Dn2CppTypeInfo mixed_order_type = constructor_owner(
+    "BinderFixture.MixedOrder", mixed_order_reflection);
+
+// An emitted zero-RVA .ctor() row carries DN2CPP_METHOD_NO_IL_BODY.
+extern const Dn2CppTypeInfo bodiless_row_type;
+const Dn2CppMethodInfo bodiless_row_ctors[] = { [] {
+    Dn2CppMethodInfo row = public_default_ctor_row(bodiless_row_type);
+    row.preservable = DN2CPP_METHOD_NO_IL_BODY;
+    return row;
+}() };
+const Dn2CppTypeReflection bodiless_row_reflection = constructor_metadata(
+    0, bodiless_row_ctors, 1);
+const Dn2CppTypeInfo bodiless_row_type = constructor_owner(
+    "BinderFixture.BodilessRow", bodiless_row_reflection);
+
+bool activator_ambiguous_contains(const Dn2CppTypeInfo* type, int32_t flags, const char* fragment)
+{
+    try
+    {
+        (void)dn2cpp_activator_create_instance_args(
+            dn2cpp_get_type_from_handle(type), nullptr, flags, nullptr, nullptr);
+        return false;
+    }
+    catch (Dn2CppException& ex)
+    {
+        bool matched = ex.obj->type == &dn2cpp_ambiguous_match_exception_type;
+        Dn2CppString* message = dn2cpp_exception_message(ex.obj);
+        matched &= dn2cpp_str_contains_cmp(message,
+            dn2cpp_string_from_utf8(fragment, static_cast<int32_t>(std::strlen(fragment))), 4) != 0;
+        dn2cpp_exc_inflight_pop(ex.obj);
+        return matched;
+    }
+}
+
 template<class Action> const Dn2CppTypeInfo* constructor_fault(const Dn2CppTypeInfo* type,
     const char* signature, Action action)
 {
@@ -486,6 +742,140 @@ void check_constructor_binding()
         && activator_fault(&private_default_type, nullptr, nonPublicInstance, "Void .ctor()")
             == &dn2cpp_platform_not_supported_exception_type,
         "an omitted non-public parameterless constructor refuses only when visible");
+    constexpr int32_t staticNonPublic = 0x28, staticPublic = 0x18,
+        staticNonPublicInstance = 0x2C, staticPublicInstance = 0x1C, allConstructors = 0x3C;
+    require(activator_fault(&split_type, nullptr, staticNonPublic, "Void .ctor()")
+            == &dn2cpp_missing_method_exception_type
+        && activator_fault(&split_type, nullptr, staticNonPublicInstance, "Void .ctor()")
+            == &dn2cpp_missing_method_exception_type
+        && activator_fault(&split_type, nullptr, allConstructors, "Void .ctor()")
+            == &dn2cpp_platform_not_supported_exception_type,
+        "static lookup without a declared initializer does not activate an omitted default constructor");
+    require(activator_fault(&cctor_omitted_type, nullptr, staticNonPublic, "Void .ctor()")
+            == &dn2cpp_platform_not_supported_exception_type
+        && activator_fault(&cctor_omitted_type, nullptr, staticNonPublicInstance, "Void .ctor()")
+            == &dn2cpp_platform_not_supported_exception_type
+        && activator_fault(&cctor_omitted_type, nullptr, allConstructors, "Void .ctor()")
+            == &dn2cpp_ambiguous_match_exception_type
+        && activator_fault(&cctor_omitted_type, nullptr, staticPublic, "Void .ctor()")
+            == &dn2cpp_missing_method_exception_type
+        && activator_fault(&cctor_omitted_type, nullptr, nonPublicInstance, "Void .ctor()")
+            == &dn2cpp_missing_method_exception_type,
+        "a declared non-public initializer without a metadata row drives static binding and ambiguity");
+    require(activator_fault(&public_cctor_omitted_type, nullptr, staticPublic, "Void .ctor()")
+            == &dn2cpp_platform_not_supported_exception_type
+        && activator_fault(&public_cctor_omitted_type, nullptr, staticNonPublic, "Void .ctor()")
+            == &dn2cpp_missing_method_exception_type
+        && activator_fault(&public_cctor_omitted_type, nullptr, staticPublicInstance, "Void .ctor()")
+            == &dn2cpp_ambiguous_match_exception_type,
+        "a declared public initializer matches Static | Public and collides with a public default constructor");
+    require(activator_fault(&cctor_bodiless_row_type, nullptr, staticNonPublic, "Void .ctor()")
+            == &dn2cpp_platform_not_supported_exception_type
+        && activator_fault(&cctor_bodiless_row_type, nullptr, allConstructors, "Void .ctor()")
+            == &dn2cpp_ambiguous_match_exception_type,
+        "a declared initializer collides with a bodiless default constructor row");
+    require(activator_fault(&private_default_struct_type, nullptr, publicInstance, "Void .ctor()")
+            == &dn2cpp_missing_method_exception_type
+        && activator_fault(&private_default_struct_type, nullptr, nonPublicInstance, "Void .ctor()")
+            == &dn2cpp_platform_not_supported_exception_type,
+        "a value type with an explicit non-public default constructor does not fall back to zero-init under public flags");
+    require(activator_ambiguous_contains(&cctor_omitted_type, allConstructors, "Void .ctor()")
+        && activator_ambiguous_contains(&cctor_first_omitted_type, allConstructors, "Void .cctor()"),
+        "ambiguous zero-arg activation names the first declared constructor candidate");
+    require(activator_fault(&fake_cctor_type, nullptr, staticNonPublic, "Void .ctor()")
+            == &dn2cpp_missing_method_exception_type
+        && activator_fault(&fake_cctor_type, nullptr, allConstructors, "Void .ctor()")
+            == &dn2cpp_platform_not_supported_exception_type,
+        "a static .cctor row without RTSpecialName is not treated as a type initializer");
+    require(activator_fault(&fake_ctor_type, nullptr, publicInstance, "Void .ctor()")
+            == &dn2cpp_missing_method_exception_type,
+        "an instance .ctor row without RTSpecialName is not treated as a constructor");
+    for (const auto* type : { &bodiless_default_type, &bodiless_row_type })
+    {
+        bool bodiless_refused = false;
+        try
+        {
+            (void)dn2cpp_activator_create_instance_args(
+                dn2cpp_get_type_from_handle(type), nullptr, publicInstance, nullptr, nullptr);
+        }
+        catch (Dn2CppException& ex)
+        {
+            Dn2CppString* msg = dn2cpp_exception_message(ex.obj);
+            bodiless_refused = ex.obj->type == &dn2cpp_platform_not_supported_exception_type
+                && dn2cpp_str_contains_cmp(msg, dn2cpp_string_from_utf8("constructor has no IL body", 26), 4) != 0
+                && dn2cpp_str_contains_cmp(msg, dn2cpp_string_from_utf8("[Preserve]", 10), 4) == 0;
+            dn2cpp_exc_inflight_pop(ex.obj);
+        }
+        require(bodiless_refused, "a zero-RVA default constructor refuses without suggesting [Preserve]");
+    }
+    require(activator_ambiguous_contains(&multiple_default_type, publicInstance, "Void .ctor()"),
+        "multiple public parameterless constructors raise AmbiguousMatchException naming Void .ctor()");
+    {
+        Dn2CppType* t = dn2cpp_get_type_from_handle(&modopt_pub_first_type);
+        require(constructor_fault(&modopt_pub_first_type, "Void .ctor()",
+                [&] { (void)dn2cpp_activator_create_instance(t); })
+                == &dn2cpp_missing_method_exception_type,
+            "public CreateInstance(Type) skips a modopt 0-arg constructor and rejects a private bare one");
+        Dn2CppObject* a = dn2cpp_activator_create_instance_nonpublic(t, 1);
+        Dn2CppObject* b = dn2cpp_activator_create_instance_args(t, nullptr, publicInstance, nullptr, nullptr);
+        Dn2CppObject* c = dn2cpp_activator_create_instance_args(t, nullptr, staticNonPublic, nullptr, nullptr);
+        require(a != nullptr && a->type == &modopt_pub_first_type
+            && b != nullptr && b->type == &modopt_pub_first_type
+            && c != nullptr && c->type == &modopt_pub_first_type
+            && private_default_called == 3 && modopt_default_called == 0,
+            "Stage 1 single match (public modopt or .cctor) and nonPublic default delegate to Stage 2 bare void () .ctor()");
+    }
+    require(constructor_fault(&only_modopt_row_type, "Void .ctor()",
+            [&] { (void)dn2cpp_activator_create_instance(dn2cpp_get_type_from_handle(&only_modopt_row_type)); })
+            == &dn2cpp_missing_method_exception_type
+        && activator_fault(&only_modopt_row_type, nullptr, publicInstance, "Void .ctor()")
+            == &dn2cpp_missing_method_exception_type
+        && constructor_fault(&only_modopt_bit_type, "Void .ctor()",
+            [&] { (void)dn2cpp_activator_create_instance(dn2cpp_get_type_from_handle(&only_modopt_bit_type)); })
+            == &dn2cpp_missing_method_exception_type
+        && activator_fault(&only_modopt_bit_type, nullptr, publicInstance, "Void .ctor()")
+            == &dn2cpp_missing_method_exception_type
+        && modopt_default_called == 0,
+        "a type with only a return-modified 0-arg .ctor() fails Stage 2 with MissingMethodException");
+    require(activator_ambiguous_contains(&mixed_order_type, staticPublicInstance, "Void .cctor()")
+        && activator_ambiguous_contains(&mixed_order_type, allConstructors, "Void .ctor()"),
+        "per-visibility declaration order chooses Void .cctor() under Public and Void .ctor() under All");
+    {
+        Dn2CppArrayRef* fakeCtors = dn2cpp_type_get_constructors(
+            dn2cpp_get_type_from_handle(&fake_ctor_type), publicInstance);
+        Dn2CppMethodRef* fakeRef = dn2cpp_type_get_method(
+            dn2cpp_get_type_from_handle(&fake_ctor_type),
+            dn2cpp_string_from_utf8(".ctor", 5), publicInstance);
+        require(fakeCtors != nullptr && fakeCtors->length == 0
+            && fakeRef != nullptr && fakeRef->type == &dn2cpp_methodinfo_type
+            && dn2cpp_methodref_is_constructor(fakeRef) == 0
+            && dn2cpp_memberinfo_member_type(reinterpret_cast<Dn2CppObject*>(fakeRef)) == 0x08,
+            "an ordinary non-RTSpecialName .ctor row mints MethodInfo with IsConstructor == false and MemberType == Method");
+    }
+    {
+        Dn2CppType* vt = dn2cpp_get_type_from_handle(&vararg_pub_first_type);
+        require(constructor_fault(&vararg_pub_first_type, "Void .ctor()",
+                [&] { (void)dn2cpp_activator_create_instance(vt); })
+                == &dn2cpp_missing_method_exception_type,
+            "Stage 2 public CreateInstance skips a DN2CPP_MTHA_NONBARE_CTOR vararg row");
+        Dn2CppObject* made = dn2cpp_activator_create_instance_args(vt, nullptr, publicInstance, nullptr, nullptr);
+        require(made != nullptr && made->type == &vararg_pub_first_type
+            && vararg_ctor_called == 0 && vararg_bare_called == 1,
+            "Stage 1 counts a DN2CPP_MTHA_NONBARE_CTOR vararg row and delegates to Stage 2 bare void () .ctor()");
+        Dn2CppType* st = dn2cpp_get_type_from_handle(&vararg_only_struct_type);
+        Dn2CppObject* sObj = dn2cpp_activator_create_instance(st);
+        require(sObj != nullptr && sObj->type == &vararg_only_struct_type && vararg_ctor_called == 0,
+            "struct with only a DN2CPP_MTHA_NONBARE_CTOR row zero-initializes without invoking it");
+        int32_t storage = 0;
+        dn2cpp_runtime_type_call_default_struct_constructor(st, reinterpret_cast<uint8_t*>(&storage));
+        Dn2CppArrayN* arr = dn2cpp_newarr_n(1, static_cast<int32_t>(sizeof(int32_t)));
+        arr->type = &vararg_only_struct_array_type;
+        dn2cpp_array_initialize(arr);
+        require(vararg_ctor_called == 0,
+            "CallDefaultStructConstructor and Array.Initialize skip DN2CPP_MTHA_NONBARE_CTOR rows");
+        require(activator_ambiguous_contains(&vararg_pub_first_type, anyInstance, "Void .ctor(...)"),
+            "ambiguity with a first vararg constructor names Void .ctor(...)");
+    }
     require(overloaded_constructed == 3, "constructor refusals and validation never run an unrelated retained body");
 }
 
@@ -789,8 +1179,11 @@ const Dn2CppItfImplSlots dn2cpp_itf_impl_slots[] = { {} };
 const int32_t dn2cpp_itf_impl_slot_count = 0;
 const Dn2CppRenamedSlotBody dn2cpp_renamed_slot_bodies[] = { {} };
 const int32_t dn2cpp_renamed_slot_body_count = 0;
-const Dn2CppBclMessage dn2cpp_bcl_messages[] = { { nullptr, nullptr } };
-const int32_t dn2cpp_bcl_message_count = 0;
+const Dn2CppBclMessage dn2cpp_bcl_messages[] = {
+    { DN2CPP_SR_AMBIGUOUS_MATCH_MEMBER, "Ambiguous match found for '{0} {1}'." },
+    { DN2CPP_SR_CREATE_OPEN_GENERIC, "Cannot create an instance of {0} because Type.ContainsGenericParameters is true." }
+};
+const int32_t dn2cpp_bcl_message_count = 2;
 const int32_t dn2cpp_exception_get_message_slot = -1;
 bool dn2cpp_argument_exception_store(Dn2CppObject*, Dn2CppString*, Dn2CppObject*) { return false; }
 bool dn2cpp_object_disposed_exception_store(Dn2CppObject*, Dn2CppString*) { return false; }

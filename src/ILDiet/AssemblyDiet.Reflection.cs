@@ -17,7 +17,7 @@ internal sealed partial class AssemblyDiet
     private void KeepMethodSignature(MethodDefinition method, bool keepInitializerRow = false)
     {
         // Only an explicitly observed initializer needs a metadata-only row.
-        if (method.IsConstructor && method.IsStatic && !_methods.Contains(method))
+        if (IsRuntimeStaticCtor(method) && !_methods.Contains(method))
         {
             if (!keepInitializerRow) return;
             if (_listedInitializers.Add(method)) Spend();
@@ -133,7 +133,7 @@ internal sealed partial class AssemblyDiet
             return;
         }
         // An explicit initializer token may later enter the original method.
-        if (IsStripped(method.DeclaringType) && method.IsConstructor && method.IsStatic) MarkMethod(method);
+        if (IsStripped(method.DeclaringType) && IsRuntimeStaticCtor(method)) MarkMethod(method);
         else KeepMethodSignature(method);
     }
 

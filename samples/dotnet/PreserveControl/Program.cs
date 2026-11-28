@@ -6,6 +6,8 @@ namespace PreserveControl;
 
 internal static class Program
 {
+    private static readonly Type StrippedCtorType = typeof(PreserveControlLib.BodilessExternStrippedCtor);
+
     private static void Main()
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -29,6 +31,34 @@ internal static class Program
         // their metadata row and a generic owner first named by a field signature.
         Console.WriteLine(typeof(PreserveControlLib.ConditionalFieldRoot).Name);
         Console.WriteLine("conditional field chains end");
+        if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_ACTIVATOR_CTORS") == "1")
+            return;
+        Console.WriteLine("== Activator constructor retention ==");
+        var created = (PreserveControlLib.StaticLookupTarget)Activator.CreateInstance(
+            typeof(PreserveControlLib.StaticLookupTarget), BindingFlags.Static | BindingFlags.NonPublic, null, null, null);
+        Console.WriteLine("static-only constructor value=" + created.Value);
+        var named = (PreserveControlLib.NamedParamsCtor)Activator.CreateInstance(
+            "PreserveControlLib", "PreserveControlLib.NamedParamsCtor").Unwrap();
+        Console.WriteLine("named constructor params length=" + named.Values.Length);
+        CheckBodiless("stripped", () => Activator.CreateInstance(StrippedCtorType));
+        CheckBodiless("row", () => Activator.CreateInstance(typeof(PreserveControlLib.BodilessExternCtor)));
+        CheckBodiless("generic", () => Activator.CreateInstance<PreserveControlLib.BodilessExternCtor>());
+        Console.WriteLine("Activator constructor retention end");
+    }
+
+    private static void CheckBodiless(string label, Func<object> action)
+    {
+        try
+        {
+            _ = action();
+            Console.WriteLine($"bodiless-{label}=ok");
+        }
+        catch (Exception ex)
+        {
+            bool noBody = ex.Message.Contains("constructor has no IL body", StringComparison.Ordinal);
+            bool preserveHint = ex.Message.Contains("[Preserve]", StringComparison.Ordinal);
+            Console.WriteLine($"bodiless-{label}={ex.GetType().Name}:noBody={noBody}:preserveHint={preserveHint}");
+        }
     }
 
     private static void PreservedWrittenBack()

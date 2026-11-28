@@ -891,6 +891,28 @@ void dn2cpp_throw_object_disposed() { dn2cpp_throw_of(&dn2cpp_object_disposed_ex
 void dn2cpp_throw_arithmetic() { dn2cpp_throw_of(&dn2cpp_arithmetic_exception_type); }
 void dn2cpp_throw_out_of_memory() { dn2cpp_throw_of(&dn2cpp_out_of_memory_exception_type); }
 void dn2cpp_throw_type_load() { dn2cpp_throw_of(&dn2cpp_type_load_exception_type); }
+
+static void (*g_type_load_name_store)(Dn2CppObject*, Dn2CppString*) = nullptr;
+
+void dn2cpp_set_type_load_name_store(void (*store)(Dn2CppObject*, Dn2CppString*))
+{
+    g_type_load_name_store = store;
+}
+
+void dn2cpp_throw_invalid_initializer(const char* typeName, const char* assemblyName, bool isEnum)
+{
+    std::string text = isEnum ? "Method in an Enum."
+        : std::string("Could not load type '") + typeName + "' from assembly '"
+            + dn2cpp_assembly_display_name_utf8(assemblyName) + "'.";
+    Dn2CppString* message = dn2cpp_string_from_utf8(text.data(), static_cast<int32_t>(text.size()));
+    Dn2CppObject* e = dn2cpp_exception_new(&dn2cpp_type_load_exception_type, message, nullptr);
+    if (g_type_load_name_store != nullptr)
+    {
+        auto* name = dn2cpp_string_from_utf8(typeName, static_cast<int32_t>(std::strlen(typeName)));
+        g_type_load_name_store(e, name);
+    }
+    dn2cpp_throw(e);
+}
 void dn2cpp_throw_not_supported() { dn2cpp_throw_of(&dn2cpp_not_supported_exception_type); }
 void dn2cpp_throw_key_not_found() { dn2cpp_throw_of(&dn2cpp_key_not_found_exception_type); }
 void dn2cpp_throw_null_reference() { dn2cpp_throw_of(&dn2cpp_null_reference_exception_type); }
@@ -1731,7 +1753,7 @@ const Dn2CppTypeInfo dn2cpp_stackframe_type =
 const Dn2CppType dn2cpp_stackframe_type_obj = { { &dn2cpp_type_type }, &dn2cpp_stackframe_type };
 
 extern const Dn2CppType dn2cpp_stacktrace_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_stacktrace_type_reflection, dn2cpp_ownflds_stacktrace, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, {}, 0, DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR);
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_stacktrace_type_reflection, dn2cpp_ownflds_stacktrace, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, {}, 0, DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR | DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR);
 const Dn2CppTypeInfo dn2cpp_stacktrace_type =
     dn2cpp_ti_with_typeobject({ "System.Diagnostics.StackTrace", nullptr, nullptr, nullptr, dn2cpp_stacktrace_tostring, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppStackTrace), 0, 0, 0, 0, 0, dn2cpp_stacktrace_type_reflection },
                               &dn2cpp_stacktrace_type_obj);

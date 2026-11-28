@@ -44,7 +44,7 @@ internal sealed partial class AssemblyDiet
     {
         if (UsesReachedCopyTraversal(type) && CopiedRuntimeOwnedType(type)) return;
         foreach (var method in type.Methods)
-            if (method.IsConstructor && method.IsStatic) MarkMethod(method);
+            if (IsRuntimeStaticCtor(method)) MarkMethod(method);
     }
 
     private void NoteCopiedListedOwner(TypeDefinition type)
@@ -62,7 +62,7 @@ internal sealed partial class AssemblyDiet
         NotePreservedReference(method.ReturnType);
         foreach (var parameter in method.Parameters) NotePreservedReference(parameter.ParameterType);
         var owner = method.DeclaringType;
-        if (!owner.IsBeforeFieldInit && (method.IsStatic || method.IsConstructor || owner.IsValueType))
+        if (!owner.IsBeforeFieldInit && (method.IsStatic || IsRuntimeCtor(method) || owner.IsValueType))
             MarkPreservedInitializer(owner);
     }
 

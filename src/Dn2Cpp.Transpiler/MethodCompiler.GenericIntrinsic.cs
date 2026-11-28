@@ -651,32 +651,41 @@ internal sealed partial class MethodCompiler
                 // reference type with no public parameterless ctor (Task<T>) must land on the
                 // run-time MissingMethodException, not the loud transpile-time throw the
                 // intrinsic arm reserves for a constructible-but-unmodeled intrinsic.
-                if (cls.IsAbstract || Compilation.PublicParameterlessCtor(cls) is not { } ctor)
+                if (cls.IntrinsicCppName is null && cls.InvalidStaticCctor is not null)
+                    EnsureCctorBefore(cls);
+                if (cls.IsInterface || cls.IsAbstract)
                 {
-                    if (cls.IsInterface || cls.IsAbstract)
-                    {
-                        string reason = cls.IsInterface
-                            ? "Cannot create an instance of an interface."
-                            : "Cannot create an instance of an abstract class.";
-                        Emit($"dn2cpp_throw_missing_method(\"{reason}\");");
-                    }
-                    else
-                    {
-                        // Generic intrinsic shells omit members, but their constructor
-                        // rows still determine the CLR's missing-constructor wording.
-                        bool hasDefault = cls.IntrinsicCppName is not null && cls.GenericArity > 0
-                            ? Compilation.HasParameterlessCtorDefinition(cls)
-                            : Compilation.ParameterlessCtor(cls) is not null;
-                        string hasDefaultConstructor = hasDefault
-                            ? "true" : "false";
-                        string typeInfo = TypeInfoExpr(t) ?? throw new InvalidOperationException(
-                            $"{cls.FullName} has no runtime type-info");
-                        Emit($"dn2cpp_throw_missing_default_constructor({typeInfo}, {hasDefaultConstructor});");
-                    }
+                    string typeInfo = TypeInfoExpr(t) ?? throw new InvalidOperationException(
+                        $"{cls.FullName} has no runtime type-info");
+                    Emit($"dn2cpp_throw_missing_abstract_or_interface({typeInfo});");
+                    Push(StackKind.Ref, ct, CppTypes.ZeroInitExpr(ct));
+                    return;
+                }
+                var ctor = Compilation.ParameterlessCtor(cls);
+                if (ctor is null || !ctor.IsPublic)
+                {
+                    // Generic intrinsic shells omit members, but their constructor
+                    // rows still determine the CLR's missing-constructor wording.
+                    bool hasDefault = cls.IntrinsicCppName is not null && cls.GenericArity > 0
+                        ? Compilation.HasParameterlessCtorDefinition(cls)
+                        : ctor is not null;
+                    string hasDefaultConstructor = hasDefault
+                        ? "true" : "false";
+                    string typeInfo = TypeInfoExpr(t) ?? throw new InvalidOperationException(
+                        $"{cls.FullName} has no runtime type-info");
+                    Emit($"dn2cpp_throw_missing_default_constructor({typeInfo}, {hasDefaultConstructor});");
                     // [[noreturn]]; the push only keeps the eval stack typed. Use the
                     // slot's own zero (a reference type's ct is a pointer, so this is
                     // nullptr) rather than a bare "nullptr" that would not type-check
                     // against a non-pointer slot on this dead path.
+                    Push(StackKind.Ref, ct, CppTypes.ZeroInitExpr(ct));
+                    return;
+                }
+                if (cls.IntrinsicCppName is null && ctor.Rva == 0)
+                {
+                    string msg = CppEmitter.CppUtf8Literal(
+                        $"{Compilation.ReflectionTypeName(cls)}::Void .ctor(): constructor has no IL body");
+                    Emit($"dn2cpp_throw_platform_not_supported({msg});");
                     Push(StackKind.Ref, ct, CppTypes.ZeroInitExpr(ct));
                     return;
                 }
@@ -735,14 +744,34 @@ internal sealed partial class MethodCompiler
             // correct default. Guard the DirectCallSym(vctor) route on a non-intrinsic
             // type so it never names a cut ctor symbol (cut ⟹ route), mirroring the
             // reference arm above.
-            if (t.Kind == TypeKind.Class && t.Class is { IsValueType: true, IntrinsicCppName: null } vcls
-                && Compilation.ParameterlessCtor(vcls) is { } vctor)
+            if (t.Kind == TypeKind.Class && t.Class is { IsValueType: true, IntrinsicCppName: null } vcls)
             {
-                string val = NewTemp(ct);
-                Emit($"{val} = {zero};");
-                EmitActivatorCtorCall($"{DirectCallSym(vctor)}({ArgsWithRgctx($"&{val}", vctor)});", vctor);
-                Push(StackKind.Struct, ct, val);
-                return;
+                if (vcls.InvalidStaticCctor is not null)
+                    EnsureCctorBefore(vcls);
+                if (Compilation.ParameterlessCtor(vcls) is { } vctor)
+                {
+                    if (!vctor.IsPublic)
+                    {
+                        string typeInfo = TypeInfoExpr(t) ?? throw new InvalidOperationException(
+                            $"{vcls.FullName} has no runtime type-info");
+                        Emit($"dn2cpp_throw_missing_default_constructor({typeInfo}, true);");
+                        Push(StackKind.Struct, ct, zero);
+                        return;
+                    }
+                    if (vctor.Rva == 0)
+                    {
+                        string msg = CppEmitter.CppUtf8Literal(
+                            $"{Compilation.ReflectionTypeName(vcls)}::Void .ctor(): constructor has no IL body");
+                        Emit($"dn2cpp_throw_platform_not_supported({msg});");
+                        Push(StackKind.Struct, ct, zero);
+                        return;
+                    }
+                    string val = NewTemp(ct);
+                    Emit($"{val} = {zero};");
+                    EmitActivatorCtorCall($"{DirectCallSym(vctor)}({ArgsWithRgctx($"&{val}", vctor)});", vctor);
+                    Push(StackKind.Struct, ct, val);
+                    return;
+                }
             }
             Push(CppTypes.KindOf(t), ct, zero);
             return;

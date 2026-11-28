@@ -3134,19 +3134,19 @@ DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_dto,
 #undef DN2CPP_DTOFLD_ROW
 
 extern const Dn2CppType dn2cpp_timespan_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_timespan_type_reflection, dn2cpp_ownflds_timespan, 25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_timespan_type_reflection, dn2cpp_ownflds_timespan, 25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, {}, 0, DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR);
 const Dn2CppTypeInfo dn2cpp_timespan_type = dn2cpp_ti_with_formatspec(
     dn2cpp_ti_with_typeobject({ "System.TimeSpan", nullptr, nullptr, nullptr, &dn2cpp_timespan_box_tostring, &dn2cpp_timespan_box_hash, &dn2cpp_timespan_box_equals, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppTimeSpan), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_timespan_type_reflection }, &dn2cpp_timespan_type_obj),
     &dn2cpp_timespan_box_formatspec);
 const Dn2CppType dn2cpp_timespan_type_obj = { { &dn2cpp_type_type }, &dn2cpp_timespan_type };
 extern const Dn2CppType dn2cpp_datetime_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_datetime_type_reflection, dn2cpp_ownflds_datetime, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_datetime_type_reflection, dn2cpp_ownflds_datetime, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, {}, 0, DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR);
 const Dn2CppTypeInfo dn2cpp_datetime_type = dn2cpp_ti_with_formatspec(
     dn2cpp_ti_with_typeobject({ "System.DateTime", nullptr, nullptr, nullptr, &dn2cpp_datetime_box_tostring, &dn2cpp_datetime_box_hash, &dn2cpp_datetime_box_equals, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppDateTime), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED | DN2CPP_TF_NOT_MARSHALABLE), 0, 0, 0, dn2cpp_datetime_type_reflection }, &dn2cpp_datetime_type_obj),
     &dn2cpp_datetime_box_formatspec);
 const Dn2CppType dn2cpp_datetime_type_obj = { { &dn2cpp_type_type }, &dn2cpp_datetime_type };
 extern const Dn2CppType dn2cpp_datetimeoffset_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_datetimeoffset_type_reflection, dn2cpp_ownflds_dto, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_datetimeoffset_type_reflection, dn2cpp_ownflds_dto, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, {}, 0, DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR);
 const Dn2CppTypeInfo dn2cpp_datetimeoffset_type = dn2cpp_ti_with_formatspec(
     dn2cpp_ti_with_typeobject({ "System.DateTimeOffset", nullptr, nullptr, nullptr, &dn2cpp_datetimeoffset_box_tostring, &dn2cpp_datetimeoffset_box_hash, &dn2cpp_datetimeoffset_box_equals, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppDateTimeOffset), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED | DN2CPP_TF_NOT_MARSHALABLE), 0, 0, 0, dn2cpp_datetimeoffset_type_reflection }, &dn2cpp_datetimeoffset_type_obj),
     &dn2cpp_datetimeoffset_box_formatspec);

@@ -164,7 +164,7 @@ internal sealed partial class AssemblyDiet
             foreach (var method in owner.Methods)
             {
                 Spend();
-                if (!Matches(method.IsConstructor ? LookupMemberKind.Constructor : LookupMemberKind.Method,
+                if (!Matches(IsRuntimeCtor(method) ? LookupMemberKind.Constructor : LookupMemberKind.Method,
                     MemberVisibility(method.IsPublic, method.IsPrivate), !method.HasParameters)) continue;
                 NoteCopiedListedOwner(owner);
                 MarkReflectionCandidate(method);

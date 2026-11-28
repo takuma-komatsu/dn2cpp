@@ -96,6 +96,104 @@ namespace ReflectActivatorSubset
         public override string ToString() => $"SP({X})";
     }
 
+    class WithInitializer
+    {
+        public WithInitializer() { }
+        static WithInitializer() { }
+        public override string ToString() => "WithInitializer()";
+    }
+
+    class WithCctorFirst
+    {
+        static WithCctorFirst() { }
+        public WithCctorFirst() { }
+        public override string ToString() => "WithCctorFirst()";
+    }
+
+    class WithBeforeFieldInit
+    {
+        public static int Marker = 1;
+        public WithBeforeFieldInit() { }
+        public override string ToString() => "WithBeforeFieldInit()";
+    }
+
+    class WithInitializerPrivate
+    {
+        static WithInitializerPrivate() { }
+        private WithInitializerPrivate() { }
+        public override string ToString() => "WithInitializerPrivate(private)";
+    }
+
+    class WithInitializerNoDefault
+    {
+        static WithInitializerNoDefault() { }
+        public WithInitializerNoDefault(int x) { }
+    }
+
+    class WithInitializerInvokeMemberOnly
+    {
+        static WithInitializerInvokeMemberOnly() { }
+        public WithInitializerInvokeMemberOnly() { }
+        public override string ToString() => "WithInitializerInvokeMemberOnly()";
+    }
+
+    class WithInitializerBoxedFlags
+    {
+        static WithInitializerBoxedFlags() { }
+        public WithInitializerBoxedFlags() { }
+        public override string ToString() => "WithInitializerBoxedFlags()";
+    }
+
+    class WithInitializerBoxedInvokeMember
+    {
+        static WithInitializerBoxedInvokeMember() { }
+        public WithInitializerBoxedInvokeMember() { }
+        public override string ToString() => "WithInitializerBoxedInvokeMember()";
+    }
+
+    sealed class StaticLookupBox<T>
+    {
+        public StaticLookupBox() { }
+    }
+
+    static class StructInitTracker
+    {
+        public static int PlainRuns;
+        public static int CtorRuns;
+    }
+
+    struct StructWithInitializer
+    {
+        static StructWithInitializer() { StructInitTracker.PlainRuns++; }
+        public int Value;
+        public StructWithInitializer(int value) { Value = value; }
+        public override string ToString() => $"StructWithInitializer({Value})";
+    }
+
+    struct StructWithInitializerAndCtor
+    {
+        static StructWithInitializerAndCtor() { StructInitTracker.CtorRuns++; }
+        public int Value;
+        public StructWithInitializerAndCtor() { Value = 7; }
+        public override string ToString() => $"StructWithInitializerAndCtor({Value})";
+    }
+
+    sealed class VarargFirst
+    {
+        public static int Init;
+        public VarargFirst(__arglist) { }
+        static VarargFirst() { Init++; }
+        public override string ToString() => "VarargFirst()";
+    }
+
+    sealed class VarargBeforeBare
+    {
+        private readonly string _tag;
+        public VarargBeforeBare(__arglist) { _tag = "vararg"; }
+        private VarargBeforeBare() { _tag = "bare-private"; }
+        public override string ToString() => $"VarargBeforeBare({_tag})";
+    }
+
     enum Day { Mon, Tue, Wed }
 
     class Indexed
@@ -253,6 +351,19 @@ namespace ReflectActivatorSubset
             Console.WriteLine($"CreateInstanceFromArrayType {cifat.GetType()} len={cifat.Length} [1]={cifat.GetValue(1)}");
         }
 
+        static void ShowExact(string label, Func<object?> f)
+        {
+            try
+            {
+                object? r = f();
+                Console.WriteLine($"{label} => {r ?? "null"}");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"{label} => threw {e.GetType().Name}: {e.Message}");
+            }
+        }
+
         internal static void RunDefaultConstructorVisibility()
         {
             const BindingFlags publicInstance = BindingFlags.Public | BindingFlags.Instance;
@@ -260,6 +371,64 @@ namespace ReflectActivatorSubset
             Show("public default, nonpublic flags", () => Activator.CreateInstance(typeof(P), nonPublicInstance, null, null, null));
             Show("public default, public flags", () => Activator.CreateInstance(typeof(P), publicInstance, null, null, null));
             Show("private default, nonpublic flags", () => Activator.CreateInstance(typeof(R), nonPublicInstance, null, null, null));
+        }
+
+        internal static void RunStaticConstructorLookup()
+        {
+            const BindingFlags publicInstance = BindingFlags.Public | BindingFlags.Instance;
+            const BindingFlags nonPublicInstance = BindingFlags.NonPublic | BindingFlags.Instance;
+            const BindingFlags staticNonPublic = BindingFlags.Static | BindingFlags.NonPublic;
+            const BindingFlags staticPublic = BindingFlags.Static | BindingFlags.Public;
+            const BindingFlags staticNonPublicInstance = staticNonPublic | BindingFlags.Instance;
+            const BindingFlags allConstructors = staticNonPublic | publicInstance;
+            Console.WriteLine("== Activator static constructor lookup ==");
+            _ = Activator.CreateInstance(typeof(WithInitializer));
+            _ = Activator.CreateInstance(typeof(WithBeforeFieldInit));
+            foreach (var type in new[] { typeof(P), typeof(WithInitializer), typeof(WithBeforeFieldInit) })
+            {
+                Show($"{type.Name}, static nonpublic", () => Activator.CreateInstance(type, staticNonPublic, null, null, null));
+                Show($"{type.Name}, static nonpublic instance", () => Activator.CreateInstance(type, staticNonPublicInstance, null, null, null));
+                Show($"{type.Name}, all constructors", () => Activator.CreateInstance(type, allConstructors, null, null, null));
+                Show($"{type.Name}, static public", () => Activator.CreateInstance(type, staticPublic, null, null, null));
+            }
+            ShowExact("ctor first ambiguous message", () => Activator.CreateInstance(typeof(WithInitializer), allConstructors, null, null, null));
+            ShowExact("cctor first ambiguous message", () => Activator.CreateInstance(typeof(WithCctorFirst), allConstructors, null, null, null));
+            Show("cctor private default, static nonpublic", () => Activator.CreateInstance(typeof(WithInitializerPrivate), staticNonPublic, null, null, null));
+            Show("cctor private default, static nonpublic instance", () => Activator.CreateInstance(typeof(WithInitializerPrivate), staticNonPublicInstance, null, null, null));
+            Show("cctor no default, static nonpublic", () => Activator.CreateInstance(typeof(WithInitializerNoDefault), staticNonPublic, null, null, null));
+            Show("cctor invoke-member retention, static nonpublic", () => typeof(WithInitializerInvokeMemberOnly).InvokeMember(
+                "", BindingFlags.CreateInstance | staticNonPublic, null, null, null));
+            object boxedFlags = publicInstance;
+            Show("cctor boxed flags, public instance", () => Activator.CreateInstance(typeof(WithInitializerBoxedFlags), (BindingFlags)boxedFlags, null, null, null));
+            object boxedInvokeMemberFlags = BindingFlags.CreateInstance | staticNonPublic;
+            Show("cctor boxed invoke-member, static nonpublic", () => typeof(WithInitializerBoxedInvokeMember).InvokeMember(
+                "", (BindingFlags)boxedInvokeMemberFlags, null, null, null));
+            Show("generic template static public miss", () => Activator.CreateInstance(
+                typeof(StaticLookupBox<>).MakeGenericType(typeof(string)), staticPublic, null, null, null));
+            Show("struct no cctor, static nonpublic", () => Activator.CreateInstance(typeof(SP), staticNonPublic, null, null, null));
+            object? structWithInit = Activator.CreateInstance(typeof(StructWithInitializer), staticNonPublic, null, null, null);
+            int structInitBeforeToString = StructInitTracker.PlainRuns;
+            string structWithInitText = structWithInit?.ToString() ?? "null";
+            Console.WriteLine($"struct with cctor, static nonpublic => {structWithInitText} (beforeToString={structInitBeforeToString}, afterToString={StructInitTracker.PlainRuns})");
+            Show("struct with cctor and ctor, all constructors", () => Activator.CreateInstance(typeof(StructWithInitializerAndCtor), allConstructors, null, null, null));
+            Show("struct with cctor and ctor, static nonpublic", () => Activator.CreateInstance(typeof(StructWithInitializerAndCtor), staticNonPublic, null, null, null));
+            ShowExact("void static nonpublic", () => Activator.CreateInstance(typeof(void), staticNonPublic, null, null, null));
+            ShowExact("void pointer static nonpublic", () => Activator.CreateInstance(typeof(void*), staticNonPublic, null, null, null));
+            ShowExact("argiterator static nonpublic", () => Activator.CreateInstance(typeof(ArgIterator), staticNonPublic, null, null, null));
+            Show("bool static nonpublic", () => Activator.CreateInstance(typeof(bool), staticNonPublic, null, null, null));
+            Show("timespan static nonpublic", () => Activator.CreateInstance(typeof(TimeSpan), staticNonPublic, null, null, null));
+            Show("datetimeoffset static nonpublic", () => Activator.CreateInstance(typeof(DateTimeOffset), staticNonPublic, null, null, null));
+            ShowExact("waithandle all constructors", () => Activator.CreateInstance(typeof(System.Threading.WaitHandle), allConstructors, null, null, null));
+            ShowExact("waithandle static nonpublic", () => Activator.CreateInstance(typeof(System.Threading.WaitHandle), staticNonPublic, null, null, null));
+            ShowExact("waithandle nonmatching arg", () => Activator.CreateInstance(typeof(System.Threading.WaitHandle), new object[] { 1 }));
+            ShowExact("idisposable default", () => Activator.CreateInstance(typeof(IDisposable)));
+            Show("task<int> nonpublic instance", () => Activator.CreateInstance(typeof(System.Threading.Tasks.Task<int>), nonPublicInstance, null, null, null)?.GetType());
+            Show("yieldawaiter static nonpublic", () => Activator.CreateInstance(typeof(System.Runtime.CompilerServices.YieldAwaitable.YieldAwaiter), staticNonPublic, null, null, null));
+            Show("yieldawaitable static nonpublic", () => Activator.CreateInstance(typeof(System.Runtime.CompilerServices.YieldAwaitable), staticNonPublic, null, null, null));
+            ShowExact("vararg first ambiguous message", () => Activator.CreateInstance(typeof(VarargFirst), allConstructors, null, null, null));
+            Show("vararg before bare, public default", () => Activator.CreateInstance(typeof(VarargBeforeBare)));
+            Show("vararg before bare, public flags", () => Activator.CreateInstance(typeof(VarargBeforeBare), publicInstance, null, null, null));
+            ShowExact("vararg before bare, all instance", () => Activator.CreateInstance(typeof(VarargBeforeBare), publicInstance | BindingFlags.NonPublic, null, null, null));
         }
     }
 }

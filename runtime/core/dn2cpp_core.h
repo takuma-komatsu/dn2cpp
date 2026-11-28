@@ -227,6 +227,7 @@ struct Dn2CppEnumMember { const char* name; int64_t value; };
 // One row per implemented interface: pointer to the interface's type
 // metadata plus the method slots implementing it (declaration order).
 inline constexpr uint8_t DN2CPP_METHOD_PRESERVABILITY_UNKNOWN = 2;
+inline constexpr int32_t DN2CPP_METHOD_NO_IL_BODY = 3;
 
 struct Dn2CppInterfaceMethodTarget
 {
@@ -311,13 +312,35 @@ struct Dn2CppTypeReflection
 // exists: the parameterless one per visibility. Constructors with arguments keep
 // signature rows so the binder selects them before refusing. UNALLOCATED marks a concrete user type no instance of which
 // (for a value type, no box) the image allocates: its overrides and interface slots are
-// not wired, so reflection makes no instance of it.
+// not wired, so reflection makes no instance of it. The DECLARED_*_CCTOR bits record
+// declared .cctor visibility independently of whether an initializer row or body was emitted;
+// the *_CCTOR_BEFORE_*_CTOR bits record per-visibility first-declaration order; BODILESS_*
+// marks zero-RVA parameterless .ctor declarations; MULTIPLE_* records >=2 same-visibility
+// parameterless .ctor/.cctor declarations for ambiguity detection.
 #define DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR 0x1
 #define DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR 0x2
 #define DN2CPP_TA_UNALLOCATED 0x4
 // Permanent runtime capability refusal. Unlike UNALLOCATED, preserving methods
 // or enabling hot update cannot make this type safe to instantiate/finalize.
 #define DN2CPP_TA_ALLOCATION_UNSUPPORTED 0x8
+#define DN2CPP_TA_DECLARED_PUBLIC_CCTOR 0x10
+#define DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR 0x20
+#define DN2CPP_TA_PUB_CCTOR_BEFORE_PUB_CTOR 0x40
+#define DN2CPP_TA_BODILESS_PUBLIC_DEFAULT_CTOR 0x80
+#define DN2CPP_TA_BODILESS_NONPUBLIC_DEFAULT_CTOR 0x100
+#define DN2CPP_TA_MULTIPLE_PUBLIC_DEFAULT_CTOR 0x200
+#define DN2CPP_TA_MULTIPLE_NONPUBLIC_DEFAULT_CTOR 0x400
+#define DN2CPP_TA_MULTIPLE_PUBLIC_CCTOR 0x800
+#define DN2CPP_TA_MULTIPLE_NONPUBLIC_CCTOR 0x1000
+#define DN2CPP_TA_PUB_CCTOR_BEFORE_NONPUB_CTOR 0x2000
+#define DN2CPP_TA_NONPUB_CCTOR_BEFORE_PUB_CTOR 0x4000
+#define DN2CPP_TA_NONPUB_CCTOR_BEFORE_NONPUB_CTOR 0x8000
+#define DN2CPP_TA_MODIFIED_PUBLIC_ZERO_ARG_CTOR 0x10000
+#define DN2CPP_TA_MODIFIED_NONPUBLIC_ZERO_ARG_CTOR 0x20000
+#define DN2CPP_TA_FIRST_PUB_CTOR_VARARG 0x40000
+#define DN2CPP_TA_FIRST_NONPUB_CTOR_VARARG 0x80000
+#define DN2CPP_TA_NONPUB_CTOR_BEFORE_PUB_CTOR 0x100000
+#define DN2CPP_TA_INVALID_CCTOR 0x200000
 
 inline constexpr Dn2CppTypeReflection dn2cpp_empty_type_reflection{};
 
@@ -1234,6 +1257,9 @@ static_assert(sizeof(Dn2CppMethodDelta) == 3 * sizeof(void*));
 #define DN2CPP_MTHA_STATIC      0x1
 #define DN2CPP_MTHA_PUBLIC      0x2
 #define DN2CPP_MTHA_PRIVATE     0x4
+// Marks a non-bare 0-arg constructor (vararg or return custom modifiers). Shares bit 0x8
+// with DN2CPP_MTHA_RETURN_POINTER_DEPTH_SHIFT because constructors return void.
+#define DN2CPP_MTHA_NONBARE_CTOR 0x8
 // MethodAttributes.SpecialName (operator methods, property/event accessors).
 #define DN2CPP_MTHA_SPECIALNAME 0x20
 // A generic method's closed instantiation (MethodBase.IsGenericMethod). ECMA
@@ -1293,6 +1319,7 @@ static_assert(sizeof(Dn2CppMethodDelta) == 3 * sizeof(void*));
 #define DN2CPP_MA_VIRTUAL  0x40
 #define DN2CPP_MA_NEWSLOT  0x100
 #define DN2CPP_MA_ABSTRACT 0x400
+#define DN2CPP_MA_RTSPECIALNAME 0x1000
 
 // A reflected method handle wrapping a Dn2CppMethodInfo* entry; backs
 // System.Reflection.MethodInfo (header type dn2cpp_methodinfo_type).
@@ -3266,6 +3293,8 @@ extern const Dn2CppTypeInfo dn2cpp_decimal_type;
 // Boxed type-info for YieldAwaiter. Task-family awaiters use precise emitted
 // identities across the configured and ordinary C++ layouts.
 extern const Dn2CppTypeInfo dn2cpp_yield_awaiter_type;
+int32_t dn2cpp_empty_valuetype_hash(Dn2CppObject* self);
+int32_t dn2cpp_empty_valuetype_equals(Dn2CppObject* self, Dn2CppObject* other);
 extern const Dn2CppTypeInfo dn2cpp_parallel_loop_result_type;
 // Dn2CppType objects carry RuntimeType; the public abstract bases have distinct identities.
 extern const Dn2CppTypeInfo dn2cpp_type_type;
@@ -3812,6 +3841,8 @@ template <typename T>
 // for why the allocator's own failures deliberately do not come here.
 [[noreturn]] void dn2cpp_throw_out_of_memory();
 [[noreturn]] void dn2cpp_throw_type_load();
+void dn2cpp_set_type_load_name_store(void (*store)(Dn2CppObject*, Dn2CppString*));
+[[noreturn]] void dn2cpp_throw_invalid_initializer(const char* typeName, const char* assemblyName, bool isEnum);
 [[noreturn]] void dn2cpp_throw_not_supported();
 // The same catchable NotSupportedException, carrying a diagnosable reason —
 // for AOT-boundary misses where the bare throw names nothing.
@@ -3854,6 +3885,7 @@ bool dn2cpp_allocation_unsupported(const Dn2CppTypeInfo* ti);
 [[noreturn]] void dn2cpp_throw_missing_method(const char* message);
 [[noreturn]] void dn2cpp_throw_missing_default_constructor(const Dn2CppTypeInfo* ti,
     bool hasDefaultConstructor);
+[[noreturn]] void dn2cpp_throw_missing_abstract_or_interface(const Dn2CppTypeInfo* ti);
 [[noreturn]] void dn2cpp_throw_member_access(const char* message);
 // An invoked interface slot or generic-virtual case with no most specific
 // default body. The emitter bakes .NET's message into the call; the exception

@@ -706,7 +706,8 @@ internal sealed partial class Compilation
                     ReachAccessedMembers(nested, AccessedMembers.All);
                 else if (row.Kind == REntityKind.Definition && row.Assembly is { } module)
                     ReachAccessedGenericDefinition(module, row.Definition);
-                else if (row.Method is { Name: ".ctor" } ctor)
+                else if (row.Method is { Name: ".ctor", IsStatic: false } ctor
+                    && (ctor.Attributes & MethodAttributes.RTSpecialName) != 0)
                     ConstructSelected(ctor);
                 else if (row.Method is { } generic && IsOpenGenericMethod(generic))
                 {
@@ -968,13 +969,11 @@ internal sealed partial class Compilation
                     if (type is not { Kind: TypeKind.Class, Class: { } cls }
                         || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls) || !EnsureShape(cls).IsValueType)
                         continue;
-                    foreach (var member in SelectMembers(cls, LookupMemberKind.Constructor, null,
-                        ReflectionApis.PublicInstance, null, -1))
-                        if (member.Method is { } ctor && IsDefaultInstanceConstructor(ctor))
-                        {
-                            ReachCctor(cls);
-                            InvokeTarget(ctor);
-                        }
+                    if (PublicParameterlessCtor(cls) is { } ctor)
+                    {
+                        ReachCctor(cls);
+                        InvokeTarget(ctor);
+                    }
                 }
                 if (unknown is not null)
                     RecordReflectionDiagnostic(app, site, ReflectionDiagnosticKind.Execution,
@@ -1045,13 +1044,15 @@ internal sealed partial class Compilation
                 string? memberKind = null;
                 for (int i = 0; i < flagSet.Count; i++)
                 {
-                    int flags = flagSet[i];
+                    int origFlags = flagSet[i];
+                    int flags = origFlags;
                     if ((flags & (ReflectionApis.Public | ReflectionApis.NonPublic)) == 0)
                         flags |= ReflectionApis.Public;
                     if ((flags & (ReflectionApis.Instance | ReflectionApis.Static)) == 0)
                         flags |= ReflectionApis.Instance | ReflectionApis.Static;
                     bool construct = (flags & ReflectionApis.CreateInstance) != 0;
                     usesName |= !construct;
+                    int createFlags = (origFlags & 0xFF) == 0 ? origFlags | ReflectionApis.DefaultCreateInstance : origFlags;
                     foreach (var e in owners.Items)
                     {
                         if (e.Kind != REntityKind.Template)
@@ -1063,8 +1064,7 @@ internal sealed partial class Compilation
                                         AllowPrefix: true, IncludeNestedTypes: false),
                                     ReflectionAccessor.All, construct: false, -1, app);
                         if (construct)
-                            SelectTemplateMember(e, new TemplateLookup(LookupMemberKind.Constructor, null, flags, null, -1),
-                                ReflectionAccessor.None, construct: true, arguments, app);
+                            SelectTemplateActivation(e, createFlags, arguments, app);
                     }
                     foreach (var cls in ClassesOf(owners))
                     {
@@ -1076,8 +1076,7 @@ internal sealed partial class Compilation
                                     InvokeSelected(e, app, ReflectionAccessor.All);
                         // CreateInstance ignores the name.
                         if (construct)
-                            foreach (var e in SelectMembers(cls, LookupMemberKind.Constructor, ".ctor", flags, null, -1))
-                                ApplyActivationConstructor(e, arguments, flags);
+                            ConstructActivation(cls, new[] { createFlags }, arguments, flagsKnown, directDefault: false);
                     }
                     string? kind = (flags & 1) != 0 ? null : (flags & 0x3F00) switch
                     {
@@ -1179,7 +1178,7 @@ internal sealed partial class Compilation
         CoreIntrinsics.ValidateVectorAlignment(target);
         CoreIntrinsics.ValidateConcreteVectorReduction(target);
         _reflectionSelectionCount++;
-        if (target.Name == ".cctor")
+        if (target.IsStatic && target.Name == ".cctor" && (target.Attributes & MethodAttributes.RTSpecialName) != 0)
         {
             ReachCctor(cls);
             return;
@@ -1291,7 +1290,8 @@ internal sealed partial class Compilation
             {
                 var ctors = Operand(app, site, api.Target);
                 foreach (var e in ctors.Items)
-                    if (e.Kind == REntityKind.Method && e.Method is { Name: ".ctor" } ctor)
+                    if (e.Kind == REntityKind.Method && e.Method is { Name: ".ctor", IsStatic: false } ctor
+                        && (ctor.Attributes & MethodAttributes.RTSpecialName) != 0)
                         ConstructSelected(ctor);
                     else if (e is { Kind: REntityKind.TemplateMember, Lookup: { Kind: LookupMemberKind.Constructor } lookup }
                         && (lookup.Flags & ReflectionApis.Instance) != 0)
@@ -1380,34 +1380,24 @@ internal sealed partial class Compilation
             : new List<int> { defaultFlags };
         if (!flagsKnown) flagSet.Add(AnyLookup | ReflectionApis.CreateInstance | ReflectionApis.OptionalParamBinding);
         // Activator.CreateInstance reads flags naming no lookup bit (mask 0xFF) as
-        // Public | Instance. Instance stays implied: the runtime's parameterless
-        // activation ignores it.
+        // Public | Instance; explicit lookup bits govern both instance and static matching.
         for (int i = 0; i < flagSet.Count; i++)
-            flagSet[i] = ((flagSet[i] & 0xFF) == 0 ? flagSet[i] | ReflectionApis.DefaultCreateInstance : flagSet[i])
-                | ReflectionApis.Instance;
+            flagSet[i] = (flagSet[i] & 0xFF) == 0 ? flagSet[i] | ReflectionApis.DefaultCreateInstance : flagSet[i];
+        bool directDefault = api.Op is not (ReflectionOp.AssemblyCreateInstance or ReflectionOp.ActivatorCreateNamed)
+            && api.Flags == ReflectionApi.Absent && api.Args == ReflectionApi.Absent;
         foreach (var e in types.Items)
         {
             if (e.Kind == REntityKind.Template)
             {
                 foreach (int flags in flagSet)
-                    SelectTemplateMember(e, new TemplateLookup(LookupMemberKind.Constructor, null, flags, null, -1),
-                        ReflectionAccessor.None, construct: true, arguments, app);
+                    SelectTemplateActivation(e, flags, arguments, app);
                 continue;
             }
             if (e.Kind != REntityKind.Type || e.Inherited || e.Type is not { Kind: TypeKind.Class, Class: { } cls })
                 continue;
             if (ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls))
                 continue;
-            bool constructed = false;
-            foreach (int flags in flagSet)
-                foreach (var c in SelectMembers(cls, LookupMemberKind.Constructor, ".ctor", flags, null, -1))
-                    constructed |= ApplyActivationConstructor(c, arguments, flags);
-            if (!constructed && EnsureShape(cls).IsValueType)
-            {
-                _reflectionSelectionCount++;
-                NoteReflectionBoxed(cls);
-                ReachCctor(cls);
-            }
+            ConstructActivation(cls, flagSet, arguments, flagsKnown, directDefault);
         }
         if (types.Unknown is not null)
             RecordReflectionDiagnostic(app, site, ReflectionDiagnosticKind.Execution,
@@ -1428,16 +1418,17 @@ internal sealed partial class Compilation
         return match;
     }
 
-    private bool ApplyActivationConstructor(REntity row, int arguments, int flags)
+    private void ApplyActivationConstructor(REntity row, int arguments, int flags)
     {
         var ctor = row.Method!;
         var match = ActivationArguments(ctor, arguments, flags, out var paramsElement, out bool needsMissing);
         if (match == ActivationMatch.Declaration)
             NoteListedRows(new List<REntity> { row });
-        if (match != ActivationMatch.Body) return false;
-        NoteActivationArguments(paramsElement, needsMissing);
-        ConstructSelected(ctor);
-        return true;
+        if (match == ActivationMatch.Body)
+        {
+            NoteActivationArguments(paramsElement, needsMissing);
+            ConstructSelected(ctor);
+        }
     }
 
     private void NoteActivationArguments(TypeDesc? paramsElement, bool needsMissing)
@@ -1453,6 +1444,194 @@ internal sealed partial class Compilation
             ReachCctor(owner);
             if (owner.StaticCctor is { } initializer) NoteCctorEnsure(initializer);
         }
+    }
+
+    private void SelectTemplateActivation(REntity e, int flags, int arguments, ReflectionApplication app)
+    {
+        if ((flags & ReflectionApis.Instance) != 0)
+            SelectTemplateMember(e, new TemplateLookup(LookupMemberKind.Constructor, null, flags, null, -1),
+                ReflectionAccessor.None, construct: true, arguments, app);
+        if (arguments <= 0 && e.Assembly is { } module && HasMatchingZeroArgCandidate(module, e.Definition, flags))
+            SelectTemplateMember(e, new TemplateLookup(LookupMemberKind.Constructor, null,
+                ReflectionApis.Public | ReflectionApis.NonPublic | ReflectionApis.Instance, null, -1),
+                ReflectionAccessor.None, construct: true, 0, app);
+    }
+
+    private bool HasMatchingZeroArgCandidate(Module module, TypeDefinitionHandle def, int flags)
+    {
+        int decl = TryPreservationActivationBits(module, def, out int snapshot)
+            ? snapshot : TypeNameSnapshot.ReadActivationDeclarations(module.Reader, def);
+        bool matchStatic = (flags & ReflectionApis.Static) != 0
+            && ((decl & TypeNameSnapshot.DeclaredPublicCctor) != 0 && (flags & ReflectionApis.Public) != 0
+                || (decl & TypeNameSnapshot.DeclaredNonPublicCctor) != 0 && (flags & ReflectionApis.NonPublic) != 0);
+        bool matchModified = (flags & ReflectionApis.Instance) != 0
+            && ((decl & TypeNameSnapshot.ModifiedPublicZeroArgCtor) != 0 && (flags & ReflectionApis.Public) != 0
+                || (decl & TypeNameSnapshot.ModifiedNonPublicZeroArgCtor) != 0 && (flags & ReflectionApis.NonPublic) != 0);
+        return matchStatic || matchModified;
+    }
+
+    private void ConstructActivation(ClassInfo cls, IReadOnlyList<int> flagSet, int arguments,
+        bool flagsKnown, bool directDefault)
+    {
+        var ctors = SelectActivationConstructors(cls, flagSet, arguments, flagsKnown, directDefault,
+            out bool implicitValueDefault);
+        foreach (var ctor in ctors)
+            ConstructSelected(ctor);
+        if (implicitValueDefault)
+        {
+            _reflectionSelectionCount++;
+            NoteReflectionBoxed(cls);
+            ReachCctor(cls);
+        }
+    }
+
+    private List<MethodInfo> SelectActivationConstructors(ClassInfo cls, IReadOnlyList<int> flagSet,
+        int arguments, bool flagsKnown, bool directDefault, out bool implicitValueDefault)
+    {
+        implicitValueDefault = false;
+        var selected = new List<MethodInfo>();
+        bool isValueType = EnsureShape(cls).IsValueType;
+        if (!directDefault)
+        {
+            foreach (int flags in flagSet)
+            {
+                if ((flags & ReflectionApis.Instance) == 0)
+                    continue;
+                foreach (var row in SelectMembers(cls, LookupMemberKind.Constructor, ".ctor", flags, null, -1))
+                {
+                    var ctor = row.Method!;
+                    var match = ActivationArguments(ctor, arguments, flags, out var paramsElement, out bool needsMissing);
+                    if (match == ActivationMatch.Declaration)
+                        NoteListedRows(new List<REntity> { row });
+                    if (match != ActivationMatch.Body || ctor.Signature.ParameterTypes.Length == 0)
+                        continue;
+                    NoteActivationArguments(paramsElement, needsMissing);
+                    if (!selected.Contains(ctor))
+                        selected.Add(ctor);
+                }
+            }
+        }
+        if (arguments > 0)
+            return selected;
+        var bareDefaultCtors = new List<MethodInfo>();
+        var allZeroArgCtors = new List<MethodInfo>();
+        int decl = 0;
+        if (!cls.Handle.IsNil)
+        {
+            EnsureCompleted(cls);
+            var reader = cls.Module.Reader;
+            foreach (var m in cls.Methods.ToList())
+            {
+                if (m.IsSynthetic || m.Name != ".ctor" || m.IsStatic
+                    || (m.Attributes & MethodAttributes.RTSpecialName) == 0)
+                    continue;
+                if (m.Handle.IsNil)
+                {
+                    if (m.Signature.ParameterTypes.Length == 0)
+                    {
+                        allZeroArgCtors.Add(m);
+                        bareDefaultCtors.Add(m);
+                    }
+                    continue;
+                }
+                var sig = reader.GetMethodDefinition(m.Handle).Signature;
+                var blob = reader.GetBlobReader(sig);
+                if (blob.ReadSignatureHeader().IsGeneric || blob.ReadCompressedInteger() != 0)
+                    continue;
+                allZeroArgCtors.Add(m);
+                if (TypeNameSnapshot.IsBareDefaultCtorSignature(reader.GetBlobReader(sig)))
+                    bareDefaultCtors.Add(m);
+            }
+            decl = TryPreservationActivationBits(cls.Module, cls.Handle, out int snap)
+                ? snap
+                : TypeNameSnapshot.ReadActivationDeclarations(reader, cls.Handle);
+        }
+        int publicCtorCount = 0;
+        int nonPublicCtorCount = 0;
+        foreach (var ctor in allZeroArgCtors)
+            if (ctor.IsPublic)
+                publicCtorCount++;
+            else
+                nonPublicCtorCount++;
+        if ((decl & TypeNameSnapshot.MultiplePublicDefaultCtor) != 0 && publicCtorCount < 2)
+            publicCtorCount = 2;
+        else if ((decl & (TypeNameSnapshot.DefaultPublicCtor | TypeNameSnapshot.BodilessPublicCtor
+            | TypeNameSnapshot.ModifiedPublicZeroArgCtor)) != 0 && publicCtorCount < 1)
+            publicCtorCount = 1;
+        if ((decl & TypeNameSnapshot.MultipleNonPublicDefaultCtor) != 0 && nonPublicCtorCount < 2)
+            nonPublicCtorCount = 2;
+        else if ((decl & (TypeNameSnapshot.DefaultNonPublicCtor | TypeNameSnapshot.BodilessNonPublicCtor
+            | TypeNameSnapshot.ModifiedNonPublicZeroArgCtor)) != 0 && nonPublicCtorCount < 1)
+            nonPublicCtorCount = 1;
+        MethodInfo? lastBare = (decl & TypeNameSnapshot.StrippedSelectedDefaultCtor) != 0
+            ? null
+            : (bareDefaultCtors.Count > 0 ? bareDefaultCtors[^1] : null);
+        bool hasAnyBareDefaultCtor = lastBare is not null
+            || (decl & (TypeNameSnapshot.DefaultPublicCtor | TypeNameSnapshot.DefaultNonPublicCtor
+                | TypeNameSnapshot.BodilessPublicCtor | TypeNameSnapshot.BodilessNonPublicCtor)) != 0;
+        int publicCctorCount = (decl & TypeNameSnapshot.MultiplePublicCctor) != 0 ? 2
+            : (decl & TypeNameSnapshot.DeclaredPublicCctor) != 0 ? 1 : 0;
+        int nonPublicCctorCount = (decl & TypeNameSnapshot.MultipleNonPublicCctor) != 0 ? 2
+            : (decl & TypeNameSnapshot.DeclaredNonPublicCctor) != 0 ? 1 : 0;
+        foreach (int flags in flagSet)
+        {
+            bool flagPublic = (flags & ReflectionApis.Public) != 0;
+            bool flagNonPublic = (flags & ReflectionApis.NonPublic) != 0;
+            bool flagInstance = (flags & ReflectionApis.Instance) != 0;
+            bool flagStatic = (flags & ReflectionApis.Static) != 0;
+            if (directDefault)
+            {
+                // CreateInstance(Type[, bool]) / CreateInstance<T>() call Stage 2 directly:
+                // only the loader-selected last bare void () constructor participates.
+                if (lastBare is not null)
+                {
+                    if ((lastBare.IsPublic ? flagPublic : flagNonPublic) && !selected.Contains(lastBare))
+                        selected.Add(lastBare);
+                }
+                else if (isValueType && flagPublic && !hasAnyBareDefaultCtor)
+                    implicitValueDefault = true;
+                continue;
+            }
+            if (!flagsKnown && (flags & AnyLookup) == AnyLookup)
+            {
+                // Unknown flags may carry any single lookup mask at run time, not all bits at once.
+                if (lastBare is not null)
+                {
+                    if (!selected.Contains(lastBare))
+                        selected.Add(lastBare);
+                }
+                else if (isValueType && !hasAnyBareDefaultCtor)
+                    implicitValueDefault = true;
+                continue;
+            }
+            if (isValueType && flagPublic && flagInstance)
+            {
+                if (lastBare is not null)
+                {
+                    if ((lastBare.IsPublic || flagNonPublic) && !selected.Contains(lastBare))
+                        selected.Add(lastBare);
+                }
+                else if (!hasAnyBareDefaultCtor)
+                    implicitValueDefault = true;
+                continue;
+            }
+            int instanceMatches = flagInstance
+                ? (flagPublic ? publicCtorCount : 0) + (flagNonPublic ? nonPublicCtorCount : 0) : 0;
+            int staticMatches = flagStatic
+                ? (flagPublic ? publicCctorCount : 0) + (flagNonPublic ? nonPublicCctorCount : 0) : 0;
+            if (instanceMatches + staticMatches != 1)
+                continue;
+            // Stage 1's single match delegates to Stage 2 CreateInstanceDefaultCtor(publicOnly: false),
+            // invoking only the loader-selected last bare void () constructor or implicit struct zero-init.
+            if (lastBare is not null)
+            {
+                if (!selected.Contains(lastBare))
+                    selected.Add(lastBare);
+            }
+            else if (isValueType && !hasAnyBareDefaultCtor)
+                implicitValueDefault = true;
+        }
+        return selected;
     }
 
     private void ConstructSelected(MethodInfo ctor)
@@ -2517,7 +2696,7 @@ internal sealed partial class Compilation
             NoteTypeIdentityClosure(TypeDesc.MakeClass(cls));
             if (construct)
             {
-                foreach (var c in SelectMembers(cls, LookupMemberKind.Constructor, ".ctor", lookup.Flags | ReflectionApis.Instance,
+                foreach (var c in SelectMembers(cls, LookupMemberKind.Constructor, ".ctor", lookup.Flags,
                              lookup.Types, -1))
                     ApplyActivationConstructor(c, arguments, lookup.Flags);
             }
@@ -2556,7 +2735,7 @@ internal sealed partial class Compilation
             var selected = new HashSet<(Module, MethodDefinitionHandle)>();
             var members = construct
                 ? SelectMembers(ReflectionDefinitionOwner(module, def, null), LookupMemberKind.Constructor, ".ctor",
-                    lookup.Flags | ReflectionApis.Instance, lookup.Types, -1)
+                    lookup.Flags, lookup.Types, -1)
                 : DefinitionMembers(module, def, null, lookup);
             foreach (var member in members)
             {
@@ -2927,26 +3106,12 @@ internal sealed partial class Compilation
         return verdict;
     }
 
-    private static bool HasPublicParameterlessCtor(ClassInfo cls)
-    {
-        var reader = cls.Module.Reader;
-        foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetMethods())
-        {
-            var md = reader.GetMethodDefinition(handle);
-            if ((md.Attributes & (MethodAttributes.Static | MethodAttributes.MemberAccessMask)) != MethodAttributes.Public
-                || !reader.StringComparer.Equals(md.Name, ".ctor"))
-                continue;
-            if (IsParameterlessSignature(reader.GetBlobReader(md.Signature), allowVarArgs: false))
-                return true;
-        }
-        return false;
-    }
+    private bool HasPublicParameterlessCtor(ClassInfo cls) =>
+        HasPublicBareDefaultCtor(cls.Module, cls.Handle);
 
-    private static bool IsParameterlessSignature(BlobReader signature, bool allowVarArgs)
+    private static bool IsParameterlessSignature(BlobReader signature)
     {
         var header = signature.ReadSignatureHeader();
-        if (!allowVarArgs && header.CallingConvention == SignatureCallingConvention.VarArgs)
-            return false;
         if (header.IsGeneric)
             signature.ReadCompressedInteger();
         return signature.ReadCompressedInteger() == 0;
@@ -3181,7 +3346,8 @@ internal sealed partial class Compilation
             if (kind is null or LookupMemberKind.Method or LookupMemberKind.Constructor)
                 foreach (var method in LookupMethods(c))
                 {
-                    bool ctor = method.Name is ".ctor" or ".cctor";
+                    bool ctor = (method.Attributes & MethodAttributes.RTSpecialName) != 0
+                        && (!method.IsStatic && method.Name == ".ctor" || method.IsStatic && method.Name == ".cctor");
                     var memberKind = ctor ? LookupMemberKind.Constructor : LookupMemberKind.Method;
                     if (kind is not null && kind != memberKind || method.IsSynthetic)
                         continue;
@@ -3190,8 +3356,7 @@ internal sealed partial class Compilation
                     var row = new LookupRow(method.Name, memberKind, MethodVisibility(method.Attributes), method.IsStatic);
                     bool publicDefault = ctor && declared && row.Visibility == LookupVisibility.Public
                         && (accessedMembers & AccessedMembers.PublicConstructors) == AccessedMembers.PublicParameterlessConstructor
-                        && IsParameterlessSignature(c.Module.Reader.GetBlobReader(c.Module.Reader.GetMethodDefinition(method.Handle).Signature),
-                            allowVarArgs: true);
+                        && IsParameterlessSignature(c.Module.Reader.GetBlobReader(c.Module.Reader.GetMethodDefinition(method.Handle).Signature));
                     if (!ReflectionLookupRules.Admits(row, flags, declared, accessedMembers, publicDefault))
                         continue;
                     if (arity >= 0 && GenericParameterCount(method) != arity)
@@ -4972,7 +5137,9 @@ internal sealed partial class Compilation
             var row = e.Metadata ?? e;
             var memberType = row.Kind switch
             {
-                REntityKind.Method => row.Method is { Name: ".ctor" or ".cctor" } ? MemberTypes.Constructor : MemberTypes.Method,
+                REntityKind.Method => row.Method is { } m && (m.Attributes & MethodAttributes.RTSpecialName) != 0
+                    && (!m.IsStatic && m.Name == ".ctor" || m.IsStatic && m.Name == ".cctor")
+                    ? MemberTypes.Constructor : MemberTypes.Method,
                 REntityKind.Field => MemberTypes.Field,
                 REntityKind.Property => MemberTypes.Property,
                 REntityKind.Event => MemberTypes.Event,

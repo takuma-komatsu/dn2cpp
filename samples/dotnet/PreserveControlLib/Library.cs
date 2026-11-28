@@ -266,3 +266,28 @@ public sealed class UnusedType
 {
     public static void UnusedMethod() => Console.WriteLine("unused-type");
 }
+
+public sealed class BodilessExternCtor
+{
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.InternalCall)]
+    public extern BodilessExternCtor();
+}
+
+public sealed class BodilessExternStrippedCtor
+{
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.InternalCall)]
+    public extern BodilessExternStrippedCtor();
+}
+
+public sealed class StaticLookupTarget
+{
+    public readonly int Value;
+    static StaticLookupTarget() { }
+    public StaticLookupTarget() => Value = 31;
+}
+
+public sealed class NamedParamsCtor
+{
+    public readonly int[] Values;
+    public NamedParamsCtor(params int[] values) => Values = values;
+}
