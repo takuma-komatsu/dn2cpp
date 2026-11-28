@@ -1917,8 +1917,15 @@ scheduler receives eligible continuations. A queue rejection faults the
 continuation. Cancellation can withdraw work from a managed scheduler via
 `TryDequeue`. With `ExecuteSynchronously`, the scheduler first receives an inline
 offer unless the pending antecedent required asynchronous continuations.
-`RunSynchronously` also offers inline execution, queues after a refusal, and
-waits for the task to settle.
+`RunSynchronously` also offers inline execution. After a refusal it queues the
+task and waits directly for completion.
+
+An indefinite wait on a single task offers its pending delegate to the assigned
+managed scheduler through `TryExecuteTaskInline(task, true)`. `Task<TResult>.Result`
+and synchronous Task awaiter reads share this path. A refusal leaves the queued
+task available to its scheduler. A failing inline hook raises
+`TaskSchedulerException` on the waiting thread. The task keeps its own outcome.
+Finite waits observe their deadline without an inline offer.
 
 CoreLib's protected `TaskScheduler.TryExecuteTask(Task)` checks the assigned
 scheduler before claiming its delegate. A managed scheduler runs its queued task
