@@ -27,6 +27,7 @@
 // heap-sensitive section; any later section must be independent of prior
 // allocator and heap state.
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace GCHandlePinSubset;
@@ -297,6 +298,28 @@ unsafe class Program
     static long s_hiddenToken; // ~ToIntPtr of section 17's handle: not a pointer bit
                                // pattern, so it roots nothing under conservative scanning
     static object s_occupy;    // keeps the post-collect allocation storm reachable
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static nint MakeHiddenPinnedToken()
+    {
+        var handle = new PinnedGCHandle<byte[]>(new byte[] { 41 });
+        return ~PinnedGCHandle<byte[]>.ToIntPtr(handle);
+    }
+
+    internal static void CheckTypedPinnedToken()
+    {
+        nint hidden = MakeHiddenPinnedToken();
+        long sink = Stomp(128);
+        GC.Collect();
+        var handle = PinnedGCHandle<byte[]>.FromIntPtr(~hidden);
+        bool retained = handle.Target[0] == 41 && sink > 0;
+        var alias = handle;
+        byte[] replacement = { 73 };
+        handle.Target = replacement;
+        bool retargeted = ReferenceEquals(alias.Target, replacement);
+        handle.Dispose();
+        Console.WriteLine("typed-pinned-token:" + (retained && retargeted && !handle.IsAllocated));
+    }
 
     // Small object with reference fields: it lands in the same (small,
     // pointer-containing) allocation classes as section 17's handle bookkeeping and

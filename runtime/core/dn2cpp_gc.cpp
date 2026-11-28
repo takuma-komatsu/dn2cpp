@@ -533,7 +533,7 @@ void dn2cpp_runtime_init(Dn2CppCpuFeaturesInit initCpuFeatures)
 #endif
     // The real CoreLib stores weak-handle values *tagged*: WeakReference ORs
     // the trackResurrection bit (|1) and the COM-aware bit (|2) into the
-    // Dn2CppWeakCell address it keeps in the heap field _taggedHandle. This
+    // Dn2CppHandleSlot address it keeps in the heap field _taggedHandle. This
     // build does not enable ALL_INTERIOR_POINTERS, so a heap-scanned word
     // pointing at cell+1..3 fails Boehm's valid-offset check and would NOT
     // keep the cell alive — a long WeakReference held only through heap
@@ -2630,18 +2630,31 @@ int64_t dn2cpp_gc_free_bytes()
 #endif
 }
 
-// GCHandle low-level handle table (GCHandle.InternalAlloc/Get/Set/Free/
-// CompareExchange) — real weak references.
-// See the Dn2CppWeakCell header note for the short/long link split and why
-// hiddenTarget must stay GC_HIDE_POINTER-obscured. The handle value is the
-// Dn2CppWeakCell's address.
+// Raw handles are aligned slot addresses: WeakReference reserves their low bits.
+// Weak slots are atomic GC allocations. Normal and pinned slots use the public
+// handle pool so their targets stay rooted even when only native code owns a token.
+struct Dn2CppHandleSlot
+{
+    union
+    {
+        Dn2CppObject* target;
+        intptr_t hiddenTarget;
+    };
+    int32_t kind; // GCHandleType + 1; zero after a pooled slot is released
+};
+
+struct Dn2CppGCHandleCell : Dn2CppHandleSlot
+{
+    void* dataAddr;    // Pinned data address, or next free slot while pooled
+    intptr_t weakCell; // Public weak handle's underlying disappearing-link slot
+};
 namespace
 {
 #ifdef DN2CPP_USE_BOEHM_GC
 // The body of dn2cpp_weakcell_read, run while holding Boehm's allocator lock.
 void* dn2cpp_weakcell_read_locked(void* p)
 {
-    auto* cell = static_cast<const Dn2CppWeakCell*>(p);
+    auto* cell = static_cast<const Dn2CppHandleSlot*>(p);
     // Boehm clears a disappearing/long link by writing a *raw* 0 into the slot
     // (finalize.c: `*link = NULL`) once the referent is collected — this must
     // read back as null. That raw 0 is NOT the same bit pattern as a hidden
@@ -2654,18 +2667,12 @@ void* dn2cpp_weakcell_read_locked(void* p)
         return nullptr;
     return reinterpret_cast<void*>(GC_REVEAL_POINTER(cell->hiddenTarget));
 }
-// Serializes weak-cell mutations (set/free/compare-exchange) against each
-// other. Real .NET's GCHandle.InternalCompareExchange is atomic and
-// WeakReference.Target set is thread-safe; the unlink→write→relink sequence
-// here is not, so without exclusion two racing setters can leave the slot's
-// hidden value and the registered link disagreeing (a stale link never
-// cleared -> a read returning a dangling pointer). Readers stay lock-free
-// against this mutex; their synchronization against the *collector's* clear
-// is the allocator lock above.
-std::mutex& g_weakcell_mtx = dn2cpp_never_destroyed<std::mutex>();
 #endif
+// Weak mutations must unlink, replace and relink as one operation. Strong
+// slot reads and writes take the same lock as InternalCompareExchange.
+std::mutex& g_internal_handle_mtx = dn2cpp_never_destroyed<std::mutex>();
 
-Dn2CppObject* dn2cpp_weakcell_read(const Dn2CppWeakCell* cell)
+Dn2CppObject* dn2cpp_weakcell_read(const Dn2CppHandleSlot* cell)
 {
 #ifdef DN2CPP_USE_BOEHM_GC
     // Boehm's documented contract for disappearing links (gc.h): a disguised
@@ -2675,7 +2682,7 @@ Dn2CppObject* dn2cpp_weakcell_read(const Dn2CppWeakCell* cell)
     // memory. Holding the lock stalls collection until the revealed pointer
     // is a visible strong reference on this (registered, scanned) stack.
     return static_cast<Dn2CppObject*>(GC_call_with_alloc_lock(
-        dn2cpp_weakcell_read_locked, const_cast<Dn2CppWeakCell*>(cell)));
+        dn2cpp_weakcell_read_locked, const_cast<Dn2CppHandleSlot*>(cell)));
 #else
     return reinterpret_cast<Dn2CppObject*>(cell->hiddenTarget);
 #endif
@@ -2683,8 +2690,8 @@ Dn2CppObject* dn2cpp_weakcell_read(const Dn2CppWeakCell* cell)
 
 // Stores target (hidden) and registers a disappearing or long link for GC-heap
 // targets. Boehm requires the link slot inside a GC-allocated object; the
-// atomic Dn2CppWeakCell satisfies that.
-void dn2cpp_weakcell_write_and_link(Dn2CppWeakCell* cell, Dn2CppObject* target)
+// atomic Dn2CppHandleSlot satisfies that.
+void dn2cpp_weakcell_write_and_link(Dn2CppHandleSlot* cell, Dn2CppObject* target)
 {
 #ifdef DN2CPP_USE_BOEHM_GC
     cell->hiddenTarget = static_cast<intptr_t>(GC_HIDE_POINTER(target));
@@ -2693,7 +2700,7 @@ void dn2cpp_weakcell_write_and_link(Dn2CppWeakCell* cell, Dn2CppObject* target)
     if (target == nullptr || GC_base(target) == nullptr)
         return;
     void** link = reinterpret_cast<void**>(&cell->hiddenTarget);
-    if (cell->isLong)
+    if (cell->kind == 2)
         GC_register_long_link(link, target);
     else
         GC_general_register_disappearing_link(link, target);
@@ -2704,11 +2711,11 @@ void dn2cpp_weakcell_write_and_link(Dn2CppWeakCell* cell, Dn2CppObject* target)
 
 // Unregisters whatever link kind cell currently holds (a no-op if none is
 // registered, or if the link was already cleared by a collection).
-void dn2cpp_weakcell_unlink(Dn2CppWeakCell* cell)
+void dn2cpp_weakcell_unlink(Dn2CppHandleSlot* cell)
 {
 #ifdef DN2CPP_USE_BOEHM_GC
     void** link = reinterpret_cast<void**>(&cell->hiddenTarget);
-    if (cell->isLong)
+    if (cell->kind == 2)
         GC_unregister_long_link(link);
     else
         GC_unregister_disappearing_link(link);
@@ -2718,70 +2725,78 @@ void dn2cpp_weakcell_unlink(Dn2CppWeakCell* cell)
 
 intptr_t dn2cpp_gchandle_internal_alloc(Dn2CppObject* target, int32_t handleType)
 {
-    // dn2cpp_alloc_atomic (GC_MALLOC_ATOMIC), NOT dn2cpp_alloc: a pointer-containing
-    // cell is scanned by the ordinary mark phase regardless of GC_HIDE_POINTER
-    // obscuring the bit pattern, which re-marks the referent live through this very
-    // cell and silently defeats the disappearing link. Only the non-scanned allocator
-    // keeps the link's storage out of that phase.
-    // Only the two weak kinds may land here: a Normal/Pinned handleType would
-    // silently become a short weak link in an atomic (unscanned) cell — i.e. a
-    // handle the caller believes is strong that roots nothing. The one known
-    // corelib caller passing Normal (ComAwareWeakReference.SetComInfoInConstructor)
-    // is unreachable on non-COM platforms; if it is ever reached, fail loudly
-    // instead of corrupting liveness.
+    if (handleType == 2 || handleType == 3)
+    {
+        auto h = dn2cpp_gchandle_alloc(target, handleType == 3 ? dn2cpp_pinned_data_addr(target) : nullptr, handleType);
+        return reinterpret_cast<intptr_t>(static_cast<Dn2CppHandleSlot*>(h.cell));
+    }
     if (handleType != 0 && handleType != 1)
-        dn2cpp_fail("GCHandle.InternalAlloc: only Weak/WeakTrackResurrection reach the internal weak-handle intrinsics");
-    auto* cell = static_cast<Dn2CppWeakCell*>(dn2cpp_alloc_atomic(sizeof(Dn2CppWeakCell)));
-    cell->isLong = (handleType == 1) ? 1 : 0; // 1 = GCHandleType.WeakTrackResurrection
+        dn2cpp_fail("GCHandle.InternalAlloc: invalid handle type");
+    auto* cell = static_cast<Dn2CppHandleSlot*>(dn2cpp_alloc_atomic(sizeof(Dn2CppHandleSlot)));
+    cell->kind = handleType + 1;
     dn2cpp_weakcell_write_and_link(cell, target);
     return reinterpret_cast<intptr_t>(cell);
 }
 
+static bool dn2cpp_handle_slot_is_weak(const Dn2CppHandleSlot* cell)
+{
+    return cell->kind == 1 || cell->kind == 2;
+}
+
 Dn2CppObject* dn2cpp_gchandle_internal_get(intptr_t handle)
 {
-    return handle == 0 ? nullptr : dn2cpp_weakcell_read(reinterpret_cast<Dn2CppWeakCell*>(handle));
+    auto* cell = reinterpret_cast<Dn2CppHandleSlot*>(handle);
+    if (cell == nullptr)
+        return nullptr;
+    if (dn2cpp_handle_slot_is_weak(cell))
+        return dn2cpp_weakcell_read(cell);
+    std::lock_guard<std::mutex> lk(g_internal_handle_mtx);
+    return cell->target;
+}
+
+static void dn2cpp_handle_slot_set_locked(Dn2CppHandleSlot* cell, Dn2CppObject* target)
+{
+    if (dn2cpp_handle_slot_is_weak(cell))
+    {
+        dn2cpp_weakcell_unlink(cell);
+        dn2cpp_weakcell_write_and_link(cell, target);
+    }
+    else
+        dn2cpp_gchandle_set_target({static_cast<Dn2CppGCHandleCell*>(cell)}, target);
 }
 
 void dn2cpp_gchandle_internal_set(intptr_t handle, Dn2CppObject* target)
 {
     if (handle == 0)
         return;
-    auto* cell = reinterpret_cast<Dn2CppWeakCell*>(handle);
-#ifdef DN2CPP_USE_BOEHM_GC
-    std::lock_guard<std::mutex> lk(g_weakcell_mtx);
-#endif
-    dn2cpp_weakcell_unlink(cell);
-    dn2cpp_weakcell_write_and_link(cell, target);
+    std::lock_guard<std::mutex> lk(g_internal_handle_mtx);
+    dn2cpp_handle_slot_set_locked(reinterpret_cast<Dn2CppHandleSlot*>(handle), target);
 }
 
 void dn2cpp_gchandle_internal_free(intptr_t handle)
 {
-    if (handle == 0)
+    auto* cell = reinterpret_cast<Dn2CppHandleSlot*>(handle);
+    if (cell == nullptr)
         return;
-    auto* cell = reinterpret_cast<Dn2CppWeakCell*>(handle);
-#ifdef DN2CPP_USE_BOEHM_GC
-    std::lock_guard<std::mutex> lk(g_weakcell_mtx);
-#endif
+    if (!dn2cpp_handle_slot_is_weak(cell))
+    {
+        dn2cpp_gchandle_free_value({static_cast<Dn2CppGCHandleCell*>(cell)});
+        return;
+    }
+    std::lock_guard<std::mutex> lk(g_internal_handle_mtx);
     dn2cpp_weakcell_unlink(cell);
     cell->hiddenTarget = 0;
-    // The cell itself is GC-managed; dropping the handle is enough to reclaim
-    // it (no manual free of the Dn2CppWeakCell block).
 }
 
 Dn2CppObject* dn2cpp_gchandle_internal_compare_exchange(intptr_t handle, Dn2CppObject* value, Dn2CppObject* oldValue)
 {
-    if (handle == 0)
+    auto* cell = reinterpret_cast<Dn2CppHandleSlot*>(handle);
+    if (cell == nullptr)
         return nullptr;
-    auto* cell = reinterpret_cast<Dn2CppWeakCell*>(handle);
-#ifdef DN2CPP_USE_BOEHM_GC
-    std::lock_guard<std::mutex> lk(g_weakcell_mtx);
-#endif
-    Dn2CppObject* prev = dn2cpp_weakcell_read(cell);
+    std::lock_guard<std::mutex> lk(g_internal_handle_mtx);
+    Dn2CppObject* prev = dn2cpp_handle_slot_is_weak(cell) ? dn2cpp_weakcell_read(cell) : cell->target;
     if (prev == oldValue)
-    {
-        dn2cpp_weakcell_unlink(cell);
-        dn2cpp_weakcell_write_and_link(cell, value);
-    }
+        dn2cpp_handle_slot_set_locked(cell, value);
     return prev;
 }
 
@@ -2875,14 +2890,6 @@ int32_t dn2cpp_current_processor_id()
 // point at the cell, and reallocation as an unrelated object would turn that stale
 // read into type confusion; a pooled cell is always a valid cell, so a stale read at
 // worst observes a later handle's slot, exactly like real .NET's recycled table slot).
-struct Dn2CppGCHandleCell
-{
-    Dn2CppObject* target; // Normal/Pinned: the referent (strong — the cell is scanned)
-    void* dataAddr;       // Pinned: cached AddrOfPinnedObject address; freed+pooled: the pool's next link
-    intptr_t weakCell;    // Weak/WeakTrackResurrection: dn2cpp_gchandle_internal_alloc handle
-    int32_t kind;         // 0=freed 1=Weak 2=WeakTrackResurrection 3=Normal 4=Pinned
-};
-
 namespace
 {
 // Free pool of cleared cells (linked through dataAddr, which is only ever read as a
@@ -2914,7 +2921,7 @@ std::mutex& g_gchandle_pool_mtx = dn2cpp_never_destroyed<std::mutex>();
 // Clears the cell and returns it to the pool; a cell already freed through another
 // copy is a silent no-op (measured: real .NET does not throw on a stale copy's
 // Free). The weak-table release happens after the pool lock drops — no nested locks
-// (g_weakcell_mtx is independent), and the weak handle was already detached from the
+// (g_internal_handle_mtx is independent), and the weak handle was already detached from the
 // cell, so a concurrent Alloc reusing the cell cannot interfere.
 void dn2cpp_gchandle_cell_release(Dn2CppGCHandleCell* cell)
 {

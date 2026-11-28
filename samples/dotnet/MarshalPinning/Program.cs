@@ -44,6 +44,7 @@ namespace MarshalPinning
             MarshalStructureToPtrRoutesSubset.Program.Run();
             if (args.Length == 1 && args[0] == "before-check-uninitialized") return;
             GCHandleCheckUninitializedSubset.Program.Run();
+            GCHandlePinSubset.Program.CheckTypedPinnedToken();
         }
     }
 }
