@@ -1067,10 +1067,8 @@ internal sealed partial class MethodCompiler
                 return true;
             // TaskFactory.StartNew(Action[, ...]) / StartNew(Action<object?>, object?
             // state[, ...]) -> Task on the same worker pool as Task.Run. The trailing
-            // creation options remain observable, cancellation retains its native
-            // boundary, and TaskScheduler is validated before the delegate runs on
-            // the real pool. The 5-arg state form is what the base Stream.FlushAsync
-            // compiles (`Task.Factory.StartNew(static s => ..., this, ct,
+            // creation options, token and selected pool scheduler reach the task.
+            // The 5-arg state form is what the base Stream.FlushAsync compiles (`Task.Factory.StartNew(static s => ..., this, ct,
             // DenyChildAttach, TaskScheduler.Default)`). The generic StartNew<TResult>
             // forms bind in TranslateGenericIntrinsic. Unlike Task.Run, StartNew never
             // unwraps an async delegate (real .NET returns Task<Task>), and no Action
@@ -1097,6 +1095,7 @@ internal sealed partial class MethodCompiler
                 }
                 if (schedulerHint is { } sh)
                     EmitArgumentRequired(sh, "scheduler");
+                string scheduler = TaskSchedulerArgument(schedulerHint);
                 EmitCanceledExcRegistration();
                 if (hasState)
                 {
@@ -1104,14 +1103,14 @@ internal sealed partial class MethodCompiler
                     var del = Pop();   // Action<object?>
                     Pop();             // factory receiver
                     PushStampedTask(
-                        $"dn2cpp_task_run_void_state((Dn2CppObject*)({del.Expr}), {Cast(state, "Dn2CppObject*")}, {options}, {source})",
+                        $"dn2cpp_task_run_void_state((Dn2CppObject*)({del.Expr}), {Cast(state, "Dn2CppObject*")}, {options}, {source}, {scheduler})",
                         sig.ReturnType);
                 }
                 else
                 {
                     var del = Pop(); // Action
                     Pop();           // factory receiver
-                    PushStampedTask($"dn2cpp_task_run_void((Dn2CppObject*)({del.Expr}), {options}, {source})", sig.ReturnType);
+                    PushStampedTask($"dn2cpp_task_run_void((Dn2CppObject*)({del.Expr}), {options}, {source}, {scheduler})", sig.ReturnType);
                 }
                 return true;
             }
@@ -1198,7 +1197,7 @@ internal sealed partial class MethodCompiler
                 Emit($"dn2cpp_task_block((Dn2CppTask*)({t.Expr}));");
                 return true;
             }
-            // The native pool owns default starts. A generated scheduler receives its
+            // Each pool scheduler shares the native queue. A generated scheduler receives its
             // task through the retained virtual slots from this image.
             case ("System.Threading.Tasks.Task", "Start"):
             {
@@ -1219,24 +1218,11 @@ internal sealed partial class MethodCompiler
             // validation order are handled by the runtime claim.
             case ("System.Threading.Tasks.Task", "RunSynchronously"):
             {
-                string scheduler = sig.ParameterTypes.Length == 1
-                    ? Cast(Pop(), "Dn2CppObject*")
-                    : "dn2cpp_taskscheduler_default()";
+                string scheduler = sig.ParameterTypes.Length == 1 ? $", {Cast(Pop(), "Dn2CppObject*")}" : "";
                 var t = Pop();
-                Emit($"dn2cpp_task_run_synchronously((Dn2CppTask*)({t.Expr}), {scheduler});");
+                Emit($"dn2cpp_task_run_synchronously((Dn2CppTask*)({t.Expr}){scheduler});");
                 return true;
             }
-            // Task.ContinueWith(Action<Task[<T>]>[, object? state][, hints...]) — the
-            // non-generic-method overloads (the Func<Task, TNewResult> forms are
-            // MethodSpecs, bound in TranslateGenericIntrinsic). The continuation task
-            // is returned; the delegate runs with the settled antecedent (+ state) on
-            // the registering thread's scheduler. A supplied null TaskScheduler is
-            // rejected; non-null schedulers and CancellationToken are scheduling
-            // hints that the fixed worker pool does not model.
-            // TaskContinuationOptions is NOT a hint and is not dropped: its NotOn* trio
-            // decides whether the delegate runs at all, so the value travels to the
-            // runtime node (PopContinuationHints), which skips a filtered-out
-            // continuation and settles it CANCELED as .NET does.
             // Task.WaitAsync(CancellationToken) -> a task mirroring this one's outcome that
             // settles CANCELED as soon as the token cancels. The awaited work is NOT
             // cancelled — WaitAsync bounds the wait, not the operation — which is exactly
@@ -1294,7 +1280,7 @@ internal sealed partial class MethodCompiler
                 string kind = cwHasState ? "DN2CPP_CONTWITH_VOID_STATE" : "DN2CPP_CONTWITH_VOID";
                 PushStampedTask(
                     $"dn2cpp_task_continue_with((Dn2CppTask*)({cwT.Expr}), (Dn2CppObject*)({cwD.Expr}), "
-                    + $"{stateExpr}, {kind}, {cwOpts}, {cwSource}, {ContinuationNeedsOwner(cwScheduler)})", sig.ReturnType);
+                    + $"{stateExpr}, {kind}, {cwOpts}, {cwSource}, {ContinuationSchedulerArguments(cwScheduler)})", sig.ReturnType);
                 return true;
             }
             // ---- TaskCompletionSource(<T>) -----------------------------------------
@@ -1631,8 +1617,7 @@ internal sealed partial class MethodCompiler
     ///
     /// <para>The token is associated with the returned task. Continuation options
     /// also decide whether its delegate runs, so both values remain runtime operands.
-    /// A TaskScheduler is validated for null after the delegate; native execution
-    /// retains its existing scheduler policy.</para>
+    /// A supplied TaskScheduler is validated for null after the delegate.</para>
     ///
     /// <para>Shared by the non-generic <c>ContinueWith</c> arm and the generic
     /// <c>ContinueWith&lt;TNewResult&gt;</c> one in MethodCompiler.GenericIntrinsic.cs —
@@ -1659,8 +1644,11 @@ internal sealed partial class MethodCompiler
     private void EmitArgumentRequired(StackEntry argument, string paramName) =>
         Emit($"if ({Cast(argument, "Dn2CppObject*")} == nullptr) dn2cpp_throw_argument_null_param(\"{paramName}\");");
 
-    private string ContinuationNeedsOwner(StackEntry? scheduler) => scheduler is { } s
-        ? $"({Cast(s, "Dn2CppObject*")} != dn2cpp_taskscheduler_default())" : "false";
+    private string TaskSchedulerArgument(StackEntry? scheduler) => scheduler is { } s
+        ? Cast(s, "Dn2CppObject*") : "dn2cpp_taskscheduler_current()";
+
+    private string ContinuationSchedulerArguments(StackEntry? scheduler) =>
+        $"{(scheduler is null ? "false" : "true")}, {TaskSchedulerArgument(scheduler)}";
 
     // Callvirt faults after argument evaluation and before the helper validates them.
     private string PopBuilderReceiver()

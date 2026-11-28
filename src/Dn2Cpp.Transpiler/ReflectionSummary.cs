@@ -71,12 +71,13 @@ internal enum TermKind : byte
     /// <summary>A member lookup; <see cref="RTerm.Number"/> is the <see cref="ReflectionOp"/>
     /// and the children are <see cref="ReflectionSummary.LookupOwner"/> through
     /// <see cref="ReflectionSummary.LookupMemberTypes"/>, with an optional
-    /// <see cref="ReflectionSummary.LookupDelegateType"/> for named delegate binding.</summary>
+    /// <see cref="ReflectionSummary.LookupDelegateType"/> for named delegate binding.
+    /// A nonzero token identifies a CoreLib constructor lookup on a runtime Type.</summary>
     Lookup,
     /// <summary>A member, parameter, type or attribute list; <see cref="RTerm.Number"/> is
     /// the <see cref="ReflectionOp"/>, child 0 the owner, child 1 the binding flags or the
     /// attribute type filter; child 2 is the optional member name or attribute inherit
-    /// operand.</summary>
+    /// operand. A nonzero token identifies GetConstructors on a runtime Type.</summary>
     Enumeration,
     /// <summary>Element <see cref="RTerm.Number"/> (-1: any) of the sequence child 0.</summary>
     Element,
@@ -94,6 +95,8 @@ internal enum TermKind : byte
     /// token that may resolve to a reference type: such a box is a no-op, so the object's
     /// type is the token's or any type derived from it.</summary>
     ExactObject,
+    /// <summary>An object whose exact runtime Type is child 0.</summary>
+    ObjectOfType,
     /// <summary>An assembly: the one declaring type child 0, the one named by
     /// <see cref="RTerm.Text"/>, or (<see cref="RTerm.Number"/> 1) the calling module's or
     /// (2) the entry assembly.</summary>
@@ -551,6 +554,11 @@ internal sealed class SummaryRenderer
             case TermKind.Closure:
                 text.Append("closure(").Append(TypeName(t.Token)).Append(')');
                 break;
+            case TermKind.ObjectOfType:
+                text.Append("object(");
+                Child(text, c[0], d);
+                text.Append(')');
+                break;
             case TermKind.ExactObject:
                 text.Append(t.Number == ReflectionSummary.InexactBox ? "box(" : "new(").Append(TypeName(t.Token)).Append(')');
                 break;
@@ -790,6 +798,8 @@ internal sealed class ReflectionSummarizer
         public string[]? TypeArguments;
         public ReflectionApi? Api;
         public bool ArraySearch;
+        public bool DefaultScheduler;
+        public bool CoreTypeConstructorLookup;
         public bool TracksTypeArguments;
     }
 
@@ -862,6 +872,10 @@ internal sealed class ReflectionSummarizer
         info.HasThis = signature.Header.IsInstance;
         info.ReturnsVoid = signature.ReturnType == "System.Void";
         info.ReturnsString = signature.ReturnType == "System.String";
+        info.DefaultScheduler = info.Name == "get_Default" && info.Parent == "System.Threading.Tasks.TaskScheduler"
+            && !info.HasThis && signature.GenericParameterCount == 0 && info.Parameters.Length == 0
+            && signature.ReturnType == info.Parent
+            && _contracts?.IsCoreType(Reader, SRME.EntityHandle(info.DeclaringType), "TaskScheduler", "System.Threading.Tasks") == true;
         info.ArraySearch = info.Parent == "System.Array" && info.Name is "IndexOf" or "LastIndexOf"
             && !info.HasThis && signature.GenericParameterCount == 0
             && info.Parameters.Length >= 2 && info.Parameters[0] == "System.Array";
@@ -874,6 +888,8 @@ internal sealed class ReflectionSummarizer
             info.Api = ReflectionApis.Classify(parent, info.Name, info.Parameters, info.HasThis,
                 signature.GenericParameterCount);
         }
+        info.CoreTypeConstructorLookup = info.Api?.Op is ReflectionOp.GetConstructor or ReflectionOp.GetConstructors or ReflectionOp.TypeInitializer
+            && _contracts?.IsCoreType(Reader, SRME.EntityHandle(info.DeclaringType), "Type") == true;
         // A modeled CoreLib Activator call selects constructors by visibility and arity.
         // Applying its parameter annotation as well would root the excluded overloads.
         info.TracksTypeArguments = Array.IndexOf(info.Parameters, "System.Type") >= 0
@@ -2396,6 +2412,9 @@ internal sealed class SummaryInterpreter
     // Calls outside the table that produce a value a reflection call consumes.
     private RValue Unclassified(int token, ReflectionSummarizer.CallInfo call, RValue receiver, RValue[] args)
     {
+        if (call.DefaultScheduler)
+            return Known(Term(TermKind.ObjectOfType, 0, null, 0,
+                new[] { Term(TermKind.TypeName, 0, "System.Threading.Tasks.ThreadPoolTaskScheduler, System.Private.CoreLib") }));
         if (call.Parent == "System.Array" && call.Name == "Empty" && call.TypeArguments is { Length: 1 } empty
             && empty[0] == "System.Type")
             return Known(Term(TermKind.TypeArray, 0, null, 0, Array.Empty<int>()));
@@ -2436,6 +2455,12 @@ internal sealed class SummaryInterpreter
         RValue Op(sbyte index) => Operand(index, call, token, receiver, args);
         int Optional(sbyte index) => index == ReflectionApi.Absent ? -1 : Child(Op(index));
         var target = Op(api.Target);
+        // A custom Type may supply its own ConstructorInfo subclass. A typeof
+        // receiver has CoreLib's runtime Type implementation for every alternative.
+        int RuntimeConstructorLookupToken() =>
+            call.CoreTypeConstructorLookup && target.Unknown < 0 && target.Count > 0
+                && target.Alternatives!.All(id => Terms[id].Kind is TermKind.TypeToken or TermKind.MethodSpecArg)
+                ? token : 0;
         switch (api.Op)
         {
             case ReflectionOp.TypeGetType or ReflectionOp.AssemblyGetType:
@@ -2489,7 +2514,7 @@ internal sealed class SummaryInterpreter
             {
                 if (api.Binder >= 0 && !IsNullOnly(Op(api.Binder)))
                     return Unknown(UnknownReason.NonNullBinder);
-                var lookup = Known(Term(TermKind.Lookup, 0, null, (long)api.Op, new[]
+                var lookup = Known(Term(TermKind.Lookup, RuntimeConstructorLookupToken(), null, (long)api.Op, new[]
                 {
                     Child(target), Optional(api.Name), Child(Flags(api, Op)), Optional(api.Types),
                     Optional(api.Arity), Optional(api.ReturnType), Optional(api.MemberTypes),
@@ -2509,7 +2534,7 @@ internal sealed class SummaryInterpreter
                 or ReflectionOp.GetFields or ReflectionOp.GetEvents or ReflectionOp.GetMembers
                 or ReflectionOp.GetNestedTypes or ReflectionOp.GetInterfaces or ReflectionOp.GetDefaultMembers
                 or ReflectionOp.AssemblyGetTypes or ReflectionOp.GetParameters or ReflectionOp.GetGenericArguments:
-                return FreshArray(offset, Known(Term(TermKind.Enumeration, 0, null, (long)api.Op,
+                return FreshArray(offset, Known(Term(TermKind.Enumeration, RuntimeConstructorLookupToken(), null, (long)api.Op,
                     new[] { Child(target), api.Op is ReflectionOp.GetParameters or ReflectionOp.GetGenericArguments
                         ? -1 : Child(Flags(api, Op)), Optional(api.Name) })));
             case ReflectionOp.ReturnParameter:
@@ -2594,6 +2619,9 @@ internal sealed class SummaryInterpreter
             result = Join(result, t.Kind switch
             {
                 TermKind.ExactObject or TermKind.Closure => Known(Term(TermKind.TypeToken, t.Token, null, t.Number)),
+                TermKind.ObjectOfType => ValueOf(t.Children[0]),
+                TermKind.Lookup or TermKind.Element when IsRuntimeConstructorResult(t) =>
+                    Known(Term(TermKind.TypeName, 0, "System.Reflection.RuntimeConstructorInfo, System.Private.CoreLib")),
                 TermKind.Str => Known(Term(TermKind.TypeName, 0, "System.String")),
                 TermKind.Delegate when t.Children[1] >= 0 => ValueOf(t.Children[1]),
                 TermKind.Allocation => ArrayObjectType((int)t.Number, token),
@@ -2605,6 +2633,10 @@ internal sealed class SummaryInterpreter
             result = Join(result, new RValue(null, value.Unknown));
         return result.IsEmpty ? Unknown(UnknownReason.CallResult, token) : result;
     }
+
+    private bool IsRuntimeConstructorResult(RTerm term) =>
+        term.Kind == TermKind.Lookup ? term.Token != 0
+            : Terms[term.Children[0]] is { Kind: TermKind.Enumeration, Token: not 0 };
 
     private RValue ArrayObjectType(int site, int token)
     {
@@ -3932,7 +3964,7 @@ internal sealed class SummaryInterpreter
                 return Category.Sequence;
             case TermKind.Delegate:
                 return Category.Delegate;
-            case TermKind.ExactObject:
+            case TermKind.ExactObject or TermKind.ObjectOfType:
                 return Category.Object;
             case TermKind.Closure:
                 return Category.Closure;
@@ -4130,14 +4162,15 @@ internal sealed class ReflectionCoreContracts
     {
         var readers = modules.Where(m => m.IsAssembly).ToArray();
         _resolver = new RawAssemblyTypeResolver<MetadataReader>(readers.Select(m => (m, m.GetString(m.GetAssemblyDefinition().Name), m)));
-        foreach (string name in new[] { "Type", "RuntimeType", "Activator", "ParamArrayAttribute" })
+        foreach (string name in new[] { "Type", "RuntimeType", "Activator", "ParamArrayAttribute", "TaskScheduler" })
         {
             var candidates = new List<(MetadataReader, TypeDefinitionHandle)>();
             foreach (var reader in readers)
                 foreach (var handle in reader.TypeDefinitions)
                 {
                     var type = reader.GetTypeDefinition(handle);
-                    if (reader.StringComparer.Equals(type.Namespace, "System") && reader.StringComparer.Equals(type.Name, name))
+                    if (reader.StringComparer.Equals(type.Name, name)
+                        && reader.StringComparer.Equals(type.Namespace, name == "TaskScheduler" ? "System.Threading.Tasks" : "System"))
                         candidates.Add((reader, handle));
                 }
             _candidates.Add(name, candidates);
@@ -4328,24 +4361,24 @@ internal sealed class ReflectionCoreContracts
             && IsSignature(reader, method.Signature);
     }
 
-    internal bool IsCoreType(MetadataReader reader, EntityHandle handle, string name)
+    internal bool IsCoreType(MetadataReader reader, EntityHandle handle, string name, string ns = "System")
     {
         if (handle.Kind == HandleKind.TypeDefinition)
         {
             var type = reader.GetTypeDefinition((TypeDefinitionHandle)handle);
             return IsCoreLib(reader) && type.GetDeclaringType().IsNil
-                && reader.StringComparer.Equals(type.Namespace, "System") && reader.StringComparer.Equals(type.Name, name);
+                && reader.StringComparer.Equals(type.Namespace, ns) && reader.StringComparer.Equals(type.Name, name);
         }
         if (handle.Kind != HandleKind.TypeReference) return false;
         var reference = reader.GetTypeReference((TypeReferenceHandle)handle);
-        if (!reader.StringComparer.Equals(reference.Namespace, "System") || !reader.StringComparer.Equals(reference.Name, name))
+        if (!reader.StringComparer.Equals(reference.Namespace, ns) || !reader.StringComparer.Equals(reference.Name, name))
             return false;
         if (reference.ResolutionScope.Kind == HandleKind.ModuleDefinition || reference.ResolutionScope.IsNil)
-            return IsCoreLib(reader) && reader.TypeDefinitions.Any(h => IsCoreType(reader, h, name));
+            return IsCoreLib(reader) && reader.TypeDefinitions.Any(h => IsCoreType(reader, h, name, ns));
         if (reference.ResolutionScope.Kind != HandleKind.AssemblyReference) return false;
         var scope = (AssemblyReferenceHandle)reference.ResolutionScope;
         string assembly = reader.GetString(reader.GetAssemblyReference(scope).Name);
-        return _resolver.Resolve(assembly, "System", name, _candidates[name], reader, scope) is { } target
+        return _resolver.Resolve(assembly, ns, name, _candidates[name], reader, scope) is { } target
             && IsCoreLib(target.Module);
     }
 

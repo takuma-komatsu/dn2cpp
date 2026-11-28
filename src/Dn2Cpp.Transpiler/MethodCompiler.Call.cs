@@ -1843,7 +1843,7 @@ internal sealed partial class MethodCompiler
     }
 
     private static string TaskSchedulerDequeueAddress(string receiver, MethodInfo method) =>
-        $"dn2cpp_runtime_virtual_address((Dn2CppObject*)({receiver}), {method.VtableSlot}, &dn2cpp_taskscheduler_type, (void*)&dn2cpp_taskscheduler_default_try_dequeue)";
+        $"dn2cpp_runtime_virtual_address((Dn2CppObject*)({receiver}), {method.VtableSlot}, &dn2cpp_threadpooltaskscheduler_type, (void*)&dn2cpp_taskscheduler_default_try_dequeue)";
 
     private void EmitManagedCall(MethodInfo callee, bool isCallvirt)
     {

@@ -767,7 +767,7 @@ bool intrinsic_receiver_ok(uint32_t recvKind, const Dn2CppObject* self)
         case kRecvMemberInfo:
             return self->type == &dn2cpp_type_type || self->type == &dn2cpp_fieldinfo_type
                 || self->type == &dn2cpp_methodinfo_type
-                || self->type == &dn2cpp_constructorinfo_type
+                || self->type == &dn2cpp_runtimeconstructorinfo_type
                 || self->type == &dn2cpp_propertyinfo_type
                 || self->type == &dn2cpp_eventinfo_type;
         default:

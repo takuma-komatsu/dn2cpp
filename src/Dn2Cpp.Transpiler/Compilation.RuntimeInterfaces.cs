@@ -91,7 +91,7 @@ internal sealed partial class Compilation
     }
 
     private static string? RuntimeInterfaceDispatch(MethodInfo target) =>
-        CoreIntrinsicTypeMaps.RuntimeInterfaceDispatch(target.DeclaringClass.FullName);
+        CoreIntrinsicTypeMaps.RuntimeInterfaceDispatch(target.DeclaringClass.Module.AssemblyName, target.DeclaringClass.FullName);
 
     internal void ReachRuntimeInterfaceBody(MethodInfo target)
     {

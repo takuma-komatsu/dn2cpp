@@ -930,6 +930,7 @@ internal static partial class CoreIntrinsics
         ["System.Threading.Tasks.Task"] = "&dn2cpp_task_type",
         ["System.Threading.Tasks.TaskFactory"] = "&dn2cpp_task_factory_type",
         ["System.Threading.Tasks.TaskScheduler"] = "&dn2cpp_taskscheduler_type",
+        ["System.Threading.Tasks.ThreadPoolTaskScheduler"] = "&dn2cpp_threadpooltaskscheduler_type",
         ["System.Void"] = "&dn2cpp_void_type",
         // The primitives. The runtime handle carries DN2CPP_TF_PRIMITIVE, which the class
         // emitter does not model — so here the runtime really does know more, and binding
@@ -971,6 +972,7 @@ internal static partial class CoreIntrinsics
         ["System.Reflection.MethodBase"] = "&dn2cpp_methodbase_type",
         ["System.Reflection.MethodInfo"] = "&dn2cpp_methodinfo_type",
         ["System.Reflection.ConstructorInfo"] = "&dn2cpp_constructorinfo_type",
+        ["System.Reflection.RuntimeConstructorInfo"] = "&dn2cpp_runtimeconstructorinfo_type",
         ["System.Reflection.FieldInfo"] = "&dn2cpp_fieldinfo_type",
         ["System.Reflection.PropertyInfo"] = "&dn2cpp_propertyinfo_type",
         ["System.Reflection.EventInfo"] = "&dn2cpp_eventinfo_type",
@@ -1178,15 +1180,18 @@ internal static partial class CoreIntrinsics
         : s_runtimeOwnedTypeInfo.TryGetValue(fullTypeName, out var ow) ? ow
         : null;
 
+    private static bool NeedsCoreLibTypeIdentity(string? name) =>
+        name == "System.Threading.Tasks.TaskFactory" || CoreIntrinsicTypeMaps.RuntimeImplementationCppType(name) is not null;
+
     private static string? RuntimeTypeName(ClassInfo cls)
     {
         string name = cls.FullName;
-        return name == "System.Threading.Tasks.TaskFactory" && cls.Module.AssemblyName is not ("System.Private.CoreLib" or "mscorlib")
+        return NeedsCoreLibTypeIdentity(name) && cls.Module.AssemblyName is not ("System.Private.CoreLib" or "mscorlib")
             ? null : name;
     }
 
     internal static string? ExternalRuntimeTypeInfoSymbol(TypeDesc type) =>
-        type.ExternalName == "System.Threading.Tasks.TaskFactory"
+        NeedsCoreLibTypeIdentity(type.ExternalName)
             && (type.ExternalModule is not { } module || !module.Owner.AssemblyTypeResolver.CanBindUnresolvedCoreType(module, type.ExternalHandle))
             ? null : RuntimeTypeInfoSymbol(type.ExternalName);
 

@@ -4575,6 +4575,15 @@ internal sealed partial class Compilation
                     result.Unknown = "a delegate whose type comes from " + types.Unknown;
                 break;
             }
+            case TermKind.ObjectOfType:
+            {
+                var types = Child(app, t, 0);
+                result.Unknown = types.Unknown;
+                foreach (var item in types.Items)
+                    if (item.Kind == REntityKind.Type && item.Type is not null)
+                        result.Add(new REntity { Kind = REntityKind.Object, Type = item.Type });
+                break;
+            }
             case TermKind.ExactObject:
             case TermKind.Closure:
             {

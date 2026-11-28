@@ -38,7 +38,7 @@ int32_t dn2cpp_pool_quiesce(std::chrono::steady_clock::time_point deadline, bool
 
 // (dn2cpp_tasks.cpp) Allocate-and-enqueue a pool work item — SemaphoreSlim's
 // WaitAsync (dn2cpp_threading.cpp) routes its blocking wait through the pool.
-Dn2CppTask* dn2cpp_pool_submit(Dn2CppObject* del, uint64_t (*invoke)(Dn2CppObject*), int32_t options = 0, Dn2CppCancelSource* source = nullptr);
+Dn2CppTask* dn2cpp_pool_submit(Dn2CppObject* del, uint64_t (*invoke)(Dn2CppObject*), int32_t options = 0, Dn2CppCancelSource* source = nullptr, Dn2CppObject* scheduler = nullptr);
 
 // (dn2cpp_tasks.cpp) Invoke a one-arg delegate (Action<object> /
 // ParameterizedThreadStart / TimerCallback) and its multicast chain — reused by

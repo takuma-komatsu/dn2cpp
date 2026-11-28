@@ -686,10 +686,7 @@ extern const Dn2CppType dn2cpp_methodinfo_type_obj;
 const Dn2CppTypeInfo dn2cpp_methodinfo_type =
     dn2cpp_ti_with_typeobject({ "System.Reflection.MethodInfo", &dn2cpp_methodbase_type, nullptr, nullptr, &dn2cpp_reflection_handle_tostring, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppMethodRef), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_methodinfo_type_obj);
 const Dn2CppType dn2cpp_methodinfo_type_obj = { { &dn2cpp_type_type }, &dn2cpp_methodinfo_type };
-// A reflected constructor handle: the same Dn2CppMethodRef representation as a
-// method (wrapping a ctortab row), but its own header type so `is
-// ConstructorInfo` / `is MethodInfo` discriminate like real .NET.
-// Its two public fields are the names the CLR gives the two constructor kinds.
+// Both constructor name fields are declared on the abstract base.
 static Dn2CppObject* dn2cpp_ownfld_ctorinfo_ConstructorName(Dn2CppObject*)
 { return reinterpret_cast<Dn2CppObject*>(dn2cpp_string_literal(u".ctor", 5)); }
 static Dn2CppObject* dn2cpp_ownfld_ctorinfo_TypeConstructorName(Dn2CppObject*)
@@ -701,10 +698,21 @@ DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_ctorinfo,
       dn2cpp_ownfld_ctorinfo_TypeConstructorName, nullptr, nullptr, 0, 0x36, 0 },
 );
 extern const Dn2CppType dn2cpp_constructorinfo_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_constructorinfo_type_reflection, dn2cpp_ownflds_ctorinfo, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, {}, 0, DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR | DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR);
+Dn2CppTypeReflection dn2cpp_constructorinfo_reflection{
+    dn2cpp_ownflds_ctorinfo, 2, {}, 0, {}, 0, {}, 0, {}, 0, {}, 0, nullptr, 0, nullptr, 0, 0,
+    nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, {}, 0,
+    DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR | DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR };
 const Dn2CppTypeInfo dn2cpp_constructorinfo_type =
-    dn2cpp_ti_with_typeobject({ "System.Reflection.ConstructorInfo", &dn2cpp_methodbase_type, nullptr, nullptr, &dn2cpp_reflection_handle_tostring, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppMethodRef), 0, 0, 0, 0, 0, dn2cpp_constructorinfo_type_reflection }, &dn2cpp_constructorinfo_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Reflection.ConstructorInfo", &dn2cpp_methodbase_type, nullptr, nullptr, &dn2cpp_reflection_handle_tostring, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppMethodRef), 0, DN2CPP_TF_ABSTRACT, 0, 0, 0, &dn2cpp_constructorinfo_reflection }, &dn2cpp_constructorinfo_type_obj);
 const Dn2CppType dn2cpp_constructorinfo_type_obj = { { &dn2cpp_type_type }, &dn2cpp_constructorinfo_type };
+extern const Dn2CppType dn2cpp_runtimeconstructorinfo_type_obj;
+Dn2CppTypeReflection dn2cpp_runtimeconstructorinfo_reflection{};
+Dn2CppTypeInfo dn2cpp_runtimeconstructorinfo_type = dn2cpp_ti_with_typeobject({
+    "System.Reflection.RuntimeConstructorInfo", &dn2cpp_constructorinfo_type, nullptr, nullptr,
+    &dn2cpp_reflection_handle_tostring, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+    (int32_t)sizeof(Dn2CppMethodRef), 0, DN2CPP_TF_SEALED, 0, 0, 0, &dn2cpp_runtimeconstructorinfo_reflection
+}, &dn2cpp_runtimeconstructorinfo_type_obj);
+const Dn2CppType dn2cpp_runtimeconstructorinfo_type_obj = { { &dn2cpp_type_type }, &dn2cpp_runtimeconstructorinfo_type };
 extern const Dn2CppType dn2cpp_parameterinfo_type_obj;
 const Dn2CppTypeInfo dn2cpp_parameterinfo_type =
     dn2cpp_ti_with_typeobject({ "System.Reflection.ParameterInfo", nullptr, nullptr, nullptr, &dn2cpp_reflection_handle_tostring, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppParamRef), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_parameterinfo_type_obj);

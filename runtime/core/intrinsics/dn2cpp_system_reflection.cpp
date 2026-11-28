@@ -1243,7 +1243,7 @@ void* dn2cpp_runtime_virtual_address(Dn2CppObject* receiver, int32_t slot,
         if (target != nullptr && !dn2cpp_is_vcall_trap(target))
             return const_cast<void*>(target);
     }
-    dn2cpp_throw_platform_not_supported(runtimeType == &dn2cpp_taskscheduler_type
+    dn2cpp_throw_platform_not_supported(runtimeType == &dn2cpp_threadpooltaskscheduler_type
         ? "TaskScheduler.TryDequeue has no retained virtual implementation"
         : runtimeType == &dn2cpp_type_type ? "Nullable type query has no retained virtual implementation"
         : "Module attribute data has no retained virtual implementation");
@@ -2036,7 +2036,7 @@ static bool dn2cpp_member_name_matches(const char* candidate, Dn2CppString* name
 // like real .NET's MethodBase split).
 static bool dn2cpp_is_methodref_header(const Dn2CppTypeInfo* t)
 {
-    return t == &dn2cpp_methodinfo_type || t == &dn2cpp_constructorinfo_type;
+    return t == &dn2cpp_methodinfo_type || t == &dn2cpp_runtimeconstructorinfo_type;
 }
 
 static bool dn2cpp_native_member_header(const Dn2CppTypeInfo* type);
@@ -2604,7 +2604,7 @@ static Dn2CppMethodRef* dn2cpp_make_methodref(Dn2CppMetadataHandle<Dn2CppMethodI
         const auto& row = *view.operator->();
         const char* constructorName = (row.attrs & DN2CPP_MTHA_STATIC) != 0 ? ".cctor" : ".ctor";
         r->type = (row.ilAttrs & DN2CPP_MA_RTSPECIALNAME) != 0 && std::strcmp(row.name, constructorName) == 0
-            ? &dn2cpp_constructorinfo_type
+            ? &dn2cpp_runtimeconstructorinfo_type
             : &dn2cpp_methodinfo_type;
         r->method = mi;
         r->reflectedType = reflected;
@@ -6532,7 +6532,7 @@ static Dn2CppObject* dn2cpp_invoke_mi(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
 Dn2CppObject* dn2cpp_methodref_invoke(Dn2CppMethodRef* m, Dn2CppObject* obj, Dn2CppArrayRef* args, bool wrapExceptions)
 {
     Dn2CppMetadataHandle<Dn2CppMethodInfo> mi = dn2cpp_methodref_require(m);
-    if (m->type == &dn2cpp_constructorinfo_type && (mi->attrs & DN2CPP_MTHA_STATIC) != 0)
+    if (m->type == &dn2cpp_runtimeconstructorinfo_type && (mi->attrs & DN2CPP_MTHA_STATIC) != 0)
     {
         const auto* declaring = mi->declaringType;
         if (dn2cpp_type_contains_generic_parameters(declaring))
@@ -9186,13 +9186,6 @@ static void dn2cpp_activator_check_this(const Dn2CppTypeInfo* ti)
         dn2cpp_throw_not_supported_msg("Cannot dynamically create an instance of ArgIterator.");
 }
 
-// Scheduler and constructor objects share their abstract managed base's native header.
-static bool dn2cpp_activator_is_abstract(const Dn2CppTypeInfo* ti)
-{
-    return (ti->flags & (DN2CPP_TF_ABSTRACT | DN2CPP_TF_INTERFACE)) != 0
-        || ti == &dn2cpp_taskscheduler_type || ti == &dn2cpp_constructorinfo_type;
-}
-
 [[noreturn]] void dn2cpp_throw_missing_abstract_or_interface(const Dn2CppTypeInfo* ti)
 {
     Dn2CppString* typeName = ti->name != nullptr ? dn2cpp_type_tostring(ti) : nullptr;
@@ -9212,7 +9205,7 @@ static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, bool allowNo
     dn2cpp_activator_check_this(ti);
     if (dn2cpp_type_metadata_only(ti))
         dn2cpp_throw_platform_not_supported("Reflection: the constraint type has no runtime layout");
-    if (dn2cpp_activator_is_abstract(ti))
+    if ((ti->flags & (DN2CPP_TF_ABSTRACT | DN2CPP_TF_INTERFACE)) != 0)
         dn2cpp_throw_missing_abstract_or_interface(ti);
     const auto reflection = ti->reflection();
     const bool omittedPublic = (reflection.activation & DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR) != 0;
@@ -10369,7 +10362,7 @@ int32_t dn2cpp_memberinfo_has_same_metadata(Dn2CppObject* member, Dn2CppObject* 
             return dn2cpp_same_recorded_metadata_def(ar.metadataToken, ao, br.metadataToken, bo);
         const auto at = ar.declaringType->reflection();
         const auto bt = br.declaringType->reflection();
-        const bool constructor = member->type == &dn2cpp_constructorinfo_type;
+        const bool constructor = member->type == &dn2cpp_runtimeconstructorinfo_type;
         const auto* ad = dn2cpp_meta_desc_of(a);
         const auto* bd = dn2cpp_meta_desc_of(b);
         if (ad != nullptr || bd != nullptr)
@@ -11935,7 +11928,7 @@ int32_t dn2cpp_type_implement_interface(Dn2CppType* t, Dn2CppType* itf)
 int32_t dn2cpp_memberinfo_member_type(Dn2CppObject* m)
 {
     dn2cpp_memberref_require(m);
-    if (m->type == &dn2cpp_constructorinfo_type)
+    if (m->type == &dn2cpp_runtimeconstructorinfo_type)
         return DN2CPP_MT_CONSTRUCTOR;
     if (m->type == &dn2cpp_methodinfo_type)
         return DN2CPP_MT_METHOD;
@@ -13949,7 +13942,7 @@ Dn2CppObject* dn2cpp_activator_create_instance_args(Dn2CppType* t, Dn2CppArrayRe
     const auto& row = *view.operator->();
     if (row.paramCount == 0)
         dn2cpp_throw_sr0(&dn2cpp_not_supported_exception_type, DN2CPP_SR_CALL_TO_VARARG);
-    if (dn2cpp_activator_is_abstract(ti))
+    if ((ti->flags & (DN2CPP_TF_ABSTRACT | DN2CPP_TF_INTERFACE)) != 0)
     {
         Dn2CppString* typeName = ti->name != nullptr ? dn2cpp_type_tostring(ti) : nullptr;
         std::string name = typeName != nullptr ? dn2cpp_utf8_of(typeName) : "?";

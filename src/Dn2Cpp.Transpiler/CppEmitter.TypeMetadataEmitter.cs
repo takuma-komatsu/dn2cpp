@@ -1687,6 +1687,7 @@ internal sealed partial class CppEmitter
             // reflection tables below will type a member or a generic argument with, so its
             // precise ti_arr_ or enum ti_ is declared and emitted like a body-noted one.
             NoteConstraintMetadata();
+            NoteRuntimeObjectDefinitions();
             NoteReflectedMemberTypes();
             _c.NoteNullableContextEnclosureHandles();
 
@@ -2119,6 +2120,7 @@ internal sealed partial class CppEmitter
             EmitTaskMarkStartedRow();
             EmitAdditionalTaskPrivateRows();
             EmitTaskSchedulerRows();
+            EmitRuntimeObjectDefinitions();
             _e.EmitArrayTypeInfos(_o, _emittedEnums);
             _e.EmitMdArrayItfMap(_sb);
             _e.EmitArrayNongenericItfRows(_sb);
@@ -2341,6 +2343,76 @@ internal sealed partial class CppEmitter
                     }
                     _e._taskPrivateRows[slot] = address;
                 }
+            }
+        }
+
+        // Native object headers own the layout. CoreLib owns the TypeDef and
+        // MethodDef identities, including the constructor used by Activator.
+        private readonly List<(ClassInfo Type, string Reflection, List<MethodInfo> Methods, List<MethodInfo> Ctors)> _runtimeObjectDefinitions = new();
+
+        private void NoteRuntimeObjectDefinitions()
+        {
+            foreach (var cls in _c.Classes.ToList())
+            {
+                if (cls.Module.AssemblyName is not ("System.Private.CoreLib" or "mscorlib")) continue;
+                string? reflection = cls.FullName switch
+                {
+                    "System.Threading.Tasks.TaskScheduler" => "dn2cpp_taskscheduler_reflection",
+                    "System.Threading.Tasks.ThreadPoolTaskScheduler" => "dn2cpp_threadpooltaskscheduler_reflection",
+                    "System.Reflection.ConstructorInfo" => "dn2cpp_constructorinfo_reflection",
+                    "System.Reflection.RuntimeConstructorInfo" => "dn2cpp_runtimeconstructorinfo_reflection",
+                    _ => null,
+                };
+                if (reflection is null) continue;
+                var methods = new List<MethodInfo>();
+                var ctors = new List<MethodInfo>();
+                _runtimeObjectDefinitions.Add((cls, reflection, methods, ctors));
+                if (cls.IntrinsicCppName is null || CoreIntrinsicTypeMaps.RuntimeImplementationCppType(cls.FullName) is null)
+                    continue;
+                _c.EnsureCompleted(cls);
+                foreach (var m in cls.Methods)
+                {
+                    // Construction through the native pool type works even when
+                    // the caller receives its Type dynamically.
+                    bool poolCtor = cls.FullName == "System.Threading.Tasks.ThreadPoolTaskScheduler"
+                        && IsRuntimeConstructor(m) && m.Handle == LoaderSelectedBareDefaultCtor(cls);
+                    if (!poolCtor && (!_c.KeepsReflectionMetadata(cls) || !_c.KeepsUnreachedRow(m))) continue;
+                    if (m.Signature.GenericParameterCount != 0) continue;
+                    (IsRuntimeConstructor(m) || IsRuntimeInitializer(m) ? ctors : methods).Add(m);
+                    NoteReflectedType(m.Signature.ReturnType);
+                    foreach (var parameter in m.Signature.ParameterTypes)
+                        NoteReflectedType(parameter);
+                }
+            }
+        }
+
+        private void EmitRuntimeObjectDefinitions()
+        {
+            foreach (var (type, reflection, methods, ctors) in _runtimeObjectDefinitions)
+            {
+                var (attrs, token) = TypeIlMeta(type);
+                _e._runtimeObjectMetadata.Add($"{reflection}.ilAttrs = {attrs};");
+                _e._runtimeObjectMetadata.Add($"{reflection}.metadataToken = {token};");
+                if (CoreIntrinsicTypeMaps.RuntimeImplementationCppType(type.FullName) is not null && !_c.KeepsReflectionMetadata(type))
+                    _e._runtimeObjectMetadata.Add($"{type.CppTypeInfoName}.flags |= DN2CPP_TF_METADATA_STRIPPED;");
+                if (methods.Count == 0 && ctors.Count == 0) continue;
+                _e.BeginMetadataBlock(_c.UsesNativeReflectionMetadata(type));
+                if (BuildMemberTable(type, methods, "methtab", nativeImplementation: true) is { } mt)
+                {
+                    _e._runtimeObjectMetadata.Add($"{reflection}.methods = {mt.Expr};");
+                    _e._runtimeObjectMetadata.Add($"{reflection}.methodCount = {mt.Count};");
+                    if (BuildPropTable(type, methods) is { } pt)
+                    {
+                        _e._runtimeObjectMetadata.Add($"{reflection}.props = {pt.Expr};");
+                        _e._runtimeObjectMetadata.Add($"{reflection}.propCount = {pt.Count};");
+                    }
+                }
+                if (BuildMemberTable(type, ctors, "ctortab", nativeImplementation: true) is { } ct)
+                {
+                    _e._runtimeObjectMetadata.Add($"{reflection}.ctors = {ct.Expr};");
+                    _e._runtimeObjectMetadata.Add($"{reflection}.ctorCount = {ct.Count};");
+                }
+                _e.EndMetadataBlock(_sb);
             }
         }
 
@@ -3996,7 +4068,7 @@ internal sealed partial class CppEmitter
         // Builds one Dn2CppMethodInfo[] table (named "<prefix>_<cls>") for the given
         // members, emitting their parmtab_ arrays and invoker thunks; returns null for
         // an empty list. Shared by the method and constructor tables.
-        private (string Expr, int Count)? BuildMemberTable(ClassInfo cls, List<MethodInfo> members, string prefix)
+        private (string Expr, int Count)? BuildMemberTable(ClassInfo cls, List<MethodInfo> members, string prefix, bool nativeImplementation = false)
         {
             if (members.Count == 0)
                 return null;
@@ -4008,7 +4080,7 @@ internal sealed partial class CppEmitter
             // Reference rows need a reachable body, a lookup/Medium keep, or an accessor
             // demand. A hot-update base keeps the interpreter's member import contract.
             // (Row filter mirrored by NoteReflectedMemberTypes — keep in step.)
-            bool trim = prefix != "delegatetab" && !appCls && !_e._hotUpdateBase;
+            bool trim = !nativeImplementation && prefix != "delegatetab" && !appCls && !_e._hotUpdateBase;
             List<(int Index, string Entry)>? adapters = null;
             var propertyAccessors = ReflectionAccessorHandles(cls);
             var lastBareCtor = prefix == "ctortab" ? LoaderSelectedBareDefaultCtor(cls) : default;
@@ -4152,7 +4224,26 @@ internal sealed partial class CppEmitter
                     && (_c.NeedsDelegateInvokeRows || _c.ReflectionInvokeUsed)
                     && (_delegateInvokerNames ??= _e._delegateInvokerClasses
                         .Select(d => d.CppName).ToHashSet(System.StringComparer.Ordinal)).Contains(cls.CppName);
-                if (delegateInvoke)
+                if (nativeImplementation)
+                {
+                    string? target = (cls.FullName, m.Name) switch
+                    {
+                        ("System.Threading.Tasks.ThreadPoolTaskScheduler", ".ctor") when m.Handle == lastBareCtor => "dn2cpp_threadpooltaskscheduler_ctor",
+                        ("System.Threading.Tasks.ThreadPoolTaskScheduler", "TryDequeue") when !m.IsStatic && ps.Length == 1
+                            && ps[0].Class?.FullName == "System.Threading.Tasks.Task" => "dn2cpp_taskscheduler_default_try_dequeue",
+                        ("System.Reflection.RuntimeConstructorInfo", "GetParameters") when !m.IsStatic && ps.Length == 0
+                            && m.Signature.ReturnType is { Kind: TypeKind.SZArray, Element.Class.FullName: "System.Reflection.ParameterInfo" } =>
+                            $"dn2cpp_methodref_get_typed_parameters<{_e.ReflectionAbiTypeInfoExpr(m.Signature.ReturnType, _emittedEnums)}>",
+                        _ when _c.RuntimeInterfaceLowerings.ContainsKey(m) => m.Emittable.CppName,
+                        _ => null,
+                    };
+                    if (target is not null)
+                    {
+                        fnPtr = "(void*)&" + target;
+                        invoker = "(void*)&" + _e.EmitInvokerThunk(_sb, m, _invokerThunks);
+                    }
+                }
+                else if (delegateInvoke)
                 {
                     fnPtr = $"(void*)&dginvoke_{cls.CppName}";
                     invoker = "(void*)&" + RowInvoker(cls, m, () => _e.EmitInvokerThunk(_sb, m, _invokerThunks));
@@ -4245,7 +4336,7 @@ internal sealed partial class CppEmitter
                     bool scheduler = CoreIntrinsics.IsTaskSchedulerDequeue(m);
                     if (nullable || scheduler || target != m)
                     {
-                        string runtimeType = scheduler ? "&dn2cpp_taskscheduler_type" : nullable ? "&dn2cpp_type_type" : CoreIntrinsics.IsModuleAttributeDataSlot(m)
+                        string runtimeType = scheduler ? "&dn2cpp_threadpooltaskscheduler_type" : nullable ? "&dn2cpp_type_type" : CoreIntrinsics.IsModuleAttributeDataSlot(m)
                             ? "&dn2cpp_runtime_module_type" : CoreIntrinsics.IsAssemblyCollectibilitySlot(m) ? "&dn2cpp_runtime_assembly_type" : "&dn2cpp_customattributedata_type";
                         string runtimeTarget = scheduler ? "dn2cpp_taskscheduler_default_try_dequeue"
                             : nullable ? CoreIntrinsics.NullableTypeQueryHelper(m) : target.Emittable.CppName;
