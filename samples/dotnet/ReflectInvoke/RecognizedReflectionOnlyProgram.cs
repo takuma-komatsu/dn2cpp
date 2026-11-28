@@ -790,9 +790,9 @@ class NamedAttributeBase
     [InheritedBindingNote]
     private static string Pick() => "inherited";
     [ExcludedBindingNote]
-    private static string Pick(int value) => NamedAttributeProbe.Touch();
+    private static string Pick(int value) => "other arity";
     [ExcludedBindingNote]
-    private static string Other() => NamedAttributeProbe.Touch();
+    private static string Other() => "other name";
 }
 sealed class NamedAttributeDerived : NamedAttributeBase { }
 class NamedAttributeTemplateBase<T>
@@ -800,9 +800,9 @@ class NamedAttributeTemplateBase<T>
     [TemplateBindingNote]
     private static string Pick() => "template:" + typeof(T).Name;
     [ExcludedBindingNote]
-    private static string Pick(int value) => NamedAttributeProbe.Touch();
+    private static string Pick(int value) => "other arity";
     [ExcludedBindingNote]
-    private static string Other() => NamedAttributeProbe.Touch();
+    private static string Other() => "other name";
 }
 sealed class NamedAttributeTemplate<T> : NamedAttributeTemplateBase<T> { }
 

@@ -5,19 +5,18 @@ namespace AdmissionFilters;
 // Naming the derived library owner must retain the selected private base body.
 public class LibraryPrivateBindingBase
 {
-    private static string Pick() => "library private";
-    private static string Pick(int value) => LibraryNamedBindingProbe.Touch();
-    private static string Other() => LibraryNamedBindingProbe.Touch();
+    private string Pick() => "library private";
+    private string Pick(int value) => LibraryNamedBindingProbe.Touch();
+    private string Other() => LibraryNamedBindingProbe.Touch();
 }
 public sealed class LibraryPrivateBinding : LibraryPrivateBindingBase { }
 
-public class LibraryPrivateTemplateBase<T>
+public sealed class LibraryPrivateTemplate<T>
 {
     private static string Pick() => "library template:" + typeof(T).Name;
     private static string Pick(int value) => LibraryNamedBindingProbe.Touch();
     private static string Other() => LibraryNamedBindingProbe.Touch();
 }
-public sealed class LibraryPrivateTemplate<T> : LibraryPrivateTemplateBase<T> { }
 
 public class LibraryPrivateOpaqueBase<T>
 {
@@ -30,8 +29,8 @@ public sealed class LibraryPrivateOpaque<T> : LibraryPrivateOpaqueBase<T> { }
 public class LibraryPrivateStaticBase<T>
 {
     private static string Pick() => LibraryNamedDependency<T>.Text();
-    private static string Pick(int value) => LibraryNamedBindingProbe.Touch();
-    private static string Other() => LibraryNamedBindingProbe.Touch();
+    private static string Pick(int value) => "other arity";
+    private static string Other() => "other name";
 }
 public sealed class LibraryPrivateStatic<T> : LibraryPrivateStaticBase<T> { }
 
