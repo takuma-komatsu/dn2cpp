@@ -277,11 +277,13 @@ struct Dn2CppTaskDelegateScope
     static thread_local Dn2CppTaskDelegateScope* active;
     Dn2CppTask* task;
     Dn2CppObject* scheduler;
+    const Dn2CppTaskSchedulerQueue* queue;
     int32_t hiddenId = 0; // a Task.Run unwrap owns a distinct hidden task
     Dn2CppTaskDelegateScope* previous = active;
 
-    explicit Dn2CppTaskDelegateScope(Dn2CppTask* current, Dn2CppObject* owner = nullptr)
-        : task(current), scheduler(owner) { active = this; }
+    explicit Dn2CppTaskDelegateScope(Dn2CppTask* current, Dn2CppObject* owner = nullptr,
+        const Dn2CppTaskSchedulerQueue* customQueue = nullptr)
+        : task(current), scheduler(owner), queue(customQueue) { active = this; }
     ~Dn2CppTaskDelegateScope() { active = previous; }
     Dn2CppTaskDelegateScope(const Dn2CppTaskDelegateScope&) = delete;
     Dn2CppTaskDelegateScope& operator=(const Dn2CppTaskDelegateScope&) = delete;
@@ -334,6 +336,7 @@ static void dn2cpp_task_init(Dn2CppTask* t, int32_t options, Dn2CppCancelSource*
     t->exceptionHolder.store(nullptr, std::memory_order_relaxed);
     t->exceptionHolderState = DN2CPP_TASK_HOLDER_UNPUBLISHED;
     t->nativeFaultObserved = false;
+    t->hasTaskAwait = false;
     t->result = 0;
     t->continuations = nullptr;
     t->workerKeepAlive = nullptr;
@@ -520,7 +523,7 @@ Dn2CppTask* dn2cpp_task_completed()
 Dn2CppTask dn2cpp_task_default_completed{
     { &dn2cpp_task_type }, DN2CPP_TASK_SUCCEEDED,
     dn2cpp_task_next_id(), nullptr, nullptr, 0, nullptr, nullptr, nullptr, nullptr,
-    DN2CPP_TASK_ORIGIN_PRECOMPLETED, DN2CPP_TASK_NOT_STARTED, nullptr, nullptr, -1, 0, nullptr, nullptr, 0, false, 0, nullptr, nullptr };
+    DN2CPP_TASK_ORIGIN_PRECOMPLETED, DN2CPP_TASK_NOT_STARTED, nullptr, nullptr, -1, 0, nullptr, nullptr, 0, false, 0, false, nullptr, nullptr };
 
 Dn2CppTask* dn2cpp_task_from_result(uint64_t result, bool doNotDispose)
 {
@@ -1204,14 +1207,16 @@ static bool dn2cpp_has_custom_sync_context()
     return context != nullptr && context->type->base != &dn2cpp_object_type;
 }
 
+struct Dn2CppWallTimerScope
+{
+    bool previous = t_wall_timers;
+    explicit Dn2CppWallTimerScope(bool wallTimers) { t_wall_timers = wallTimers; }
+    ~Dn2CppWallTimerScope() { t_wall_timers = previous; }
+};
+
 static void dn2cpp_sched_invoke(void (*fn)(void*), void* state, bool wallTimers)
 {
-    struct TimerScope
-    {
-        bool previous = t_wall_timers;
-        ~TimerScope() { t_wall_timers = previous; }
-    } scope;
-    t_wall_timers = wallTimers;
+    Dn2CppWallTimerScope scope(wallTimers);
     dn2cpp_task_invoke_as(nullptr, [&] { fn(state); });
 }
 
@@ -1244,35 +1249,50 @@ static void dn2cpp_sched_queue_pool_cont(Dn2CppCont* c)
     dn2cpp_threadpool_queue(&runner, reinterpret_cast<Dn2CppObject*>(c));
 }
 
-// A real Object is the Post state. Keep the context and suspended machine
-// reachable through the task until publication, then through the pump's queue.
-struct Dn2CppPostedAwait : Dn2CppObject
+// A managed Post or QueueTask can retain the suspended machine after its
+// antecedent has released the registration.
+struct Dn2CppCapturedAwait : Dn2CppObject
 {
-    Dn2CppObject* context;
+    Dn2CppObject* target;
     Dn2CppSyncContextPost post;
+    const Dn2CppTaskSchedulerQueue* queue;
+    Dn2CppTask* antecedent;
     void (*resume)(void*);
     void* state;
     bool wallTimers;
+    bool offerInline;
 };
 
-static Dn2CppPostedAwait* dn2cpp_capture_posted_await(void (*fn)(void*), void* state)
+static Dn2CppCapturedAwait* dn2cpp_capture_await(void (*fn)(void*), void* state, Dn2CppTask* antecedent = nullptr)
 {
     auto post = dn2cpp_sync_ctx_get_post();
+    auto* target = dn2cpp_sync_ctx_get();
+    const Dn2CppTaskSchedulerQueue* queue = nullptr;
     if (post.fn == nullptr)
-        return nullptr;
-    auto* work = static_cast<Dn2CppPostedAwait*>(dn2cpp_alloc(sizeof(Dn2CppPostedAwait)));
+    {
+        auto* scope = Dn2CppTaskDelegateScope::active;
+        if (scope == nullptr || scope->queue == nullptr || dn2cpp_has_custom_sync_context()
+            || (scope->task->creationOptions & DN2CPP_TASK_HIDE_SCHEDULER))
+            return nullptr;
+        target = scope->scheduler;
+        queue = scope->queue;
+    }
+    auto* work = static_cast<Dn2CppCapturedAwait*>(dn2cpp_alloc(sizeof(Dn2CppCapturedAwait)));
     work->type = &dn2cpp_object_type;
-    dn2cpp_gc_store_ref(&work->context, dn2cpp_sync_ctx_get());
+    dn2cpp_gc_store_ref(&work->target, target);
     dn2cpp_gc_store_ref(&work->state, state);
+    if (queue != nullptr) dn2cpp_gc_store_ref(&work->antecedent, antecedent);
+    work->queue = queue;
     work->post = post;
     work->resume = fn;
     work->wallTimers = t_wall_timers;
+    work->offerInline = false;
     return work;
 }
 
 static void dn2cpp_resume_posted_await(Dn2CppObject*, Dn2CppObject* state)
 {
-    auto* work = static_cast<Dn2CppPostedAwait*>(state);
+    auto* work = static_cast<Dn2CppCapturedAwait*>(state);
     dn2cpp_sched_invoke(work->resume, work->state, work->wallTimers);
 }
 
@@ -1351,6 +1371,8 @@ static bool dn2cpp_sched_run_one()
 // The active drain's queue heads live on a scanned stack frame; TLS holds
 // only the frame's address, including when a nested completion appends work.
 static void dn2cpp_cont_with_submit(void* state);
+static void dn2cpp_schedule_await(void* state);
+static void dn2cpp_schedule_yield(Dn2CppCapturedAwait* work, Dn2CppTask* asyncTask);
 
 struct Dn2CppJoinDrain
 {
@@ -1409,7 +1431,7 @@ struct Dn2CppJoinDrain
         active = nullptr;
         while (auto* c = posts.pop())
         {
-            if (c->fn == &dn2cpp_cont_with_submit)
+            if (c->fn == &dn2cpp_cont_with_submit || c->fn == &dn2cpp_schedule_await)
                 c->fn(c->state);
             else
                 dn2cpp_task_invoke_as(nullptr, [&] { c->fn(c->state); });
@@ -1419,11 +1441,8 @@ struct Dn2CppJoinDrain
 
 thread_local Dn2CppJoinDrain* Dn2CppJoinDrain::active = nullptr;
 
-static void dn2cpp_invoke_posted_await(Dn2CppPostedAwait* work, bool reraise)
+static void dn2cpp_invoke_captured_await(Dn2CppCapturedAwait* work, bool reraise, Dn2CppTask* asyncTask = nullptr)
 {
-    auto* callback = static_cast<Dn2CppDelegate*>(dn2cpp_alloc(sizeof(Dn2CppDelegate)));
-    callback->type = work->post.callbackType;
-    callback->method = reinterpret_cast<void*>(&dn2cpp_resume_posted_await);
     try
     {
         // An independent join started by managed Post must finish before its
@@ -1434,8 +1453,16 @@ static void dn2cpp_invoke_posted_await(Dn2CppPostedAwait* work, bool reraise)
             PauseJoinDrain() { Dn2CppJoinDrain::active = nullptr; }
             ~PauseJoinDrain() { Dn2CppJoinDrain::active = previous; }
         } pause;
+        if (work->queue != nullptr)
+        {
+            dn2cpp_schedule_yield(work, asyncTask);
+            return;
+        }
+        auto* callback = static_cast<Dn2CppDelegate*>(dn2cpp_alloc(sizeof(Dn2CppDelegate)));
+        callback->type = work->post.callbackType;
+        callback->method = reinterpret_cast<void*>(&dn2cpp_resume_posted_await);
         using Post = void (*)(Dn2CppObject*, Dn2CppObject*, Dn2CppObject*);
-        reinterpret_cast<Post>(const_cast<void*>(work->post.fn))(work->context, callback, work);
+        reinterpret_cast<Post>(const_cast<void*>(work->post.fn))(work->target, callback, work);
     }
     catch (const Dn2CppException& e)
     {
@@ -1448,13 +1475,13 @@ static void dn2cpp_invoke_posted_await(Dn2CppPostedAwait* work, bool reraise)
 static void dn2cpp_post_await(void* state)
 {
     // A rejected Post must not escape into the task's completing thread.
-    dn2cpp_invoke_posted_await(static_cast<Dn2CppPostedAwait*>(state), true);
+    dn2cpp_invoke_captured_await(static_cast<Dn2CppCapturedAwait*>(state), true);
 }
 
-void dn2cpp_async_yield_on_completed(void (*fn)(void*), void* state, bool reraise)
+void dn2cpp_async_yield_on_completed(void (*fn)(void*), void* state, bool reraise, Dn2CppTask* asyncTask)
 {
-    if (auto* work = dn2cpp_capture_posted_await(fn, state))
-        dn2cpp_invoke_posted_await(work, reraise);
+    if (auto* work = dn2cpp_capture_await(fn, state))
+        dn2cpp_invoke_captured_await(work, reraise, asyncTask);
     else
         dn2cpp_sched_post(fn, state);
 }
@@ -1469,6 +1496,7 @@ static void dn2cpp_task_release_action_locked(Dn2CppTask* task);
 static void dn2cpp_fire_conts(Dn2CppCont* conts, bool alreadyReady = false)
 {
     Dn2CppJoinDrain drain;
+    Dn2CppJoinDrain::Queue inlineAwaits;
     // The list is built by prepending, so reverse it to preserve await order.
     Dn2CppCont* prev = nullptr;
     for (Dn2CppCont* c = conts; c != nullptr;)
@@ -1483,7 +1511,14 @@ static void dn2cpp_fire_conts(Dn2CppCont* conts, bool alreadyReady = false)
         Dn2CppCont* next = c->next; // save before the node is relinked
         if (c->fn == &dn2cpp_post_await)
             Dn2CppJoinDrain::active->posts.append(c);
-        // Only a ContinueWith node schedules another Task; await resumptions do not.
+        else if (c->fn == &dn2cpp_schedule_await)
+        {
+            auto* work = static_cast<Dn2CppCapturedAwait*>(c->state);
+            work->offerInline = work->offerInline && !(work->antecedent->creationOptions & DN2CPP_TASK_ASYNC_CONTINUATIONS);
+            dn2cpp_gc_store_ref(&work->antecedent, static_cast<Dn2CppTask*>(nullptr));
+            if (work->offerInline) inlineAwaits.append(c);
+            else Dn2CppJoinDrain::active->posts.append(c);
+        }
         else if (c->fn != &dn2cpp_cont_with_run || dn2cpp_cont_with_prepare(c, alreadyReady))
         {
             if (c->fn == &dn2cpp_cont_with_submit)
@@ -1495,6 +1530,9 @@ static void dn2cpp_fire_conts(Dn2CppCont* conts, bool alreadyReady = false)
         }
         c = next;
     }
+    // Queue the other awaits before the first one can run arbitrary inline code.
+    while (auto* c = inlineAwaits.pop())
+        Dn2CppJoinDrain::active->posts.append(c);
     drain.run();
 }
 
@@ -1713,7 +1751,8 @@ void dn2cpp_task_set_exception(Dn2CppTask* t, Dn2CppObject* exception)
 // Link a pending registration, or return its already-ready node for dispatch
 // outside g_task_mtx.
 static Dn2CppCont* dn2cpp_task_register_cont(Dn2CppTask* t, void (*fn)(void*), void* state,
-                                             bool synchronous, bool needsOwner, Dn2CppTask* dependent = nullptr)
+                                             bool synchronous, bool needsOwner, Dn2CppTask* dependent = nullptr,
+                                             bool taskAwait = false)
 {
     // Outside g_task_mtx: arming runs the source's own code and may settle `t`.
     if (t->vtsBridge != nullptr)
@@ -1731,15 +1770,21 @@ static Dn2CppCont* dn2cpp_task_register_cont(Dn2CppTask* t, void (*fn)(void*), v
         return nullptr;
     if (t->status != DN2CPP_TASK_PENDING)
         return c;
+    if (taskAwait)
+    {
+        if (fn == &dn2cpp_schedule_await)
+            static_cast<Dn2CppCapturedAwait*>(state)->offerInline = !t->hasTaskAwait;
+        t->hasTaskAwait = true;
+    }
     dn2cpp_gc_store_ref(&c->next, t->continuations);
     dn2cpp_gc_store_ref(&t->continuations, c);
     return nullptr;
 }
 
 static void dn2cpp_task_queue_cont(Dn2CppTask* t, void (*fn)(void*), void* state,
-    bool needsOwner, bool poolIfReady = false)
+    bool needsOwner, bool poolIfReady, bool taskAwait)
 {
-    if (auto* ready = dn2cpp_task_register_cont(t, fn, state, false, needsOwner))
+    if (auto* ready = dn2cpp_task_register_cont(t, fn, state, false, needsOwner, nullptr, taskAwait))
     {
         // A ready forced await cannot rely on an ordinary owner's pump.
         // Pool workers can drain their own queue while unwrapping Task.Run.
@@ -1755,14 +1800,15 @@ void dn2cpp_task_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state,
 {
     if (captureContext && postToContext)
     {
-        if (auto* work = dn2cpp_capture_posted_await(fn, state))
+        if (auto* work = dn2cpp_capture_await(fn, state, t))
         {
-            if (auto* ready = dn2cpp_task_register_cont(t, &dn2cpp_post_await, work, true, false))
+            auto submit = work->queue != nullptr ? &dn2cpp_schedule_await : &dn2cpp_post_await;
+            if (auto* ready = dn2cpp_task_register_cont(t, submit, work, true, false, nullptr, true))
                 dn2cpp_fire_conts(ready, true);
             return;
         }
     }
-    dn2cpp_task_queue_cont(t, fn, state, captureContext && dn2cpp_has_custom_sync_context(), poolIfReady);
+    dn2cpp_task_queue_cont(t, fn, state, captureContext && dn2cpp_has_custom_sync_context(), poolIfReady, postToContext);
 }
 
 // .NET's builders hand a throwing continuation registration to Task.ThrowAsync, so the
@@ -1856,16 +1902,18 @@ void dn2cpp_configured_task_on_completed(const Dn2CppConfiguredTaskAwaiter* awai
 // Register a System.Action to run when the task completes — the runtime side of a
 // user awaiter's TaskAwaiter.OnCompleted(Action) and of the Action-over-MoveNext
 // continuation a custom suspending awaitable's await synthesizes.
-void dn2cpp_task_on_completed_action(Dn2CppTask* t, Dn2CppObject* action, bool captureContext)
+void dn2cpp_task_on_completed_action(Dn2CppTask* t, Dn2CppObject* action, bool captureContext, bool postToContext)
 {
-    dn2cpp_task_on_completed(t, &dn2cpp_action_continuation, action, captureContext);
+    if (postToContext && action == nullptr)
+        dn2cpp_throw_argument_null_param("continuation");
+    dn2cpp_task_on_completed(t, &dn2cpp_action_continuation, action, captureContext, postToContext);
 }
 
-// Action form of dn2cpp_sched_post — the delegate-continuation counterpart of
-// awaiting Task.Yield(): run the Action on this thread's next scheduler pass.
 void dn2cpp_sched_post_action(Dn2CppObject* action)
 {
-    dn2cpp_sched_post(&dn2cpp_action_continuation, action);
+    if (action == nullptr)
+        dn2cpp_throw_argument_null_param("continuation");
+    dn2cpp_async_yield_on_completed(&dn2cpp_action_continuation, action, false);
 }
 
 // Untimed drains can jump the owner's logical clock after its run queue empties.
@@ -5676,7 +5724,8 @@ static Dn2CppObject* dn2cpp_task_record_scheduler_failure(Dn2CppTask* t, const D
     return wrapped;
 }
 
-[[noreturn]] static void dn2cpp_task_reject_managed(Dn2CppTask* t, const Dn2CppTaskSchedulerQueue* queue, const Dn2CppException& e)
+static Dn2CppObject* dn2cpp_task_record_observed_scheduler_failure(Dn2CppTask* t,
+    const Dn2CppTaskSchedulerQueue* queue, const Dn2CppException& e)
 {
     auto* wrapped = dn2cpp_task_record_scheduler_failure(t, queue, e);
     if (auto* holder = dn2cpp_task_holder_for_observation(t))
@@ -5684,16 +5733,26 @@ static Dn2CppObject* dn2cpp_task_record_scheduler_failure(Dn2CppTask* t, const D
         Dn2CppMonitorGuard guard(holder);
         g_task_holder_observe(holder);
     }
-    dn2cpp_throw(wrapped);
+    return wrapped;
+}
+
+[[noreturn]] static void dn2cpp_task_reject_managed(Dn2CppTask* t, const Dn2CppTaskSchedulerQueue* queue, const Dn2CppException& e)
+{
+    dn2cpp_throw(dn2cpp_task_record_observed_scheduler_failure(t, queue, e));
+}
+
+static void dn2cpp_task_invoke_queue(Dn2CppTask* t, Dn2CppObject* scheduler, const Dn2CppTaskSchedulerQueue* queue)
+{
+    using QueueTask = void (*)(Dn2CppObject*, Dn2CppTask*);
+    auto submit = reinterpret_cast<QueueTask>(const_cast<void*>(scheduler->type->vtable[queue->queueSlot]));
+    submit(scheduler, t);
 }
 
 static void dn2cpp_task_queue_managed(Dn2CppTask* t, Dn2CppObject* scheduler, const Dn2CppTaskSchedulerQueue* queue)
 {
-    using QueueTask = void (*)(Dn2CppObject*, Dn2CppTask*);
-    auto submit = reinterpret_cast<QueueTask>(const_cast<void*>(scheduler->type->vtable[queue->queueSlot]));
     try
     {
-        submit(scheduler, t);
+        dn2cpp_task_invoke_queue(t, scheduler, queue);
     }
     catch (const Dn2CppException& e)
     {
@@ -5714,7 +5773,8 @@ static void dn2cpp_task_invoke_cold(Dn2CppTask* t, Dn2CppTaskCold* c)
         return;
     }
     auto* scheduler = t->scheduler.load(std::memory_order_acquire);
-    Dn2CppTaskDelegateScope scope(t, c->customQueue != nullptr || dn2cpp_is_pool_scheduler(scheduler) ? scheduler : nullptr);
+    Dn2CppTaskDelegateScope scope(t,
+        c->customQueue != nullptr || dn2cpp_is_pool_scheduler(scheduler) ? scheduler : nullptr, c->customQueue);
     uint64_t result = 0;
     Dn2CppObject* exception = nullptr;
     try
@@ -5771,6 +5831,81 @@ static bool dn2cpp_task_try_inline_managed(Dn2CppTask* task, Dn2CppObject* sched
     if (!(task->execution & DN2CPP_TASK_INVOKED) && task->status != DN2CPP_TASK_CANCELED)
         dn2cpp_throw_sr0(&dn2cpp_invalid_operation_exception_type, DN2CPP_SR_TASK_INLINE_NOT_INVOKED);
     return true;
+}
+
+static void dn2cpp_resume_scheduled_await(Dn2CppObject* state)
+{
+    auto* work = static_cast<Dn2CppCapturedAwait*>(state);
+    Dn2CppWallTimerScope scope(work->wallTimers);
+    work->resume(work->state);
+}
+
+static uint64_t dn2cpp_run_scheduled_yield(Dn2CppObject* work, Dn2CppObject*)
+{
+    dn2cpp_resume_scheduled_await(work);
+    return 0;
+}
+
+static void dn2cpp_schedule_yield(Dn2CppCapturedAwait* work, Dn2CppTask* asyncTask)
+{
+    Dn2CppTaskDispatch dispatch{work->target, work->queue, &dn2cpp_task_type};
+    dn2cpp_gc_store_ref(&work->target, static_cast<Dn2CppObject*>(nullptr));
+    dn2cpp_task_submit(work, asyncTask, nullptr, &dn2cpp_run_scheduled_yield,
+        DN2CPP_TASK_PREFER_FAIRNESS, nullptr, dispatch);
+}
+
+static uint64_t dn2cpp_run_scheduled_await(Dn2CppObject* work)
+{
+    try
+    {
+        dn2cpp_resume_scheduled_await(work);
+    }
+    catch (const Dn2CppException& e)
+    {
+        dn2cpp_async_await_rejected(e.obj);
+    }
+    return 0;
+}
+
+static void dn2cpp_schedule_await(void* state)
+{
+    auto* work = static_cast<Dn2CppCapturedAwait*>(state);
+    auto* scheduler = work->target;
+    auto* queue = work->queue;
+    dn2cpp_gc_store_ref(&work->target, static_cast<Dn2CppObject*>(nullptr));
+    bool offerInline = work->offerInline && (dn2cpp_taskscheduler_current() == scheduler
+        || (t_sched_ptr != nullptr && t_sched_ptr->pool_worker));
+    auto* task = dn2cpp_scheduled_task(0, nullptr, {scheduler, queue, &dn2cpp_task_type});
+    auto* cold = dn2cpp_task_work(work, nullptr, &dn2cpp_run_scheduled_await, nullptr);
+    cold->customQueue = queue;
+    dn2cpp_gc_store_ref(&task->cold, cold);
+    if (work->resume == &dn2cpp_action_continuation)
+        dn2cpp_gc_store_ref(&task->asyncState, static_cast<Dn2CppObject*>(work->state));
+    else
+    {
+        if (queue->awaitActionType == nullptr)
+            dn2cpp_throw_platform_not_supported("A captured Task await requires its Action delegate type");
+        auto* action = static_cast<Dn2CppDelegate*>(dn2cpp_alloc(sizeof(Dn2CppDelegate)));
+        action->type = queue->awaitActionType;
+        dn2cpp_gc_store_ref(&action->target, static_cast<Dn2CppObject*>(work));
+        action->method = reinterpret_cast<void*>(&dn2cpp_resume_scheduled_await);
+        dn2cpp_gc_store_ref(&task->asyncState, static_cast<Dn2CppObject*>(action));
+    }
+    try
+    {
+        if (offerInline && (queue->inlineSlot < 0 || scheduler->type->vtable[queue->inlineSlot] == nullptr))
+            dn2cpp_throw_platform_not_supported("A captured Task await requires its scheduler's inline slot");
+        if (offerInline && dn2cpp_task_try_inline_managed(task, scheduler, queue, false))
+            return;
+        dn2cpp_task_invoke_queue(task, scheduler, queue);
+    }
+    catch (const Dn2CppException& e)
+    {
+        // Queue rejection faults the scheduler's task. ScheduleAndStart observes
+        // its own failure; an inline continuation leaves it for later observation.
+        if (offerInline) dn2cpp_task_record_scheduler_failure(task, queue, e);
+        else dn2cpp_task_record_observed_scheduler_failure(task, queue, e);
+    }
 }
 
 static void dn2cpp_task_offer_wait_inline(Dn2CppTask* task)

@@ -116,8 +116,11 @@ internal sealed partial class MethodCompiler
             {
                 var cont = Pop(); // Action continuation
                 var a = Pop();    // this (ref Dn2CppTaskAwaiter)
+                var token = SRME.EntityHandle(_callSiteToken);
+                var owner = token.IsNil ? Method.Module : Comp.DeclaringDefinitionOf(Module, token)?.Module;
+                bool postToContext = owner?.AssemblyName == "System.Private.CoreLib";
                 Emit($"dn2cpp_task_on_completed_action(((Dn2CppTaskAwaiter*)({a.Expr}))->task, " +
-                     $"{Cast(cont, "Dn2CppObject*")});");
+                     $"{Cast(cont, "Dn2CppObject*")}{(postToContext ? ", true, true" : "")});");
                 return true;
             }
 

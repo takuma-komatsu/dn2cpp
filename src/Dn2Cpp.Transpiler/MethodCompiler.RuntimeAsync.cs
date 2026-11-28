@@ -528,7 +528,7 @@ internal sealed partial class MethodCompiler
                 Emit("__aw = nullptr;");
                 pending = null;
                 yields = true;
-                registration = $"dn2cpp_sched_post(&{resume}, __af);";
+                registration = $"dn2cpp_async_yield_on_completed(&{resume}, __af, true, __atask);";
                 break;
             default:
                 throw new NotSupportedException(
