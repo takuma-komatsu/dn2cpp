@@ -1910,8 +1910,11 @@ The task signals its continuations once.
 before handing it to managed `QueueTask`. A factory task observes cancellation
 when the scheduler executes it, including when its token was already canceled.
 `ContinueWith` waits for its antecedent and applies its outcome filter before
-dispatch. The assigned scheduler receives eligible continuations. A queue
-rejection faults the continuation. Cancellation can withdraw queued continuation work via
+dispatch. Cancellation withdraws an eager continuation from a pending antecedent.
+`LazyCancellation` defers cancellation until the antecedent settles. Pool
+continuations check their token before invoking the delegate. The assigned
+scheduler receives eligible continuations. A queue rejection faults the
+continuation. Cancellation can withdraw work from a managed scheduler via
 `TryDequeue`. With `ExecuteSynchronously`, the scheduler first receives an inline
 offer unless the pending antecedent required asynchronous continuations.
 `RunSynchronously` also offers inline execution, queues after a refusal, and

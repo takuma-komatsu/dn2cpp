@@ -50,6 +50,31 @@ namespace TaskCancellationTokenSubset
                 && error.CancellationToken == token);
         }
 
+        internal static void RunPendingContinuationCancellation()
+        {
+            using var stop = new CancellationTokenSource();
+            var source = new TaskCompletionSource<int>();
+            int calls = 0;
+            Action<Task<int>> callback = _ => Interlocked.Increment(ref calls);
+            var eager = source.Task.ContinueWith(callback, stop.Token,
+                TaskContinuationOptions.None, TaskScheduler.Default);
+            var lazy = source.Task.ContinueWith(callback, stop.Token,
+                TaskContinuationOptions.LazyCancellation, TaskScheduler.Default);
+            stop.Cancel();
+            Console.WriteLine("continuations before antecedent: eager=" + eager.Status + " lazy=" + lazy.Status);
+
+            source.SetResult(1);
+            var both = Task.WhenAll(eager, lazy);
+            try
+            {
+                if (!both.Wait(TimeSpan.FromSeconds(3)))
+                    throw new TimeoutException("Continuations did not settle");
+            }
+            catch (AggregateException) when (both.IsCanceled) { }
+            Console.WriteLine("continuations after antecedent: eager=" + eager.Status + " lazy=" + lazy.Status
+                + " callbacks=" + calls);
+        }
+
         private static void CheckCaptured(string name, OperationCanceledException error, CancellationToken token)
         {
             var gate = new TaskCompletionSource<int>();
