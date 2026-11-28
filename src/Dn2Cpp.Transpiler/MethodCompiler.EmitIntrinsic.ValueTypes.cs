@@ -2443,13 +2443,10 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I8, "intptr_t", $"dn2cpp_gchandle_to_intptr({GCHVal(r)})");
                 return true;
             }
-            // The low-level IntPtr-handle table (InternalAlloc/Get/Set/Free/
-            // CompareExchange) WeakReference / WeakReference<T> drive directly — distinct
-            // from the struct pinning model above. Each handle is a real Boehm weak
-            // link (dn2cpp_gchandle_internal_*).
+            // Raw handle tokens are shared by WeakReference and PinnedGCHandle<T>.
             case "InternalAlloc" when ps.Length == 2:
             {
-                var handleType = Pop(); // GCHandleType: 0=Weak, 1=WeakTrackResurrection
+                var handleType = Pop();
                 var value = Pop();
                 Push(StackKind.I8, "intptr_t",
                     $"dn2cpp_gchandle_internal_alloc((Dn2CppObject*)({value.Expr}), (int32_t)({handleType.Expr}))");

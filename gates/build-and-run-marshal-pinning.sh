@@ -54,7 +54,8 @@
 # The appended StructureToPtr block checks the exact object overload through
 # calls, managed function pointers and reflection on its own buffer. The
 # private CheckUninitialized guard faults on a zero token and passes an
-# allocated one, by name and through the public weak handle.
+# allocated one, by name and through the public weak handle. PinnedGCHandle<T>
+# retains its target across GC and shares target updates with copies.
 source "$(dirname "$0")/_common.sh"
 source gates/_typed-gchandle.sh
 case "${DN2CPP_MARSHAL_FULL:-0}" in
@@ -205,6 +206,7 @@ gate_capture_diff_files() {
     gate_output witness "$native" 'default:NullReferenceException:NullReferenceException' --count 1 --policy crlf
     gate_output witness "$native" 'allocated:passed:passed' --count 1 --policy crlf
     gate_output witness "$native" 'GCHandle.CheckUninitialized end' --count 1 --policy crlf
+    gate_output witness "$native" 'typed-pinned-token:True' --count 1 --policy crlf
 }
 
 corelib_diff_gate MarshalPinning

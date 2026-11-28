@@ -8970,32 +8970,9 @@ void dn2cpp_gchandle_free_value(Dn2CppGCHandle h);        // rvalue receiver: cl
 intptr_t dn2cpp_gchandle_to_intptr(Dn2CppGCHandle h);     // the cell address (stable); 0 for a zeroed handle
 Dn2CppGCHandle dn2cpp_gchandle_from_intptr(intptr_t v);   // 0 -> InvalidOperationException
 
-// GCHandle's low-level IntPtr-handle table (GCHandle.InternalAlloc/Get/Set/Free/
-// CompareExchange), distinct from the struct pinning model above. WeakReference /
-// WeakReference<T> store a raw nint handle and drive it through these — reached
-// from JsonSerializerOptions' caching-context WeakReference. GCHandle.Alloc's
-// public Normal/Pinned path is intercepted separately (the struct pinning model
-// above) and never reaches here, so handleType is Weak (0) or
-// WeakTrackResurrection (1) in practice.
-//
-// Each handle is a Dn2CppWeakCell holding the target plus which kind of Boehm
-// disappearing link it is registered with:
-//   - Weak (short): GC_general_register_disappearing_link — cleared as soon as the
-//     referent is found unreachable, before any finalizer runs (matches
-//     WeakReference<T>(x, trackResurrection: false), the default).
-//   - WeakTrackResurrection (long): GC_register_long_link — cleared only once the
-//     referent is truly unreachable, matching trackResurrection: true.
-//
-// INVARIANT: the cell must be allocated ATOMIC (dn2cpp_alloc_atomic), not with the
-// ordinary pointer-scanning allocator, and hiddenTarget must hold
-// GC_HIDE_POINTER(target) rather than a raw pointer. The atomic allocator is the
-// load-bearing half: a disappearing link registered against a slot inside a scanned
-// block never clears, because the conservative mark phase re-marks the referent live
-// right through this very cell — silently making every weak reference strong.
-// GC_HIDE_POINTER on top only keeps the raw pointer out of a memory dump.
-// dn2cpp_gchandle_internal_get reveals it with GC_REVEAL_POINTER. The handle is the
-// cell's address as an intptr_t.
-struct Dn2CppWeakCell { intptr_t hiddenTarget; int32_t isLong; };
+// Raw handle tokens used by WeakReference and PinnedGCHandle<T>. Weak slots use
+// unscanned storage and Boehm short/long disappearing links. Normal and pinned
+// tokens keep a scanned, uncollectable strong slot until InternalFree.
 intptr_t dn2cpp_gchandle_internal_alloc(Dn2CppObject* target, int32_t handleType);
 Dn2CppObject* dn2cpp_gchandle_internal_get(intptr_t handle);
 void dn2cpp_gchandle_internal_set(intptr_t handle, Dn2CppObject* target);
