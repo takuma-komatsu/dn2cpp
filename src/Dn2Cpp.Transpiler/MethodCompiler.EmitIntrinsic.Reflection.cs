@@ -109,6 +109,21 @@ internal sealed partial class MethodCompiler
             + $"(({result} (*)({receiverType}))((Dn2CppObject*){receiver})->type->vtable[{method.VtableSlot}])({receiver}))";
     }
 
+    private void EmitTypeAttributeFlags(MethodInfo method)
+    {
+        Comp.EnsureCompleted(method.DeclaringClass);
+        if (method.VtableSlot < 0)
+            throw new InvalidOperationException("System.Type.GetAttributeFlagsImpl has no vtable slot");
+        var receiverEntry = Pop();
+        TaintPoisonedTypeEscape(receiverEntry);
+        string receiver = NewTemp("Dn2CppObject*");
+        Emit($"{receiver} = dn2cpp_null_check<Dn2CppObject>({Cast(receiverEntry, "Dn2CppObject*")});");
+        string result = CppTypes.Of(method.Signature.ReturnType);
+        Push(CppTypes.KindOf(method.Signature.ReturnType), result,
+            $"({receiver}->type->vtable == nullptr ? ({result})dn2cpp_type_il_attrs(dn2cpp_type_require((Dn2CppType*){receiver})) : "
+            + $"(({result} (*)(Dn2CppObject*)){receiver}->type->vtable[{method.VtableSlot}])({receiver}))");
+    }
+
     private bool TryEmitReflectionIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
         // Shared-body candidate: a typeof over a placeholder-bearing type rides the
@@ -2111,6 +2126,21 @@ internal sealed partial class MethodCompiler
                 string ct = CppTypes.Of(sig.ReturnType);
                 Push(CppTypes.KindOf(sig.ReturnType), ct,
                     $"({ct})dn2cpp_type_il_attrs(dn2cpp_type_require({Cast(a, "Dn2CppType*")}))");
+                return true;
+            }
+            case ("System.Type", "get_IsAutoLayout"):
+            case ("System.Type", "get_IsLayoutSequential"):
+            case ("System.Type", "get_IsExplicitLayout"):
+            {
+                var a = Pop();
+                int layout = name switch
+                {
+                    "get_IsAutoLayout" => 0x00,
+                    "get_IsLayoutSequential" => 0x08,
+                    _ => 0x10,
+                };
+                Push(StackKind.I4, "int32_t",
+                    $"((dn2cpp_type_il_attrs(dn2cpp_type_require({Cast(a, "Dn2CppType*")})) & 0x18) == 0x{layout:X2} ? 1 : 0)");
                 return true;
             }
             case ("System.Type", "get_IsPublic"):

@@ -64,5 +64,8 @@ static class Program
         var loose = context.Create(fields.GetField(nameof(AnnotatedFields<string, string>.Loose))!);
         Console.WriteLine("field nullability=" + optional.WriteState + "/" + required.ReadState + "/" + required.WriteState + "/" + loose.WriteState);
         CollectibilitySubset.Program.RunAssembly();
+        if (args.Length > 0 && args[0] == "before-type-layout")
+            return;
+        TypeLayoutSubset.Program.Run();
     }
 }

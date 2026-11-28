@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Type layout properties preserve ECMA layout attributes across runtime, emitted, generic and custom Type subclasses.
 # Type.GetNullableUnderlyingType preserves formal identity and managed Type overrides.
 # Lowered Type operations reject managed Type receivers and arguments at the native boundary.
 # Member metadata-definition identity ignores generic instantiation and reflected views without conflating definitions.
@@ -315,8 +316,8 @@ DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-type-leaves-v1|before-attribute-display-code-units|exception-object-prefix-argv:before-exception-object-members|assembly-name-prefix-argv:before-assembly-name-validation|attribute-construction-prefix-argv:before-attribute-construction-order"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/AttributeConstructionOrderSubset.cs samples/dotnet/ReflectTypes/MethodAttributeInheritanceSubset.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|before-method-attribute-inheritance"
-DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/MetadataDefinitionSubset.cs samples/dotnet/ReflectTypes/CollectibilitySubset.cs"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|before-metadata-definition-identity|before-collectibility"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/MetadataDefinitionSubset.cs samples/dotnet/ReflectTypes/CollectibilitySubset.cs samples/dotnet/ReflectTypes/TypeLayoutSubset.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|before-metadata-definition-identity|before-collectibility|before-type-layout"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/keep-ordinary-type-leaves.xml samples/dotnet/ReflectTypes/keep-template-signatures.xml samples/dotnet/ReflectTypes/keep-attribute-enumeration.xml"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsOnly.csproj samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsUnshared.csproj samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsOnlyProgram.cs gates/expected/reflect-types-closed-generic.txt gates/expected/reflect-types-closed-generic-unshared.txt"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ReflectionTemplateDispatch.csproj samples/dotnet/ReflectTypes/ReflectionTemplateDispatchProgram.cs samples/dotnet/ReflectTypes/ReflectRuntimeInstantiationSubset.cs"
@@ -978,6 +979,42 @@ gate_extra_asserts() {
         'module array type=System.Reflection.RuntimeModule[]/System.Reflection.RuntimeModule' \
         'module array overload=True:True/True' \
         'module writable address=True/True exact=True' || return $?
+    gate_capture_ok "$out/type-layout-before-clr" run_bounded dotnet "$_CG_APP" before-type-layout || return $?
+    gate_output prefix "$out/native.stdout" "$out/type-layout-before-clr.stdout" \
+        --before '== type layout properties ==' --policy crlf || return $?
+    gate_capture_ok "$out/type-layout-before-native" run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" before-type-layout || return $?
+    gate_output prefix "$out/native.stdout" "$out/type-layout-before-native.stdout" \
+        --before '== type layout properties ==' --policy crlf || return $?
+    gate_output byte-witness "$out/native.stdout" --count 1 --policy crlf \
+        '== type layout properties ==' \
+        'int=False/True/False' \
+        'bool=False/True/False' \
+        'decimal=False/True/False' \
+        'yield-awaiter=False/True/False' \
+        'datetime=True/False/False' \
+        'explicit-delegator=False/False/True' \
+        'nested-delegator=False/False/True' \
+        'intrinsic-meta-def=True/False' \
+        'direct-custom-layout=False/False/True' \
+        'delegate-flags=ExplicitLayout/DirectExplicitType' \
+        'type layout properties end' || return $?
+    grep -Fwxq -- '// System.RuntimeType::GetAttributeFlagsImpl' "$out"/generated*.cpp "$out/generated.h" \
+        || { echo 'FAIL: RuntimeType.GetAttributeFlagsImpl body absent' >&2; return 1; }
+    grep -Fq -- '{ &dn2cpp_type_type, delegatetab_System_RuntimeType,' "$out"/generated*.cpp \
+        || { echo 'FAIL: RuntimeType delegate catalog entry absent' >&2; return 1; }
+    awk '/^static const Dn2CppDelegateMethodTarget dgidv_Type_GetAttributeFlagsImpl_m[0-9]+_selected_targets\[\] = \{/{in_tbl=1; next} in_tbl && /^\};/{in_tbl=0} in_tbl && /\{ &dn2cpp_type_type, &dn2cpp_type_type,/{found=1} END{exit !found}' "$out"/generated*.cpp \
+        || { echo 'FAIL: Type.GetAttributeFlagsImpl selected_targets missing RuntimeType entry' >&2; return 1; }
+    awk '
+        / RuntimeType_GetAttributeFlagsImpl_m[0-9]+\(t_System_RuntimeType\* a0\)[[:space:]]*$/ {
+            match($0, /RuntimeType_GetAttributeFlagsImpl_m[0-9]+/)
+            target = substr($0, RSTART, RLENGTH)
+        }
+        / BaseCustomLayoutType_BindAttributeFlags_m[0-9]+\(t_TypeLayoutSubset_Program_BaseCustomLayoutType\* a0\)[[:space:]]*$/, /^}/ {
+            if (/->type->vtable == nullptr/) dispatch = $0
+        }
+        END { exit !(target && index(dispatch, "->type->vtable == nullptr ? (void*)&" target " : ")) }
+    ' "$out/generated.h" "$out"/generated*.cpp \
+        || { echo 'FAIL: BindAttributeFlags null-vtable branch must select RuntimeType.GetAttributeFlagsImpl' >&2; return 1; }
 }
 # Helpers that read a Type parameter's attributes or construct a Type an attribute
 # carries are preserved explicitly; their callers' typeof arguments select nothing.

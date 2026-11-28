@@ -128,7 +128,8 @@ internal sealed partial class Compilation
                 // receiver (which folds to the dispatching runtime helper) finds it. Over-
                 // reaching on the non-virtual form is harmless.
                 ReachExceptionGetMessage(mi);
-                if (CoreIntrinsics.MdMemberInfoProperty.Matches(mi))
+                if (CoreIntrinsics.MdMemberInfoProperty.Matches(mi)
+                    || CoreIntrinsics.MdTypeAttributeFlags.Matches(mi))
                     ReachUsedVirtual(mi);
                 CoreIntrinsics.ValidateDelegateCallableBody(mi);
                 if (CoreIntrinsics.BrDelegateCallable.Matches(mi)) return mi;
@@ -817,13 +818,15 @@ internal sealed partial class Compilation
                 }
                 // Non-generic parent: reach the real method when it resolves to a
                 // loaded (non-intrinsic) BCL type; otherwise treat as intrinsic.
-                if (CoreIntrinsics.IsMemberInfoPropertyName(mrParent, mrName)
+                if ((CoreIntrinsics.IsMemberInfoPropertyName(mrParent, mrName)
+                        || CoreIntrinsics.IsTypeAttributeFlagsName(mrParent, mrName))
                     && (mr.Parent.Kind == HandleKind.TypeDefinition
                         || mr.Parent.Kind == HandleKind.TypeReference
                             && ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class is not null))
                 {
                     var property = ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
-                    if (CoreIntrinsics.MdMemberInfoProperty.Matches(property))
+                    if (CoreIntrinsics.MdMemberInfoProperty.Matches(property)
+                        || CoreIntrinsics.MdTypeAttributeFlags.Matches(property))
                     {
                         ReachUsedVirtual(property);
                         return null;
@@ -1713,12 +1716,14 @@ internal sealed partial class Compilation
         if (CoreIntrinsics.IsKnownConstantName(cls.FullName, name))
             ValidateKnownConstantReference(module, mr, resolved, callerCtx);
         if (CoreIntrinsics.IsRuntimeTypeHandleGetAttributes(resolved)
-            || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(resolved))
+            || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(resolved)
+            || CoreIntrinsics.MdTypeAttributeFlags.Matches(resolved))
         {
             // The general single-candidate path does not prove an incoming native ABI.
             bool helper = resolved.IsStatic;
             if (!RuntimeTypeAttributeMemberRefShape(reader, mr, helper)
                 || sig.GenericParameterCount != 0
+                || sig.ParameterTypes.Length != (helper ? 1 : 0)
                 || sig.ReturnType is not { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.TypeAttributes", IsEnum: true } result }
                 || result.Module != resolved.Module
                 || (helper && (sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]

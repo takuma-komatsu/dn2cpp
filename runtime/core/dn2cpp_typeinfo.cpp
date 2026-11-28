@@ -519,7 +519,10 @@ DN2CPP_NATIVE_FIELDS(dn2cpp_primflds_double,
 );
 
 extern const Dn2CppType dn2cpp_bool_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_bool_type_reflection, dn2cpp_primflds_bool, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, {}, 0, DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR);
+DN2CPP_NATIVE_TYPE_REFLECTION_ATTRS(dn2cpp_bool_type_reflection, DN2CPP_TA_SEQUENTIAL_SERIALIZABLE_VALUETYPE, dn2cpp_primflds_bool, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, {}, 0, DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR);
+static_assert(dn2cpp_bool_type_reflection_rows[0].ilAttrs == DN2CPP_TA_SEQUENTIAL_SERIALIZABLE_VALUETYPE
+    && dn2cpp_bool_type_reflection_rows[0].eventCount == 0
+    && dn2cpp_bool_type_reflection_rows[0].activation == DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR);
 const Dn2CppTypeInfo dn2cpp_bool_type =
     dn2cpp_ti_with_typeobject({ "System.Boolean", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_bool_type_reflection }, &dn2cpp_bool_type_obj);
 const Dn2CppType dn2cpp_bool_type_obj = { { &dn2cpp_type_type }, &dn2cpp_bool_type };
@@ -527,47 +530,47 @@ const Dn2CppType dn2cpp_bool_type_obj = { { &dn2cpp_type_type }, &dn2cpp_bool_ty
 // stack width (CppTypes.Of widens char/byte/short to int32_t), so dn2cpp_box
 // stores 4 bytes and ToString reads them back at that width.
 extern const Dn2CppType dn2cpp_char_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_char_type_reflection, dn2cpp_primflds_char, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION_ATTRS(dn2cpp_char_type_reflection, DN2CPP_TA_SEQUENTIAL_SERIALIZABLE_VALUETYPE, dn2cpp_primflds_char, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_char_type =
     dn2cpp_ti_with_typeobject({ "System.Char", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_char_type_reflection }, &dn2cpp_char_type_obj);
 const Dn2CppType dn2cpp_char_type_obj = { { &dn2cpp_type_type }, &dn2cpp_char_type };
 extern const Dn2CppType dn2cpp_byte_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_byte_type_reflection, dn2cpp_primflds_byte, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION_ATTRS(dn2cpp_byte_type_reflection, DN2CPP_TA_SEQUENTIAL_SERIALIZABLE_VALUETYPE, dn2cpp_primflds_byte, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_byte_type =
     dn2cpp_ti_with_typeobject({ "System.Byte", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_byte_type_reflection }, &dn2cpp_byte_type_obj);
 const Dn2CppType dn2cpp_byte_type_obj = { { &dn2cpp_type_type }, &dn2cpp_byte_type };
 extern const Dn2CppType dn2cpp_sbyte_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_sbyte_type_reflection, dn2cpp_primflds_sbyte, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION_ATTRS(dn2cpp_sbyte_type_reflection, DN2CPP_TA_SEQUENTIAL_SERIALIZABLE_VALUETYPE, dn2cpp_primflds_sbyte, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_sbyte_type =
     dn2cpp_ti_with_typeobject({ "System.SByte", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_sbyte_type_reflection }, &dn2cpp_sbyte_type_obj);
 const Dn2CppType dn2cpp_sbyte_type_obj = { { &dn2cpp_type_type }, &dn2cpp_sbyte_type };
 extern const Dn2CppType dn2cpp_int16_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_int16_type_reflection, dn2cpp_primflds_int16, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION_ATTRS(dn2cpp_int16_type_reflection, DN2CPP_TA_SEQUENTIAL_SERIALIZABLE_VALUETYPE, dn2cpp_primflds_int16, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_int16_type =
     dn2cpp_ti_with_typeobject({ "System.Int16", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_int16_type_reflection }, &dn2cpp_int16_type_obj);
 const Dn2CppType dn2cpp_int16_type_obj = { { &dn2cpp_type_type }, &dn2cpp_int16_type };
 extern const Dn2CppType dn2cpp_uint16_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_uint16_type_reflection, dn2cpp_primflds_uint16, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION_ATTRS(dn2cpp_uint16_type_reflection, DN2CPP_TA_SEQUENTIAL_SERIALIZABLE_VALUETYPE, dn2cpp_primflds_uint16, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_uint16_type =
     dn2cpp_ti_with_typeobject({ "System.UInt16", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_uint16_type_reflection }, &dn2cpp_uint16_type_obj);
 const Dn2CppType dn2cpp_uint16_type_obj = { { &dn2cpp_type_type }, &dn2cpp_uint16_type };
 extern const Dn2CppType dn2cpp_uint32_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_uint32_type_reflection, dn2cpp_primflds_uint32, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION_ATTRS(dn2cpp_uint32_type_reflection, DN2CPP_TA_SEQUENTIAL_SERIALIZABLE_VALUETYPE, dn2cpp_primflds_uint32, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_uint32_type =
     dn2cpp_ti_with_typeobject({ "System.UInt32", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_uint32_type_reflection }, &dn2cpp_uint32_type_obj);
 const Dn2CppType dn2cpp_uint32_type_obj = { { &dn2cpp_type_type }, &dn2cpp_uint32_type };
 extern const Dn2CppType dn2cpp_int32_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_int32_type_reflection, dn2cpp_primflds_int32, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION_ATTRS(dn2cpp_int32_type_reflection, DN2CPP_TA_SEQUENTIAL_SERIALIZABLE_VALUETYPE, dn2cpp_primflds_int32, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_int32_type =
     dn2cpp_ti_with_typeobject({ "System.Int32", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_int32_type_reflection }, &dn2cpp_int32_type_obj);
 const Dn2CppType dn2cpp_int32_type_obj = { { &dn2cpp_type_type }, &dn2cpp_int32_type };
 extern const Dn2CppType dn2cpp_int64_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_int64_type_reflection, dn2cpp_primflds_int64, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION_ATTRS(dn2cpp_int64_type_reflection, DN2CPP_TA_SEQUENTIAL_SERIALIZABLE_VALUETYPE, dn2cpp_primflds_int64, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_int64_type =
     dn2cpp_ti_with_typeobject({ "System.Int64", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_int64_type_reflection }, &dn2cpp_int64_type_obj);
 const Dn2CppType dn2cpp_int64_type_obj = { { &dn2cpp_type_type }, &dn2cpp_int64_type };
 extern const Dn2CppType dn2cpp_uint64_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_uint64_type_reflection, dn2cpp_primflds_uint64, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION_ATTRS(dn2cpp_uint64_type_reflection, DN2CPP_TA_SEQUENTIAL_SERIALIZABLE_VALUETYPE, dn2cpp_primflds_uint64, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_uint64_type =
     dn2cpp_ti_with_typeobject({ "System.UInt64", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_uint64_type_reflection }, &dn2cpp_uint64_type_obj);
 const Dn2CppType dn2cpp_uint64_type_obj = { { &dn2cpp_type_type }, &dn2cpp_uint64_type };
@@ -599,26 +602,26 @@ static constexpr Dn2CppPropInfo dn2cpp_nativeint_size_property = {
     DN2CPP_MTHA_PUBLIC | DN2CPP_MTHA_STATIC, {}, 0, 0, "Int32 Size" };
 
 extern const Dn2CppType dn2cpp_intptr_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_intptr_type_reflection,
+DN2CPP_NATIVE_TYPE_REFLECTION_ATTRS(dn2cpp_intptr_type_reflection, DN2CPP_TA_SEQUENTIAL_SERIALIZABLE_VALUETYPE,
     dn2cpp_primflds_intptr, 1, &dn2cpp_nativeint_size_getter<dn2cpp_intptr_type>, 1, 0, 0,
     &dn2cpp_nativeint_size_property<dn2cpp_intptr_type>, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_intptr_type =
     dn2cpp_ti_with_typeobject({ "System.IntPtr", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(intptr_t), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_intptr_type_reflection }, &dn2cpp_intptr_type_obj);
 const Dn2CppType dn2cpp_intptr_type_obj = { { &dn2cpp_type_type }, &dn2cpp_intptr_type };
 extern const Dn2CppType dn2cpp_uintptr_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_uintptr_type_reflection,
+DN2CPP_NATIVE_TYPE_REFLECTION_ATTRS(dn2cpp_uintptr_type_reflection, DN2CPP_TA_SEQUENTIAL_SERIALIZABLE_VALUETYPE,
     dn2cpp_primflds_uintptr, 1, &dn2cpp_nativeint_size_getter<dn2cpp_uintptr_type>, 1, 0, 0,
     &dn2cpp_nativeint_size_property<dn2cpp_uintptr_type>, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_uintptr_type =
     dn2cpp_ti_with_typeobject({ "System.UIntPtr", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(intptr_t), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_uintptr_type_reflection }, &dn2cpp_uintptr_type_obj);
 const Dn2CppType dn2cpp_uintptr_type_obj = { { &dn2cpp_type_type }, &dn2cpp_uintptr_type };
 extern const Dn2CppType dn2cpp_single_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_single_type_reflection, dn2cpp_primflds_single, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION_ATTRS(dn2cpp_single_type_reflection, DN2CPP_TA_SEQUENTIAL_SERIALIZABLE_VALUETYPE, dn2cpp_primflds_single, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_single_type =
     dn2cpp_ti_with_typeobject({ "System.Single", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_single_type_reflection }, &dn2cpp_single_type_obj);
 const Dn2CppType dn2cpp_single_type_obj = { { &dn2cpp_type_type }, &dn2cpp_single_type };
 extern const Dn2CppType dn2cpp_double_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_double_type_reflection, dn2cpp_primflds_double, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION_ATTRS(dn2cpp_double_type_reflection, DN2CPP_TA_SEQUENTIAL_SERIALIZABLE_VALUETYPE, dn2cpp_primflds_double, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_double_type =
     dn2cpp_ti_with_typeobject({ "System.Double", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_double_type_reflection }, &dn2cpp_double_type_obj);
 const Dn2CppType dn2cpp_double_type_obj = { { &dn2cpp_type_type }, &dn2cpp_double_type };
@@ -632,12 +635,20 @@ int32_t dn2cpp_empty_valuetype_equals(Dn2CppObject* self, Dn2CppObject* other)
     return other != nullptr && other->type == self->type ? 1 : 0;
 }
 extern const Dn2CppType dn2cpp_yield_awaiter_type_obj;
+static constexpr Dn2CppTypeReflection dn2cpp_yield_awaiter_type_reflection_rows[] = {
+    dn2cpp_native_type_identity(nullptr, DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR,
+        DN2CPP_TA_NESTED_PUBLIC_SEQUENTIAL_VALUETYPE) };
+static constexpr Dn2CppMetadataHandle<Dn2CppTypeReflection> dn2cpp_yield_awaiter_type_reflection{
+    dn2cpp_yield_awaiter_type_reflection_rows };
+static_assert(dn2cpp_yield_awaiter_type_reflection_rows[0].ilAttrs == DN2CPP_TA_NESTED_PUBLIC_SEQUENTIAL_VALUETYPE
+    && dn2cpp_yield_awaiter_type_reflection_rows[0].eventCount == 0
+    && dn2cpp_yield_awaiter_type_reflection_rows[0].activation == DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR);
 const Dn2CppTypeInfo dn2cpp_yield_awaiter_type =
-    dn2cpp_ti_with_typeobject({ "System.Runtime.CompilerServices.YieldAwaitable+YieldAwaiter", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppYieldAwaiter), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED | DN2CPP_TF_NOT_MARSHALABLE), 0, 0, 0, dn2cpp_cctor_only_reflection }, &dn2cpp_yield_awaiter_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Runtime.CompilerServices.YieldAwaitable+YieldAwaiter", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppYieldAwaiter), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED | DN2CPP_TF_NOT_MARSHALABLE), 0, 0, 0, dn2cpp_yield_awaiter_type_reflection }, &dn2cpp_yield_awaiter_type_obj);
 const Dn2CppType dn2cpp_yield_awaiter_type_obj = { { &dn2cpp_type_type }, &dn2cpp_yield_awaiter_type };
 extern const Dn2CppType dn2cpp_parallel_loop_result_type_obj;
 const Dn2CppTypeInfo dn2cpp_parallel_loop_result_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.ParallelLoopResult", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppParallelLoopResult), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED), 0, 0, 0, nullptr }, &dn2cpp_parallel_loop_result_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.ParallelLoopResult", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppParallelLoopResult), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_sequential_valuetype_reflection }, &dn2cpp_parallel_loop_result_type_obj);
 const Dn2CppType dn2cpp_parallel_loop_result_type_obj = { { &dn2cpp_type_type }, &dn2cpp_parallel_loop_result_type };
 // The System.Decimal type-info lives in intrinsics/dn2cpp_system_decimal.cpp, and
 // the System.TimeSpan / DateTime / DateTimeOffset / DateOnly / TimeOnly ones in
@@ -732,7 +743,7 @@ const Dn2CppType dn2cpp_customattributedata_type_obj = { { &dn2cpp_type_type }, 
 // System.Void, so a void method's MethodInfo.ReturnType reports Name "Void".
 extern const Dn2CppType dn2cpp_void_type_obj;
 const Dn2CppTypeInfo dn2cpp_void_type =
-    dn2cpp_ti_with_typeobject({ "System.Void", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED), 0, 0, 0, nullptr }, &dn2cpp_void_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Void", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_sequential_valuetype_reflection }, &dn2cpp_void_type_obj);
 const Dn2CppType dn2cpp_void_type_obj = { { &dn2cpp_type_type }, &dn2cpp_void_type };
 extern const Dn2CppType dn2cpp_exception_type_obj;
 const Dn2CppTypeInfo dn2cpp_exception_type =

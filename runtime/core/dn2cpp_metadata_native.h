@@ -4,13 +4,26 @@
 #include <array>
 #include <utility>
 
-constexpr Dn2CppTypeReflection dn2cpp_native_type_identity(const char* assemblyName, int32_t activation = 0)
+constexpr Dn2CppTypeReflection dn2cpp_native_type_identity(
+    const char* assemblyName, int32_t activation = 0, uint32_t ilAttrs = 0)
 {
     Dn2CppTypeReflection reflection{};
     reflection.assemblyName = assemblyName;
+    reflection.ilAttrs = ilAttrs;
     reflection.activation = activation;
     return reflection;
 }
+
+constexpr Dn2CppTypeReflection dn2cpp_native_type_reflection_with_attrs(
+    Dn2CppTypeReflection reflection, uint32_t ilAttrs)
+{
+    reflection.ilAttrs = ilAttrs;
+    return reflection;
+}
+
+inline constexpr uint32_t DN2CPP_TA_SEQUENTIAL_VALUETYPE = 0x00100109u;
+inline constexpr uint32_t DN2CPP_TA_SEQUENTIAL_SERIALIZABLE_VALUETYPE = 0x00102109u;
+inline constexpr uint32_t DN2CPP_TA_NESTED_PUBLIC_SEQUENTIAL_VALUETYPE = 0x0010010Au;
 
 // These runtime-owned types declare a public default constructor without a row.
 inline constexpr Dn2CppTypeReflection dn2cpp_default_ctor_reflection_rows[] = {
@@ -31,6 +44,10 @@ inline constexpr Dn2CppTypeReflection dn2cpp_nonpublic_default_ctor_with_cctor_r
         DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR | DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR) };
 inline constexpr Dn2CppMetadataHandle<Dn2CppTypeReflection> dn2cpp_nonpublic_default_ctor_with_cctor_reflection{
     dn2cpp_nonpublic_default_ctor_with_cctor_reflection_rows };
+inline constexpr Dn2CppTypeReflection dn2cpp_sequential_valuetype_reflection_rows[] = {
+    dn2cpp_native_type_identity(nullptr, 0, DN2CPP_TA_SEQUENTIAL_VALUETYPE) };
+inline constexpr Dn2CppMetadataHandle<Dn2CppTypeReflection> dn2cpp_sequential_valuetype_reflection{
+    dn2cpp_sequential_valuetype_reflection_rows };
 
 // Adjacent local blocks keep each record's pointer dependencies together without
 // rooting metadata or accessor thunks belonging to unrelated blocks.
@@ -350,4 +367,9 @@ template<auto& Rows> constexpr auto make_bytes()
 
 #define DN2CPP_NATIVE_TYPE_REFLECTION(Name, ...) \
     static constexpr Dn2CppTypeReflection Name##_rows[] = { { __VA_ARGS__ } }; \
+    static constexpr Dn2CppMetadataHandle<Dn2CppTypeReflection> Name{ Name##_rows }
+
+#define DN2CPP_NATIVE_TYPE_REFLECTION_ATTRS(Name, Attrs, ...) \
+    static constexpr Dn2CppTypeReflection Name##_rows[] = { \
+        dn2cpp_native_type_reflection_with_attrs(Dn2CppTypeReflection{ __VA_ARGS__ }, (Attrs)) }; \
     static constexpr Dn2CppMetadataHandle<Dn2CppTypeReflection> Name{ Name##_rows }

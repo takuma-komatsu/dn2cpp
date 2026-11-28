@@ -48,4 +48,25 @@ internal static partial class CoreIntrinsics
                 _ => signature.ReturnType is { Kind: TypeKind.Class, Class.FullName: "System.Type" },
             });
     }
+
+    internal static bool IsTypeAttributeFlagsName(string? owner, string name) =>
+        owner == "System.Type" && name == "GetAttributeFlagsImpl";
+
+    internal static bool IsTypeAttributeFlags(MethodInfo method)
+    {
+        if (!IsTypeAttributeFlagsName(method.DeclaringClass.FullName, method.Name)
+            || method.Module.AssemblyName != "System.Private.CoreLib" || method.Handle.IsNil
+            || method.DeclaringClass.Module != method.Module || method.IsSynthetic || method.PInvoke is not null
+            || method.Context.TypeArgs.Length != 0 || method.Context.MethodArgs.Length != 0
+            || method.Attributes != (MethodAttributes.Family | MethodAttributes.Virtual | MethodAttributes.NewSlot
+                | MethodAttributes.HideBySig | MethodAttributes.Abstract)
+            || method.Rva != 0 || method.ImplAttributes != MethodImplAttributes.IL)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Class,
+                Class: { FullName: "System.Reflection.TypeAttributes", IsEnum: true } result }
+            && result.Module == method.Module;
+    }
 }

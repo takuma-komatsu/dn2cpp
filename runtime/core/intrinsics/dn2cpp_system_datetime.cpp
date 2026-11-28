@@ -3134,7 +3134,10 @@ DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_dto,
 #undef DN2CPP_DTOFLD_ROW
 
 extern const Dn2CppType dn2cpp_timespan_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_timespan_type_reflection, dn2cpp_ownflds_timespan, 25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, {}, 0, DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR);
+DN2CPP_NATIVE_TYPE_REFLECTION_ATTRS(dn2cpp_timespan_type_reflection, DN2CPP_TA_SEQUENTIAL_SERIALIZABLE_VALUETYPE, dn2cpp_ownflds_timespan, 25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, {}, 0, DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR);
+static_assert(dn2cpp_timespan_type_reflection_rows[0].ilAttrs == DN2CPP_TA_SEQUENTIAL_SERIALIZABLE_VALUETYPE
+    && dn2cpp_timespan_type_reflection_rows[0].eventCount == 0
+    && dn2cpp_timespan_type_reflection_rows[0].activation == DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR);
 const Dn2CppTypeInfo dn2cpp_timespan_type = dn2cpp_ti_with_formatspec(
     dn2cpp_ti_with_typeobject({ "System.TimeSpan", nullptr, nullptr, nullptr, &dn2cpp_timespan_box_tostring, &dn2cpp_timespan_box_hash, &dn2cpp_timespan_box_equals, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppTimeSpan), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_timespan_type_reflection }, &dn2cpp_timespan_type_obj),
     &dn2cpp_timespan_box_formatspec);
@@ -3153,11 +3156,11 @@ const Dn2CppTypeInfo dn2cpp_datetimeoffset_type = dn2cpp_ti_with_formatspec(
 const Dn2CppType dn2cpp_datetimeoffset_type_obj = { { &dn2cpp_type_type }, &dn2cpp_datetimeoffset_type };
 extern const Dn2CppType dn2cpp_dateonly_type_obj;
 const Dn2CppTypeInfo dn2cpp_dateonly_type = dn2cpp_ti_with_formatspec(
-    dn2cpp_ti_with_typeobject({ "System.DateOnly", nullptr, nullptr, nullptr, &dn2cpp_dateonly_box_tostring, &dn2cpp_dateonly_box_hash, &dn2cpp_dateonly_box_equals, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppDateOnly), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED), 0, 0, 0, nullptr }, &dn2cpp_dateonly_type_obj),
+    dn2cpp_ti_with_typeobject({ "System.DateOnly", nullptr, nullptr, nullptr, &dn2cpp_dateonly_box_tostring, &dn2cpp_dateonly_box_hash, &dn2cpp_dateonly_box_equals, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppDateOnly), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_sequential_valuetype_reflection }, &dn2cpp_dateonly_type_obj),
     &dn2cpp_dateonly_box_formatspec);
 const Dn2CppType dn2cpp_dateonly_type_obj = { { &dn2cpp_type_type }, &dn2cpp_dateonly_type };
 extern const Dn2CppType dn2cpp_timeonly_type_obj;
 const Dn2CppTypeInfo dn2cpp_timeonly_type = dn2cpp_ti_with_formatspec(
-    dn2cpp_ti_with_typeobject({ "System.TimeOnly", nullptr, nullptr, nullptr, &dn2cpp_timeonly_box_tostring, &dn2cpp_timeonly_box_hash, &dn2cpp_timeonly_box_equals, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppTimeOnly), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED), 0, 0, 0, nullptr }, &dn2cpp_timeonly_type_obj),
+    dn2cpp_ti_with_typeobject({ "System.TimeOnly", nullptr, nullptr, nullptr, &dn2cpp_timeonly_box_tostring, &dn2cpp_timeonly_box_hash, &dn2cpp_timeonly_box_equals, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppTimeOnly), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_sequential_valuetype_reflection }, &dn2cpp_timeonly_type_obj),
     &dn2cpp_timeonly_box_formatspec);
 const Dn2CppType dn2cpp_timeonly_type_obj = { { &dn2cpp_type_type }, &dn2cpp_timeonly_type };

@@ -113,6 +113,9 @@ internal sealed partial class MethodCompiler
                 Emit($"dn2cpp_paramthread_invoke({Cast(callback, "Dn2CppObject*")}, {Cast(state, "Dn2CppObject*")});");
                 return true;
             }
+            case InterceptEmitArm.TypeAttributeFlags:
+                EmitTypeAttributeFlags(callee);
+                return true;
             case InterceptEmitArm.IntrinsicUnderDeclType:
                 EmitIntrinsic(callee.DeclaringClass.FullName, callee.Name, callee.Signature);
                 return true;
@@ -669,6 +672,14 @@ internal sealed partial class MethodCompiler
                 {
                     EmitManagedCall(callee, isCallvirt);
                     return;
+                }
+                if (CoreIntrinsics.MdTypeAttributeFlags.Matches(callee))
+                {
+                    if (!isCallvirt)
+                        throw new NotSupportedException(
+                            $"{_method.DeclaringClass.FullName}.{_method.Name}: nonvirtual call to abstract System.Type::GetAttributeFlagsImpl() is not supported");
+                    if (TryEmitMethodDefIntercept(CoreIntrinsics.MdTypeAttributeFlags, callee))
+                        return;
                 }
                 if (TryEmitMethodDefIntercept(CoreIntrinsics.MdRuntimePrimitive, callee))
                     return;
@@ -1444,6 +1455,21 @@ internal sealed partial class MethodCompiler
                 // Non-generic parent: a real loaded BCL method (CoreLib via -r)
                 // is transpiled; intrinsic-mapped types fall through to the
                 // intrinsic table.
+                if (CoreIntrinsics.IsTypeAttributeFlagsName(mrParent, mrName)
+                    && (mr.Parent.Kind == HandleKind.TypeDefinition
+                        || mr.Parent.Kind == HandleKind.TypeReference
+                            && _c.ResolveTypeRef(_module, (TypeReferenceHandle)mr.Parent)?.Class is not null))
+                {
+                    var target = _c.ResolveMemberRefMethod(_module, (MemberReferenceHandle)handle, _method.Context);
+                    if (CoreIntrinsics.MdTypeAttributeFlags.Matches(target))
+                    {
+                        if (!isCallvirt)
+                            throw new NotSupportedException(
+                                $"{_method.DeclaringClass.FullName}.{_method.Name}: nonvirtual call to abstract System.Type::GetAttributeFlagsImpl() is not supported");
+                        if (TryEmitMethodDefIntercept(CoreIntrinsics.MdTypeAttributeFlags, target))
+                            return;
+                    }
+                }
                 if (_c.TryResolveMemberRefMethod(_module, (MemberReferenceHandle)handle, _method.Context) is { } real)
                 {
                     // Runtime primitives referenced across assemblies need the same
@@ -3807,10 +3833,15 @@ internal sealed partial class MethodCompiler
         // exactly as for a plain callvirt, so the guard wraps the loaded pointer
         // rather than the byref.
         string obj = $"dn2cpp_null_check(*((Dn2CppObject**)({receiver.Expr})))";
-        if (callee.IsVirtual && CoreIntrinsics.IsReflectionManagedBody(callee))
+        if (!callee.IsStatic && CoreIntrinsics.IsReflectionManagedBody(callee))
         {
             string mapped = $"(({ReceiverCppType(callee.DeclaringClass)}){obj})";
-            EmitCallResult(callee, ReflectionManagedVirtualCall(callee, new List<string> { mapped }));
+            var mappedArgs = new List<string> { mapped };
+            for (int i = 0; i < rawArgs.Length; i++)
+                mappedArgs.Add(Cast(rawArgs[i], CppTypes.Of(ps[i])));
+            EmitCallResult(callee, callee.IsVirtual
+                ? ReflectionManagedVirtualCall(callee, mappedArgs)
+                : DirectCall(callee, mappedArgs));
             return;
         }
         string typedObj = $"(({callee.DeclaringClass.CppStructName}*){obj})";
