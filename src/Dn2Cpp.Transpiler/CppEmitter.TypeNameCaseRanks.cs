@@ -4,13 +4,13 @@ internal sealed partial class CppEmitter
 {
     private TypeNameSnapshot? _typeNameSnapshot;
 
+    internal TypeNameSnapshot? TryPreservationTypeNames() => _c.TryPreservationTypeNames();
+
     private TypeNameSnapshot TypeNames()
     {
         if (_typeNameSnapshot is not null)
             return _typeNameSnapshot;
-        string loadedDirectory = Path.GetDirectoryName(_c.Modules[0].Path)!;
-        string preservation = Path.Combine(loadedDirectory, "preservation.xml");
-        _typeNameSnapshot = TypeNameSnapshot.FromPreservation(preservation)
+        _typeNameSnapshot = TryPreservationTypeNames()
             ?? TypeNameSnapshot.Capture(_c.Modules.Select(module =>
                 (module.AssemblyName, _c.OriginalAssemblyPaths[module.Index])).ToArray());
         foreach (var module in _c.Modules)

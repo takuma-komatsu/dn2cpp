@@ -154,7 +154,7 @@ internal sealed partial class AssemblyDiet
                 KeepFormationType(type);
                 return true;
             case MethodDefinition method:
-                if (method.IsConstructor && method.IsStatic) _listedInitializers.Add(method);
+                if (IsRuntimeStaticCtor(method)) _listedInitializers.Add(method);
                 KeepFormationMethod(method);
                 return true;
             case FieldDefinition field:
@@ -218,7 +218,7 @@ internal sealed partial class AssemblyDiet
                         foreach (var argument in generic.GenericArguments) KeepFormationReference(argument);
                     if (ResolveMember(reference) is MethodDefinition target)
                     {
-                        if (IsStripped(target.DeclaringType) && target.IsConstructor && target.IsStatic && target.HasBody)
+                        if (IsStripped(target.DeclaringType) && IsRuntimeStaticCtor(target) && target.HasBody)
                             KeepFormationBody(target, OriginalBodyDeps(target));
                         else KeepFormationMethod(target);
                     }

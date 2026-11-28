@@ -431,7 +431,7 @@ DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_resmgr,
 );
 
 extern const Dn2CppType dn2cpp_resourcemanager_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_resourcemanager_type_reflection, dn2cpp_ownflds_resmgr, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_resourcemanager_type_reflection, dn2cpp_ownflds_resmgr, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, {}, 0, DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR | DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR);
 const Dn2CppTypeInfo dn2cpp_resourcemanager_type =
     dn2cpp_ti_with_typeobject({ "System.Resources.ResourceManager", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppResourceManager), 0, 0, 0, 0, 0, dn2cpp_resourcemanager_type_reflection },
                               &dn2cpp_resourcemanager_type_obj);

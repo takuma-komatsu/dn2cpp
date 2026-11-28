@@ -2063,11 +2063,11 @@ static Dn2CppString* dn2cpp_textinfo_box_tostring(Dn2CppObject* o)
 }
 
 const Dn2CppTypeInfo dn2cpp_cultureinfo_type =
-    { "System.Globalization.CultureInfo", &dn2cpp_object_type, nullptr, nullptr, dn2cpp_cultureinfo_box_tostring, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppNfiBox), 0, 0, 0, 0, 0, nullptr };
+    { "System.Globalization.CultureInfo", &dn2cpp_object_type, nullptr, nullptr, dn2cpp_cultureinfo_box_tostring, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppNfiBox), 0, 0, 0, 0, 0, dn2cpp_cctor_only_reflection };
 const Dn2CppTypeInfo dn2cpp_numberformatinfo_type =
-    { "System.Globalization.NumberFormatInfo", &dn2cpp_object_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppNfiBox), 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection };
+    { "System.Globalization.NumberFormatInfo", &dn2cpp_object_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppNfiBox), 0, 0, 0, 0, 0, dn2cpp_default_ctor_with_cctor_reflection };
 const Dn2CppTypeInfo dn2cpp_textinfo_type =
-    { "System.Globalization.TextInfo", &dn2cpp_object_type, nullptr, nullptr, dn2cpp_textinfo_box_tostring, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppNfiBox), 0, 0, 0, 0, 0, nullptr };
+    { "System.Globalization.TextInfo", &dn2cpp_object_type, nullptr, nullptr, dn2cpp_textinfo_box_tostring, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppNfiBox), 0, 0, 0, 0, 0, dn2cpp_cctor_only_reflection };
 
 // True when the header word of `o` names one of the wrapper type-infos. Safe
 // on a RAW Dn2CppNumberFormatInfo* that flowed through an erased context: the

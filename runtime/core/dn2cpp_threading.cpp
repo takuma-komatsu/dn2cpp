@@ -705,7 +705,7 @@ extern const Dn2CppType dn2cpp_semaphore_type_obj;
 // Dn2CppSemaphore embeds a mutex and condition variable. A shallow clone cannot
 // copy synchronization primitives or their ownership.
 Dn2CppTypeInfo dn2cpp_semaphore_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.SemaphoreSlim", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_semaphore_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.SemaphoreSlim", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, dn2cpp_cctor_only_reflection }, &dn2cpp_semaphore_type_obj);
 const Dn2CppType dn2cpp_semaphore_type_obj = { { &dn2cpp_type_type }, &dn2cpp_semaphore_type };
 // ManualResetEvent and AutoResetEvent are sealed EventWaitHandle siblings.
 // ManualResetEventSlim derives from Object. Each wrapper keeps its CLR type
@@ -721,9 +721,9 @@ DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_waithandle,
       dn2cpp_ownfld_waithandle_WaitTimeout, nullptr, nullptr, 0, 0x8056, 0 },
 );
 extern const Dn2CppType dn2cpp_waithandle_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_waithandle_type_reflection, dn2cpp_ownflds_waithandle, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_waithandle_type_reflection, dn2cpp_ownflds_waithandle, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, {}, 0, DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR | DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR);
 Dn2CppTypeInfo dn2cpp_waithandle_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.WaitHandle", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, sizeof(Dn2CppWaitHandle), 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, dn2cpp_waithandle_type_reflection }, &dn2cpp_waithandle_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.WaitHandle", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, sizeof(Dn2CppWaitHandle), 0, DN2CPP_TF_ABSTRACT | DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, dn2cpp_waithandle_type_reflection }, &dn2cpp_waithandle_type_obj);
 const Dn2CppType dn2cpp_waithandle_type_obj = { { &dn2cpp_type_type }, &dn2cpp_waithandle_type };
 extern const Dn2CppType dn2cpp_event_type_obj;
 const Dn2CppTypeInfo dn2cpp_event_type =
@@ -742,7 +742,7 @@ const Dn2CppType dn2cpp_autoresetevent_type_obj = { { &dn2cpp_type_type }, &dn2c
 // over-accept this arrangement exists to avoid.
 extern const Dn2CppType dn2cpp_manualreseteventslim_type_obj;
 Dn2CppTypeInfo dn2cpp_manualreseteventslim_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.ManualResetEventSlim", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_manualreseteventslim_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.ManualResetEventSlim", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, dn2cpp_default_ctor_with_cctor_reflection }, &dn2cpp_manualreseteventslim_type_obj);
 const Dn2CppType dn2cpp_manualreseteventslim_type_obj = { { &dn2cpp_type_type }, &dn2cpp_manualreseteventslim_type };
 extern const Dn2CppType dn2cpp_safewaithandle_type_obj;
 Dn2CppTypeInfo dn2cpp_safewaithandle_type =

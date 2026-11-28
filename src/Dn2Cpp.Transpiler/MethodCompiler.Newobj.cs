@@ -2025,7 +2025,7 @@ internal sealed partial class MethodCompiler
             return;
         }
 
-        if (!cls.IsBeforeFieldInit)
+        if (!cls.IsBeforeFieldInit || cls.InvalidStaticCctor is not null)
             EnsureCctorBefore(cls);
 
         if (_intrinsics is not null && _intrinsics.TryEmitNewobj(this, ctor))

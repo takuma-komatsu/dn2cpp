@@ -19,3 +19,10 @@ preserved reflection boxes end
 == conditional field chains ==
 ConditionalFieldRoot
 conditional field chains end
+== Activator constructor retention ==
+static-only constructor value=31
+named constructor params length=0
+bodiless-stripped=PlatformNotSupportedException:noBody=True:preserveHint=False
+bodiless-row=PlatformNotSupportedException:noBody=True:preserveHint=False
+bodiless-generic=PlatformNotSupportedException:noBody=True:preserveHint=False
+Activator constructor retention end

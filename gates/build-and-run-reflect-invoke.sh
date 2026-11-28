@@ -45,7 +45,7 @@
 # null-bound delegates, DynamicInvoke and catchable stripped-body refusals, which a
 # nested reflective call raises to the outer call as a fault of its target.
 # DefaultBinder primitive widening and specificity differ from Invoke's ushort-to-char policy.
-# Parameterless Activator binding respects public and non-public constructor visibility.
+# Parameterless Activator binding respects constructor visibility and declared type initializers.
 # The metadata codec probe checks shared missing-body/invoker refusals through every entry.
 # Generic method lookups and enumeration return one definition with stable parameter identities.
 # Formal parameters retain their typical declaring methods, defining assembly and allocation guards.
@@ -324,6 +324,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|public-type-predicates-pre
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|invoke-member-prefix-argv:before-invoke-member|invoke-member-boundary-argv:invoke-member-boundaries"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|type-initializer-prefix-argv:before-type-initializers"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|constructor-arguments-prefix-argv:before-constructor-arguments"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|activator-static-lookup-prefix-argv:before-activator-static-lookup"
 
 gate_python -c 'pass' >/dev/null
 source gates/_reflect-invoke-inputs.sh
@@ -2350,16 +2351,27 @@ done
 for axis in native dotnet; do
     if [ "$axis" = native ]; then
         gate_capture_ok "$_CG_OUT/invoke-member-before.$axis" run_bounded "$_CG_OUT/ReflectInvoke$EXE_EXT" before-invoke-member
+        gate_capture_ok "$_CG_OUT/activator-static-before.$axis" run_bounded "$_CG_OUT/ReflectInvoke$EXE_EXT" before-activator-static-lookup
         gate_capture_ok "$_CG_OUT/invoke-member-boundaries.$axis" run_bounded "$_CG_OUT/ReflectInvoke$EXE_EXT" \
             invoke-member-boundaries OnlyDynamic
     else
         gate_capture_ok "$_CG_OUT/invoke-member-before.$axis" reflection_oracle "$_CG_APP" before-invoke-member
+        gate_capture_ok "$_CG_OUT/activator-static-before.$axis" reflection_oracle "$_CG_APP" before-activator-static-lookup
         gate_capture_ok "$_CG_OUT/invoke-member-boundaries.$axis" reflection_oracle "$_CG_APP" \
             invoke-member-boundaries OnlyDynamic
     fi
     gate_output select "$_CG_OUT/gate.$axis.stdout" "$_CG_OUT/invoke-member-prefix.$axis.stdout" \
         --before '== Type.InvokeMember ==' --policy crlf
     gate_output compare "$_CG_OUT/invoke-member-prefix.$axis.stdout" "$_CG_OUT/invoke-member-before.$axis.stdout"
+    gate_output select "$_CG_OUT/gate.$axis.stdout" "$_CG_OUT/activator-static-prefix.$axis.stdout" \
+        --before '== Activator static constructor lookup ==' --policy crlf
+    gate_output compare "$_CG_OUT/activator-static-prefix.$axis.stdout" "$_CG_OUT/activator-static-before.$axis.stdout"
+    gate_output select "$_CG_OUT/activator-static-prefix.$axis.stdout" "$_CG_OUT/activator-visibility.$axis.stdout" \
+        --from 'public default, nonpublic flags => threw MissingMethodException' \
+        --through 'private default, nonpublic flags => R(private)' --policy crlf
+    gate_assert_text "$_CG_OUT/activator-visibility.$axis.stdout" "$(printf '%s\n' \
+        'public default, nonpublic flags => threw MissingMethodException' \
+        'public default, public flags => P()' 'private default, nonpublic flags => R(private)')"
     # The exact diff pins every result; these prove the success paths ran.
     gate_output byte-witness "$_CG_OUT/gate.$axis.stdout" --count 1 --policy crlf \
         '== Type.InvokeMember ==' 'Type.InvokeMember end' \
@@ -2374,8 +2386,48 @@ for axis in native dotnet; do
         'field falls to method = 2' 'set property = 11' 'put dispatch property = 12' 'set indexer = 9' \
         'create = Target!' 'create with arguments = 33' \
         'IntPtr.Size matches direct = True' 'UIntPtr.Size matches direct = True' \
-        'public default, nonpublic flags => threw MissingMethodException' \
-        'public default, public flags => P()' 'private default, nonpublic flags => R(private)'
+        'P, static nonpublic => threw MissingMethodException' \
+        'P, static nonpublic instance => threw MissingMethodException' \
+        'P, all constructors => P()' \
+        'P, static public => threw MissingMethodException' \
+        'WithInitializer, static nonpublic => WithInitializer()' \
+        'WithInitializer, static nonpublic instance => WithInitializer()' \
+        'WithInitializer, all constructors => threw AmbiguousMatchException' \
+        'WithInitializer, static public => threw MissingMethodException' \
+        'WithBeforeFieldInit, static nonpublic => WithBeforeFieldInit()' \
+        'WithBeforeFieldInit, static nonpublic instance => WithBeforeFieldInit()' \
+        'WithBeforeFieldInit, all constructors => threw AmbiguousMatchException' \
+        'WithBeforeFieldInit, static public => threw MissingMethodException' \
+        "ctor first ambiguous message => threw AmbiguousMatchException: Ambiguous match found for 'ReflectActivatorSubset.WithInitializer Void .ctor()'." \
+        "cctor first ambiguous message => threw AmbiguousMatchException: Ambiguous match found for 'ReflectActivatorSubset.WithCctorFirst Void .cctor()'." \
+        'cctor private default, static nonpublic => WithInitializerPrivate(private)' \
+        'cctor private default, static nonpublic instance => threw AmbiguousMatchException' \
+        'cctor no default, static nonpublic => threw MissingMethodException' \
+        'cctor invoke-member retention, static nonpublic => WithInitializerInvokeMemberOnly()' \
+        'cctor boxed flags, public instance => WithInitializerBoxedFlags()' \
+        'cctor boxed invoke-member, static nonpublic => WithInitializerBoxedInvokeMember()' \
+        'generic template static public miss => threw MissingMethodException' \
+        'struct no cctor, static nonpublic => threw MissingMethodException' \
+        'struct with cctor, static nonpublic => StructWithInitializer(0) (beforeToString=0, afterToString=1)' \
+        'struct with cctor and ctor, all constructors => StructWithInitializerAndCtor(7)' \
+        'struct with cctor and ctor, static nonpublic => StructWithInitializerAndCtor(7)' \
+        'void static nonpublic => threw NotSupportedException: Cannot dynamically create an instance of System.Void.' \
+        'void pointer static nonpublic => threw NotSupportedException: Cannot dynamically create an instance of System.Void.' \
+        'argiterator static nonpublic => threw NotSupportedException: Cannot dynamically create an instance of ArgIterator.' \
+        'bool static nonpublic => False' \
+        'timespan static nonpublic => 00:00:00' \
+        'datetimeoffset static nonpublic => 01/01/0001 00:00:00 +00:00' \
+        "waithandle all constructors => threw AmbiguousMatchException: Ambiguous match found for 'System.Threading.WaitHandle Void .ctor()'." \
+        "waithandle static nonpublic => threw MissingMethodException: Cannot dynamically create an instance of type 'System.Threading.WaitHandle'. Reason: Cannot create an abstract class." \
+        "waithandle nonmatching arg => threw MissingMethodException: Constructor on type 'System.Threading.WaitHandle' not found." \
+        "idisposable default => threw MissingMethodException: Cannot dynamically create an instance of type 'System.IDisposable'. Reason: Cannot create an instance of an interface." \
+        'task<int> nonpublic instance => System.Threading.Tasks.Task`1[System.Int32]' \
+        'yieldawaiter static nonpublic => System.Runtime.CompilerServices.YieldAwaitable+YieldAwaiter' \
+        'yieldawaitable static nonpublic => threw MissingMethodException' \
+        "vararg first ambiguous message => threw AmbiguousMatchException: Ambiguous match found for 'ReflectActivatorSubset.VarargFirst Void .ctor(...)'." \
+        'vararg before bare, public default => threw MissingMethodException' \
+        'vararg before bare, public flags => VarargBeforeBare(bare-private)' \
+        "vararg before bare, all instance => threw AmbiguousMatchException: Ambiguous match found for 'ReflectActivatorSubset.VarargBeforeBare Void .ctor(...)'."
 done
 gate_assert_text "$_CG_OUT/invoke-member-boundaries.dotnet.stdout" "$(printf '%s\n' \
     '== Type.InvokeMember AOT boundaries ==' \

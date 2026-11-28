@@ -29,6 +29,12 @@ internal sealed partial class CppEmitter
             NoteConstructorSignatureDependency(element, roots);
     }
 
+    private static bool IsRuntimeConstructor(MethodInfo m) =>
+        !m.IsStatic && m.Name == ".ctor" && (m.Attributes & System.Reflection.MethodAttributes.RTSpecialName) != 0;
+
+    private static bool IsRuntimeInitializer(MethodInfo m) =>
+        m.IsStatic && m.Name == ".cctor" && (m.Attributes & System.Reflection.MethodAttributes.RTSpecialName) != 0;
+
     // Parameter types need identities before emission, but are not new constructor
     // scan roots. A later executable type note promotes an identity-only dependency.
     private void PrepareActivationConstructorRows(IEnumerable<ClassInfo> roots, Action<TypeDesc> addType)
@@ -39,14 +45,14 @@ internal sealed partial class CppEmitter
         var rootSet = new HashSet<ClassInfo>(snapshot);
         foreach (var cls in snapshot)
         {
-            if (cls.Module == _c.AppModule || cls.Handle.IsNil || cls.IsInterface || cls.IsAbstract || cls.IsEnum || IsIntrinsicShaped(cls)
+            if (cls.Module == _c.AppModule || cls.Handle.IsNil || cls.IsInterface || cls.IsEnum || IsIntrinsicShaped(cls)
                 || IsCanonicalWorld(cls) || Compilation.ContainsGenericVar(cls)
                 || !_constructorRowOwners.Add(cls))
                 continue;
             _c.EnsureCompleted(cls);
             foreach (var method in cls.Methods.ToList())
             {
-                if (method.Name != ".ctor" || method.IsStatic || method.Rva == 0)
+                if (!IsRuntimeConstructor(method))
                     continue;
                 method.EnsureSignature();
                 if (method.Signature.ParameterTypes.Length == 0
@@ -718,10 +724,9 @@ internal sealed partial class CppEmitter
     private bool KeepsReflectionMethodRow(ClassInfo cls, MethodInfo method,
         HashSet<MethodDefinitionHandle> propertyAccessors)
     {
-        bool initializer = method.Name == ".cctor" && method.IsStatic;
-        bool ctor = method.Name == ".ctor" && !method.IsStatic || initializer;
+        bool initializer = IsRuntimeInitializer(method);
+        bool ctor = IsRuntimeConstructor(method) || initializer;
         if (!ctor && (!_c.KeepsReflectionMetadata(cls)
-            || method.Name is ".ctor" or ".cctor"
             || !HasReflectableMethodArguments(method)))
             return false;
         if (!initializer && cls.Module != _c.AppModule && !_hotUpdateBase && method.Rva != 0
@@ -794,6 +799,7 @@ internal sealed partial class CppEmitter
         private readonly Dictionary<ClassInfo, (string Expr, int Count)> _ctorTabs = new();
         // The constructor rows each class's table lists, until its type-info states the rest.
         private readonly Dictionary<ClassInfo, HashSet<MethodDefinitionHandle>> _listedCtors = new();
+        private readonly Dictionary<ClassInfo, (int BarePublic, int BareNonPublic, int ModifiedPublic, int ModifiedNonPublic)> _listedDefaultCtorCounts = new();
         private readonly Dictionary<ClassInfo, string> _initializerRows = new();
         private readonly Dictionary<ClassInfo, (string Expr, int Count)> _propTabs = new();
         private readonly Dictionary<ClassInfo, (string Expr, int Count)> _eventTabs = new();
@@ -1321,7 +1327,7 @@ internal sealed partial class CppEmitter
                         && !_e._activationConstructorRows.Contains(m)
                         && !IsRetainedOpaqueMemberRow(m))
                         continue;
-                    bool methodRow = m.Name != ".ctor" && m.Name != ".cctor"
+                    bool methodRow = !IsRuntimeConstructor(m) && !IsRuntimeInitializer(m)
                         && !(_c.SharedGenericsEnabled
                             && m.Context.MethodArgs.Any(Compilation.ContainsCanonPlaceholder));
                     if (methodRow)
@@ -1482,6 +1488,7 @@ internal sealed partial class CppEmitter
                     defFlagBits.Add("DN2CPP_TF_ARRAY_GEN_ITF");
                 string defFlags = "(" + string.Join(" | ", defFlagBits) + ")";
                 _o.Header.AppendLine($"extern const Dn2CppTypeInfo {defSym};");
+                bool invalidDefCctor = _c.HasInvalidStaticCctor(c.Module, c.Handle);
                 _sb.AppendLine($"extern const Dn2CppType ty_{defSym};");
                 var defAnc = _c.OpenGenericDefAncestry(c.Module, c.Handle);
                 var (dfBase, dfItfs, dfItfCount) =
@@ -1492,6 +1499,7 @@ internal sealed partial class CppEmitter
                     Flags = defFlags, GenericDef = "&" + defSym, TypeObject = "&ty_" + defSym,
                     GenericParamNames = Compilation.GenericParamNames(c.Module, c.Handle),
                     AssemblyName = string.IsNullOrEmpty(c.Module.AssemblyName) ? null : c.Module.AssemblyName,
+                    Activation = invalidDefCctor ? InvalidCctor : 0,
                 }));
                 _sb.AppendLine($"const Dn2CppType ty_{defSym} = {{ {{ &dn2cpp_type_type }}, &{defSym} }};");
             }
@@ -1501,10 +1509,24 @@ internal sealed partial class CppEmitter
                 // Each closed owner with callable rows needs its own registered table extent.
                 if (helperRows.Count != 0)
                     _e.BeginMetadataBlock(_c.UsesNativeReflectionMetadata(c));
-                var helperTable = BuildMemberTable(c, helperRows.Where(m => m.Name != ".ctor").ToList(),
+                var helperMethods = helperRows.Where(m => !IsRuntimeConstructor(m) && !IsRuntimeInitializer(m)).ToList();
+                var helperCtors = helperRows.Where(m => IsRuntimeConstructor(m) || IsRuntimeInitializer(m)).ToList();
+                var helperTable = BuildMemberTable(c, helperMethods,
                     c.FullName == "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler" ? "interpolationhelpertab"
                     : CoreIntrinsics.IsTaskCompletionSourceOwner(c) ? "tcstransfertab" : "methtab");
-                var helperConstructors = BuildMemberTable(c, helperRows.Where(m => m.Name == ".ctor").ToList(), "ctortab");
+                var helperConstructors = BuildMemberTable(c, helperCtors, "ctortab");
+                bool hasListedPublicDefault = false;
+                bool hasListedNonPublicDefault = false;
+                foreach (var m in helperCtors)
+                {
+                    if (!IsRuntimeConstructor(m) || !_memberAddr.ContainsKey(m) || m.Signature.ParameterTypes.Length != 0)
+                        continue;
+                    if ((m.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                        == System.Reflection.MethodAttributes.Public)
+                        hasListedPublicDefault = true;
+                    else
+                        hasListedNonPublicDefault = true;
+                }
                 if (helperRows.Count != 0)
                     _e.EndMetadataBlock(_sb);
                 bool isTask = _c.GenericDefFullName(c) == "System.Threading.Tasks.Task";
@@ -1628,7 +1650,7 @@ internal sealed partial class CppEmitter
                     && c.Context.TypeArgs.Length > 0 && IsNestedType(c)
                         ? _e.ClosedNestedTypeDisplay(c)
                         : Compilation.ReflectionTypeName(c);
-                _e.EmitTypeInfo(_sb, c.CppTypeInfoName, new TypeMetadata {
+                var metadata = new TypeMetadata {
                     Native = _c.UsesNativeReflectionMetadata(c),
                     Name = displayName, Base = baseExpr, InstanceSize = size,
                     Interfaces = interfaces, InterfaceCount = interfaceCount,
@@ -1636,10 +1658,21 @@ internal sealed partial class CppEmitter
                     GenericDef = genericDef, GenericArgs = genericArgs, GenericArgCount = genericCount,
                     Methods = helperTable?.Expr ?? "nullptr", MethodCount = helperTable?.Count ?? 0,
                     Ctors = helperConstructors?.Expr ?? "nullptr", CtorCount = helperConstructors?.Count ?? 0,
-                    Activation = CoreIntrinsics.IsGen2GcCallbackType(c) ? AllocationUnsupported
+                    Activation = (CoreIntrinsics.IsGen2GcCallbackType(c) ? AllocationUnsupported
                         : c.IntrinsicCppName is "Dn2CppThreadLocal*" or "Dn2CppBlockingCollection*"
-                            ? OmittedPublicDefaultCtor : 0,
-                });
+                            ? (hasListedPublicDefault ? 0 : OmittedPublicDefaultCtor)
+                        : isTask ? (hasListedNonPublicDefault ? 0 : OmittedNonPublicDefaultCtor) : 0) | DeclaredCctorBits(c),
+                };
+                if (c.IntrinsicCppName == "Dn2CppYieldAwaiter")
+                {
+                    // YieldAwaitable and its nested awaiter share storage but declare different initializers.
+                    var (attrs, token) = TypeIlMeta(c);
+                    metadata.IlAttrs = unchecked((uint)attrs);
+                    metadata.MetadataToken = token;
+                    metadata.HashFn = "&dn2cpp_empty_valuetype_hash";
+                    metadata.EqualsFn = "&dn2cpp_empty_valuetype_equals";
+                }
+                _e.EmitTypeInfo(_sb, c.CppTypeInfoName, metadata);
             }
         }
 
@@ -1809,6 +1842,8 @@ internal sealed partial class CppEmitter
                     InstanceSize = enSize, ToStringFn = toStr, Flags = enFlags, Fields = fldExpr, FieldCount = fldCount,
                     EnumUnderlying = underlying, EnumMembers = membersExpr, EnumMemberCount = ordered.Count,
                     AssemblyName = string.IsNullOrEmpty(en.Module.AssemblyName) ? null : en.Module.AssemblyName, TypeObject = "&ty_" + en.CppName, IlAttrs = unchecked((uint)enIlAttrs), MetadataToken = enToken,
+                    Activation = (DeclaredCctorBits(en) & (DeclaredPublicCctor | DeclaredNonPublicCctor | InvalidCctor)) != 0
+                        ? InvalidCctor : 0,
                 });
                 _sb.AppendLine($"const Dn2CppType ty_{en.CppName} = {{ {{ &dn2cpp_type_type }}, {_e.TypeInfoRef(en, "enum ty_ companion")} }};");
             }
@@ -1863,6 +1898,7 @@ internal sealed partial class CppEmitter
                 // definition handle from its metadata chunk TU (and with shared generics
                 // on, a shared body's rgctx walk anchors on it from any body TU).
                 _o.Header.AppendLine($"extern const Dn2CppTypeInfo {sym};");
+                bool invalidDefCctor = _c.HasInvalidStaticCctor(cls.Module, cls.Handle);
                 // The ty_ companion keeps its extern declaration next to the definition
                 // (only the def's own initializer needs the companion's address).
                 _sb.AppendLine($"extern const Dn2CppType ty_{sym};");
@@ -1881,6 +1917,7 @@ internal sealed partial class CppEmitter
                     Flags = defFlags, GenericDef = "&" + sym, TypeObject = "&ty_" + sym, VarianceMask = varMask,
                     GenericParamNames = Compilation.GenericParamNames(cls.Module, cls.Handle),
                     AssemblyName = string.IsNullOrEmpty(cls.Module.AssemblyName) ? null : cls.Module.AssemblyName,
+                    Activation = invalidDefCctor ? InvalidCctor : 0,
                 }));
                 _sb.AppendLine($"const Dn2CppType ty_{sym} = {{ {{ &dn2cpp_type_type }}, &{sym} }};");
             }
@@ -1931,6 +1968,8 @@ internal sealed partial class CppEmitter
                 if ((def.Kind & GenericDefKind.HiddenEnclosing) != 0)
                     flagBits.Add("DN2CPP_TF_HIDDEN_ENCLOSING");
                 string defFlags = flagBits.Count == 1 ? flagBits[0] : "(" + string.Join(" | ", flagBits) + ")";
+                bool invalidDefCctor = _c.OpenGenericDefHandleByName(defName) is { } invalidDef
+                    && _c.HasInvalidStaticCctor(invalidDef.Module, invalidDef.Handle);
                 _o.Header.AppendLine($"extern const Dn2CppTypeInfo {sym};");
                 _sb.AppendLine($"extern const Dn2CppType ty_{sym};");
                 var synthAnc = _c.OpenGenericDefAncestryByName(defName);
@@ -1941,6 +1980,7 @@ internal sealed partial class CppEmitter
                     Name = Compilation.GenericDefinitionName(defName), DefinitionKey = defName, Base = synthBase, Interfaces = synthItfs, InterfaceCount = synthItfCount,
                     Flags = defFlags, GenericDef = "&" + sym, TypeObject = "&ty_" + sym, GenericParamNames = def.ParamNames,
                     IlAttrs = synthAttrs, MetadataToken = synthToken, AssemblyName = synthAssembly,
+                    Activation = invalidDefCctor ? InvalidCctor : 0,
                 }));
                 _sb.AppendLine($"const Dn2CppType ty_{sym} = {{ {{ &dn2cpp_type_type }}, &{sym} }};");
             }
@@ -2967,52 +3007,153 @@ internal sealed partial class CppEmitter
                     boxed.Module.AssemblyName, Compilation.PreservationTypeName(boxed), null, null);
         }
 
+        // CoreCLR's loader selects the last bare void () .ctor in MethodDef order.
+        // When ILDiet stripped the original last bare constructor and left an earlier
+        // shadowed one of the opposite visibility, pre-strip preservation metadata
+        // distinguishes it so the surviving row stays marked non-bare.
+        private MethodDefinitionHandle LoaderSelectedBareDefaultCtor(ClassInfo cls)
+        {
+            if (cls.Handle.IsNil)
+                return default;
+            if (TryPreservationActivationBits(cls, out int snapshot)
+                && (snapshot & TypeNameSnapshot.StrippedSelectedDefaultCtor) != 0)
+                return default;
+            var last = TypeNameSnapshot.LastBareDefaultCtorHandle(cls.Module.Reader, cls.Handle);
+            if (!last.IsNil && TryPreservationActivationBits(cls, out snapshot))
+            {
+                var md = cls.Module.Reader.GetMethodDefinition(last);
+                bool isPublic = (md.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                    == System.Reflection.MethodAttributes.Public;
+                int expected = isPublic
+                    ? (OmittedPublicDefaultCtor | BodilessPublicDefaultCtor)
+                    : (OmittedNonPublicDefaultCtor | BodilessNonPublicDefaultCtor);
+                if ((snapshot & expected) == 0)
+                    return default;
+            }
+            return last;
+        }
+
         // The constructor rows RenderMemberTables listed for a class.
         private void NoteListedCtors(ClassInfo cls, List<MethodInfo> ctors)
         {
             HashSet<MethodDefinitionHandle>? listed = null;
+            var lastBare = LoaderSelectedBareDefaultCtor(cls);
+            int barePublic = 0;
+            int bareNonPublic = 0;
+            int modifiedPublic = 0;
+            int modifiedNonPublic = 0;
             foreach (var m in ctors)
-                if (_memberAddr.ContainsKey(m))
-                    (listed ??= new HashSet<MethodDefinitionHandle>()).Add(m.Handle);
+            {
+                if (!_memberAddr.ContainsKey(m))
+                    continue;
+                (listed ??= new HashSet<MethodDefinitionHandle>()).Add(m.Handle);
+                if (IsRuntimeConstructor(m) && !m.Handle.IsNil && !cls.Handle.IsNil)
+                {
+                    var reader = cls.Module.Reader;
+                    var md = reader.GetMethodDefinition(m.Handle);
+                    var blob = reader.GetBlobReader(md.Signature);
+                    if (!blob.ReadSignatureHeader().IsGeneric && blob.ReadCompressedInteger() == 0)
+                    {
+                        bool isPublic = (md.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                            == System.Reflection.MethodAttributes.Public;
+                        if (m.Handle == lastBare)
+                        {
+                            if (isPublic) barePublic++;
+                            else bareNonPublic++;
+                        }
+                        else
+                        {
+                            if (isPublic) modifiedPublic++;
+                            else modifiedNonPublic++;
+                        }
+                    }
+                }
+            }
             if (listed is not null)
                 _listedCtors[cls] = listed;
+            if (barePublic != 0 || bareNonPublic != 0 || modifiedPublic != 0 || modifiedNonPublic != 0)
+                _listedDefaultCtorCounts[cls] = (barePublic, bareNonPublic, modifiedPublic, modifiedNonPublic);
         }
 
-        // Parameterless constructors need only visibility to bind. Raw metadata keeps
-        // their exact absence markers without decoding more signatures during emission.
+        private bool TryPreservationActivationBits(ClassInfo cls, out int bits) =>
+            _c.TryPreservationActivationBits(cls.Module, cls.Handle, out bits);
+
+        private int PreservationActivationBits(ClassInfo cls) =>
+            TryPreservationActivationBits(cls, out int bits) ? bits : 0;
+
+        // Parameterless constructors need only visibility, RVA state and multiplicity to bind.
+        // Raw metadata plus pre-strip snapshots keep exact markers without decoding signatures.
         private int OmittedCtorBits(ClassInfo cls)
         {
             _listedCtors.Remove(cls, out var listed);
-            if (_e._hotUpdateBase || cls.Handle.IsNil || cls.IsInterface || cls.IsAbstract || cls.IsEnum
-                || _e.IsIntrinsicShaped(cls))
+            _listedDefaultCtorCounts.Remove(cls, out var listedCounts);
+            if (cls.Handle.IsNil || cls.IsInterface || cls.IsEnum || _e.IsIntrinsicShaped(cls))
                 return 0;
             var reader = cls.Module.Reader;
+            var lastBare = LoaderSelectedBareDefaultCtor(cls);
             int bits = 0;
+            int publicTotal = 0;
+            int nonPublicTotal = 0;
             foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetMethods())
             {
                 var md = reader.GetMethodDefinition(handle);
-                if ((md.Attributes & System.Reflection.MethodAttributes.Static) != 0 || md.RelativeVirtualAddress == 0
-                    || listed?.Contains(handle) == true || !reader.StringComparer.Equals(md.Name, ".ctor"))
+                if ((md.Attributes & System.Reflection.MethodAttributes.Static) != 0
+                    || (md.Attributes & System.Reflection.MethodAttributes.RTSpecialName) == 0
+                    || !reader.StringComparer.Equals(md.Name, ".ctor"))
+                    continue;
+                var blob = reader.GetBlobReader(md.Signature);
+                if (blob.ReadSignatureHeader().IsGeneric || blob.ReadCompressedInteger() != 0)
                     continue;
                 bool isPublic = (md.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
                     == System.Reflection.MethodAttributes.Public;
-                if (HasDefaultConstructorSignature(reader, md))
-                    bits |= isPublic ? OmittedPublicDefaultCtor : OmittedNonPublicDefaultCtor;
+                if (isPublic)
+                    publicTotal++;
+                else
+                    nonPublicTotal++;
+                if (listed?.Contains(handle) == true)
+                    continue;
+                bool isLastBare = handle == lastBare;
+                bool bodiless = md.RelativeVirtualAddress == 0;
+                if (isPublic)
+                    bits |= !isLastBare ? ModifiedPublicZeroArgCtor
+                        : bodiless ? BodilessPublicDefaultCtor : OmittedPublicDefaultCtor;
+                else
+                    bits |= !isLastBare ? ModifiedNonPublicZeroArgCtor
+                        : bodiless ? BodilessNonPublicDefaultCtor : OmittedNonPublicDefaultCtor;
             }
+            if (publicTotal >= 2)
+                bits |= MultiplePublicDefaultCtor;
+            if (nonPublicTotal >= 2)
+                bits |= MultipleNonPublicDefaultCtor;
+            int snapshot = PreservationActivationBits(cls);
+            bits |= snapshot & (MultiplePublicDefaultCtor | MultipleNonPublicDefaultCtor);
+            if (listedCounts.BarePublic == 0)
+                bits |= snapshot & (OmittedPublicDefaultCtor | BodilessPublicDefaultCtor);
+            if (listedCounts.BareNonPublic == 0)
+                bits |= snapshot & (OmittedNonPublicDefaultCtor | BodilessNonPublicDefaultCtor);
+            if (listedCounts.ModifiedPublic == 0)
+                bits |= snapshot & ModifiedPublicZeroArgCtor;
+            if (listedCounts.ModifiedNonPublic == 0)
+                bits |= snapshot & ModifiedNonPublicZeroArgCtor;
             return bits;
         }
 
-        private const int OmittedPublicDefaultCtor = 0x1, OmittedNonPublicDefaultCtor = 0x2, Unallocated = 0x4, AllocationUnsupported = 0x8;
-
-        private static bool HasDefaultConstructorSignature(MetadataReader reader, MethodDefinition method)
+        // Declared .cctor visibility, multiplicity and declaration order come from raw metadata
+        // plus pre-strip preservation metadata so ILDiet removal never hides a candidate.
+        private int DeclaredCctorBits(ClassInfo cls)
         {
-            var blob = reader.GetBlobReader(method.Signature);
-            var header = blob.ReadSignatureHeader();
-            if (header.CallingConvention == SignatureCallingConvention.VarArgs)
-                return false;
-            if (header.IsGeneric)
-                blob.ReadCompressedInteger();
-            return blob.ReadCompressedInteger() == 0;
+            if (cls.Handle.IsNil)
+                return 0;
+            const int mask = DeclaredPublicCctor | DeclaredNonPublicCctor
+                | PubCctorBeforePubCtor | PubCctorBeforeNonPubCtor
+                | NonPubCctorBeforePubCtor | NonPubCctorBeforeNonPubCtor
+                | MultiplePublicCctor | MultipleNonPublicCctor
+                | FirstPubCtorVarArg | FirstNonPubCtorVarArg
+                | NonPubCtorBeforePubCtor | InvalidCctor;
+            int bits = TryPreservationActivationBits(cls, out int snapshot)
+                ? snapshot
+                : TypeNameSnapshot.ReadActivationDeclarations(cls.Module.Reader, cls.Handle);
+            return bits & mask;
         }
 
         private int ConstructorBindingFlags(string name, SignatureHeader header,
@@ -3026,12 +3167,34 @@ internal sealed partial class CppEmitter
             return flags;
         }
 
-        // Dn2CppTypeReflection::activation: the constructors without a row, and whether
-        // reflection may make an instance of the type (for a struct, a box of it; for a
-        // class, whether the image allocates it).
+        private const int OmittedPublicDefaultCtor = TypeNameSnapshot.DefaultPublicCtor,
+            OmittedNonPublicDefaultCtor = TypeNameSnapshot.DefaultNonPublicCtor,
+            Unallocated = 0x4, AllocationUnsupported = 0x8,
+            DeclaredPublicCctor = TypeNameSnapshot.DeclaredPublicCctor,
+            DeclaredNonPublicCctor = TypeNameSnapshot.DeclaredNonPublicCctor,
+            PubCctorBeforePubCtor = TypeNameSnapshot.PubCctorBeforePubCtor,
+            BodilessPublicDefaultCtor = TypeNameSnapshot.BodilessPublicCtor,
+            BodilessNonPublicDefaultCtor = TypeNameSnapshot.BodilessNonPublicCtor,
+            MultiplePublicDefaultCtor = TypeNameSnapshot.MultiplePublicDefaultCtor,
+            MultipleNonPublicDefaultCtor = TypeNameSnapshot.MultipleNonPublicDefaultCtor,
+            MultiplePublicCctor = TypeNameSnapshot.MultiplePublicCctor,
+            MultipleNonPublicCctor = TypeNameSnapshot.MultipleNonPublicCctor,
+            PubCctorBeforeNonPubCtor = TypeNameSnapshot.PubCctorBeforeNonPubCtor,
+            NonPubCctorBeforePubCtor = TypeNameSnapshot.NonPubCctorBeforePubCtor,
+            NonPubCctorBeforeNonPubCtor = TypeNameSnapshot.NonPubCctorBeforeNonPubCtor,
+            ModifiedPublicZeroArgCtor = TypeNameSnapshot.ModifiedPublicZeroArgCtor,
+            ModifiedNonPublicZeroArgCtor = TypeNameSnapshot.ModifiedNonPublicZeroArgCtor,
+            FirstPubCtorVarArg = TypeNameSnapshot.FirstPubCtorVarArg,
+            FirstNonPubCtorVarArg = TypeNameSnapshot.FirstNonPubCtorVarArg,
+            NonPubCtorBeforePubCtor = TypeNameSnapshot.NonPubCtorBeforePubCtor,
+            InvalidCctor = TypeNameSnapshot.InvalidCctor;
+
+        // Dn2CppTypeReflection::activation: the constructors without a row, declared
+        // initializer visibility, and whether reflection may make an instance of the
+        // type (for a struct, a box of it; for a class, whether the image allocates it).
         private int ActivationBits(ClassInfo cls)
         {
-            int bits = OmittedCtorBits(cls);
+            int bits = OmittedCtorBits(cls) | DeclaredCctorBits(cls);
             // A permanent runtime capability refusal, independent of retention/hot-update.
             if (CoreIntrinsics.IsGen2GcCallbackType(cls))
                 bits |= AllocationUnsupported; // DN2CPP_TA_ALLOCATION_UNSUPPORTED
@@ -3716,9 +3879,22 @@ internal sealed partial class CppEmitter
                     // instead of exposing default storage as initialized.
                     string ensure = "";
                     string? uninitialized = null;
-                    if (f.IsStatic && cls.StaticCctor is { } fldCc)
+                    if (f.IsStatic && cls.DeclaredStaticCctor is { } fldCc)
                     {
-                        if (_c.Reachable.Contains(fldCc) || Compilation.IsFrameworkEventSourceProvider(cls))
+                        if (fldCc == cls.InvalidStaticCctor)
+                        {
+                            _c.NoteCctorEnsure(fldCc);
+                            ensure = $"{fldCc.CppName}__ensure(); ";
+                        }
+                        else if (fldCc.Rva == 0)
+                        {
+                            if (!Compilation.IsFrameworkEventSourceProvider(cls))
+                            {
+                                _c.NoteCctorEnsure(fldCc);
+                                ensure = $"{fldCc.CppName}__ensure(); ";
+                            }
+                        }
+                        else if (_c.Reachable.Contains(fldCc) || Compilation.IsFrameworkEventSourceProvider(cls))
                         {
                             _c.NoteCctorEnsure(fldCc);
                             ensure = $"{fldCc.CppName}__ensure(); ";
@@ -3835,6 +4011,7 @@ internal sealed partial class CppEmitter
             bool trim = prefix != "delegatetab" && !appCls && !_e._hotUpdateBase;
             List<(int Index, string Entry)>? adapters = null;
             var propertyAccessors = ReflectionAccessorHandles(cls);
+            var lastBareCtor = prefix == "ctortab" ? LoaderSelectedBareDefaultCtor(cls) : default;
             foreach (var m in members)
             {
                 int genericCount = m.Handle.IsNil ? 0
@@ -3844,7 +4021,7 @@ internal sealed partial class CppEmitter
                 // Rva == 0 is a bodiless declaration -- an interface or abstract slot,
                 // which is never reached (dispatch reaches the impl) yet must stay
                 // visible, or the type's GetMethods() would come back empty.
-                if (trim && m.Rva != 0 && !(m.Name == ".cctor" && m.IsStatic)
+                if (trim && m.Rva != 0 && !IsRuntimeInitializer(m)
                     && !_c.Reachable.Contains(m) && !_c.KeepsUnreachedRow(m)
                     && !propertyAccessors.Contains(m.Handle) && !_e._activationConstructorRows.Contains(m))
                     continue;
@@ -3885,6 +4062,8 @@ internal sealed partial class CppEmitter
                 catch (Exception e) when (!Compilation.IsMustEscape(e))
                 { /* no decodable method metadata */ }
                 var ps = m.Signature.ParameterTypes;
+                if (!m.Handle.IsNil && IsRuntimeConstructor(m) && ps.Length == 0 && m.Handle != lastBareCtor)
+                    attrs |= 0x8;
                 if (!symbolic)
                     _e.NoteBindingTypeArguments(cls, m, m.Signature.ReturnType, ps);
                 var names = ParamNames(m, ps.Length);
@@ -4079,7 +4258,10 @@ internal sealed partial class CppEmitter
                 if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(m) && fnPtr != "nullptr")
                     invoker = "(void*)&dn2cpp_attrdata_constructor_invoker";
                 if (fnPtr != "nullptr") _c.NoteInvariantCompareInfoReflectionRow(m);
-                bool preservable = fnPtr == "nullptr" && !symbolic && _c.IsPreservableTemplateRow(m);
+                int preservable = fnPtr == "nullptr" && invoker == "nullptr" && !symbolic
+                    && m.Rva == 0 && IsRuntimeConstructor(m)
+                    ? 3
+                    : fnPtr == "nullptr" && !symbolic && _c.IsPreservableTemplateRow(m) ? 1 : 0;
                 // Reflection, a bound delegate and the interpreter enter the row with no
                 // compiled call site to run the initializer the entry triggers.
                 string initializer = !symbolic && invoker != "nullptr" && _e.InitializerGuard(m, bodyRow) is { } ensure
@@ -4147,7 +4329,7 @@ internal sealed partial class CppEmitter
                     MetadataValue.Ref(mca.Expr), MetadataValue.Signed(mca.Count), MetadataValue.Text(_e._hotUpdateBase && !definitionOnly ? AbiContract.ImportShape(m.Signature, m.Context.MethodArgs) : null),
                     MetadataValue.Signed((int)m.Attributes), MetadataValue.Signed((int)m.ImplAttributes), MetadataValue.Signed(mdToken),
                     MetadataValue.Signed(genericCount), MetadataValue.Ref(genArgsExpr),
-                    MetadataValue.Ref(retReq.Expr), MetadataValue.Signed(retReq.Count), MetadataValue.Signed(preservable ? 1 : 0),
+                    MetadataValue.Ref(retReq.Expr), MetadataValue.Signed(retReq.Count), MetadataValue.Signed(preservable),
                     MetadataValue.Ref(retOpt.Expr), MetadataValue.Signed(retOpt.Count),
                     MetadataValue.Signed(modifiersKnown ? 1 : 0), MetadataValue.Display(_e.ReflectionMethodDisplay(m)), MetadataValue.Display(genericDefinition is { } methodDisplayParts ? methodDisplayParts.Method : null),
                     MetadataValue.Display(_e.ReflectionSignatureType(m.Signature.ReturnType)), MetadataValue.Display(genericDefinition is { } rd ? rd.Return : null),
@@ -4431,13 +4613,12 @@ internal sealed partial class CppEmitter
                 return;
             if (_e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls))
             {
-                var activationCtors = cls.Methods.Where(m => _e._activationConstructorRows.Contains(m)
-                    || m.Name == ".ctor" && IsRetainedOpaqueMemberRow(m)
-                    || m.Name == ".cctor" && m.IsStatic).ToList();
+                var activationCtors = cls.Methods.Where(m => IsRuntimeInitializer(m)
+                    || _e._activationConstructorRows.Contains(m) || IsRuntimeConstructor(m) && IsRetainedOpaqueMemberRow(m)).ToList();
                 if (BuildMemberTable(cls, activationCtors, "ctortab") is { } table)
                     _ctorTabs[cls] = table;
                 NoteListedCtors(cls, activationCtors);
-                var valueMethods = cls.Methods.Where(m => m.Name is not (".ctor" or ".cctor") && IsRetainedOpaqueMemberRow(m)).ToList();
+                var valueMethods = cls.Methods.Where(m => !IsRuntimeConstructor(m) && !IsRuntimeInitializer(m) && IsRetainedOpaqueMemberRow(m)).ToList();
                 if (BuildMemberTable(cls, valueMethods, "methtab") is { } values)
                     _methodTabs[cls] = values;
                 return;
@@ -4452,14 +4633,13 @@ internal sealed partial class CppEmitter
             bool keepRefl = _c.KeepsReflectionMetadata(cls);
             var propertyAccessors = ReflectionAccessorHandles(cls);
             var methods = !keepRefl ? new List<MethodInfo>() : _e.ReflectionMethods(cls)
-                .Where(m => m.Name != ".ctor" && m.Name != ".cctor"
+                .Where(m => !IsRuntimeConstructor(m) && !IsRuntimeInitializer(m)
                     && _e.KeepsReflectionMethodRow(cls, m, propertyAccessors)
                     && seenMethod.Add(m.CppName))
                 .ToList();
             var seenCtor = new HashSet<string>(System.StringComparer.Ordinal);
             var ctors = cls.Methods
-                .Where(m => (m.Name == ".ctor" && !m.IsStatic || m.Name == ".cctor" && m.IsStatic)
-                    && seenCtor.Add(m.CppName))
+                .Where(m => (IsRuntimeConstructor(m) || IsRuntimeInitializer(m)) && seenCtor.Add(m.CppName))
                 .ToList();
             // --trim-reflection strips the METHOD and PROPERTY tables but keeps the
             // CONSTRUCTOR table: constructors are the one member family a reachable
@@ -4911,7 +5091,9 @@ internal sealed partial class CppEmitter
                 IlAttrs = unchecked((uint)tIlAttrs), MetadataToken = tToken, DefaultMemberName = DefaultMemberName(cls), MarshalSize = _c.MarshalStampSize(cls),
                 EventSourceName = EventSourceIdentity(cls)?.Name, EventSourceGuid = EventSourceIdentity(cls)?.Guid,
                 Activation = ActivationBits(cls),
-                EnsureInitializer = (!cls.IsBeforeFieldInit || _c.ReflectionInvokeUsed) && _e.InitializerEnsure(cls) is { } ensure
+                EnsureInitializer = (!cls.IsBeforeFieldInit || _c.ReflectionInvokeUsed
+                        || (cls.MembersReady && cls.InvalidStaticCctor is not null))
+                    && _e.InitializerEnsure(cls) is { } ensure
                     ? "&" + ensure : "nullptr",
             });
             _sb.AppendLine($"const Dn2CppType ty_{cls.CppName} = {{ {{ &dn2cpp_type_type }}, {_e.TypeInfoRef(cls, "class ty_ companion")} }};");

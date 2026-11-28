@@ -519,7 +519,7 @@ DN2CPP_NATIVE_FIELDS(dn2cpp_primflds_double,
 );
 
 extern const Dn2CppType dn2cpp_bool_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_bool_type_reflection, dn2cpp_primflds_bool, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_bool_type_reflection, dn2cpp_primflds_bool, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, {}, 0, DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR);
 const Dn2CppTypeInfo dn2cpp_bool_type =
     dn2cpp_ti_with_typeobject({ "System.Boolean", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_bool_type_reflection }, &dn2cpp_bool_type_obj);
 const Dn2CppType dn2cpp_bool_type_obj = { { &dn2cpp_type_type }, &dn2cpp_bool_type };
@@ -622,9 +622,18 @@ DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_double_type_reflection, dn2cpp_primflds_dou
 const Dn2CppTypeInfo dn2cpp_double_type =
     dn2cpp_ti_with_typeobject({ "System.Double", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_double_type_reflection }, &dn2cpp_double_type_obj);
 const Dn2CppType dn2cpp_double_type_obj = { { &dn2cpp_type_type }, &dn2cpp_double_type };
+int32_t dn2cpp_empty_valuetype_hash(Dn2CppObject* self)
+{
+    uint64_t p = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(self->type));
+    return static_cast<int32_t>((p ^ (p >> 32)) & 0x7fffffff);
+}
+int32_t dn2cpp_empty_valuetype_equals(Dn2CppObject* self, Dn2CppObject* other)
+{
+    return other != nullptr && other->type == self->type ? 1 : 0;
+}
 extern const Dn2CppType dn2cpp_yield_awaiter_type_obj;
 const Dn2CppTypeInfo dn2cpp_yield_awaiter_type =
-    dn2cpp_ti_with_typeobject({ "System.Runtime.CompilerServices.YieldAwaitable+YieldAwaiter", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppYieldAwaiter), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED | DN2CPP_TF_NOT_MARSHALABLE), 0, 0, 0, nullptr }, &dn2cpp_yield_awaiter_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Runtime.CompilerServices.YieldAwaitable+YieldAwaiter", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppYieldAwaiter), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED | DN2CPP_TF_NOT_MARSHALABLE), 0, 0, 0, dn2cpp_cctor_only_reflection }, &dn2cpp_yield_awaiter_type_obj);
 const Dn2CppType dn2cpp_yield_awaiter_type_obj = { { &dn2cpp_type_type }, &dn2cpp_yield_awaiter_type };
 extern const Dn2CppType dn2cpp_parallel_loop_result_type_obj;
 const Dn2CppTypeInfo dn2cpp_parallel_loop_result_type =
@@ -644,11 +653,11 @@ const Dn2CppType dn2cpp_parallel_loop_result_type_obj = { { &dn2cpp_type_type },
 // declare.
 extern const Dn2CppType dn2cpp_type_type_obj;
 const Dn2CppTypeInfo dn2cpp_type_type =
-    dn2cpp_ti_with_typeobject({ "System.RuntimeType", &dn2cpp_typeinfo_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppType), 0, DN2CPP_TF_SEALED, 0, 0, 0, nullptr }, &dn2cpp_type_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.RuntimeType", &dn2cpp_typeinfo_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppType), 0, DN2CPP_TF_SEALED, 0, 0, 0, dn2cpp_nonpublic_default_ctor_with_cctor_reflection }, &dn2cpp_type_type_obj);
 const Dn2CppType dn2cpp_type_type_obj = { { &dn2cpp_type_type }, &dn2cpp_type_type };
 extern const Dn2CppType dn2cpp_public_type_type_obj;
 const Dn2CppTypeInfo dn2cpp_public_type_type =
-    dn2cpp_ti_with_typeobject({ "System.Type", &dn2cpp_memberinfo_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_ABSTRACT, 0, 0, 0, nullptr }, &dn2cpp_public_type_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Type", &dn2cpp_memberinfo_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_ABSTRACT, 0, 0, 0, dn2cpp_nonpublic_default_ctor_with_cctor_reflection }, &dn2cpp_public_type_type_obj);
 const Dn2CppType dn2cpp_public_type_type_obj = { { &dn2cpp_type_type }, &dn2cpp_public_type_type };
 extern const Dn2CppType dn2cpp_typeinfo_type_obj;
 const Dn2CppTypeInfo dn2cpp_typeinfo_type =
@@ -692,7 +701,7 @@ DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_ctorinfo,
       dn2cpp_ownfld_ctorinfo_TypeConstructorName, nullptr, nullptr, 0, 0x36, 0 },
 );
 extern const Dn2CppType dn2cpp_constructorinfo_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_constructorinfo_type_reflection, dn2cpp_ownflds_ctorinfo, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_constructorinfo_type_reflection, dn2cpp_ownflds_ctorinfo, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr, nullptr, {}, 0, DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR | DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR);
 const Dn2CppTypeInfo dn2cpp_constructorinfo_type =
     dn2cpp_ti_with_typeobject({ "System.Reflection.ConstructorInfo", &dn2cpp_methodbase_type, nullptr, nullptr, &dn2cpp_reflection_handle_tostring, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppMethodRef), 0, 0, 0, 0, 0, dn2cpp_constructorinfo_type_reflection }, &dn2cpp_constructorinfo_type_obj);
 const Dn2CppType dn2cpp_constructorinfo_type_obj = { { &dn2cpp_type_type }, &dn2cpp_constructorinfo_type };
@@ -729,7 +738,7 @@ const Dn2CppType dn2cpp_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_ex
 // through the base chain.
 extern const Dn2CppType dn2cpp_enum_type_obj;
 Dn2CppTypeInfo dn2cpp_enum_type =
-    dn2cpp_ti_with_typeobject({ "System.Enum", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_enum_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Enum", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_ABSTRACT, 0, 0, 0, dn2cpp_nonpublic_default_ctor_with_cctor_reflection }, &dn2cpp_enum_type_obj);
 const Dn2CppType dn2cpp_enum_type_obj = { { &dn2cpp_type_type }, &dn2cpp_enum_type };
 
 // SafeWaitHandle is runtime-allocated, but its inherited SafeHandle methods and

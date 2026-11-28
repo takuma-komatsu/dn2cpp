@@ -1,4 +1,5 @@
 using Mono.Cecil;
+using System.Reflection.Metadata.Ecma335;
 
 namespace Dn2Cpp;
 
@@ -356,7 +357,7 @@ internal sealed partial class AssemblyDiet
         {
             if (reference is not TypeSpecification or GenericInstanceType && Resolve(reference) is { } owner)
                 foreach (var method in owner.Methods)
-                    if (method.IsConstructor && method.IsStatic)
+                    if (IsRuntimeStaticCtor(method))
                     {
                         NoteCopiedListedOwner(owner);
                         if ((demands & Demand.InitializerBody) != 0) MarkMethod(method);
@@ -443,7 +444,7 @@ internal sealed partial class AssemblyDiet
         {
             MarkType(type);
             foreach (var constructor in type.Methods)
-                if (constructor.IsConstructor && !constructor.IsStatic)
+                if (IsRuntimeInstanceCtor(constructor))
                 {
                     // In-place value initialization must distinguish a private default
                     // constructor from an implicit no-op, without retaining its body.
@@ -466,7 +467,7 @@ internal sealed partial class AssemblyDiet
             MarkType(type);
             foreach (var owner in Ancestors(type))
                 foreach (var method in owner.Methods)
-                    if (!method.IsConstructor)
+                    if (!IsRuntimeCtor(method))
                     {
                         MarkMethod(method);
                         NoteReflectionInvokeBoxes(method);
@@ -488,7 +489,7 @@ internal sealed partial class AssemblyDiet
         MarkType(type);
         if (type.BaseType is not null) QueueDemand(type.BaseType, Demand.OpaqueData);
         foreach (var method in type.Methods)
-            if (method.IsConstructor && !method.IsStatic)
+            if (IsRuntimeInstanceCtor(method))
             {
                 MarkMethod(method);
                 foreach (var parameter in method.Parameters) QueueDemand(parameter.ParameterType, Demand.OpaqueData);
@@ -525,7 +526,7 @@ internal sealed partial class AssemblyDiet
     {
         if (!ArrayInitializerEligible(type)) return;
         foreach (var method in type.Methods)
-            if (method.IsConstructor && !method.IsStatic && method.Parameters.Count == 0
+            if (IsRuntimeInstanceCtor(method) && method.Parameters.Count == 0
                 && method.CallingConvention != MethodCallingConvention.VarArg)
             {
                 KeepOriginalModelSources(type);
@@ -745,7 +746,7 @@ internal sealed partial class AssemblyDiet
                 if (SummaryToken(caller, term.Token) is Mono.Cecil.MemberReference member && ResolveMember(member) is { } definition)
                 {
                     result.Members.Add(definition);
-                    if (definition is MethodDefinition { IsConstructor: true, IsStatic: true } initializer
+                    if (definition is MethodDefinition initializer && IsRuntimeStaticCtor(initializer)
                         && member.DeclaringType is GenericInstanceType)
                         result.NoteConstructedOwner(initializer.DeclaringType);
                     result.HasOpenMethodSignatures = member is not GenericInstanceMethod
@@ -1452,7 +1453,7 @@ internal sealed partial class AssemblyDiet
                 foreach (var initializer in type.Methods)
                 {
                     Spend();
-                    if (initializer.IsConstructor && initializer.IsStatic)
+                    if (IsRuntimeStaticCtor(initializer))
                     {
                         result.Members.Add(initializer);
                         if (constructedOwner) result.NoteConstructedOwner(type);
@@ -1475,10 +1476,10 @@ internal sealed partial class AssemblyDiet
                     or ReflectionOp.GetMember or ReflectionOp.GetMembers or ReflectionOp.GetDefaultMembers;
                 foreach (var method in owner.Methods)
                 {
-                    if (!(method.IsConstructor ? constructors && owner == type
+                    if (!(IsRuntimeCtor(method) ? constructors && owner == type
                         && (!method.IsStatic || reference is not (TypeSpecification and not GenericInstanceType)
                             && SelectsStaticConstructors(op)) : methods)) continue;
-                    if (!(method.IsConstructor && !method.IsStatic && constructByFlags) && !NameMatches(method.Name)) continue;
+                    if (!(IsRuntimeInstanceCtor(method) && constructByFlags) && !NameMatches(method.Name)) continue;
                     if (op == ReflectionOp.ActivatorCreateGeneric && (!method.IsPublic || method.Parameters.Count != 0)) continue;
                     if (op is ReflectionOp.RuntimeTypeDefaultStructCtor or ReflectionOp.RuntimeTypeDefaultCtor or ReflectionOp.RuntimeTypeCreateInstanceOfT
                         && method.Parameters.Count != 0) continue;
@@ -1491,7 +1492,7 @@ internal sealed partial class AssemblyDiet
                         && !parameterTypes.TypeArrays.Any(a => a.Length == method.Parameters.Count)) continue;
                     if (!MatchesFlags(method.IsPublic, method.IsStatic, flags)) continue;
                     AddSelectedSummaryMethod(result, method);
-                    if (method.IsConstructor && method.IsStatic && constructedOwner) result.NoteConstructedOwner(type);
+                    if (IsRuntimeStaticCtor(method) && constructedOwner) result.NoteConstructedOwner(type);
                 }
                 if (op is ReflectionOp.GetProperty or ReflectionOp.GetProperties or ReflectionOp.GetMember or ReflectionOp.GetMembers or ReflectionOp.GetDefaultMembers or ReflectionOp.InvokeMember)
                     foreach (var property in owner.Properties)
@@ -1713,7 +1714,9 @@ internal sealed partial class AssemblyDiet
                 if (IsActivationOperation(api.Op))
                 {
                     int arguments = api.Args < 0 ? 0 : ActivationArgumentCount(summary, SiteOperand(site, api.Args));
-                    if (ApplyActivationSite(api.Op, target, flags, arguments, out var remainingFlags)) continue;
+                    bool directDefault = api.Op is not (ReflectionOp.AssemblyCreateInstance or ReflectionOp.ActivatorCreateNamed)
+                        && api.Flags == ReflectionApi.Absent && api.Args == ReflectionApi.Absent;
+                    if (ApplyActivationSite(api.Op, target, flags, arguments, directDefault, out var remainingFlags)) continue;
                     flags = remainingFlags;
                 }
                 var types = SummaryValueOf(caller, summary, SiteOperand(site, api.Types));
@@ -1739,7 +1742,7 @@ internal sealed partial class AssemblyDiet
                 foreach (var member in selected.Members) ApplyReflectedMember(member, executes, api);
                 if (api.Op == ReflectionOp.CtorInvoke)
                     foreach (var member in target.Members)
-                        if (member is MethodDefinition { IsConstructor: true, IsStatic: false }) ApplyReflectedMember(member, true, api);
+                        if (member is MethodDefinition ctor && IsRuntimeInstanceCtor(ctor)) ApplyReflectedMember(member, true, api);
                 foreach (var type in selected.Types)
                 {
                     if (type is ProjectedTypeReference { Node.Kind: ProjectionKind.TypeInitializer })
@@ -1770,7 +1773,7 @@ internal sealed partial class AssemblyDiet
             }
             foreach (var member in target.Members)
             {
-                if (api.Op == ReflectionOp.MethodInvoke && member is MethodDefinition { IsConstructor: true, IsStatic: true } initializer
+                if (api.Op == ReflectionOp.MethodInvoke && member is MethodDefinition initializer && IsRuntimeStaticCtor(initializer)
                     && initializer.DeclaringType.HasGenericParameters && target.ConstructedOwners?.Contains(initializer.DeclaringType) != true)
                     continue;
                 ApplyReflectedMember(member, executes, api);
@@ -1803,7 +1806,7 @@ internal sealed partial class AssemblyDiet
     }
 
     private bool ApplyActivationSite(ReflectionOp op, SummaryValue target, SummaryValue flags, int arguments,
-        out SummaryValue remainingFlags)
+        bool directDefault, out SummaryValue remainingFlags)
     {
         bool unknown = !OnlyIntegerValues(flags) || flags.Integers.Count == 0;
         remainingFlags = new SummaryValue { Unknown = unknown };
@@ -1822,49 +1825,65 @@ internal sealed partial class AssemblyDiet
                 if ((choice & (ReflectionApis.Public | ReflectionApis.NonPublic)) == 0) choice |= ReflectionApis.Public;
                 if ((choice & (ReflectionApis.Instance | ReflectionApis.Static)) == 0) choice |= ReflectionApis.Instance | ReflectionApis.Static;
             }
-            else
-            {
-                if ((choice & 0xff) == 0) choice |= ReflectionApis.DefaultCreateInstance;
-                choice |= ReflectionApis.Instance;
-            }
+            else if ((choice & 0xff) == 0) choice |= ReflectionApis.DefaultCreateInstance;
             foreach (var reference in target.Types)
-                if (IsSymbolic(reference)) Project(reference, ProjectionKind.ActivationConstructors, choice, arguments);
-                else ApplyActivationOwner(reference, choice, arguments, target.ConstructedOwners?.Contains(Resolve(reference)!) == true);
+                if (IsSymbolic(reference))
+                    Project(reference, directDefault ? ProjectionKind.DefaultActivationConstructor : ProjectionKind.ActivationConstructors,
+                        choice, arguments);
+                else ApplyActivationOwner(reference, choice, arguments, directDefault,
+                    target.ConstructedOwners?.Contains(Resolve(reference)!) == true);
         }
         if (target.HasUnknownOwner) _summaryUnknown++;
         return op != ReflectionOp.InvokeMember || !unknown && remainingFlags.Integers.Count == 0;
     }
 
-    private void ApplyActivationOwner(TypeReference reference, int flags, int arguments, bool constructed)
+    private void ApplyActivationOwner(TypeReference reference, int flags, int arguments, bool directDefault, bool constructed)
     {
         if (reference is TypeSpecification and not GenericInstanceType || Resolve(reference) is not { } type) return;
         MarkSignatureType(reference);
         if (type.HasGenericParameters && reference is not GenericInstanceType && !constructed) return;
         if (type.IsValueType) MarkType(reference);
+        bool publicValueDefault = type.IsValueType && (flags & ReflectionApis.PublicInstance) == ReflectionApis.PublicInstance;
+        bool Visible(MethodDefinition method) =>
+            (flags & (method.IsPublic ? ReflectionApis.Public : ReflectionApis.NonPublic)) != 0;
+        var reader = GetReflectionSummarizer(type.Module).Reader;
+        MethodDefinition? bare = null;
+        if (arguments <= 0)
+        {
+            var handle = TypeNameSnapshot.LastBareDefaultCtorHandle(reader,
+                MetadataTokens.TypeDefinitionHandle((int)type.MetadataToken.RID));
+            if (!handle.IsNil) bare = (MethodDefinition)type.Module.LookupToken(MetadataTokens.GetToken(handle));
+        }
+        if (directDefault || arguments == 0 && publicValueDefault)
+        {
+            if (bare is not null)
+            {
+                if (Visible(bare)) MarkReflectionCandidate(bare);
+                else if (type.IsValueType) KeepMethodSignature(bare);
+            }
+            return;
+        }
+        int zeroMatches = 0;
         foreach (var method in type.Methods)
         {
-            if (!method.IsConstructor) continue;
+            if (!IsRuntimeCtor(method) || method.HasGenericParameters) continue;
             if (method.IsStatic)
             {
-                if ((flags & ReflectionApis.Static) != 0 && (flags & (method.IsPublic ? ReflectionApis.Public : ReflectionApis.NonPublic)) != 0)
+                if ((flags & ReflectionApis.Static) != 0 && Visible(method))
+                {
                     KeepMethodSignature(method, keepInitializerRow: true);
+                    if (!method.HasParameters) zeroMatches++;
+                }
                 continue;
             }
             if ((flags & ReflectionApis.Instance) == 0) continue;
             Spend();
             int count = method.Parameters.Count;
-            if ((flags & (method.IsPublic ? ReflectionApis.Public : ReflectionApis.NonPublic)) == 0)
-            {
-                // The value-type default path distinguishes an inaccessible parameterless constructor from implicit zero-initialization.
-                if (type.IsValueType && arguments == 0 && count == 0) KeepMethodSignature(method);
-                continue;
-            }
-            if (arguments == 0 && count != 0 && type.IsValueType && (flags & ReflectionApis.PublicInstance) == ReflectionApis.PublicInstance)
-                continue;
+            if (!Visible(method)) continue;
+            if (count == 0) zeroMatches++;
             var tail = count == 0 ? null : method.Parameters[count - 1].ParameterType as ArrayType;
-            var reader = GetReflectionSummarizer(method.Module).Reader;
             var match = ReflectionContracts.MatchActivationArguments(reader,
-                System.Reflection.Metadata.Ecma335.MetadataTokens.MethodDefinitionHandle((int)method.MetadataToken.RID),
+                MetadataTokens.MethodDefinitionHandle((int)method.MetadataToken.RID),
                 count, tail?.IsVector == true, arguments, flags, out bool paramArray, out bool needsMissing);
             if (match == ActivationMatch.None) continue;
             if (match == ActivationMatch.Declaration)
@@ -1880,11 +1899,15 @@ internal sealed partial class AssemblyDiet
             }
             if (needsMissing && _resolver.FindDefinition("System.Reflection.Missing") is { } missing) MarkType(missing);
         }
+        // A single zero-formal match, including a .cctor, can invoke the bare instance
+        // constructor even when its visibility differs from the lookup.
+        if (zeroMatches == 1 && bare is not null)
+            MarkReflectionCandidate(bare);
     }
 
     private void MarkReflectionCandidate(MethodDefinition method)
     {
-        if (method.IsConstructor && method.CallingConvention == MethodCallingConvention.VarArg)
+        if (IsRuntimeCtor(method) && method.CallingConvention == MethodCallingConvention.VarArg)
             KeepMethodSignature(method);
         else
         {
@@ -1921,7 +1944,7 @@ internal sealed partial class AssemblyDiet
     {
         var normalized = new SummaryValue { Unknown = flags.Unknown };
         foreach (long original in flags.Integers)
-            normalized.Integers.Add(((original & 0xFF) == 0 ? original | ReflectionApis.PublicInstance : original) | ReflectionApis.Instance);
+            normalized.Integers.Add((original & 0xFF) == 0 ? original | ReflectionApis.DefaultCreateInstance : original);
         return normalized;
     }
 

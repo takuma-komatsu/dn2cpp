@@ -660,9 +660,11 @@ internal sealed partial class Compilation
     internal bool IsInitializerTrigger(MethodInfo m)
     {
         var cls = m.DeclaringClass;
-        return !cls.IsBeforeFieldInit && cls.IntrinsicCppName is null
-            && m.Name != ".cctor" && !m.IsSynthetic
-            && (m.IsStatic || m.Name == ".ctor" || EnsureShape(cls).IsValueType
+        bool isCctor = m.IsStatic && m.Name == ".cctor" && (m.Attributes & MethodAttributes.RTSpecialName) != 0;
+        bool isCtor = !m.IsStatic && m.Name == ".ctor" && (m.Attributes & MethodAttributes.RTSpecialName) != 0;
+        return (!cls.IsBeforeFieldInit || cls.InvalidStaticCctor is not null) && cls.IntrinsicCppName is null
+            && !isCctor && !m.IsSynthetic
+            && (m.IsStatic || isCtor || EnsureShape(cls).IsValueType
                 || cls.IsInterface && !m.IsAbstract);
     }
 
@@ -671,7 +673,7 @@ internal sealed partial class Compilation
     /// The body compiler and the parallel body scheduler both ask this, so a body that
     /// records a guard never reaches a worker.</summary>
     internal MethodInfo? BodyEntryInitializer(MethodInfo m) =>
-        IsInitializerTrigger(m) ? m.DeclaringClass.StaticCctor : null;
+        IsInitializerTrigger(m) ? m.DeclaringClass.DeclaredStaticCctor : null;
 
     /// <summary>Whether <paramref name="c"/>'s base chain reaches System.Exception
     /// (so it is an exception type). The corelib (via -r) gives
@@ -3925,25 +3927,25 @@ internal sealed partial class Compilation
         }
     }
 
-    // A vararg constructor with no fixed parameters has a metadata row, but cannot create a default instance.
-    private static bool IsDefaultInstanceConstructor(MethodInfo method) => !method.IsStatic && method.Name == ".ctor"
-        && method.Signature.Header.CallingConvention != SignatureCallingConvention.VarArgs
-        && method.Signature.ParameterTypes.Length == 0;
+    internal static bool IsBareParameterlessCtor(MethodInfo m) =>
+        !m.IsStatic && m.Name == ".ctor" && (m.Attributes & MethodAttributes.RTSpecialName) != 0
+        && (m.Handle.IsNil
+            ? m.Signature.ParameterTypes.Length == 0 && m.Signature.Header.CallingConvention != SignatureCallingConvention.VarArgs
+            : TypeNameSnapshot.IsBareDefaultCtorSignature(
+                m.Module.Reader.GetBlobReader(m.Module.Reader.GetMethodDefinition(m.Handle).Signature)));
 
     internal static MethodInfo? ParameterlessCtor(ClassInfo c) =>
-        c.EnsureMembers().Methods.FirstOrDefault(IsDefaultInstanceConstructor);
+        c.EnsureMembers().Methods.LastOrDefault(IsBareParameterlessCtor);
 
-    /// <summary>The parameterless instance ctor that is also <b>public</b>, or null.
-    /// The generic factory <c>Activator.CreateInstance&lt;T&gt;()</c> (and <c>new T()</c>
-    /// off it) reflects through <c>RuntimeType.CreateInstanceOfT</c>, which binds ONLY a
-    /// public parameterless ctor: a type whose only parameterless ctor is non-public
-    /// (<c>Task&lt;T&gt;</c>'s internal ctor, a type with a private ctor) is uninstantiable
-    /// there and yields a run-time <c>MissingMethodException</c>. Distinct from
-    /// <see cref="ParameterlessCtor"/>, which the <c>where T:new()</c> newobj paths use —
-    /// their C# constraint already guarantees the match is public, so the visibility test
-    /// is unneeded there and would only cost a decode.</summary>
+    /// <summary>The loader-selected parameterless instance ctor when it is also
+    /// <b>public</b>, or null. The generic factory <c>Activator.CreateInstance&lt;T&gt;()</c>
+    /// (and <c>new T()</c> off it) reflects through <c>RuntimeType.CreateInstanceOfT</c>,
+    /// which binds ONLY a public loader-selected parameterless ctor: a type whose last bare
+    /// parameterless ctor is non-public (<c>Task&lt;T&gt;</c>'s internal ctor, a type with a
+    /// private ctor) is uninstantiable there and yields a run-time
+    /// <c>MissingMethodException</c>.</summary>
     internal static MethodInfo? PublicParameterlessCtor(ClassInfo c) =>
-        c.EnsureMembers().Methods.FirstOrDefault(m => m.IsPublic && IsDefaultInstanceConstructor(m));
+        ParameterlessCtor(c) is { IsPublic: true } ctor ? ctor : null;
 
     /// <summary>Reaches <paramref name="c"/>'s implementation of the virtual or
     /// interface slot declared by <paramref name="decl"/>, if it provides one.</summary>
@@ -6533,13 +6535,21 @@ internal sealed partial class Compilation
                                 // (Task<T>'s internal ctor) is not reached — emit routes that
                                 // T to the run-time MissingMethodException, not to a ctor call.
                                 // The emitted construction guards T's initializer itself.
-                                if (PublicParameterlessCtor(acls) is { } actor)
+                                var publicDefaultCtor = PublicParameterlessCtor(acls);
+                                if (publicDefaultCtor is { Rva: not 0 } actor)
                                 {
                                     Reach(actor);
                                     ReachRootInitializer(actor);
                                 }
                                 if (!acls.IsValueType)
+                                {
                                     ReachAllocatedType(acls);
+                                    if (acls.IsInterface || acls.IsAbstract || publicDefaultCtor is not { Rva: not 0 })
+                                        NoteForceEmit(acls);
+                                }
+                                else if (acls.IntrinsicCppName is null && ParameterlessCtor(acls) is { } vctor
+                                    && (!vctor.IsPublic || vctor.Rva == 0))
+                                    NoteForceEmit(acls);
                             }
                             constrained = null;
                             continue;

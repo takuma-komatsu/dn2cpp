@@ -432,6 +432,9 @@ namespace ReflectInvoke
         if (args.Length > 0 && args[0] == "before-constructor-arguments")
             return;
         ActivatorSubset.Program.RunConstructorArguments();
+        if (args.Length > 0 && args[0] == "before-activator-static-lookup")
+            return;
+        ReflectActivatorSubset.Program.RunStaticConstructorLookup();
         }
     }
 }

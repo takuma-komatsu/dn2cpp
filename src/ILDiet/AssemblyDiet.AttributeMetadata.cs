@@ -116,7 +116,7 @@ internal sealed partial class AssemblyDiet
         ValidateAttributeIdentityProvider(row);
         if (row.ConstructRequested && !row.Constructed && SelectedAttributeEligible(attribute, out _))
             throw new InvalidOperationException("ILDiet plan did not construct an admitted attribute row");
-        if (!constructor.IsConstructor || constructor.IsStatic
+        if (!IsRuntimeInstanceCtor(constructor)
             || IsStripped(constructor.DeclaringType) && (row.Constructed ? !_methods.Contains(constructor) && !KeepsCutMethod(constructor) : !KeepsMethod(constructor)))
             throw new InvalidOperationException("ILDiet plan removed a metadata attribute constructor");
         ValidateKeptType(constructor.DeclaringType);

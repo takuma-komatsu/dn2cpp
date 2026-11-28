@@ -315,6 +315,9 @@ internal sealed partial class MethodCompiler
         // through to the per-ClassInfo handle below. NoteTypeInfoUse makes the intrinsic
         // metadata emitter define that otherwise body-less handle.
         TypeKind.Class when t.Class!.IsValueType && t.Class.IntrinsicCppName == "Dn2CppYieldAwaiter"
+                            && t.Class.Name == "YieldAwaiter"
+                            && t.Class.Module.AssemblyName is ("System.Private.CoreLib" or "mscorlib")
+                            && Compilation.ReflectionTypeName(t.Class) == "System.Runtime.CompilerServices.YieldAwaitable+YieldAwaiter"
             => "&dn2cpp_yield_awaiter_type",
         // The non-generic Task owns the runtime handle every fresh Dn2CppTask starts with.
         // Closed Task<T> and adopted reference-task types keep the same C++ struct but name

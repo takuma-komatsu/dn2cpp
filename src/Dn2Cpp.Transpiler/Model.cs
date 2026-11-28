@@ -1191,33 +1191,82 @@ internal sealed class ClassInfo
     private Dictionary<MethodDefinitionHandle, MethodInfo> _methodByTemplate = new();
     private Dictionary<MethodInfo, MethodInfo> _explicitItfImpls = new();
 
-    /// <summary>The class's static constructor — the <c>.cctor</c> row with a real body —
-    /// or null. Reads <see cref="Methods"/>, so on a specialization the first ask decodes
-    /// members exactly as the inline scans it replaces did. Cached: the metadata-row
-    /// methods are all in once members are decoded, and the only later growth of
-    /// <see cref="Methods"/> is generic-method instantiations
-    /// (<c>Compilation.InstantiateMethodOnClass</c>), which are never named
-    /// <c>.cctor</c>.</summary>
+    /// <summary>An <c>RTSpecialName</c> static <c>.cctor</c> whose signature is not the
+    /// ECMA-335 bare static <c>void ()</c> (<c>00 00 01</c>), or null.</summary>
+    public MethodInfo? InvalidStaticCctor
+    {
+        get
+        {
+            ScanStaticCctor();
+            return _invalidStaticCctor;
+        }
+    }
+
+    /// <summary>The class's loader-selected static constructor — the last valid
+    /// <c>RTSpecialName</c> bare static <c>void ()</c> <c>.cctor</c> row when it has an IL
+    /// body and no invalid <c>.cctor</c> was declared — or null. Reads
+    /// <see cref="Methods"/>, so on a specialization the first ask decodes members.</summary>
     public MethodInfo? StaticCctor
     {
         get
         {
-            if (!_staticCctorScanned)
-            {
-                foreach (var m in Methods)
-                {
-                    if (m.Name == ".cctor" && m.IsStatic && m.Rva != 0)
-                    {
-                        _staticCctor = m;
-                        break;
-                    }
-                }
-                _staticCctorScanned = true;
-            }
-            return _staticCctor;
+            ScanStaticCctor();
+            return _invalidStaticCctor is null && _declaredStaticCctor is { Rva: not 0 } c ? c : null;
         }
     }
-    private MethodInfo? _staticCctor;
+
+    /// <summary>The loader-selected valid <c>.cctor</c> when its RVA is 0 and no invalid
+    /// <c>.cctor</c> was declared.</summary>
+    public MethodInfo? BodilessStaticCctor
+    {
+        get
+        {
+            ScanStaticCctor();
+            return _invalidStaticCctor is null && _declaredStaticCctor is { Rva: 0 } c ? c : null;
+        }
+    }
+
+    /// <summary>The class's invalid, bodied, or bodiless declared <c>.cctor</c>, or null.</summary>
+    public MethodInfo? DeclaredStaticCctor
+    {
+        get
+        {
+            ScanStaticCctor();
+            return _invalidStaticCctor ?? _declaredStaticCctor;
+        }
+    }
+
+    private void ScanStaticCctor()
+    {
+        if (_staticCctorScanned)
+            return;
+        foreach (var m in Methods)
+        {
+            if (m.Name != ".cctor" || !m.IsStatic
+                || (m.Attributes & MethodAttributes.RTSpecialName) == 0)
+                continue;
+            bool validSignature;
+            if (!m.Handle.IsNil)
+            {
+                var reader = m.Module.Reader;
+                var blob = reader.GetBlobReader(reader.GetMethodDefinition(m.Handle).Signature);
+                validSignature = TypeNameSnapshot.IsBareStaticCctorSignature(blob);
+            }
+            else
+                validSignature = m.Signature.ParameterTypes.Length == 0
+                    && m.Signature.ReturnType.Kind == TypeKind.Primitive
+                    && m.Signature.ReturnType.Primitive == PrimitiveTypeCode.Void;
+            if (!validSignature)
+            {
+                _invalidStaticCctor ??= m;
+                continue;
+            }
+            _declaredStaticCctor = m;
+        }
+        _staticCctorScanned = true;
+    }
+    private MethodInfo? _declaredStaticCctor;
+    private MethodInfo? _invalidStaticCctor;
     private bool _staticCctorScanned;
 
     /// <summary>Throw on an un-pulled member read instead of quietly decoding it. A

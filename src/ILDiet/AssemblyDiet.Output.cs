@@ -69,6 +69,8 @@ internal sealed partial class AssemblyDiet
         string? pointerTemporary = null, resultTemporary = null;
         try
         {
+            // Snapshot kept original tokens before Cecil.Write reassigns them.
+            var strippedSelectedDefaultCtors = CollectStrippedSelectedDefaultCtors();
             var hashes = new List<string>();
             var generationHash = new StableHash();
             for (int i = 0; i < _assemblies.Count; i++)
@@ -94,6 +96,8 @@ internal sealed partial class AssemblyDiet
             }
             var typeNames = TypeNameSnapshot.Capture(_assemblies.Select(assembly =>
                 (assembly.Assembly.Name.Name, assembly.Path)).ToArray());
+            foreach (var (assemblyName, typeKey) in strippedSelectedDefaultCtors)
+                typeNames.MarkStrippedSelectedDefaultCtor(assemblyName, typeKey);
             byte[] descriptor = new UTF8Encoding(false).GetBytes((_originalPreservationText
                 ?? throw new InvalidOperationException("Original preservation was not captured before publication"))
                 + typeNames.Comment());
@@ -145,6 +149,36 @@ internal sealed partial class AssemblyDiet
             CleanupFile(pointerTemporary);
             CleanupFile(resultTemporary);
         }
+    }
+
+    private List<(string Assembly, string TypeKey)> CollectStrippedSelectedDefaultCtors()
+    {
+        var stripped = new List<(string Assembly, string TypeKey)>();
+        foreach (var assembly in _assemblies)
+        {
+            if (assembly.Copy)
+                continue;
+            var keptByType = new Dictionary<int, HashSet<int>>();
+            foreach (var type in AllTypes(assembly.Assembly.MainModule.Types))
+            {
+                var keptMethods = new HashSet<int>();
+                foreach (var method in type.Methods)
+                    keptMethods.Add(method.MetadataToken.ToInt32());
+                keptByType[type.MetadataToken.ToInt32()] = keptMethods;
+            }
+            var reader = System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(assembly.PE);
+            string assemblyName = assembly.Assembly.Name.Name;
+            foreach (var tdHandle in reader.TypeDefinitions)
+            {
+                if (!keptByType.TryGetValue(SRME.GetToken(tdHandle), out var keptMethods))
+                    continue;
+                var lastBare = TypeNameSnapshot.LastBareDefaultCtorHandle(reader, tdHandle);
+                if (lastBare.IsNil || keptMethods.Contains(SRME.GetToken(lastBare)))
+                    continue;
+                stripped.Add((assemblyName, TypeNameSnapshot.RawTypeDefKey(reader, tdHandle)));
+            }
+        }
+        return stripped;
     }
 
     private static void FailPublication(string phase)
@@ -213,8 +247,8 @@ internal sealed partial class AssemblyDiet
                     var members = new StringBuilder();
                     bool KeptMethod(MethodDefinition? method) => method is not null
                         && ((kind & PreserveKind.Methods) != 0
-                            || ((kind & PreserveKind.DefaultConstructor) != 0 && method.IsConstructor
-                                && !method.IsStatic && method.Parameters.Count == 0)
+                            || ((kind & PreserveKind.DefaultConstructor) != 0 && IsRuntimeInstanceCtor(method)
+                                && method.Parameters.Count == 0)
                             || selectedMethods.Contains(SRME.MethodDefinitionHandle((int)method.MetadataToken.RID)));
                     foreach (var method in type.Methods)
                         if (KeptMethod(method))

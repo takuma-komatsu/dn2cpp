@@ -798,6 +798,15 @@ custom Type objects are refused before interpreting the native Type payload.
 Default value creation uses normal Nullable boxing, while raw internal Nullable
 reboxing retains its separate object representation.
 
+When `Activator.CreateInstance` binds an empty argument list, `Static` includes
+a declared type initializer of the requested visibility. Selecting a constructor
+with no formal parameters uses normal parameterless instance construction, even
+when only the initializer matched. Ambiguity between parameterless declarations
+names the first match in metadata order. ILDiet records constructor declarations
+before stripping so lookup can count them independently of their retained bodies.
+An omitted instance constructor with an IL body can be preserved. A constructor
+declared without an IL body reports that fact at invocation.
+
 The retained `RuntimeType.CreateInstanceDefaultCtor(bool, bool)` adapter checks
 the instance for null before using that same factory with inverted `publicOnly`.
 It never reads a custom Type payload or enters CoreCLR activation-cache machinery.
@@ -2709,8 +2718,9 @@ NoAlloc admission follows the existing exception policy.
 
 The exact two-string `Activator.CreateInstance` overload resolves a nonnull
 assembly name through the linked registry before validating the type name. It
-uses existing type lookup and public parameterless activation, then constructs
-an ordinary managed `ObjectHandle`; a null instance produces a null handle.
+looks up the type and binds an empty argument list to a public instance
+constructor, then wraps the result in a managed `ObjectHandle`. A null
+instance produces a null handle.
 Direct calls resolve null assembly names in the calling method's module, not
 the entry assembly. Address-taken and reflection-invoked wrappers still refuse
 null assembly names because they do not carry the invoking caller's identity.

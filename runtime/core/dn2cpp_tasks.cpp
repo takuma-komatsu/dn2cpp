@@ -52,7 +52,7 @@
 
 extern const Dn2CppType dn2cpp_task_type_obj;
 Dn2CppTypeInfo dn2cpp_task_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.Task", &dn2cpp_object_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppTask), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_task_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.Task", &dn2cpp_object_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppTask), 0, 0, 0, 0, 0, dn2cpp_nonpublic_default_ctor_with_cctor_reflection }, &dn2cpp_task_type_obj);
 const Dn2CppType dn2cpp_task_type_obj = { { &dn2cpp_type_type }, &dn2cpp_task_type };
 const Dn2CppTypeInfo dn2cpp_task_factory_type = {
     "System.Threading.Tasks.TaskFactory", &dn2cpp_object_type, nullptr, nullptr,
@@ -60,7 +60,8 @@ const Dn2CppTypeInfo dn2cpp_task_factory_type = {
     (int32_t)sizeof(Dn2CppTaskFactory)
 };
 extern const Dn2CppType dn2cpp_taskscheduler_type_obj;
-static Dn2CppTypeReflection g_taskscheduler_reflection;
+static Dn2CppTypeReflection g_taskscheduler_reflection = dn2cpp_native_type_identity(nullptr,
+    DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR | DN2CPP_TA_DECLARED_NONPUBLIC_CCTOR);
 
 const Dn2CppTypeInfo dn2cpp_taskscheduler_type =
     dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.TaskScheduler", &dn2cpp_object_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppTaskScheduler), 0, 0, 0, 0, 0, &g_taskscheduler_reflection }, &dn2cpp_taskscheduler_type_obj);
@@ -3161,7 +3162,7 @@ static std::condition_variable& g_cts_timer_cv = dn2cpp_never_destroyed<std::con
 
 extern const Dn2CppType dn2cpp_cancel_source_type_obj;
 Dn2CppTypeInfo dn2cpp_cancel_source_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.CancellationTokenSource", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppCancelSource), 0, 0, 0, 0, 0, dn2cpp_default_ctor_reflection }, &dn2cpp_cancel_source_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.CancellationTokenSource", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppCancelSource), 0, 0, 0, 0, 0, dn2cpp_default_ctor_with_cctor_reflection }, &dn2cpp_cancel_source_type_obj);
 const Dn2CppType dn2cpp_cancel_source_type_obj = { { &dn2cpp_type_type }, &dn2cpp_cancel_source_type };
 
 Dn2CppCancelSource* dn2cpp_cts_new()
