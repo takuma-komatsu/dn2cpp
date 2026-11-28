@@ -30,6 +30,8 @@ internal static class Program
         internal Action BeforeQueue;
         internal CancellationTokenSource CancelBeforeRefusal;
         internal bool ExecuteOnQueue;
+        internal bool ExecuteQueuedInline;
+        internal bool PreviouslyQueued;
         internal int Queued;
         internal int InlineAttempts;
         private int _calls;
@@ -46,6 +48,7 @@ internal static class Program
         protected override IEnumerable<Task> GetScheduledTasks() => Array.Empty<Task>();
         protected override void QueueTask(Task task)
         {
+            Interlocked.Increment(ref Queued);
             BeforeQueue?.Invoke();
             if (CancelBeforeRefusal is not null)
             {
@@ -54,16 +57,14 @@ internal static class Program
             }
             if (Refusal is not null) throw Refusal;
             if (ExecuteOnQueue)
-            {
-                Interlocked.Increment(ref Queued);
                 TryExecuteTask(task);
-            }
             else Pending = task;
         }
         protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued)
         {
             Interlocked.Increment(ref InlineAttempts);
-            return false;
+            PreviouslyQueued = taskWasPreviouslyQueued;
+            return ExecuteQueuedInline && taskWasPreviouslyQueued && TryDequeue(task) && TryExecuteTask(task);
         }
 
         internal int Observe()
@@ -196,6 +197,44 @@ internal static class Program
         var cold = new Task(() => sync.Observe());
         cold.RunSynchronously(sync);
         sync.Report("RunSynchronously inline first=" + inlineFirst, cold);
+    }
+
+    internal static void RunQueuedWait()
+    {
+        var scheduler = new ProbeScheduler { ExecuteQueuedInline = true };
+        int bodyThread = 0;
+        var held = new Task(() =>
+        {
+            bodyThread = Environment.CurrentManagedThreadId;
+            scheduler.Observe();
+        });
+        held.Start(scheduler);
+        if (scheduler.Pending != held || held.IsCompleted)
+            throw new InvalidOperationException("The scheduler did not hold the task");
+
+        using var entering = new ManualResetEventSlim();
+        Exception waitError = null;
+        var waiter = new Thread(() =>
+        {
+            entering.Set();
+            try { held.Wait(); }
+            catch (Exception e) { waitError = e; }
+        }) { IsBackground = true };
+        waiter.Start();
+        var limit = TimeSpan.FromSeconds(3);
+        bool unaided = entering.Wait(limit) && waiter.Join(limit);
+        if (!unaided)
+        {
+            try { scheduler.Execute(held); }
+            finally
+            {
+                if (!waiter.Join(limit))
+                    throw new TimeoutException("Wait did not return after releasing the task");
+            }
+        }
+        if (waitError is not null) throw new InvalidOperationException("Queued task wait failed", waitError);
+        scheduler.Report("queued Wait unaided=" + unaided + " previously queued=" + scheduler.PreviouslyQueued
+            + " on waiter=" + (bodyThread == waiter.ManagedThreadId), held);
     }
 
     private static bool RejectRunningTask()

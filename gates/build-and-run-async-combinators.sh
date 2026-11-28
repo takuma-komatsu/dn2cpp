@@ -86,6 +86,7 @@
 # QueueTask and receives a synchronous task after declining its inline attempt.
 # Token cancellation settles an eager continuation immediately and a lazy one
 # when its antecedent finishes. Both delegates stay uncalled.
+# Parameterless Wait offers a held task to its scheduler for inline execution on the waiter.
 # Stored Task faults remain pending until the body finishes and keep their order and identity.
 # Task and cancellation aggregate construction leaves virtual inner Messages unread.
 # RuntimeAsyncSubset.cs asserts runtime-async method bodies (MethodImplAttributes.Async,
@@ -144,7 +145,9 @@ gate_extra_asserts() {
         "ContinueWith(Action): $queued" "ContinueWith(Func): $queued result=42" \
         'RunSynchronously inline first=True: complete=True queue=1 inline=1 calls=1 current=True' \
         'continuations before antecedent: eager=Canceled lazy=WaitingForActivation' \
-        'continuations after antecedent: eager=Canceled lazy=Canceled callbacks=0' > "$out/managed-scheduler-and-cancellation.expected"
+        'continuations after antecedent: eager=Canceled lazy=Canceled callbacks=0' \
+        'queued Wait unaided=True previously queued=True on waiter=True: complete=True queue=1 inline=1 calls=1 current=True' \
+        > "$out/managed-scheduler-and-cancellation.expected"
     gate_output suffix "$native" "$out/managed-scheduler-and-cancellation.expected" \
         --after '== managed scheduler dispatch ==' --policy crlf || return 1
     before="$out/before-pool-scheduler.stdout"

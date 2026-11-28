@@ -3139,6 +3139,13 @@ static bool dn2cpp_delay_claim_cancellation(Dn2CppCancelReg* registration)
     return true;
 }
 
+static Dn2CppObject* dn2cpp_task_wrap_scheduler_exception(const Dn2CppTaskSchedulerQueue* queue, const Dn2CppException& e)
+{
+    auto* wrapped = queue->wrapException(e.obj);
+    dn2cpp_exc_inflight_pop(e.obj);
+    return wrapped;
+}
+
 // A queued task cancels only when its scheduler removes it. The virtual
 // call may reenter the task or the source and cannot run under either lock.
 static void dn2cpp_cancel_delegate_task(Dn2CppCancelReg* registration)
@@ -3177,9 +3184,7 @@ static void dn2cpp_cancel_delegate_task(Dn2CppCancelReg* registration)
         }
         catch (const Dn2CppException& e)
         {
-            auto* wrapped = queue->wrapException(e.obj);
-            dn2cpp_exc_inflight_pop(e.obj);
-            dn2cpp_throw(wrapped);
+            dn2cpp_throw(dn2cpp_task_wrap_scheduler_exception(queue, e));
         }
         std::lock_guard<std::mutex> lock(g_task_mtx);
         if (task->cold != work || (task->execution & DN2CPP_TASK_INVOKED)) return;
@@ -3972,10 +3977,19 @@ static void dn2cpp_task_drain(Dn2CppTask* t)
         nullptr));
 }
 
-Dn2CppTask* dn2cpp_task_block(Dn2CppTask* t)
+static void dn2cpp_task_offer_wait_inline(Dn2CppTask* task);
+
+static void dn2cpp_task_wait_for_completion(Dn2CppTask* t)
 {
+    if (t->status == DN2CPP_TASK_PENDING)
+        dn2cpp_task_offer_wait_inline(t);
     if (!dn2cpp_task_drain_settle(t))
         dn2cpp_task_throw_deadlock();
+}
+
+Dn2CppTask* dn2cpp_task_block(Dn2CppTask* t)
+{
+    dn2cpp_task_wait_for_completion(t);
     dn2cpp_task_throw_if_faulted(t);
     return t;
 }
@@ -4000,8 +4014,7 @@ void dn2cpp_configured_task_get_result(const Dn2CppConfiguredTaskAwaiter* awaite
         dn2cpp_task_block(task);
         return;
     }
-    if (!dn2cpp_task_drain_settle(task))
-        dn2cpp_task_throw_deadlock();
+    dn2cpp_task_wait_for_completion(task);
     // Suppression observes a fault without clearing it or raising its EDI.
     if (task->status == DN2CPP_TASK_FAULTED)
     {
@@ -4025,8 +4038,7 @@ void dn2cpp_configured_task_get_result(const Dn2CppConfiguredTaskAwaiter* awaite
 Dn2CppTask* dn2cpp_task_block_wait(Dn2CppTask* t)
 {
     dn2cpp_null_check(t);
-    if (!dn2cpp_task_drain_settle(t))
-        dn2cpp_task_throw_deadlock();
+    dn2cpp_task_wait_for_completion(t);
     if (t->status == DN2CPP_TASK_FAULTED || t->status == DN2CPP_TASK_CANCELED)
     {
         dn2cpp_throw(dn2cpp_aggregate_exception_new(dn2cpp_task_fault_snapshot(t)));
@@ -5643,8 +5655,7 @@ void dn2cpp_task_start(Dn2CppTask* t, Dn2CppObject* scheduler, const Dn2CppTaskS
 
 static Dn2CppObject* dn2cpp_task_record_scheduler_failure(Dn2CppTask* t, const Dn2CppTaskSchedulerQueue* queue, const Dn2CppException& e)
 {
-    auto* wrapped = queue->wrapException(e.obj);
-    dn2cpp_exc_inflight_pop(e.obj);
+    auto* wrapped = dn2cpp_task_wrap_scheduler_exception(queue, e);
     {
         std::lock_guard<std::mutex> lock(g_task_mtx);
         if (t->status == DN2CPP_TASK_PENDING && (t->execution & DN2CPP_TASK_INVOKED))
@@ -5760,6 +5771,34 @@ static bool dn2cpp_task_try_inline_managed(Dn2CppTask* task, Dn2CppObject* sched
     if (!(task->execution & DN2CPP_TASK_INVOKED) && task->status != DN2CPP_TASK_CANCELED)
         dn2cpp_throw_sr0(&dn2cpp_invalid_operation_exception_type, DN2CPP_SR_TASK_INLINE_NOT_INVOKED);
     return true;
+}
+
+static void dn2cpp_task_offer_wait_inline(Dn2CppTask* task)
+{
+    auto* scheduler = task->scheduler.load(std::memory_order_acquire);
+    if (scheduler == nullptr || dn2cpp_is_pool_scheduler(scheduler))
+        return;
+    const Dn2CppTaskSchedulerQueue* queue;
+    {
+        std::lock_guard<std::mutex> lock(g_task_mtx);
+        if (task->cold == nullptr || (task->execution.load(std::memory_order_relaxed) & DN2CPP_TASK_INVOKED)
+            || (task->finishProvenance.load(std::memory_order_relaxed) & DN2CPP_TASK_EXPLICIT_FINISH))
+            return;
+        queue = task->cold->customQueue;
+    }
+    if (queue == nullptr) return;
+    if (queue->inlineSlot < 0 || scheduler->type->vtable[queue->inlineSlot] == nullptr)
+        dn2cpp_throw_platform_not_supported("Waiting on a custom scheduler requires its TryExecuteTaskInline slot");
+    try
+    {
+        dn2cpp_task_try_inline_managed(task, scheduler, queue, true);
+    }
+    catch (const Dn2CppException& e)
+    {
+        // An inline error belongs to this wait. The scheduler can still run
+        // the queued delegate, or it may already have run it before throwing.
+        dn2cpp_throw(dn2cpp_task_wrap_scheduler_exception(queue, e));
+    }
 }
 
 void dn2cpp_task_run_synchronously(Dn2CppTask* t)
