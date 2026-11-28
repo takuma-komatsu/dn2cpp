@@ -84,6 +84,8 @@
 # types. Tasks assigned to a separately constructed pool observe that scheduler.
 # A managed scheduler runs explicit factory tasks and pending continuations through
 # QueueTask and receives a synchronous task after declining its inline attempt.
+# Token cancellation settles an eager continuation immediately and a lazy one
+# when its antecedent finishes. Both delegates stay uncalled.
 # Stored Task faults remain pending until the body finishes and keep their order and identity.
 # Task and cancellation aggregate construction leaves virtual inner Messages unread.
 # RuntimeAsyncSubset.cs asserts runtime-async method bodies (MethodImplAttributes.Async,
@@ -137,12 +139,14 @@ gate_extra_asserts() {
     gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-managed-scheduler || return 1
     gate_output prefix "$native" "$before" --before '== managed scheduler dispatch ==' --policy crlf || return 1
     local queued='complete=True queue=1 inline=0 calls=1 current=True'
-    gate_output byte-witness "$native" \
-        "StartNew(Action): $queued" "StartNew(Func): $queued result=17" \
+    printf '%s\n' "StartNew(Action): $queued" "StartNew(Func): $queued result=17" \
         'continuations pending=True' \
         "ContinueWith(Action): $queued" "ContinueWith(Func): $queued result=42" \
         'RunSynchronously inline first=True: complete=True queue=1 inline=1 calls=1 current=True' \
-        --policy crlf || return 1
+        'continuations before antecedent: eager=Canceled lazy=WaitingForActivation' \
+        'continuations after antecedent: eager=Canceled lazy=Canceled callbacks=0' > "$out/managed-scheduler-and-cancellation.expected"
+    gate_output suffix "$native" "$out/managed-scheduler-and-cancellation.expected" \
+        --after '== managed scheduler dispatch ==' --policy crlf || return 1
     before="$out/before-pool-scheduler.stdout"
     gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-pool-scheduler
     gate_output prefix "$native" "$before" --before '== pool scheduler and constructor types ==' --policy crlf || return 1
