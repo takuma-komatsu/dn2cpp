@@ -135,6 +135,8 @@ internal static class ReflectionApis
     internal const int DeclaredOnly = 2, FlattenHierarchy = 64;
     internal const int DefaultLookup = Public | Instance | Static;
     internal const int PublicInstance = Public | Instance;
+    internal const int CreateInstance = 0x200, OptionalParamBinding = 0x40000;
+    internal const int DefaultCreateInstance = CreateInstance | PublicInstance;
     internal const int Everything = Public | NonPublic | Instance | Static;
     internal const int Declared = Everything | DeclaredOnly;
     internal const int TypeInitializerLookup = Public | NonPublic | Static;
@@ -448,7 +450,7 @@ internal static class ReflectionApis
         if (ps.Length >= 2 && ps[0] == TString && ps[1] == TString)
         {
             var named = new ReflectionApi(ReflectionOp.ActivatorCreateNamed, C)
-                { AssemblyName = 0, Name = 1, DefaultFlags = PublicInstance };
+                { AssemblyName = 0, Name = 1, DefaultFlags = DefaultCreateInstance };
             if (hasThis || arity != 0)
                 return Unrecognized(named);
             if (Sig(ps, TString, TString) || Sig(ps, TString, TString, TObjects))
@@ -465,7 +467,7 @@ internal static class ReflectionApis
         if (Sig(ps, TType, TBool) || Sig(ps, TType, TBool, TBool))
             return api with { NonPublic = 1 };
         if (Sig(ps, TType, TObjects) || Sig(ps, TType, TObjects, TObjects))
-            return api with { Args = 1 };
+            return api with { Args = 1, DefaultFlags = DefaultCreateInstance };
         if (Sig(ps, TType, TFlags, TBinder, TObjects, TCulture)
             || Sig(ps, TType, TFlags, TBinder, TObjects, TCulture, TObjects))
             return api with { Flags = 1, Binder = 2, Args = 3 };

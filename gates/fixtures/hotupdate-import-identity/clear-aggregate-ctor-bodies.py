@@ -24,9 +24,11 @@ for path in sorted(root.glob("generated*.cpp")):
         # Dn2CppMethodInfo: field 19 is `preservable`, set only on a bodiless template
         # row; 31-35 are signature pointers a plain constructor leaves null, 36 is the
         # initializer guard of a type that declares no initializer, and 37-38 are the
-        # return parameter's attribute table and count, which a constructor leaves empty.
-        if (len(fields) != 39 or fields[1].strip() != "&ti_" + owner or fields[19].strip() != "0LL"
-                or any(f.strip() != "0" for f in fields[31:38]) or fields[38].strip() != "0LL"):
+        # return parameter's empty attribute table and count. Neither constructor sets
+        # the trailing ParamArray or VarArgs binding flags in field 39.
+        if (len(fields) != 40 or fields[1].strip() != "&ti_" + owner or fields[19].strip() != "0LL"
+                or any(f.strip() != "0" for f in fields[31:38])
+                or any(f.strip() != "0LL" for f in fields[38:40])):
             raise SystemExit("unavailable constructor row layout changed: " + owner)
         body = fields[7].strip()
         invoker = fields[8].strip()

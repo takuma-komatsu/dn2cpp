@@ -258,6 +258,9 @@ activate the rule.
   bound argument. A generic-parameter argument forwards that demand.
 - Ordinary construction selects only the requested owner's instance constructors.
   Construction flags normalize to admission's visibility and instance defaults.
+  Candidate arity accounts for the invocation flags, optional trailing
+  parameters, parameter arrays and vararg signatures. The selected parameter
+  metadata supplies the defaults and parameter-array semantics used by binding.
   Selected bodies retain the base constructors their original IL calls.
 - `Array.Initialize`, including a method group, retains the parameterless
   constructors of user value types the primary can model: non-generic definitions,

@@ -2009,7 +2009,12 @@ Dn2CppType* dn2cpp_type_get_by_name(Dn2CppString* name, int32_t throwOnError,
 #define DN2CPP_BF_PUBLIC       0x10
 #define DN2CPP_BF_NONPUBLIC    0x20
 #define DN2CPP_BF_FLATTEN      0x40
+#define DN2CPP_BF_INVOKE_METHOD 0x100
+#define DN2CPP_BF_CREATE_INSTANCE 0x200
+#define DN2CPP_BF_GET_PROPERTY 0x1000
+#define DN2CPP_BF_SET_PROPERTY 0x2000
 #define DN2CPP_BF_EXACT_BINDING 0x10000
+#define DN2CPP_BF_OPTIONAL_PARAM_BINDING 0x40000
 #define DN2CPP_BF_DO_NOT_WRAP_EXCEPTIONS 0x02000000
 
 // Whole-string compare of a managed UTF-16 string against an ASCII C string.
@@ -4109,6 +4114,12 @@ bool dn2cpp_type_reference_argument(const Dn2CppTypeInfo* argument)
     return false;
 }
 
+static bool dn2cpp_is_default_constructor(const Dn2CppMethodInfo& row)
+{
+    return row.paramCount == 0 && (row.attrs & DN2CPP_MTHA_STATIC) == 0
+        && (row.constructorBinding & DN2CPP_CTOR_VARARGS) == 0;
+}
+
 static bool dn2cpp_argument_constraint(const Dn2CppTypeInfo* argument, const Dn2CppTypeInfo* constraint,
     std::vector<const Dn2CppTypeInfo*>& visited)
 {
@@ -4160,8 +4171,11 @@ static void dn2cpp_validate_open_arguments(const Dn2CppMethodGenericParameter* p
                 const auto reflection = argument->reflection();
                 constructor |= (reflection.activation & DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR) != 0;
                 for (int32_t j = 0; j < reflection.ctorCount; j++)
-                    constructor |= reflection.ctors[j]->paramCount == 0
-                        && (reflection.ctors[j]->attrs & (DN2CPP_MTHA_STATIC | DN2CPP_MTHA_PUBLIC)) == DN2CPP_MTHA_PUBLIC;
+                {
+                    const auto row = reflection.ctors[j].operator->();
+                    constructor |= dn2cpp_is_default_constructor(*row.operator->())
+                        && (row->attrs & DN2CPP_MTHA_PUBLIC) != 0;
+                }
             }
             if (!constructor)
                 dn2cpp_throw_argument();
@@ -8858,6 +8872,8 @@ static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodIn
 {
     if ((mi->attrs & DN2CPP_MTHA_STATIC) != 0)
         dn2cpp_throw_initializer_member_access(mi->declaringType);
+    if ((mi->constructorBinding & DN2CPP_CTOR_VARARGS) != 0)
+        dn2cpp_throw_invoke_not_supported(nullptr);
     Dn2CppInvokePlan local;
     const Dn2CppInvokePlan& plan = dn2cpp_invoke_plan_of(mi, true, local);
     if ((plan.declaringType->flags & DN2CPP_TF_GENERICDEF) != 0)
@@ -8934,7 +8950,7 @@ void dn2cpp_array_initialize(Dn2CppObject* a)
     for (int32_t i = 0; i < reflection.ctorCount; i++)
     {
         const auto row = reflection.ctors[i].operator->();
-        if (row->paramCount != 0 || (row->attrs & DN2CPP_MTHA_STATIC) != 0)
+        if (!dn2cpp_is_default_constructor(*row.operator->()))
             continue;
         if (row->invoker == nullptr || row->fnPtr == nullptr)
             dn2cpp_throw_invoke_unavailable(reflection.ctors[i], el);
@@ -9075,12 +9091,7 @@ Dn2CppObject* dn2cpp_ctorref_invoke(Dn2CppMethodRef* c, Dn2CppArrayRef* args, bo
         args == nullptr ? 0 : args->length, wrapExceptions);
 }
 
-[[noreturn]] static void dn2cpp_throw_missing_constructor(const Dn2CppTypeInfo* ti, bool bound);
-
-// CreateInstance(Type, bool) always admits public constructors. The BindingFlags
-// overload chooses each visibility independently.
-static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, bool allowPublic,
-    bool allowNonPublic, bool wrapExceptions, bool binderMessage)
+static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, bool allowNonPublic, bool wrapExceptions)
 {
     if (t == nullptr)
         dn2cpp_throw_argument_null_param("type");
@@ -9100,23 +9111,19 @@ static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, bool allowPu
     {
         const auto ci = reflection.ctors[i];
         const auto row = ci.operator->();
-        if (row->paramCount != 0 || (row->attrs & DN2CPP_MTHA_STATIC) != 0)
+        if (!dn2cpp_is_default_constructor(*row.operator->()))
             continue;
         hasDefaultConstructor = true;
-        if ((row->attrs & DN2CPP_MTHA_PUBLIC) != 0 ? allowPublic : allowNonPublic)
+        if ((row->attrs & DN2CPP_MTHA_PUBLIC) != 0 || allowNonPublic)
         {
             selected = ci;
             break;
         }
     }
-    const bool selectedOmitted = (allowPublic && omittedPublic) || (allowNonPublic && omittedNonPublic);
-    const bool canDefaultValue = allowPublic && (ti->flags & DN2CPP_TF_VALUETYPE) != 0;
+    const bool selectedOmitted = omittedPublic || (allowNonPublic && omittedNonPublic);
+    const bool canDefaultValue = (ti->flags & DN2CPP_TF_VALUETYPE) != 0;
     if (!selected && !selectedOmitted && !canDefaultValue)
-    {
-        if (binderMessage)
-            dn2cpp_throw_missing_constructor(ti, false);
         dn2cpp_throw_missing_default_constructor(ti, hasDefaultConstructor);
-    }
     if ((ti->flags & DN2CPP_TF_BYREFLIKE) != 0)
         dn2cpp_throw_invoke_not_supported("Cannot create boxed ByRef-like values.");
     if (selected)
@@ -9149,7 +9156,7 @@ Dn2CppObject* dn2cpp_activator_create_instance_wrapped(Dn2CppType* t, int32_t no
         dn2cpp_throw_argument_null_param("type");
     if (t->type != &dn2cpp_type_type)
         dn2cpp_throw_platform_not_supported("Activator: custom Type construction is not supported");
-    return dn2cpp_activator_create_default(t, true, nonPublic != 0, wrapExceptions != 0, false);
+    return dn2cpp_activator_create_default(t, nonPublic != 0, wrapExceptions != 0);
 }
 
 Dn2CppObject* dn2cpp_activator_create_instance_default_ctor(Dn2CppType* t, int32_t publicOnly, int32_t wrapExceptions)
@@ -9216,7 +9223,7 @@ void dn2cpp_runtime_type_call_default_struct_constructor(Dn2CppType* t, uint8_t*
     {
         const auto ci = reflection.ctors[i];
         const auto row = ci.operator->();
-        if (row->paramCount != 0 || (row->attrs & DN2CPP_MTHA_STATIC) != 0)
+        if (!dn2cpp_is_default_constructor(*row.operator->()))
             continue;
         hasDefaultConstructor = true;
         if ((row->attrs & DN2CPP_MTHA_PUBLIC) == 0)
@@ -9241,7 +9248,7 @@ void dn2cpp_runtime_type_call_default_struct_constructor(Dn2CppType* t, uint8_t*
 
 Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t nonPublic)
 {
-    return dn2cpp_activator_create_default(t, true, nonPublic != 0, true, false);
+    return dn2cpp_activator_create_default(t, nonPublic != 0, true);
 }
 
 Dn2CppObject* dn2cpp_activator_create_instance(Dn2CppType* t)
@@ -13367,14 +13374,34 @@ static int32_t dn2cpp_binder_more_specific(const Dn2CppParamInfo& a, const Dn2Cp
 // and whose signatures are identical rank by declaring type, the most derived
 // first.
 static bool dn2cpp_binder_dominates(Dn2CppMetadataHandle<Dn2CppMethodInfo> x,
-    Dn2CppMetadataHandle<Dn2CppMethodInfo> y, Dn2CppArrayRef* args, int32_t argc)
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> y, Dn2CppArrayRef* args, int32_t argc,
+    const Dn2CppTypeInfo* expandedX, const Dn2CppTypeInfo* expandedY)
 {
+    if ((expandedX == nullptr) != (expandedY == nullptr))
+        return expandedX == nullptr;
+    auto parameter = [](const Dn2CppMethodInfo& method, const Dn2CppTypeInfo* element, int32_t index) {
+        if (element != nullptr && index >= method.paramCount - 1)
+        {
+            Dn2CppParamInfo parameter{};
+            parameter.paramType = element;
+            return parameter;
+        }
+        if (index >= method.paramCount)
+            dn2cpp_throw_index_out_of_range();
+        auto parameter = *method.parameters[index];
+        parameter.paramType = dn2cpp_invoke_parameter_type(parameter, method.declaringType);
+        return parameter;
+    };
+    const auto left = x.operator->();
+    const auto right = y.operator->();
     bool xWins = false;
     bool yWins = false;
     for (int32_t j = 0; j < argc; j++)
     {
-        const Dn2CppParamInfo& a = *x->parameters[j];
-        const Dn2CppParamInfo& b = *y->parameters[j];
+        if (dn2cpp_invoke_is_missing(args->data[j]))
+            continue;
+        const auto a = parameter(*left.operator->(), expandedX, j);
+        const auto b = parameter(*right.operator->(), expandedY, j);
         if (dn2cpp_binder_same_param(a, b))
             continue;
         const int32_t winner = dn2cpp_binder_more_specific(a, b, args->data[j]);
@@ -13387,8 +13414,8 @@ static bool dn2cpp_binder_dominates(Dn2CppMetadataHandle<Dn2CppMethodInfo> x,
     }
     if (xWins || yWins)
         return xWins && !yWins;
-    if (x->paramCount != y->paramCount)
-        return false;
+    if (left->paramCount != right->paramCount)
+        return left->paramCount > right->paramCount;
     for (int32_t j = 0; j < x->paramCount; j++)
         if (!dn2cpp_binder_same_param(*x->parameters[j], *y->parameters[j]))
             return false;
@@ -13401,18 +13428,21 @@ static bool dn2cpp_binder_dominates(Dn2CppMetadataHandle<Dn2CppMethodInfo> x,
 // that neither dominates it nor is dominated by it ties. A tie left at the end
 // throws AmbiguousMatchException naming the running best.
 static int32_t dn2cpp_binder_most_specific(const Dn2CppMetadataHandle<Dn2CppMethodInfo>* cands,
-    int32_t n, Dn2CppArrayRef* args, int32_t argc, const Dn2CppTypeInfo* reflected)
+    int32_t n, Dn2CppArrayRef* args, int32_t argc, const Dn2CppTypeInfo* reflected,
+    const Dn2CppTypeInfo* const* expanded = nullptr)
 {
     int32_t best = 0;
     bool tied = false;
     for (int32_t i = 1; i < n; i++)
     {
-        if (dn2cpp_binder_dominates(cands[i], cands[best], args, argc))
+        const auto* currentElement = expanded != nullptr ? expanded[i] : nullptr;
+        const auto* bestElement = expanded != nullptr ? expanded[best] : nullptr;
+        if (dn2cpp_binder_dominates(cands[i], cands[best], args, argc, currentElement, bestElement))
         {
             best = i;
             tied = false;
         }
-        else if (!dn2cpp_binder_dominates(cands[best], cands[i], args, argc))
+        else if (!dn2cpp_binder_dominates(cands[best], cands[i], args, argc, bestElement, currentElement))
             tied = true;
     }
     if (tied)
@@ -13526,6 +13556,120 @@ static Dn2CppObject* dn2cpp_binder_adapt_arg(Dn2CppObject* a, const Dn2CppTypeIn
     dn2cpp_throw(e);
 }
 
+static bool dn2cpp_constructor_arity(const Dn2CppMethodInfo& row, Dn2CppArrayRef* args,
+                                    int32_t argc, int32_t flags)
+{
+    if (argc == row.paramCount)
+    {
+        if ((flags & DN2CPP_BF_EXACT_BINDING) != 0 && (flags & DN2CPP_BF_INVOKE_METHOD) == 0)
+            for (int32_t i = 0; i < argc; i++)
+                if (args->data[i] != nullptr && args->data[i]->type
+                    != dn2cpp_reflection_parameter_type(*row.parameters[i], row.declaringType))
+                    return false;
+        return true;
+    }
+    // RuntimeType.FilterApplyMethodBase relaxes arity only for a dynamic call.
+    if ((flags & (DN2CPP_BF_INVOKE_METHOD | DN2CPP_BF_CREATE_INSTANCE | DN2CPP_BF_GET_PROPERTY | DN2CPP_BF_SET_PROPERTY)) == 0)
+        return false;
+    if (argc > row.paramCount && (row.constructorBinding & DN2CPP_CTOR_VARARGS) != 0)
+        return true;
+    if (argc < row.paramCount && (flags & DN2CPP_BF_OPTIONAL_PARAM_BINDING) != 0 && (row.parameters[argc]->ilAttrs & 0x10) != 0)
+        return true;
+    return (row.constructorBinding & DN2CPP_CTOR_PARAM_ARRAY) != 0 && argc >= row.paramCount - 1;
+}
+
+static bool dn2cpp_binder_has_default(const Dn2CppParamInfo& parameter)
+{
+    // An optional parameter without a constant has Missing.Value as its default.
+    return (parameter.ilAttrs & 0x1010) != 0 || parameter.defaultValue != nullptr;
+}
+
+// An expanded candidate binds the trailing arguments to the array's element
+// type. An already assignable array remains a single ordinary argument.
+static bool dn2cpp_constructor_binds(const Dn2CppMethodInfo& row, Dn2CppArrayRef* args,
+                                     int32_t argc, int32_t flags, const Dn2CppTypeInfo*& element)
+{
+    if (row.paramCount == 0)
+        return argc == 0 || (row.constructorBinding & DN2CPP_CTOR_VARARGS) != 0;
+    const int32_t last = row.paramCount - 1;
+    const bool params = (row.constructorBinding & DN2CPP_CTOR_PARAM_ARRAY) != 0;
+    if (argc > row.paramCount && !params)
+        return false;
+    if (params)
+    {
+        const auto parameter = *row.parameters[last];
+        const auto* array = dn2cpp_reflection_parameter_type(parameter, row.declaringType);
+        const bool expand = argc == row.paramCount
+            ? args->data[last] == nullptr || !dn2cpp_binder_arg_matches(args->data[last], array)
+            : argc > row.paramCount || !dn2cpp_binder_has_default(parameter);
+        if (expand)
+            element = array->elementType;
+    }
+    // An expanded params array requires all its preceding arguments even when
+    // one of them is optional. The binder can fill omitted scalar defaults.
+    const int32_t fixed = element != nullptr ? last : row.paramCount;
+    if (element != nullptr && argc < fixed)
+        return false;
+    for (int32_t i = 0; i < fixed; i++)
+    {
+        auto parameter = *row.parameters[i];
+        if (i >= argc)
+        {
+            if (!dn2cpp_binder_has_default(parameter))
+                return false;
+        }
+        else
+        {
+            if ((flags & DN2CPP_BF_OPTIONAL_PARAM_BINDING) != 0 && dn2cpp_invoke_is_missing(args->data[i]))
+                continue;
+            parameter.paramType = dn2cpp_invoke_parameter_type(parameter, row.declaringType);
+            if (!dn2cpp_binder_param_matches(args->data[i], parameter))
+                return false;
+        }
+    }
+    for (int32_t i = fixed; i < argc; i++)
+        if ((args->data[i] == nullptr && (element->flags & DN2CPP_TF_PRIMITIVE) != 0)
+            || !dn2cpp_binder_arg_matches(args->data[i], element))
+            return false;
+    return true;
+}
+
+// DefaultBinder replaces the argument vector for default insertion or params
+// expansion, so by-ref writes in those calls stay in the replacement vector.
+static Dn2CppArrayRef* dn2cpp_constructor_arguments(const Dn2CppMethodInfo& row,
+    Dn2CppArrayRef* args, int32_t argc, const Dn2CppTypeInfo* element)
+{
+    if (element == nullptr && argc == row.paramCount)
+        return args;
+    auto* bound = dn2cpp_newarr_ref(row.paramCount);
+    const int32_t fixed = element != nullptr ? row.paramCount - 1 : row.paramCount;
+    for (int32_t i = 0; i < fixed; i++)
+    {
+        Dn2CppObject* value;
+        if (i < argc)
+            value = args->data[i];
+        else
+        {
+            const auto parameter = *row.parameters[i];
+            Dn2CppObject* missing = parameter.defaultValue == nullptr && g_missing_value_factory != nullptr
+                ? g_missing_value_factory() : nullptr;
+            value = dn2cpp_invoke_default(parameter, missing, i, row.paramCount, nullptr);
+        }
+        dn2cpp_gc_store_ref(&bound->data[i], value);
+    }
+    if (element != nullptr)
+    {
+        int32_t count = argc - fixed;
+        auto* packed = dn2cpp_array_create_instance(dn2cpp_get_type_from_handle(element), &count, 1);
+        if (count == 1)
+            dn2cpp_array_set_value(packed, args->data[fixed], 0);
+        else if (count > 1)
+            dn2cpp_array_copy_dyn(reinterpret_cast<Dn2CppObject*>(args), fixed, packed, 0, count);
+        dn2cpp_gc_store_ref(&bound->data[fixed], packed);
+    }
+    return bound;
+}
+
 // Activator.CreateInstance(Type, object[] args[, BindingFlags, Binder,
 // activationAttributes]): DefaultBinder-style constructor resolution matching real
 // .NET — candidates filter on BindingFlags + arity + per-argument admissibility;
@@ -13542,7 +13686,7 @@ Dn2CppObject* dn2cpp_activator_create_instance_args(Dn2CppType* t, Dn2CppArrayRe
     if (t == nullptr)
         dn2cpp_throw_argument_null_param("type");
     if ((bindingFlags & 0xFF) == 0)
-        bindingFlags |= DN2CPP_BF_PUBLIC | DN2CPP_BF_INSTANCE | 0x200;
+        bindingFlags |= DN2CPP_BF_PUBLIC | DN2CPP_BF_INSTANCE | DN2CPP_BF_CREATE_INSTANCE;
     dn2cpp_reflection_check_binder(binder);
     if (activationAttrs != nullptr && activationAttrs->length > 0)
         dn2cpp_throw_platform_not_supported("Activation Attributes are not supported.");
@@ -13553,58 +13697,61 @@ Dn2CppObject* dn2cpp_activator_create_instance_args(Dn2CppType* t, Dn2CppArrayRe
     if (dn2cpp_type_metadata_only(ti))
         dn2cpp_throw_platform_not_supported("Reflection: the constraint type has no runtime layout");
     const bool wrapExceptions = (bindingFlags & DN2CPP_BF_DO_NOT_WRAP_EXCEPTIONS) == 0;
-    if (argc == 0)
-    {
-        const bool nonPublic = (bindingFlags & DN2CPP_BF_NONPUBLIC) != 0;
-        // A .cctor candidate can activate either instance visibility. Its declaration
-        // is not always present in the image's reflection metadata.
-        const bool maySelectInitializer = nonPublic && (bindingFlags & DN2CPP_BF_STATIC) != 0;
-        if (!maySelectInitializer && (bindingFlags & DN2CPP_BF_INSTANCE) == 0)
-            dn2cpp_throw_missing_constructor(ti, false);
-        const bool allowPublic = maySelectInitializer || (bindingFlags & DN2CPP_BF_PUBLIC) != 0;
-        return dn2cpp_activator_create_default(t, allowPublic, nonPublic, wrapExceptions, true);
-    }
+    const bool instance = (bindingFlags & DN2CPP_BF_INSTANCE) != 0;
+    const bool allowPublic = (bindingFlags & DN2CPP_BF_PUBLIC) != 0;
+    const bool nonPublic = (bindingFlags & DN2CPP_BF_NONPUBLIC) != 0;
+    if (argc == 0 && instance && allowPublic && (ti->flags & DN2CPP_TF_VALUETYPE) != 0)
+        return dn2cpp_activator_create_default(t, nonPublic, wrapExceptions);
     if ((ti->flags & (DN2CPP_TF_ABSTRACT | DN2CPP_TF_INTERFACE)) != 0)
         dn2cpp_throw_missing_method("Cannot create an instance of an abstract class or interface");
-    if (argc > 30)
-        dn2cpp_throw_platform_not_supported("Activator: more than 30 constructor arguments");
     Dn2CppMethodCandidates cands;
+    Dn2CppWalkList<const Dn2CppTypeInfo*, 16> expansions;
     bool arityMatched = false;
     const auto reflection = dn2cpp_constructor_metadata(ti);
     for (int32_t c = 0; c < reflection.ctorCount; c++)
     {
-        Dn2CppMetadataHandle<Dn2CppMethodInfo> ci = reflection.ctors[c];
-        if (!dn2cpp_member_matches(ci->attrs, bindingFlags, false) || ci->paramCount != argc)
+        const auto ci = reflection.ctors[c];
+        const auto view = ci.operator->();
+        const auto& row = *view.operator->();
+        if (!dn2cpp_member_matches(row.attrs, bindingFlags, false)
+            || !dn2cpp_constructor_arity(row, args, argc, bindingFlags))
             continue;
         arityMatched = true;
-        bool ok = true;
-        for (int32_t j = 0; j < argc && ok; j++)
-            ok = dn2cpp_binder_param_matches(args->data[j], *ci->parameters[j]);
-        if (ok)
+        const Dn2CppTypeInfo* element = nullptr;
+        if (dn2cpp_constructor_binds(row, args, argc, bindingFlags, element))
+        {
             cands.push_back(ci);
+            expansions.push_back(element);
+        }
+    }
+    // An omitted parameterless declaration still competes with optional and
+    // params overloads. Appended last, it can tie a real row (which names the
+    // ambiguity) or win default activation, without escaping this stack frame.
+    Dn2CppMethodInfo omitted{};
+    if (argc == 0 && instance
+        && ((allowPublic && (reflection.activation & DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR) != 0)
+            || (nonPublic && (reflection.activation & DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR) != 0)))
+    {
+        omitted.name = ".ctor";
+        omitted.declaringType = ti;
+        cands.push_back(&omitted);
+        expansions.push_back(nullptr);
     }
     const int32_t n = cands.size();
     if (n == 0)
         dn2cpp_throw_missing_constructor(ti, arityMatched);
-    const Dn2CppMetadataHandle<Dn2CppMethodInfo> best = cands[dn2cpp_binder_most_specific(cands.data(), n, args, argc, ti)];
-    // A parameter with DN2CPP_PASS_* bits takes its argument unconverted, since
-    // the constructor call checks it, and a by-ref argument's copy is written back
-    // into `args`.
-    Dn2CppObject* adapted[30];
-    bool byRef[30];
-    const auto parameters = best->parameters;
-    for (int32_t j = 0; j < argc; j++)
+    const int32_t selected = dn2cpp_binder_most_specific(cands.data(), n, args, argc, ti, expansions.data());
+    const auto best = cands[selected];
+    const auto view = best.operator->();
+    const auto& row = *view.operator->();
+    if (row.paramCount == 0)
     {
-        const auto param = parameters[j].operator->();
-        byRef[j] = (param->passKind & DN2CPP_PASS_BYREF) != 0;
-        adapted[j] = param->passKind != 0 ? args->data[j]
-                                          : dn2cpp_binder_adapt_arg(args->data[j], param->paramType);
+        if (argc != 0)
+            dn2cpp_throw_sr0(&dn2cpp_not_supported_exception_type, DN2CPP_SR_CALL_TO_VARARG);
+        return dn2cpp_activator_create_default(t, true, wrapExceptions);
     }
-    Dn2CppObject* instance = dn2cpp_ctor_invoke_argv(best, adapted, argc, wrapExceptions);
-    for (int32_t j = 0; j < argc; j++)
-        if (byRef[j])
-            dn2cpp_gc_store_ref(&args->data[j], adapted[j]);
-    return instance;
+    auto* bound = dn2cpp_constructor_arguments(row, args, argc, expansions[selected]);
+    return dn2cpp_ctor_invoke_argv(best, bound->data, row.paramCount, wrapExceptions);
 }
 
 Dn2CppObject* dn2cpp_assembly_create_instance(const char* asmName, Dn2CppString* name,

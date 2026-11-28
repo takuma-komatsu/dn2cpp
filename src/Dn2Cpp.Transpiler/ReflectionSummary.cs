@@ -4114,6 +4114,8 @@ internal sealed class SummaryInterpreter
     };
 }
 
+internal enum ActivationMatch : byte { None, Declaration, Body }
+
 // Decode reflection contracts from raw metadata before either model acts on them.
 internal sealed class ReflectionCoreContracts
 {
@@ -4128,7 +4130,7 @@ internal sealed class ReflectionCoreContracts
     {
         var readers = modules.Where(m => m.IsAssembly).ToArray();
         _resolver = new RawAssemblyTypeResolver<MetadataReader>(readers.Select(m => (m, m.GetString(m.GetAssemblyDefinition().Name), m)));
-        foreach (string name in new[] { "Type", "RuntimeType", "Activator" })
+        foreach (string name in new[] { "Type", "RuntimeType", "Activator", "ParamArrayAttribute" })
         {
             var candidates = new List<(MetadataReader, TypeDefinitionHandle)>();
             foreach (var reader in readers)
@@ -4166,6 +4168,77 @@ internal sealed class ReflectionCoreContracts
 
     private static bool IsCoreLib(MetadataReader reader) => reader.IsAssembly
         && reader.StringComparer.Equals(reader.GetAssemblyDefinition().Name, "System.Private.CoreLib");
+
+    internal bool IsParamArrayParameter(MetadataReader reader, ParameterHandle parameter)
+    {
+        if (parameter.IsNil) return false;
+        foreach (var handle in reader.GetParameter(parameter).GetCustomAttributes())
+        {
+            var constructor = reader.GetCustomAttribute(handle).Constructor;
+            EntityHandle owner;
+            StringHandle name;
+            BlobHandle signature;
+            if (constructor.Kind == HandleKind.MemberReference)
+            {
+                var member = reader.GetMemberReference((MemberReferenceHandle)constructor);
+                owner = member.Parent;
+                name = member.Name;
+                signature = member.Signature;
+            }
+            else if (constructor.Kind == HandleKind.MethodDefinition)
+            {
+                var method = reader.GetMethodDefinition((MethodDefinitionHandle)constructor);
+                owner = method.GetDeclaringType();
+                name = method.Name;
+                signature = method.Signature;
+            }
+            else continue;
+            if (!reader.StringComparer.Equals(name, ".ctor") || !IsCoreType(reader, owner, "ParamArrayAttribute")) continue;
+            var blob = reader.GetBlobReader(signature);
+            if (blob.Length == 3 && blob.ReadByte() == 0x20 && blob.ReadByte() == 0
+                && blob.ReadByte() == (byte)SignatureTypeCode.Void) return true;
+        }
+        return false;
+    }
+
+    internal ActivationMatch MatchActivationArguments(MetadataReader reader, MethodDefinitionHandle handle,
+        int parameterCount, bool arrayTail, int argumentCount, int flags, out bool paramArray, out bool needsMissing)
+    {
+        var method = reader.GetMethodDefinition(handle);
+        bool varArgs = reader.GetBlobReader(method.Signature).ReadSignatureHeader().CallingConvention == SignatureCallingConvention.VarArgs;
+        paramArray = false;
+        needsMissing = false;
+        bool firstOmittedOptional = false;
+        int defaults = 0;
+        foreach (var parameterHandle in method.GetParameters())
+        {
+            var parameter = reader.GetParameter(parameterHandle);
+            int index = parameter.SequenceNumber - 1;
+            if (index < 0) continue;
+            if (arrayTail && index == parameterCount - 1) paramArray = IsParamArrayParameter(reader, parameterHandle);
+            if (index < argumentCount) continue;
+            bool optional = (parameter.Attributes & System.Reflection.ParameterAttributes.Optional) != 0;
+            if (index == argumentCount) firstOmittedOptional = optional;
+            bool constant = !parameter.GetDefaultValue().IsNil || parameter.GetCustomAttributes().Any(h =>
+                PreservationReader.AttributeTypeName(reader, reader.GetCustomAttribute(h)) is
+                    "System.Runtime.CompilerServices.DecimalConstantAttribute" or "System.Runtime.CompilerServices.DateTimeConstantAttribute");
+            if (optional || constant) defaults++;
+            if (optional && !constant) needsMissing = true;
+        }
+        // Vararg constructors can participate in overload selection, but reflection cannot call them.
+        if (argumentCount < 0 || parameterCount == argumentCount)
+            return varArgs ? ActivationMatch.Declaration : ActivationMatch.Body;
+        const int dynamicOperations = 0x100 | ReflectionApis.CreateInstance | 0x1000 | 0x2000;
+        if ((flags & dynamicOperations) == 0) return ActivationMatch.None;
+        if (varArgs && argumentCount > parameterCount) return ActivationMatch.Declaration;
+        if (paramArray && argumentCount >= parameterCount - 1)
+            return varArgs ? ActivationMatch.Declaration : ActivationMatch.Body;
+        if (argumentCount >= parameterCount || (flags & ReflectionApis.OptionalParamBinding) == 0 || !firstOmittedOptional)
+            return ActivationMatch.None;
+        // BindToMethod can pack an empty params tail only after its fixed prefix was supplied.
+        return !varArgs && !paramArray && defaults == parameterCount - argumentCount
+            ? ActivationMatch.Body : ActivationMatch.Declaration;
+    }
 
     public DynamicallyAccessedMemberTypes GetDynamicallyAccessedMemberTypes(MetadataReader reader, MethodDefinitionHandle method, int parameter)
     {

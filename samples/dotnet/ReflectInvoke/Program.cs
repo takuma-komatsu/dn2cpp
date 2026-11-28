@@ -429,6 +429,9 @@ namespace ReflectInvoke
         if (args.Length > 0 && args[0] == "before-type-initializers")
             return;
         ActivatorSubset.Program.RunTypeInitializers();
+        if (args.Length > 0 && args[0] == "before-constructor-arguments")
+            return;
+        ActivatorSubset.Program.RunConstructorArguments();
         }
     }
 }

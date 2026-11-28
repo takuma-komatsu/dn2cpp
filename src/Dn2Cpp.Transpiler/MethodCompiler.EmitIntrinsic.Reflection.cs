@@ -1295,7 +1295,7 @@ internal sealed partial class MethodCompiler
             // Activator.CreateInstance(Type, params object[] args) — DefaultBinder
             // ctor resolution in the runtime (arity + boxed-arg admissibility +
             // most-specific disambiguation; MissingMethodException on no match).
-            // Default BindingFlags mirror .NET: Instance|Public (20).
+            // The CreateInstance operation bit permits a parameter-count mismatch.
             case ("System.Activator", "CreateInstance") when sig.ParameterTypes.Length == 2
                 && !sig.ParameterTypes[0].IsString
                 && sig.ParameterTypes[1].Kind == TypeKind.SZArray:
@@ -1303,7 +1303,7 @@ internal sealed partial class MethodCompiler
                 var args = Pop();
                 var t = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
-                    $"dn2cpp_activator_create_instance_args({Cast(t, "Dn2CppType*")}, {Cast(args, "Dn2CppArrayRef*")}, 20, nullptr, nullptr)");
+                    $"dn2cpp_activator_create_instance_args({Cast(t, "Dn2CppType*")}, {Cast(args, "Dn2CppArrayRef*")}, 0x214, nullptr, nullptr)");
                 return true;
             }
             // Activator.CreateInstance(Type, object[] args, object[]
@@ -1318,7 +1318,7 @@ internal sealed partial class MethodCompiler
                 var args = Pop();
                 var t = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
-                    $"dn2cpp_activator_create_instance_args({Cast(t, "Dn2CppType*")}, {Cast(args, "Dn2CppArrayRef*")}, 20, nullptr, {Cast(attrs, "Dn2CppArrayRef*")})");
+                    $"dn2cpp_activator_create_instance_args({Cast(t, "Dn2CppType*")}, {Cast(args, "Dn2CppArrayRef*")}, 0x214, nullptr, {Cast(attrs, "Dn2CppArrayRef*")})");
                 return true;
             }
             // Activator.CreateInstance(Type, BindingFlags, Binder, object[],

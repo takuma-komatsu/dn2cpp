@@ -403,7 +403,15 @@ Invocation, field and property access, event subscription, delegate binding,
 construction and attribute instantiation reach the selected bodies, boxes and
 type initializers; a constant field's access reaches no initializer, and a
 construction whose flags set no lookup bit (`0xFF`) selects as
-`Public | Instance`, as .NET's `Activator` does.
+`Public | Instance`. The argument-array overloads of `Activator.CreateInstance`
+that take no flags supply `CreateInstance | Public | Instance`. Constructor
+binding through `Activator`, `Type.InvokeMember` and `Assembly.CreateInstance`
+uses the invocation flags when the supplied and formal argument counts differ.
+`OptionalParamBinding` allows omitted trailing parameters with defaults. A
+trailing parameter array accepts a compatible array by identity or packs the
+remaining arguments into an array of its declared element type. Passing
+arguments to a selected vararg constructor with no fixed parameters throws
+`NotSupportedException`.
 A `DynamicallyAccessedMembers` annotation on a `System.Type` parameter
 applies its member mask to each statically known closed type passed at a
 reachable call. For recognized CoreLib `Activator.CreateInstance(Type, ...)`

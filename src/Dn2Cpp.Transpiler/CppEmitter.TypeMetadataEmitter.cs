@@ -49,7 +49,8 @@ internal sealed partial class CppEmitter
                 if (method.Name != ".ctor" || method.IsStatic || method.Rva == 0)
                     continue;
                 method.EnsureSignature();
-                if (method.Signature.ParameterTypes.Length == 0)
+                if (method.Signature.ParameterTypes.Length == 0
+                    && method.Signature.Header.CallingConvention != SignatureCallingConvention.VarArgs)
                     continue;
                 _activationConstructorRows.Add(method);
                 void Note(TypeDesc type)
@@ -2995,17 +2996,35 @@ internal sealed partial class CppEmitter
                     continue;
                 bool isPublic = (md.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
                     == System.Reflection.MethodAttributes.Public;
-                var blob = reader.GetBlobReader(md.Signature);
-                if (blob.ReadSignatureHeader().IsGeneric)
-                    blob.ReadCompressedInteger();
-                int arity = blob.ReadCompressedInteger();
-                if (arity == 0)
+                if (HasDefaultConstructorSignature(reader, md))
                     bits |= isPublic ? OmittedPublicDefaultCtor : OmittedNonPublicDefaultCtor;
             }
             return bits;
         }
 
         private const int OmittedPublicDefaultCtor = 0x1, OmittedNonPublicDefaultCtor = 0x2, Unallocated = 0x4, AllocationUnsupported = 0x8;
+
+        private static bool HasDefaultConstructorSignature(MetadataReader reader, MethodDefinition method)
+        {
+            var blob = reader.GetBlobReader(method.Signature);
+            var header = blob.ReadSignatureHeader();
+            if (header.CallingConvention == SignatureCallingConvention.VarArgs)
+                return false;
+            if (header.IsGeneric)
+                blob.ReadCompressedInteger();
+            return blob.ReadCompressedInteger() == 0;
+        }
+
+        private int ConstructorBindingFlags(string name, SignatureHeader header,
+            bool lastIsVector, MetadataReader reader, ParameterHandle last)
+        {
+            if (name != ".ctor")
+                return 0;
+            int flags = header.CallingConvention == SignatureCallingConvention.VarArgs ? 2 : 0;
+            if (lastIsVector && !last.IsNil && _c.ReflectionContracts.IsParamArrayParameter(reader, last))
+                flags |= 1;
+            return flags;
+        }
 
         // Dn2CppTypeReflection::activation: the constructors without a row, and whether
         // reflection may make an instance of the type (for a struct, a box of it; for a
@@ -4142,6 +4161,9 @@ internal sealed partial class CppEmitter
                     MetadataValue.Ref(RenderMethodDefinitionSignature(m)),
                     MetadataValue.Ref(initializer),
                     MetadataValue.Ref(rca.Expr), MetadataValue.Signed(rca.Count),
+                    MetadataValue.Signed(ConstructorBindingFlags(m.Name, m.Signature.Header,
+                        ps.Length != 0 && ps[ps.Length - 1].Kind == TypeKind.SZArray,
+                        m.Module.Reader, paramHandles.GetValueOrDefault(ps.Length - 1))),
                 }));
             }
             // The trim can empty a table the member list did not. A zero-length array is

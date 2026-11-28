@@ -101,6 +101,7 @@ internal static class BclMessages
         "Acc_CreateAbstEx",
         "Acc_CreateGenericEx",
         "Acc_NotClassInit",
+        "NotSupported_CallToVarArg",
         "RFLCT_CannotSetInitonlyStaticField",
         "Arg_DlgtTargMeth",
         "Arg_EntryPointNotFoundException",

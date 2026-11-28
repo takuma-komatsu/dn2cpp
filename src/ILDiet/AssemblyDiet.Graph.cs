@@ -511,20 +511,15 @@ internal sealed partial class AssemblyDiet
     }
 
     private ReflectionCoreContracts? _reflectionCoreContracts;
-    private bool _reflectionCoreContractsInitialized;
+    private ReflectionCoreContracts ReflectionContracts => _reflectionCoreContracts ??= new ReflectionCoreContracts(
+        _assemblies.Select(a => System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(a.PE)));
 
     private ReflectionSummarizer GetReflectionSummarizer(ModuleDefinition module)
     {
-        if (!_reflectionCoreContractsInitialized)
-        {
-            _reflectionCoreContractsInitialized = true;
-            _reflectionCoreContracts = new ReflectionCoreContracts(_assemblies.Select(a =>
-                System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(a.PE)));
-        }
         if (!_summarizers.TryGetValue(module, out var summarizer))
         {
             var assembly = _byModule[module];
-            _summarizers.Add(module, summarizer = new ReflectionSummarizer(System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(assembly.PE), assembly.PE, _reflectionCoreContracts));
+            _summarizers.Add(module, summarizer = new ReflectionSummarizer(System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(assembly.PE), assembly.PE, ReflectionContracts));
         }
         return summarizer;
     }

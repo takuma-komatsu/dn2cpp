@@ -251,16 +251,18 @@ bool template_refusal_names(const Dn2CppMethodInfo& row, std::initializer_list<c
 
 void check_template_refusal_rows()
 {
+    constexpr int32_t binding_flags = DN2CPP_CTOR_PARAM_ARRAY | DN2CPP_CTOR_VARARGS;
     auto packed = record(0, (1ULL << 5) | (1ULL << 18) | (1ULL << 19)
-        | (1ULL << 20) | (1ULL << 21) | (1ULL << 37) | (1ULL << 38),
-        { uint64_t(template_row_attrs) * 2, 14, 2, 1, 18, 1, 4 });
+        | (1ULL << 20) | (1ULL << 21) | (1ULL << 37) | (1ULL << 38) | (1ULL << 39),
+        { uint64_t(template_row_attrs) * 2, 14, 2, 1, 18, 1, 4, uint64_t(binding_flags) * 2 });
     auto decoded = *Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_static(packed.bytes.data());
     require(decoded.attrs == template_row_attrs && decoded.preservable == 1
         && decoded.returnRequiredCustomModifierCount == 7
         && decoded.returnOptionalCustomModifiers == pointers[0]
         && decoded.returnOptionalCustomModifierCount == 9
-        && decoded.returnCustomAttrs.identity() == pointers[0] && decoded.returnCustomAttrCount == 2,
-        "a packed method row keeps its preserve marker, modifiers and trailing return attributes");
+        && decoded.returnCustomAttrs.identity() == pointers[0] && decoded.returnCustomAttrCount == 2
+        && decoded.constructorBinding == binding_flags,
+        "a packed method row keeps its preserve marker, modifiers, return attributes and constructor binding flags");
     static const Dn2CppMethodInfo closed = template_row(0);
     static const Dn2CppMethodInfo preservable = template_row(1);
     require(template_refusal_names(closed, { "this closed generic instantiation has no compiled code; "
@@ -804,15 +806,19 @@ int main()
         == offsetof(Dn2CppMethodInfo, preservable) + sizeof(int32_t));
     static_assert(sizeof(void*) != 8 || (sizeof(Dn2CppMethodInfo) == 264
         && offsetof(Dn2CppMethodInfo, preservable) % alignof(void*) == sizeof(int32_t)));
+    static_assert(offsetof(Dn2CppMethodInfo, constructorBinding)
+        == offsetof(Dn2CppMethodInfo, returnCustomAttrCount) + sizeof(int32_t));
     static_assert(sizeof(Dn2CppMethodInfo)
-        == offsetof(Dn2CppMethodInfo, returnCustomAttrCount) + alignof(Dn2CppMethodInfo));
-    static_assert(std::size(Dn2CppMethodInfo_fields) == 39
+        == offsetof(Dn2CppMethodInfo, constructorBinding) + sizeof(int32_t));
+    static_assert(std::size(Dn2CppMethodInfo_fields) == 40
         && Dn2CppMethodInfo_fields[19].offset == offsetof(Dn2CppMethodInfo, preservable)
         && Dn2CppMethodInfo_fields[20].offset == offsetof(Dn2CppMethodInfo, returnOptionalCustomModifiers)
         && Dn2CppMethodInfo_fields[35].offset == offsetof(Dn2CppMethodInfo, definitionSignature)
         && Dn2CppMethodInfo_fields[36].offset == offsetof(Dn2CppMethodInfo, initializer)
         && Dn2CppMethodInfo_fields[37].offset == offsetof(Dn2CppMethodInfo, returnCustomAttrs)
-        && Dn2CppMethodInfo_fields[38].offset == offsetof(Dn2CppMethodInfo, returnCustomAttrCount));
+        && Dn2CppMethodInfo_fields[38].offset == offsetof(Dn2CppMethodInfo, returnCustomAttrCount)
+        && Dn2CppMethodInfo_fields[39].offset == offsetof(Dn2CppMethodInfo, constructorBinding)
+        && Dn2CppMethodInfo_fields[39].encoding == Encoding::Signed32);
     auto event = packed_event.operator->();
     require(event->name == unicode && event->declaringType == &original_type
         && event->handlerType == &substituted_type && event->handlerRecipe == &field_signature
