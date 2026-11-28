@@ -473,7 +473,7 @@ internal sealed partial class Compilation
         LookupMemberKind? kind = api.Op switch
         {
             ReflectionOp.GetMethod or ReflectionOp.GetMethods => LookupMemberKind.Method,
-            ReflectionOp.GetConstructor or ReflectionOp.GetConstructors => LookupMemberKind.Constructor,
+            ReflectionOp.GetConstructor or ReflectionOp.GetConstructors or ReflectionOp.TypeInitializer => LookupMemberKind.Constructor,
             ReflectionOp.GetProperty or ReflectionOp.GetProperties => LookupMemberKind.Property,
             ReflectionOp.GetField or ReflectionOp.GetFields => LookupMemberKind.Field,
             ReflectionOp.GetEvent or ReflectionOp.GetEvents => LookupMemberKind.Event,
@@ -855,7 +855,8 @@ internal sealed partial class Compilation
                     bool listsMethods = api.Op switch
                     {
                         ReflectionOp.GetMethod or ReflectionOp.GetMethods or ReflectionOp.GetConstructor
-                            or ReflectionOp.GetConstructors or ReflectionOp.GetMembers or ReflectionOp.GetDefaultMembers => true,
+                            or ReflectionOp.GetConstructors or ReflectionOp.TypeInitializer or ReflectionOp.GetMembers
+                            or ReflectionOp.GetDefaultMembers => true,
                         ReflectionOp.GetMember => api.MemberTypes < 0
                             || MemberTypesMask(Op(api.MemberTypes)) is not int mask
                             || (mask & (int)(MemberTypes.Method | MemberTypes.Constructor)) != 0,
@@ -1070,7 +1071,7 @@ internal sealed partial class Compilation
                                     InvokeSelected(e, app, ReflectionAccessor.All);
                         // CreateInstance ignores the name.
                         if ((flags & 0x200) != 0)
-                            foreach (var e in SelectMembers(cls, LookupMemberKind.Constructor, null, flags, null, -1))
+                            foreach (var e in SelectMembers(cls, LookupMemberKind.Constructor, ".ctor", flags, null, -1))
                                 ConstructSelected(e.Method!);
                     }
                     string? kind = (flags & 1) != 0 ? null : (flags & 0x3F00) switch
@@ -1128,7 +1129,8 @@ internal sealed partial class Compilation
                 break;
             case REntityKind.TemplateMember when e.Lookup is { } lookup:
                 SelectTemplateMember(e, lookup, e.Number != 0 ? (ReflectionAccessor)e.Number : accessor,
-                    lookup.Kind == LookupMemberKind.Constructor, -1, app, e.PublicAccessors || publicAccessors);
+                    lookup.Kind == LookupMemberKind.Constructor && (lookup.Flags & ReflectionApis.Instance) != 0,
+                    -1, app, e.PublicAccessors || publicAccessors);
                 break;
             default:
                 InvokeSelectedMember(e, accessor, publicAccessors);
@@ -1172,6 +1174,11 @@ internal sealed partial class Compilation
         CoreIntrinsics.ValidateVectorAlignment(target);
         CoreIntrinsics.ValidateConcreteVectorReduction(target);
         _reflectionSelectionCount++;
+        if (target.Name == ".cctor")
+        {
+            ReachCctor(cls);
+            return;
+        }
         // Reuse the call lowerings without following runtime-owned implementation bodies.
         if (CoreIntrinsics.IsMathOverflowHelper(target) || CoreIntrinsics.IsTaskCompletionTransfer(target))
             NoteIntrinsicFtnTarget(target);
@@ -1281,7 +1288,8 @@ internal sealed partial class Compilation
                 foreach (var e in ctors.Items)
                     if (e.Kind == REntityKind.Method && e.Method is { Name: ".ctor" } ctor)
                         ConstructSelected(ctor);
-                    else if (e is { Kind: REntityKind.TemplateMember, Lookup: { Kind: LookupMemberKind.Constructor } lookup })
+                    else if (e is { Kind: REntityKind.TemplateMember, Lookup: { Kind: LookupMemberKind.Constructor } lookup }
+                        && (lookup.Flags & ReflectionApis.Instance) != 0)
                         SelectTemplateMember(e, lookup, ReflectionAccessor.None, construct: true, -1, app);
                 if (ctors.Unknown is not null)
                     RecordReflectionDiagnostic(app, site, ReflectionDiagnosticKind.Execution,
@@ -1395,7 +1403,7 @@ internal sealed partial class Compilation
             bool constructed = false;
             var selected = new List<MethodInfo>();
             foreach (int flags in flagSet)
-                foreach (var c in SelectMembers(cls, LookupMemberKind.Constructor, null, flags, null, -1))
+                foreach (var c in SelectMembers(cls, LookupMemberKind.Constructor, ".ctor", flags, null, -1))
                     if (!selected.Contains(c.Method!))
                         selected.Add(c.Method!);
             foreach (var ctor in selected)
@@ -2479,7 +2487,7 @@ internal sealed partial class Compilation
             NoteTypeIdentityClosure(TypeDesc.MakeClass(cls));
             if (construct)
             {
-                foreach (var c in SelectMembers(cls, LookupMemberKind.Constructor, null, lookup.Flags | ReflectionApis.Instance,
+                foreach (var c in SelectMembers(cls, LookupMemberKind.Constructor, ".ctor", lookup.Flags | ReflectionApis.Instance,
                              lookup.Types, -1))
                     if (c.Method is { } ctor && (arguments < 0 || ctor.Signature.ParameterTypes.Length == arguments))
                         ConstructSelected(ctor);
@@ -2518,7 +2526,7 @@ internal sealed partial class Compilation
             var visiting = new HashSet<(Module, MethodDefinitionHandle)>();
             var selected = new HashSet<(Module, MethodDefinitionHandle)>();
             var members = construct
-                ? SelectMembers(ReflectionDefinitionOwner(module, def, null), LookupMemberKind.Constructor, null,
+                ? SelectMembers(ReflectionDefinitionOwner(module, def, null), LookupMemberKind.Constructor, ".ctor",
                     lookup.Flags | ReflectionApis.Instance, lookup.Types, -1)
                 : DefinitionMembers(module, def, null, lookup);
             foreach (var member in members)
@@ -3143,9 +3151,6 @@ internal sealed partial class Compilation
                     bool ctor = method.Name is ".ctor" or ".cctor";
                     var memberKind = ctor ? LookupMemberKind.Constructor : LookupMemberKind.Method;
                     if (kind is not null && kind != memberKind || method.IsSynthetic)
-                        continue;
-                    if (accessedMembers == AccessedMembers.None && kind == LookupMemberKind.Constructor
-                        && method.Name == ".cctor" != (flags == ReflectionApis.TypeInitializerLookup))
                         continue;
                     if (name is not null && !ReflectionLookupRules.NameMatches(method.Name, name, flags, prefix))
                         continue;
@@ -4990,8 +4995,6 @@ internal sealed partial class Compilation
             ReflectionOp.GetNestedType => LookupMemberKind.NestedType,
             _ => null,
         };
-        if (op == ReflectionOp.TypeInitializer)
-            flagSet = new List<int> { ReflectionApis.TypeInitializerLookup };
         string? nameRuleUnknown = null;
         foreach (var e in owners.Items)
             foreach (int flags in flagSet)

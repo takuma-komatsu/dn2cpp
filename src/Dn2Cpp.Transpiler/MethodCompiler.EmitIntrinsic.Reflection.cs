@@ -1216,7 +1216,14 @@ internal sealed partial class MethodCompiler
             // Reflection constructor enumeration + invocation. GetConstructors
             // ([flags]) -> ConstructorInfo[], GetConstructor(Type[][, flags]) -> the
             // matching ctor or null. The no-flags overloads use BindingFlags.Public |
-            // Instance (= 20). ConstructorInfo.Invoke(object[]) allocates + constructs.
+            // Instance (= 20).
+            case ("System.Type", "get_TypeInitializer") when sig.ParameterTypes.Length == 0:
+            {
+                var t = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*",
+                    $"((Dn2CppObject*)dn2cpp_type_get_type_initializer({Cast(t, "Dn2CppType*")}))");
+                return true;
+            }
             case ("System.Type", "GetConstructors") when sig.ParameterTypes.Length == 0:
             {
                 var t = Pop();

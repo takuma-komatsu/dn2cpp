@@ -80,7 +80,7 @@ internal sealed partial class AssemblyDiet
         {
             var decision = _methods.Contains(method) || _formationBodies.Contains(method) ? MethodDecision.Body
                 : _signatureMethods.Contains(method) && (!(method.IsConstructor && method.IsStatic)
-                    || _attributeInitializerProviders.Contains(method)) ? MethodDecision.Stub
+                    || _listedInitializers.Contains(method)) ? MethodDecision.Stub
                 : MethodDecision.Remove;
             item.Methods.Add((method, decision));
             if (decision == MethodDecision.Remove) { plan.RemovedMethods++; _plannedRemovedMethods++; }
@@ -150,7 +150,7 @@ internal sealed partial class AssemblyDiet
                     {
                         if (!KeepsMethod(method)) continue;
                         if (method.IsConstructor && method.IsStatic && !_methods.Contains(method)
-                            && !_formationBodies.Contains(method) && !_attributeInitializerProviders.Contains(method))
+                            && !_formationBodies.Contains(method) && !_listedInitializers.Contains(method))
                             throw new InvalidOperationException("ILDiet plan would stub a static initializer");
                         ValidateKeptType(method.ReturnType);
                         ValidateAttributeConstructors(method.MethodReturnType);

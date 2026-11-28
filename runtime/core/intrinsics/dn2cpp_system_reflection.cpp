@@ -1005,11 +1005,14 @@ Dn2CppObject* dn2cpp_get_uninitialized_object(Dn2CppType* t)
     dn2cpp_require_allocation_supported(ti);
     if (dn2cpp_unallocated(ti))
         dn2cpp_throw_unallocated(ti, dn2cpp_utf8_of(dn2cpp_type_tostring(ti)), "GetUninitializedObject");
-    // The CLR runs every precise-init initializer on the base chain, the allocated
-    // type's first, even though no constructor runs. A beforefieldinit level's hook is
-    // null: its first static field access initializes it.
+    // Uninitialized allocation runs each precise initializer on the base chain,
+    // derived type first. A beforefieldinit level waits for static field access.
     for (const Dn2CppTypeInfo* level = ti; level != nullptr; level = level->base)
-        dn2cpp_run_initializer(level->reflection().ensureInitializer);
+    {
+        const auto reflection = level->reflection();
+        if ((reflection.ilAttrs & 0x100000) == 0) // TypeAttributes.BeforeFieldInit
+            dn2cpp_run_initializer(reflection.ensureInitializer);
+    }
     // An exception type floors at the exception prefix, not the bare header: an
     // opaque one (System.Exception itself) reports no instanceSize, yet throwing
     // the instance stamps the trace slot and a catch reads the prefix fields.
@@ -2568,10 +2571,8 @@ static Dn2CppMethodRef* dn2cpp_make_methodref(Dn2CppMetadataHandle<Dn2CppMethodI
     if (slot == nullptr)
     {
         auto* r = static_cast<Dn2CppMethodRef*>(dn2cpp_alloc_pinned(sizeof(Dn2CppMethodRef)));
-        // A ctortab row gets the ConstructorInfo header (a static .cctor is never a
-        // reflected row), a methtab row the MethodInfo one — `is ConstructorInfo` /
-        // `is MethodInfo` then discriminate like real .NET.
-        r->type = std::strcmp(mi->name, ".ctor") == 0
+        const char* name = mi->name;
+        r->type = std::strcmp(name, ".ctor") == 0 || std::strcmp(name, ".cctor") == 0
             ? &dn2cpp_constructorinfo_type
             : &dn2cpp_methodinfo_type;
         r->method = mi;
@@ -4160,7 +4161,7 @@ static void dn2cpp_validate_open_arguments(const Dn2CppMethodGenericParameter* p
                 constructor |= (reflection.activation & DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR) != 0;
                 for (int32_t j = 0; j < reflection.ctorCount; j++)
                     constructor |= reflection.ctors[j]->paramCount == 0
-                        && (reflection.ctors[j]->attrs & DN2CPP_MTHA_PUBLIC) != 0;
+                        && (reflection.ctors[j]->attrs & (DN2CPP_MTHA_STATIC | DN2CPP_MTHA_PUBLIC)) == DN2CPP_MTHA_PUBLIC;
             }
             if (!constructor)
                 dn2cpp_throw_argument();
@@ -6445,11 +6446,37 @@ static Dn2CppObject* dn2cpp_invoke_mi(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
     return dn2cpp_invoke_row(mi, plan, obj, args, argc, wrapExceptions, mode, reflected);
 }
 
+[[noreturn]] static void dn2cpp_throw_initializer_member_access(const Dn2CppTypeInfo* ti)
+{
+    if ((ti->flags & DN2CPP_TF_INTERFACE) != 0)
+        dn2cpp_throw_sr1(&dn2cpp_member_access_exception_type, DN2CPP_SR_CREATE_INTERFACE, dn2cpp_type_tostring(ti));
+    if ((ti->flags & DN2CPP_TF_ABSTRACT) != 0)
+        dn2cpp_throw_sr1(&dn2cpp_member_access_exception_type, DN2CPP_SR_CREATE_ABSTRACT, dn2cpp_type_tostring(ti));
+    if (dn2cpp_type_contains_generic_parameters(ti))
+        dn2cpp_throw_sr1(&dn2cpp_member_access_exception_type, DN2CPP_SR_CREATE_OPEN_GENERIC, dn2cpp_type_tostring(ti));
+    dn2cpp_throw_sr0(&dn2cpp_member_access_exception_type, DN2CPP_SR_INITIALIZER_NOT_CALLABLE);
+}
+
 // MethodInfo.Invoke refuses an open definition view before receiver or argument
 // validation, regardless of whether the image contains a compiled instantiation.
 Dn2CppObject* dn2cpp_methodref_invoke(Dn2CppMethodRef* m, Dn2CppObject* obj, Dn2CppArrayRef* args, bool wrapExceptions)
 {
     Dn2CppMetadataHandle<Dn2CppMethodInfo> mi = dn2cpp_methodref_require(m);
+    if (m->type == &dn2cpp_constructorinfo_type && (mi->attrs & DN2CPP_MTHA_STATIC) != 0)
+    {
+        const auto* declaring = mi->declaringType;
+        if (dn2cpp_type_contains_generic_parameters(declaring))
+            dn2cpp_throw_initializer_member_access(declaring);
+        if (args != nullptr && args->length != 0)
+            dn2cpp_throw_invoke_parameter_count();
+        auto ensure = declaring->reflection().ensureInitializer;
+        if (ensure == nullptr || mi->fnPtr == nullptr)
+            dn2cpp_throw_invoke_unavailable(mi, declaring);
+        // MethodBase.Invoke on a type initializer uses the CLR's once-only
+        // initialization path, including its cached TypeInitializationException.
+        dn2cpp_run_initializer(ensure);
+        return nullptr;
+    }
     if (dn2cpp_methodref_contains_generic_parameters(m) != 0
         || dn2cpp_type_metadata_only(mi->declaringType))
         dn2cpp_throw_reflection_fault(&dn2cpp_invalid_operation_exception_type,
@@ -8829,6 +8856,8 @@ static Dn2CppTypeReflection dn2cpp_constructor_metadata(const Dn2CppTypeInfo* ti
 // runs the ctor through its invoker thunk (instance, void return), and returns it.
 static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, Dn2CppObject** args, int32_t argc, bool wrapExceptions)
 {
+    if ((mi->attrs & DN2CPP_MTHA_STATIC) != 0)
+        dn2cpp_throw_initializer_member_access(mi->declaringType);
     Dn2CppInvokePlan local;
     const Dn2CppInvokePlan& plan = dn2cpp_invoke_plan_of(mi, true, local);
     if ((plan.declaringType->flags & DN2CPP_TF_GENERICDEF) != 0)
@@ -8905,7 +8934,7 @@ void dn2cpp_array_initialize(Dn2CppObject* a)
     for (int32_t i = 0; i < reflection.ctorCount; i++)
     {
         const auto row = reflection.ctors[i].operator->();
-        if (row->paramCount != 0)
+        if (row->paramCount != 0 || (row->attrs & DN2CPP_MTHA_STATIC) != 0)
             continue;
         if (row->invoker == nullptr || row->fnPtr == nullptr)
             dn2cpp_throw_invoke_unavailable(reflection.ctors[i], el);
@@ -8989,6 +9018,7 @@ Dn2CppMethodRef* dn2cpp_type_get_constructor_full(Dn2CppType* t, Dn2CppArrayRef*
         && dn2cpp_params_match_types(localConstructor, paramTypes, ti))
         return dn2cpp_make_methodref(localConstructor, ti);
     const auto reflection = dn2cpp_constructor_metadata(ti);
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> found;
     for (int32_t i = 0; i < reflection.ctorCount; i++)
     {
         const auto ci = reflection.ctors[i];
@@ -9015,8 +9045,22 @@ Dn2CppMethodRef* dn2cpp_type_get_constructor_full(Dn2CppType* t, Dn2CppArrayRef*
             break;
         }
         if (match)
-            return dn2cpp_make_methodref(ci, ti);
+        {
+            if (found)
+                dn2cpp_throw_ambiguous_member(reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(found, ti)));
+            found = ci;
+        }
     }
+    return found ? dn2cpp_make_methodref(found, ti) : nullptr;
+}
+
+Dn2CppMethodRef* dn2cpp_type_get_type_initializer(Dn2CppType* t)
+{
+    const auto* ti = dn2cpp_type_require(t);
+    const auto reflection = ti->reflection();
+    for (int32_t i = 0; i < reflection.ctorCount; i++)
+        if ((reflection.ctors[i]->attrs & DN2CPP_MTHA_STATIC) != 0)
+            return dn2cpp_make_methodref(reflection.ctors[i], ti);
     return nullptr;
 }
 
@@ -9056,7 +9100,7 @@ static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, bool allowPu
     {
         const auto ci = reflection.ctors[i];
         const auto row = ci.operator->();
-        if (row->paramCount != 0)
+        if (row->paramCount != 0 || (row->attrs & DN2CPP_MTHA_STATIC) != 0)
             continue;
         hasDefaultConstructor = true;
         if ((row->attrs & DN2CPP_MTHA_PUBLIC) != 0 ? allowPublic : allowNonPublic)
@@ -9172,7 +9216,7 @@ void dn2cpp_runtime_type_call_default_struct_constructor(Dn2CppType* t, uint8_t*
     {
         const auto ci = reflection.ctors[i];
         const auto row = ci.operator->();
-        if (row->paramCount != 0)
+        if (row->paramCount != 0 || (row->attrs & DN2CPP_MTHA_STATIC) != 0)
             continue;
         hasDefaultConstructor = true;
         if ((row->attrs & DN2CPP_MTHA_PUBLIC) == 0)
@@ -11747,13 +11791,14 @@ int32_t dn2cpp_type_implement_interface(Dn2CppType* t, Dn2CppType* itf)
     return 0;
 }
 
-// MemberInfo.MemberType (System.Reflection.MemberTypes): constructors share the
-// MethodRef representation, discriminated by the ".ctor" name.
+// MemberInfo.MemberType (System.Reflection.MemberTypes).
 int32_t dn2cpp_memberinfo_member_type(Dn2CppObject* m)
 {
     dn2cpp_memberref_require(m);
-    if (dn2cpp_is_methodref_header(m->type))
-        return reinterpret_cast<Dn2CppMethodRef*>(m)->method->name[0] == '.' ? 0x01 : 0x08;
+    if (m->type == &dn2cpp_constructorinfo_type)
+        return DN2CPP_MT_CONSTRUCTOR;
+    if (m->type == &dn2cpp_methodinfo_type)
+        return DN2CPP_MT_METHOD;
     if (m->type == &dn2cpp_fieldinfo_type)
         return 0x04;
     if (m->type == &dn2cpp_propertyinfo_type)
@@ -11832,8 +11877,7 @@ int32_t dn2cpp_methodref_is_final(Dn2CppMethodRef* m)
     return (dn2cpp_methodref_require(m)->ilAttrs & DN2CPP_MA_FINAL) != 0 ? 1 : 0;
 }
 
-// MethodBase.IsConstructor: an instance .ctor (the static .cctor is never a
-// reflected row; see the emitter's ctor table filter).
+// MethodBase.IsConstructor is true only for an instance constructor.
 int32_t dn2cpp_methodref_is_constructor(Dn2CppMethodRef* m)
 {
     return std::strcmp(dn2cpp_methodref_require(m)->name, ".ctor") == 0

@@ -154,7 +154,7 @@ internal sealed partial class AssemblyDiet
                 KeepFormationType(type);
                 return true;
             case MethodDefinition method:
-                if (method.IsConstructor && method.IsStatic) _attributeInitializerProviders.Add(method);
+                if (method.IsConstructor && method.IsStatic) _listedInitializers.Add(method);
                 KeepFormationMethod(method);
                 return true;
             case FieldDefinition field:

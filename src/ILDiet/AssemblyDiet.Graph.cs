@@ -18,6 +18,7 @@ internal sealed partial class AssemblyDiet
         OpaqueData = 32, Runtime = 64, Boxed = 128, FieldRead = 256, Metadata = 512,
         DefaultCtorAnyVisibility = 1024, ArrayLayout = 2048, FrameworkAttributeNamed = 4096,
         PreservedUse = 8192, TypeWide = 16384, PassiveMetadata = 32768, TypeContract = 65536, NamedTypeContract = 131072,
+        InitializerRow = 262144, InitializerBody = 524288,
         AccessedMembers = (ulong)uint.MaxValue << AccessedMembersShift
     }
 

@@ -125,8 +125,8 @@ internal sealed partial class CppEmitter
             {
                 var method = reader.GetMethodDefinition(handle);
                 string name = reader.GetString(method.Name);
-                bool constructor = name == ".ctor";
-                if (name == ".cctor" || !available && !constructor)
+                bool constructor = name is ".ctor" or ".cctor";
+                if (!available && !constructor)
                     continue;
                 var signature = method.DecodeSignature(provider, null);
                 string[] methodNames = method.GetGenericParameters().Select(p => reader.GetString(reader.GetGenericParameter(p).Name)).ToArray();

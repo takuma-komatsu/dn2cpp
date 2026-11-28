@@ -104,10 +104,10 @@ indexer fails original-signature validation.
 
 Runtime retention adds type initializers and virtual, override, interface and
 delegate bodies. It follows executable type references and explicit runtime
-roots. A signature alone does not promote a type to runtime. Static initializers
-retain their original bodies or are removed, except that an admitted
-attribute-provider row may retain an otherwise-unused initializer as a metadata
-stub.
+roots. A signature alone does not promote a type to runtime. An executable
+initializer keeps its original body. An explicit metadata lookup or an admitted
+attribute-provider row can keep its declaration as a stub. Other unused
+initializers are removed.
 
 Executable input roots include the entry point, application static initializers,
 module initializers, native exports and preservation. A library input retains
@@ -232,8 +232,7 @@ Identity-only references can activate explicit conditional preservation without
 an attribute read; a later read upgrades argument observation without selecting
 a factory. The original provider metadata survives so the published input retains
 that conditional evidence. An admitted initializer attribute row can retain its
-MethodDef with a stub; ordinary initializer metadata still requires a body or is
-removed. Identity observation never constructs an attribute or executes its
+MethodDef with a stub. Identity observation never constructs an attribute or executes its
 accessors. Independently reached bodies and backend attribute reads retain their
 executable dependencies. Backend registration arrays expose only their effective
 entries throughout metadata retention, identity observation and final validation.
@@ -292,10 +291,9 @@ identity.
 
 ILDiet shares `ReflectionApis` and `ReflectionSummary` with dn2cpp. Each site's
 summary selects its own metadata rows or executable dependencies. Identity and
-lookup operations keep metadata. Explicit static-initializer selections,
-including `TypeInitializer` and constructor or member queries, keep the requested
-type's original initializer body. Ordinary member-row retention does not keep it;
-the passive attribute-provider exception preserves only the original row.
+lookup operations keep metadata. `TypeInitializer` and constructor or member
+lookups selecting a declared static initializer retain its MethodDef. Invoking
+the initializer on a closed type requires its original body.
 Execution keeps selected bodies; a known owner with an unknown member keeps the corresponding
 member kind conservatively. General and default-member selection covers the
 corresponding member kinds, including fields, events and nested types. Known

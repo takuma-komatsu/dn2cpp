@@ -6,7 +6,7 @@ internal sealed partial class AssemblyDiet
 {
     private enum ProjectionKind : byte
     {
-        Base, Ancestors, GenericArgument, MethodGenericArgument, Methods, Constructors, Element, GenericDefinition, GenericClosure, GenericMethodClosure, Interfaces, NestedTypes, AssemblyTypes,
+        Base, Ancestors, GenericArgument, MethodGenericArgument, Methods, Constructors, TypeInitializer, Element, GenericDefinition, GenericClosure, GenericMethodClosure, Interfaces, NestedTypes, AssemblyTypes,
         FieldTypes, PropertyTypes, ReturnTypes, ParameterTypes, BoxedRuntimeType,
     }
 
@@ -15,6 +15,7 @@ internal sealed partial class AssemblyDiet
     private sealed class ProjectionNode
     {
         internal required ProjectedTypeReference Reference;
+        internal required TypeReference Source;
         internal required ProjectionKind Kind;
         internal required int Index;
         internal required int Arity;
@@ -50,7 +51,7 @@ internal sealed partial class AssemblyDiet
         CheckMutable();
         Spend();
         var reference = new ProjectedTypeReference(source, _projections.Count);
-        var node = new ProjectionNode { Reference = reference, Kind = kind, Index = index, Arity = arity };
+        var node = new ProjectionNode { Reference = reference, Source = source, Kind = kind, Index = index, Arity = arity };
         reference.Node = node;
         _projections.Add(key, node);
         QueueProjectionSource(node, source);
@@ -63,6 +64,12 @@ internal sealed partial class AssemblyDiet
         // A selected constructor remains metadata until its reflection value is invoked or bound.
         if (node.Kind == ProjectionKind.Constructors && (demands & Demand.MethodBodies) != 0)
             demands = (demands & ~Demand.MethodBodies) | Demand.Ctors;
+        if (node.Kind == ProjectionKind.TypeInitializer)
+        {
+            // The allocating ConstructorInfo.Invoke overload refuses a static constructor.
+            if ((demands & Demand.MethodBodies) != 0) demands |= Demand.InitializerBody;
+            demands &= ~(Demand.MethodBodies | Demand.Ctors);
+        }
         if ((node.Demands & demands) == demands) return;
         node.Demands |= demands;
         _work.Enqueue(new Work(node));
@@ -84,7 +91,18 @@ internal sealed partial class AssemblyDiet
         Spend();
         _demandRules++;
         node.Applied |= delta;
-        foreach (var target in node.Targets) QueueDemand(target, delta);
+        foreach (var target in node.Targets) QueueProjectionDemand(node, target, delta);
+    }
+
+    private void QueueProjectionDemand(ProjectionNode node, TypeReference target, Demand demands)
+    {
+        // A generic closure can represent a formed tuple by its definition.
+        // Other bare generic definitions refuse MethodBase.Invoke before initialization.
+        if (node.Kind == ProjectionKind.TypeInitializer && (demands & Demand.InitializerBody) != 0
+            && target is not GenericInstanceType && Resolve(target) is { HasGenericParameters: true }
+            && node.Source is not ProjectedTypeReference { Node.Kind: ProjectionKind.GenericClosure })
+            demands = (demands & ~Demand.InitializerBody) | Demand.InitializerRow;
+        QueueDemand(target, demands);
     }
 
     private void ApplyProjectionSource(ProjectionNode node, TypeReference source)
@@ -140,6 +158,12 @@ internal sealed partial class AssemblyDiet
             case ProjectionKind.Methods:
             case ProjectionKind.Constructors:
                 ProjectionTarget(node, source);
+                break;
+            case ProjectionKind.TypeInitializer:
+                if (source is not TypeSpecification or GenericInstanceType && Resolve(source) is { } declaring
+                    && declaring.Methods.Any(m => m.IsConstructor && m.IsStatic
+                        && (node.Index & (m.IsPublic ? ReflectionApis.Public : ReflectionApis.NonPublic)) != 0))
+                    ProjectionTarget(node, source);
                 break;
             case ProjectionKind.MethodGenericArgument:
             {
@@ -258,7 +282,7 @@ internal sealed partial class AssemblyDiet
         if (_attributeAllocationProjections.Contains(node)) NoteAttributeAllocation(target);
         ReplayAttributeIdentityProjection(node, target);
         AttributeBindingsChanged();
-        QueueDemand(target, node.Demands);
+        QueueProjectionDemand(node, target, node.Demands);
         foreach (var child in node.Dependents) QueueProjectionSource(child, target);
     }
 

@@ -12,10 +12,16 @@ internal sealed partial class AssemblyDiet
         if (used) NoteTypeContractUse(reference);
     }
 
-    private void KeepMethodSignature(MethodDefinition method)
+    private readonly HashSet<MethodDefinition> _listedInitializers = new();
+
+    private void KeepMethodSignature(MethodDefinition method, bool keepInitializerRow = false)
     {
-        // Initializer rows can execute eagerly; a metadata-only initializer is removed.
-        if (method.IsConstructor && method.IsStatic && !_methods.Contains(method)) return;
+        // Only an explicitly observed initializer needs a metadata-only row.
+        if (method.IsConstructor && method.IsStatic && !_methods.Contains(method))
+        {
+            if (!keepInitializerRow) return;
+            if (_listedInitializers.Add(method)) Spend();
+        }
         if (_passiveAttributeMetadataDepth != 0)
         {
             _passiveAttributeMethods.Add(method);
@@ -126,8 +132,7 @@ internal sealed partial class AssemblyDiet
                 throw new NotSupportedException("cannot resolve managed method: " + reference.FullName);
             return;
         }
-        // An explicit initializer token must retain a valid row; initializers
-        // cannot use the throwing metadata stub used for ordinary methods.
+        // An explicit initializer token may later enter the original method.
         if (IsStripped(method.DeclaringType) && method.IsConstructor && method.IsStatic) MarkMethod(method);
         else KeepMethodSignature(method);
     }

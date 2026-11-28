@@ -5,7 +5,6 @@ namespace Dn2Cpp;
 
 internal sealed partial class AssemblyDiet
 {
-    private readonly HashSet<MethodDefinition> _attributeInitializerProviders = new();
     private readonly HashSet<TypeDefinition> _attributeModelCandidates = new();
     private readonly HashSet<TypeDefinition> _attributeModeledTypes = new();
     private readonly Queue<TypeDefinition> _attributeInventoryPending = new();
@@ -100,16 +99,7 @@ internal sealed partial class AssemblyDiet
     private void KeepAttributeProviderMethod(MethodDefinition method)
     {
         MarkSignatureType(method.DeclaringType);
-        // An admitted row on an otherwise-unused initializer needs its original
-        // MethodDef, not an executable initializer. Ordinary cctor metadata still
-        // follows the body-or-remove rule.
-        if (method.IsConstructor && method.IsStatic)
-        {
-            if (_attributeInitializerProviders.Add(method)) Spend();
-            _passiveAttributeMethods.Add(method);
-            Require(method, MethodState.Metadata);
-        }
-        else KeepMethodSignature(method);
+        KeepMethodSignature(method, keepInitializerRow: true);
     }
 
     private void ValidateAttributeIdentityProvider(SelectedAttributeRow row)
