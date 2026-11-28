@@ -792,7 +792,7 @@ internal sealed class PreservationReader
 
     private static bool IsMustEscape(Exception exception) => exception is OutOfMemoryException;
 
-    private static string? AttributeTypeName(MetadataReader reader, CustomAttribute attribute)
+    internal static string? AttributeTypeName(MetadataReader reader, CustomAttribute attribute)
     {
         EntityHandle type = attribute.Constructor.Kind switch
         {

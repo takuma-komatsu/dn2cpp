@@ -268,8 +268,9 @@ internal sealed partial class CppEmitter
                 {
                     var method = definition.Module.Reader.GetMethodDefinition(handle);
                     return definition.Module.Reader.GetString(method.Name) == ".ctor"
-                        && (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask) == System.Reflection.MethodAttributes.Public
-                        && method.DecodeSignature(new ConstraintProvider(_c), null).ParameterTypes.Length == 0;
+                        && (method.Attributes & (System.Reflection.MethodAttributes.MemberAccessMask
+                            | System.Reflection.MethodAttributes.Static)) == System.Reflection.MethodAttributes.Public
+                        && HasDefaultConstructorSignature(definition.Module.Reader, method);
                 });
                 string? attributes = available && _c.HasFieldNullabilityDefinition(definition.Module, definition.Handle)
                     ? RenderTypeParameterAttributes(definition.Module, handles, symbol + "_attributes") : null;

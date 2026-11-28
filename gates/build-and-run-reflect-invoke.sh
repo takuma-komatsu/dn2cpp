@@ -30,6 +30,7 @@
 # Opaque generic pointees and dynamic array arguments preserve overload inequality.
 # Named constructors run on existing receivers; cold initializer binds do not initialize.
 # Declared static constructors expose metadata on open and closed types and run once through target-taking Invoke.
+# Constructor binding fills optional arguments and accepts a prepacked or expanded parameter array.
 # Direct initializer calls repeat the body, and constructor Delegate.Method faults.
 # Application-derived types retain callable cold initializers from library bases.
 # By-value delegate binding matches enums to their exact underlying type by name and MethodInfo.
@@ -322,6 +323,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-alternatives-pr
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|public-type-predicates-prefix-argv:before-public-type-predicates|memberinfo-managed-constructor|module-attribute-data"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|invoke-member-prefix-argv:before-invoke-member|invoke-member-boundary-argv:invoke-member-boundaries"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|type-initializer-prefix-argv:before-type-initializers"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|constructor-arguments-prefix-argv:before-constructor-arguments"
 
 gate_python -c 'pass' >/dev/null
 source gates/_reflect-invoke-inputs.sh
@@ -2399,8 +2401,10 @@ awk -F '\t' 'index($3, "InvokeMemberSubset.Program+") == 1 && index($5, "System.
 for axis in native dotnet; do
     if [ "$axis" = native ]; then
         gate_capture_ok "$_CG_OUT/type-initializers-before.$axis" run_bounded "$_CG_OUT/ReflectInvoke$EXE_EXT" before-type-initializers
+        gate_capture_ok "$_CG_OUT/constructor-arguments-before.$axis" run_bounded "$_CG_OUT/ReflectInvoke$EXE_EXT" before-constructor-arguments
     else
         gate_capture_ok "$_CG_OUT/type-initializers-before.$axis" reflection_oracle "$_CG_APP" before-type-initializers
+        gate_capture_ok "$_CG_OUT/constructor-arguments-before.$axis" reflection_oracle "$_CG_APP" before-constructor-arguments
     fi
     gate_output select "$_CG_OUT/gate.$axis.stdout" "$_CG_OUT/type-initializers-prefix.$axis.stdout" \
         --before '== declared static constructors ==' --policy crlf
@@ -2412,6 +2416,14 @@ for axis in native dotnet; do
         'closed initializer=.cctor/.cctor rows=1/1/1' 'closed repeat=null/11' \
         'derived initializer=-/- rows=0/0/0' 'metadata-only initializer=.cctor/11' 'static initializer activation=True' \
         'interface allocating=MemberAccessException/Cannot create an instance of ActivatorSubset.Program+IInitialized because it is an interface.'
+    gate_output select "$_CG_OUT/gate.$axis.stdout" "$_CG_OUT/constructor-arguments-prefix.$axis.stdout" \
+        --before '== constructor argument binding ==' --policy crlf
+    gate_output compare "$_CG_OUT/constructor-arguments-prefix.$axis.stdout" "$_CG_OUT/constructor-arguments-before.$axis.stdout"
+    gate_output byte-witness "$_CG_OUT/gate.$axis.stdout" --count 1 --policy crlf \
+        'optional with initializer=17/19' 'optional without flag=MissingMethodException' 'InvokeMember optional=5/19' \
+        'empty params=0:' 'params without CreateInstance=MissingMethodException' 'expanded params=2:4,6' \
+        'prepacked params identity=True' 'assembly params=left/right' 'zero-formal vararg=NotSupportedException' \
+        'generic vararg=MissingMethodException'
 done
 if grep -Eq '^// LookupOnlyInitializer::\.cctor( |$)' "$_CG_OUT"/generated*.cpp "$_CG_OUT/generated.h"; then
     echo 'FAIL: reading TypeInitializer retained its uninvoked body' >&2

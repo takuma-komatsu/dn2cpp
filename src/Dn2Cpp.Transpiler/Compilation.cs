@@ -4779,10 +4779,7 @@ internal sealed partial class Compilation
             if ((md.Attributes & MethodAttributes.Static) != 0 || md.RelativeVirtualAddress == 0
                 || !reader.StringComparer.Equals(md.Name, ".ctor"))
                 continue;
-            var blob = reader.GetBlobReader(md.Signature);
-            if (blob.ReadSignatureHeader().IsGeneric)
-                blob.ReadCompressedInteger();
-            if (blob.ReadCompressedInteger() == 0)
+            if (IsParameterlessSignature(reader.GetBlobReader(md.Signature), allowVarArgs: false))
                 return handle;
         }
         return default;
@@ -4799,10 +4796,7 @@ internal sealed partial class Compilation
             if ((md.Attributes & MethodAttributes.Static) != 0
                 || !reader.StringComparer.Equals(md.Name, ".ctor"))
                 continue;
-            var blob = reader.GetBlobReader(md.Signature);
-            if (blob.ReadSignatureHeader().IsGeneric)
-                blob.ReadCompressedInteger();
-            if (blob.ReadCompressedInteger() == 0)
+            if (IsParameterlessSignature(reader.GetBlobReader(md.Signature), allowVarArgs: false))
                 return true;
         }
         return false;

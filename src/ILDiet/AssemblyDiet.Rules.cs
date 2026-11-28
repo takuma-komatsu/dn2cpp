@@ -451,10 +451,7 @@ internal sealed partial class AssemblyDiet
                         KeepMethodSignature(constructor);
                     if ((demands & Demand.Ctors) != 0 || constructor.Parameters.Count == 0
                         && (constructor.IsPublic || (demands & Demand.DefaultCtorAnyVisibility) != 0))
-                    {
-                        MarkMethod(constructor);
-                        NoteReflectionInvokeBoxes(constructor);
-                    }
+                        MarkReflectionCandidate(constructor);
                 }
         }
         if ((demands & Demand.FieldRead) != 0)
@@ -528,7 +525,8 @@ internal sealed partial class AssemblyDiet
     {
         if (!ArrayInitializerEligible(type)) return;
         foreach (var method in type.Methods)
-            if (method.IsConstructor && !method.IsStatic && method.Parameters.Count == 0)
+            if (method.IsConstructor && !method.IsStatic && method.Parameters.Count == 0
+                && method.CallingConvention != MethodCallingConvention.VarArg)
             {
                 KeepOriginalModelSources(type);
                 RequestModelOwnerPromotion(type);
@@ -1712,6 +1710,12 @@ internal sealed partial class AssemblyDiet
                             flags.Integers.Add(api.DefaultFlags | ReflectionApis.NonPublic);
                     }
                 }
+                if (IsActivationOperation(api.Op))
+                {
+                    int arguments = api.Args < 0 ? 0 : ActivationArgumentCount(summary, SiteOperand(site, api.Args));
+                    if (ApplyActivationSite(api.Op, target, flags, arguments, out var remainingFlags)) continue;
+                    flags = remainingFlags;
+                }
                 var types = SummaryValueOf(caller, summary, SiteOperand(site, api.Types));
                 var arity = SummaryValueOf(caller, summary, SiteOperand(site, api.Arity));
                 SelectMembers(selected, target, names, api.Op, flags, types, arity,
@@ -1776,6 +1780,116 @@ internal sealed partial class AssemblyDiet
                 _summaryUnknown++;
                 if (!executes && api.Kind is ReflectionOpKind.Lookup or ReflectionOpKind.Enumerate) UnknownMembers();
             }
+        }
+    }
+
+    private static bool IsActivationOperation(ReflectionOp op) => op is ReflectionOp.ActivatorCreate
+        or ReflectionOp.ActivatorCreateGeneric or ReflectionOp.ActivatorCreateNamed or ReflectionOp.AssemblyCreateInstance
+        or ReflectionOp.RuntimeTypeDefaultCtor or ReflectionOp.RuntimeTypeDefaultStructCtor
+        or ReflectionOp.RuntimeTypeCreateInstanceOfT or ReflectionOp.InvokeMember;
+
+    private static int ActivationArgumentCount(ReflectionSummary summary, RValue value)
+    {
+        if (value.Unknown >= 0 || value.Alternatives is not { Length: > 0 } alternatives) return -1;
+        int length = -1;
+        foreach (int id in alternatives)
+        {
+            var term = summary.Terms[id];
+            int current = term.Kind == TermKind.Null ? 0 : term.Kind == TermKind.TypeArray ? (int)term.Number : -1;
+            if (current < 0 || length >= 0 && current != length) return -1;
+            length = current;
+        }
+        return length;
+    }
+
+    private bool ApplyActivationSite(ReflectionOp op, SummaryValue target, SummaryValue flags, int arguments,
+        out SummaryValue remainingFlags)
+    {
+        bool unknown = !OnlyIntegerValues(flags) || flags.Integers.Count == 0;
+        remainingFlags = new SummaryValue { Unknown = unknown };
+        var choices = new List<long>(flags.Integers);
+        if (unknown) choices.Add(ReflectionApis.Everything | ReflectionApis.CreateInstance | ReflectionApis.OptionalParamBinding);
+        foreach (long original in choices)
+        {
+            int choice = (int)original;
+            if (op == ReflectionOp.InvokeMember)
+            {
+                if ((choice & ReflectionApis.CreateInstance) == 0)
+                {
+                    remainingFlags.Integers.Add(choice);
+                    continue;
+                }
+                if ((choice & (ReflectionApis.Public | ReflectionApis.NonPublic)) == 0) choice |= ReflectionApis.Public;
+                if ((choice & (ReflectionApis.Instance | ReflectionApis.Static)) == 0) choice |= ReflectionApis.Instance | ReflectionApis.Static;
+            }
+            else
+            {
+                if ((choice & 0xff) == 0) choice |= ReflectionApis.DefaultCreateInstance;
+                choice |= ReflectionApis.Instance;
+            }
+            foreach (var reference in target.Types)
+                if (IsSymbolic(reference)) Project(reference, ProjectionKind.ActivationConstructors, choice, arguments);
+                else ApplyActivationOwner(reference, choice, arguments, target.ConstructedOwners?.Contains(Resolve(reference)!) == true);
+        }
+        if (target.HasUnknownOwner) _summaryUnknown++;
+        return op != ReflectionOp.InvokeMember || !unknown && remainingFlags.Integers.Count == 0;
+    }
+
+    private void ApplyActivationOwner(TypeReference reference, int flags, int arguments, bool constructed)
+    {
+        if (reference is TypeSpecification and not GenericInstanceType || Resolve(reference) is not { } type) return;
+        MarkSignatureType(reference);
+        if (type.HasGenericParameters && reference is not GenericInstanceType && !constructed) return;
+        if (type.IsValueType) MarkType(reference);
+        foreach (var method in type.Methods)
+        {
+            if (!method.IsConstructor) continue;
+            if (method.IsStatic)
+            {
+                if ((flags & ReflectionApis.Static) != 0 && (flags & (method.IsPublic ? ReflectionApis.Public : ReflectionApis.NonPublic)) != 0)
+                    KeepMethodSignature(method, keepInitializerRow: true);
+                continue;
+            }
+            if ((flags & ReflectionApis.Instance) == 0) continue;
+            Spend();
+            int count = method.Parameters.Count;
+            if ((flags & (method.IsPublic ? ReflectionApis.Public : ReflectionApis.NonPublic)) == 0)
+            {
+                // The value-type default path distinguishes an inaccessible parameterless constructor from implicit zero-initialization.
+                if (type.IsValueType && arguments == 0 && count == 0) KeepMethodSignature(method);
+                continue;
+            }
+            if (arguments == 0 && count != 0 && type.IsValueType && (flags & ReflectionApis.PublicInstance) == ReflectionApis.PublicInstance)
+                continue;
+            var tail = count == 0 ? null : method.Parameters[count - 1].ParameterType as ArrayType;
+            var reader = GetReflectionSummarizer(method.Module).Reader;
+            var match = ReflectionContracts.MatchActivationArguments(reader,
+                System.Reflection.Metadata.Ecma335.MetadataTokens.MethodDefinitionHandle((int)method.MetadataToken.RID),
+                count, tail?.IsVector == true, arguments, flags, out bool paramArray, out bool needsMissing);
+            if (match == ActivationMatch.None) continue;
+            if (match == ActivationMatch.Declaration)
+            {
+                KeepMethodSignature(method);
+                continue;
+            }
+            MarkReflectionCandidate(method);
+            if (paramArray)
+            {
+                NoteArrayElement(tail!.ElementType);
+                QueueDemand(tail.ElementType, Demand.Boxed);
+            }
+            if (needsMissing && _resolver.FindDefinition("System.Reflection.Missing") is { } missing) MarkType(missing);
+        }
+    }
+
+    private void MarkReflectionCandidate(MethodDefinition method)
+    {
+        if (method.IsConstructor && method.CallingConvention == MethodCallingConvention.VarArg)
+            KeepMethodSignature(method);
+        else
+        {
+            MarkMethod(method);
+            NoteReflectionInvokeBoxes(method);
         }
     }
 

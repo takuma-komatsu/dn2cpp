@@ -1760,8 +1760,11 @@ internal sealed partial class Compilation
                 foreach (var e in SelectMembers(tmpl, LookupMemberKind.Constructor, ".ctor", lookup.Flags | ReflectionApis.Instance,
                              lookup.Types, -1))
                     if (e.Method is { Name: ".ctor", IsStatic: false } ctor && ctor.Rva != 0
-                        && (selection.Arguments < 0 || ctor.Signature.ParameterTypes.Length == selection.Arguments))
+                        && ActivationArguments(ctor, selection.Arguments, lookup.Flags, out var paramsElement, out bool needsMissing) == ActivationMatch.Body)
+                    {
+                        NoteActivationArguments(paramsElement, needsMissing);
                         asked.Add((ctor.Module.Index, ctor.Handle));
+                    }
                 continue;
             }
             foreach (var e in SelectLookupMembers(tmpl, lookup))

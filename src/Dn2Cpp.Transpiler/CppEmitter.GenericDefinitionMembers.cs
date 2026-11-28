@@ -184,6 +184,9 @@ internal sealed partial class CppEmitter
                     MetadataValue.Display(returnDisplay), MetadataValue.Display(returnDisplay), MetadataValue.Text("symbolic"), MetadataValue.Signed(0), MetadataValue.Signed(0), MetadataValue.Ref("nullptr"),
                     MetadataValue.Ref(RenderFormalParameters(owner.Module, method.GetGenericParameters())), MetadataValue.Ref("nullptr"), MetadataValue.Ref("nullptr"), MetadataValue.Ref("nullptr"), MetadataValue.Ref("&" + symbol + "_signature"),
                     MetadataValue.Ref("nullptr"), MetadataValue.Ref(returnAttributes.Expr), MetadataValue.Signed(returnAttributes.Count),
+                    MetadataValue.Signed(ConstructorBindingFlags(name, signature.Header,
+                        signature.ParameterTypes.Length != 0 && signature.ParameterTypes[signature.ParameterTypes.Length - 1].Kind == 6,
+                        reader, parameters.GetValueOrDefault(signature.ParameterTypes.Length - 1))),
                 }));
             }
             if (methods.Count > 0)

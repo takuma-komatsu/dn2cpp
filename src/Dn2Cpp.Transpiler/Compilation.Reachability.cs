@@ -1294,6 +1294,11 @@ internal sealed partial class Compilation
         if (owner.Module.AssemblyName is not ("System.Private.CoreLib" or "mscorlib")
             || (owner.FullName, name) is not (("System.Type", "Missing") or ("System.Reflection.Missing", "Value")))
             return owner;
+        return ReflectionMissingOwner();
+    }
+
+    private ClassInfo ReflectionMissingOwner()
+    {
         if (ReflectionMissingValue is null)
         {
             if (!TypeIndex().TryGetValue(("System.Reflection", "Missing"), out var candidates))
@@ -3920,8 +3925,13 @@ internal sealed partial class Compilation
         }
     }
 
+    // A vararg constructor with no fixed parameters has a metadata row, but cannot create a default instance.
+    private static bool IsDefaultInstanceConstructor(MethodInfo method) => !method.IsStatic && method.Name == ".ctor"
+        && method.Signature.Header.CallingConvention != SignatureCallingConvention.VarArgs
+        && method.Signature.ParameterTypes.Length == 0;
+
     internal static MethodInfo? ParameterlessCtor(ClassInfo c) =>
-        c.EnsureMembers().Methods.FirstOrDefault(m => !m.IsStatic && m.Name == ".ctor" && m.Signature.ParameterTypes.Length == 0);
+        c.EnsureMembers().Methods.FirstOrDefault(IsDefaultInstanceConstructor);
 
     /// <summary>The parameterless instance ctor that is also <b>public</b>, or null.
     /// The generic factory <c>Activator.CreateInstance&lt;T&gt;()</c> (and <c>new T()</c>
@@ -3933,7 +3943,7 @@ internal sealed partial class Compilation
     /// their C# constraint already guarantees the match is public, so the visibility test
     /// is unneeded there and would only cost a decode.</summary>
     internal static MethodInfo? PublicParameterlessCtor(ClassInfo c) =>
-        c.EnsureMembers().Methods.FirstOrDefault(m => !m.IsStatic && m.IsPublic && m.Name == ".ctor" && m.Signature.ParameterTypes.Length == 0);
+        c.EnsureMembers().Methods.FirstOrDefault(m => m.IsPublic && IsDefaultInstanceConstructor(m));
 
     /// <summary>Reaches <paramref name="c"/>'s implementation of the virtual or
     /// interface slot declared by <paramref name="decl"/>, if it provides one.</summary>
@@ -6077,17 +6087,11 @@ internal sealed partial class Compilation
 
     private long _reflectionSummaryMs;
     private ReflectionCoreContracts? _reflectionCoreContracts;
-    private bool _reflectionCoreContractsInitialized;
+    internal ReflectionCoreContracts ReflectionContracts =>
+        _reflectionCoreContracts ??= new ReflectionCoreContracts(Modules.Select(m => m.Reader));
 
-    private ReflectionSummarizer GetReflectionSummarizer(Module module)
-    {
-        if (!_reflectionCoreContractsInitialized)
-        {
-            _reflectionCoreContractsInitialized = true;
-            _reflectionCoreContracts = new ReflectionCoreContracts(Modules.Select(m => m.Reader));
-        }
-        return module.ReflectionSummarizer ??= new ReflectionSummarizer(module.Reader, module.PE, _reflectionCoreContracts);
-    }
+    private ReflectionSummarizer GetReflectionSummarizer(Module module) =>
+        module.ReflectionSummarizer ??= new ReflectionSummarizer(module.Reader, module.PE, ReflectionContracts);
 
 
     /// <summary>Summarizes the reflection values of a scanned definition once. A summary

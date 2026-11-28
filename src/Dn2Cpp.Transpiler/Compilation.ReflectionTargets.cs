@@ -970,7 +970,7 @@ internal sealed partial class Compilation
                         continue;
                     foreach (var member in SelectMembers(cls, LookupMemberKind.Constructor, null,
                         ReflectionApis.PublicInstance, null, -1))
-                        if (member.Method is { } ctor && ctor.Signature.ParameterTypes.Length == 0)
+                        if (member.Method is { } ctor && IsDefaultInstanceConstructor(ctor))
                         {
                             ReachCctor(cls);
                             InvokeTarget(ctor);
@@ -1033,6 +1033,9 @@ internal sealed partial class Compilation
                 var owners = target;
                 var names = KnownStrings(Operand(app, site, api.Name), out bool namesComplete);
                 var flagSet = FlagAlternatives(Operand(app, site, api.Flags), api.DefaultFlags, out bool flagsKnown);
+                if (!flagsKnown) flagSet.Add(AnyLookup | ReflectionApis.CreateInstance | ReflectionApis.OptionalParamBinding);
+                int arguments = KnownLength(Operand(app, site, api.Args));
+                bool usesName = false;
                 // The runtime binder looks the members up through the owners' metadata.
                 foreach (var cls in ClassesOf(owners))
                     NoteReflectionMetadataOwner(cls);
@@ -1047,32 +1050,34 @@ internal sealed partial class Compilation
                         flags |= ReflectionApis.Public;
                     if ((flags & (ReflectionApis.Instance | ReflectionApis.Static)) == 0)
                         flags |= ReflectionApis.Instance | ReflectionApis.Static;
+                    bool construct = (flags & ReflectionApis.CreateInstance) != 0;
+                    usesName |= !construct;
                     foreach (var e in owners.Items)
                     {
                         if (e.Kind != REntityKind.Template)
                             continue;
-                        if (names is not null && e.Assembly is { } module)
+                        if (!construct && names is not null && e.Assembly is { } module)
                             foreach (string name in names)
                                 SelectTemplateMember(e, new TemplateLookup(null, !IsDefaultMemberAlias(name) ? name
                                         : DeclaredDefaultMemberName(module, e.Definition) ?? "ToString", flags, null, -1,
                                         AllowPrefix: true, IncludeNestedTypes: false),
                                     ReflectionAccessor.All, construct: false, -1, app);
-                        if ((flags & 0x200) != 0)
+                        if (construct)
                             SelectTemplateMember(e, new TemplateLookup(LookupMemberKind.Constructor, null, flags, null, -1),
-                                ReflectionAccessor.None, construct: true, -1, app);
+                                ReflectionAccessor.None, construct: true, arguments, app);
                     }
                     foreach (var cls in ClassesOf(owners))
                     {
-                        if (names is not null)
+                        if (!construct && names is not null)
                             foreach (string name in names)
                                 foreach (var e in NoteListedRows(SelectMembers(cls, null, !IsDefaultMemberAlias(name) ? name
                                              : DefaultMemberName(cls) ?? "ToString", flags, null, -1,
                                              allowPrefix: true, includeNestedTypes: false)))
                                     InvokeSelected(e, app, ReflectionAccessor.All);
                         // CreateInstance ignores the name.
-                        if ((flags & 0x200) != 0)
+                        if (construct)
                             foreach (var e in SelectMembers(cls, LookupMemberKind.Constructor, ".ctor", flags, null, -1))
-                                ConstructSelected(e.Method!);
+                                ApplyActivationConstructor(e, arguments, flags);
                     }
                     string? kind = (flags & 1) != 0 ? null : (flags & 0x3F00) switch
                     {
@@ -1084,7 +1089,7 @@ internal sealed partial class Compilation
                     memberKind = i == 0 || memberKind == kind ? kind : null;
                 }
                 string? ownerUnknown = OwnerUnknown(owners);
-                if (ownerUnknown is not null || !namesComplete || !flagsKnown)
+                if (ownerUnknown is not null || usesName && !namesComplete || !flagsKnown)
                 {
                     bool annotatedField = IsAnnotatedOwner(owners);
                     RecordReflectionDiagnosticOwners(app, site, ReflectionDiagnosticKind.Execution,
@@ -1357,16 +1362,7 @@ internal sealed partial class Compilation
                 types = Operand(app, site, api.Target);
                 break;
         }
-        int arguments = -1;
-        bool anyArity = false;
-        if (api.Args >= 0)
-        {
-            var args = Operand(app, site, api.Args);
-            arguments = KnownLength(args);
-            anyArity = arguments < 0;
-        }
-        else
-            arguments = 0;
+        int arguments = api.Args >= 0 ? KnownLength(Operand(app, site, api.Args)) : 0;
         bool nonPublic = false;
         if (api.NonPublic >= 0)
         {
@@ -1378,14 +1374,16 @@ internal sealed partial class Compilation
             var publicOnly = BooleanAlternatives(Operand(app, site, 0), out bool complete);
             nonPublic = !complete || publicOnly.Count == 0 || publicOnly.Contains(false);
         }
-        int defaultFlags = ReflectionApis.PublicInstance | (nonPublic ? ReflectionApis.NonPublic : 0);
-        var flagSet = api.Flags >= 0 ? FlagAlternatives(Operand(app, site, api.Flags), defaultFlags, out _)
+        int defaultFlags = api.DefaultFlags | (nonPublic ? ReflectionApis.NonPublic : 0);
+        bool flagsKnown = true;
+        var flagSet = api.Flags >= 0 ? FlagAlternatives(Operand(app, site, api.Flags), defaultFlags, out flagsKnown)
             : new List<int> { defaultFlags };
+        if (!flagsKnown) flagSet.Add(AnyLookup | ReflectionApis.CreateInstance | ReflectionApis.OptionalParamBinding);
         // Activator.CreateInstance reads flags naming no lookup bit (mask 0xFF) as
         // Public | Instance. Instance stays implied: the runtime's parameterless
         // activation ignores it.
         for (int i = 0; i < flagSet.Count; i++)
-            flagSet[i] = ((flagSet[i] & 0xFF) == 0 ? flagSet[i] | ReflectionApis.PublicInstance : flagSet[i])
+            flagSet[i] = ((flagSet[i] & 0xFF) == 0 ? flagSet[i] | ReflectionApis.DefaultCreateInstance : flagSet[i])
                 | ReflectionApis.Instance;
         foreach (var e in types.Items)
         {
@@ -1393,7 +1391,7 @@ internal sealed partial class Compilation
             {
                 foreach (int flags in flagSet)
                     SelectTemplateMember(e, new TemplateLookup(LookupMemberKind.Constructor, null, flags, null, -1),
-                        ReflectionAccessor.None, construct: true, anyArity ? -1 : arguments, app);
+                        ReflectionAccessor.None, construct: true, arguments, app);
                 continue;
             }
             if (e.Kind != REntityKind.Type || e.Inherited || e.Type is not { Kind: TypeKind.Class, Class: { } cls })
@@ -1401,19 +1399,9 @@ internal sealed partial class Compilation
             if (ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls))
                 continue;
             bool constructed = false;
-            var selected = new List<MethodInfo>();
             foreach (int flags in flagSet)
                 foreach (var c in SelectMembers(cls, LookupMemberKind.Constructor, ".ctor", flags, null, -1))
-                    if (!selected.Contains(c.Method!))
-                        selected.Add(c.Method!);
-            foreach (var ctor in selected)
-            {
-                int count = ctor.Signature.ParameterTypes.Length;
-                if (!anyArity && count != arguments)
-                    continue;
-                ConstructSelected(ctor);
-                constructed = true;
-            }
+                    constructed |= ApplyActivationConstructor(c, arguments, flags);
             if (!constructed && EnsureShape(cls).IsValueType)
             {
                 _reflectionSelectionCount++;
@@ -1426,10 +1414,52 @@ internal sealed partial class Compilation
                 "Type comes from " + types.Unknown + " — no constructor retained", null, null, ".ctor");
     }
 
+    private ActivationMatch ActivationArguments(MethodInfo ctor, int arguments, int flags, out TypeDesc? paramsElement,
+        out bool needsMissing)
+    {
+        var parameters = ReflectionSignature(ctor).ParameterTypes;
+        var last = parameters.Length == 0 ? null : parameters[^1];
+        var match = ReflectionContracts.MatchActivationArguments(ctor.Module.Reader, ctor.Handle, parameters.Length,
+            last?.Kind == TypeKind.SZArray, arguments, flags, out bool paramArray, out needsMissing);
+        paramsElement = paramArray ? last!.Element : null;
+        if (arguments == 0 && parameters.Length != 0 && (flags & ReflectionApis.PublicInstance) == ReflectionApis.PublicInstance
+            && EnsureShape(ctor.DeclaringClass).IsValueType)
+            return ActivationMatch.None;
+        return match;
+    }
+
+    private bool ApplyActivationConstructor(REntity row, int arguments, int flags)
+    {
+        var ctor = row.Method!;
+        var match = ActivationArguments(ctor, arguments, flags, out var paramsElement, out bool needsMissing);
+        if (match == ActivationMatch.Declaration)
+            NoteListedRows(new List<REntity> { row });
+        if (match != ActivationMatch.Body) return false;
+        NoteActivationArguments(paramsElement, needsMissing);
+        ConstructSelected(ctor);
+        return true;
+    }
+
+    private void NoteActivationArguments(TypeDesc? paramsElement, bool needsMissing)
+    {
+        if (paramsElement is not null)
+        {
+            NoteArrayElementType(paramsElement);
+            NoteReflectionBoxed(paramsElement);
+        }
+        if (needsMissing)
+        {
+            var owner = ReflectionMissingOwner();
+            ReachCctor(owner);
+            if (owner.StaticCctor is { } initializer) NoteCctorEnsure(initializer);
+        }
+    }
+
     private void ConstructSelected(MethodInfo ctor)
     {
         var cls = ctor.DeclaringClass;
-        if (ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls) || _backend?.ShouldSkipMethodBody(cls, ctor) == true)
+        if (ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls) || _backend?.ShouldSkipMethodBody(cls, ctor) == true
+            || ctor.Signature.Header.CallingConvention == SignatureCallingConvention.VarArgs)
             return;
         _reflectionSelectionCount++;
         if (CoreIntrinsics.IsTaskLifecycle(ctor) || ctor.Rva != 0 && cls.IntrinsicCppName is null)
@@ -2489,8 +2519,7 @@ internal sealed partial class Compilation
             {
                 foreach (var c in SelectMembers(cls, LookupMemberKind.Constructor, ".ctor", lookup.Flags | ReflectionApis.Instance,
                              lookup.Types, -1))
-                    if (c.Method is { } ctor && (arguments < 0 || ctor.Signature.ParameterTypes.Length == arguments))
-                        ConstructSelected(ctor);
+                    ApplyActivationConstructor(c, arguments, lookup.Flags);
             }
             else
                 foreach (var member in SelectLookupMembers(cls, lookup))
@@ -2534,7 +2563,8 @@ internal sealed partial class Compilation
                 var row = member.Metadata ?? member;
                 if (row.Kind == REntityKind.Method && row.Method is { } method)
                 {
-                    if (arguments < 0 || ReflectionSignature(method).ParameterTypes.Length == arguments)
+                    if (construct ? ActivationArguments(method, arguments, lookup.Flags, out _, out _) == ActivationMatch.Body
+                        : arguments < 0 || ReflectionSignature(method).ParameterTypes.Length == arguments)
                         selected.Add((method.Module, method.Handle));
                 }
                 else if (row.Kind is REntityKind.Property or REntityKind.Event)
@@ -2906,15 +2936,18 @@ internal sealed partial class Compilation
             if ((md.Attributes & (MethodAttributes.Static | MethodAttributes.MemberAccessMask)) != MethodAttributes.Public
                 || !reader.StringComparer.Equals(md.Name, ".ctor"))
                 continue;
-            if (IsParameterlessSignature(reader.GetBlobReader(md.Signature)))
+            if (IsParameterlessSignature(reader.GetBlobReader(md.Signature), allowVarArgs: false))
                 return true;
         }
         return false;
     }
 
-    private static bool IsParameterlessSignature(BlobReader signature)
+    private static bool IsParameterlessSignature(BlobReader signature, bool allowVarArgs)
     {
-        if (signature.ReadSignatureHeader().IsGeneric)
+        var header = signature.ReadSignatureHeader();
+        if (!allowVarArgs && header.CallingConvention == SignatureCallingConvention.VarArgs)
+            return false;
+        if (header.IsGeneric)
             signature.ReadCompressedInteger();
         return signature.ReadCompressedInteger() == 0;
     }
@@ -3157,7 +3190,8 @@ internal sealed partial class Compilation
                     var row = new LookupRow(method.Name, memberKind, MethodVisibility(method.Attributes), method.IsStatic);
                     bool publicDefault = ctor && declared && row.Visibility == LookupVisibility.Public
                         && (accessedMembers & AccessedMembers.PublicConstructors) == AccessedMembers.PublicParameterlessConstructor
-                        && IsParameterlessSignature(c.Module.Reader.GetBlobReader(c.Module.Reader.GetMethodDefinition(method.Handle).Signature));
+                        && IsParameterlessSignature(c.Module.Reader.GetBlobReader(c.Module.Reader.GetMethodDefinition(method.Handle).Signature),
+                            allowVarArgs: true);
                     if (!ReflectionLookupRules.Admits(row, flags, declared, accessedMembers, publicDefault))
                         continue;
                     if (arity >= 0 && GenericParameterCount(method) != arity)

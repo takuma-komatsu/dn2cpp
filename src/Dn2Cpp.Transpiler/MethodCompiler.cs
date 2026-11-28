@@ -1679,7 +1679,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 if (withArguments) Pop(); // Culture follows the existing non-parse DefaultBinder policy.
                 string arguments = withArguments ? Cast(Pop(), "Dn2CppArrayRef*") : "nullptr";
                 string binder = withArguments ? Cast(Pop(), "Dn2CppObject*") : "nullptr";
-                string flags = withArguments ? Cast(Pop(), "int32_t") : withAttributes ? "0x214" : "20";
+                string flags = withArguments ? Cast(Pop(), "int32_t") : "0x214";
                 string ignoreCase = withArguments ? Cast(Pop(), "int32_t") : "0";
                 var typeName = Pop();
                 var assemblyName = Pop();
@@ -1692,12 +1692,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                 Emit($"{type} = dn2cpp_assembly_get_type({assembly}, {Cast(typeName, "Dn2CppString*")}, 1, {ignoreCase});");
                 string instance = NewTemp("Dn2CppObject*");
                 if (withAttributes)
-                {
-                    // CoreLib rejects activation attributes before entering binder selection.
                     Emit($"if ({attributes} != nullptr && ({attributes})->length > 0) dn2cpp_throw_platform_not_supported(\"Activation Attributes are not supported.\");");
-                    Emit($"{instance} = dn2cpp_activator_create_instance_args({type}, {arguments}, {flags}, {binder}, {attributes});");
-                }
-                else Emit($"{instance} = dn2cpp_activator_create_instance({type});");
+                Emit($"{instance} = dn2cpp_activator_create_instance_args({type}, {arguments}, {flags}, {binder}, {attributes});");
                 Emit($"if ({instance} == nullptr) return nullptr;");
                 string handle = NewTemp(handleClass.CppStructName + "*");
                 Emit($"{handle} = ({handleClass.CppStructName}*)dn2cpp_alloc(sizeof({handleClass.CppStructName}));");

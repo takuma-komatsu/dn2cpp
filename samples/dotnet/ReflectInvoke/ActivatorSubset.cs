@@ -148,5 +148,63 @@ namespace ActivatorSubset
             try { typeof(IInitialized).TypeInitializer!.Invoke(null); }
             catch (MemberAccessException e) { Console.WriteLine("interface allocating=" + e.GetType().Name + "/" + e.Message); }
         }
+
+        private sealed class OptionalArguments
+        {
+            private readonly string value;
+            static OptionalArguments() { }
+            public OptionalArguments(int first = 17, int last = 19) => value = first + "/" + last;
+            public override string ToString() => value;
+        }
+
+        private sealed class ArrayArguments
+        {
+            public readonly int[] Values;
+            public ArrayArguments(params int[] values) => Values = values;
+            public override string ToString() => Values.Length + ":" + string.Join(",", Values);
+        }
+
+        private sealed class NamedArrayArguments
+        {
+            private readonly string value;
+            public NamedArrayArguments(params string[] words) => value = string.Join("/", words);
+            public override string ToString() => value;
+        }
+
+        private sealed class VarargConstructor
+        {
+            public VarargConstructor(__arglist) { }
+        }
+
+        private static void ShowActivation(string label, Func<object> create)
+        {
+            try { Console.WriteLine(label + "=" + create()); }
+            catch (Exception e) { Console.WriteLine(label + "=" + e.GetType().Name); }
+        }
+
+        internal static void RunConstructorArguments()
+        {
+            Console.WriteLine("== constructor argument binding ==");
+            const BindingFlags create = BindingFlags.CreateInstance | BindingFlags.Instance | BindingFlags.Public;
+            const BindingFlags optional = create | BindingFlags.OptionalParamBinding;
+            ShowActivation("optional with initializer", () => Activator.CreateInstance(typeof(OptionalArguments),
+                optional | BindingFlags.Static | BindingFlags.NonPublic, null, Array.Empty<object>(), null));
+            ShowActivation("optional without flag", () => Activator.CreateInstance(typeof(OptionalArguments),
+                create, null, Array.Empty<object>(), null));
+            ShowActivation("InvokeMember optional", () => typeof(OptionalArguments).InvokeMember(null,
+                optional, null, null, new object[] { 5 }));
+            ShowActivation("empty params", () => Activator.CreateInstance(typeof(ArrayArguments), Array.Empty<object>()));
+            ShowActivation("params without CreateInstance", () => Activator.CreateInstance(typeof(ArrayArguments),
+                BindingFlags.Public | BindingFlags.Instance, null, Array.Empty<object>(), null));
+            ShowActivation("expanded params", () => Activator.CreateInstance(typeof(ArrayArguments),
+                new object[] { 4, 6 }, Array.Empty<object>()));
+            int[] packed = { 2, 3, 4 };
+            ShowActivation("prepacked params identity", () => ReferenceEquals(packed,
+                ((ArrayArguments)Activator.CreateInstance(typeof(ArrayArguments), new object[] { packed })).Values));
+            ShowActivation("assembly params", () => typeof(Program).Assembly.CreateInstance(
+                "ActivatorSubset.Program+NamedArrayArguments", false, create, null, new object[] { "left", "right" }, null, null));
+            ShowActivation("zero-formal vararg", () => Activator.CreateInstance(typeof(VarargConstructor), new object[] { 1 }));
+            ShowActivation("generic vararg", () => Activator.CreateInstance<VarargConstructor>());
+        }
     }
 }

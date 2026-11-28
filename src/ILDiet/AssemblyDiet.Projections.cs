@@ -6,7 +6,7 @@ internal sealed partial class AssemblyDiet
 {
     private enum ProjectionKind : byte
     {
-        Base, Ancestors, GenericArgument, MethodGenericArgument, Methods, Constructors, TypeInitializer, Element, GenericDefinition, GenericClosure, GenericMethodClosure, Interfaces, NestedTypes, AssemblyTypes,
+        Base, Ancestors, GenericArgument, MethodGenericArgument, Methods, Constructors, TypeInitializer, ActivationConstructors, Element, GenericDefinition, GenericClosure, GenericMethodClosure, Interfaces, NestedTypes, AssemblyTypes,
         FieldTypes, PropertyTypes, ReturnTypes, ParameterTypes, BoxedRuntimeType,
     }
 
@@ -164,6 +164,10 @@ internal sealed partial class AssemblyDiet
                     && declaring.Methods.Any(m => m.IsConstructor && m.IsStatic
                         && (node.Index & (m.IsPublic ? ReflectionApis.Public : ReflectionApis.NonPublic)) != 0))
                     ProjectionTarget(node, source);
+                break;
+            case ProjectionKind.ActivationConstructors:
+                ApplyActivationOwner(source, node.Index, node.Arity,
+                    node.Source is ProjectedTypeReference { Node.Kind: ProjectionKind.GenericClosure });
                 break;
             case ProjectionKind.MethodGenericArgument:
             {

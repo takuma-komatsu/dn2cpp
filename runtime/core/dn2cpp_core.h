@@ -1211,7 +1211,13 @@ struct Dn2CppMethodInfo
     // ECMA parameter sequence zero belongs to the return, not the method itself.
     Dn2CppMetadataTable<Dn2CppAttrInfo> returnCustomAttrs;
     int32_t returnCustomAttrCount;
+    // A constructor's VarArgs convention and ParamArrayAttribute on its final
+    // SZ-array parameter remain available to the binder on a declaration-only row.
+    int32_t constructorBinding;
 };
+
+inline constexpr int32_t DN2CPP_CTOR_PARAM_ARRAY = 1;
+inline constexpr int32_t DN2CPP_CTOR_VARARGS = 2;
 
 // A synthesized constructor differs only in its allocation's declaring type.
 struct Dn2CppMethodDelta
@@ -2274,6 +2280,7 @@ inline constexpr const char* DN2CPP_SR_CREATE_INTERFACE = "Acc_CreateInterfaceEx
 inline constexpr const char* DN2CPP_SR_CREATE_ABSTRACT = "Acc_CreateAbstEx";
 inline constexpr const char* DN2CPP_SR_CREATE_OPEN_GENERIC = "Acc_CreateGenericEx";
 inline constexpr const char* DN2CPP_SR_INITIALIZER_NOT_CALLABLE = "Acc_NotClassInit";
+inline constexpr const char* DN2CPP_SR_CALL_TO_VARARG = "NotSupported_CallToVarArg";
 inline constexpr const char* DN2CPP_SR_FIELD_SET_GET = "Arg_FldSetGet";
 inline constexpr const char* DN2CPP_SR_FIELD_GET_PROPERTY_SET = "Arg_FldGetPropSet";
 inline constexpr const char* DN2CPP_SR_FIELD_SET_PROPERTY_GET = "Arg_FldSetPropGet";
