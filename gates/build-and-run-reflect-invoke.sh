@@ -255,10 +255,11 @@
 # MemberTypes.Method, a non-public accessor under an accessor read without nonPublic.
 # Template signature projections and constructed open methods retain selected
 # attributes without admitting their member bodies or executable closed owners.
-# Template execution preserves delegate arity, property return and field lookup filters.
+# Template planning applies method signatures, property return types and field lookup flags.
 # Assembly alternatives keep each known receiver, including array element assemblies.
 # Template lookups select the nearest hidden method through execution and generic projection.
-# Named delegate binding retains private base methods under its name and arity filters.
+# Named delegate binding selects private base methods by name and arity. A known
+# Type passed to the static binding overload also retains its AllMethods contract.
 # Referenced library bases obey the same selection with and without ILDiet.
 # RecognizedReflectionOnly runs every recognized reflection API family and summary
 # value form with no preserve, over application and ReflectReturnLib targets: no
@@ -3160,8 +3161,7 @@ gate_extra_asserts() {
 ordinary_fixture_diff_gate ReflectInvoke UnboxedStructBindOnly
 unset -f gate_extra_asserts
 
-# Each excluded body touches a type whose static constructor prints, so the .NET diff
-# catches its admission; the body census names which filter was ignored.
+# The generated bodies distinguish independent retention from the binding that executes.
 gate_extra_asserts() {
     local out="$1" body native axis output line native_file output_file
     for body in TagAttribute::set_P RunBase::.cctor Guarded::set_P Guarded::set_All Guarded::add_Hidden \
@@ -3345,14 +3345,14 @@ gate_extra_asserts() {
         fi
     done
     for type in MostDerivedTemplate MostDerivedOpaque MostDerivedStatic MostDerivedGeneric \
-            PrivateBindingTemplateBase PrivateBindingOpaqueBase PrivateBindingStaticBase \
+            PrivateBindingTemplate PrivateBindingOpaqueBase \
             AmbiguousTemplate AmbiguousTemplateBase; do
         case "$type" in Private*) body=Pick ;; *) body=Make ;; esac
         [ "$(grep -hwE "^// AdmissionFilters\.${type}_[^:]+::$body$" "$out"/generated*.cpp "$out"/generated.h | wc -l | tr -d ' ')" = 1 ] \
             || { echo "FAIL: lookup policy must retain exactly the selected $type::$body body" >&2; return 1; }
     done
-    for type in MostDerivedStatic MostDerivedGeneric PrivateBindingStaticBase; do
-        case "$type" in Private*) body=Pick ;; *) body=Make ;; esac
+    for type in MostDerivedStatic MostDerivedGeneric PrivateBindingStaticBase DelegateArityStatic; do
+        case "$type" in Private*|Delegate*) body=Pick ;; *) body=Make ;; esac
         grep -qwxF "// AdmissionFilters.${type}_Int32::$body" "$out"/generated*.cpp "$out"/generated.h \
             || { echo "FAIL: lookup static fallback $type::$body is absent" >&2; return 1; }
     done
@@ -3376,13 +3376,19 @@ gate_extra_asserts() {
             echo "FAIL: an eligible library binding forced a static $type tuple" >&2; return 1
         fi
     done
-    for type in LibraryPrivateTemplateBase LibraryPrivateOpaqueBase LibraryPrivateStaticBase; do
+    for type in LibraryPrivateTemplate LibraryPrivateOpaqueBase; do
         [ "$(grep -hwE "^// AdmissionFilters\.${type}_[^:]+::Pick$" "$out"/generated*.cpp "$out"/generated.h | wc -l | tr -d ' ')" = 1 ] \
             || { echo "FAIL: library binding must retain exactly the selected $type::Pick body" >&2; return 1; }
     done
     grep -qwxF '// AdmissionFilters.LibraryPrivateStaticBase_Int32::Pick' "$out"/generated*.cpp "$out"/generated.h \
         || { echo 'FAIL: library private-binding static fallback body is absent' >&2; return 1; }
-    if grep -qwE '^// AdmissionFilters\.LibraryPrivate(BindingBase|(Template|Opaque|Static)Base_[^:]+)::Other$' \
+    for type in PrivateBindingStaticBase LibraryPrivateStaticBase; do
+        [ "$(grep -hwE "^// AdmissionFilters\.${type}_[^:]+::Pick$" "$out"/generated*.cpp "$out/generated.h" | wc -l | tr -d ' ')" = 2 ] \
+            || { echo "FAIL: AllMethods must retain both inherited $type::Pick overloads" >&2; return 1; }
+    done
+    grep -qwE '^// AdmissionFilters\.LibraryPrivateStaticBase_[^:]+::Other$' "$out"/generated*.cpp "$out/generated.h" \
+        || { echo 'FAIL: AllMethods lost the private library method with a different name' >&2; return 1; }
+    if grep -qwE '^// AdmissionFilters\.LibraryPrivate(BindingBase|(Template|OpaqueBase)_[^:]+)::Other$' \
             "$out"/generated*.cpp "$out"/generated.h; then
         echo 'FAIL: named library binding admitted an unselected name' >&2; return 1
     fi
@@ -3514,8 +3520,8 @@ METADATA
         $6 == "MethodInfo comes from GetMethod(\"Make\") on a Type that comes from MakeGenericType over the result of AdmissionFilters.Program::OpaqueArgument — no method body retained" \
             { opaque++; next } \
         $1 == "Execution" && $2 == "AdmissionFiltersOnly" && \
-        (($3 == "AdmissionFilters.Program::PrivateNamedBindings()" && $4 == "IL_009e") || \
-         ($3 == "AdmissionFilters.Program::LibraryPrivateNamedBindings()" && $4 == "IL_00f7")) && \
+        (($3 == "AdmissionFilters.Program::PrivateNamedBindings()" && $4 == "IL_009b") || \
+         ($3 == "AdmissionFilters.Program::LibraryPrivateNamedBindings()" && $4 == "IL_00ef")) && \
         $5 == "System.Delegate.CreateDelegate(Type, Type, String, Boolean)" && \
         $6 == "target comes from MakeGenericType over the result of AdmissionFilters.Program::OpaqueArgument — no method body retained" \
             { opaque++; next } \
@@ -3775,15 +3781,15 @@ recognized_table_asserts() {
         [ "$(recognized_body_count "$out" "$member")" = 0 ] \
             || { echo "FAIL: named Delegate.Method admitted unselected dependency $member" >&2; return 1; }
     done
-    for member in NamedAttributeObject NamedAttributeBase NamedAttributeTemplateBase; do
-        [ "$(grep -hE "^// RecognizedReflection\\.${member}(_[^:]*)?::Pick$" \
-                "$out"/generated*.cpp "$out/generated.h" | wc -l | tr -d ' ')" = 1 ] \
-            || { echo "FAIL: named Delegate.Method must select one $member.Pick arity" >&2; return 1; }
-        if grep -qE "^// RecognizedReflection\\.${member}(_[^:]*)?::Other$" \
-                "$out"/generated*.cpp "$out/generated.h"; then
-            echo "FAIL: named Delegate.Method admitted unselected $member.Other" >&2
-            return 1
-        fi
+    [ "$(recognized_body_count "$out" NamedAttributeObject::Pick)" = 1 ] \
+        && [ "$(recognized_body_count "$out" NamedAttributeObject::Other)" = 0 ] \
+        || { echo 'FAIL: object binding must retain only the selected NamedAttributeObject.Pick overload' >&2; return 1; }
+    for member in NamedAttributeBase NamedAttributeTemplateBase; do
+        [ "$(grep -hwE "^// RecognizedReflection\\.${member}(_[^:]*)?::Pick$" \
+                "$out"/generated*.cpp "$out/generated.h" | wc -l | tr -d ' ')" = 2 ] \
+            || { echo "FAIL: AllMethods must retain both $member.Pick overloads" >&2; return 1; }
+        grep -qwE "^// RecognizedReflection\\.${member}(_[^:]*)?::Other$" "$out"/generated*.cpp "$out/generated.h" \
+            || { echo "FAIL: AllMethods lost $member.Other" >&2; return 1; }
     done
     for member in NestedNameOuter DeepNameOuter QualifiedNameOuter ConstrainedNameOuter ChainedNameOuter; do
         [ "$(grep -hE "^// RecognizedReflection\\.${member}(_[^:]*)?::Run$" \

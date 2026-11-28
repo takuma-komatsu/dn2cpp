@@ -741,12 +741,11 @@ static class NamedBindingProbe
     public static string Touch() => "wrong binding arity";
 }
 
-class PrivateBindingTemplateBase<T>
+sealed class PrivateBindingTemplate<T>
 {
     private static string Pick() => "private:" + typeof(T).Name;
     private static string Pick(int value) => NamedBindingProbe.Touch();
 }
-sealed class PrivateBindingTemplate<T> : PrivateBindingTemplateBase<T> { }
 class PrivateBindingOpaqueBase<T>
 {
     private static string Pick() => "opaque:" + typeof(T).Name;
@@ -756,7 +755,7 @@ sealed class PrivateBindingOpaque<T> : PrivateBindingOpaqueBase<T> { }
 class PrivateBindingStaticBase<T>
 {
     private static string Pick() => SelectionDependency<T>.Text();
-    private static string Pick(int value) => NamedBindingProbe.Touch();
+    private static string Pick(int value) => "other arity";
 }
 sealed class PrivateBindingStatic<T> : PrivateBindingStaticBase<T> { }
 
@@ -912,7 +911,7 @@ static class Program
         Console.WriteLine("== template selection filters ==");
         try
         {
-            NamedDelegateSelections();
+            BindSelectedMethods();
         }
         catch (Exception e)
         {
@@ -1051,14 +1050,14 @@ static class Program
     {
         try
         {
-            var call = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), typeof(LibraryPrivateBinding), "Pick");
+            var call = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), new LibraryPrivateBinding(), "Pick");
             Console.WriteLine("library private=" + call());
         }
         catch (Exception e) { Console.WriteLine("library private fault=" + e.GetType().Name); }
         try
         {
-            var call = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>),
-                typeof(LibraryPrivateTemplate<>).MakeGenericType(typeof(int)), "Pick");
+            var call = typeof(LibraryPrivateTemplate<>).MakeGenericType(typeof(int))
+                .GetMethod("Pick", BindingFlags.NonPublic | BindingFlags.Static, Type.EmptyTypes)!.CreateDelegate<Func<string>>();
             Console.WriteLine("library template=" + call());
         }
         catch (Exception e) { Console.WriteLine("library template fault=" + e.GetType().Name); }
@@ -1115,8 +1114,8 @@ static class Program
     {
         try
         {
-            var call = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>),
-                typeof(PrivateBindingTemplate<>).MakeGenericType(typeof(int)), "Pick");
+            var call = typeof(PrivateBindingTemplate<>).MakeGenericType(typeof(int))
+                .GetMethod("Pick", BindingFlags.NonPublic | BindingFlags.Static, Type.EmptyTypes)!.CreateDelegate<Func<string>>();
             Console.WriteLine("private template=" + call());
         }
         catch (Exception e) { Console.WriteLine("private template fault=" + e.GetType().Name); }
@@ -1260,16 +1259,16 @@ static class Program
         catch (Exception e) { return e.GetType().Name; }
     }
 
-    private static void NamedDelegateSelections()
+    private static void BindSelectedMethods()
     {
-        var template = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>),
-            typeof(DelegateArityTemplate<>).MakeGenericType(typeof(int)), "Pick");
+        var template = typeof(DelegateArityTemplate<>).MakeGenericType(typeof(int))
+            .GetMethod("Pick", Type.EmptyTypes)!.CreateDelegate<Func<string>>();
         Console.WriteLine("delegate template=" + template());
-        var eligibility = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>),
-            typeof(DelegateArityEligibility<>).MakeGenericType(typeof(int)), "Pick");
+        var eligibility = typeof(DelegateArityEligibility<>).MakeGenericType(typeof(int))
+            .GetMethod("Pick", Type.EmptyTypes)!.CreateDelegate<Func<string>>();
         Console.WriteLine("delegate eligibility=" + eligibility());
-        var fallback = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>),
-            typeof(DelegateArityStatic<>).MakeGenericType(typeof(int)), "Pick");
+        var fallback = typeof(DelegateArityStatic<>).MakeGenericType(typeof(int))
+            .GetMethod("Pick", Type.EmptyTypes)!.CreateDelegate<Func<string>>();
         Console.WriteLine("delegate static=" + fallback());
     }
 

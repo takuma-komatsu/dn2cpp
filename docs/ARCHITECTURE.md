@@ -396,7 +396,9 @@ even when another route reached the attribute's constructor.
 Named delegate binding and a method group's `Delegate.Method` share selection
 for known receivers, including objects and runtime templates. They search the
 full base chain at every visibility, bounded only by name, case and delegate
-`Invoke` arity; attribute reads use the selected member identity. A delegate
+`Invoke` arity. A known `Type` target passed to `Delegate.CreateDelegate` by
+name also carries the CoreLib `AllMethods` parameter contract, including
+private base methods. Attribute reads use the selected member identity. A delegate
 bound to a `MethodInfo` reports that row, normalized to its declaring type,
 whatever override its receiver runs.
 Invocation, field and property access, event subscription, delegate binding,
