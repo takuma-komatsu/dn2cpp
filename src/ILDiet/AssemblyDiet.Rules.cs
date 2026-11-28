@@ -352,6 +352,18 @@ internal sealed partial class AssemblyDiet
             demands &= ~Demand.TypeWide;
             if (demands == Demand.None) return;
         }
+        if ((demands & Demand.TypeContract) != 0)
+        {
+            NoteTypeContractUse(reference);
+            demands &= ~Demand.TypeContract;
+            if (demands == Demand.None) return;
+        }
+        if ((demands & Demand.NamedTypeContract) != 0)
+        {
+            NoteNamedTypeContracts(reference);
+            demands &= ~Demand.NamedTypeContract;
+            if (demands == Demand.None) return;
+        }
         if ((demands & Demand.PassiveMetadata) != 0)
         {
             _passiveAttributeMetadataDepth++;
@@ -1611,7 +1623,11 @@ internal sealed partial class AssemblyDiet
                 var named = new SummaryValue { Unknown = names.Unknown };
                 foreach (string name in names.Strings) ResolveTypeName(name, named, target);
                 target = named;
-                foreach (var reference in named.Types) NotePreservedReference(reference);
+                foreach (var reference in named.Types)
+                {
+                    NotePreservedReference(reference);
+                    NoteNamedTypeContracts(reference);
+                }
                 if (names.Unknown || names.Strings.Count == 0) UnknownTypes();
             }
             if (api.Op == ReflectionOp.AssemblyGetTypes)
@@ -1670,7 +1686,15 @@ internal sealed partial class AssemblyDiet
                 if (api.Op == ReflectionOp.CtorInvoke)
                     foreach (var member in target.Members)
                         if (member is MethodDefinition { IsConstructor: true }) ApplyReflectedMember(member, true, api);
-                foreach (var type in selected.Types) MarkSignatureType(type);
+                foreach (var type in selected.Types)
+                {
+                    MarkSignatureType(type);
+                    if (api.Op is (ReflectionOp.GetNestedType or ReflectionOp.GetNestedTypes
+                        or ReflectionOp.GetMember or ReflectionOp.GetMembers or ReflectionOp.GetDefaultMembers)
+                        && (api.Name < 0 || names.Strings.Count != 0)
+                        && type is (TypeDefinition { IsNested: true } or ProjectedTypeReference { Node.Kind: ProjectionKind.NestedTypes }))
+                        NoteNamedTypeContracts(type);
+                }
                 if (target.Unknown || target.Types.Count == 0 && target.Members.Count == 0)
                 {
                     _summaryUnknown++;

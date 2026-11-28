@@ -329,7 +329,7 @@ internal sealed partial class Compilation
         if (_mediumOwner is not null)
             _mediumMethodOwners.TryAdd(method, _mediumOwner);
         NoteConditionalPreservationUse(method.DeclaringClass);
-        NoteGenericParameterContracts(method);
+        NoteMethodContracts(method);
         NoteSharedMethodReach(method);
         return true;
     }

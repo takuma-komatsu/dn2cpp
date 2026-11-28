@@ -27,6 +27,7 @@
 # member it selects while unselected siblings stay signature-only stubs.
 # Annotated Type arguments retain callable library members through inherited and nested scopes.
 # Generic parameter annotations preserve the requested members of each concrete argument.
+# Type annotations keep reflected members on derived classes and interface implementations.
 # Conditional field signatures activate earlier, later and closed generic owners.
 # Local and captured interface arrays supply null defaults without a base type row.
 # Typed loads recover external enum zero defaults; untyped defaults stay unknown.
@@ -68,6 +69,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|return-parameter-prefix:${
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|invoke-member-prefix:${DN2CPP_BEFORE_INVOKE_MEMBER:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|annotated-type-prefix:${DN2CPP_BEFORE_ANNOTATED_TYPE_PARAMETERS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|generic-parameter-prefix:${DN2CPP_BEFORE_GENERIC_PARAMETER_CONTRACTS:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|type-contract-prefix:${DN2CPP_BEFORE_TYPE_CONTRACTS:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/ReturnParameterAttributesSubset.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.Intercepts.cs gates/fixtures/ildiet-metadata-validation/intercept_retention.py"
 gate_python -c 'pass' >/dev/null || gate_skip "no working Python 3 interpreter for ILDiet validation"
@@ -508,6 +510,19 @@ gate_extra_asserts() {
     fi
     if grep -Eqw 'AnnotatedMembers_UnrequestedOverload_m[0-9]+' "$out"/generated*.cpp "$out"/generated.h; then
         echo 'FAIL: the parameterless constructor annotation retained the other public overload' >&2
+        return 1
+    fi
+
+    before="$out/type-contracts-before.native"
+    DN2CPP_BEFORE_TYPE_CONTRACTS=1 gate_capture_ok "$before" run_bounded "$out/ILDietControl$EXE_EXT"
+    gate_output select "$native" "$out/type-contracts-prefix.stdout" --before 'type contract base=17' --policy crlf
+    gate_output compare "$out/type-contracts-prefix.stdout" "$before.stdout"
+    gate_output byte-witness "$native" --count 1 --policy crlf \
+        'type contract base=17' 'type contract derived=23' 'type contract interface=31' \
+        'type contract template=Int32' 'type contract declaring=declaring' 'type contract nested=selected' \
+        'type contract token=token' 'type contract method lookup=True/21'
+    if grep -Eq '^// .*(UnrelatedTypeContractTarget::Code|Foo::NestedOnly)( |$)' "$out"/generated*.cpp "$out"/generated.h; then
+        echo 'FAIL: a type annotation retained an unrelated method body' >&2
         return 1
     fi
 }

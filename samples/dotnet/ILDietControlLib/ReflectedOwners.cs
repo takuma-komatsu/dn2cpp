@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 
 namespace ILDietControlLib;
 
@@ -10,6 +11,37 @@ public class AttributeContractBase<T, U> : IAttributeContract<T> where U : new()
 public sealed class AttributeContractTarget { }
 public sealed class AttributeContractUnused { }
 public sealed class AttributeContractDerived : AttributeContractBase<AttributeContractTarget, AttributeContractUnused> { }
+
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.NonPublicMethods)]
+public class TypeContractBase
+{
+    public object? ReadCode() => GetType().InvokeMember("Code",
+        BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly | BindingFlags.InvokeMethod,
+        null, this, null);
+
+    private int Code() => 17;
+}
+
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)]
+public interface ITypeContract { }
+
+public interface IDerivedTypeContract : ITypeContract { }
+
+public sealed class TypeContractDerived : TypeContractBase, IDerivedTypeContract
+{
+    private int Code() => 23;
+    public int Size => 31;
+}
+
+public sealed class TypeContractTemplate<T> : TypeContractBase
+{
+    private static string ArgumentName() => typeof(T).Name;
+}
+
+public sealed class UnrelatedTypeContractTarget
+{
+    private int Code() => -1;
+}
 
 // Only ILDietLibraryOwnerOnly names these types, through reflection that selects
 // members on a base type or on a type named by a constant string.

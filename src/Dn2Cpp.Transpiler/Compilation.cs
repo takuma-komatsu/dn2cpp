@@ -987,7 +987,7 @@ internal sealed partial class Compilation
         if (ReferencedTypes.Add(cls))
             NoteConditionalPreservationUse(cls);
         _identityOnlyReferences.Remove(cls);
-        NoteGenericParameterContracts(cls);
+        NoteTypeContracts(cls);
     }
 
     /// <summary>The <see cref="ReferencedTypes"/> members only an identity handle names:
@@ -1446,7 +1446,7 @@ internal sealed partial class Compilation
         if (cls is not null && ForceEmittedClasses.Add(cls))
         {
             NoteConditionalPreservationUse(cls);
-            NoteGenericParameterContracts(cls);
+            NoteTypeContracts(cls);
         }
     }
 
@@ -6003,7 +6003,7 @@ internal sealed partial class Compilation
                 progress = true;
             if (ReachPendingBackendDemands())
                 progress = true;
-            if (ApplyPendingGenericParameterContracts())
+            if (ApplyPendingMemberContracts())
                 progress = true;
             if (ActivateConditionalPreservationPolicies())
                 progress = true;

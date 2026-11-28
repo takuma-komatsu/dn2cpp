@@ -77,6 +77,7 @@ internal sealed partial class AssemblyDiet
         string key = ArgumentKey(closed);
         if (_readAttributeContractTypes.Contains(key)) return;
         Spend();
+        NoteTypeContractUse(closed);
         var instance = closed as GenericInstanceType;
         if (instance is not null)
         {

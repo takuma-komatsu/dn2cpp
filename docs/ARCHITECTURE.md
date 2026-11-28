@@ -439,6 +439,16 @@ applies the mask when it forms a closed method. A runtime template applies
 the masks to a known argument tuple at each projected base. Canonical
 sharing keeps the obligations of each concrete user. A placeholder or an
 unused definition supplies no concrete use.
+A class or interface annotated with `DynamicallyAccessedMembers` contributes
+its mask to each reachable, statically known type assignable to it, including
+itself. Masks from the base classes and implemented interfaces combine, so
+reflection through `GetType()` can use the selected members on the runtime type.
+A constant-name `GetNestedType` on a known owner applies the selected nested
+type's mask. For a closed nested type identified by a constant type name or a
+`typeof` token, `DeclaringType` exposes the members its declaring type requests.
+Native tracing replaces the manifest generator for CoreLib's
+`System.Diagnostics.Tracing.EventSource`, so retention skips the mask declared
+on that type. Annotations declared on application event sources still apply.
 Selections over generic definitions re-apply as new instantiations appear,
 inside the discovery fixpoint and each compile round. `ReflectionSummary.cs`
 interprets one method body over SRM and `ILDecoder`, and `ReflectionApis.cs`
@@ -485,7 +495,9 @@ layered symbolic generic-argument writes up to the target arity.
 Repeated sites snapshot element values instead of layering write histories, so
 copy loops do not exhaust the alternative budget through historical nesting.
 
-A `MakeGenericType` over a known tuple takes an existing instantiation, else the
+A `MakeGenericType` over a known tuple takes an existing instantiation. A
+type-level member contract requires a static instantiation when the tuple
+satisfies the constraints. Other known tuples use the
 definition's runtime template while `TemplateMayServe` finds that a clone can run
 what the sites select on it, else a static instantiation when the constraints
 admit the tuple, else a ClosedGeneric diagnostic. Definitions with a type

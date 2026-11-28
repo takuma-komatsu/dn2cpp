@@ -5,10 +5,11 @@ namespace Dn2Cpp;
 
 internal sealed partial class AssemblyDiet
 {
-    private void MarkSignatureType(TypeReference? reference)
+    private void MarkSignatureType(TypeReference? reference, bool used = false)
     {
         if (_passiveAttributeMetadataDepth != 0) NotePassiveAttributeType(reference);
         RequireType(reference, TypeState.Metadata);
+        if (used) NoteTypeContractUse(reference);
     }
 
     private void KeepMethodSignature(MethodDefinition method)
@@ -148,8 +149,8 @@ internal sealed partial class AssemblyDiet
     {
         NoteMediumMethod(reference);
         MarkType(reference.DeclaringType);
-        MarkSignatureType(reference.ReturnType);
-        foreach (var parameter in reference.Parameters) MarkSignatureType(parameter.ParameterType);
+        MarkSignatureType(reference.ReturnType, used: true);
+        foreach (var parameter in reference.Parameters) MarkSignatureType(parameter.ParameterType, used: true);
         if (reference.DeclaringType is ArrayType) return;
         var method = ResolveMember(reference) as MethodDefinition;
         if (reference is GenericInstanceMethod generic)
@@ -157,7 +158,7 @@ internal sealed partial class AssemblyDiet
             if (method is not null) BindParameters(method.GenericParameters, generic.GenericArguments);
             foreach (var argument in generic.GenericArguments)
             {
-                MarkSignatureType(argument);
+                MarkSignatureType(argument, used: true);
                 if (method is null || !IsStripped(method.DeclaringType)) QueueDemand(argument, Demand.OpaqueData);
             }
         }
