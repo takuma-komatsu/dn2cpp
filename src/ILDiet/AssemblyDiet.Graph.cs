@@ -17,7 +17,7 @@ internal sealed partial class AssemblyDiet
         None = 0, DefaultCtor = 1, Ctors = 2, Members = 4, MethodBodies = 8, AccessorBodies = 16,
         OpaqueData = 32, Runtime = 64, Boxed = 128, FieldRead = 256, Metadata = 512,
         DefaultCtorAnyVisibility = 1024, ArrayLayout = 2048, FrameworkAttributeNamed = 4096,
-        PreservedUse = 8192, TypeWide = 16384, PassiveMetadata = 32768,
+        PreservedUse = 8192, TypeWide = 16384, PassiveMetadata = 32768, TypeContract = 65536, NamedTypeContract = 131072,
         AccessedMembers = (ulong)uint.MaxValue << AccessedMembersShift
     }
 
@@ -103,6 +103,7 @@ internal sealed partial class AssemblyDiet
     {
         foreach (var assembly in _assemblies)
         {
+            var reader = System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(assembly.PE);
             var types = AllTypes(assembly.Assembly.MainModule.Types).ToArray();
             int typeRows = types.Length == 0 ? 0 : (int)types.Max(t => t.MetadataToken.RID);
             int methodRows = types.SelectMany(t => t.Methods).Select(m => (int)m.MetadataToken.RID).DefaultIfEmpty().Max();
@@ -110,6 +111,7 @@ internal sealed partial class AssemblyDiet
             var methodNodes = new MethodNode?[methodRows + 1];
             foreach (var type in types)
             {
+                IndexTypeContract(type, reader);
                 typeNodes[type.MetadataToken.RID] = new TypeNode { Def = type };
                 foreach (var method in type.Methods)
                 {
@@ -140,7 +142,11 @@ internal sealed partial class AssemblyDiet
     private void Require(TypeDefinition type, TypeState state)
     {
         CheckMutable();
-        if ((state & TypeState.Runtime) != 0) NoteMediumType(type);
+        if ((state & TypeState.Runtime) != 0)
+        {
+            NoteMediumType(type);
+            NoteTypeContractUse(type);
+        }
         if (type.HasGenericParameters) EnsureOriginalModels();
         if (_passiveAttributeMetadataDepth == 0 && state != TypeState.None
             && _independentMetadataTypes.Add(type) && _passiveAttributeTypes.Contains(type)
@@ -625,8 +631,12 @@ internal sealed partial class AssemblyDiet
                     // virtual bodies. Direct and constrained operands remain executable.
                     if (dep.Op == Code.Ldtoken && IsNamedByRefLikeToken(type)) NotePreservedReference(type);
                     else MarkType(type);
-                    if (dep.Op == Code.Ldtoken && !PreservationReader.IsFrameworkAssemblyName(method.Module.Assembly.Name.Name))
-                        QueueDemand(type, Demand.FrameworkAttributeNamed);
+                    if (dep.Op == Code.Ldtoken)
+                    {
+                        NoteNamedTypeContracts(type);
+                        if (!PreservationReader.IsFrameworkAssemblyName(method.Module.Assembly.Name.Name))
+                            QueueDemand(type, Demand.FrameworkAttributeNamed);
+                    }
                     break;
                 case CallSite signature:
                     MarkType(signature.ReturnType);

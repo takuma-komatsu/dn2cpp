@@ -17,7 +17,7 @@ internal sealed partial class AssemblyDiet
 
     private void NotePreservedReference(TypeReference reference)
     {
-        MarkSignatureType(reference);
+        MarkSignatureType(reference, used: true);
         while (reference is OptionalModifierType or RequiredModifierType or PinnedType)
             reference = ((TypeSpecification)reference).ElementType;
         if (reference is GenericParameter or ProjectedTypeReference)
@@ -49,6 +49,7 @@ internal sealed partial class AssemblyDiet
 
     private void NoteCopiedListedOwner(TypeDefinition type)
     {
+        NoteTypeContractUse(type);
         // Primary emits a selected member's declaring table even when no body is
         // invoked. Runtime-owned tables have no managed declaring-class emission.
         if (UsesReachedCopyTraversal(type) && !CopiedRuntimeOwnedType(type)) NoteCopiedPreservationUse(type);

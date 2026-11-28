@@ -86,11 +86,12 @@ internal static class Program
         Type? byAssembly = typeof(Program).Assembly.GetType("ILDietControl.RuntimeNamed");
         Console.WriteLine("type-name=" + (byType is not null));
         Console.WriteLine("assembly-name=" + (byAssembly is not null));
-        bool listedRuntime = false, listedUnused = false;
+        bool listedRuntime = false, listedUnused = false, listedNestedFoo = false;
         foreach (Type listedType in typeof(Program).Assembly.GetTypes())
         {
             listedRuntime |= listedType.FullName == "ILDietControl.RuntimeNamed";
             listedUnused |= listedType.FullName == "ILDietControl.UnusedAppType";
+            listedNestedFoo |= listedType.FullName == "ILDietControl.MethodLookupOwner+Foo";
         }
         Console.WriteLine("assembly-types=" + listedRuntime + ":" + listedUnused);
         Report("runtime-name-construction", () => ((Shape)Activator.CreateInstance(byType!)!).Who());
@@ -140,7 +141,32 @@ internal static class Program
         if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_GENERIC_PARAMETER_CONTRACTS") == "1")
             return;
         GenericParameterContracts.Run();
+
+        if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_TYPE_CONTRACTS") == "1")
+            return;
+        var derived = new TypeContractDerived();
+        Report("type contract base", () => new TypeContractBase().ReadCode());
+        Report("type contract derived", () => derived.ReadCode());
+        Report("type contract interface", () => ReadSize(derived));
+        Report("type contract template", () => ReadArgumentName(
+            typeof(TypeContractTemplate<>).MakeGenericType(typeof(int))));
+        Report("type contract declaring", () => ReadArgumentName(
+            Type.GetType("ILDietControl.NamedTypeContract+Nested")!.DeclaringType!));
+        Report("type contract nested", () => ReadArgumentName(
+            Type.GetType("ILDietControl.NamedTypeContract+Nested")!.GetNestedType("Selected")!));
+        Report("type contract token", () => ReadArgumentName(typeof(TokenTypeContract.Nested).DeclaringType!));
+        Report("type contract method lookup", () => listedNestedFoo + "/" + typeof(MethodLookupOwner).InvokeMember("Foo",
+            BindingFlags.Public | BindingFlags.Instance | BindingFlags.InvokeMethod, null, new MethodLookupOwner(), null));
+        GC.KeepAlive(new UnrelatedTypeContractTarget());
     }
+
+    private static object? ReadSize(ITypeContract target) =>
+        target.GetType().InvokeMember("Size", BindingFlags.Instance | BindingFlags.Public | BindingFlags.GetProperty,
+            null, target, null);
+
+    private static object? ReadArgumentName(Type type) =>
+        type.InvokeMember("ArgumentName", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.InvokeMethod,
+            null, null, null);
 
     private sealed class AnnotatedFieldCustomer { public int FieldRetentionWitness => 42; }
     private sealed class UnprovedFieldCustomer { public int FieldRetentionWitness => 43; }
@@ -227,6 +253,37 @@ internal static class Program
             text = e.GetType().Name;
         }
         Console.WriteLine(label + "=" + text);
+    }
+}
+
+[DynamicallyAccessedMembers(MemberTypes.NonPublicMethods)]
+internal sealed class NamedTypeContract
+{
+    private static string ArgumentName() => "declaring";
+
+    internal sealed class Nested
+    {
+        [DynamicallyAccessedMembers(MemberTypes.NonPublicMethods)]
+        public sealed class Selected
+        {
+            private static string ArgumentName() => "selected";
+        }
+    }
+}
+
+[DynamicallyAccessedMembers(MemberTypes.NonPublicMethods)]
+internal sealed class TokenTypeContract
+{
+    private static string ArgumentName() => "token";
+    internal sealed class Nested { }
+}
+
+internal sealed class MethodLookupOwner : Base
+{
+    [DynamicallyAccessedMembers(MemberTypes.NonPublicMethods)]
+    public new sealed class Foo
+    {
+        private static int NestedOnly() => -1;
     }
 }
 

@@ -6,6 +6,72 @@ namespace Dn2Cpp;
 
 internal sealed partial class AssemblyDiet
 {
+    private readonly HashSet<TypeReference> _typeContractUses = new();
+    private readonly Dictionary<TypeDefinition, Demand> _declaredTypeContracts = new();
+    private readonly Dictionary<TypeDefinition, Demand> _inheritedTypeContracts = new();
+
+    private void IndexTypeContract(TypeDefinition type, System.Reflection.Metadata.MetadataReader reader)
+    {
+        var handle = MetadataTokens.TypeDefinitionHandle((int)type.MetadataToken.RID);
+        var members = ReflectionCoreContracts.GetDeclaredTypeAccessedMembers(reader, handle);
+        if (members != AccessedMembers.None)
+            _declaredTypeContracts.Add(type, (Demand)((ulong)(uint)members << AccessedMembersShift));
+    }
+
+    private void NoteTypeContractUse(TypeReference? reference)
+    {
+        if (_declaredTypeContracts.Count == 0 || reference is null || !_typeContractUses.Add(reference)) return;
+        Spend();
+        if (IsSymbolic(reference))
+        {
+            QueueDemand(reference, Demand.TypeContract);
+            return;
+        }
+        if (reference is GenericInstanceType generic)
+        {
+            foreach (var argument in generic.GenericArguments) NoteTypeContractUse(argument);
+        }
+        else if (reference is FunctionPointerType pointer)
+        {
+            NoteTypeContractUse(pointer.ReturnType);
+            foreach (var parameter in pointer.Parameters) NoteTypeContractUse(parameter.ParameterType);
+            return;
+        }
+        else if (reference is TypeSpecification specification)
+        {
+            NoteTypeContractUse(specification.ElementType);
+            return;
+        }
+        if (Resolve(reference) is not { } type) return;
+        if (!_inheritedTypeContracts.TryGetValue(type, out var demand))
+        {
+            foreach (var ancestor in TypeRelations(type))
+                if (_declaredTypeContracts.TryGetValue(ancestor, out var declared)) demand |= declared;
+            _inheritedTypeContracts.Add(type, demand);
+            // Each projected ancestor is itself a use, including the concrete
+            // arguments in its signature and its own declared private members.
+            NoteTypeContractUse(type.BaseType);
+            foreach (var implementation in type.Interfaces) NoteTypeContractUse(implementation.InterfaceType);
+        }
+        QueueDemand(reference, demand);
+    }
+
+    private void NoteNamedTypeContracts(TypeReference reference)
+    {
+        if (_declaredTypeContracts.Count == 0) return;
+        if (IsSymbolic(reference))
+        {
+            QueueDemand(reference, Demand.NamedTypeContract);
+            return;
+        }
+        if (reference is TypeSpecification and not GenericInstanceType || Resolve(reference) is not { } type
+            || reference is not GenericInstanceType && type.HasGenericParameters) return;
+        NoteTypeContractUse(reference);
+        // A constructed nested type exposes the same declaring definitions for every argument tuple.
+        for (var owner = type.DeclaringType; owner is not null; owner = owner.DeclaringType)
+            if (!owner.HasGenericParameters) NoteTypeContractUse(owner);
+    }
+
     private Demand AccessedMemberDemand(MethodReference reference, int parameter)
     {
         if (ResolveMember(reference) is not MethodDefinition method || !_byModule.ContainsKey(method.Module))
@@ -140,6 +206,7 @@ internal sealed partial class AssemblyDiet
                 Spend();
                 if (!Matches(LookupMemberKind.NestedType, MemberVisibility(nested.IsNestedPublic, nested.IsNestedPrivate))) continue;
                 NoteCopiedListedOwner(nested);
+                NoteNamedTypeContracts(nested);
                 QueueDemand(nested, Demand.AccessedMembers);
             }
     }

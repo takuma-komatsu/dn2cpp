@@ -193,7 +193,8 @@ internal sealed partial class Compilation
             string identity = MetadataStorageIdentity(type);
             if (_reflectionMetadataFrozen && !_nativeReflectionMetadata.Contains(identity))
                 throw new InvalidOperationException("A static typeof metadata choice was discovered after metadata emission began.");
-            _nativeReflectionMetadata.Add(identity);
+            if (_nativeReflectionMetadata.Add(identity) && openDefinition is null && type.Class is { Handle.IsNil: false } nested)
+                NoteDeclaringTypeContracts(nested);
             if (openDefinition is not null)
                 _nativeReflectionDefinitions.Add(openDefinition);
         }

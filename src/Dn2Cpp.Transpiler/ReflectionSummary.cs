@@ -4189,6 +4189,17 @@ internal sealed class ReflectionCoreContracts
         return (uint)parameter < (uint)slots.Length ? slots[parameter] : DynamicallyAccessedMemberTypes.None;
     }
 
+    internal static DynamicallyAccessedMemberTypes GetDeclaredTypeAccessedMembers(MetadataReader reader, TypeDefinitionHandle handle)
+    {
+        var type = reader.GetTypeDefinition(handle);
+        // The native EventSource has no manifest builder that consumes its hierarchy annotation.
+        if (reader.StringComparer.Equals(type.Name, "EventSource")
+            && reader.StringComparer.Equals(type.Namespace, "System.Diagnostics.Tracing")
+            && type.GetDeclaringType().IsNil && IsCoreLib(reader))
+            return DynamicallyAccessedMemberTypes.None;
+        return ReadAccessedMembers(reader, type.GetCustomAttributes());
+    }
+
     internal static DynamicallyAccessedMemberTypes ReadAccessedMembers(MetadataReader reader, CustomAttributeHandleCollection attributes)
     {
         foreach (var handle in attributes)

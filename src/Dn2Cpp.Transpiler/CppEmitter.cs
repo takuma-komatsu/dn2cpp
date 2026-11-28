@@ -2336,7 +2336,7 @@ internal sealed partial class CppEmitter
             _c.ReachReflectionRuntimeSupport();
             // A finite template selection can gain a static instantiation.
             _c.ApplyPendingReflectionSelections();
-            if (_c.ApplyPendingGenericParameterContracts())
+            if (_c.ApplyPendingMemberContracts())
                 _c.DrainReachability();
             _c.NoteAttributeArrayHandle();
             // A generic virtual override's row needs the row of the method that

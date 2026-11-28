@@ -484,7 +484,7 @@ internal sealed partial class Compilation
         if (!_allocatedRefTypes.Add(c))
             return;
         _allocatedTypeOrder.Add(c);
-        NoteGenericParameterContracts(c);
+        NoteTypeContracts(c);
         NoteConditionalPreservationUse(c);
         NoteAllocatedQueueScheduler(c);
         if (c.IsDelegate)
@@ -7047,9 +7047,9 @@ internal sealed partial class Compilation
                             string name = handle.Kind == HandleKind.MemberReference
                                 ? reader.GetString(reader.GetMemberReference((MemberReferenceHandle)handle).Name)
                                 : reader.GetString(reader.GetFieldDefinition((FieldDefinitionHandle)handle).Name);
-                            NoteGenericParameterContracts(fc);
+                            NoteTypeContracts(fc);
                             if (EnsureShape(fc).Fields.FirstOrDefault(f => f.Name == name) is { } field)
-                                NoteGenericContractType(field.Type);
+                                NoteTypeContracts(field.Type);
                             if (isStatic)
                                 ReachCctor(ReflectionStaticFieldOwner(fc, name));
                         }

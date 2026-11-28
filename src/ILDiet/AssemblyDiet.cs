@@ -497,7 +497,7 @@ internal sealed partial class AssemblyDiet : IDisposable
     private void MarkField(FieldReference reference)
     {
         MarkType(reference.DeclaringType);
-        MarkSignatureType(reference.FieldType);
+        MarkSignatureType(reference.FieldType, used: true);
         var field = ResolveMember(reference) as FieldDefinition;
         if (_passiveAttributeMetadataDepth == 0 && field is not null) ReplayPassiveBindings(field);
         if (field is null || !IsStripped(field.DeclaringType) || !_fields.Add(field)) return;

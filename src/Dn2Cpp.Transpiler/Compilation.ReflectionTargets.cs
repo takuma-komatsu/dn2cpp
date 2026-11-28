@@ -61,7 +61,8 @@ internal sealed partial class Compilation
     /// <summary>A member selection on a template's clone, under ordinary lookup or named
     /// delegate-binding rules.</summary>
     private sealed record TemplateLookup(LookupMemberKind? Kind, string? Name, int Flags, RResolved? Types, int Arity,
-        bool AllowPrefix = false, RResolved? Returns = null, bool MostDerived = false, bool NamedBinding = false);
+        bool AllowPrefix = false, RResolved? Returns = null, bool MostDerived = false, bool NamedBinding = false,
+        bool IncludeNestedTypes = true);
 
     /// <summary>What a site asks of a template's clone: running the members a lookup
     /// selects, or constructing it with one of its constructors (<paramref name="Arguments"/>
@@ -1052,7 +1053,8 @@ internal sealed partial class Compilation
                         if (names is not null && e.Assembly is { } module)
                             foreach (string name in names)
                                 SelectTemplateMember(e, new TemplateLookup(null, !IsDefaultMemberAlias(name) ? name
-                                        : DeclaredDefaultMemberName(module, e.Definition) ?? "ToString", flags, null, -1, AllowPrefix: true),
+                                        : DeclaredDefaultMemberName(module, e.Definition) ?? "ToString", flags, null, -1,
+                                        AllowPrefix: true, IncludeNestedTypes: false),
                                     ReflectionAccessor.All, construct: false, -1, app);
                         if ((flags & 0x200) != 0)
                             SelectTemplateMember(e, new TemplateLookup(LookupMemberKind.Constructor, null, flags, null, -1),
@@ -1063,7 +1065,8 @@ internal sealed partial class Compilation
                         if (names is not null)
                             foreach (string name in names)
                                 foreach (var e in NoteListedRows(SelectMembers(cls, null, !IsDefaultMemberAlias(name) ? name
-                                             : DefaultMemberName(cls) ?? "ToString", flags, null, -1, allowPrefix: true)))
+                                             : DefaultMemberName(cls) ?? "ToString", flags, null, -1,
+                                             allowPrefix: true, includeNestedTypes: false)))
                                     InvokeSelected(e, app, ReflectionAccessor.All);
                         // CreateInstance ignores the name.
                         if ((flags & 0x200) != 0)
@@ -1812,7 +1815,8 @@ internal sealed partial class Compilation
                         if (admitted == false)
                             continue;
                         servable ??= RuntimeTemplateMayServe(module, e.Definition);
-                        if (servable == true)
+                        // A known closed type with a member contract needs callable members of its own.
+                        if (servable == true && (admitted is null || TypeMemberContract(module, e.Definition) == AccessedMembers.None))
                         {
                             SelectTemplate(app, site, module, e.Definition, report,
                                 "the program names no instantiation over these type arguments", tuple);
@@ -1823,7 +1827,7 @@ internal sealed partial class Compilation
                             });
                             if (ClosedTemplateBase(module, e.Definition, tuple, noteContracts: true) is { } inherited)
                             {
-                                NoteGenericParameterContracts(inherited);
+                                NoteTypeContracts(inherited);
                                 result.Add(new REntity { Kind = REntityKind.Type, Type = TypeDesc.MakeClass(inherited), Inherited = true });
                             }
                             continue;
@@ -2365,7 +2369,7 @@ internal sealed partial class Compilation
             return selected;
         }
         var members = SelectMembers(owner, lookup.Kind, lookup.Name, lookup.Flags, lookup.Types, lookup.Arity,
-            lookup.AllowPrefix, lookup.Returns);
+            lookup.AllowPrefix, lookup.Returns, includeNestedTypes: lookup.IncludeNestedTypes);
         if (lookup.MostDerived)
         {
             if (lookup.Kind == LookupMemberKind.Method && lookup.Types is null)
@@ -3115,7 +3119,7 @@ internal sealed partial class Compilation
     /// <see cref="ReflectionLookupRules.LookupName"/> does.</summary>
     private List<REntity> SelectMembers(ClassInfo owner, LookupMemberKind? kind, string? name, int flags,
         RResolved? types, int arity, bool allowPrefix = false, RResolved? returns = null,
-        AccessedMembers accessedMembers = AccessedMembers.None, bool inheritedOwner = false)
+        AccessedMembers accessedMembers = AccessedMembers.None, bool inheritedOwner = false, bool includeNestedTypes = true)
     {
         var selected = new List<REntity>();
         CompleteReflectionDefinitionOwner(owner);
@@ -3221,7 +3225,7 @@ internal sealed partial class Compilation
                         InheritedMember = !declared && accessedMembers == AccessedMembers.None,
                     });
                 }
-            if (kind is null or LookupMemberKind.NestedType)
+            if (includeNestedTypes && (kind is null or LookupMemberKind.NestedType))
                 selected.AddRange(SelectNestedTypes(c.Module, c.Handle, name, flags, prefix, declared, accessedMembers));
         }
         if (types is not null && kind is LookupMemberKind.Method or LookupMemberKind.Constructor && selected.Count > 1)
