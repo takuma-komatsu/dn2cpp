@@ -1836,8 +1836,8 @@ state: cancellation or a previous start prevents it, but successful or faulted
 promises need not have been scheduled. The claim alone neither queues nor invokes
 a delegate. Cold starts, queued delegate work and eligible continuations publish
 their scheduling phase; unwrapping promises do not inherit the delegate's phase.
-A settled status takes precedence over WaitingToRun or Running. Await resumptions
-do not acquire a Task start claim.
+A settled status takes precedence over WaitingToRun or Running. Await registration
+leaves the awaited task's start claim alone.
 
 A blocking task wait counts another thread executing a console entry, a native
 callback or an engine callback as a possible settler. Nested callbacks share
@@ -1859,16 +1859,22 @@ those resumptions retain their wall deadlines. `ConfigureAwait(false)` and
 continuations on the default task scheduler can run on the pool. Host-thread
 callbacks stay on their owner.
 
-State-machine `Task.Yield` and pending `Task` awaits that request capture use
-the managed derived `SynchronizationContext` installed at suspension. They
-dispatch its virtual `Post` outside the task lock. A task completion drains
-its native joins before calling managed `Post`. Null, base and native
-host-installed contexts keep the scheduler path, as do ordinary uncaptured awaits.
-A configured Task awaiter's direct registration follows its capture option as
-well. `ForceYielding` makes an already-complete task suspend and, without a
-captured or host context on a threaded target, queues its resumption on the
-pool. Non-generic `SuppressThrowing` observes a failure without raising it.
-Other direct awaiter and `IValueTaskSource` registrations are unchanged.
+`Task.Yield` and pending `Task` awaits that request capture use the derived
+managed `SynchronizationContext` installed at suspension. Its virtual `Post`
+runs outside the task lock. With a null or base context, a visible managed
+`TaskScheduler` receives a separate task whose delegate resumes the await.
+Yield queues that task with `PreferFairness`. A pending Task await can offer
+inline execution when its completion permits it and runs on the captured
+scheduler or a pool thread. A refusal queues the task on the same scheduler.
+Native joins drain before managed scheduling callbacks can reenter user code.
+Native host-installed contexts retain their owner's pump.
+
+Direct Task, configured Task and Yield awaiter registrations use the same
+capture rules. `ConfigureAwait(false)` uses the context-free path.
+`ForceYielding` makes an already-complete task suspend and, without a captured
+scheduler or context on a threaded target, queues its resumption on the pool.
+Non-generic `SuppressThrowing` observes a failure without raising it.
+Source-backed ValueTasks use their own registration protocol.
 
 `Task.Factory` and each closed `Task<TResult>.Factory` keep one GC-rooted
 instance of their declared factory type. The default constructor leaves the
@@ -2103,8 +2109,8 @@ its CoreCLR continuation machinery is transpiled.
   suspending activation reads nothing but its return value afterwards.
 - **Awaits lower over tasks and `Task.Yield`.** An await on a `Task`, a
   `ValueTask` or a configured form of either registers the resumption on the
-  native task, and `Task.Yield` posts it to the run queue. Plain and configured
-  Task awaitables use the state-machine context routing. A literal
+  native task. Plain and configured Task awaits and `Task.Yield` use the same
+  context and scheduler routing as state-machine awaits. A literal
   `ForceYielding` can dispatch an already-ready Task without the submitting
   thread pumping its scheduler, and non-generic `SuppressThrowing` observes a
   fault without raising it. ValueTask keeps its separate source bridge. A body

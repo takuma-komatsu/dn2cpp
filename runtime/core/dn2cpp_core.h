@@ -6040,6 +6040,7 @@ struct Dn2CppTask; // full definition below
 struct Dn2CppCancelSource;
 struct Dn2CppCancelToken;
 constexpr int32_t DN2CPP_TASK_OPTIONS_MASK = 0x5f;
+constexpr int32_t DN2CPP_TASK_PREFER_FAIRNESS = 1;
 constexpr int32_t DN2CPP_TASK_LONG_RUNNING = 2;
 constexpr int32_t DN2CPP_TASK_ATTACHED_TO_PARENT = 4;
 constexpr int32_t DN2CPP_TASK_DENY_CHILD_ATTACH = 8;
@@ -6120,6 +6121,7 @@ struct Dn2CppTaskSchedulerQueue
     int32_t dequeueSlot;
     Dn2CppObject* (*wrapException)(Dn2CppObject*);
     int32_t inlineSlot; // negative unless a reachable scheduling operation can offer inline execution
+    const Dn2CppTypeInfo* awaitActionType = nullptr; // synthesized await callback exposed through Task.AsyncState
 };
 void dn2cpp_task_start(Dn2CppTask* t, Dn2CppObject* scheduler);
 void dn2cpp_task_start(Dn2CppTask* t, Dn2CppObject* scheduler, const Dn2CppTaskSchedulerQueue* queue);
@@ -7953,6 +7955,7 @@ struct Dn2CppTask : Dn2CppObject
     int32_t exceptionHolderState; // guarded while pending, published with terminal status
     bool nativeFaultObserved; // protected by the task mutex, before holder installation
     std::atomic<uint8_t> finishProvenance; // actual attachment history and exclusive Finish ownership
+    bool hasTaskAwait; // the first registered Task await may inline on completion
     std::atomic<Dn2CppTimer*> delayTimer; // published before returning a finite Task.Delay
     std::atomic<Dn2CppObject*> scheduler; // assigned once, independently of the lifetime of queued work
 };
@@ -8230,7 +8233,8 @@ void dn2cpp_action_invoke(Dn2CppObject* action);
 void dn2cpp_paramthread_invoke(Dn2CppObject* action, Dn2CppObject* state);
 // Register a System.Action to run when `t` completes — backs a user awaiter's
 // TaskAwaiter.OnCompleted(Action) and the custom-awaitable await continuation.
-void dn2cpp_task_on_completed_action(Dn2CppTask* t, Dn2CppObject* action, bool captureContext = true);
+void dn2cpp_task_on_completed_action(Dn2CppTask* t, Dn2CppObject* action, bool captureContext = true,
+    bool postToContext = false);
 // Task.Delay(ms): a task that completes after `ms` of virtual time. There is no
 // wall clock — a logical clock advances only when no work is runnable, so concurrent
 // delays complete in duration order, deterministically and without real sleeping.
@@ -8313,10 +8317,10 @@ int32_t dn2cpp_tcs_try_set_from_task(Dn2CppTaskCompletionSource* source, Dn2CppT
 void dn2cpp_tcs_set_from_task(Dn2CppTaskCompletionSource* source, Dn2CppTask* completed, bool copyResult);
 // Enqueue a resumption on the cooperative run queue.
 void dn2cpp_sched_post(void (*fn)(void*), void* state);
-// State-machine Task.Yield posts immediately to its captured context, when any.
-void dn2cpp_async_yield_on_completed(void (*fn)(void*), void* state, bool reraise);
-// Action form of dn2cpp_sched_post: enqueue a System.Action (and its multicast
-// chain) on this thread's run queue. Backs YieldAwaiter.OnCompleted(Action).
+// A BCL state machine supplies the task that represents its box to the scheduler.
+void dn2cpp_async_yield_on_completed(void (*fn)(void*), void* state, bool reraise,
+    Dn2CppTask* asyncTask = nullptr);
+// Direct YieldAwaiter registration follows the same context and scheduler selection.
 void dn2cpp_sched_post_action(Dn2CppObject* action);
 // Per-thread SynchronizationContext.Current: read / install the calling thread's
 // context (a GC-visible pinned slot; null until something installs one — the

@@ -86,8 +86,10 @@ internal static class Program
     private sealed class CompletionContext : SynchronizationContext
     {
         internal bool Cleared;
+        internal int Posts;
         public override void Post(SendOrPostCallback callback, object state)
         {
+            Interlocked.Increment(ref Posts);
             Cleared = Task.CurrentId is null && TaskScheduler.Current == TaskScheduler.Default;
             callback(state);
         }
@@ -235,6 +237,50 @@ internal static class Program
         if (waitError is not null) throw new InvalidOperationException("Queued task wait failed", waitError);
         scheduler.Report("queued Wait unaided=" + unaided + " previously queued=" + scheduler.PreviouslyQueued
             + " on waiter=" + (bodyThread == waiter.ManagedThreadId), held);
+    }
+
+    private static async Task<bool> ResumeOn(Task pending, TaskScheduler expected, bool yield = false, bool capture = true)
+    {
+        if (yield) await Task.Yield();
+        else if (capture) await pending;
+        else await pending.ConfigureAwait(false);
+        return TaskScheduler.Current == expected;
+    }
+
+    internal static void RunAwaitScheduler()
+    {
+        var scheduler = new ProbeScheduler { ExecuteOnQueue = true };
+        var posted = new CompletionContext();
+        var bypassed = new CompletionContext();
+        var source = new TaskCompletionSource<int>();
+        Task<bool> pending = null, yielded = null, preferred = null, uncaptured = null;
+        bool entered = false;
+        var entry = new Task(() =>
+        {
+            var previous = SynchronizationContext.Current;
+            entered = previous is null && TaskScheduler.Current == scheduler;
+            pending = ResumeOn(source.Task, scheduler);
+            yielded = ResumeOn(source.Task, scheduler, yield: true);
+            try
+            {
+                SynchronizationContext.SetSynchronizationContext(posted);
+                preferred = ResumeOn(source.Task, TaskScheduler.Default);
+                SynchronizationContext.SetSynchronizationContext(bypassed);
+                uncaptured = ResumeOn(source.Task, TaskScheduler.Default, capture: false);
+            }
+            finally { SynchronizationContext.SetSynchronizationContext(previous); }
+        });
+        entry.Start(scheduler);
+        var limit = TimeSpan.FromSeconds(3);
+        if (!entry.Wait(limit) || pending.IsCompleted || preferred.IsCompleted || uncaptured.IsCompleted)
+            throw new InvalidOperationException("The awaits did not suspend on the pending task");
+        source.SetResult(1);
+        if (!Task.WhenAll(new Task[] { pending, yielded, preferred, uncaptured }).Wait(limit))
+            throw new TimeoutException("The await continuations did not finish");
+        Console.WriteLine("await scheduler: entered=" + entered + " pending=" + pending.Result + " yield=" + yielded.Result
+            + " queues=" + scheduler.Queued);
+        Console.WriteLine("await context preference: posts=" + posted.Posts + "/" + bypassed.Posts
+            + " default scheduler=" + preferred.Result + "/" + uncaptured.Result);
     }
 
     private static bool RejectRunningTask()

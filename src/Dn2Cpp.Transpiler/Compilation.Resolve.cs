@@ -3394,8 +3394,9 @@ internal sealed partial class Compilation
         if (nm is not ("AwaitOnCompleted" or "AwaitUnsafeOnCompleted"))
             return;
         var margs = ms.DecodeSignature(SigProvider, ctx).ToArray();
-        if (margs.Length == 0
-            || CustomAwaiterOnCompleted(margs[0], preferUnsafe: nm == "AwaitUnsafeOnCompleted") is not { } onCompleted)
+        if (margs.Length == 0) return;
+        NoteCapturingTaskAwait(margs[0]);
+        if (CustomAwaiterOnCompleted(margs[0], preferUnsafe: nm == "AwaitUnsafeOnCompleted") is not { } onCompleted)
             return;
         // An interface-declared registration method (interface-typed awaiter) is
         // dispatched through the interface table: mark the slot used so every

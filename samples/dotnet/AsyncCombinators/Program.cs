@@ -150,6 +150,7 @@ namespace AsyncCombinators
             ColdTaskScheduleSubset.Program.RunManagedDispatch();
             TaskCancellationTokenSubset.Program.RunPendingContinuationCancellation();
             ColdTaskScheduleSubset.Program.RunQueuedWait();
+            ColdTaskScheduleSubset.Program.RunAwaitScheduler();
         }
     }
 }

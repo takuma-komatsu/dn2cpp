@@ -7,17 +7,28 @@ internal sealed partial class Compilation
 {
     internal sealed record TaskSchedulerQueueMembers(MethodInfo Queue, MethodInfo Dequeue, MethodInfo ExceptionConstructor, MethodInfo? Inline);
     internal TaskSchedulerQueueMembers? TaskSchedulerQueue { get; private set; }
+    internal ClassInfo? TaskAwaitActionType { get; private set; }
     private ClassInfo? _explicitScheduler;
     private bool _needsSchedulerInline;
+    private bool _configuresTaskCapture;
+    private bool _awaitsConfiguredTask;
+    private bool _configuredAwaitNeedsAction;
+    private bool _needsAwaitAction;
 
     // An implicit operation can inherit a generated scheduler only after an explicit
     // dispatch made one current. Keep virtual slots out of pool-only images.
     private void NoteTaskSchedulerDispatch(MethodInfo caller, EntityHandle handle, List<Instruction> instructions,
         int index, MethodBodyBlock body, ref HashSet<int>? entries)
     {
-        if (_explicitScheduler is not null && _needsSchedulerInline) return;
+        if (_explicitScheduler is not null && _needsSchedulerInline && _needsAwaitAction) return;
         var module = caller.Module;
         string? name = CallTargetMethodName(module, handle);
+        if (name is "OnCompleted" or "UnsafeOnCompleted" or "ConfigureAwait" or "Await")
+        {
+            NoteTaskAwaitSite(caller, handle, name, instructions, index, body, ref entries);
+            return;
+        }
+        if (_explicitScheduler is not null && _needsSchedulerInline) return;
         bool wait = name is "Wait" or "get_Result" or "GetResult" or "HandleAsyncEntryPoint";
         if (!(wait || name is "Start" or "StartNew" or "ContinueWith" or "RunSynchronously")
             || DeclaringDefinitionOf(module, handle) is not { } owner || owner.Module.AssemblyName != "System.Private.CoreLib")
@@ -33,11 +44,7 @@ internal sealed partial class Compilation
             || !(name == "StartNew" ? reader.StringComparer.Equals(definition.Name, "TaskFactory")
                 : reader.StringComparer.Equals(definition.Name, "Task")
                     || name == "ContinueWith" && reader.StringComparer.Equals(definition.Name, "Task`1"))) return;
-        var member = handle.Kind == HandleKind.MethodSpecification
-            ? module.Reader.GetMethodSpecification((MethodSpecificationHandle)handle).Method : handle;
-        var signature = member.Kind == HandleKind.MemberReference
-            ? module.Reader.GetMemberReference((MemberReferenceHandle)member).DecodeMethodSignature(SigProvider, caller.Context)
-            : module.Reader.GetMethodDefinition((MethodDefinitionHandle)member).DecodeSignature(SigProvider, caller.Context);
+        var signature = SchedulerCallSignature(caller, handle);
         var parameters = signature.ParameterTypes;
         if (wait)
         {
@@ -87,6 +94,109 @@ internal sealed partial class Compilation
         if (_explicitScheduler is not null)
             foreach (var allocated in _allocatedTypeOrder.ToList())
                 NoteAllocatedQueueScheduler(allocated);
+    }
+
+    private MethodSignature<TypeDesc> SchedulerCallSignature(MethodInfo caller, EntityHandle handle)
+    {
+        var reader = caller.Module.Reader;
+        var member = handle.Kind == HandleKind.MethodSpecification
+            ? reader.GetMethodSpecification((MethodSpecificationHandle)handle).Method : handle;
+        return member.Kind == HandleKind.MemberReference
+            ? reader.GetMemberReference((MemberReferenceHandle)member).DecodeMethodSignature(SigProvider, caller.Context)
+            : reader.GetMethodDefinition((MethodDefinitionHandle)member).DecodeSignature(SigProvider, caller.Context);
+    }
+
+    private void NoteTaskAwaitSite(MethodInfo caller, EntityHandle handle, string name, List<Instruction> instructions,
+        int index, MethodBodyBlock body, ref HashSet<int>? entries)
+    {
+        if (DeclaringDefinitionOf(caller.Module, handle) is not { } owner) return;
+        string type;
+        if (owner.Module.AssemblyName == "System.Private.CoreLib")
+            type = RawSignatureProvider.TypeDefinitionName(owner.Module.Reader, owner.Handle);
+        else if (name == "ConfigureAwait" && AdoptedAsyncCpp(owner.Module, owner.Handle) == "Dn2CppTask*"
+            && SchedulerCallSignature(caller, handle) is
+                { ParameterTypes: [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }],
+                  ReturnType.Class: { Module.AssemblyName: "System.Private.CoreLib" } configured }
+            && GenericDefFullName(configured) == "System.Runtime.CompilerServices.ConfiguredTaskAwaitable")
+            // An adopted reference task produces CoreLib's ConfiguredTaskAwaitable.
+            type = "System.Threading.Tasks.Task";
+        else
+            return;
+        if (name is "OnCompleted" or "UnsafeOnCompleted")
+        {
+            if (!_needsSchedulerInline) NoteCapturingTaskAwait(type, false);
+            return;
+        }
+        if (name == "Await")
+        {
+            if (type == MethodCompiler.RuntimeAsyncHelpersType && SchedulerCallSignature(caller, handle).ParameterTypes is [{ } awaited])
+                NoteCapturingTaskAwait(awaited);
+            return;
+        }
+        if (_configuresTaskCapture || type is not ("System.Threading.Tasks.Task" or "System.Threading.Tasks.Task`1")) return;
+        if (instructions[index].OpCode is ILOpCode.Call or ILOpCode.Callvirt)
+        {
+            entries ??= BranchLiveness.NonFallthroughEntries(instructions, body);
+            int source = SchedulerArgumentProducer(instructions, index, body.LocalVariablesInitialized, entries);
+            if (source >= 0 && (SchedulerOptionBits(instructions[source]) & 1) == 0) return;
+        }
+        _configuresTaskCapture = true;
+        if (_awaitsConfiguredTask) RequireAwaitCallbacks(_configuredAwaitNeedsAction);
+    }
+
+    private void NoteCapturingTaskAwait(TypeDesc awaiter)
+    {
+        if (!_needsAwaitAction && TemplateOrClassDef(awaiter) is ({ AssemblyName: "System.Private.CoreLib" } module, { IsNil: false } type))
+            NoteCapturingTaskAwait(RawSignatureProvider.TypeDefinitionName(module.Reader, type), true);
+    }
+
+    private void NoteCapturingTaskAwait(string type, bool needsAction)
+    {
+        const string compiler = "System.Runtime.CompilerServices.";
+        switch (type)
+        {
+            case "System.Threading.Tasks.Task" or "System.Threading.Tasks.Task`1":
+            case compiler + "TaskAwaiter" or compiler + "TaskAwaiter`1":
+                break;
+            case compiler + "ConfiguredTaskAwaitable" or compiler + "ConfiguredTaskAwaitable`1":
+            case compiler + "ConfiguredTaskAwaitable+ConfiguredTaskAwaiter" or compiler + "ConfiguredTaskAwaitable`1+ConfiguredTaskAwaiter":
+                // A configured await can arrive through another method. Pair its registration
+                // with a reachable ConfigureAwait that can set ContinueOnCapturedContext.
+                _awaitsConfiguredTask = true;
+                _configuredAwaitNeedsAction |= needsAction;
+                if (!_configuresTaskCapture) return;
+                break;
+            default:
+                return;
+        }
+        RequireAwaitCallbacks(needsAction);
+    }
+
+    private void RequireAwaitCallbacks(bool needsAction)
+    {
+        _needsAwaitAction |= needsAction;
+        if (!_needsSchedulerInline) NoteTaskSchedulerRequirement(null, true);
+        ReachTaskAwaitAction();
+    }
+
+    private void ReachTaskAwaitAction()
+    {
+        if (!_needsAwaitAction || TaskAwaitActionType is not null || TaskSchedulerQueue is not { } queue) return;
+        if (TypeIndex().TryGetValue(("System", "Action"), out var definitions))
+            foreach (var (module, handle) in definitions)
+                if (module == queue.Queue.Module)
+                {
+                    var action = GetClass(module, handle);
+                    EnsureCompleted(action);
+                    var invoke = action.Methods.SingleOrDefault(m => m.Name == "Invoke" && m.Signature.Header.RawValue == 0x20
+                        && m.Signature.ReturnType.IsVoid && m.Signature.ParameterTypes.Length == 0);
+                    if (!action.IsDelegate || invoke is null) break;
+                    TaskAwaitActionType = action;
+                    ReachAllocatedType(action);
+                    Reach(invoke);
+                    return;
+                }
+        throw new NotSupportedException("Captured Task await requires CoreLib's System.Action");
     }
 
     private static bool IsSchedulerWaitOwner(string? name, string owner)
@@ -164,15 +274,16 @@ internal sealed partial class Compilation
                 or ILOpCode.Ldsfld)) return true;
             producer = SchedulerProducer(instructions, producer, entries);
         }
-        if (producer < 0) return true;
-        var value = instructions[producer];
-        return value.OpCode switch
-        {
-            >= ILOpCode.Ldc_i4_0 and <= ILOpCode.Ldc_i4_8 => false,
-            ILOpCode.Ldc_i4 or ILOpCode.Ldc_i4_s => ((int)value.Operand & 0x80000) != 0,
-            _ => true,
-        };
+        return producer < 0 || (SchedulerOptionBits(instructions[producer]) & 0x80000) != 0;
     }
+
+    private static int SchedulerOptionBits(Instruction value) =>
+        value.OpCode switch
+        {
+            >= ILOpCode.Ldc_i4_0 and <= ILOpCode.Ldc_i4_8 => (int)value.OpCode - (int)ILOpCode.Ldc_i4_0,
+            ILOpCode.Ldc_i4 or ILOpCode.Ldc_i4_s => (int)value.Operand,
+            _ => -1,
+        };
 
     private static int SchedulerArgumentProducer(List<Instruction> instructions, int index, bool initLocals, HashSet<int> entries)
     {
@@ -283,5 +394,6 @@ internal sealed partial class Compilation
         ReachUsedVirtual(dequeue);
         ReachAllocatedType(exception);
         Reach(ctor);
+        ReachTaskAwaitAction();
     }
 }

@@ -809,7 +809,8 @@ internal sealed partial class MethodCompiler
                         $"{subscribe}({configured}->task, (void (*)(void*))&{mn.Emittable.CppName}, __sm, " +
                         $"{configured}->captures_context(){(postToContext ? $", true, {configured}->forces_yield()" : "")});",
                     "Dn2CppYieldAwaiter" =>
-                        $"dn2cpp_async_yield_on_completed((void (*)(void*))&{mn.Emittable.CppName}, __sm, {(reraise ? "true" : "false")});",
+                        $"dn2cpp_async_yield_on_completed((void (*)(void*))&{mn.Emittable.CppName}, __sm, "
+                        + (reraise ? $"true, __sm->{builderField.CppName}.task);" : "false);"),
                     // A custom (non-Task/Yield) awaiter that genuinely suspends:
                     // synthesize a System.Action wrapping the boxed SM's MoveNext and
                     // hand it to the awaiter's INotifyCompletion.OnCompleted (or the
