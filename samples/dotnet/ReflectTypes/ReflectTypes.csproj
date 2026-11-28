@@ -22,6 +22,7 @@
     <Compile Remove="PropertyAccessorRowsSubset.cs" />
     <Compile Remove="CollectibilitySubset.cs" />
     <Compile Remove="MetadataDefinitionSubset.cs" />
+    <Compile Remove="TypeLayoutSubset.cs" />
   </ItemGroup>
 
   <ItemGroup>

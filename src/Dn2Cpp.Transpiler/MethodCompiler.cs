@@ -1832,10 +1832,11 @@ internal sealed partial class MethodCompiler : IEvalStack
                 return true;
             }, "UnsafeAccessor instance getter");
         }
-        if (!CoreIntrinsics.TryFindCutRow(_method, out var row))
+        if (!CoreIntrinsics.TryFindCutRow(_method, out var row)
+            || CoreIntrinsics.MdTypeAttributeFlags.Matches(_method))
             return null;
         return SynthesizeWrapperBody(
-            _method.DeclaringClass.CppStructName + "*",
+            ReceiverCppType(_method.DeclaringClass),
             () => TryEmitMethodDefIntercept(row, _method),
             "synthesized from the intercept's lowering");
     }
@@ -4099,6 +4100,9 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // (Compilation.TrimLdftnRedirect; table frozen before emission).
                 if (_c.TrimLdftnRedirect(m) is { } trimRedirect)
                     m = trimRedirect;
+                if (CoreIntrinsics.MdTypeAttributeFlags.Matches(m))
+                    throw new NotSupportedException(
+                        $"{_method.DeclaringClass.FullName}.{_method.Name}: taking a nonvirtual address of abstract System.Type::GetAttributeFlagsImpl() is not supported");
                 if (Compilation.RuntimeNumericProviderConsumer(m))
                     _c.ReachFormatProviderGetFormat();
                 NoteFtnTarget(m, virtFtn: false);
@@ -4427,6 +4431,21 @@ internal sealed partial class MethodCompiler : IEvalStack
                 else if (m.IsVirtual && CoreIntrinsics.IsReflectionManagedBody(m))
                 {
                     var fallback = _c.ReflectionManagedVirtualFallback(m).Emittable;
+                    NoteFtnTargetBody(fallback);
+                    _c.NoteNamedBodySymbol(_method, fallback);
+                    string receiver = NewTemp("Dn2CppObject*");
+                    Emit($"{receiver} = (Dn2CppObject*)dn2cpp_null_check({obj.Expr});");
+                    expr = $"({receiver}->type->vtable == nullptr ? (void*)&{fallback.CppName}"
+                        + $" : (void*){receiver}->type->vtable[{m.VtableSlot}])";
+                }
+                else if (CoreIntrinsics.MdTypeAttributeFlags.Matches(m))
+                {
+                    Comp.EnsureCompleted(m.DeclaringClass);
+                    if (m.VtableSlot < 0)
+                        throw new InvalidOperationException("System.Type.GetAttributeFlagsImpl has no vtable slot");
+                    var fallback = _c.ReflectionManagedVirtualFallback(m).Emittable;
+                    if (fallback == m.Emittable)
+                        throw new InvalidOperationException("System.Type.GetAttributeFlagsImpl has no RuntimeType override");
                     NoteFtnTargetBody(fallback);
                     _c.NoteNamedBodySymbol(_method, fallback);
                     string receiver = NewTemp("Dn2CppObject*");

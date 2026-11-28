@@ -1493,11 +1493,13 @@ internal sealed partial class CppEmitter
                 var defAnc = _c.OpenGenericDefAncestry(c.Module, c.Handle);
                 var (dfBase, dfItfs, dfItfCount) =
                     GenericDefRelations(defBase, defAnc.Base, defAnc.Interfaces, c.IsValueType, c.IsInterface);
+                var (defIlAttrs, defToken) = TypeIlMeta(c);
                 _e.EmitTypeInfo(_sb, defSym, GenericDefinitionMembers(new TypeMetadata {
                     Native = _c.UsesNativeReflectionMetadata(gi.DefName),
                     Name = Compilation.GenericDefinitionName(gi.DefName), DefinitionKey = gi.DefName, Base = dfBase, Interfaces = dfItfs, InterfaceCount = dfItfCount,
                     Flags = defFlags, GenericDef = "&" + defSym, TypeObject = "&ty_" + defSym,
                     GenericParamNames = Compilation.GenericParamNames(c.Module, c.Handle),
+                    IlAttrs = unchecked((uint)defIlAttrs), MetadataToken = defToken,
                     AssemblyName = string.IsNullOrEmpty(c.Module.AssemblyName) ? null : c.Module.AssemblyName,
                     Activation = invalidDefCctor ? InvalidCctor : 0,
                 }));
@@ -1650,6 +1652,7 @@ internal sealed partial class CppEmitter
                     && c.Context.TypeArgs.Length > 0 && IsNestedType(c)
                         ? _e.ClosedNestedTypeDisplay(c)
                         : Compilation.ReflectionTypeName(c);
+                var (attrs, token) = TypeIlMeta(c);
                 var metadata = new TypeMetadata {
                     Native = _c.UsesNativeReflectionMetadata(c),
                     Name = displayName, Base = baseExpr, InstanceSize = size,
@@ -1658,6 +1661,8 @@ internal sealed partial class CppEmitter
                     GenericDef = genericDef, GenericArgs = genericArgs, GenericArgCount = genericCount,
                     Methods = helperTable?.Expr ?? "nullptr", MethodCount = helperTable?.Count ?? 0,
                     Ctors = helperConstructors?.Expr ?? "nullptr", CtorCount = helperConstructors?.Count ?? 0,
+                    IlAttrs = unchecked((uint)attrs), MetadataToken = token,
+                    AssemblyName = string.IsNullOrEmpty(c.Module.AssemblyName) ? null : c.Module.AssemblyName,
                     Activation = (CoreIntrinsics.IsGen2GcCallbackType(c) ? AllocationUnsupported
                         : c.IntrinsicCppName is "Dn2CppThreadLocal*" or "Dn2CppBlockingCollection*"
                             ? (hasListedPublicDefault ? 0 : OmittedPublicDefaultCtor)
@@ -1666,9 +1671,6 @@ internal sealed partial class CppEmitter
                 if (c.IntrinsicCppName == "Dn2CppYieldAwaiter")
                 {
                     // YieldAwaitable and its nested awaiter share storage but declare different initializers.
-                    var (attrs, token) = TypeIlMeta(c);
-                    metadata.IlAttrs = unchecked((uint)attrs);
-                    metadata.MetadataToken = token;
                     metadata.HashFn = "&dn2cpp_empty_valuetype_hash";
                     metadata.EqualsFn = "&dn2cpp_empty_valuetype_equals";
                 }
@@ -1912,11 +1914,13 @@ internal sealed partial class CppEmitter
                 // trailing 0-fill convention would otherwise leave implicit (formatspec, ilAttrs,
                 // metadataToken, defaultMemberName); an invariant one stops at typeObject exactly
                 // as before, so its text is unchanged.
+                var (defIlAttrs, defToken) = TypeIlMeta(cls);
                 _e.EmitTypeInfo(_sb, sym, GenericDefinitionMembers(new TypeMetadata {
                     Native = _c.UsesNativeReflectionMetadata(gi.DefName),
                     Name = Compilation.GenericDefinitionName(gi.DefName), DefinitionKey = gi.DefName, Base = relBase, Interfaces = relItfs, InterfaceCount = relItfCount,
                     Flags = defFlags, GenericDef = "&" + sym, TypeObject = "&ty_" + sym, VarianceMask = varMask,
                     GenericParamNames = Compilation.GenericParamNames(cls.Module, cls.Handle),
+                    IlAttrs = unchecked((uint)defIlAttrs), MetadataToken = defToken,
                     AssemblyName = string.IsNullOrEmpty(cls.Module.AssemblyName) ? null : cls.Module.AssemblyName,
                     Activation = invalidDefCctor ? InvalidCctor : 0,
                 }));
@@ -1953,24 +1957,22 @@ internal sealed partial class CppEmitter
                     (def.Kind & GenericDefKind.Delegate) != 0);
                 uint synthAttrs = 0;
                 int synthToken = 0;
-                string? synthAssembly = _c.OpenGenericDefHandleByName(defName)?.Module.AssemblyName;
+                string? synthAssembly = null;
+                bool invalidDefCctor = false;
                 if ((def.Kind & GenericDefKind.Nested) != 0)
-                {
                     flagBits.Add("DN2CPP_TF_NESTED");
-                    if (_c.OpenGenericDefHandleByName(defName) is { } definition)
-                    {
-                        synthAttrs = (uint)definition.Module.Reader.GetTypeDefinition(definition.Handle).Attributes;
-                        synthToken = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(definition.Handle);
-                        synthAssembly = definition.Module.AssemblyName;
-                    }
+                if (_c.OpenGenericDefHandleByName(defName) is { } definition)
+                {
+                    synthAttrs = (uint)definition.Module.Reader.GetTypeDefinition(definition.Handle).Attributes;
+                    synthToken = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(definition.Handle);
+                    synthAssembly = definition.Module.AssemblyName;
+                    invalidDefCctor = _c.HasInvalidStaticCctor(definition.Module, definition.Handle);
                 }
                 if ((def.Kind & GenericDefKind.ByRefLike) != 0)
                     flagBits.Add("DN2CPP_TF_BYREFLIKE");
                 if ((def.Kind & GenericDefKind.HiddenEnclosing) != 0)
                     flagBits.Add("DN2CPP_TF_HIDDEN_ENCLOSING");
                 string defFlags = flagBits.Count == 1 ? flagBits[0] : "(" + string.Join(" | ", flagBits) + ")";
-                bool invalidDefCctor = _c.OpenGenericDefHandleByName(defName) is { } invalidDef
-                    && _c.HasInvalidStaticCctor(invalidDef.Module, invalidDef.Handle);
                 _o.Header.AppendLine($"extern const Dn2CppTypeInfo {sym};");
                 _sb.AppendLine($"extern const Dn2CppType ty_{sym};");
                 var synthAnc = _c.OpenGenericDefAncestryByName(defName);

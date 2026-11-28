@@ -1231,10 +1231,16 @@ a MethodDesc. Its raw QCall sibling retains native-import binding authority.
 Public `Type.IsTypeDefinition` distinguishes metadata definitions from closed
 generic, formal-parameter and element-bearing types. `IsGenericTypeParameter`
 uses the formal parameter's declaring owner, keeping method parameters distinct.
-The field-free `IsGenericTypeParameter` and `IsGenericMethodParameter` bodies
-retain their CoreLib IL. `MemberInfo`'s protected constructor likewise retains
-its managed body for user subclasses; its abstract identity getters dispatch
-through those subclasses' ordinary virtual slots as well as native member handles.
+The field-free `IsGenericTypeParameter`, `IsGenericMethodParameter`,
+`Attributes`, `IsAutoLayout`, `IsLayoutSequential` and `IsExplicitLayout` bodies
+retain their CoreLib IL. `Type.Attributes` and the layout predicates dispatch
+through `Type.GetAttributeFlagsImpl`, reading native `ilAttrs` on runtime
+handles and generated subclass vtable slots on managed `Type` subclasses;
+runtime-owned sequential value-type handles stamp their ECMA `TypeAttributes`
+word rather than relying on AutoLayout synthesis. `MemberInfo`'s protected
+constructor likewise retains its managed body for user subclasses; its abstract
+identity getters dispatch through those subclasses' ordinary virtual slots as
+well as native member handles.
 
 The exact managed `RuntimeHelpers.IsPrimitiveType(CorElementType)` and
 `CanPrimitiveWiden(CorElementType, CorElementType)` helpers retain their real IL.

@@ -22,5 +22,6 @@
     <Compile Include="PropertyAccessorRowsSubset.cs" />
     <Compile Include="CollectibilitySubset.cs" />
     <Compile Include="MetadataDefinitionSubset.cs" />
+    <Compile Include="TypeLayoutSubset.cs" />
   </ItemGroup>
 </Project>

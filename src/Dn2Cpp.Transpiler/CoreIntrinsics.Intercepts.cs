@@ -192,6 +192,10 @@ internal enum InterceptEmitArm
     /// <summary>The WIDE integer primitives' (Int32/UInt32/Int64/UInt64)
     /// TryFormat belt — <c>EmitIntrinsic</c> under the declaring type.</summary>
     WideTryFormat,
+    /// <summary><c>System.Type.GetAttributeFlagsImpl</c> — reads native
+    /// <c>ilAttrs</c> on runtime handles and dispatches through the resolved
+    /// slot on managed <c>Type</c> subclasses.</summary>
+    TypeAttributeFlags,
     /// <summary><c>EmitIntrinsic(declType, name, Sig())</c> — the many BCL
     /// members lowered inline to the intrinsic table under their own declaring
     /// type (SynchronizationContext slot statics, NativeMemory, Marshal, the
@@ -624,6 +628,10 @@ internal static partial class CoreIntrinsics
     public static readonly MethodDefIntercept MdMemberInfoProperty = new(
         InterceptCutKind.Cut, InterceptEmitArm.IntrinsicUnderDeclType,
         extra: static method => IsMemberInfoProperty(method));
+
+    public static readonly MethodDefIntercept MdTypeAttributeFlags = new(
+        InterceptCutKind.Cut, InterceptEmitArm.TypeAttributeFlags,
+        extra: static method => IsTypeAttributeFlags(method));
 
     /// <summary>The intra-CoreLib runtime primitives
     /// (<see cref="LoweredRuntimePrimitive"/>) — cut by NAME over whole overload
@@ -3273,6 +3281,7 @@ internal static partial class CoreIntrinsics
     public static readonly MethodDefIntercept[] MethodDefIntercepts =
     [
         MdMemberInfoProperty,
+        MdTypeAttributeFlags,
         MdRuntimePrimitive,
         MdEventSourceIsEnabled,
         MdFrameworkEventSourceProvider,

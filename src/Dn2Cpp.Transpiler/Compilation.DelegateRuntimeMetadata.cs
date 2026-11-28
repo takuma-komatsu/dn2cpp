@@ -23,7 +23,9 @@ internal sealed partial class Compilation
         bool module = CoreIntrinsics.IsModuleAttributeDataSlot(declaration);
         bool arguments = CoreIntrinsics.IsAttributeArgumentsSlot(declaration);
         bool assembly = CoreIntrinsics.IsAssemblyCollectibilitySlot(declaration);
-        if (!module && !arguments && !assembly && !(declaration.Name == "GetNullableUnderlyingType" && CoreIntrinsics.IsNullableTypeQueryBase(declaration)))
+        bool attributeFlags = CoreIntrinsics.MdTypeAttributeFlags.Matches(declaration);
+        if (!module && !arguments && !assembly && !attributeFlags
+            && !(declaration.Name == "GetNullableUnderlyingType" && CoreIntrinsics.IsNullableTypeQueryBase(declaration)))
             return null;
         var key = module ? ("System.Reflection", "RuntimeModule")
             : assembly ? ("System.Reflection", "RuntimeAssembly")
@@ -37,6 +39,7 @@ internal sealed partial class Compilation
                 int slot = declaration.VtableSlot;
                 if (slot >= 0 && slot < runtime.Vtable.Count && runtime.Vtable[slot] is { } target
                     && target.DeclaringClass == runtime && (module || arguments || assembly ? CoreIntrinsics.IsReflectionManagedBody(target)
+                        : attributeFlags ? CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(target)
                         : CoreIntrinsics.IsRuntimeNullableTypeQuery(target)))
                 {
                     _runtimeReflectionOverrides.Add(declaration, target);
@@ -52,7 +55,8 @@ internal sealed partial class Compilation
             return;
         foreach (var (declaration, isVirtual) in _delegateIdentities.Values)
         {
-            if (!isVirtual || declaration.Name is not ("GetNullableUnderlyingType" or "GetCustomAttributesData" or "get_ConstructorArguments" or "get_IsCollectible")
+            if (!isVirtual || declaration.Name is not ("GetNullableUnderlyingType" or "GetCustomAttributesData"
+                    or "get_ConstructorArguments" or "get_IsCollectible" or "GetAttributeFlagsImpl")
                 || RuntimeReflectionOverride(declaration) is not { } target || !_delegateIdentityTargets.Add(target.CppName))
                 continue;
             // Interned reflection receivers have no managed allocation site.

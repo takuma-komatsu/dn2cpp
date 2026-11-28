@@ -10,6 +10,7 @@ internal static class ReflectionManagedBodyContract
         || owner == "System.Reflection.Assembly" && name is ".ctor" or "get_IsCollectible"
         || owner == "System.Reflection.RuntimeAssembly" && name == "get_IsCollectible"
         || owner == "System.Type" && name is "get_IsGenericTypeParameter" or "get_IsGenericMethodParameter"
+            or "get_Attributes" or "get_IsAutoLayout" or "get_IsLayoutSequential" or "get_IsExplicitLayout"
         || owner == "System.Reflection.Module" && name is ".ctor" or "GetCustomAttributesData" or "get_CustomAttributes"
         || owner == "System.Reflection.RuntimeModule" && name == "GetCustomAttributesData"
         || owner == "System.Reflection.CustomAttributeData" && name is ".ctor" or "GetCustomAttributes" or "get_ConstructorArguments"
@@ -63,11 +64,25 @@ internal static class ReflectionManagedBodyContract
                     | MethodAttributes.SpecialName)
                 && signature.RemainingBytes == 3 && signature.ReadByte() == 0x20
                 && signature.ReadByte() == 0 && signature.ReadByte() == (byte)SignatureTypeCode.Boolean;
-        if (name == ".ctor" || typePredicate)
-            return method.Attributes == (typePredicate ? newVirtual | MethodAttributes.SpecialName
-                    : MethodAttributes.Family | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName)
+        if (name == ".ctor")
+            return method.Attributes == (MethodAttributes.Family | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName)
                 && signature.RemainingBytes == 3 && signature.ReadByte() == 0x20 && signature.ReadByte() == 0
-                && signature.ReadByte() == (typePredicate ? 0x02 : 0x01);
+                && signature.ReadByte() == 0x01;
+        if (typePredicate)
+        {
+            if (name is "get_IsGenericTypeParameter" or "get_IsGenericMethodParameter")
+                return method.Attributes == (newVirtual | MethodAttributes.SpecialName)
+                    && signature.RemainingBytes == 3 && signature.ReadByte() == 0x20 && signature.ReadByte() == 0
+                    && signature.ReadByte() == (byte)SignatureTypeCode.Boolean;
+            if (name == "get_Attributes")
+                return method.Attributes == (MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName)
+                    && signature.RemainingBytes >= 4 && signature.ReadByte() == 0x20 && signature.ReadByte() == 0
+                    && ReadClass(reader, ref signature, "System.Reflection", "TypeAttributes", 0x11)
+                    && signature.RemainingBytes == 0;
+            return method.Attributes == (MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName)
+                && signature.RemainingBytes == 3 && signature.ReadByte() == 0x20 && signature.ReadByte() == 0
+                && signature.ReadByte() == (byte)SignatureTypeCode.Boolean;
+        }
         if (name == "get_ConstructorArguments")
         {
             var expected = owner == "System.Reflection.CustomAttributeData" ? newVirtual : newVirtual & ~MethodAttributes.NewSlot;

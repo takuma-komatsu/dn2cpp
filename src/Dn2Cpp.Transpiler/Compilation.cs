@@ -4141,6 +4141,11 @@ internal sealed partial class Compilation
     {
         if (CoreIntrinsics.MdMemberInfoProperty.Matches(m))
             ReachUsedVirtual(m);
+        if (CoreIntrinsics.MdTypeAttributeFlags.Matches(m))
+        {
+            ReachUsedVirtual(m);
+            return;
+        }
         CoreIntrinsics.ValidateTaskLifecycle(m);
         CoreIntrinsics.ValidateThreadingPrivate(m);
         CoreIntrinsics.ValidateVectorFloatingPointTernary(m);
@@ -4253,6 +4258,11 @@ internal sealed partial class Compilation
     {
         if (CoreIntrinsics.MdMemberInfoProperty.Matches(m))
             ReachUsedVirtual(m);
+        if (CoreIntrinsics.MdTypeAttributeFlags.Matches(m))
+        {
+            ReachUsedVirtual(m);
+            return;
+        }
         if (InterceptFtnTargets.Add(m))
             AddReachable(m.EnsureSignature()); // reached => decoded, as in Reach
     }
