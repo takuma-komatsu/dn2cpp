@@ -190,7 +190,7 @@ tu_attribution() {
     # runtime and the Godot layer both emit) must be credited to the archive the
     # console link actually pulls it from, and first-wins resolves that.
     local libs=() lib
-    for lib in dn2cpp_runtime dn2cpp_gc dn2cpp_zlib dn2cpp_brotli dn2cpp_godot dn2cpp_dotnetmodule; do
+    for lib in dn2cpp_runtime dn2cpp_gc dn2cpp_zlib dn2cpp_brotli dn2cpp_zstd dn2cpp_godot dn2cpp_dotnetmodule; do
         [ -f "$RUNTIME_LIB_DIR/lib$lib.a" ] && libs+=("$RUNTIME_LIB_DIR/lib$lib.a")
     done
     if [ "${#libs[@]}" -eq 0 ]; then

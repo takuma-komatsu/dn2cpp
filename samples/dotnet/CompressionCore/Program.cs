@@ -18,6 +18,7 @@ namespace CompressionCore
             CompressionAsyncRoundTripSubset.Program.Run();
             ZLibRoundTripSubset.Program.Run();
             BrotliRoundTripSubset.Program.Run();
+            ZstandardRoundTrip.Run();
         }
     }
 }

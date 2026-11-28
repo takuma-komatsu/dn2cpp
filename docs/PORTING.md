@@ -333,7 +333,7 @@ The ones a port has to think about:
 |---|---|---|
 | `DN2CPP_USE_GC` | `ON` | OFF is the calloc fallback — the supported escape hatch for a target with no working conservative collector. |
 | `DN2CPP_USE_CURL` | `ON` | The one option the file **overrides rather than obeys**, and only on Emscripten (H8). |
-| `DN2CPP_USE_ZLIB` / `_BROTLI` / `_HIGHWAY` | `ON` | Vendored; Highway is header-only and adds no target. |
+| `DN2CPP_USE_ZLIB` / `_BROTLI` / `_ZSTD` / `_HIGHWAY` | `ON` | Vendored libraries. Highway is header-only. |
 | `DN2CPP_HIDDEN_VISIBILITY` | `ON` | Load-bearing far beyond binary size on any target where an export is a DCE root (H9.2). |
 | `DN2CPP_DEAD_STRIP` / `DN2CPP_STRIP` | `ON` | Each has three per-linker flavours; a new linker needs an arm in both. |
 | `DN2CPP_MAX_STACK_FRAME` | `4096` | The runtime's per-function stack-frame ceiling, as `-Werror=frame-larger-than`. Applied to the runtime's own targets, never to the generated app (whose frames are a function of the input program) and never to vendored third-party ones. Raise it only as a decision about the smallest thread stack dn2cpp intends to run on; MSVC has no equivalent flag, so the ceiling is absent there. |

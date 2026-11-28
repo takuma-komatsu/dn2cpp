@@ -197,7 +197,7 @@ for mode in ("off", "on"):
     run("cmake", "-S", root / "runtime", "-B", build, "-G", "Ninja",
         *platform_args,
         f"-DDN2CPP_APP_DIR={emitted}", "-DDN2CPP_APP_NAME=Obfuscation", "-DDN2CPP_STRIP=OFF",
-        "-DDN2CPP_USE_CURL=OFF", "-DDN2CPP_USE_ZLIB=OFF", "-DDN2CPP_USE_BROTLI=OFF",
+        "-DDN2CPP_USE_CURL=OFF", "-DDN2CPP_USE_ZLIB=OFF", "-DDN2CPP_USE_BROTLI=OFF", "-DDN2CPP_USE_ZSTD=OFF",
         "-DDN2CPP_USE_HIGHWAY=OFF", f"-DDN2CPP_DECLANG_CONFIG={config if mode == 'on' else ''}")
     print(f"Building DeClang native {mode}", flush=True)
     run("cmake", "--build", build, "--parallel", "4")

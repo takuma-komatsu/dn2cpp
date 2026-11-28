@@ -33,7 +33,7 @@
        Users locate it with the print-runtime-dir flag. The third_party set mirrors
        dist/package-toolchain.sh: every vendored tree runtime/CMakeLists.txt names
        under ${DN2CPP_ROOT}/third_party — bdwgc, brotli, cacert, curl, highway,
-       mbedtls, nghttp2, zlib — plus gdextension_interface.h. Enumerated one by one and
+       mbedtls, nghttp2, zlib, zstd — plus gdextension_interface.h. Enumerated one by one and
        never globbed as third_party/** wholesale, so a tree that lands in the
        repository for some other purpose does not silently join the package. The
        cacert and curl/mbedtls trees are what DN2CPP_USE_CURL builds from, so they
@@ -67,6 +67,9 @@
           CopyToPublishDirectory="PreserveNewest" />
     <None Include="../../third_party/zlib/**" Exclude="../../third_party/zlib/**/.DS_Store"
           Link="third_party/zlib/%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../third_party/zstd/**" Exclude="../../third_party/zstd/**/.DS_Store"
+          Link="third_party/zstd/%(RecursiveDir)%(Filename)%(Extension)"
           CopyToPublishDirectory="PreserveNewest" />
     <None Include="../../third_party/gdextension_interface.h"
           Link="third_party/gdextension_interface.h"

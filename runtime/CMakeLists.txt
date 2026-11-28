@@ -91,6 +91,7 @@ if(NOT DN2CPP_GC_BACKEND STREQUAL "unity" AND NOT DN2CPP_GC_BACKEND STREQUAL "up
 endif()
 option(DN2CPP_USE_ZLIB    "Compile and link the vendored zlib for System.IO.Compression" ON)
 option(DN2CPP_USE_BROTLI  "Compile and link the vendored brotli for System.IO.Compression.Brotli" ON)
+option(DN2CPP_USE_ZSTD    "Compile and link the vendored Zstandard for System.IO.Compression" ON)
 option(DN2CPP_USE_CURL    "Compile and link the vendored libcurl (over vendored Mbed TLS + CA bundle) for HTTP/HTTPS transport" ON)
 option(DN2CPP_USE_HIGHWAY "Back the portable-SIMD ops with vendored Google Highway (static single-ISA, header-only)" ON)
 # DN2CPP_HIGHWAY_ARCH (PUBLIC: every TU linking the runtime) and DN2CPP_HOT_ARCH
@@ -540,6 +541,25 @@ else()
         _dn2cpp_compile_options_silent(dn2cpp_brotli)
         target_include_directories(dn2cpp_brotli PUBLIC "${DN2CPP_ROOT}/third_party/brotli/c/include")
         list(APPEND _rt_export_targets dn2cpp_brotli)
+    endif()
+
+    if(DN2CPP_USE_ZSTD)
+        set(_zstd_lib "${DN2CPP_ROOT}/third_party/zstd/lib")
+        file(GLOB DN2CPP_ZSTD_SRCS CONFIGURE_DEPENDS
+            "${_zstd_lib}/common/*.c"
+            "${_zstd_lib}/compress/*.c"
+            "${_zstd_lib}/decompress/*.c"
+            "${_zstd_lib}/dictBuilder/*.c")
+        add_library(dn2cpp_zstd STATIC ${DN2CPP_ZSTD_SRCS})
+        _dn2cpp_compile_options_silent(dn2cpp_zstd)
+        # Use the portable decoder on every target. Empty visibility annotations
+        # let the static codec inherit the runtime's hidden-visibility policy.
+        target_compile_definitions(dn2cpp_zstd PRIVATE ZSTD_DISABLE_ASM
+            ZSTDLIB_VISIBLE= ZSTDERRORLIB_VISIBLE= ZDICTLIB_VISIBLE=)
+        if(ANDROID)
+            target_compile_definitions(dn2cpp_zstd PRIVATE ZSTD_USE_C90_QSORT=1)
+        endif()
+        list(APPEND _rt_export_targets dn2cpp_zstd)
     endif()
 
     # Vendored libcurl over vendored Mbed TLS — http:// and https:// (see
@@ -999,6 +1019,10 @@ else()
         # pull the static archive in; no define is needed since no runtime TU
         # conditionally compiles against brotli (there is no shim TU).
         target_link_libraries(dn2cpp_runtime PUBLIC dn2cpp_brotli)
+    endif()
+    if(DN2CPP_USE_ZSTD)
+        # System.IO.Compression imports ZSTD_* and ZDICT_* directly.
+        target_link_libraries(dn2cpp_runtime PUBLIC dn2cpp_zstd)
     endif()
     if(DN2CPP_USE_CURL)
         # PUBLIC on both counts (like dn2cpp_zlib): the define + the <curl/curl.h>

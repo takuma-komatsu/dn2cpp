@@ -6,7 +6,8 @@
 # CopyToAsync/DisposeAsync round-trips plus pre-canceled-token early-outs —
 # ZLibStream, and the Brotli face: BrotliStream round-trips across every
 # CompressionLevel plus the BrotliEncoder/BrotliDecoder one-shot struct API
-# and corrupted-input error paths, against the vendored third_party/brotli),
+# and corrupted-input error paths), plus Zstandard streams and dictionary
+# training and one-shot compression against the vendored Zstandard library,
 # transpiled once against the tree-shaken real pinned CoreLib + real
 # System.IO.Compression + real System.IO.Compression.Brotli, and diffed
 # exactly against real .NET.
@@ -15,7 +16,7 @@
 # tell them apart. Referencing System.IO.Compression makes the transpiler
 # inject the DnZlib shim by default, and System.IO.Compression.Brotli makes it
 # inject DnBrotli (AssemblyLoadSet.InjectDefaultRefs) — so this one program runs
-# fully managed unless the arm declines them. Both backends pass the same
+# with managed zlib and Brotli unless the arm declines them. Both backends pass the same
 # round-trip diff, which is exactly the problem: without the split, flipping
 # the default silently converted the suite's only native-codec end-to-end test
 # into a second managed-codec one, green throughout.
@@ -32,8 +33,8 @@
 #     `new GZipStream(...)` and passed no -r: the shims are injected because the
 #     BCL that needs them is in the load set. Its nm assertions are the mirror
 #     image — no CompressionNative_*, no native deflate/inflate, no _Brotli* —
-#     so together the two arms prove the DEFAULT is managed, the OPT-OUT is
-#     native, and both produce byte-identical output to real .NET.
+#     so together the two arms prove which zlib and Brotli backends ran.
+#     Both arms use the native Zstandard codec.
 #
 # Pinned CoreLib (resolve_pinned_corelib, not locate_corelib) for the same
 # reason the JSON gates are: this host has multiple side-by-side shared
@@ -61,7 +62,7 @@ compression_require_brotli_reference
 # reports failure, which would break a must-be-present check.
 assert_native_codecs() {
     local out="$1" project="$2" syms
-    compression_assert_brotli_security "$out" || return 1
+    compression_assert_output_tail "$out" || return 1
     echo "== Positive control: both native codecs are linked (nm) =="
     syms="$(dump_symbols "$out/$project")"
     if ! grep -qE " [Tt] _?deflate$" <<<"$syms"; then
@@ -85,9 +86,13 @@ assert_native_codecs() {
 # extern-"C" name-field shape keeps managed methods out of the match.
 assert_managed_codecs() {
     local out="$1" project="$2" syms
-    compression_assert_brotli_security "$out" || return 1
-    echo "== Asserting the DEFAULT (no -r, no flag) is the managed backend (nm) =="
+    compression_assert_output_tail "$out" || return 1
+    echo "== Checking managed zlib/Brotli and vendored Zstandard on the default path (nm) =="
     syms="$(dump_symbols "$out/$project")"
+    if ! grep -qE " [Tt] _?ZSTD_compressStream2$" <<<"$syms"; then
+        echo "FAIL: $project does not contain the vendored ZSTD_compressStream2 implementation" >&2
+        return 1
+    fi
     if grep -qE " [TUtu] _CompressionNative_" <<<"$syms"; then
         echo "FAIL: $project still references CompressionNative_* — DnZlib was not injected" >&2
         return 1
@@ -100,7 +105,7 @@ assert_managed_codecs() {
         echo "FAIL: $project still links native brotli — DnBrotli was not injected" >&2
         return 1
     fi
-    echo "OK: no native codec symbol survives — GZip/Deflate/ZLib/Brotli all ran managed"
+    echo "OK: GZip/Deflate/ZLib/Brotli all ran managed"
 }
 
 echo "#### Arm 1/2: the NATIVE codecs, with both default shims declined ####"

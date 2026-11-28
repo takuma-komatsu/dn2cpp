@@ -35,7 +35,7 @@
 #                     (runtime/godot omitted — DN2CPP_GODOT stays OFF for the
 #                      dotnet-module build, so the bridge is never referenced)
 #   third_party/      every vendored native tree runtime/CMakeLists.txt reaches
-#                     for: bdwgc brotli curl highway mbedtls nghttp2 zlib, the
+#                     for: bdwgc brotli curl highway mbedtls nghttp2 zlib zstd, the
 #                     cacert CA bundle the DN2CPP_USE_CURL arm embeds, and
 #                     gdextension_interface.h. Each tree whole — see the copy
 #                     loop for why no packaging-time subset is available.
@@ -343,7 +343,7 @@ done
 # the property that matters: the exporter's `cmake -S <bundle>/runtime` and a
 # repository build configure over identical trees, so a bundle-only build failure
 # cannot be a bundle-only source difference.
-BUNDLED_THIRD_PARTY="bdwgc brotli cacert curl highway mbedtls nghttp2 zlib"
+BUNDLED_THIRD_PARTY="bdwgc brotli cacert curl highway mbedtls nghttp2 zlib zstd"
 for tp in $BUNDLED_THIRD_PARTY; do
     [ -d "third_party/$tp" ] || {
         echo "error: vendored tree third_party/$tp is absent" >&2; exit 1; }

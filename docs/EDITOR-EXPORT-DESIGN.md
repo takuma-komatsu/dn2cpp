@@ -533,7 +533,7 @@ empty because the editor loads GodotTools from a stream.
   configures cleanly and fails in ninja; packaging derives the required subtrees
   from the shipped CMakeLists and treats `runtime/godot` as the single
   deliberate omission.
-- `third_party/{bdwgc,zlib,brotli,highway,curl,mbedtls,cacert}` plus
+- `third_party/{bdwgc,zlib,brotli,zstd,highway,curl,mbedtls,nghttp2,cacert}` plus
   `gdextension_interface.h` — **every** vendored tree `runtime/CMakeLists.txt`
   names, whether or not the option that builds it defaults on, because the
   bundle's `runtime/` is a source tree the exporter configures and an absent
