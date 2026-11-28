@@ -835,7 +835,7 @@ tree-shaken to reachable methods, with real BCL IL bodies transpiled;
 | `decimal` | Intrinsic 96-bit value type — exact base-10 arithmetic (round half to even), comparisons, conversions, `ToString`, the statics (`Round`/`Truncate`/`Floor`/`Ceiling`/`Parse`, …), LINQ `Sum`/`Average`, boxed virtuals |
 | Culture & formatting | Culture-aware numeric/currency/percent/exponent formatting and `Parse`/`TryParse`, float shortest-round-trip, custom numeric formats; `CurrentCulture` and undefined-language fallback use host locale PAL seams and frozen per-target numeric profiles, with no ICU dependency |
 | Regex | Real `System.Text.RegularExpressions.dll`, both engines (backtracking interpreter and `NonBacktracking` symbolic DFA) |
-| Compression | Full `System.IO.Compression` public surface — `DeflateStream`/`GZipStream`/`ZLibStream`, `BrotliStream`/`BrotliEncoder`/`BrotliDecoder`, `ZipArchive`/`ZipArchiveEntry`, `ZipFile`, and the Zip async APIs. The exceptions: opening a WinZip AES entry (`ZipEncryptionMethod.Aes128`/`Aes192`/`Aes256`) with a password, or writing one, throws `PlatformNotSupportedException` (without a password, `Open()` throws `InvalidDataException`, as on .NET), and a program that uses the Zstandard types or calls `Reset` on a `DeflateEncoder`, `GZipEncoder` or `ZLibEncoder` fails to link |
+| Compression | `System.IO.Compression` streams and codecs for Deflate, GZip, ZLib, Brotli and Zstandard, including `ZstandardDictionary`, plus `ZipArchive`, `ZipArchiveEntry`, `ZipFile` and the async ZIP APIs. Opening a WinZip AES entry with a password or writing one throws `PlatformNotSupportedException`. Opening it without a password throws `InvalidDataException`, as on .NET. Calling `Reset` on a `DeflateEncoder`, `GZipEncoder` or `ZLibEncoder` fails to link. |
 | HTTP / HTTPS | `new HttpClient()` runs natively over vendored libcurl on vendored Mbed TLS, on by default; `https://` verifies against an embedded Mozilla CA bundle and nothing disables verification. HTTP/2 rides the same transport, and the real `Grpc.Net.Client` runs on top of it (unary and all three streaming shapes) |
 | File I/O | Real `System.IO.File`/`FileStream` through the CoreLib's `libSystem.Native` P/Invoke layer against a self-implemented `SystemNative_*` PAL, directory enumeration included |
 | Low-level interop | `Unsafe.*` (incl. `Unbox<T>`), `NativeMemory`, the `Marshal` heap/struct/string family, `Marshal.GetFunctionPointerForDelegate`/`GetDelegateForFunctionPointer`, `MemoryMarshal` span shaping, custom `MemoryManager<T>`-backed `Memory<T>` |
@@ -845,12 +845,10 @@ tree-shaken to reachable methods, with real BCL IL bodies transpiled;
 in any referenced assembly replaces calls to the matching bodyless
 `[DllImport]` at transpile time — the call site lowers to a direct managed
 call and the native symbol is never linked. `internal/DnZlib/` and
-`internal/DnBrotli/` use it to back all of `System.IO.Compression` with
-pure C#, and because both are conditional default references, that is what
-happens by default. The vendored native path is still there
-(`runtime/core/intrinsics/dn2cpp_zlib_native.cpp` over `third_party/zlib/`,
-the vendored brotli's own exports) and `--no-default-ref DnZlib` /
-`--no-default-ref DnBrotli` is the way back to it.
+`internal/DnBrotli/` use it to provide the zlib and Brotli codecs in pure C#
+by default. Pass `--no-default-ref DnZlib` or `--no-default-ref DnBrotli`
+to select the corresponding vendored native codec. The .NET 11 Zstandard
+APIs link directly to the vendored `third_party/zstd/` library.
 
 ### Real third-party libraries
 
@@ -1241,7 +1239,7 @@ selection never retains a type or member removed by ILDiet or
 | `runtime/godot/`, `runtime/dotnetmodule/` | Table-driven GDExtension bridge; `modules/mono` drop-in glue |
 | `runtime/CMakeLists.txt` | Sole native build backend (Ninja); gates thin-wrap it |
 | `internal/DnZlib/`, `internal/DnBrotli/`, `internal/DnHttp/` | Managed-swap libraries shipped as conditional default references |
-| `third_party/` | Vendored: `bdwgc/`, `bdwgc-upstream/` (alternate GC source tree, `DN2CPP_GC_BACKEND=upstream`), `zlib/`, `brotli/`, `highway/`, `curl/`, `mbedtls/`, `nghttp2/`, `cacert/`, `gdextension_interface.h` (see License) |
+| `third_party/` | Vendored: `bdwgc/`, `bdwgc-upstream/` (alternate GC source tree, `DN2CPP_GC_BACKEND=upstream`), `zlib/`, `brotli/`, `zstd/`, `highway/`, `curl/`, `mbedtls/`, `nghttp2/`, `cacert/`, `gdextension_interface.h` (see License) |
 | `samples/dotnet/` | Themed feature buckets — one `*.cs` per feature, driven by a themed gate |
 | `samples/godot/`, `samples/godot-dotnet/`, `samples/native/` | GDExtension + Godot.NET.Sdk + hot-update projects; drop-in and editor-export projects; a small C library for P/Invoke testing |
 | `gates/` | The regression suite (`build-and-run-*.sh`), `run-all-gates.sh` (parallel runner), `pre-merge.sh` (the merge gate), `_common.sh` (shared helpers) |
@@ -1498,6 +1496,9 @@ Vendored third-party components keep their own licenses:
   ([`third_party/zlib/LICENSE`](third_party/zlib/LICENSE))
 - `third_party/brotli/` — google/brotli 1.2.1, **MIT**
   ([`third_party/brotli/LICENSE`](third_party/brotli/LICENSE))
+- `third_party/zstd/` — Zstandard from .NET's native compression library,
+  **BSD 3-Clause** ([provenance](third_party/zstd/DN2CPP-VENDORED.md),
+  [`LICENSE`](third_party/zstd/LICENSE), [component notices](third_party/zstd/THIRD-PARTY-NOTICES.txt))
 - `third_party/highway/` — Google Highway 1.4.0, **Apache License 2.0 /
   BSD 3-Clause**
   ([`third_party/highway/LICENSE`](third_party/highway/LICENSE))

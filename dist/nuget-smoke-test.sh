@@ -93,6 +93,7 @@ for f in runtime/CMakeLists.txt \
          third_party/nghttp2/lib/nghttp2_session.c \
          third_party/nghttp2/lib/includes/nghttp2/nghttp2.h \
          third_party/zlib/zlib.h \
+         third_party/zstd/lib/dictBuilder/zdict.c \
          third_party/gdextension_interface.h; do
     [ -f "$ROOT_DIR/$f" ] || { echo "error: packed layout is missing $f" >&2; exit 1; }
 done

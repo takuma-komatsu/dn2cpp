@@ -123,8 +123,9 @@ ildiet_stage_native() (
     install -m 0644 src/ILDiet/Mono.Cecil.LICENSE.txt "$destination/"
     ildiet_runtime_notices "$corelib" "$destination"
     for notice in bdwgc/LICENSE bdwgc-upstream/LICENSE brotli/LICENSE curl/COPYING \
-            highway/LICENSE mbedtls/LICENSE nghttp2/COPYING zlib/LICENSE; do
+            highway/LICENSE mbedtls/LICENSE nghttp2/COPYING zlib/LICENSE zstd/LICENSE; do
         install -m 0644 "third_party/$notice" "$destination/licenses/${notice%/*}.txt"
     done
+    install -m 0644 third_party/zstd/THIRD-PARTY-NOTICES.txt "$destination/licenses/zstd-notices.txt"
     ildiet_assert_native "$destination"
 )

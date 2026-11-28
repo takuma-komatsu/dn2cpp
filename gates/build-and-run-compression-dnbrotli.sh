@@ -7,7 +7,7 @@
 # BrotliDecoder run fully managed and the transpiler's vendored native brotli
 # drops out of the binary — merely referencing DnBrotli flips the backend. A
 # second variant references DnBrotli AND DnZlib together, proving the two swaps
-# compose: a System.IO.Compression with zero native codec symbols. Output is
+# compose while Zstandard continues to use its native library. Output is
 # diffed exactly against real .NET, which is a valid oracle only because
 # CompressionCore prints round-trip results, never self-created compressed byte
 # counts (compressed output is implementation-defined, so keep the records
@@ -99,7 +99,7 @@ dnbrotli_diff_gate() {
     gate_capture_ok "$out/native" run_bounded "./$out/$project$EXE_EXT"
     gate_capture_ok "$out/oracle" run_bounded dotnet "$app"
     gate_output compare "$out/native.stdout" "$out/oracle.stdout"
-    compression_assert_brotli_security "$out"
+    compression_assert_output_tail "$out"
 
     echo "== 5/5 Asserting the brotli backend really swapped (nm) =="
     # Snapshot the symbol table once and grep the string (here-strings, no pipe):
@@ -120,8 +120,7 @@ dnbrotli_diff_gate() {
         return 1
     fi
     if [ "$with_dnzlib" = 1 ]; then
-        # Combined variant: DnZlib's own assertions must hold too — a fully
-        # managed System.IO.Compression, zero native codec symbols. The
+        # Combined variant: DnZlib's own assertions must hold too. The
         # transpiled DnZlib adapter class is itself named CompressionNative, so
         # anchor on the extern-"C" ` <letter> _CompressionNative_` shape to
         # exclude its C++-mangled symbols.
@@ -151,7 +150,7 @@ dnbrotli_diff_gate() {
 
 # Variant 1: DnBrotli only — brotli managed, zlib stays native (positive control).
 dnbrotli_diff_gate CompressionCore 0
-# Variant 2: DnBrotli + DnZlib — fully managed System.IO.Compression.
+# Variant 2: DnBrotli + DnZlib — managed Brotli and zlib.
 dnbrotli_diff_gate CompressionCore 1
 
 echo OK

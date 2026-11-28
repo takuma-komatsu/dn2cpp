@@ -14,15 +14,17 @@ compression_require_brotli_reference() {
     return 0
 }
 
-compression_assert_brotli_security() {
+compression_assert_output_tail() {
     local out="$1" side
-    cat > "$out/brotli-security.expected" <<'EOF'
+    cat > "$out/compression-tail.expected" <<'EOF'
 Brotli invalid block switch oneshot rejected: True
 Brotli invalid block switch chunked rejected: True
 Brotli invalid block switch buffered rejected: True
 brotli-invalid-block-switch-stream: threw=True type=InvalidOperationException
+Zstandard stream roundtrip: True
+Zstandard dictionary roundtrip: True
 EOF
     for side in native oracle; do
-        gate_output suffix "$out/$side.stdout" "$out/brotli-security.expected" --policy crlf || return 1
+        gate_output suffix "$out/$side.stdout" "$out/compression-tail.expected" --policy crlf || return 1
     done
 }

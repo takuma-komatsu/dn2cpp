@@ -267,6 +267,8 @@ Brotli invalid block switch oneshot rejected: True
 Brotli invalid block switch chunked rejected: True
 Brotli invalid block switch buffered rejected: True
 brotli-invalid-block-switch-stream: threw=True type=InvalidOperationException
+Zstandard stream roundtrip: True
+Zstandard dictionary roundtrip: True
 EOF
             cp "$fixture/native.stdout" "$fixture/oracle.stdout"
             case "$scenario" in
@@ -275,7 +277,7 @@ EOF
                 brotli-security-extra) printf 'unexpected record\n' >> "$fixture/native.stdout" ;;
                 brotli-security-crlf) sed $'s/$/\r/' "$fixture/native.stdout" > "$fixture/oracle.stdout" ;;
             esac
-            compression_assert_brotli_security "$fixture"
+            compression_assert_output_tail "$fixture"
             ;;
         abort-diff|abort-no-leak|abort-wrong-host|abort-cache)
             [ "$scenario" = abort-wrong-host ] || DN2CPP_OS=windows

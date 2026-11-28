@@ -6589,10 +6589,8 @@ internal sealed partial class Compilation
         // CoreLib) contributes nothing either: the dn2cpp runtime implements the
         // SystemNative_* symbols itself (runtime/core/platform/posix/), so the binary
         // stays self-contained instead of linking the dotnet install's library.
-        // System.IO.Compression.Native likewise contributes nothing: the dn2cpp runtime
-        // implements the CompressionNative_* symbols itself against a vendored zlib
-        // (runtime/core/intrinsics/dn2cpp_zlib_native.cpp), so the binary stays
-        // self-contained instead of linking the dotnet install's native shim.
+        // System.IO.Compression.Native binds to the runtime's zlib wrappers and
+        // the vendored Brotli and Zstandard libraries.
         // dn2cpp_http is the same shape: the DnHttp shim's [DllImport("dn2cpp_http")]
         // resolves to the dn2cpp_http2_call_* transport entry points compiled INTO the runtime
         // (runtime/core/intrinsics/dn2cpp_http2_stream.cpp under DN2CPP_USE_CURL), not a
@@ -6760,8 +6758,7 @@ internal sealed partial class Compilation
     /// (<c>libSystem.Native</c> — the <c>SystemNative_*</c> POSIX wrappers implemented in
     /// <c>runtime/core/platform/posix/</c>), plain <c>libc</c> (always-linked platform
     /// symbols, e.g. macOS <c>clonefile</c>), and <c>libSystem.IO.Compression.Native</c>
-    /// (the <c>CompressionNative_*</c> zlib wrappers implemented in
-    /// <c>runtime/core/intrinsics/dn2cpp_zlib_native.cpp</c>). Everything else in a
+    /// (the runtime's zlib wrappers and the vendored Brotli and Zstandard exports). Everything else in a
     /// referenced module stays on the intrinsic/throw boundary (runtime-internal QCalls,
     /// Windows-only libraries). <c>libSystem.Security.Cryptography.Native.Apple</c> is
     /// the <c>AppleCryptoNative_*</c> digest/HMAC/random surface implemented portably in
@@ -6820,12 +6817,12 @@ internal sealed partial class Compilation
     /// whole job) is CoreLib's on neither platform — no CoreLib RID names a
     /// compression import at all. It is declared by the assemblies owning the codecs,
     /// and they are the same ones on both: <c>System.IO.Compression.dll</c> for the
-    /// <c>CompressionNative_*</c> ZLib surface (its sole <c>ModuleRef</c>) and
+    /// <c>CompressionNative_*</c> zlib wrappers and <c>ZSTD_*</c>/<c>ZDICT_*</c> imports, and
     /// <c>System.IO.Compression.Brotli.dll</c> for the <c>Brotli*</c> one
     /// (<c>System.Net.WebSockets.dll</c> names it too). Same assemblies, same
     /// entry-point names, one spelling apart — verified against the real win-x64 and
     /// osx-arm64/linux-x64 metadata — so it resolves against the identical
-    /// <c>dn2cpp_zlib_native.cpp</c> shim / vendored-brotli exports, no separate
+    /// <c>dn2cpp_zlib_native.cpp</c> shim and vendored codec exports, no separate
     /// Windows implementation needed. Everything else in a
     /// referenced module — <c>System.Globalization.Native</c> (ICU),
     /// runtime-internal QCalls — stays on the intrinsic/throw boundary, same posture

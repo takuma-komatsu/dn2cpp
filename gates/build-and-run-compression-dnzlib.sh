@@ -85,7 +85,7 @@ dnzlib_diff_gate() {
     gate_capture_ok "$out/oracle" run_bounded dotnet "$app"
     gate_output compare "$out/native.stdout" "$out/oracle.stdout"
     if [ "$require_brotli" = 1 ]; then
-        compression_assert_brotli_security "$out"
+        compression_assert_output_tail "$out"
     fi
 
     echo "== 5/5 Asserting the zlib backend really swapped (nm) =="
