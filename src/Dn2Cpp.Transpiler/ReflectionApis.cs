@@ -137,7 +137,7 @@ internal static class ReflectionApis
     internal const int PublicInstance = Public | Instance;
     internal const int Everything = Public | NonPublic | Instance | Static;
     internal const int Declared = Everything | DeclaredOnly;
-    internal const int TypeInitializerLookup = NonPublic | Static;
+    internal const int TypeInitializerLookup = Public | NonPublic | Static;
 
     private const string TString = "System.String", TInt32 = "System.Int32", TBool = "System.Boolean";
     private const string TObject = "System.Object", TObjects = "System.Object[]";

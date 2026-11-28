@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using System.Text;
 
 // SUBJECT: Activator.CreateInstance<T>(). The generic factory's real body
@@ -69,6 +70,83 @@ namespace ActivatorSubset
             Console.WriteLine("== intrinsic value T ==");
             Console.WriteLine(Activator.CreateInstance<decimal>());       // 0
             Console.WriteLine(Make<decimal>());                           // 0
+        }
+
+        private static int s_initializerRuns;
+
+        private class Initialized
+        {
+            static Initialized() => s_initializerRuns++;
+            public Initialized() { }
+        }
+
+        private sealed class InheritsInitializer : Initialized { }
+
+        private sealed class Initialized<T>
+        {
+            static Initialized() => s_initializerRuns += 10;
+        }
+
+        private sealed class LookupOnlyInitializer
+        {
+            static LookupOnlyInitializer() => s_initializerRuns = -1;
+        }
+
+        private interface IInitialized
+        {
+            static IInitialized() { }
+        }
+
+        private static int CountInitializers(MemberInfo[] members)
+        {
+            int count = 0;
+            foreach (MemberInfo member in members)
+                if (member is ConstructorInfo && member.Name == ".cctor")
+                    count++;
+            return count;
+        }
+
+        internal static void RunTypeInitializers()
+        {
+            Console.WriteLine("== declared static constructors ==");
+            const BindingFlags flags = BindingFlags.Static | BindingFlags.NonPublic;
+            Type[] owners = { typeof(Initialized), typeof(Initialized<>), typeof(Initialized<int>), typeof(InheritsInitializer) };
+            string[] labels = { "ordinary", "open", "closed", "derived" };
+            string[] calls = { "allocating", "target", "repeat" };
+            for (int i = 0; i < owners.Length; i++)
+            {
+                Type owner = owners[i];
+                string label = labels[i];
+                ConstructorInfo? initializer = owner.TypeInitializer;
+                ConstructorInfo? single = owner.GetConstructor(flags, null, Type.EmptyTypes, null);
+                Console.WriteLine($"{label} initializer={initializer?.Name ?? "-"}/{single?.Name ?? "-"} rows="
+                    + $"{CountInitializers(owner.GetConstructors(flags))}/{CountInitializers(owner.GetMember(".cctor", flags))}"
+                    + $"/{CountInitializers(owner.GetMembers(flags))}");
+                if (initializer is null)
+                    continue;
+                Console.WriteLine($"{label} flags={initializer.MemberType}/{initializer.IsConstructor}/{initializer.IsStatic}/{initializer.IsPrivate}");
+                for (int call = 0; call < calls.Length; call++)
+                {
+                    string outcome;
+                    try
+                    {
+                        object? result = call == 0 ? initializer.Invoke(null) : initializer.Invoke(null, null);
+                        outcome = result is null ? "null" : "instance";
+                    }
+                    catch (MemberAccessException e)
+                    {
+                        outcome = e.GetType().Name;
+                    }
+                    Console.WriteLine($"{label} {calls[call]}={outcome}/{s_initializerRuns}");
+                }
+            }
+            Console.WriteLine($"metadata-only initializer={typeof(LookupOnlyInitializer).TypeInitializer?.Name}/{s_initializerRuns}");
+            // Keep the public instance constructor independently of the static-only selection.
+            _ = new Initialized();
+            Console.WriteLine("static initializer activation=" + (Activator.CreateInstance(typeof(Initialized), flags,
+                null, null, null) is Initialized));
+            try { typeof(IInitialized).TypeInitializer!.Invoke(null); }
+            catch (MemberAccessException e) { Console.WriteLine("interface allocating=" + e.GetType().Name + "/" + e.Message); }
         }
     }
 }

@@ -29,6 +29,7 @@
 # Known pointee names skip incompatible runtime-generic argument and family overloads.
 # Opaque generic pointees and dynamic array arguments preserve overload inequality.
 # Named constructors run on existing receivers; cold initializer binds do not initialize.
+# Declared static constructors expose metadata on open and closed types and run once through target-taking Invoke.
 # Direct initializer calls repeat the body, and constructor Delegate.Method faults.
 # Application-derived types retain callable cold initializers from library bases.
 # By-value delegate binding matches enums to their exact underlying type by name and MethodInfo.
@@ -320,6 +321,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|selection-filters-prefix-a
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-alternatives-prefix-argv:before-reflection-alternatives"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|public-type-predicates-prefix-argv:before-public-type-predicates|memberinfo-managed-constructor|module-attribute-data"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|invoke-member-prefix-argv:before-invoke-member|invoke-member-boundary-argv:invoke-member-boundaries"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|type-initializer-prefix-argv:before-type-initializers"
 
 gate_python -c 'pass' >/dev/null
 source gates/_reflect-invoke-inputs.sh
@@ -2394,6 +2396,27 @@ awk -F '\t' 'index($3, "InvokeMemberSubset.Program+") == 1 && index($5, "System.
         }
     END { exit bad || count != 1 }' "$_CG_OUT/reflection-unrecognized.tsv" \
     || { echo 'FAIL: the non-constant InvokeMember name has no unrecognized-site row naming its owner' >&2; exit 1; }
+for axis in native dotnet; do
+    if [ "$axis" = native ]; then
+        gate_capture_ok "$_CG_OUT/type-initializers-before.$axis" run_bounded "$_CG_OUT/ReflectInvoke$EXE_EXT" before-type-initializers
+    else
+        gate_capture_ok "$_CG_OUT/type-initializers-before.$axis" reflection_oracle "$_CG_APP" before-type-initializers
+    fi
+    gate_output select "$_CG_OUT/gate.$axis.stdout" "$_CG_OUT/type-initializers-prefix.$axis.stdout" \
+        --before '== declared static constructors ==' --policy crlf
+    gate_output compare "$_CG_OUT/type-initializers-prefix.$axis.stdout" "$_CG_OUT/type-initializers-before.$axis.stdout"
+    gate_output byte-witness "$_CG_OUT/gate.$axis.stdout" --count 1 --policy crlf \
+        'ordinary initializer=.cctor/.cctor rows=1/1/1' 'ordinary flags=Constructor/False/True/True' \
+        'ordinary allocating=MemberAccessException/0' 'ordinary target=null/1' 'ordinary repeat=null/1' \
+        'open initializer=.cctor/.cctor rows=1/1/1' 'open target=MemberAccessException/1' \
+        'closed initializer=.cctor/.cctor rows=1/1/1' 'closed repeat=null/11' \
+        'derived initializer=-/- rows=0/0/0' 'metadata-only initializer=.cctor/11' 'static initializer activation=True' \
+        'interface allocating=MemberAccessException/Cannot create an instance of ActivatorSubset.Program+IInitialized because it is an interface.'
+done
+if grep -Eq '^// LookupOnlyInitializer::\.cctor( |$)' "$_CG_OUT"/generated*.cpp "$_CG_OUT/generated.h"; then
+    echo 'FAIL: reading TypeInitializer retained its uninvoked body' >&2
+    exit 1
+fi
 if ! reflection_full_profile; then
     exit 0
 fi

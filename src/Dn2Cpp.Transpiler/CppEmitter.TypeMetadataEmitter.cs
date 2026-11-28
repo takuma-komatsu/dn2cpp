@@ -717,13 +717,13 @@ internal sealed partial class CppEmitter
     private bool KeepsReflectionMethodRow(ClassInfo cls, MethodInfo method,
         HashSet<MethodDefinitionHandle> propertyAccessors)
     {
-        bool ctor = method.Name == ".ctor" && !method.IsStatic;
-        bool initializer = method.Name == ".cctor" && method.IsStatic && _c.NamedDelegateBindingUsed;
+        bool initializer = method.Name == ".cctor" && method.IsStatic;
+        bool ctor = method.Name == ".ctor" && !method.IsStatic || initializer;
         if (!ctor && (!_c.KeepsReflectionMetadata(cls)
-            || (!initializer && (method.Name == ".ctor" || method.Name == ".cctor"))
+            || method.Name is ".ctor" or ".cctor"
             || !HasReflectableMethodArguments(method)))
             return false;
-        if (cls.Module != _c.AppModule && !_hotUpdateBase && method.Rva != 0
+        if (!initializer && cls.Module != _c.AppModule && !_hotUpdateBase && method.Rva != 0
             && !_c.Reachable.Contains(method) && !_c.KeepsUnreachedRow(method)
             && !propertyAccessors.Contains(method.Handle) && !_activationConstructorRows.Contains(method))
             return false;
@@ -3825,7 +3825,8 @@ internal sealed partial class CppEmitter
                 // Rva == 0 is a bodiless declaration -- an interface or abstract slot,
                 // which is never reached (dispatch reaches the impl) yet must stay
                 // visible, or the type's GetMethods() would come back empty.
-                if (trim && m.Rva != 0 && !_c.Reachable.Contains(m) && !_c.KeepsUnreachedRow(m)
+                if (trim && m.Rva != 0 && !(m.Name == ".cctor" && m.IsStatic)
+                    && !_c.Reachable.Contains(m) && !_c.KeepsUnreachedRow(m)
                     && !propertyAccessors.Contains(m.Handle) && !_e._activationConstructorRows.Contains(m))
                     continue;
                 _memberAddr[m] = rows.Count.ToString();
@@ -4252,7 +4253,7 @@ internal sealed partial class CppEmitter
         }
 
         // Per-type reflection member tables: one Dn2CppMethodInfo[] of
-        // non-ctor methods (methtab_) and one of instance constructors (ctortab_) per
+        // non-ctor methods (methtab_) and one of declared constructors (ctortab_) per
         // type, plus a Dn2CppParamInfo[] per member that has parameters, and one invoker
         // thunk per distinct C++ ABI shape. Emitted before the type-info
         // definition so the initializer can name them. GetMethods excludes ctors and
@@ -4409,11 +4410,12 @@ internal sealed partial class CppEmitter
             if (_e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls))
             {
                 var activationCtors = cls.Methods.Where(m => _e._activationConstructorRows.Contains(m)
-                    || m.Name == ".ctor" && IsRetainedOpaqueMemberRow(m)).ToList();
+                    || m.Name == ".ctor" && IsRetainedOpaqueMemberRow(m)
+                    || m.Name == ".cctor" && m.IsStatic).ToList();
                 if (BuildMemberTable(cls, activationCtors, "ctortab") is { } table)
                     _ctorTabs[cls] = table;
                 NoteListedCtors(cls, activationCtors);
-                var valueMethods = cls.Methods.Where(m => m.Name != ".ctor" && IsRetainedOpaqueMemberRow(m)).ToList();
+                var valueMethods = cls.Methods.Where(m => m.Name is not (".ctor" or ".cctor") && IsRetainedOpaqueMemberRow(m)).ToList();
                 if (BuildMemberTable(cls, valueMethods, "methtab") is { } values)
                     _methodTabs[cls] = values;
                 return;
@@ -4432,11 +4434,10 @@ internal sealed partial class CppEmitter
                     && _e.KeepsReflectionMethodRow(cls, m, propertyAccessors)
                     && seenMethod.Add(m.CppName))
                 .ToList();
-            // Public constructor lookup keeps its instance-only table; named binding
-            // describes the static initializer separately without exposing a MethodInfo.
             var seenCtor = new HashSet<string>(System.StringComparer.Ordinal);
             var ctors = cls.Methods
-                .Where(m => m.Name == ".ctor" && !m.IsStatic && seenCtor.Add(m.CppName))
+                .Where(m => (m.Name == ".ctor" && !m.IsStatic || m.Name == ".cctor" && m.IsStatic)
+                    && seenCtor.Add(m.CppName))
                 .ToList();
             // --trim-reflection strips the METHOD and PROPERTY tables but keeps the
             // CONSTRUCTOR table: constructors are the one member family a reachable
@@ -4452,9 +4453,8 @@ internal sealed partial class CppEmitter
                 _ctorTabs[cls] = ct;
             NoteListedCtors(cls, ctors);
             if (keepRefl && _c.NamedDelegateBindingUsed && cls.StaticCctor is { } initializer
-                && _e.KeepsReflectionMethodRow(cls, initializer, propertyAccessors)
-                && BuildMemberTable(cls, new List<MethodInfo> { initializer }, "initrow") is { } init)
-                _initializerRows[cls] = _e.MetadataRowAddress(init.Expr, 0);
+                && _memberAddr.TryGetValue(initializer, out var initializerRow))
+                _initializerRows[cls] = initializerRow;
             // Property table: read the type's PropertyDefs from metadata, map each
             // accessor to its method-table entry (so PropertyInfo.GetValue/SetValue and
             // CanRead/CanWrite work), and emit a Dn2CppPropInfo[]. An accessor the
@@ -4889,10 +4889,7 @@ internal sealed partial class CppEmitter
                 IlAttrs = unchecked((uint)tIlAttrs), MetadataToken = tToken, DefaultMemberName = DefaultMemberName(cls), MarshalSize = _c.MarshalStampSize(cls),
                 EventSourceName = EventSourceIdentity(cls)?.Name, EventSourceGuid = EventSourceIdentity(cls)?.Guid,
                 Activation = ActivationBits(cls),
-                // GetUninitializedObject runs this hook at every level of the allocated
-                // type's base chain, as the CLR does; a beforefieldinit level has none and
-                // waits for its first static field access.
-                EnsureInitializer = !cls.IsBeforeFieldInit && _e.InitializerEnsure(cls) is { } ensure
+                EnsureInitializer = (!cls.IsBeforeFieldInit || _c.ReflectionInvokeUsed) && _e.InitializerEnsure(cls) is { } ensure
                     ? "&" + ensure : "nullptr",
             });
             _sb.AppendLine($"const Dn2CppType ty_{cls.CppName} = {{ {{ &dn2cpp_type_type }}, {_e.TypeInfoRef(cls, "class ty_ companion")} }};");

@@ -219,10 +219,13 @@ or runtime state. ILDiet's retained bodies must contain every body `Compilation`
 admits. A metadata-only method becomes a marked throwing stub; admitting it is
 an `InvalidOperationException` naming the method. Property rows retain their
 independent accessor selection, including an intentionally accessorless row;
-replayed preservation cannot invent an executable accessor. Explicit static
-initializer selections, including `TypeInitializer` and constructor or member
-queries, retain the owner's original initializer body rather than a stub.
-Ordinary member-row retention leaves unused initializers removed.
+replayed preservation cannot invent an executable accessor. On ordinary,
+open generic and closed generic types, `TypeInitializer` and constructor or
+member lookups can expose the declared static initializer as a `ConstructorInfo`
+whose `IsConstructor` is false. A metadata-only selection retains its declaration.
+The target-taking `Invoke` overload initializes a closed owner once and returns
+null. Invoking an open owner's initializer or using the allocating overload throws
+`MemberAccessException`.
 
 Reflection-produced boxes from fields, invocation results and by-reference
 arguments normalize nullable and by-reference payloads before requesting runtime

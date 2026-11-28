@@ -426,6 +426,9 @@ namespace ReflectInvoke
             return;
         InvokeMemberSubset.Program.Run();
         ReflectActivatorSubset.Program.RunDefaultConstructorVisibility();
+        if (args.Length > 0 && args[0] == "before-type-initializers")
+            return;
+        ActivatorSubset.Program.RunTypeInitializers();
         }
     }
 }

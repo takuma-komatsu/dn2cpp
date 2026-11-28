@@ -293,16 +293,15 @@ struct Dn2CppTypeReflection
     const char* eventSourceName;
     const char* eventSourceGuid;
     const char* genericParamNames;
-    // Callable initializer identity is independent of public member enumeration.
+    // The constructor row selected by named delegate binding.
     Dn2CppMetadataHandle<Dn2CppMethodInfo> initializer = nullptr;
     const Dn2CppGenericTypeMetadata* genericMetadata = nullptr;
     Dn2CppMetadataTable<Dn2CppEventInfo> events;
     int32_t eventCount = 0;
     // DN2CPP_TA_* bits: what reflective construction cannot answer from the rows.
     int32_t activation = 0;
-    // A precise-init type's initializer guard: an allocation that runs no constructor
-    // still initializes it. Null for a beforefieldinit type, whose first static field
-    // access initializes it, and without a retained initializer.
+    // Once-only entry for a retained initializer. A reflected .cctor call runs
+    // this guard even for a beforefieldinit type.
     void (*ensureInitializer)() = nullptr;
 };
 
@@ -2271,6 +2270,10 @@ inline constexpr const char* DN2CPP_SR_NO_ACCESS_SPEC = "Arg_NoAccessSpec";
 inline constexpr const char* DN2CPP_SR_NAMED_PARAM_TOO_BIG = "Arg_NamedParamTooBig";
 inline constexpr const char* DN2CPP_SR_NAMED_PARAM_NULL = "Arg_NamedParamNull";
 inline constexpr const char* DN2CPP_SR_CREATE_INSTANCE_ACCESS = "Arg_CreatInstAccess";
+inline constexpr const char* DN2CPP_SR_CREATE_INTERFACE = "Acc_CreateInterfaceEx";
+inline constexpr const char* DN2CPP_SR_CREATE_ABSTRACT = "Acc_CreateAbstEx";
+inline constexpr const char* DN2CPP_SR_CREATE_OPEN_GENERIC = "Acc_CreateGenericEx";
+inline constexpr const char* DN2CPP_SR_INITIALIZER_NOT_CALLABLE = "Acc_NotClassInit";
 inline constexpr const char* DN2CPP_SR_FIELD_SET_GET = "Arg_FldSetGet";
 inline constexpr const char* DN2CPP_SR_FIELD_GET_PROPERTY_SET = "Arg_FldGetPropSet";
 inline constexpr const char* DN2CPP_SR_FIELD_SET_PROPERTY_GET = "Arg_FldSetPropGet";
@@ -2573,6 +2576,7 @@ void dn2cpp_set_pointer_box_type(const Dn2CppTypeInfo* ti,
 // dn2cpp_activator_create_instance backs the non-generic Activator.CreateInstance(Type):
 // it invokes the parameterless ctor, or zero-inits a value type that has none.
 Dn2CppArrayRef* dn2cpp_type_get_constructors(Dn2CppType* t, int32_t bindingFlags);
+Dn2CppMethodRef* dn2cpp_type_get_type_initializer(Dn2CppType* t);
 Dn2CppMethodRef* dn2cpp_type_get_constructor(Dn2CppType* t, Dn2CppArrayRef* paramTypes, int32_t bindingFlags);
 // The unified worker behind EVERY Type.GetConstructor overload — callConv and
 // binder carry the same semantics as dn2cpp_type_get_method_full. Every overload

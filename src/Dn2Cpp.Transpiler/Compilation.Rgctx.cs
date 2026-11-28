@@ -1757,7 +1757,7 @@ internal sealed partial class Compilation
             var lookup = selection.Lookup;
             if (selection.Construct)
             {
-                foreach (var e in SelectMembers(tmpl, LookupMemberKind.Constructor, null, lookup.Flags | ReflectionApis.Instance,
+                foreach (var e in SelectMembers(tmpl, LookupMemberKind.Constructor, ".ctor", lookup.Flags | ReflectionApis.Instance,
                              lookup.Types, -1))
                     if (e.Method is { Name: ".ctor", IsStatic: false } ctor && ctor.Rva != 0
                         && (selection.Arguments < 0 || ctor.Signature.ParameterTypes.Length == selection.Arguments))
