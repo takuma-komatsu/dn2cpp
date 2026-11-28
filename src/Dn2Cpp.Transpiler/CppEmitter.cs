@@ -3224,6 +3224,7 @@ internal sealed partial class CppEmitter
         // cache must never hold an answer from before.
         if (_relationRowSets is { } rrs)
             sb.AppendLine($"    dn2cpp_set_relation_rows({rrs.Sym}, {rrs.Count});");
+        EmitInvalidTypeLoads(sb);
         if (_methodConstraintDeclarationCount != 0)
             sb.AppendLine($"    dn2cpp_register_constraint_declarations(method_constraint_declarations, {_methodConstraintDeclarationCount});");
         // The corrected bases the same way: every chain walk must see one chain.
@@ -3365,6 +3366,33 @@ internal sealed partial class CppEmitter
         }
     }
 
+    internal static string InvalidInitializerArguments(Compilation.TypeLoadError error)
+    {
+        var reader = error.Module.Reader;
+        var definition = reader.GetTypeDefinition(error.Handle);
+        string name = reader.GetString(definition.Name);
+        string ns = reader.GetString(definition.Namespace);
+        string fullName = ns.Length == 0 ? name : ns + "." + name;
+        return $"{CppUtf8Literal(fullName)}, {CppUtf8Literal(error.Module.AssemblyName)}, {(error.IsEnum ? "true" : "false")}";
+    }
+
+    private void EmitInvalidTypeLoads(StringBuilder sb)
+    {
+        if (!_c.ContainsInvalidInitializers())
+            return;
+        var rows = new List<string>();
+        foreach (var pair in _genericDefSyms.OrderBy(p => p.Key, StringComparer.Ordinal))
+            if (_c.InvalidOpenBase(pair.Key) is { } invalid)
+                rows.Add($"{{ &{pair.Value}, {InvalidInitializerArguments(invalid.Error)}, {(invalid.DeferredArgument ? "true" : "false")} }}");
+        string table = "nullptr";
+        if (rows.Count != 0)
+        {
+            table = "invalid_type_loads";
+            sb.AppendLine($"    static const Dn2CppInvalidTypeLoad {table}[] = {{ {string.Join(", ", rows)} }};");
+        }
+        sb.AppendLine($"    dn2cpp_register_invalid_type_loads({table}, {rows.Count});");
+    }
+
     /// <summary>The <c>__ensure</c> wrapper of <paramref name="cls"/>'s retained initializer,
     /// as a function name, or null when it has none. A placeholder-bearing level has no
     /// statics of its own: each instantiation's initializer is its own.</summary>
@@ -3454,12 +3482,8 @@ internal sealed partial class CppEmitter
             if (cc == cc.DeclaringClass.InvalidStaticCctor)
             {
                 var owner = cc.DeclaringClass;
-                var invalidDefinition = owner.Module.Reader.GetTypeDefinition(owner.Handle);
-                string invalidName = owner.Module.Reader.GetString(invalidDefinition.Name);
-                string invalidNs = owner.Module.Reader.GetString(invalidDefinition.Namespace);
-                string fullName = invalidNs.Length == 0 ? invalidName : invalidNs + "." + invalidName;
-                o.Header.AppendLine($"inline void {cc.CppName}__ensure() {{ dn2cpp_throw_invalid_initializer("
-                    + $"{CppUtf8Literal(fullName)}, {CppUtf8Literal(owner.Module.AssemblyName)}, {(owner.IsEnum ? "true" : "false")}); }}");
+                var invalid = new Compilation.TypeLoadError(owner.Module, owner.Handle, owner.IsEnum);
+                o.Header.AppendLine($"inline void {cc.CppName}__ensure() {{ dn2cpp_throw_invalid_initializer({InvalidInitializerArguments(invalid)}); }}");
                 continue;
             }
             bool compiled = compiledSet.Contains(cc);

@@ -18,6 +18,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #ifdef _WIN32
@@ -1831,6 +1832,94 @@ static const Dn2CppTypeInfo* dn2cpp_type_registry_find_nested(const char* name, 
         callerAssembly, requestedAssembly, nullptr, nullptr, ignoreCase != 0);
 }
 
+// The linked image publishes failures hidden by an open definition's erased base
+// before managed code runs. A later patch can enable checking its own declarations.
+static std::atomic<bool> g_validate_type_loads{false};
+static const Dn2CppInvalidTypeLoad* g_invalid_type_loads = nullptr;
+static int32_t g_invalid_type_load_count = 0;
+
+void dn2cpp_register_invalid_type_loads(const Dn2CppInvalidTypeLoad* failures, int32_t count)
+{
+    if (count > 0)
+    {
+        g_invalid_type_loads = failures;
+        g_invalid_type_load_count = count;
+    }
+    g_validate_type_loads.store(true, std::memory_order_release);
+}
+
+static void dn2cpp_check_initializer_declaration(const Dn2CppTypeInfo* ti)
+{
+    if ((ti->reflection().activation & DN2CPP_TA_INVALID_CCTOR) != 0)
+    {
+        const auto* def = ti->genericDef != nullptr ? ti->genericDef : ti;
+        const char* name = (def->flags & DN2CPP_TF_NESTED) != 0 ? dn2cpp_simple_type_name(def->name) : def->name;
+        dn2cpp_throw_invalid_initializer(name, dn2cpp_ti_assembly_name(def), (ti->flags & DN2CPP_TF_ENUM) != 0);
+    }
+}
+
+static void dn2cpp_check_omitted_base(const Dn2CppTypeInfo* ti, bool deferredArgument)
+{
+    for (int32_t i = 0; i < g_invalid_type_load_count; i++)
+    {
+        const auto& failure = g_invalid_type_loads[i];
+        if (failure.type == ti && failure.deferredArgument == deferredArgument)
+            dn2cpp_throw_invalid_initializer(failure.typeName, failure.assemblyName, failure.isEnum);
+    }
+}
+
+class Dn2CppTypeLoadValidation
+{
+    std::unordered_set<const Dn2CppTypeInfo*> declarations;
+    std::unordered_set<const Dn2CppTypeInfo*> loaded;
+
+    void checkDeclarations(const Dn2CppTypeInfo* ti)
+    {
+        if (ti == nullptr || !declarations.insert(ti).second)
+            return;
+        if (ti->genericDef != ti)
+            checkDeclarations(ti->genericDef);
+        checkDeclarations(ti->base);
+        dn2cpp_check_omitted_base(ti, false);
+        dn2cpp_check_initializer_declaration(ti);
+    }
+
+public:
+    void load(const Dn2CppTypeInfo* ti)
+    {
+        // A valid base can contain the derived type as a generic argument.
+        if (ti == nullptr || !loaded.insert(ti).second)
+            return;
+        load(ti->elementType);
+        // The loader checks base declarations before the derived declaration,
+        // then the requested arguments before those of its constructed bases.
+        checkDeclarations(ti);
+        for (int32_t i = 0; i < ti->genericArgCount; i++)
+            load(ti->genericArgs[i]);
+        dn2cpp_check_omitted_base(ti, true);
+        if (ti->genericDef != ti)
+            load(ti->genericDef);
+        load(ti->base);
+    }
+};
+
+static const Dn2CppTypeInfo* dn2cpp_check_loaded_type(const Dn2CppTypeInfo* ti, const char* owningAssembly)
+{
+    if (ti == nullptr || !g_validate_type_loads.load(std::memory_order_acquire))
+        return ti;
+    // Assembly.GetType discards foreign results before exposing their dependencies.
+    if (owningAssembly != nullptr && std::strcmp(dn2cpp_ti_assembly_name(ti), owningAssembly) != 0)
+        return nullptr;
+    Dn2CppTypeLoadValidation validation;
+    validation.load(ti);
+    return ti;
+}
+
+const Dn2CppTypeInfo* dn2cpp_validate_type_load(const Dn2CppTypeInfo* ti)
+{
+    return dn2cpp_check_loaded_type(ti, nullptr);
+}
+
 // Resolves a CLR type name, accepting a plain registry name and the composed
 // closed-generic spellings dn2cpp_type_tostring/dn2cpp_type_fullname produce.
 // NO registry entry carries the composed form — a closed instantiation is keyed by
@@ -1839,7 +1928,8 @@ static const Dn2CppTypeInfo* dn2cpp_type_registry_find_nested(const char* name, 
 // AssemblyQualifiedName round-trip (a serializer's `$type`) working.
 static const Dn2CppTypeInfo* dn2cpp_resolve_type_name(const char* s, size_t len, int depth = 0,
     int32_t ignoreCase = 0, const char* callerAssembly = nullptr,
-    const char* forcedAssembly = nullptr, const char* argumentAssembly = nullptr)
+    const char* forcedAssembly = nullptr, const char* argumentAssembly = nullptr,
+    const char* owningAssembly = nullptr)
 {
     // The nesting a REAL name can carry is the type graph's, which is shallow; the
     // string is caller-supplied, so cap the recursion rather than the input.
@@ -1885,7 +1975,7 @@ static const Dn2CppTypeInfo* dn2cpp_resolve_type_name(const char* s, size_t len,
             if (arraySuffix)
             {
                 const Dn2CppTypeInfo* element = dn2cpp_resolve_type_name(
-                    s, bracket, depth + 1, ignoreCase, callerAssembly, requested, argumentAssembly);
+                    s, bracket, depth + 1, ignoreCase, callerAssembly, requested, argumentAssembly, owningAssembly);
                 if (element == nullptr)
                     return nullptr;
                 for (int32_t i = 0; i < dn2cpp_type_registry_count; i++)
@@ -1905,7 +1995,7 @@ static const Dn2CppTypeInfo* dn2cpp_resolve_type_name(const char* s, size_t len,
     // lookup that already resolved.
     if (const Dn2CppTypeInfo* direct = dn2cpp_type_registry_find_nested(
             s, len, ignoreCase, callerAssembly, requested))
-        return direct;
+        return dn2cpp_check_loaded_type(direct, owningAssembly);
     const char* open = static_cast<const char*>(std::memchr(s, '[', len));
     // "[]" is an array suffix, not an argument list.
     if (open == nullptr || open + 1 >= s + len || open[1] == ']')
@@ -1914,8 +2004,9 @@ static const Dn2CppTypeInfo* dn2cpp_resolve_type_name(const char* s, size_t len,
     size_t close = dn2cpp_name_bracket_end(s, len, p);
     if (close >= len)
         return nullptr;
-    const Dn2CppTypeInfo* def = dn2cpp_type_registry_find_nested(
-        s, p, ignoreCase, callerAssembly, requested);
+    // Resolving the definition can fail before any argument (even a missing one).
+    const Dn2CppTypeInfo* def = dn2cpp_check_loaded_type(
+        dn2cpp_type_registry_find_nested(s, p, ignoreCase, callerAssembly, requested), owningAssembly);
     if (def == nullptr || (def->flags & DN2CPP_TF_GENERICDEF) == 0)
         return nullptr;
     const Dn2CppTypeInfo* args[32];
@@ -1952,12 +2043,12 @@ static const Dn2CppTypeInfo* dn2cpp_resolve_type_name(const char* s, size_t len,
         for (int32_t i = 0; i < argc; i++)
             if (cand->genericArgs[i] != args[i]) { match = false; break; }
         if (match)
-            return cand;
+            return dn2cpp_validate_type_load(cand);
     }
     // The typeof-only template fallback — the same relation MakeGenericType
     // resolves on, so a GetType(t.FullName) round-trip over a synthesized
     // instantiation answers the same pointer.
-    return dn2cpp_try_synthesize_generic(def, args, argc);
+    return dn2cpp_validate_type_load(dn2cpp_try_synthesize_generic(def, args, argc));
 }
 
 // Narrows a managed name to ASCII bytes and resolves it. Candidate names are ASCII
@@ -1969,20 +2060,22 @@ static const Dn2CppTypeInfo* dn2cpp_resolve_managed_type_name(const Dn2CppString
 {
     int32_t len = name->length;
     char stackBuf[256];
-    char* buf = len <= static_cast<int32_t>(sizeof stackBuf) ? stackBuf : new char[len];
-    bool representable = true;
+    std::vector<char> overflow;
+    char* buf = stackBuf;
+    if (len > static_cast<int32_t>(sizeof stackBuf))
+    {
+        overflow.resize(len);
+        buf = overflow.data();
+    }
     for (int32_t i = 0; i < len; i++)
     {
         char16_t c = name->chars[i];
-        if (c > 0xFF) { representable = false; break; }
+        if (c > 0xFF)
+            return nullptr;
         buf[i] = static_cast<char>(static_cast<unsigned char>(c));
     }
-    const Dn2CppTypeInfo* ti =
-        representable ? dn2cpp_resolve_type_name(buf, static_cast<size_t>(len), 0,
-            ignoreCase, callerAssembly, forcedAssembly, argumentAssembly) : nullptr;
-    if (buf != stackBuf)
-        delete[] buf;
-    return ti;
+    return dn2cpp_resolve_type_name(buf, static_cast<size_t>(len), 0,
+        ignoreCase, callerAssembly, forcedAssembly, argumentAssembly, forcedAssembly);
 }
 
 // Type.GetType(string): resolve a CLR FullName against the embedded registry
@@ -9222,19 +9315,9 @@ Dn2CppObject* dn2cpp_ctorref_invoke(Dn2CppMethodRef* c, Dn2CppArrayRef* args, bo
         args == nullptr ? 0 : args->length, wrapExceptions);
 }
 
-static void dn2cpp_check_activation_initializer(const Dn2CppTypeInfo* ti)
-{
-    if ((ti->reflection().activation & DN2CPP_TA_INVALID_CCTOR) != 0)
-    {
-        const auto* def = ti->genericDef != nullptr ? ti->genericDef : ti;
-        const char* name = (def->flags & DN2CPP_TF_NESTED) != 0 ? dn2cpp_simple_type_name(def->name) : def->name;
-        dn2cpp_throw_invalid_initializer(name, dn2cpp_ti_assembly_name(def), (ti->flags & DN2CPP_TF_ENUM) != 0);
-    }
-}
-
 static void dn2cpp_activator_check_this(const Dn2CppTypeInfo* ti)
 {
-    dn2cpp_check_activation_initializer(ti);
+    dn2cpp_check_initializer_declaration(ti);
     if (dn2cpp_type_contains_generic_parameters(ti))
         dn2cpp_throw_sr1(&dn2cpp_argument_exception_type, DN2CPP_SR_CREATE_OPEN_GENERIC, dn2cpp_type_tostring(ti));
     const Dn2CppTypeInfo* root = ti;
@@ -9396,7 +9479,7 @@ void dn2cpp_runtime_type_call_default_struct_constructor(Dn2CppType* t, uint8_t*
         dn2cpp_throw_platform_not_supported("RuntimeType: in-place construction requires a value type with runtime layout");
     dn2cpp_require_layout(ti);
     const auto reflection = ti->reflection();
-    dn2cpp_check_activation_initializer(ti);
+    dn2cpp_check_initializer_declaration(ti);
     const bool omittedPublic = (reflection.activation & DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR) != 0;
     const bool omittedNonPublic = (reflection.activation & DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR) != 0;
     const bool bodilessPublic = (reflection.activation & DN2CPP_TA_BODILESS_PUBLIC_DEFAULT_CTOR) != 0;
@@ -11350,10 +11433,10 @@ Dn2CppType* dn2cpp_assembly_get_type(const char* asmName, Dn2CppString* name,
         };
         for (int32_t k = 0; k < dn2cpp_type_registry_count; k++)
             if (owned(dn2cpp_type_registry[k].type) && matches(dn2cpp_type_registry[k].name))
-                return dn2cpp_get_type_from_handle(dn2cpp_type_registry[k].type);
+                return dn2cpp_get_type_from_handle(dn2cpp_validate_type_load(dn2cpp_type_registry[k].type));
         for (const Dn2CppDynTypeReg* e = dn2cpp_type_registry_dynamic_head(); e != nullptr; e = e->next)
             if (owned(e->type) && matches(e->name))
-                return dn2cpp_get_type_from_handle(e->type);
+                return dn2cpp_get_type_from_handle(dn2cpp_validate_type_load(e->type));
         // A closed generic spelled the way FullName spells it matches no registry
         // name; unqualified definitions and arguments stay in the receiver assembly.
         // An argument's explicit assembly qualification overrides that scope.

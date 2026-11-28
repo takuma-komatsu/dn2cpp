@@ -6260,6 +6260,10 @@ internal sealed partial class Compilation
                     continue;
                 var handle = SRME.EntityHandle(insn.Token);
                 NoteMediumOperand(module, handle, m.Context);
+                if (handle.Kind == HandleKind.MethodSpecification && ContainsInvalidInitializers())
+                    foreach (var argument in reader.GetMethodSpecification((MethodSpecificationHandle)handle)
+                        .DecodeSignature(SigProvider, m.Context))
+                        NoteTypeLoad(m, argument);
                 // boxedForFormat is a single-instruction window: it survives only to
                 // the next entity-token instruction (the call that consumes the box).
                 var prevBoxed = boxedForFormat;
@@ -6278,6 +6282,7 @@ internal sealed partial class Compilation
                             or HandleKind.TypeSpecification)
                         {
                             lastLdtokenType = ResolveTypeTokenForScan(module, handle, m.Context);
+                            NoteTypeLoad(m, lastLdtokenType);
                             // Framework-attribute keep-set record (consumed by
                             // DecodeCustomAttributes): a USER-module body's typeof over a
                             // FRAMEWORK-module class is the evidence that the program can

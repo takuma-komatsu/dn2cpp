@@ -1797,6 +1797,18 @@ inline Dn2CppType* dn2cpp_get_type_from_handle(const Dn2CppTypeInfo* handle)
         return const_cast<Dn2CppType*>(handle->typeObject);
     return dn2cpp_get_type_from_handle_slow(handle);
 }
+// A generic definition can inherit a base expressed in its formal parameters.
+struct Dn2CppInvalidTypeLoad
+{
+    const Dn2CppTypeInfo* type;
+    const char* typeName;
+    const char* assemblyName;
+    bool isEnum;
+    bool deferredArgument = false;
+};
+void dn2cpp_register_invalid_type_loads(const Dn2CppInvalidTypeLoad* failures, int32_t count);
+// A type token or name loads its definition, base, element and actual type arguments.
+const Dn2CppTypeInfo* dn2cpp_validate_type_load(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_equals(Dn2CppType* a, Dn2CppType* b);
 // The simple-name tail of a CLR reflection name: the pointer past the last '.'
 // OR '+' ("Ns.Outer+Inner" -> "Inner", "Ns.Outer+Inner[]" -> "Inner[]"). The one

@@ -1054,6 +1054,8 @@ static DN2CPP_GC_STATIC_ROOT const Dn2CppDynTypeReg* g_dyn_type_registry = nullp
 
 void dn2cpp_type_registry_add(const char* name, const Dn2CppTypeInfo* type)
 {
+    if (type != nullptr && (type->reflection().activation & DN2CPP_TA_INVALID_CCTOR) != 0)
+        dn2cpp_register_invalid_type_loads(nullptr, 0);
     auto* e = static_cast<Dn2CppDynTypeReg*>(dn2cpp_alloc(sizeof(Dn2CppDynTypeReg)));
     e->name = name;
     e->type = type;

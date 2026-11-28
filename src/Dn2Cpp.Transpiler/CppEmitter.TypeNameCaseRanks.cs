@@ -2,21 +2,7 @@ namespace Dn2Cpp;
 
 internal sealed partial class CppEmitter
 {
-    private TypeNameSnapshot? _typeNameSnapshot;
-
-    internal TypeNameSnapshot? TryPreservationTypeNames() => _c.TryPreservationTypeNames();
-
-    private TypeNameSnapshot TypeNames()
-    {
-        if (_typeNameSnapshot is not null)
-            return _typeNameSnapshot;
-        _typeNameSnapshot = TryPreservationTypeNames()
-            ?? TypeNameSnapshot.Capture(_c.Modules.Select(module =>
-                (module.AssemblyName, _c.OriginalAssemblyPaths[module.Index])).ToArray());
-        foreach (var module in _c.Modules)
-            _typeNameSnapshot.AddMissing(module.AssemblyName, _c.OriginalAssemblyPaths[module.Index]);
-        return _typeNameSnapshot;
-    }
+    private TypeNameSnapshot TypeNames() => _c.OriginalTypeNames();
 
     private static int NextTypeNameBucketCount(int count)
     {

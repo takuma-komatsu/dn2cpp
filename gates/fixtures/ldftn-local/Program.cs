@@ -210,9 +210,30 @@ if (args.Length == 2 && args[1] == "--template-pointer-slots")
     string slotPath = Path.GetFullPath(args[0]);
     using var slotAssembly = AssemblyDefinition.ReadAssembly(slotPath, new ReaderParameters { InMemory = true });
     RewriteTemplatePointerSlots(slotAssembly.MainModule, required: true);
+    var boxInitializer = slotAssembly.MainModule.GetType("RuntimeTemplateBindingOnly.InvalidBox`1")
+        .Methods.Single(method => method.IsStatic);
+    boxInitializer.Name = ".cctor";
+    boxInitializer.Attributes |= MethodAttributes.SpecialName | MethodAttributes.RTSpecialName;
     string slotTemporary = slotPath + ".pointer-slots.tmp";
     slotAssembly.Write(slotTemporary, new WriterParameters { Timestamp = 0, DeterministicMvid = true });
     File.Move(slotTemporary, slotPath, overwrite: true);
+    // Only the runtime-template gate installs this copy; the shared library stays valid.
+    string libraryPath = Path.Combine(Path.GetDirectoryName(slotPath)!, "TrimReflectLib.dll");
+    using var library = AssemblyDefinition.ReadAssembly(libraryPath);
+    foreach (string name in new[] { "TrimReflectLib.LibBare", "TrimReflectLib.LibColor" })
+    {
+        var type = library.MainModule.GetType(name)
+            ?? throw new InvalidOperationException("missing invalid initializer fixture " + name);
+        if (type.Methods.Any(method => method.Name == ".cctor"))
+            throw new InvalidOperationException("expected no type initializer on " + name);
+        var initializer = new MethodDefinition(".cctor", MethodAttributes.Private | MethodAttributes.Static
+            | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName, library.MainModule.TypeSystem.Void);
+        initializer.Parameters.Add(new ParameterDefinition(library.MainModule.TypeSystem.Int32));
+        initializer.Body.GetILProcessor().Emit(OpCodes.Ret);
+        type.Methods.Add(initializer);
+    }
+    library.Write(Path.ChangeExtension(libraryPath, ".invalid-initializers.dll"),
+        new WriterParameters { Timestamp = 0, DeterministicMvid = true });
     Console.WriteLine("template pointer slot fixtures written");
     return;
 }
