@@ -1479,27 +1479,6 @@ Dn2CppObject* dn2cpp_castclass(Dn2CppObject* obj, const Dn2CppTypeInfo* ti)
     return obj;
 }
 
-// ---- a headerless representation with no managed identity escaping ---------
-// One intrinsic representation is headerless like the NFI trio but has NO managed
-// identity to wrap into: System.Buffers.SearchValues<T>. Escaping it into `object`
-// would pun the raw pointer and every object-generic consumer would read a 256-entry
-// bitmap's first bytes as a type header — silently, not as a crash. So fail, and
-// catchably: a wrap would have to invent the private per-shape subclass identity .NET
-// reports.
-Dn2CppObject* dn2cpp_headerless_escape(const char* managedTypeName)
-{
-    char buf[512];
-    std::snprintf(buf, sizeof(buf),
-        "A value of type '%s' cannot be used as an 'object' in a transpiled image: "
-        "dn2cpp represents it as a headerless intrinsic handle with no managed type "
-        "identity, so boxing it would make GetType(), ToString(), equality and every "
-        "object-typed collection read the handle's own bytes as an object header. "
-        "Keep the value in its own static type (members called on it work normally).",
-        managedTypeName);
-    dn2cpp_throw_platform_not_supported(buf);
-    return nullptr;
-}
-
 // ---- castclass/isinst with an NFI-mapped target ----------------------------
 // (CultureInfo / NumberFormatInfo / TextInfo — the managed
 // types the transpiler lowers to `const Dn2CppNumberFormatInfo*`.) The source

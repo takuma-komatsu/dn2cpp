@@ -26,11 +26,7 @@ namespace CultureEscapeResidueSubset
     //   (e) reflection Invoke, whose thunk shape collapsed every pointer
     //       parameter and return onto one letter.
     //
-    // The tail checks managed RuntimeAssembly/RuntimeModule identity (covered in
-    // depth by ReflectTypes' AssemblyIdentitySubset). SearchValues<T> cannot be wrapped
-    // (its .NET identity is a private PER-SHAPE subclass this model cannot enumerate) and
-    // still traps loudly; that one line is a DELIBERATE divergence, and it is why this
-    // bucket is a frozen-snapshot gate rather than a live diff.
+    // The tail checks managed Assembly, Module and SearchValues reference identity.
     internal interface IHolder<T>
     {
         string Show(T v);
@@ -105,11 +101,29 @@ namespace CultureEscapeResidueSubset
 
         private static string SearchValuesEscape()
         {
-            SearchValues<char> sv = SearchValues.Create("abc");
+            SearchValues<char> chars = SearchValues.Create("abc");
+            SearchValues<byte> bytes = SearchValues.Create(new byte[] { 1, 2 });
+            SearchValues<string> strings = SearchValues.Create(new[] { "abc" }, StringComparison.Ordinal);
             try
             {
-                object o = sv;
-                return o is SearchValues<char> ? "ok" : "wrong";
+                object c = chars;
+                object b = bytes;
+                object s = strings;
+                if (!(c is SearchValues<char>) || !(b is SearchValues<byte>) || !(s is SearchValues<string>)
+                    || c is SearchValues<byte> || b is SearchValues<string> || s is SearchValues<char>
+                    || !ReferenceEquals(chars, (SearchValues<char>)c)
+                    || !ReferenceEquals(bytes, (SearchValues<byte>)b)
+                    || !ReferenceEquals(strings, (SearchValues<string>)s))
+                    return "wrong";
+                try
+                {
+                    _ = (SearchValues<byte>)c;
+                    return "wrong";
+                }
+                catch (InvalidCastException)
+                {
+                    return "ok";
+                }
             }
             catch (PlatformNotSupportedException)
             {
@@ -168,8 +182,7 @@ namespace CultureEscapeResidueSubset
             MethodInfo mp = typeof(Refl).GetMethod("TakeProv");
             Console.WriteLine("e-prov:" + mp.Invoke(null, new object[] { en }));
 
-            // Assembly/Module wrap ("ok", as real .NET); SearchValues stays the loud trap
-            // (real .NET: "ok" — the declared divergence).
+            // Managed identity also holds when these objects cross an object slot.
             Console.WriteLine("f-asm:" + AssemblyEscape());
             Console.WriteLine("f-mod:" + ModuleEscape());
             Console.WriteLine("g-sv:" + SearchValuesEscape());

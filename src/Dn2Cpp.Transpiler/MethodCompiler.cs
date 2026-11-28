@@ -2521,8 +2521,6 @@ internal sealed partial class MethodCompiler : IEvalStack
                 return $"(({targetType}){NfiWrapExpr(e)})";
             if (IsNfiCppType(targetType) && IsManagedReferenceCpp(e.CppType))
                 return $"(({targetType})dn2cpp_nfi_unwrap((Dn2CppObject*){e.Expr}))";
-            if (targetType == "Dn2CppObject*" && UnwrappableHeaderlessCpp(e.CppType) is { } opaque)
-                return $"dn2cpp_headerless_escape(\"{opaque}\")";
         }
         return $"(({targetType}){e.Expr})";
     }
@@ -2549,24 +2547,6 @@ internal sealed partial class MethodCompiler : IEvalStack
         || cpp.StartsWith("t_", StringComparison.Ordinal)
             && cpp.EndsWith("*", StringComparison.Ordinal)
             && !cpp.EndsWith("**", StringComparison.Ordinal);
-
-    /// <summary>The managed type name of a headerless intrinsic representation that
-    /// CANNOT be given a managed wrapper, or null. One remains:
-    /// <c>SearchValues&lt;T&gt;</c>, the raw membership set. It fails the same misread as
-    /// the NFI trio at an <c>object</c> boundary — silently, with
-    /// <c>is SearchValues&lt;char&gt;</c> answering false and ToString answering
-    /// "System.Object" — but it cannot take the wrapper treatment, because the identity
-    /// .NET reports is a PRIVATE per-shape subclass (RangeCharSearchValues&lt;T&gt;,
-    /// ProbabilisticCharSearchValues, …) this model cannot even enumerate. Answering
-    /// there is not "less wrong" than throwing, it is differently wrong with no
-    /// diagnostic, so the escape traps loudly instead (<c>dn2cpp_headerless_escape</c>).
-    /// The REVERSE direction stays a plain cast: an object-typed value flowing back into
-    /// this position is a raw handle that never escaped, exactly as before.</summary>
-    private static string? UnwrappableHeaderlessCpp(string cpp) => cpp switch
-    {
-        "Dn2CppSearchValues*" => "System.Buffers.SearchValues<T>",
-        _ => null,
-    };
 
     /// <summary>True when a C++ type string is the headerless intrinsic
     /// representation of CultureInfo/NumberFormatInfo/TextInfo
@@ -2605,7 +2585,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// <summary>The ONE conversion an expression takes when its spelling crosses an
     /// erased-signature boundary — a real signature's position against a shared
     /// canonical implementation's erased spelling, in either direction. It is a thin
-    /// veneer over <see cref="Cast"/>, so the wrap/unwrap/trap verdict and its
+    /// veneer over <see cref="Cast"/>, so the wrap/unwrap verdict and its
     /// spelling live in exactly one place: a headerless value entering a
     /// <c>Dn2CppObject*</c> position wraps, an object-typed value entering a
     /// headerless position unwraps tolerantly, everything else keeps the C cast the

@@ -891,15 +891,6 @@ const Dn2CppNumberFormatInfo* dn2cpp_nfi_castclass(Dn2CppObject* o, int32_t kind
 const Dn2CppNumberFormatInfo* dn2cpp_nfi_isinst(Dn2CppObject* o, int32_t kind,
                                                 const Dn2CppTypeInfo* fallbackTi);
 
-// The remaining headerless representation — SearchValues<T>, the raw membership
-// set — escaping into an `object` context. It has no managed identity to wrap
-// into (the identity .NET reports is a private per-shape subclass such as
-// RangeCharSearchValues<T>), so this throws a catchable
-// PlatformNotSupportedException naming the type instead of punning the handle
-// (dn2cpp_casts.cpp). Declared to return Dn2CppObject* so an escape site can use
-// it as an expression; it never returns.
-Dn2CppObject* dn2cpp_headerless_escape(const char* managedTypeName);
-
 // ---- Managed Assembly and Module references --------------------------------
 // RuntimeAssembly and RuntimeModule are interned by defining assembly name and
 // kind. Managed slots, byrefs and object arrays all hold the managed reference.
@@ -6586,7 +6577,7 @@ void dn2cpp_sort_pair(void* keys, int32_t keyStride, void* items, int32_t itemSt
 // built by SearchValues.Create and queried by MemoryExtensions.IndexOfAny(span, sv).
 // `set8` is a 0..255 membership table (covers byte fully and ASCII char); `hi` holds
 // sorted values > 255 (char only; null/0 when none) for a binary-search fallback.
-struct Dn2CppSearchValues {
+struct Dn2CppSearchValues : Dn2CppObject {
     uint8_t set8[256];
     int32_t* hi;
     int32_t hiCount;
@@ -6601,8 +6592,8 @@ struct Dn2CppSearchValues {
 // The *_index_of_any_* helpers take `except`: 0 = first/last index whose element IS in
 // the set (IndexOfAny), 1 = first/last index whose element is NOT in it (IndexOfAnyExcept).
 // ContainsAny[Except] is lowered to `index_of_any(... except) >= 0` at the call site.
-Dn2CppSearchValues* dn2cpp_search_values_create_u8(const uint8_t* vals, int32_t n);
-Dn2CppSearchValues* dn2cpp_search_values_create_u16(const uint16_t* vals, int32_t n);
+Dn2CppSearchValues* dn2cpp_search_values_create_u8(const uint8_t* vals, int32_t n, const Dn2CppTypeInfo* type);
+Dn2CppSearchValues* dn2cpp_search_values_create_u16(const uint16_t* vals, int32_t n, const Dn2CppTypeInfo* type);
 int32_t dn2cpp_search_values_index_of_any_u8(const uint8_t* span, int32_t n, const Dn2CppSearchValues* sv, int32_t except);
 int32_t dn2cpp_search_values_index_of_any_u16(const uint16_t* span, int32_t n, const Dn2CppSearchValues* sv, int32_t except);
 int32_t dn2cpp_search_values_last_index_of_any_u8(const uint8_t* span, int32_t n, const Dn2CppSearchValues* sv, int32_t except);
@@ -6613,7 +6604,7 @@ int32_t dn2cpp_search_values_contains_u16(uint16_t value, const Dn2CppSearchValu
 // only Ordinal / OrdinalIgnoreCase exist in .NET). index_of_any returns the leftmost
 // start index in the span where any candidate matches, -1 when none does; the
 // OrdinalIgnoreCase fold is the exact BMP ordinal fold (dn2cpp_ordinal_upper).
-Dn2CppSearchValues* dn2cpp_search_values_create_str(Dn2CppString** vals, int32_t n, int32_t ignoreCase);
+Dn2CppSearchValues* dn2cpp_search_values_create_str(Dn2CppString** vals, int32_t n, int32_t ignoreCase, const Dn2CppTypeInfo* type);
 int32_t dn2cpp_search_values_index_of_any_str(const char16_t* span, int32_t n, const Dn2CppSearchValues* sv);
 
 // String concatenation of boxed values — and the shared formatter behind
