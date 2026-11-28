@@ -32,6 +32,13 @@ internal sealed class TypeNameSnapshot
         internal readonly List<(string Name, uint Hash)> Entries = new();
         internal readonly List<(string Name, string Target)> Forwarders = new();
         internal readonly Dictionary<string, int> Initializers = new(StringComparer.Ordinal);
+        internal bool HasInvalidInitializer;
+
+        internal void SetInitializer(string name, int bits)
+        {
+            Initializers[name] = bits;
+            HasInvalidInitializer |= (bits & InvalidCctor) != 0;
+        }
     }
 
     private readonly Dictionary<string, Source> _sources = new(StringComparer.OrdinalIgnoreCase);
@@ -43,7 +50,7 @@ internal sealed class TypeNameSnapshot
         if (!_sources.TryGetValue(assembly, out var source))
             return;
         source.Initializers.TryGetValue(rawTypeDefKey, out int bits);
-        source.Initializers[rawTypeDefKey] = bits | StrippedSelectedDefaultCtor;
+        source.SetInitializer(rawTypeDefKey, bits | StrippedSelectedDefaultCtor);
     }
 
     internal void AddMissing(string assembly, string path)
@@ -158,8 +165,8 @@ internal sealed class TypeNameSnapshot
             else if (fields[0] == "F" && fields.Length == 3 && current is not null)
                 current.Forwarders.Add((Decode(fields[1]), Decode(fields[2])));
             else if (fields[0] == "I" && fields.Length == 3 && current is not null)
-                current.Initializers[Decode(fields[1])] = int.Parse(fields[2], NumberStyles.HexNumber,
-                    CultureInfo.InvariantCulture);
+                current.SetInitializer(Decode(fields[1]), int.Parse(fields[2], NumberStyles.HexNumber,
+                    CultureInfo.InvariantCulture));
             else if (fields[0] == "E" && fields.Length == 1 && current is not null)
                 current = null;
             else
@@ -395,7 +402,7 @@ internal sealed class TypeNameSnapshot
                 source.Entries.Add(def);
                 int bits = ReadActivationDeclarations(reader, handle);
                 if (bits != 0)
-                    source.Initializers[RawTypeDefKey(reader, handle)] = bits;
+                    source.SetInitializer(RawTypeDefKey(reader, handle), bits);
             }
         foreach (var handle in reader.ExportedTypes)
             if (!reader.GetExportedType(handle).Implementation.IsNil)

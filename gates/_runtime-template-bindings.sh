@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Runtime-template delegates substitute exact location identities without enabling unsafe bodies or Invoke cells.
+# Loading an external type with an invalid initializer also rejects types that depend on it.
 runtime_template_binding_asserts() {
     local output="$1" line
     while IFS= read -r line; do
@@ -76,6 +77,10 @@ WITNESSES
 
 runtime_template_binding_diff_axes() {
     local axis out corelib bcl mode representation
+    local bad_type=TrimReflectLib.LibBare bad_box='RuntimeTemplateBindingOnly.InvalidBox`1'
+    local assembly_suffix='Version=1.0.0.0, Culture=neutral, PublicKeyToken=null'
+    local class_error="TypeLoadException $bad_type: Could not load type '$bad_type' from assembly 'TrimReflectLib, $assembly_suffix'."
+    local box_error="TypeLoadException $bad_box: Could not load type '$bad_box' from assembly 'RuntimeTemplateBindingOnly, $assembly_suffix'."
     corelib=$(locate_corelib)
     bcl=$(dirname "$corelib")
     # Unshared MakeGenericType cannot create these absent AOT bodies; the ordinary
@@ -98,6 +103,7 @@ runtime_template_binding_diff_axes() {
         reflection_build_once samples/dotnet/ReflectInvoke/RuntimeTemplateBindingOnly.csproj "$out/app" -v minimal > "$out/build.log" 2>&1 \
             || { cat "$out/build.log" >&2; return 1; }
         grep -Eq '^[[:space:]]*template pointer slot fixtures written[[:space:]]*$' "$out/build.log"
+        mv -f "$out/app/TrimReflectLib.invalid-initializers.dll" "$out/app/TrimReflectLib.dll" || return 1
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$out/app/RuntimeTemplateBindingOnly.dll" -r "$corelib" \
             -r "$bcl/System.ComponentModel.TypeConverter.dll" -r "$bcl/System.Linq.dll" \
             -r "$bcl/System.Threading.Tasks.Parallel.dll" -r "$out/app/TrimReflectLib.dll" \
@@ -145,8 +151,13 @@ runtime_template_binding_diff_axes() {
         done
         runtime_template_binding_asserts "$out/default.native.raw.stdout"
         runtime_base_projection_asserts "$out/default.native.raw.stdout"
-        printf 'runtime generic base projections end\n' > "$out/end.expected"
-        gate_output suffix "$out/default.native.raw.stdout" "$out/end.expected" --policy crlf
+        printf '%s\n' '== invalid type initializers ==' \
+            "type => $class_error" "array => $class_error" "generic => $class_error" "base => $class_error" \
+            'enum => TypeLoadException TrimReflectLib.LibColor: Method in an Enum.' \
+            "name false => $class_error" "name true => $class_error" "run => $class_error" \
+            "generic definition and argument => $box_error" > "$out/end.expected"
+        gate_output suffix "$out/default.native.raw.stdout" "$out/end.expected" \
+            --after 'runtime generic base projections end' --policy crlf || return 1
         for mode in clr native; do
             if [ "$mode" = clr ]; then
                 gate_capture_ok "$out/base-before.$mode.raw" reflection_oracle "$out/app/RuntimeTemplateBindingOnly.dll" before-base-projections

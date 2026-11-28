@@ -710,6 +710,17 @@ internal sealed partial class MethodCompiler : IEvalStack
 
     public string Compile()
     {
+        if (_c.HasMethodTypeLoadErrors)
+        {
+            if (SharedTrial && _method.SharedUsers.Any(user => _c.InvalidTypeLoad(user) is not null))
+                ThrowSharedTaint("type-load", _method.Name);
+            if (_c.InvalidTypeLoad(_method) is { } invalid)
+            {
+                // A failed import precedes execution of this method's own EH regions.
+                return _c.Phase == EmitPhase.Planning ? "" : $"{Signature(_method)}\n{{\n"
+                    + $"    dn2cpp_throw_invalid_initializer({CppEmitter.InvalidInitializerArguments(invalid)});\n}}\n";
+            }
+        }
         CoreIntrinsics.ValidateTaskLifecycle(_method);
         CoreIntrinsics.ValidateThreadingPrivate(_method);
         CoreIntrinsics.ValidateUnsupportedAlignedDefault(_method);

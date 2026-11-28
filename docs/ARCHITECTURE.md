@@ -809,6 +809,15 @@ before stripping so lookup can count them independently of their retained bodies
 An omitted instance constructor with an IL body can be preserved. A constructor
 declared without an IL body reports that fact at invocation.
 
+Loading a type token or resolving a type name checks initializer declarations
+on the definition, its base types, array elements and generic arguments. A
+malformed declaration raises `TypeLoadException` with the failing declaration
+in `TypeName`. The class diagnostic includes its defining assembly, and an enum
+reports `Method in an Enum.`. A constructed type checks base declarations
+before its own declaration and type arguments. A name lookup fully loads the
+open definition before resolving the supplied arguments. `Assembly.GetType`
+propagates a load failure for either value of `throwOnError`.
+
 The retained `RuntimeType.CreateInstanceDefaultCtor(bool, bool)` adapter checks
 the instance for null before using that same factory with inverted `publicOnly`.
 It never reads a custom Type payload or enters CoreCLR activation-cache machinery.
