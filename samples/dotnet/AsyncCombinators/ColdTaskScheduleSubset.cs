@@ -29,6 +29,11 @@ internal static class Program
         internal Exception Refusal;
         internal Action BeforeQueue;
         internal CancellationTokenSource CancelBeforeRefusal;
+        internal bool ExecuteOnQueue;
+        internal int Queued;
+        internal int InlineAttempts;
+        private int _calls;
+        private bool _current;
         internal bool BaseDequeue(Task task) => base.TryDequeue(task);
         internal bool Dequeue(Task task) => TryDequeue(task);
         internal bool Execute(Task task) => TryExecuteTask(task);
@@ -48,9 +53,33 @@ internal static class Program
                 CancelBeforeRefusal.Cancel();
             }
             if (Refusal is not null) throw Refusal;
-            Pending = task;
+            if (ExecuteOnQueue)
+            {
+                Interlocked.Increment(ref Queued);
+                TryExecuteTask(task);
+            }
+            else Pending = task;
         }
-        protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued) => false;
+        protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued)
+        {
+            Interlocked.Increment(ref InlineAttempts);
+            return false;
+        }
+
+        internal int Observe()
+        {
+            Interlocked.Increment(ref _calls);
+            _current = TaskScheduler.Current == this;
+            return 17;
+        }
+
+        internal void Report(string name, Task task)
+        {
+            bool done = task.Wait(TimeSpan.FromSeconds(3));
+            string result = done && task is Task<int> value ? " result=" + value.Result : "";
+            Console.WriteLine(name + ": complete=" + done + " queue=" + Queued + " inline=" + InlineAttempts
+                + " calls=" + _calls + " current=" + _current + result);
+        }
     }
 
     private sealed class CompletionContext : SynchronizationContext
@@ -139,6 +168,35 @@ internal static class Program
     }
 
     private static async Task ObserveCompletion(Task task) => await task;
+
+    internal static void RunManagedDispatch()
+    {
+        Console.WriteLine("== managed scheduler dispatch ==");
+        var factoryAction = new ProbeScheduler { ExecuteOnQueue = true };
+        factoryAction.Report("StartNew(Action)", Task.Factory.StartNew(() => { factoryAction.Observe(); },
+            CancellationToken.None, TaskCreationOptions.None, factoryAction));
+        var factoryFunc = new ProbeScheduler { ExecuteOnQueue = true };
+        factoryFunc.Report("StartNew(Func)", Task.Factory.StartNew(factoryFunc.Observe,
+            CancellationToken.None, TaskCreationOptions.None, factoryFunc));
+
+        var source = new TaskCompletionSource<int>();
+        var actionScheduler = new ProbeScheduler { ExecuteOnQueue = true };
+        var funcScheduler = new ProbeScheduler { ExecuteOnQueue = true };
+        Task action = source.Task.ContinueWith(_ => { actionScheduler.Observe(); }, actionScheduler);
+        Task<int> func = source.Task.ContinueWith(t => t.Result + funcScheduler.Observe(), funcScheduler);
+        Console.WriteLine("continuations pending=" + (!action.IsCompleted && !func.IsCompleted
+            && actionScheduler.Queued == 0 && funcScheduler.Queued == 0));
+        source.SetResult(25);
+        actionScheduler.Report("ContinueWith(Action)", action);
+        funcScheduler.Report("ContinueWith(Func)", func);
+
+        var sync = new ProbeScheduler { ExecuteOnQueue = true };
+        bool inlineFirst = false;
+        sync.BeforeQueue = () => inlineFirst = sync.InlineAttempts == 1;
+        var cold = new Task(() => sync.Observe());
+        cold.RunSynchronously(sync);
+        sync.Report("RunSynchronously inline first=" + inlineFirst, cold);
+    }
 
     private static bool RejectRunningTask()
     {

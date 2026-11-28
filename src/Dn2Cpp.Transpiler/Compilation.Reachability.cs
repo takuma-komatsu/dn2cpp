@@ -6749,8 +6749,8 @@ internal sealed partial class Compilation
                         {
                             ReachThreadPoolWorkItemExecute(module, handle, m.Context);
                             ReachSynchronizationContextPost(module, handle);
-                            NoteTaskStartQueue(m, handle, insns, index, body, ref queueEntries);
                         }
+                        NoteTaskSchedulerDispatch(m, handle, insns, index, body, ref queueEntries);
                         // A dispatch through (I)EqualityComparer<T> — the GetHashCode/
                         // Equals a Dictionary/HashSet runs on its key — devirtualizes at
                         // emit to the key's type-specialized op. For a

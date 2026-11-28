@@ -319,5 +319,6 @@ internal static class BclMessages
         "Task_RunSynchronously_Promise",
         "Task_RunSynchronously_TaskCompleted",
         "Task_RunSynchronously_AlreadyStarted",
+        "TaskScheduler_InconsistentStateAfterTryExecuteTaskInline",
     ];
 }

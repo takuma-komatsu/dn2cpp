@@ -5,48 +5,93 @@ namespace Dn2Cpp;
 
 internal sealed partial class Compilation
 {
-    internal sealed record TaskSchedulerQueueMembers(MethodInfo Queue, MethodInfo Dequeue, MethodInfo ExceptionConstructor);
+    internal sealed record TaskSchedulerQueueMembers(MethodInfo Queue, MethodInfo Dequeue, MethodInfo ExceptionConstructor, MethodInfo? Inline);
     internal TaskSchedulerQueueMembers? TaskSchedulerQueue { get; private set; }
-    private ClassInfo? _explicitStartScheduler;
+    private ClassInfo? _explicitScheduler;
+    private bool _needsSchedulerInline;
 
-    // A custom queue is reachable only when Start(TaskScheduler) and a generated
-    // scheduler instance can meet. Neither a parameterless Start nor a subclass
-    // constructed only for its Id dispatches these slots.
-    private void NoteTaskStartQueue(MethodInfo caller, EntityHandle handle, List<Instruction> instructions,
+    // An implicit operation can inherit a generated scheduler only after an explicit
+    // dispatch made one current. Keep virtual slots out of pool-only images.
+    private void NoteTaskSchedulerDispatch(MethodInfo caller, EntityHandle handle, List<Instruction> instructions,
         int index, MethodBodyBlock body, ref HashSet<int>? entries)
     {
-        if (_explicitStartScheduler is not null
-            || QueueApiOwner(caller, handle, "System.Threading.Tasks.Task", "Start", out var signature) is not { } owner
-            || signature.Header.RawValue != 0x20 || !signature.ReturnType.IsVoid || signature.ParameterTypes is not
-                [{ Kind: TypeKind.Class, Class: { FullName: "System.Threading.Tasks.TaskScheduler" } scheduler }]
-            || scheduler.Module != owner.Module)
+        if (_explicitScheduler is not null && _needsSchedulerInline) return;
+        var module = caller.Module;
+        string? name = CallTargetMethodName(module, handle);
+        if (name is not ("Start" or "StartNew" or "ContinueWith" or "RunSynchronously")
+            || DeclaringDefinitionOf(module, handle) is not { } owner || owner.Module.AssemblyName != "System.Private.CoreLib")
             return;
+        var reader = owner.Module.Reader;
+        var definition = reader.GetTypeDefinition(owner.Handle);
+        if (!reader.StringComparer.Equals(definition.Namespace, "System.Threading.Tasks")
+            || !(name == "StartNew" ? reader.StringComparer.Equals(definition.Name, "TaskFactory")
+                : reader.StringComparer.Equals(definition.Name, "Task")
+                    || name == "ContinueWith" && reader.StringComparer.Equals(definition.Name, "Task`1"))) return;
+        var member = handle.Kind == HandleKind.MethodSpecification
+            ? module.Reader.GetMethodSpecification((MethodSpecificationHandle)handle).Method : handle;
+        var signature = member.Kind == HandleKind.MemberReference
+            ? module.Reader.GetMemberReference((MemberReferenceHandle)member).DecodeMethodSignature(SigProvider, caller.Context)
+            : module.Reader.GetMethodDefinition((MethodDefinitionHandle)member).DecodeSignature(SigProvider, caller.Context);
+        if (!signature.Header.IsInstance) return;
+        var parameters = signature.ParameterTypes;
+        var scheduler = parameters.Length > 0 && parameters[^1] is { Kind: TypeKind.Class, Class: { FullName: "System.Threading.Tasks.TaskScheduler" } last }
+            && last.Module == owner.Module ? last : null;
+        if (name is "Start" or "RunSynchronously" && (!signature.ReturnType.IsVoid || parameters.Length != (scheduler is null ? 0 : 1)))
+            return;
+        bool inline = name == "RunSynchronously" || name == "ContinueWith"
+            && parameters.Any(p => p.Class is { FullName: "System.Threading.Tasks.TaskContinuationOptions" } options && options.Module == owner.Module);
+        if ((_explicitScheduler is not null || scheduler is null) && (!inline || _needsSchedulerInline)) return;
         if (instructions[index].OpCode is ILOpCode.Call or ILOpCode.Callvirt)
         {
             entries ??= BranchLiveness.NonFallthroughEntries(instructions, body);
-            if (DefaultOrNullStartArgument(caller, instructions, index, scheduler, body.LocalVariablesInitialized, entries))
+            if (scheduler is not null && DefaultOrNullScheduler(caller, instructions, index, scheduler, body.LocalVariablesInitialized, entries))
                 return;
+            if (name == "ContinueWith" && inline)
+                inline = ContinuationMayInline(instructions, index, scheduler is not null, entries);
         }
-        _explicitStartScheduler = scheduler;
-        foreach (var allocated in _allocatedTypeOrder.ToList())
-            NoteAllocatedQueueScheduler(allocated);
+        if ((_explicitScheduler is not null || scheduler is null) && (!inline || _needsSchedulerInline)) return;
+        _explicitScheduler ??= scheduler;
+        _needsSchedulerInline |= inline;
+        if (_explicitScheduler is not null)
+            foreach (var allocated in _allocatedTypeOrder.ToList())
+                NoteAllocatedQueueScheduler(allocated);
     }
 
-    private bool DefaultOrNullStartArgument(MethodInfo caller, List<Instruction> instructions, int index,
+    private static int SchedulerProducer(List<Instruction> instructions, int consumer, HashSet<int> entries)
+    {
+        while (consumer > 0 && !entries.Contains(instructions[consumer].Offset))
+        {
+            consumer--;
+            if (instructions[consumer].OpCode != ILOpCode.Nop) return consumer;
+        }
+        return -1;
+    }
+
+    private static bool ContinuationMayInline(List<Instruction> instructions, int index, bool explicitScheduler, HashSet<int> entries)
+    {
+        int producer = SchedulerProducer(instructions, index, entries);
+        if (explicitScheduler && producer >= 0)
+        {
+            var op = instructions[producer].OpCode;
+            if (op is not (ILOpCode.Ldarg or ILOpCode.Ldarg_s or ILOpCode.Ldarg_0 or ILOpCode.Ldarg_1 or ILOpCode.Ldarg_2 or ILOpCode.Ldarg_3
+                or ILOpCode.Ldloc or ILOpCode.Ldloc_s or ILOpCode.Ldloc_0 or ILOpCode.Ldloc_1 or ILOpCode.Ldloc_2 or ILOpCode.Ldloc_3
+                or ILOpCode.Ldsfld)) return true;
+            producer = SchedulerProducer(instructions, producer, entries);
+        }
+        if (producer < 0) return true;
+        var value = instructions[producer];
+        return value.OpCode switch
+        {
+            >= ILOpCode.Ldc_i4_0 and <= ILOpCode.Ldc_i4_8 => false,
+            ILOpCode.Ldc_i4 or ILOpCode.Ldc_i4_s => ((int)value.Operand & 0x80000) != 0,
+            _ => true,
+        };
+    }
+
+    private bool DefaultOrNullScheduler(MethodInfo caller, List<Instruction> instructions, int index,
         ClassInfo scheduler, bool initLocals, HashSet<int> entries)
     {
-        // A branch or handler entering past the producer supplies its own value.
-        int Producer(int consumer)
-        {
-            while (consumer > 0 && !entries.Contains(instructions[consumer].Offset))
-            {
-                consumer--;
-                if (instructions[consumer].OpCode != ILOpCode.Nop) return consumer;
-            }
-            return -1;
-        }
-
-        int source = Producer(index);
+        int source = SchedulerProducer(instructions, index, entries);
         if (source < 0) return false;
         var value = instructions[source];
         if (ILDecoder.LocalIndex(value) is int local)
@@ -64,7 +109,7 @@ internal sealed partial class Compilation
                 if (store >= 0) return false;
                 store = i;
             }
-            source = Producer(store);
+            source = SchedulerProducer(instructions, store, entries);
             if (source < 0) return false;
             value = instructions[source];
         }
@@ -102,10 +147,27 @@ internal sealed partial class Compilation
 
     private void NoteAllocatedQueueScheduler(ClassInfo allocated)
     {
-        if (TaskSchedulerQueue is not null || _explicitStartScheduler is not { } scheduler
+        if (_explicitScheduler is not { } scheduler
+            || TaskSchedulerQueue is { } existing && (!_needsSchedulerInline || existing.Inline is not null)
             || allocated.BaseClass is null || !DerivesFromOrIs(allocated.BaseClass, scheduler))
             return;
         EnsureCompleted(scheduler);
+        MethodInfo? inline = null;
+        if (_needsSchedulerInline)
+        {
+            inline = scheduler.Methods.SingleOrDefault(m => m.Name == "TryExecuteTaskInline" && m.IsAbstract
+                && m.IsVirtual && m.VtableSlot >= 0 && m.Signature.Header.RawValue == 0x20
+                && m.Signature.ReturnType.Primitive == PrimitiveTypeCode.Boolean
+                && m.Signature.ParameterTypes is [{ Class: { FullName: "System.Threading.Tasks.Task" } task },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }] && task.Module == scheduler.Module)
+                ?? throw new NotSupportedException("Task scheduling requires CoreLib's TryExecuteTaskInline slot");
+            if (TaskSchedulerQueue is { } retained)
+            {
+                TaskSchedulerQueue = retained with { Inline = inline };
+                ReachUsedVirtual(inline);
+                return;
+            }
+        }
         var queue = scheduler.Methods.SingleOrDefault(m => m.Name == "QueueTask" && m.IsAbstract
             && m.IsVirtual && m.VtableSlot >= 0 && m.Signature.Header.RawValue == 0x20
             && m.Signature.ReturnType.IsVoid && m.Signature.ParameterTypes is
@@ -123,7 +185,8 @@ internal sealed partial class Compilation
             [{ Kind: TypeKind.Class, Class: { FullName: "System.Exception" } inner }] && inner.Module == scheduler.Module);
         if (queue is null || dequeue is not { VtableSlot: >= 0 } || ctor is null || exception is null)
             throw new NotSupportedException("Task.Start requires the CoreLib scheduler queue slots and TaskSchedulerException(Exception)");
-        TaskSchedulerQueue = new(queue, dequeue, ctor);
+        TaskSchedulerQueue = new(queue, dequeue, ctor, inline);
+        if (inline is not null) ReachUsedVirtual(inline);
         ReachUsedVirtual(queue);
         ReachUsedVirtual(dequeue);
         ReachAllocatedType(exception);
