@@ -575,9 +575,9 @@ static const Dn2CppTypeInfo* dn2cpp_try_synthesize_generic(
 // ArgumentNullException before the definition check, as in .NET.
 static const Dn2CppTypeInfo* dn2cpp_open_generic_type(const Dn2CppTypeInfo* definition,
     const std::vector<const Dn2CppTypeInfo*>& arguments);
-static void dn2cpp_validate_open_arguments(const Dn2CppMethodGenericParameter* parameters,
+static void dn2cpp_validate_generic_arguments(const Dn2CppMethodGenericParameter* parameters,
     const std::vector<const Dn2CppTypeInfo*>& arguments, const std::vector<const Dn2CppTypeInfo*>& types,
-    const std::vector<const Dn2CppTypeInfo*>& methods);
+    const std::vector<const Dn2CppTypeInfo*>& methods, Dn2CppMethodRef* method = nullptr);
 
 static void dn2cpp_validate_closed_type_arguments(const Dn2CppTypeInfo* definition,
     const std::vector<const Dn2CppTypeInfo*>& arguments);
@@ -3629,7 +3629,7 @@ static const Dn2CppTypeInfo* dn2cpp_open_generic_type(const Dn2CppTypeInfo* defi
         dn2cpp_throw_platform_not_supported("Reflection: generic definition metadata is not retained");
     if (static_cast<int32_t>(arguments.size()) != metadata->parameterCount)
         dn2cpp_throw_argument_param(DN2CPP_SR_GENERIC_ARGS_COUNT, "typeArguments");
-    dn2cpp_validate_open_arguments(metadata->parameters, arguments, arguments, {});
+    dn2cpp_validate_generic_arguments(metadata->parameters, arguments, arguments, {});
     return dn2cpp_constraint_instantiation(definition, arguments);
 }
 
@@ -4140,8 +4140,35 @@ bool dn2cpp_type_reference_argument(const Dn2CppTypeInfo* argument)
     return false;
 }
 
+static auto& g_constraint_declarations = dn2cpp_never_destroyed<
+    std::unordered_map<const Dn2CppTypeInfo*, const Dn2CppGenericTypeMetadata*>>();
+
+void dn2cpp_register_constraint_declarations(const Dn2CppConstraintDeclaration* declarations, int32_t count)
+{
+    std::lock_guard<std::recursive_mutex> lock(g_formal_types_mtx);
+    for (int32_t i = 0; i < count; ++i)
+        g_constraint_declarations[declarations[i].type] = declarations[i].metadata;
+}
+
+// Constructor availability and interface implementation are TypeDef facts.
+// Reflection row retention and interface dispatch can each omit those members.
+static const Dn2CppGenericTypeMetadata* dn2cpp_constraint_supplement(const Dn2CppTypeInfo* argument)
+{
+    auto found = g_constraint_declarations.find(argument);
+    if (found != g_constraint_declarations.end())
+        return found->second;
+    const auto* definition = argument->genericDef != nullptr ? argument->genericDef : argument;
+    if (definition != argument)
+    {
+        found = g_constraint_declarations.find(definition);
+        if (found != g_constraint_declarations.end())
+            return found->second;
+    }
+    return nullptr;
+}
+
 static bool dn2cpp_argument_constraint(const Dn2CppTypeInfo* argument, const Dn2CppTypeInfo* constraint,
-    std::vector<const Dn2CppTypeInfo*>& visited)
+    std::vector<const Dn2CppTypeInfo*>& visited, bool closedMethod)
 {
     if (argument == constraint)
         return true;
@@ -4154,9 +4181,32 @@ static bool dn2cpp_argument_constraint(const Dn2CppTypeInfo* argument, const Dn2
         return true;
     if ((argument->flags & DN2CPP_TF_GENERICPARAM) != 0)
         for (const auto* inherited : g_formal_types.at(argument)->constraints)
-            if (dn2cpp_argument_constraint(inherited, constraint, visited))
+            if (dn2cpp_argument_constraint(inherited, constraint, visited, closedMethod))
                 return true;
-    return false;
+    if (!closedMethod)
+        return false;
+    const auto* definition = argument->genericDef != nullptr ? argument->genericDef : argument;
+    const auto* supplement = dn2cpp_constraint_supplement(argument);
+    const auto* metadata = definition->reflection().genericMetadata;
+    if (supplement != nullptr || metadata != nullptr)
+    {
+        std::vector<const Dn2CppTypeInfo*> types;
+        if (argument->genericArgs != nullptr)
+            types.assign(argument->genericArgs, argument->genericArgs + argument->genericArgCount);
+        for (const auto* declaration : {supplement, metadata})
+        {
+            if (declaration == nullptr) continue;
+            if ((constraint->flags & DN2CPP_TF_INTERFACE) != 0)
+                for (int32_t i = 0; i < declaration->interfaceCount; ++i)
+                    if (dn2cpp_argument_constraint(dn2cpp_constraint_type(declaration->interfaces[i], types, {}),
+                            constraint, visited, true))
+                        return true;
+            if (declaration->base != nullptr && dn2cpp_argument_constraint(
+                    dn2cpp_constraint_type(*declaration->base, types, {}), constraint, visited, true))
+                return true;
+        }
+    }
+    return argument->base != nullptr && dn2cpp_argument_constraint(argument->base, constraint, visited, true);
 }
 
 static bool dn2cpp_is_bare_default_ctor_row(const Dn2CppMethodInfo* row)
@@ -4169,9 +4219,9 @@ static bool dn2cpp_is_bare_default_ctor_row(const Dn2CppMethodInfo* row)
         && row->returnOptionalCustomModifierCount == 0;
 }
 
-static void dn2cpp_validate_open_arguments(const Dn2CppMethodGenericParameter* parameters,
+static void dn2cpp_validate_generic_arguments(const Dn2CppMethodGenericParameter* parameters,
     const std::vector<const Dn2CppTypeInfo*>& arguments, const std::vector<const Dn2CppTypeInfo*>& types,
-    const std::vector<const Dn2CppTypeInfo*>& methods)
+    const std::vector<const Dn2CppTypeInfo*>& methods, Dn2CppMethodRef* method)
 {
     if (parameters == nullptr)
         return;
@@ -4179,15 +4229,25 @@ static void dn2cpp_validate_open_arguments(const Dn2CppMethodGenericParameter* p
     {
         const auto* argument = arguments[i];
         const auto& parameter = parameters[i];
+        auto violation = [&] {
+            if (method == nullptr)
+                dn2cpp_throw_argument();
+            Dn2CppString* fields[] = {
+                dn2cpp_format_int(static_cast<int32_t>(i), 4, nullptr),
+                dn2cpp_type_tostring(argument), dn2cpp_reflection_handle_tostring(method),
+                dn2cpp_type_tostring(dn2cpp_method_parameter_type(method->method, static_cast<int32_t>(i)))
+            };
+            dn2cpp_throw_argument_message(dn2cpp_sr_message(DN2CPP_SR_GENERIC_CONSTRAINT_VIOLATION, fields, 4), nullptr);
+        };
         if (argument == &dn2cpp_void_type || dn2cpp_signature_kind(argument) != 0
             || ((argument->flags & DN2CPP_TF_BYREFLIKE) != 0 && (parameter.attrs & 32) == 0))
-            dn2cpp_throw_argument();
+            violation();
         if ((parameter.attrs & 8) != 0 && ((argument->flags & DN2CPP_TF_VALUETYPE) == 0
             || dn2cpp_nullable_underlying_ti(argument) != nullptr))
-            dn2cpp_throw_argument();
+            violation();
         std::vector<const Dn2CppTypeInfo*> visited;
         if ((parameter.attrs & 4) != 0 && !dn2cpp_type_reference_argument(argument))
-            dn2cpp_throw_argument();
+            violation();
         if ((parameter.attrs & 16) != 0)
         {
             bool constructor = (argument->flags & DN2CPP_TF_VALUETYPE) != 0;
@@ -4196,10 +4256,13 @@ static void dn2cpp_validate_open_arguments(const Dn2CppMethodGenericParameter* p
             else if ((argument->flags & DN2CPP_TF_ABSTRACT) == 0)
             {
                 const auto* definition = argument->genericDef != nullptr ? argument->genericDef : argument;
+                if (method != nullptr)
+                    if (const auto* supplement = dn2cpp_constraint_supplement(argument))
+                        constructor |= supplement->publicDefaultConstructor;
                 const auto* metadata = definition->reflection().genericMetadata;
                 if (metadata != nullptr)
                     constructor |= metadata->publicDefaultConstructor;
-                else
+                else if (!constructor)
                 {
                     const auto reflection = argument->reflection();
                     const bool hasOmittedOrBodiless = (reflection.activation
@@ -4222,14 +4285,14 @@ static void dn2cpp_validate_open_arguments(const Dn2CppMethodGenericParameter* p
                 }
             }
             if (!constructor)
-                dn2cpp_throw_argument();
+                violation();
         }
         for (int32_t j = 0; j < parameter.constraintCount; j++)
         {
             const auto* constraint = dn2cpp_constraint_type(parameter.constraints[j], types, methods);
             visited.clear();
-            if (!dn2cpp_argument_constraint(argument, constraint, visited))
-                dn2cpp_throw_argument();
+            if (!dn2cpp_argument_constraint(argument, constraint, visited, method != nullptr))
+                violation();
         }
     }
 }
@@ -4242,7 +4305,7 @@ static void dn2cpp_validate_closed_type_arguments(const Dn2CppTypeInfo* definiti
     if (metadata == nullptr)
         return;
     dn2cpp_require_metadata(definition);
-    dn2cpp_validate_open_arguments(metadata->parameters, arguments, arguments, {});
+    dn2cpp_validate_generic_arguments(metadata->parameters, arguments, arguments, {});
 }
 
 static std::string dn2cpp_reflection_type_spelling(const Dn2CppTypeInfo* type, bool genericArgument = false)
@@ -4276,7 +4339,7 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_open_method(
         types.assign(declaring->genericArgs, declaring->genericArgs + declaring->genericArgCount);
     else if ((declaring->flags & DN2CPP_TF_GENERICDEF) != 0)
         types = dn2cpp_formal_type_arguments(declaring);
-    dn2cpp_validate_open_arguments(original.genericParameters, arguments, types, arguments);
+    dn2cpp_validate_generic_arguments(original.genericParameters, arguments, types, arguments);
     auto resolve = [&](int32_t parameter) {
         if (original.definitionSignature != nullptr)
         {
@@ -12098,23 +12161,39 @@ Dn2CppMethodRef* dn2cpp_methodref_make_generic(Dn2CppMethodRef* m, Dn2CppArrayRe
         dn2cpp_throw_sr2(&dn2cpp_argument_exception_type, DN2CPP_SR_NOT_ENOUGH_GEN_ARGUMENTS,
             dn2cpp_format_int(argc, 4, nullptr),
             dn2cpp_format_int(def->genericParamCount, 4, nullptr));
-    bool open = dn2cpp_type_contains_generic_parameters(dn2cpp_invoke_declaring(def->declaringType, m->reflectedType));
+    const auto* declaring = dn2cpp_invoke_declaring(def->declaringType, m->reflectedType);
+    bool open = dn2cpp_type_contains_generic_parameters(declaring);
+    bool metadataOnly = false;
     std::vector<const Dn2CppTypeInfo*> arguments;
     for (int32_t i = 0; i < argc; i++)
     {
         const auto* type = dn2cpp_type_require(reinterpret_cast<Dn2CppType*>(types->data[i]));
         bool parameter = dn2cpp_type_contains_generic_parameters(type);
-        if (!parameter && dn2cpp_type_metadata_only(type))
-            dn2cpp_throw_platform_not_supported("Reflection: generic method argument has no runtime layout");
+        metadataOnly |= !parameter && dn2cpp_type_metadata_only(type);
         open |= parameter;
         arguments.push_back(type);
     }
+    if (open && metadataOnly)
+        dn2cpp_throw_platform_not_supported("Reflection: generic method argument has no runtime layout");
     for (const auto* argument : arguments)
         if (dn2cpp_signature_kind(argument) != 0)
             dn2cpp_throw_argument_msg("A pointer, by-reference or function-pointer type cannot be a generic argument.");
     if (open)
-        return dn2cpp_make_methodref(dn2cpp_open_method(def,
-            dn2cpp_invoke_declaring(def->declaringType, m->reflectedType), arguments), m->reflectedType);
+        return dn2cpp_make_methodref(dn2cpp_open_method(def, declaring, arguments), m->reflectedType);
+    for (const auto* argument : arguments)
+        if (argument == &dn2cpp_void_type)
+            dn2cpp_throw_sr1(&dn2cpp_argument_exception_type, DN2CPP_SR_NEVER_VALID_GENERIC_ARGUMENT,
+                dn2cpp_type_tostring(argument));
+    if (def->genericParameters != nullptr)
+    {
+        std::lock_guard<std::recursive_mutex> lock(g_formal_types_mtx);
+        std::vector<const Dn2CppTypeInfo*> types;
+        if (declaring->genericArgs != nullptr)
+            types.assign(declaring->genericArgs, declaring->genericArgs + declaring->genericArgCount);
+        dn2cpp_validate_generic_arguments(def->genericParameters, arguments, types, arguments, m);
+    }
+    if (metadataOnly)
+        dn2cpp_throw_platform_not_supported("Reflection: generic method argument has no runtime layout");
     // A metadata-answerable member has no compiled instantiations to resolve
     // against: its answer is a function of a concrete type argument, including
     // one no static call site named.

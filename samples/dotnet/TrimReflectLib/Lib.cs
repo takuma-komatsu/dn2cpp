@@ -51,6 +51,8 @@ namespace TrimReflectLib
     // mangled into it, which is not a name anyone can be expected to guess.
     public class LibBox<T>
     {
+        public enum Kind { Value }
+
         public T Value;
         public T Get() => Value;
         public LibBox() { }

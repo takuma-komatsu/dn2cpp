@@ -1277,9 +1277,9 @@ it does not come back as a ticket.
   expression tree `Compile`.** There is no JIT to emit into. Interpreting
   BPI bytecode does *not* fall under this — the interpreter never emits
   native code.
-- **`MakeGenericType`/`MakeGenericMethod` over instantiations absent from
-  the AOT image.** Executable instantiations do not exist in the binary and
-  cannot be created; the call throws a catchable
+- **`MakeGenericType`/`MakeGenericMethod` over missing AOT instantiations.**
+  A closed instantiation that satisfies its declared constraints still needs
+  executable code in the image. A missing instantiation raises a catchable
   `PlatformNotSupportedException`. `System.Text.Json` avoids the boundary
   through source-gen; reflection-based `Deserialize<T>` stays carved out.
   Open Type and MethodInfo compositions retain metadata identity and signature

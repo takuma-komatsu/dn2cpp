@@ -232,6 +232,10 @@ formal_constraint_diff_axes() {
                 declaring_method_asserts "$out/$mode.native.raw.stdout"
             elif [ "$mode" = open-generic-signatures ]; then
                 open_signature_asserts "$out/$mode.native.raw.stdout"
+                printf '%s\n' 'interface valid argument=True invoke=True' 'library nested enum: True' \
+                    > "$out/closed-method-constraints.expected"
+                gate_output suffix "$out/$mode.native.raw.stdout" "$out/closed-method-constraints.expected" \
+                    --after 'open generic signature types end' --policy crlf || return 1
             elif [ "$mode" = generic-definition-members ]; then
                 generic_definition_member_asserts "$out/$mode.native.raw.stdout"
             elif [[ "$mode" = generic-definition-relations-* ]]; then

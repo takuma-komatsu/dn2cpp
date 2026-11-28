@@ -37,7 +37,9 @@ internal sealed partial class CppEmitter
             public ConstraintSignature GetTypeFromSpecification(MetadataReader reader, object? context, TypeSpecificationHandle handle, byte rawTypeKind) =>
                 reader.GetTypeSpecification(handle).DecodeSignature(this, context);
             public ConstraintSignature GetPrimitiveType(PrimitiveTypeCode code) => new() { Primitive = TypeDesc.MakePrimitive(code) };
-            public ConstraintSignature GetGenericTypeParameter(object? context, int index) => new() { Kind = 5, Value = index };
+            public ConstraintSignature GetGenericTypeParameter(object? context, int index) =>
+                context is ConstraintSignature[] arguments && index < arguments.Length
+                    ? arguments[index] : new() { Kind = 5, Value = index };
             public ConstraintSignature GetGenericMethodParameter(object? context, int index) => new() { Kind = 9, Value = index };
             public ConstraintSignature GetGenericInstantiation(ConstraintSignature genericType, ImmutableArray<ConstraintSignature> arguments) =>
                 new() { Kind = 4, Name = genericType.Name, Primitive = genericType.Primitive, Children = arguments.ToArray() };
@@ -52,11 +54,11 @@ internal sealed partial class CppEmitter
                     Children = new[] { signature.ReturnType }.Concat(signature.ParameterTypes).ToArray() };
             public ConstraintSignature GetModifiedType(ConstraintSignature modifier, ConstraintSignature type, bool required) => type;
             public ConstraintSignature GetPinnedType(ConstraintSignature element) => element;
-            internal ConstraintSignature Decode(Module module, EntityHandle handle) => handle.Kind switch
+            internal ConstraintSignature Decode(Module module, EntityHandle handle, ConstraintSignature[]? arguments = null) => handle.Kind switch
             {
                 HandleKind.TypeDefinition => GetTypeFromDefinition(module.Reader, (TypeDefinitionHandle)handle, 0),
                 HandleKind.TypeReference => GetTypeFromReference(module.Reader, (TypeReferenceHandle)handle, 0),
-                HandleKind.TypeSpecification => GetTypeFromSpecification(module.Reader, null, (TypeSpecificationHandle)handle, 0),
+                HandleKind.TypeSpecification => GetTypeFromSpecification(module.Reader, arguments, (TypeSpecificationHandle)handle, 0),
                 _ => throw new NotSupportedException("Unsupported generic constraint signature"),
             };
         }
@@ -151,9 +153,8 @@ internal sealed partial class CppEmitter
                         foreach (var parameterType in signature.ParameterTypes)
                             NoteConstraintSignature(parameterType);
                     }
-                    foreach (var parameter in method.Module.Reader.GetMethodDefinition(method.Handle).GetGenericParameters())
-                        foreach (var constraint in ConstraintTypes(method.Module, parameter))
-                            NoteConstraintSignature(constraint);
+                    foreach (var parameter in methodDefinition.GetGenericParameters())
+                        NoteMethodParameterConstraints(method.Module, parameter);
                 }
                 if (_c.KeepsReflectionMetadata(cls) && !cls.Handle.IsNil)
                 {
@@ -280,6 +281,7 @@ internal sealed partial class CppEmitter
                 _sb.AppendLine($"extern const {metadataType} {symbol} = {{ {members} }};");
                 _e._genericMetadata[pair.Key] = metadata;
             }
+            EmitMethodConstraintDeclarations();
         }
     }
 }

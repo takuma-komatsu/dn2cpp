@@ -113,6 +113,7 @@ internal static class BclMessages
         "Arg_MustBeEnumBaseTypeOrEnum",
         "Arg_MustBeType",
         "Argument_NotEnoughGenArguments",
+        "Argument_GenConstraintViolation",
         "Arg_MemberInfoNotFound",
         "Arg_NotGenericTypeDefinition",
         "Argument_GenericArgsCount",

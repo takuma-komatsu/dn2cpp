@@ -373,7 +373,7 @@ static std::string dn2cpp_sr_arg(Dn2CppString* s)
 
 Dn2CppString* dn2cpp_sr_message(const char* key, Dn2CppString* const* args, int32_t argc)
 {
-    if (argc < 0 || argc > 3)
+    if (argc < 0 || argc > 4)
         dn2cpp_throw_invalid_operation();
     const char* text = dn2cpp_sr_text(key);
     if (text == nullptr)

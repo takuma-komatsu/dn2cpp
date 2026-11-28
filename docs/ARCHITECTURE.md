@@ -2324,10 +2324,14 @@ Public signature queries and open `Make*` compositions share the constraint
 interners without eagerly resolving parameter constraints. Constructed method
 views retain their original definition, argument vector and reflected owner in
 immutable cold rows; they never reuse a callable row's invoker. Public composition
-validates declared constraints before publishing a handle. Closed type arguments
-use the same recipes before AOT candidate or runtime-template resolution; a missing
-instantiation cannot mask a constraint violation. Open method arguments
-participate in `ContainsGenericParameters` and the invocation and delegate guards.
+validates declared constraints before publishing a handle. Closed method and
+type arguments use the same recipes before AOT resolution. A closed method
+binds its declaring type and method arguments separately, and reports the
+offending argument, MethodDef signature and formal parameter on a constraint
+violation. Its constructor and ancestry checks use defining type metadata even
+when the image omits constructor bodies or interface dispatch rows. Open method
+arguments participate in `ContainsGenericParameters` and the invocation and
+delegate guards.
 Runtime-template array member signatures retain structural recipes instead of
 static array handles containing canonical placeholders. Their element arguments
 resolve against the clone's declaring context, including metadata-only generic
