@@ -80,6 +80,8 @@
 # Default scheduler inline execution distinguishes an unassigned task, a missing
 # queue entry, and an owned delegate that can run exactly once.
 # Directly queueing a cold task dispatches its body off the calling thread.
+# A pool scheduler and a reflected constructor expose their concrete CoreLib
+# types. Tasks assigned to a separately constructed pool observe that scheduler.
 # Stored Task faults remain pending until the body finishes and keep their order and identity.
 # Task and cancellation aggregate construction leaves virtual inner Messages unread.
 # RuntimeAsyncSubset.cs asserts runtime-async method bodies (MethodImplAttributes.Async,
@@ -103,7 +105,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-scheduler-in
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-scheduler-queue"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-task-add-exception"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-task-finish|prefix:before-scheduler-ids|prefix:before-synchronization-context|prefix:before-configured-options"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-runtime-async"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-runtime-async|prefix:before-pool-scheduler"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|shared-binary:native-delay-deadlines|shared-binary:fresh-cancellation-filters"
 
 # The exception text is platform-owned; its record prefix is the boundary.
@@ -129,6 +131,14 @@ gate_extra_asserts() {
         gate_output byte-witness "$out/$mode-native.stdout" 'fresh filter: True' --policy crlf || return 1
     done
     native="$out/native.stdout"
+    before="$out/before-pool-scheduler.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-pool-scheduler
+    gate_output prefix "$native" "$before" --before '== pool scheduler and constructor types ==' --policy crlf || return 1
+    gate_output byte-witness "$native" \
+        'System.Threading.Tasks.ThreadPoolTaskScheduler abstract=True/False corelib=True app=True' \
+        'System.Reflection.RuntimeConstructorInfo abstract=True/False corelib=True app=True' \
+        'declared members: queue=True constructor=True parameters=True' \
+        'separate pool=True start=True factory=True continuation=True' --policy crlf || return 1
     before="$out/before-protected-task-start.stdout"
     gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-protected-task-start
     gate_output prefix "$native" "$before" --before '== protected task start ==' --policy crlf

@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -145,5 +146,60 @@ namespace TaskFactorySubset
             Console.WriteLine("factory Begin/End: " + (pending && ends == 1 && task.Result == 42
                 && ReferenceEquals(task.AsyncState, state)));
         }
+
+        private static void ShowRuntimeType(Type actual, Type? named, Type baseType, Type appType, Type? namedApp)
+        {
+            Console.WriteLine(actual.FullName + " abstract=" + baseType.IsAbstract + "/" + actual.IsAbstract
+                + " corelib=" + (actual == named && actual.Module == baseType.Module)
+                + " app=" + (appType == namedApp && appType != actual && appType.FullName == actual.FullName
+                    && appType.Module == typeof(Program).Module));
+            Console.WriteLine("TypeDef token: " + actual.MetadataToken);
+        }
+
+        internal static void RunPoolScheduler()
+        {
+            Console.WriteLine("== pool scheduler and constructor types ==");
+            var poolType = TaskScheduler.Default.GetType();
+            var ctorType = typeof(ThreadPoolTaskScheduler).GetConstructor(Type.EmptyTypes)!.GetType();
+            var corelib = typeof(object).Assembly;
+            var app = typeof(Program).Assembly;
+            const string poolName = "System.Threading.Tasks.ThreadPoolTaskScheduler";
+            const string ctorName = "System.Reflection.RuntimeConstructorInfo";
+            var namedPool = corelib.GetType(poolName);
+            var namedCtor = corelib.GetType(ctorName);
+            ShowRuntimeType(poolType, namedPool, typeof(TaskScheduler),
+                new ThreadPoolTaskScheduler().GetType(), app.GetType(poolName));
+            ShowRuntimeType(ctorType, namedCtor, typeof(ConstructorInfo),
+                new RuntimeConstructorInfo().GetType(), app.GetType(ctorName));
+
+            const BindingFlags declared = BindingFlags.DeclaredOnly | BindingFlags.Instance;
+            var queue = poolType.GetMethod("QueueTask", declared | BindingFlags.NonPublic);
+            var ctor = namedPool?.GetConstructor(declared | BindingFlags.Public | BindingFlags.NonPublic,
+                null, Type.EmptyTypes, null);
+            var parameters = ctorType.GetMethod(nameof(ConstructorInfo.GetParameters),
+                declared | BindingFlags.Public, Type.EmptyTypes);
+            Console.WriteLine("declared members: queue=" + (queue?.DeclaringType == poolType)
+                + " constructor=" + (ctor?.DeclaringType == poolType)
+                + " parameters=" + (parameters?.DeclaringType == ctorType));
+
+            var scheduler = (TaskScheduler)Activator.CreateInstance(poolType, nonPublic: true)!;
+            Func<bool> isCurrent = () => TaskScheduler.Current == scheduler;
+            var cold = new Task<bool>(isCurrent);
+            cold.Start(scheduler);
+            var factory = Task.Factory.StartNew(isCurrent, CancellationToken.None, TaskCreationOptions.None, scheduler);
+            var continuation = Task.CompletedTask.ContinueWith(_ => isCurrent(), scheduler);
+            Console.WriteLine("separate pool=" + (scheduler != TaskScheduler.Default) + " start=" + cold.Result
+                + " factory=" + factory.Result + " continuation=" + continuation.Result);
+        }
     }
+}
+
+namespace System.Reflection
+{
+    internal sealed class RuntimeConstructorInfo { }
+}
+
+namespace System.Threading.Tasks
+{
+    internal sealed class ThreadPoolTaskScheduler { }
 }

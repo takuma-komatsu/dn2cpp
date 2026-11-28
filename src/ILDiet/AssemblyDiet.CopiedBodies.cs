@@ -24,6 +24,8 @@ internal sealed partial class AssemblyDiet
         // A generic vector's non-primitive element keeps real IL. Original-definition
         // analysis must allow that body without splitting closed argument contexts.
         bool intrinsic = CoreIntrinsicTypeMaps.IsIntrinsicType(Name(type))
+            || type.DeclaringType is null && type.Module.Assembly.Name.Name is "System.Private.CoreLib" or "mscorlib"
+                && CoreIntrinsicTypeMaps.RuntimeImplementationCppType(Name(type)) is not null
             || CoreIntrinsicTypeMaps.IntrinsicGenericCppType(bare, primitiveElement: !type.HasGenericParameters) is not null
             || type.DeclaringType is { } parent && CoreIntrinsicTypeMaps.IsIntrinsicNested(Name(parent), type.Name);
         _copiedIntrinsicTypes.Add(type, intrinsic);
@@ -31,7 +33,7 @@ internal sealed partial class AssemblyDiet
     }
 
     private bool CopiedRuntimeOwnedType(TypeDefinition type) => CopiedIntrinsicType(type)
-        || CoreIntrinsicTypeMaps.RuntimeInterfaceDispatch(Name(type)) is not null
+        || CoreIntrinsicTypeMaps.RuntimeInterfaceDispatch(type.Module.Assembly.Name.Name, Name(type)) is not null
         || CoreIntrinsicTypeMaps.IsDelegateBaseType(Name(type));
 
     private static bool IsCopiedPrimitiveBigMul(MethodDefinition method, string owner)

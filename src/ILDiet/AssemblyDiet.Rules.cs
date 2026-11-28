@@ -716,6 +716,10 @@ internal sealed partial class AssemblyDiet
                 foreach (int child in term.Children) result.Add(SummaryTerm(caller, summary, child, seen));
                 result.Unknown |= term.Number >= 0;
                 break;
+            case TermKind.ObjectOfType:
+                result.Add(Child(0));
+                result.HasObjectOwners = true;
+                break;
             case TermKind.TypeToken:
             case TermKind.ExactObject:
             case TermKind.Closure:

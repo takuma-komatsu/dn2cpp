@@ -142,6 +142,9 @@ namespace AsyncCombinators
             TaskCancellationTokenSubset.Program.RunFromTask();
             TaskFactorySubset.Program.RunFactoryIdentity();
             TaskFactorySubset.Program.RunFromAsync();
+            if (args.Length == 1 && args[0] == "before-pool-scheduler")
+                return;
+            TaskFactorySubset.Program.RunPoolScheduler();
         }
     }
 }

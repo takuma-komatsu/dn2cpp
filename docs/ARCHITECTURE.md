@@ -1878,10 +1878,21 @@ CoreLib's Begin/End bridge. The returned `IAsyncResult.CompletedSynchronously`
 selects whether the caller or the callback runs End. Both complete the same
 typed promise, including the exception and token of a canceled End.
 
-The default scheduler and generated scheduler subclasses share a native identity
-field. CoreLib's `TaskScheduler.Id` getter assigns it lazily from its own counter,
-independent of task IDs. The default pool claims its ID when the scheduler statics
-are initialized. The protected parameterless base constructor leaves the derived
+A reflected constructor handle has the CoreLib type `RuntimeConstructorInfo`.
+Its native payload identifies the declaring method row and the reflected owner.
+The handle and the pool scheduler take their TypeDef attributes, tokens and
+retained member rows from their defining CoreLib module. Application and
+reference assemblies can declare the same internal names with their own
+identities and layouts.
+
+The default scheduler has the CoreLib type `ThreadPoolTaskScheduler`.
+Its internal constructor creates another scheduler using the same native worker
+pool. Each task keeps its assigned scheduler, so `TaskScheduler.Current` observes
+that specific instance inside the delegate unless `HideScheduler` is set.
+Pool schedulers and generated subclasses share the `TaskScheduler.Id` field and
+counter, independent of task IDs. Each pool scheduler claims its ID during
+construction. The default instance is constructed when scheduler statics
+initialize. The protected parameterless base constructor leaves the derived
 instance's ID unassigned. Its CoreLib debugger registration is inactive under
 dn2cpp, where `Debugger.IsAttached` is false.
 
@@ -1905,8 +1916,8 @@ values when the delegate returns.
 
 A direct call to `TaskScheduler.TryDequeue(Task)` runs the CoreLib base body and
 returns false. Virtual calls on generated schedulers use the receiver's override.
-The native default scheduler throws `PlatformNotSupportedException` for this
-operation because its worker pool does not expose a worker-local queue.
+Pool schedulers throw `PlatformNotSupportedException` for this operation because
+the native worker pool does not expose a worker-local queue.
 
 The retained CoreLib `TaskScheduler.TryRunInline` helper rejects native promises,
 actionless precompleted tasks, unassigned cold tasks and continuations, invoked

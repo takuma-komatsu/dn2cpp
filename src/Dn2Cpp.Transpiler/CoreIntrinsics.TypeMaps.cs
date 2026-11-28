@@ -6,12 +6,19 @@ namespace Dn2Cpp;
 // The same data also bounds the original-definition retention graph.
 internal static class CoreIntrinsicTypeMaps
 {
+    internal static string? RuntimeImplementationCppType(string? name) => name switch
+    {
+        "System.Threading.Tasks.ThreadPoolTaskScheduler" => "Dn2CppTaskScheduler*",
+        "System.Reflection.RuntimeConstructorInfo" => "Dn2CppMethodRef*",
+        _ => null,
+    };
+
     // These native layouts replace managed storage, not just member bodies. A
     // field signature remains metadata; it cannot revive the absent storage graph.
     // Other intrinsic layouts may expose real fields and are not implicitly opaque.
     public static bool ReplacesManagedStorage(string assembly, string owner, bool isStatic) =>
         assembly == "System.Private.CoreLib"
-        && (owner == "System.Threading.ThreadLocal`1"
+        && (RuntimeImplementationCppType(owner) is not null || owner == "System.Threading.ThreadLocal`1"
             || !isStatic && owner == "System.TimeProvider+SystemTimeProviderTimer");
 
     public static bool IsPrimitiveBigMulOwner(string? owner) => owner is
@@ -54,8 +61,10 @@ internal static class CoreIntrinsicTypeMaps
         && WellKnownPrimitiveCode(fullTypeName) is { } code
         && code is not (PrimitiveTypeCode.String or PrimitiveTypeCode.Object);
 
-    public static string? RuntimeInterfaceDispatch(string owner)
+    public static string? RuntimeInterfaceDispatch(string assembly, string owner)
     {
+        if (assembly is "System.Private.CoreLib" or "mscorlib" && owner == "System.Reflection.RuntimeConstructorInfo")
+            return "System.Reflection.ConstructorInfo";
         if (owner == "System.RuntimeType" || owner == "System.Reflection.TypeInfo")
             return "System.Type";
         if (owner == "System.Reflection.RuntimeAssembly")

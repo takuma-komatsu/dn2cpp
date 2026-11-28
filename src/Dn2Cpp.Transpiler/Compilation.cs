@@ -2147,7 +2147,7 @@ internal sealed partial class Compilation
             string intrinsicName = arity < 0 ? fullName : fullName[..arity];
             bool runtimeIdentity = intrinsicName.StartsWith("System.", StringComparison.Ordinal)
                 && (intrinsicName is "System.Object" or "System.ValueType" or "System.Runtime.CompilerServices.Unsafe"
-                    || CoreIntrinsics.RuntimeOwnsTypeInfo(intrinsicName)
+                    || CoreIntrinsics.RuntimeOwnsTypeInfo(intrinsicName) && CoreIntrinsicTypeMaps.RuntimeImplementationCppType(intrinsicName) is null
                     || CoreIntrinsics.IntrinsicGenericCppType(intrinsicName) is not null);
             if (runtimeIdentity || (publicCoreLibNames.Contains(fullName)
                     && !IsEmbeddedMetadataAttribute(input.Reader, td)))
@@ -2209,7 +2209,9 @@ internal sealed partial class Compilation
                 // Non-generic async/await Task-family types lower to runtime
                 // structs; mark them so their IL is never transpiled. The
                 // generic forms are marked in Instantiate.
-                cls.IntrinsicCppName = CoreIntrinsics.IntrinsicGenericCppType(cls.FullName);
+                cls.IntrinsicCppName = CoreIntrinsics.IntrinsicGenericCppType(cls.FullName)
+                    ?? (td.GetDeclaringType().IsNil && module.AssemblyName is "System.Private.CoreLib" or "mscorlib"
+                        ? CoreIntrinsicTypeMaps.RuntimeImplementationCppType(cls.FullName) : null);
                 // An intrinsic *nested* value type (e.g. System.Threading.Lock.Scope)
                 // decodes to a bare simple name, so it is matched only together with its
                 // enclosing type — keying the intrinsic map on (enclosing, name).

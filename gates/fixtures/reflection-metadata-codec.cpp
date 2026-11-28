@@ -718,7 +718,7 @@ void check_constructor_binding()
             == &dn2cpp_missing_method_exception_type,
         "a wrong argument count does not select a bodiless constructor");
     Dn2CppMethodRef missing{};
-    missing.type = &dn2cpp_constructorinfo_type;
+    missing.type = &dn2cpp_runtimeconstructorinfo_type;
     missing.method = &overloaded_ctors[1];
     missing.reflectedType = &overloaded_type;
     require(constructor_fault(&overloaded_type, "Void .ctor(System.String)",

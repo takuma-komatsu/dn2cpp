@@ -3245,6 +3245,8 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    dn2cpp_set_string_private_rows(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_stringRawByteReferenceRow ?? "nullptr"}), Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({_stringNullTerminatedLengthRow ?? "nullptr"}));");
         if (_cultureNameValidatorRow is { } cultureNameValidatorRow)
             sb.AppendLine($"    dn2cpp_set_culture_name_validator_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({cultureNameValidatorRow}));");
+        foreach (string assignment in _runtimeObjectMetadata)
+            sb.AppendLine("    " + assignment);
         if (_schedulerIdentityMetadata is { } schedulerIdentity)
             sb.AppendLine($"    dn2cpp_set_taskscheduler_identity_metadata({schedulerIdentity.Methods}, {schedulerIdentity.Props}, {schedulerIdentity.PropertyCount});");
         foreach (var (assembly, getter, property) in _assemblyCollectibilityMetadata)
@@ -4108,6 +4110,7 @@ internal sealed partial class CppEmitter
     private string? _taskMarkStartedRow;
     private readonly string?[] _taskPrivateRows = new string?[4];
     private readonly string?[] _taskSchedulerRows = new string?[2];
+    private readonly List<string> _runtimeObjectMetadata = new();
     private (string Methods, string Props, int PropertyCount)? _schedulerIdentityMetadata;
     private readonly List<(string Assembly, string Getter, string Property)> _assemblyCollectibilityMetadata = new();
     private string? _cultureNameValidatorRow;
@@ -4191,8 +4194,14 @@ internal sealed partial class CppEmitter
     {
         var loaded = new List<ClassInfo>();
         foreach (string name in names)
-            if (_c.FindClassByFullName(name) is { } c)
-                loaded.Add(c);
+        {
+            var cls = _c.FindClassByFullName(name);
+            if (cls is not null && CoreIntrinsicTypeMaps.RuntimeImplementationCppType(name) is not null
+                && CoreIntrinsics.RuntimeTypeInfoSymbol(cls) is null)
+                cls = _c.Classes.FirstOrDefault(c => c.FullName == name && CoreIntrinsics.RuntimeTypeInfoSymbol(c) is not null);
+            if (cls is not null)
+                loaded.Add(cls);
+        }
         foreach (var candidate in loaded)
         {
             bool root = true;
